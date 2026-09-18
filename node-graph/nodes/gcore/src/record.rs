@@ -1353,6 +1353,8 @@ mod tests {
 			named_reads: Vec::new(),
 			named_read_defaults: Vec::new(),
 			lane_invariant: 0,
+			footprint_free: 0,
+			input_levels: Vec::new(),
 			..mirror_layout_meta().resolve(&[Some(&layout)])
 		};
 		<_ as Node<ContextImpl<'static>>>::set_layout(&mut node, resolved);

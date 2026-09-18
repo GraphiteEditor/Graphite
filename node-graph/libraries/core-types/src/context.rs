@@ -249,6 +249,11 @@ impl IndexLevels {
 	/// deeper than that node's. A supplied level leaves no requirement behind;
 	/// the rest renumber by the depth difference. An all-levels mask stays
 	/// saturated, since its reader's level is not known at compile time.
+	/// The mask after level 0 splits in two: both halves keep level 0's bit and every outer level moves up one.
+	pub const fn split_innermost(self) -> Self {
+		Self((self.0 << 1) | (self.0 & 1))
+	}
+
 	pub const fn lifted(self, supplied: u8, delta: u8) -> Self {
 		match self.0 {
 			u32::MAX => self,

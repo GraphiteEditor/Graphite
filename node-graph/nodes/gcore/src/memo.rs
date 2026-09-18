@@ -137,6 +137,8 @@ fn memoize<'e, 'l>(
 pub struct SpanLevel {
 	span: MaterializedSpan,
 	finality: Finality,
+	/// The map the span was published over, so a lane addressed by chain finds its flat position.
+	map: core_types::dispatch::LaneMap,
 }
 
 /// Keyed by an already-hashed context, so the map hashes the key once more with Fx rather than SipHash.
@@ -262,7 +264,18 @@ where
 		return BatchStatus::Filled(batch, finality, hint);
 	}
 
-	let entry = node.cache.lock().unwrap().for_generation(persistent).levels.get(&key).map(|entry| (entry.span, entry.finality));
+	// A span published for a narrower domain (one enclosing group, or a lower
+	// bound's first guess) does not answer a request over a wider finite map.
+	let wanted = dispatch.map().is_finite().then(|| dispatch.map().total());
+	let entry = node
+		.cache
+		.lock()
+		.unwrap()
+		.for_generation(persistent)
+		.levels
+		.get(&key)
+		.filter(|entry| wanted.is_none_or(|wanted| wanted <= entry.map.total()))
+		.map(|entry| (entry.span, entry.finality));
 	// A miss materializes the level here and lends it, rather than leaving the
 	// caller to walk this boundary lane by lane.
 	let (span, finality) = match entry {
@@ -270,16 +283,52 @@ where
 		None => {
 			#[cfg(debug_assertions)]
 			core_types::record::note_kernel_batch("frame_memo", "miss materialize", end.saturating_sub(start));
-			let Some(input) = C::at_lane(&dispatch, range.start) else { return exhausted() };
-			match core_types::record::materialize_level(content, &input, arena, frames) {
+			// The whole map domain publishes at once: a finite map knows it, an
+			// open one asks the content for its total under lane zero.
+			// A lower-bound extent drains through the level driver.
+			let Some(lane0) = C::at_lane(&dispatch, 0) else { return exhausted() };
+			let total = match dispatch.map().is_finite() {
+				true => Some(dispatch.map().total()),
+				false => match core_types::node::Node::extent(content, &lane0, core_types::gpoll::Level::Total, frames) {
+					GPoll::Final(Extent::Exactly(total)) => Some(total as u64),
+					GPoll::Pending => return BatchStatus::Pending,
+					_ => None,
+				},
+			};
+			let published = match total {
+				Some(total) => match core_types::record::materialize_dispatch::<C, _>(content, &dispatch.sized(total).over(0..total), arena, frames) {
+					BatchStatus::Lent(batch, finality, _) => LevelStatus::Batch(batch, finality),
+					BatchStatus::Filled(batch, finality, _) => LevelStatus::Batch(batch.into_shared(), finality),
+					BatchStatus::Pending => LevelStatus::Pending,
+					BatchStatus::Error(error) => LevelStatus::Error(error),
+					_ => LevelStatus::Error(core_types::gpoll::GraphError::new("memo could not materialize its level")),
+				},
+				None => core_types::record::materialize_level(content, &lane0, arena, frames),
+			};
+			match published {
 				LevelStatus::Batch(batch, finality) => {
-					let promotion = Promotion::new(arena, frames.bounds(), persistent);
-					// SAFETY: the batch came from this input, so it carries the input's layout.
-					let Some(span) = (unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }) else {
+					// The off mode keeps the span resident in the evaluation arena; its
+					// handle stops resolving once that arena's generation moves on.
+					let span = match memo_publish_enabled() {
+						false => MaterializedSpan::of(&batch, arena),
+						true => {
+							let promotion = Promotion::new(arena, frames.bounds(), persistent);
+							probe_memo_publish(&node.cache, true, batch.len(), layout.frame_bytes(), true);
+							// SAFETY: the batch came from this input, so it carries the input's layout.
+							unsafe { MaterializedSpan::to_persistent(&batch, &promotion) }
+						}
+					};
+					let Some(span) = span else {
 						return BatchStatus::Unbatched;
 					};
-					probe_memo_publish(&node.cache, true, batch.len(), layout.frame_bytes(), true);
-					node.cache.lock().unwrap().for_generation(persistent).levels.insert(key, SpanLevel { span, finality });
+					node.cache.lock().unwrap().for_generation(persistent).levels.insert(
+						key,
+						SpanLevel {
+							span,
+							finality,
+							map: core_types::dispatch::LaneMap::flat(batch.len() as u64),
+						},
+					);
 					(span, finality)
 				}
 				LevelStatus::Pending => return BatchStatus::Pending,
@@ -287,7 +336,7 @@ where
 			}
 		}
 	};
-	let Some(published) = span.batch(persistent, layout) else {
+	let Some(published) = span.batch(persistent, layout).or_else(|| span.batch(arena, layout)) else {
 		return BatchStatus::Unbatched;
 	};
 	// A flat request over a deeper level reads the flat span the same way;
@@ -395,7 +444,14 @@ fn frame_memo<'e, 'l>(
 				let span = unsafe { MaterializedSpan::to_persistent(&batch, &promotion) };
 				probe_memo_publish(&cache, true, batch.len(), content.layout().frame_bytes(), span.is_some());
 				if let Some(span) = span {
-					cache.lock().unwrap().for_generation(persistent).levels.insert(key, SpanLevel { span, finality });
+					cache.lock().unwrap().for_generation(persistent).levels.insert(
+						key,
+						SpanLevel {
+							span,
+							finality,
+							map: core_types::dispatch::LaneMap::flat(batch.len() as u64),
+						},
+					);
 				}
 				match lane < batch.len() {
 					// The publishing evaluation reads the resident batch, not the copy.
@@ -992,4 +1048,11 @@ where
 	core_types::record::forward_dispatch(content, &dispatch, scratch, frames, layout, |scratch| {
 		core_types::record::fill_dispatch::<C, _>(content, &dispatch, Some(scratch), frames)
 	})
+}
+
+/// MEMO_PUBLISH=off lends batch results without publishing them, an upper
+/// bound on what promotion by residency could save on a cold frame.
+fn memo_publish_enabled() -> bool {
+	static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ON.get_or_init(|| std::env::var_os("MEMO_PUBLISH").is_none_or(|v| v != "off"))
 }

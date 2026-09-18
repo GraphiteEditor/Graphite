@@ -48,6 +48,11 @@ fn assert_deep_element_glue() {
 	}
 }
 
+/// The evaluation arena size, overridable for experiments with `GRAPHENE_ARENA_MB`.
+fn arena_capacity() -> usize {
+	std::env::var("GRAPHENE_ARENA_MB").ok().and_then(|mb| mb.parse::<usize>().ok()).map_or(ARENA_CAPACITY, |mb| mb << 20)
+}
+
 /// The persistent region size, overridable for experiments with `GRAPHENE_PERSISTENT_MB`.
 fn persistent_capacity() -> usize {
 	std::env::var("GRAPHENE_PERSISTENT_MB")
@@ -95,7 +100,7 @@ impl Default for DynamicExecutor {
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
-			arena: Mutex::new(new_arena(ARENA_CAPACITY)),
+			arena: Mutex::new(new_arena(arena_capacity())),
 			persistent: Mutex::new(new_arena(persistent_capacity())),
 			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime: noop_runtime(),
@@ -134,7 +139,7 @@ impl DynamicExecutor {
 			output,
 			typing_context,
 			orphaned_nodes: HashSet::new(),
-			arena: Mutex::new(new_arena(ARENA_CAPACITY)),
+			arena: Mutex::new(new_arena(arena_capacity())),
 			persistent: Mutex::new(new_arena(persistent_capacity())),
 			frames: Mutex::new(core_types::record::FrameArena::new()),
 			runtime,

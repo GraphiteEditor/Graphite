@@ -467,6 +467,8 @@ pub mod fixtures {
 			named_reads: Vec::new(),
 			named_read_defaults: Vec::new(),
 			lane_invariant: u32::MAX,
+			footprint_free: u32::MAX,
+			input_levels: Vec::new(),
 			..meta.resolve(inputs)
 		};
 		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, resolved);
@@ -483,6 +485,8 @@ pub mod fixtures {
 			plan: Vec::new(),
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
+			footprint_free: u32::MAX,
+			input_levels: Vec::new(),
 		};
 		<N as Node<ContextImpl<'static>>>::set_layout(&mut node, bundle);
 		node

@@ -236,6 +236,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 		state.push(quote!(pub(super) __frame_bytes: usize));
 		state.push(quote!(pub(super) __lane_invariant: u32));
+		state.push(quote!(pub(super) __footprint_free: u32));
+		state.push(quote!(pub(super) __input_levels: ::std::vec::Vec<gcore::context::IndexLevels>));
 		state.extend(reading_secondary_indices(&struct_regular_fields, record_skips_carrier).into_iter().map(|index| {
 			let slot = format_ident!("__in_{index}");
 			quote!(pub(super) #slot: gcore::record::Layout)
@@ -267,7 +269,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}));
 		state
 	} else if routing_generic.is_some() {
-		let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __lane_invariant: u32)];
+		let mut state = vec![
+			quote!(pub(super) __layout: gcore::record::Layout),
+			quote!(pub(super) __lane_invariant: u32),
+			quote!(pub(super) __footprint_free: u32),
+			quote!(pub(super) __input_levels: ::std::vec::Vec<gcore::context::IndexLevels>),
+		];
 		state.extend(
 			routing_value_indices(&struct_regular_fields, routing_generic.as_ref().expect("guarded by the arm"))
 				.into_iter()
@@ -280,7 +287,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	} else if opaque {
 		vec![quote!(pub(super) __layout: gcore::record::Layout)]
 	} else if flip {
-		let mut state = vec![quote!(pub(super) __layout: gcore::record::Layout), quote!(pub(super) __frame_bytes: usize)];
+		let mut state = vec![
+			quote!(pub(super) __layout: gcore::record::Layout),
+			quote!(pub(super) __frame_bytes: usize),
+			quote!(pub(super) __lane_invariant: u32),
+			quote!(pub(super) __footprint_free: u32),
+			quote!(pub(super) __input_levels: ::std::vec::Vec<gcore::context::IndexLevels>),
+		];
 		if carrier_flip {
 			state.push(quote!(pub(super) __plan: ::std::vec::Vec<(usize, usize, usize)>));
 		}
@@ -472,7 +485,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let routing_layout_init = (routing_generic.is_some() || opaque).then(|| quote!(__layout: __layout.clone(),)).into_iter();
 	// The lane-invariance mask arrives with the resolved layout, so `new` starts
 	// from the safe empty mask.
-	let routing_invariant_init = routing_generic.is_some().then(|| quote!(__lane_invariant: 0,)).into_iter();
+	let routing_invariant_init = routing_generic.is_some().then(|| quote!(__lane_invariant: 0, __footprint_free: 0, __input_levels: ::std::vec::Vec::new(),)).into_iter();
 	let routing_value_layouts: Vec<usize> = routing_generic.as_ref().map(|generic| routing_value_indices(&struct_regular_fields, generic)).unwrap_or_default();
 	let routing_in_params = routing_value_layouts.iter().map(|index| {
 		let slot = format_ident!("__in_{index}");
@@ -527,7 +540,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let flip_output_inits = flip
 		.then(|| {
 			let plan = carrier_flip.then(|| quote!(__plan: ::std::vec::Vec::new(),));
-			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, #plan)
+			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, __lane_invariant: 0, __footprint_free: 0, __input_levels: ::std::vec::Vec::new(), #plan)
 		})
 		.into_iter();
 	let marker_init = (!carried_generic_idents.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,)).into_iter();
@@ -1671,6 +1684,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					// A routing source forwards its record whole; its extents are
 					// the queryable quantity.
 					_ if routing_source(ty) => extent_edge(&query, &arg),
+					// A level-pushing flip's carrier is the value its pushed level's
+					// count depends on, so the extent fn reads it.
+					ValueBinding::Carrier if carrier_flip && level_delta > 0 => quote! {
+						let #query = || {
+							let __scope = __frames.scope();
+							#core_types::record::serve_input(&self.#name, __input, &__scope)
+								.map(|__value| unsafe { #core_types::record::read_element::<#ty>(self.__in_0.rec(&__value)) })
+						};
+						let #arg = #core_types::extent::ValueIn::new(&#query);
+					},
 					ValueBinding::RecordElement | ValueBinding::ReadingSecondary | ValueBinding::Plain => {
 						let layout = match ir::value_binding(&node, index) {
 							ValueBinding::Plain => quote!(#core_types::node::Node::<#ctx_ident>::layout(&self.#name)),
@@ -2219,28 +2242,36 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			__cell.finish(__value)
 		}
 	});
-	let flip_tail = flip.then(|| {
-		if matches!(*model, Dialect::Poll) {
-			let prelude = carried_prelude.clone().unwrap_or_default();
-			return quote! {
-				#prelude
-				__cell.merge(__frame.lift_served(#kernel_call, #core_types::context::ExtractArena::arena(__input)))
+	// The flip tail over a given carrier prelude: the serve path claims the
+	// carrier itself, the hoisted loop reads it out of the subject batch.
+	let flip_core_with = |prelude: TokenStream2| {
+		flip.then(|| {
+			if matches!(*model, Dialect::Poll) {
+				return quote! {
+					#prelude
+					let __poll = __cell.merge(__frame.lift_served(#kernel_call, #core_types::context::ExtractArena::arena(__input)));
+				};
+			}
+			let kernel_value = match *model {
+				Dialect::Interrupt => quote! {
+					match #kernel_call {
+						Ok(value) => value,
+						Err(interrupt) => return interrupt.into(),
+					}
+				},
+				_ => quote!(#kernel_call),
 			};
-		}
-		let kernel_value = match *model {
-			Dialect::Interrupt => quote! {
-				match #kernel_call {
-					Ok(value) => value,
-					Err(interrupt) => return interrupt.into(),
-				}
-			},
-			_ => quote!(#kernel_call),
-		};
-		let prelude = carried_prelude.clone().unwrap_or_default();
+			quote! {
+				#prelude
+				let __kernel_value = #kernel_value;
+				let __poll = __cell.merge(__frame.lift_served(#core_types::gpoll::GPoll::Final(__kernel_value), #core_types::context::ExtractArena::arena(__input)));
+			}
+		})
+	};
+	let flip_tail = flip_core_with(carried_prelude.clone().unwrap_or_default()).map(|core| {
 		quote! {
-			#prelude
-			let __kernel_value = #kernel_value;
-			__cell.merge(__frame.lift_served(#core_types::gpoll::GPoll::Final(__kernel_value), #core_types::context::ExtractArena::arena(__input)))
+			#core
+			__poll
 		}
 	});
 	let lower_tail = |form: Tail| match form {
@@ -2328,15 +2359,33 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	// An eager carrier subject is lane-mapped, so the batch materializes it once
 	// over the range and each lane reads its record out of that batch instead of
 	// serving the input per lane.
-	let batched_subject = (record_io && !skips_carrier && !lazy_carrier && !has_lazy).then(|| {
+	// A level-pushing flip's carrier lives one level up: it materializes once
+	// per enclosing group at own index 0, and every lane of the group reads it.
+	let pushing_carrier = carrier_flip && level_delta > 0 && !has_lazy;
+	let batched_subject = (((record_io && !skips_carrier && !lazy_carrier) || carrier_flip) && !has_lazy).then(|| {
 		let name = &regular_fields[0].pat_ident.ident;
+		let subject_status = match pushing_carrier {
+			true => quote!(match __gather_shared_0 {
+				true => #core_types::record::materialize_batch(&self.#name, &__base_ctx, 0..1, __arena, (&*__frames)),
+				false => #core_types::record::materialize_dispatch::<#ctx_ident, _>(&self.#name, &__dispatch.resized(1).retaining_all().over(__first_group..__last_group + 1), __arena, (&*__frames)),
+			}),
+			false => quote!(#core_types::record::materialize_dispatch::<#ctx_ident, _>(&self.#name, &__dispatch, __arena, (&*__frames))),
+		};
+		let subject_lane = match pushing_carrier {
+			true => quote!(match __gather_shared_0 {
+				true => 0,
+				false => __lane_group as usize,
+			}),
+			false => quote!(__lane),
+		};
 		let fn_name = &parsed.fn_name;
 		let prologue = quote! {
 			let __subject_batch = {
 				let __arena = #core_types::context::ExtractArena::arena(&__base_ctx);
 				#[cfg(debug_assertions)]
 				#core_types::record::note_batch_consumer(::std::concat!(::std::stringify!(#fn_name), ".", ::std::stringify!(#name)));
-				match #core_types::record::materialize_batch(&self.#name, &__base_ctx, __range.clone(), __arena, (&*__frames)) {
+				let __status = #subject_status;
+				match __status {
 					#core_types::node::BatchStatus::Lent(__batch, __batch_finality, _) => {
 						if __batch_finality == #core_types::gpoll::Finality::Partial {
 							__finality = #core_types::gpoll::Finality::Partial;
@@ -2357,16 +2406,183 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		};
 		let lane = quote! {
 			// The subject level ends here; the fill comes back short.
-			if __lane >= __subject_batch.len() {
+			if #subject_lane >= __subject_batch.len() {
 				__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
 				break;
 			}
-			let __src_rec = __subject_batch.get(__lane).rec();
+			let __src_rec = __subject_batch.get(#subject_lane).rec();
 		};
 		(prologue, lane)
 	});
-	let subject_prologue = batched_subject.as_ref().map(|(prologue, _)| prologue.clone());
+	// A gathered input (a one-level materialized list) materializes once for
+	// the batch under the map with level 0 resized to the per-group count,
+	// and each lane takes the slice of its enclosing group (its flat lane
+	// over level 0's extent). An open map, a non-exact or empty level serves
+	// lane by lane; a short fill ends the batch at the first ragged group.
+	let gathered_inputs: Vec<usize> = match has_lazy || parsed.attributes.batch.is_some() {
+		true => Vec::new(),
+		false => (0..node.inputs.len())
+			.filter(|&index| matches!(ir::value_binding(&node, index), ValueBinding::Materialized) && ir::materialized_levels(&node, index) == 1)
+			.collect(),
+	};
+	let gather_subject = (!gathered_inputs.is_empty() || pushing_carrier).then(|| {
+		let fn_name = &parsed.fn_name;
+		let per_input: Vec<(TokenStream2, TokenStream2, TokenStream2)> = gathered_inputs
+			.iter()
+			.map(|&index| {
+				let field = regular_fields[index];
+				let name = &field.pat_ident.ident;
+				let ParsedFieldType::Regular(RegularParsedField { ty, .. }) = &field.ty else {
+					unreachable!("a materialized input is a regular value input")
+				};
+				let ty = crate::codegen::classify::substitute_lifetimes(ty, "'_");
+				let inner = format_ident!("__gather_inner_{index}");
+				let batch = format_ident!("__gather_batch_{index}");
+				let shared = format_ident!("__gather_shared_{index}");
+				let probe = quote! {
+					let #inner = match #core_types::node::Node::extent(&self.#name, &__base_ctx, #core_types::gpoll::Level::Total, (&*__frames)) {
+						#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) => __count as u64,
+						#core_types::gpoll::GPoll::Pending => return #core_types::node::BatchStatus::Pending,
+						_ => {
+							#[cfg(debug_assertions)]
+							#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "gather inexact", 0);
+							return #core_types::node::BatchStatus::Unbatched;
+						}
+					};
+					if #inner == 0 {
+						#[cfg(debug_assertions)]
+						#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "gather empty", 0);
+						return #core_types::node::BatchStatus::Unbatched;
+					}
+				};
+				let prologue = quote! {
+					let #batch = {
+						let (__first, __last) = match #shared {
+							true => (0, 0),
+							false => (__first_group, __last_group),
+						};
+						let __gather_dispatch = __dispatch.resized(#inner).retaining_all().over(__first * #inner..(__last + 1) * #inner);
+						#[cfg(debug_assertions)]
+						#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), if #shared { "gather shared" } else { "gather grouped" }, ((__last + 1 - __first) * #inner) as usize);
+						let __arena = #core_types::context::ExtractArena::arena(&__base_ctx);
+						#[cfg(debug_assertions)]
+						#core_types::record::note_batch_consumer(::std::concat!(::std::stringify!(#fn_name), ".", ::std::stringify!(#name)));
+						// A shared input is one group under the base context, as a lane would
+						// materialize it, so the memo below sees that group's domain only.
+						let __status = match #shared {
+							true => #core_types::record::materialize_batch(&self.#name, &__base_ctx, 0..#inner, __arena, (&*__frames)),
+							false => #core_types::record::materialize_dispatch::<#ctx_ident, _>(&self.#name, &__gather_dispatch, __arena, (&*__frames)),
+						};
+						match __status {
+							#core_types::node::BatchStatus::Lent(__batch, __batch_finality, _) => {
+								if __batch_finality == #core_types::gpoll::Finality::Partial {
+									__finality = #core_types::gpoll::Finality::Partial;
+								}
+								__batch
+							}
+							#core_types::node::BatchStatus::Filled(__batch, __batch_finality, _) => {
+								if __batch_finality == #core_types::gpoll::Finality::Partial {
+									__finality = #core_types::gpoll::Finality::Partial;
+								}
+								__batch.into_shared()
+							}
+							#core_types::node::BatchStatus::Pending => return #core_types::node::BatchStatus::Pending,
+							#core_types::node::BatchStatus::Error(__error) => return #core_types::node::BatchStatus::Error(__error),
+							_ => return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError::new("gather batch failed")),
+						}
+					};
+				};
+				let lane = quote! {
+					let #name = {
+						let __lo = match #shared {
+							true => 0,
+							false => __lane_group * #inner,
+						};
+						let __hi = __lo + #inner;
+						if __hi as usize > #batch.len() {
+							__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
+							break;
+						}
+						let ::core::option::Option::Some(__lanes) = #batch.slice(__lo as usize..__hi as usize) else {
+							return #core_types::node::BatchStatus::InvalidRange;
+						};
+						// SAFETY: the wiring resolved this input's element as the list's type.
+						unsafe { #core_types::node::List::<#ty>::new(__lanes) }
+					};
+				};
+				(probe, prologue, lane)
+			})
+			.collect();
+		let prologues = per_input.iter().map(|(_, prologue, _)| prologue);
+		let lanes = per_input.iter().map(|(_, _, lane)| lane);
+		// An input whose branch reads none of the map's levels is the same for
+		// every lane of the batch, so it materializes one group.
+		let shared_flags = gathered_inputs.iter().copied().chain(pushing_carrier.then_some(0)).map(|index| {
+			let shared = format_ident!("__gather_shared_{index}");
+			quote! {
+				let #shared = {
+					let __reads = self.__input_levels.get(#index).copied().unwrap_or(#core_types::context::IndexLevels::all());
+					// Level 0 is the gathered level itself; the enclosing levels decide.
+					!(1..__dispatch.map().depth()).any(|level| __reads.contains_level(level))
+				};
+			}
+		});
+		let probes = per_input.iter().map(|(probe, _, _)| probe);
+		// The checks answer before any scratch is asked for, so a node that
+		// cannot gather answers Unbatched to the probe rather than after NeedBuffer.
+		let probe = quote! {
+			// An open level 0 is still being sized, so the whole range is one group.
+			let __gather_extent = __dispatch.map().extent(0);
+			let (__first_group, __last_group) = match __gather_extent == u64::MAX {
+				true => (0, 0),
+				false => (__range.start / __gather_extent, __range.end.saturating_sub(1).max(__range.start) / __gather_extent),
+			};
+			#(#shared_flags)*
+			#(#probes)*
+		};
+		let prologue = quote! {
+			#(#prologues)*
+		};
+		let lane = quote! {
+			let __lane_group = match __gather_extent == u64::MAX {
+				true => 0,
+				false => (__range.start + __lane as u64) / __gather_extent - __first_group,
+			};
+			#(#lanes)*
+		};
+		(probe, prologue, lane)
+	});
+	let subject_prologue = {
+		let subject = batched_subject.as_ref().map(|(prologue, _)| prologue.clone());
+		let gather = gather_subject.as_ref().map(|(_, prologue, _)| prologue.clone());
+		quote!(#subject #gather)
+	};
+	let gather_probe = gather_subject.as_ref().map(|(probe, _, _)| probe.clone()).unwrap_or_default();
+	let gather_lanes = gather_subject.as_ref().map(|(_, _, lane)| lane.clone()).unwrap_or_default();
 	let batched_carrier = batched_subject.as_ref().map(|(_, lane)| lane.clone()).unwrap_or_else(|| carrier_eval.clone().unwrap_or_default());
+	let batched_carrier = quote!(#batched_carrier #gather_lanes);
+	// A flip carrier reads its element out of the subject batch lane, then
+	// carries and lifts as the serve path does.
+	// A level-pushing flip serves whole sub-levels per lane, which the lane
+	// loop does not model yet, so it keeps the eager forward.
+	let batched_flip_prelude = batched_subject.as_ref().filter(|_| carrier_flip && (level_delta == 0 || pushing_carrier)).map(|(_, lane)| {
+		let field = regular_fields[0];
+		let name = &field.pat_ident.ident;
+		let read = match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => {
+				quote!(let #name: &#ty = unsafe { #core_types::record::borrow_element(__src_rec) };)
+			}
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(let #name: #ty = unsafe { #core_types::record::read_element(__src_rec) };),
+			_ => unreachable!("a flip carrier is a regular value input"),
+		};
+		let clamp = clamp_tokens(field);
+		quote! {
+			#lane
+			unsafe { __frame.carry(__src_rec, &self.__plan) };
+			#read
+			#clamp
+		}
+	});
 	let hoisted_lane_poll = match tail_form {
 		Tail::Record => record_tail_core_with(batched_carrier).map(|core| {
 			quote! {
@@ -2374,6 +2590,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __poll = __cell.finish(__value);
 			}
 		}),
+		// A carrier flip hoists only with its carrier batched; its gathered inputs ride along.
+		Tail::Flip if carrier_flip => batched_flip_prelude.as_ref().and_then(|prelude| flip_core_with(quote!(#gather_lanes #prelude))),
+		Tail::Flip if gather_subject.is_some() => flip_core_with(gather_lanes.clone()),
 		Tail::Forward if routing_generic.is_some() => Some(quote!(let __poll = #lift;)),
 		_ => None,
 	};
@@ -2394,16 +2613,18 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			// in the loop (or in the tail, for a carrier); everything else is
 			// batch-invariant and hoists.
 			let hoists = |index: usize| matches!(ir::value_binding(&node, index), ValueBinding::Materialized) || !node.inputs[index].subject;
+			// The gather subject binds through its batch slice, in the lane tokens.
+			let gathered = |index: usize| gathered_inputs.contains(&index);
 			let hoisted_binds: Vec<TokenStream2> = regular_fields
 				.iter()
 				.enumerate()
-				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
+				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index) && !gathered(*index))
 				.map(|(index, field)| bind_body(index, field, true, &quote!((&*__frames))))
 				.collect();
 			let hoisted_clamps: Vec<TokenStream2> = regular_fields
 				.iter()
 				.enumerate()
-				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index))
+				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index) && !gathered(*index))
 				.filter_map(|(_, field)| clamp_tokens(field))
 				.collect();
 			let lane_binds: Vec<TokenStream2> = lazy_last(
@@ -2412,7 +2633,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					.enumerate()
 					.filter(|(index, field)| match field.ty {
 						ParsedFieldType::Node(_) => true,
-						ParsedFieldType::Regular(_) => !hoists(*index) && !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
+						ParsedFieldType::Regular(_) => !hoists(*index) && !gathered(*index) && !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
 					})
 					.map(|(index, field)| {
 						let body = bind_body(index, field, true, &quote!(__frame.frames()));
@@ -2429,7 +2650,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					.enumerate()
 					.filter(|(index, field)| match field.ty {
 						ParsedFieldType::Node(_) => true,
-						ParsedFieldType::Regular(_) => !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
+						ParsedFieldType::Regular(_) => !gathered(*index) && !matches!(ir::value_binding(&node, *index), ValueBinding::Carrier),
 					})
 					.map(|(index, field)| {
 						let body = bind_body(index, field, true, &quote!(__frame.frames()));
@@ -2445,7 +2666,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				.enumerate()
 				.filter(|(index, field)| {
 					matches!(field.ty, ParsedFieldType::Regular(_))
-						&& hoists(*index) && matches!(ir::value_binding(&node, *index), ValueBinding::Plain | ValueBinding::ReadingSecondary | ValueBinding::RecordElement)
+						&& hoists(*index) && !gathered(*index)
+						&& matches!(ir::value_binding(&node, *index), ValueBinding::Plain | ValueBinding::ReadingSecondary | ValueBinding::RecordElement)
 				})
 				.map(|(_, field)| {
 					let name = &field.pat_ident.ident;
@@ -2457,7 +2679,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			let hoistable_mask: u32 = regular_fields
 				.iter()
 				.enumerate()
-				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index) && *index < 32)
+				.filter(|(index, field)| matches!(field.ty, ParsedFieldType::Regular(_)) && hoists(*index) && !gathered(*index) && *index < 32)
 				.fold(0, |mask, (index, _)| mask | (1u32 << index));
 			let fill_loop = |hoisted: Vec<TokenStream2>, clamps: Vec<TokenStream2>, rebinds: Vec<TokenStream2>, binds: Vec<TokenStream2>| {
 				let hoisted = hoisted.into_iter();
@@ -2516,9 +2738,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				mask => quote! {
 					// Binding once at the base lane is sound only where the
 					// installed layout marks every hoisted input invariant under
-					// the innermost index.
+					// the innermost index, and only that index varies: a refined
+					// map varies enclosing levels the mask says nothing about.
 					const __HOISTABLE: u32 = #mask;
-					if (self.__lane_invariant & __HOISTABLE) == __HOISTABLE {
+					if __dispatch.map().depth() == 1 && (self.__lane_invariant & __HOISTABLE) == __HOISTABLE {
 						#hoisted_fill
 					} else {
 						#rebound_fill
@@ -2529,14 +2752,9 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				#batch_signature
 				{
 					let __range = __dispatch.range();
-					let ::core::option::Option::Some(__scratch) = __scratch else {
-						return #core_types::node::BatchStatus::NeedBuffer;
-					};
 					let ::core::option::Option::Some(__len) = __range.end.checked_sub(__range.start).and_then(|__len| usize::try_from(__len).ok()) else {
 						return #core_types::node::BatchStatus::InvalidRange;
 					};
-					#[cfg(debug_assertions)]
-					#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "hoisted", __len);
 					let __node_layout = <Self as #core_types::node::Node<#ctx_ident>>::layout(self);
 					// The batch's own claims are free again when it returns, so
 					// the caller's free space comes back as it was lent.
@@ -2545,6 +2763,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					let ::core::option::Option::Some(__base_ctx) = <#ctx_ident as #core_types::dispatch::AsDispatch<'__serve>>::at_lane(&__dispatch, __range.start) else {
 						return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError { kind: #core_types::gpoll::ErrorKind::ArenaExhausted, trace: ::std::vec::Vec::new() });
 					};
+					#gather_probe
+					let ::core::option::Option::Some(__scratch) = __scratch else {
+						return #core_types::node::BatchStatus::NeedBuffer;
+					};
+					#[cfg(debug_assertions)]
+					#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "hoisted", __len);
 					let __input = &__base_ctx;
 					#selected_fill
 				}
@@ -2667,6 +2891,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let plan = carrier_flip.then(|| quote!(self.__plan = __resolved.plan;));
 		Some(quote! {
 			self.__frame_bytes = __resolved.frame_bytes;
+			self.__lane_invariant = __resolved.lane_invariant;
+			self.__footprint_free = __resolved.footprint_free; self.__input_levels = __resolved.input_levels.clone();
 			#plan
 			self.__layout = __resolved.layout;
 		})
@@ -2717,12 +2943,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#read_installs)*
 			self.__frame_bytes = __resolved.frame_bytes;
 			self.__lane_invariant = __resolved.lane_invariant;
+			self.__footprint_free = __resolved.footprint_free; self.__input_levels = __resolved.input_levels.clone();
 			#plan
 			self.__layout = __resolved.layout;
 		})
 	} else if routing_generic.is_some() {
 		Some(quote! {
 			self.__lane_invariant = __resolved.lane_invariant;
+			self.__footprint_free = __resolved.footprint_free; self.__input_levels = __resolved.input_levels.clone();
 			self.__layout = __resolved.layout;
 		})
 	} else {
@@ -2923,6 +3151,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#(#marker_init)*
 						__frame_bytes: 0,
 						__lane_invariant: 0,
+						__footprint_free: 0,
+						__input_levels: ::std::vec::Vec::new(),
 						#(#read_names)*
 						#(#read_default_inits)*
 						#(#write_defaults)*

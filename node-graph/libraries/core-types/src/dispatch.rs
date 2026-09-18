@@ -141,6 +141,7 @@ impl<'a> Dispatch<'a> {
 	pub fn refined(&self, inner: u64, reverse: bool) -> Option<Self> {
 		Some(Self {
 			map: self.map.refined(inner, reverse)?,
+			retained: self.retained.split_innermost(),
 			..self.clone()
 		})
 	}
@@ -262,6 +263,111 @@ impl<'e> Dispatch<'e> {
 			Some(outer) => base.promoted(outer, levels(0)),
 			None => base.replaced(levels(0)),
 		})
+	}
+}
+
+impl LaneMap {
+	/// Whether level 0's extent is still open.
+	pub fn is_open(&self) -> bool {
+		self.extents[0] == u64::MAX
+	}
+
+	/// The map with level 0 sized to `extent` where it was open.
+	pub fn sized(&self, extent: u64) -> Self {
+		let mut map = *self;
+		if map.is_open() {
+			map.extents[0] = extent;
+		}
+		map
+	}
+
+	/// The map with level 0 replaced by `extent`: a node whose own lane count
+	/// differs from an input's hands that input the map it serves under.
+	pub fn resized(&self, extent: u64) -> Self {
+		let mut map = *self;
+		map.extents[0] = extent;
+		map
+	}
+
+	/// Level `level`'s extent, `u64::MAX` where open.
+	pub fn extent(&self, level: usize) -> u64 {
+		self.extents[level]
+	}
+
+	/// Whether level `level` counts down.
+	pub fn is_reversed(&self, level: usize) -> bool {
+		self.reversed >> level & 1 == 1
+	}
+
+	/// Whether every level has a known extent, so `total` is the domain.
+	pub fn is_finite(&self) -> bool {
+		self.extents[..self.depth()].iter().all(|extent| *extent != u64::MAX)
+	}
+
+	/// The lane whose levels read as `levels(i)`: the inverse of `level`.
+	pub fn flat_index(&self, levels: impl Fn(usize) -> u64) -> u64 {
+		let mut lane = 0;
+		let mut stride = 1;
+		for level in 0..self.depth() {
+			let mut index = levels(level);
+			if self.reversed >> level & 1 == 1 {
+				index = self.extents[level] - 1 - index;
+			}
+			lane += index * stride;
+			stride = stride.saturating_mul(self.extents[level]);
+		}
+		lane
+	}
+}
+
+impl<'e> Dispatch<'e> {
+	/// The same dispatch over another range of the same map.
+	pub fn over(&self, range: std::ops::Range<u64>) -> Self {
+		Self { range, ..self.clone() }
+	}
+
+	/// The same dispatch with level 0 sized where it was open.
+	pub fn sized(&self, extent: u64) -> Self {
+		Self {
+			map: self.map.sized(extent),
+			..self.clone()
+		}
+	}
+
+	/// The same dispatch with level 0 replaced by `extent`.
+	pub fn resized(&self, extent: u64) -> Self {
+		Self {
+			map: self.map.resized(extent),
+			..self.clone()
+		}
+	}
+
+	/// The same lanes with every index level retained again: a gathered level
+	/// is a fresh level, so nothing about it is nullified yet.
+	pub fn retaining_all(&self) -> Self {
+		Self {
+			retained: IndexLevels::all(),
+			..self.clone()
+		}
+	}
+
+	/// The same lanes under another footprint.
+	pub fn with_footprint<'s>(&self, footprint: &'s Footprint) -> Dispatch<'s>
+	where
+		'e: 's,
+	{
+		Dispatch {
+			fixed: Fixed {
+				scope: self.fixed.scope,
+				footprint: Some(footprint),
+				varargs: self.fixed.varargs,
+				position: self.fixed.position,
+				outer: self.fixed.outer,
+			},
+			map: self.map,
+			retained: self.retained,
+			range: self.range.clone(),
+		}
 	}
 }
 /// One lane of a dispatch, answering the context traits from the map.
@@ -476,6 +582,20 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn serve_at_builds_the_refined_chain() {
+		let arena = Arena::new(1 << 12).unwrap();
+		let generations = [];
+		let scope = EvalScope::new(None, None, None, &generations, &arena);
+		let root = ContextImpl::root(&scope);
+		let dispatch = Dispatch::new(&root, LaneMap::open(), 0..6).sized(6).refined(3, false).unwrap();
+		for (lane, expected) in [(0u64, vec![0usize]), (1, vec![1]), (4, vec![1, 1]), (5, vec![2, 1])] {
+			let served = dispatch.serve_at(lane).unwrap();
+			let chain: Vec<usize> = served.try_index().unwrap().collect();
+			assert_eq!(chain, expected, "lane {lane}");
+			assert_eq!(served.try_index().unwrap().nth(1).unwrap_or(0), (lane / 3) as usize, "copy of lane {lane}");
+		}
+	}
 	#[test]
 	fn a_map_decomposes_and_reverses() {
 		let map = LaneMap::flat(12).refined(4, true).unwrap();

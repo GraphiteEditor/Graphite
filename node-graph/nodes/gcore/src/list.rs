@@ -433,7 +433,7 @@ pub fn map<Row: Clone + Send + Sync + CacheHash + 'static, T>(
 }
 
 /// Joins two levels of the same type, the base's lanes followed by the new's.
-#[node_macro::node(category("General"), extent(extend_extent))]
+#[node_macro::node(category("General"), extent(extend_extent), batch(extend_batch))]
 pub fn extend<T>(
 	ctx: impl Ctx + ExtractIndex + InjectIndex + Copy,
 	/// The input whose lanes appear at the start of the extended level.
@@ -481,6 +481,148 @@ fn extend_extent(base: ExtentIn<'_>, new: ExtentIn<'_>, level: LevelIn) -> GPoll
 			}
 		}),
 	}
+}
+
+/// The batch form: the base's lanes and the new's lanes are each one batch
+/// under the map with level 0 resized to that side's count, and the output
+/// interleaves them per enclosing lane.
+fn extend_batch<'batch, 'serve, 'r, Input, Base, New>(
+	node: &'batch _extend_mod::ExtendNode<Base, New>,
+	dispatch: core_types::dispatch::Dispatch<'serve>,
+	scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>,
+	frames: &core_types::record::Frames<'serve>,
+) -> core_types::node::BatchStatus<'r>
+where
+	'batch: 'r,
+	'serve: 'r,
+	Input: Ctx + ExtractIndex + InjectIndex + Copy + core_types::dispatch::AsDispatch<'serve> + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
+	Base: core_types::node::Node<Input>,
+	New: core_types::node::Node<Input>,
+	_extend_mod::ExtendNode<Base, New>: core_types::node::Node<Input>,
+{
+	use core_types::gpoll::Finality;
+	use core_types::node::BatchStatus;
+
+	let range = dispatch.range();
+	let map = dispatch.map();
+	// The split is a count up level 0; an open or reversed level serves lane by lane.
+	if map.is_open() || map.is_reversed(0) {
+		return BatchStatus::Unbatched;
+	}
+	let Ok(len) = usize::try_from(range.end.saturating_sub(range.start)) else {
+		return BatchStatus::InvalidRange;
+	};
+	let layout = core_types::node::Node::<Input>::layout(node);
+	let stride = layout.lane_stride();
+	if len == 0 {
+		let Some(scratch) = scratch else {
+			return BatchStatus::NeedBuffer;
+		};
+		return BatchStatus::Filled(core_types::node::RecordBatchMut::filled(scratch, 0, layout), Finality::AllFinal, Extent::AtLeast(range.end as usize));
+	}
+	let total = map.extent(0);
+	let Some(lane0) = Input::at_lane(&dispatch, range.start) else {
+		return BatchStatus::Error(GraphError {
+			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		});
+	};
+	let split = match core_types::node::Node::<Input>::extent(&node.base, &lane0, Level::Total, frames) {
+		GPoll::Final(Extent::Exactly(count)) => count as u64,
+		GPoll::Final(Extent::Free) => 1,
+		GPoll::Pending => return BatchStatus::Pending,
+		_ => return BatchStatus::Error(GraphError::new("extend over a non-exact base extent")),
+	};
+	if split > total {
+		return BatchStatus::Error(GraphError::new("extend base exceeds its level"));
+	}
+	let new_count = total - split;
+	#[cfg(debug_assertions)]
+	core_types::record::note_kernel_batch("extend", "interleave", len);
+	let first = range.start / total;
+	let last = (range.end - 1) / total;
+	let arena = dispatch.scope().arena();
+	let mut finality = Finality::AllFinal;
+	let base = match extend_side::<Input, _>(&node.base, &dispatch, split, first..last + 1, arena, frames, &mut finality) {
+		Ok(base) => base,
+		Err(status) => return status,
+	};
+	let new = match extend_side::<Input, _>(&node.new, &dispatch, new_count, first..last + 1, arena, frames, &mut finality) {
+		Ok(new) => new,
+		Err(status) => return status,
+	};
+	let Some(scratch) = scratch else {
+		return BatchStatus::NeedBuffer;
+	};
+	if scratch.len() * 8 < len * stride {
+		return BatchStatus::InvalidRange;
+	}
+	let dst: *mut u8 = scratch.as_mut_ptr().cast();
+	let mut filled = 0;
+	let mut hint = Extent::AtLeast(range.end as usize);
+	for lane in 0..len {
+		let flat = range.start + lane as u64;
+		let (outer, index) = (flat / total, flat % total);
+		let (source, source_lane) = match index < split {
+			true => (&base, outer * split + index),
+			false => (&new, outer * new_count + index - split),
+		};
+		let Some((batch, start)) = source else {
+			break;
+		};
+		let Ok(source_lane) = usize::try_from(source_lane - start) else {
+			return BatchStatus::InvalidRange;
+		};
+		// A short side ends the level here.
+		if source_lane >= batch.len() {
+			hint = Extent::Exactly(flat as usize);
+			break;
+		}
+		// SAFETY: both sides are routes into this node's layout, and the scratch
+		// holds `len` lanes at its stride, disjoint from the sides' storage.
+		unsafe { std::ptr::copy_nonoverlapping(batch.get(source_lane).rec().ptr(), dst.add(lane * stride), layout.size) };
+		filled += 1;
+	}
+	BatchStatus::Filled(core_types::node::RecordBatchMut::filled(scratch, filled, layout), finality, hint)
+}
+
+/// One side of an extend over the enclosing lanes `outer`: its batch and the
+/// flat lane its first record stands at, or nothing for an empty side.
+#[allow(clippy::type_complexity)]
+fn extend_side<'a, 'e, 'r, C, N>(
+	node: &'a N,
+	dispatch: &core_types::dispatch::Dispatch<'e>,
+	count: u64,
+	outer: std::ops::Range<u64>,
+	arena: &'a core_types::arena::Arena,
+	frames: &core_types::record::Frames<'e>,
+	finality: &mut core_types::gpoll::Finality,
+) -> Result<Option<(core_types::node::RecordBatch<'r>, u64)>, core_types::node::BatchStatus<'r>>
+where
+	'a: 'r,
+	'e: 'r,
+	C: core_types::dispatch::AsDispatch<'e> + InjectIndex + Copy + core_types::context::ExtractArena<ArenaRef = &'e core_types::arena::Arena>,
+	N: core_types::node::Node<C>,
+{
+	use core_types::gpoll::Finality;
+	use core_types::node::BatchStatus;
+	if count == 0 {
+		return Ok(None);
+	}
+	let side_range = outer.start * count..outer.end * count;
+	let side_dispatch = dispatch.resized(count).over(side_range.clone());
+	let (batch, side_finality) = match core_types::record::materialize_dispatch::<C, N>(node, &side_dispatch, arena, frames) {
+		BatchStatus::Lent(batch, side_finality, _) => (batch, side_finality),
+		BatchStatus::Filled(batch, side_finality, _) => (batch.into_shared(), side_finality),
+		BatchStatus::Pending => return Err(BatchStatus::Pending),
+		BatchStatus::Error(error) => return Err(BatchStatus::Error(error)),
+		BatchStatus::InvalidRange => return Err(BatchStatus::InvalidRange),
+		_ => return Err(BatchStatus::Error(GraphError::new("extend side batch failed"))),
+	};
+	if side_finality == Finality::Partial {
+		*finality = Finality::Partial;
+	}
+	Ok(Some((batch, side_range.start)))
 }
 
 pub use _map_mod::map_entries;

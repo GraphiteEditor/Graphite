@@ -156,6 +156,12 @@ pub struct ProtoNode {
 	/// position 32 and above never set a bit, so they read as varying.
 	#[serde(skip)]
 	pub(crate) lane_invariant_inputs: u32,
+	/// Bit `i` marks input `i` as never reading the footprint.
+	#[serde(skip)]
+	pub(crate) footprint_free_inputs: u32,
+	/// The index levels each input's branch reads, by input position.
+	#[serde(skip)]
+	pub(crate) input_index_levels: Vec<core_types::context::IndexLevels>,
 	#[serde(skip)]
 	pub(crate) resolved: Resolved,
 }
@@ -170,6 +176,8 @@ impl Default for ProtoNode {
 			skip_deduplication: false,
 			context_features: Default::default(),
 			lane_invariant_inputs: 0,
+			footprint_free_inputs: 0,
+			input_index_levels: Vec::new(),
 			resolved: Default::default(),
 		}
 	}
@@ -212,6 +220,8 @@ impl ProtoNode {
 			skip_deduplication: false,
 			context_features: Default::default(),
 			lane_invariant_inputs: 0,
+			footprint_free_inputs: 0,
+			input_index_levels: Vec::new(),
 			resolved: Default::default(),
 		}
 	}
@@ -383,6 +393,8 @@ impl ProtoNetwork {
 		let mut errors = GraphErrors::new();
 		for index in 0..self.nodes.len() {
 			let lane_invariant = self.nodes[index].1.lane_invariant_inputs;
+			let footprint_free = self.nodes[index].1.footprint_free_inputs;
+			let input_levels = self.nodes[index].1.input_index_levels.clone();
 			let layout = {
 				let node = &self.nodes[index].1;
 				match &node.construction_args {
@@ -390,6 +402,8 @@ impl ProtoNetwork {
 						frame_bytes: layout.frame_bytes(),
 						plan: Vec::new(),
 						lane_invariant,
+						footprint_free,
+						input_levels: input_levels.clone(),
 						named_writes: Vec::new(),
 						named_reads: Vec::new(),
 						named_read_defaults: Vec::new(),
@@ -406,6 +420,8 @@ impl ProtoNetwork {
 						errors.extend(read_type_conflicts(node, meta, &input_layouts));
 						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| core_types::record::RecordLayout {
 							lane_invariant,
+							footprint_free,
+							input_levels,
 							..meta.resolve(&input_layouts)
 						})
 					}),
@@ -672,6 +688,8 @@ impl ProtoNetwork {
 
 		// Compute the dependencies for each branch and combine all of them
 		let mut lane_invariant_inputs = 0u32;
+		let mut footprint_free_inputs = 0u32;
+		let mut input_index_levels = Vec::with_capacity(inputs.len());
 		for (input, &node) in inputs.iter().enumerate() {
 			let branch = self.find_context_dependencies(node);
 
@@ -679,6 +697,13 @@ impl ProtoNetwork {
 			if !reads_innermost && input < 32 {
 				lane_invariant_inputs |= 1 << input;
 			}
+			if !branch.0.features.contains(core_types::context::ContextFeatures::FOOTPRINT) && input < 32 {
+				footprint_free_inputs |= 1 << input;
+			}
+			input_index_levels.push(match branch.0.features.contains(core_types::context::ContextFeatures::INDEX) {
+				true => branch.0.index_levels,
+				false => core_types::context::IndexLevels::default(),
+			});
 
 			let mut lifted = branch.0.clone();
 			let (pushed, driven) = input_levels.get(input).copied().unwrap_or((0, 0));
@@ -697,6 +722,8 @@ impl ProtoNetwork {
 			branch_dependencies.push(branch);
 		}
 		self.nodes[node_index].1.lane_invariant_inputs = lane_invariant_inputs;
+		self.nodes[node_index].1.footprint_free_inputs = footprint_free_inputs;
+		self.nodes[node_index].1.input_index_levels = input_index_levels;
 		let mut new_deps = combined_deps.clone();
 
 		// Remove requirements which this node provides

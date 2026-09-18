@@ -11,7 +11,7 @@ use graphic_types::Vector;
 /// Each copy evaluates the content within the copy's index pushed in,
 /// producing a level of `count` copies.
 // Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
-#[node_macro::node(category("Repeat"), extent(repeat_extent))]
+#[node_macro::node(category("Repeat"), extent(repeat_extent), batch(repeat_batch))]
 pub fn repeat<T>(
 	ctx: impl Ctx + DeriveCtx + ExtractIndex,
 	content: impl Node<Context<'_>, Output = T>,
@@ -468,5 +468,121 @@ mod test {
 			let composed: DAffine2 = record.attr::<TransformAttr>();
 			assert_eq!(composed.translation, point);
 		}
+	}
+}
+
+/// The batch over the repeated level: the copies refine the map, one level
+/// of `count` copies over the content's inner lanes, and the content answers
+/// the whole flat range in one call.
+fn repeat_batch<'batch, 'serve, 'r, Input, Content, Count, Reverse>(
+	node: &'batch _repeat_mod::RepeatNode<Content, Count, Reverse>,
+	dispatch: core_types::dispatch::Dispatch<'serve>,
+	scratch: Option<&'r mut [std::mem::MaybeUninit<u64>]>,
+	frames: &core_types::record::Frames<'serve>,
+) -> core_types::node::BatchStatus<'r>
+where
+	'batch: 'r,
+	'serve: 'r,
+	Input: Ctx + DeriveCtx + ExtractIndex + InjectIndex + Copy + core_types::dispatch::AsDispatch<'serve> + core_types::context::ExtractArena<ArenaRef = &'serve core_types::arena::Arena>,
+	Content: for<'derived> core_types::record::DerivedRecordInput<'derived, core_types::context::Derived<'derived, Input>>,
+	Count: core_types::node::Node<Input>,
+	Reverse: core_types::node::Node<Input>,
+	_repeat_mod::RepeatNode<Content, Count, Reverse>: core_types::node::Node<Input>,
+{
+	use core_types::node::BatchStatus;
+
+	let exhausted = || {
+		BatchStatus::Error(GraphError {
+			kind: core_types::gpoll::ErrorKind::ArenaExhausted,
+			trace: Vec::new(),
+		})
+	};
+	let range = dispatch.range();
+	let Some(base) = Input::at_lane(&dispatch, range.start) else {
+		return exhausted();
+	};
+	let cell = core_types::node::StatusCell::new();
+	let count = match cell.eval_input(1, &node.count, &base, frames) {
+		// SAFETY: input 1 is the count, read at the layout resolved for it.
+		Ok(value) => (unsafe { core_types::record::read_element::<u32>(node.__in_1.rec(&value)) }) as u64,
+		Err(interrupt) => return interrupt.into(),
+	};
+	let reverse = match cell.eval_input(2, &node.reverse, &base, frames) {
+		// SAFETY: input 2 is the reverse flag.
+		Ok(value) => unsafe { core_types::record::read_element::<bool>(node.__in_2.rec(&value)) },
+		Err(interrupt) => return interrupt.into(),
+	};
+	let layout = core_types::node::Node::<Input>::layout(node);
+	let inner_levels = layout.depth.saturating_sub(1);
+	let inner = match core_types::record::inner_extent_of(&node.content, &base, 0, inner_levels, 0, frames) {
+		Ok(inner) => inner,
+		Err(interrupt) => return interrupt.into(),
+	};
+	// The level ends at the last copy of the last enclosing lane: a range
+	// reaching past it comes back short with the exact flat total, so a
+	// lower-bound consumer stops guessing. Open enclosing levels leave it unbounded.
+	let total = count * inner;
+	let map = dispatch.map();
+	let enclosing = (1..map.depth())
+		.map(|level| map.extent(level))
+		.try_fold(1u64, |product, extent| (extent != u64::MAX).then(|| product.saturating_mul(extent)));
+	let flat_total = enclosing.map(|enclosing| total.saturating_mul(enclosing));
+	let end = range.end.min(flat_total.unwrap_or(u64::MAX));
+	if flat_total.is_some_and(|flat_total| range.start >= flat_total) {
+		let Some(scratch) = scratch else {
+			return BatchStatus::NeedBuffer;
+		};
+		return BatchStatus::Filled(
+			core_types::node::RecordBatchMut::filled(scratch, 0, layout),
+			core_types::gpoll::Finality::AllFinal,
+			Extent::Exactly(flat_total.unwrap_or_default() as usize),
+		);
+	}
+	let Some(refined) = dispatch.sized(total).over(range.start..end).refined(inner.max(1), reverse) else {
+		return BatchStatus::Error(GraphError::new("repeat could not refine its lane map"));
+	};
+	let range = range.start..end;
+	#[cfg(debug_assertions)]
+	core_types::record::note_kernel_batch("repeat", "refined forward", range.end.saturating_sub(range.start) as usize);
+	let lanes = |scratch: &'r mut [std::mem::MaybeUninit<u64>]| {
+		use core_types::gpoll::Finality;
+		let Ok(len) = usize::try_from(range.end.saturating_sub(range.start)) else {
+			return BatchStatus::InvalidRange;
+		};
+		let Some(mut run) = frames.run(scratch, len, layout) else {
+			return BatchStatus::InvalidRange;
+		};
+		let mut finality = Finality::AllFinal;
+		let mut hint = Extent::AtLeast(range.end as usize);
+		for lane in 0..len {
+			let Some(ctx) = <core_types::context::Derived<'_, Input> as core_types::dispatch::AsDispatch<'_>>::at_lane(&refined, range.start + lane as u64) else {
+				return exhausted();
+			};
+			let lane_frames = frames.scope();
+			let slot = run.slot(lane, &lane_frames);
+			let served = match node.content.serve_derived(&ctx, slot) {
+				GPoll::Final(served) => served,
+				GPoll::Partial(served) => {
+					finality = Finality::Partial;
+					served
+				}
+				GPoll::Pending => return BatchStatus::Pending,
+				GPoll::Fallback(boxed) => return BatchStatus::Error(boxed.1),
+				GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd => {
+					hint = Extent::Exactly(range.start as usize + lane);
+					break;
+				}
+				GPoll::Error(error) => return BatchStatus::Error(*error),
+			};
+			run.served(lane, &served);
+		}
+		BatchStatus::Filled(run.finish(), finality, hint)
+	};
+	match core_types::record::forward_dispatch(&node.content, &refined, scratch, frames, layout, lanes) {
+		BatchStatus::Filled(batch, finality, hint) if flat_total == Some(end) => {
+			let _ = hint;
+			BatchStatus::Filled(batch, finality, Extent::Exactly(end as usize))
+		}
+		status => status,
 	}
 }

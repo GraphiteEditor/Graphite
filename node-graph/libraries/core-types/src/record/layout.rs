@@ -366,6 +366,13 @@ pub struct RecordLayout {
 	/// over input positions. Empty is the safe default: an uninstalled layout
 	/// rebinds every input per lane.
 	pub lane_invariant: u32,
+	/// Inputs whose branch never reads the footprint, as a bitmask over input
+	/// positions. Empty is the safe default: an uninstalled layout treats
+	/// every input as footprint-dependent.
+	pub footprint_free: u32,
+	/// The index levels each input's branch reads, by input position; a
+	/// missing entry reads as every level.
+	pub input_levels: Vec<crate::context::IndexLevels>,
 	/// The names the fold gave this node's name-from-input writes, in the
 	/// order the signature declares its placeholders. A marker-only node
 	/// leaves it empty; `set_layout` resolves its offsets through these
@@ -603,6 +610,8 @@ impl LayoutMeta {
 			frame_bytes,
 			plan,
 			lane_invariant: 0,
+			footprint_free: 0,
+			input_levels: Vec::new(),
 			named_writes: self.folded_names.clone(),
 			named_reads,
 			named_read_defaults,

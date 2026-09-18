@@ -88,7 +88,8 @@ fn read_index(
 	// decompose-and-promote split; the loops the reader counts sit above it.
 	let value = ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize + 1)).unwrap_or(0) as f64;
 
-	if std::env::var_os("PROBE_READ_INDEX").is_some() {
+	static PROBE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	if *PROBE.get_or_init(|| std::env::var_os("PROBE_READ_INDEX").is_some()) {
 		let chain: Vec<usize> = ctx.try_index().map(|levels| levels.collect()).unwrap_or_default();
 		probe_read_index(loop_level, chain, value);
 	}

@@ -898,52 +898,83 @@ where
 	};
 	let delimiter = resolved_delimiter(&delimiter, escaping);
 
-	let count = match core_types::node::Node::extent(&node.strings, input, core_types::gpoll::Level::Total, frames) {
-		core_types::gpoll::GPoll::Final(Extent::Exactly(count)) => count,
-		core_types::gpoll::GPoll::Pending => return BatchStatus::Pending,
-		_ => return BatchStatus::Error(GraphError::new("string split over a non-exact row count")),
+	// The range is flat over the map: each enclosing lane holds its own rows,
+	// split in turn, and the level restarts at every group boundary.
+	let own = match dispatch.map().is_open() {
+		true => u64::MAX,
+		false => dispatch.map().extent(0),
 	};
-	let rows = match core_types::record::materialize_batch(&node.strings, input, 0..count as u64, arena, frames) {
-		BatchStatus::Lent(batch, ..) => batch,
-		BatchStatus::Filled(batch, ..) => batch.into_shared(),
-		BatchStatus::Pending => return BatchStatus::Pending,
-		BatchStatus::Error(error) => return BatchStatus::Error(error),
-		_ => return BatchStatus::Error(GraphError::new("string split could not materialize its rows")),
+	let first_group = match own {
+		u64::MAX => 0,
+		own => range.start / own,
 	};
-	// SAFETY: the wiring resolved this input's element as `String`.
-	let rows = unsafe { core_types::node::List::<String>::new(rows) };
-
 	let Some(mut run) = frames.run(scratch, len, &node.__layout) else {
 		return BatchStatus::InvalidRange;
 	};
 
 	let mut lane = 0;
-	let mut skipped = 0;
 	let mut hint = Extent::AtLeast(range.end as usize);
-	'rows: for row in 0..rows.len() {
-		let text: &'serve str = rows.element_arena(row, arena).as_str();
-		for part in split_iter(text, delimiter.as_ref()) {
-			// Lanes below the range belong to an earlier batch, so they are walked past
-			if skipped < range.start as usize {
-				skipped += 1;
-				continue;
-			}
-			if lane == len {
-				break 'rows;
-			}
-
-			let claim = run.slot(lane, frames);
-			let core_types::gpoll::GPoll::Final(served) = claim.lift_served(core_types::gpoll::GPoll::Final(part), arena) else {
-				return BatchStatus::Error(GraphError::new("string split could not serve a lane"));
-			};
-			run.served(lane, &served);
-			lane += 1;
+	let mut group = first_group;
+	'groups: while lane < len {
+		let group_start = group.saturating_mul(own.min(u64::MAX / 2));
+		if own != u64::MAX && group_start >= range.end {
+			break;
 		}
-	}
+		let Some(input) = Input::at_lane(&dispatch, group_start.max(range.start).min(range.end.saturating_sub(1))) else {
+			return BatchStatus::Error(GraphError::new("string split could not rebuild its context"));
+		};
+		let input = &input;
+		let count = match core_types::node::Node::extent(&node.strings, input, core_types::gpoll::Level::Total, frames) {
+			core_types::gpoll::GPoll::Final(Extent::Exactly(count)) => count,
+			core_types::gpoll::GPoll::Pending => return BatchStatus::Pending,
+			_ => return BatchStatus::Error(GraphError::new("string split over a non-exact row count")),
+		};
+		let rows = match core_types::record::materialize_batch(&node.strings, input, 0..count as u64, arena, frames) {
+			BatchStatus::Lent(batch, ..) => batch,
+			BatchStatus::Filled(batch, ..) => batch.into_shared(),
+			BatchStatus::Pending => return BatchStatus::Pending,
+			BatchStatus::Error(error) => return BatchStatus::Error(error),
+			_ => return BatchStatus::Error(GraphError::new("string split could not materialize its rows")),
+		};
+		// SAFETY: the wiring resolved this input's element as `String`.
+		let rows = unsafe { core_types::node::List::<String>::new(rows) };
+		let mut skipped = 0;
+		let skip = (range.start + lane as u64).saturating_sub(group_start) as usize;
+		let mut emitted = 0u64;
+		for row in 0..rows.len() {
+			let text: &'serve str = rows.element_arena(row, arena).as_str();
+			for part in split_iter(text, delimiter.as_ref()) {
+				// Lanes below the range belong to an earlier batch, so they are walked past
+				if skipped < skip {
+					skipped += 1;
+					continue;
+				}
+				if lane == len {
+					break 'groups;
+				}
+				// The group's level ends at its own extent; the rest of the parts are past it.
+				if own != u64::MAX && skipped as u64 + emitted >= own {
+					break;
+				}
+				emitted += 1;
 
-	// A range the rows could not fill ends the level, so the bound turns exact
-	if lane < len {
-		hint = Extent::Exactly(range.start as usize + lane);
+				let claim = run.slot(lane, frames);
+				let core_types::gpoll::GPoll::Final(served) = claim.lift_served(core_types::gpoll::GPoll::Final(part), arena) else {
+					return BatchStatus::Error(GraphError::new("string split could not serve a lane"));
+				};
+				run.served(lane, &served);
+				lane += 1;
+			}
+		}
+		// A group with fewer parts than its extent ends the level here; an open
+		// level ends where the rows run out.
+		if own == u64::MAX || (skipped as u64 + emitted) < own {
+			if lane < len {
+				hint = Extent::Exactly(range.start as usize + lane);
+			}
+			break;
+		}
+		group += 1;
 	}
 
 	BatchStatus::Filled(run.finish(), core_types::gpoll::Finality::AllFinal, hint)

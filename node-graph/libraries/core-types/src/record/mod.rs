@@ -25,10 +25,11 @@ pub use access::{Rec, RecordValue, apply_plan, borrow_element, erase_static, rea
 pub use frames::{FrameArena, FrameScope, Frames};
 pub use input::{
 	DerivedLazyInput, DerivedRecordInput, ElementInput, ElementLazyInput, LevelStatus, RecordExtract, RecordInput, RecordLazyInput, fill_dispatch, fill_frames, forward_batch, forward_dispatch,
-	materialize_batch, materialize_dispatch, materialize_level,
+	inner_extent_of, materialize_batch, materialize_dispatch, materialize_level,
 };
 #[cfg(debug_assertions)]
 pub use input::{note_batch_consumer, note_kernel_batch, take_batch_tally, take_kernel_tally};
+pub use input::{note_render_nanos, take_render_nanos};
 pub use layout::{
 	ElToken, ElementSpec, ElementWrite, ElementWritePick, ElementWritePickHashed, ElementWritePickPlain, FieldDesc, FieldOffset, FieldWrite, InputReads, Layout, LayoutMeta, NamedRead, NamedWrite,
 	RecordLayout, copy_plan, element_dims, element_parked, element_write, element_write_hashed, empty_layout,

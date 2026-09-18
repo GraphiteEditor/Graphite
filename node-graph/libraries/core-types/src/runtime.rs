@@ -278,6 +278,8 @@ mod tests {
 			plan: Vec::new(),
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
+			footprint_free: u32::MAX,
+			input_levels: Vec::new(),
 			named_writes: Vec::new(),
 			named_reads: Vec::new(),
 			named_read_defaults: Vec::new(),

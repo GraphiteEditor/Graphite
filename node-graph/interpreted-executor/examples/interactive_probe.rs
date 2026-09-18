@@ -48,9 +48,11 @@ fn main() {
 		for _ in 0..repeats {
 			executor.flush_persistent();
 			let started = Instant::now();
+			core_types::record::take_render_nanos();
 			let result = Executor::execute(&&executor, base).expect("execute");
 			let elapsed = started.elapsed();
-			println!("{:>18}: {:>10.3?}  digest={}", "cold (flushed)", elapsed, digest(&result));
+			let render = std::time::Duration::from_nanos(core_types::record::take_render_nanos());
+			println!("{:>18}: {:>10.3?}  eval {:>10.3?}  render {:>10.3?}  digest={}", "cold (flushed)", elapsed, elapsed.saturating_sub(render), render, digest(&result));
 			#[cfg(debug_assertions)]
 			if std::env::var_os("GRAPHENE_BATCH_DEBUG").is_some() {
 				let mut rows = core_types::record::take_batch_tally();

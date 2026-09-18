@@ -183,6 +183,8 @@ impl DocumentNode {
 			skip_deduplication: self.skip_deduplication,
 			context_features: self.context_features,
 			lane_invariant_inputs: 0,
+			footprint_free_inputs: 0,
+			input_index_levels: Vec::new(),
 			resolved: Default::default(),
 		}
 	}

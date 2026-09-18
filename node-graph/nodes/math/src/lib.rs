@@ -1189,9 +1189,10 @@ fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] satura
 }
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce no color.
-#[node_macro::node(category("Color"), name("Hex to Color"))]
+#[node_macro::node(category("Color"), name("Hex to Color"), extent(hex_to_color_extent))]
 fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: String) -> Result<IList<Color>, Interrupt> {
-	if std::env::var_os("PROBE_HEX").is_some() {
+	static PROBE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	if *PROBE.get_or_init(|| std::env::var_os("PROBE_HEX").is_some()) {
 		use std::sync::{LazyLock, Mutex};
 		static SEEN: LazyLock<Mutex<std::collections::HashSet<String>>> = LazyLock::new(Default::default);
 		let mut seen = SEEN.lock().unwrap();
@@ -1204,6 +1205,14 @@ fn hex_to_color(ctx: impl Ctx + ExtractIndex + InjectIndex + Copy, hex_code: Str
 	match (core_types::misc::parse_css_color(&hex_code), ctx.index()) {
 		(Some(color), 0) => Ok(color),
 		_ => Err(GraphError::past_end().into()),
+	}
+}
+
+/// One lane for a color the string parses to, none otherwise.
+fn hex_to_color_extent(hex_code: core_types::extent::ValueIn<'_, String>, level: core_types::extent::LevelIn) -> core_types::gpoll::GPoll<core_types::gpoll::Extent> {
+	match level.top() {
+		true => hex_code.get().map(|code| core_types::gpoll::Extent::Exactly(usize::from(core_types::misc::parse_css_color(&code).is_some()))),
+		false => core_types::gpoll::GPoll::Final(core_types::gpoll::Extent::Exactly(1)),
 	}
 }
 
@@ -1716,6 +1725,8 @@ mod graphene_test {
 			plan: Vec::new(),
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
+				footprint_free: u32::MAX,
+			input_levels: Vec::new(),
 		});
 		node
 	}
@@ -1780,6 +1791,8 @@ mod graphene_test {
 			plan: Vec::new(),
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
+				footprint_free: u32::MAX,
+			input_levels: Vec::new(),
 		});
 		let edge = wired.downcast_record::<bool>().unwrap();
 		let frames = frames_for(&[&layout]);
@@ -1829,6 +1842,8 @@ mod graphene_test {
 			plan: Vec::new(),
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
+				footprint_free: u32::MAX,
+			input_levels: Vec::new(),
 		});
 		let edge = wired.downcast_record::<f64>().unwrap();
 		let frames = frames_for(&[&layout]);

@@ -269,7 +269,14 @@ where
 			None => exhausted(),
 		},
 		BatchStatus::NeedBuffer => match arena.alloc_scratch::<u64>(words) {
-			Some(scratch) => node.eval_batch(dispatch, Some(scratch), frames),
+			// A node that declines once given scratch is served lane by lane instead.
+			Some(scratch) => match node.eval_batch(dispatch.clone(), Some(scratch), frames) {
+				BatchStatus::Unbatched => match arena.alloc_scratch::<u64>(words) {
+					Some(scratch) => fill_dispatch::<C, N>(node, &dispatch, Some(scratch), frames),
+					None => exhausted(),
+				},
+				status => status,
+			},
 			None => exhausted(),
 		},
 		status => status,
@@ -549,7 +556,7 @@ impl<'a, 'e, N> RecordLazyInput<'a, 'e, N> {
 }
 
 /// See [`RecordLazyInput::inner_extent`].
-fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
+pub fn inner_extent_of<B, N>(node: &N, ctx: &B, copy: u64, levels: u8, input_index: usize, frames: &Frames<'_>) -> Result<u64, crate::gpoll::Interrupt>
 where
 	B: crate::context::DeriveCtx,
 	N: for<'d> DerivedRecordInput<'d, crate::context::Derived<'d, B>>,
@@ -757,6 +764,19 @@ thread_local! {
 /// hoisted, eager-forward, unbatched, or a hand batch's own outcome).
 #[cfg(debug_assertions)]
 pub fn note_kernel_batch(kernel: &'static str, how: &'static str, lanes: usize) {
+	// GRAPHENE_BATCH_TRACE=kernel:arm:lanes prints one backtrace for the first matching call.
+	thread_local! { static TRACED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+	if !TRACED.with(|traced| traced.get()) {
+		static SPEC: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+		if let Some(spec) = SPEC.get_or_init(|| std::env::var("GRAPHENE_BATCH_TRACE").ok()) {
+			let mut parts = spec.split(':');
+			let hit = parts.next() == Some(kernel) && parts.next() == Some(how) && parts.next().and_then(|n| n.parse::<usize>().ok()) == Some(lanes);
+			if hit {
+				TRACED.with(|traced| traced.set(true));
+				eprintln!("BATCH TRACE {kernel} {how} {lanes}:\n{}", std::backtrace::Backtrace::force_capture());
+			}
+		}
+	}
 	KERNELS.with(|kernels| {
 		let mut kernels = kernels.borrow_mut();
 		let entry = kernels.entry((kernel, how)).or_insert((0, 0));
@@ -769,4 +789,17 @@ pub fn note_kernel_batch(kernel: &'static str, how: &'static str, lanes: usize) 
 #[cfg(debug_assertions)]
 pub fn take_kernel_tally() -> Vec<((&'static str, &'static str), (usize, usize))> {
 	KERNELS.with(|kernels| kernels.borrow_mut().drain().collect())
+}
+
+/// Time spent inside the render node building output, so a frame timing can
+/// be split into evaluation and rendering.
+static RENDER_NANOS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn note_render_nanos(nanos: u64) {
+	RENDER_NANOS.fetch_add(nanos, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// Drains the render time accumulated since the last drain.
+pub fn take_render_nanos() -> u64 {
+	RENDER_NANOS.swap(0, std::sync::atomic::Ordering::Relaxed)
 }

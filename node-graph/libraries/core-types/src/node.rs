@@ -121,8 +121,18 @@ impl<'a> RecordBatchMut<'a> {
 	/// Minted only by a [`crate::record::SlotRun`] finishing its served lanes,
 	/// which serve in ascending order with no gaps, so the initialized prefix is
 	/// a fact rather than a contract.
+	#[track_caller]
 	pub(crate) fn new(scratch: &'a mut [MaybeUninit<u64>], len: usize, layout: &'a crate::record::Layout) -> Self {
 		debug_assert!(len.checked_mul(layout.lane_stride()).is_some_and(|need| need <= scratch.len() * 8));
+		#[cfg(debug_assertions)]
+		if layout.element.parked {
+			let stride = layout.lane_stride();
+			for lane in 0..len {
+				// SAFETY: the lane is within the capacity checked above.
+				let header = unsafe { scratch.as_ptr().cast::<u8>().add(lane * stride).cast::<usize>().read() };
+				assert!(header != 0, "batch lane {lane} of {len} has no parked element (stride {stride}, {} fields at {}", layout.fields.len(), std::panic::Location::caller());
+			}
+		}
 		Self { scratch, len, layout }
 	}
 
