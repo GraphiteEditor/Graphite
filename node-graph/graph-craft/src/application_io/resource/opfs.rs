@@ -174,7 +174,8 @@ async fn request_persistence() {
 	match storage.persist() {
 		Ok(promise) => match JsFuture::from(promise).await {
 			Ok(value) if value.as_bool() == Some(true) => {}
-			Ok(_) => log::warn!("OPFS persistence was not granted; browser may evict resources under storage pressure"),
+			// Browsers deny this by default unless the site is bookmarked, installed, or highly engaged, so it isn't worth a warning
+			Ok(_) => log::trace!("OPFS persistence was not granted; browser may evict resources under storage pressure"),
 			Err(error) => log::warn!("OPFS persist() rejected: {error:?}"),
 		},
 		Err(error) => log::warn!("OPFS persist() threw: {error:?}"),

@@ -36,7 +36,7 @@ pub struct DispatcherMessageHandlers {
 	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	pub(crate) resource_storage_message_handler: ResourceStorageMessageHandler,
-	tool_message_handler: ToolMessageHandler,
+	pub(crate) tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
 }
 

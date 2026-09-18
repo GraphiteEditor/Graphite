@@ -1,7 +1,7 @@
 mod document_node_derive;
 
 use super::node_properties::choice::enum_choice;
-use super::node_properties::{self, ParameterWidgetsInfo};
+use super::node_properties::{self, ParameterWidgetsInfo, SliderRange};
 use super::utility_types::{FrontendNodeType, InputTypeConstraint};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -480,7 +480,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					NodeInput::value(TaggedValue::F64(10.), false),
 					NodeInput::value(TaggedValue::Bool(Default::default()), false),
 					NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
-					NodeInput::type_default(list!(Vector), false),
+					NodeInput::type_default(item!(Vector), false),
 				],
 				input_metadata: vec![
 					("Content", "TODO").into(),
@@ -914,10 +914,12 @@ fn static_node_properties() -> NodeProperties {
 	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
 	map.insert("levels_properties".to_string(), Box::new(node_properties::levels_properties));
+	map.insert("transfer_curves_properties".to_string(), Box::new(node_properties::transfer_curves_properties));
 	map.insert("hue_saturation_properties".to_string(), Box::new(node_properties::hue_saturation_properties));
 	map.insert("black_and_white_properties".to_string(), Box::new(node_properties::black_and_white_properties));
 	map.insert("threshold_properties".to_string(), Box::new(node_properties::threshold_properties));
 	map.insert("vibrance_properties".to_string(), Box::new(node_properties::vibrance_properties));
+	map.insert("color_balance_properties".to_string(), Box::new(node_properties::color_balance_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
 	map.insert("offset_path_properties".to_string(), Box::new(node_properties::offset_path_properties));
@@ -1071,19 +1073,26 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
+				None,
 			))])
 		}),
 	);
 	map.insert(
-		// Like `optional_f64`, but the number input is configured as a percentage with a 0-100 range.
+		// Like `optional_f64`, but with a 0-100% range slider beside the number input, double-click restoring the full 100%.
 		// As with `optional_f64`, the bool input must be at the input index directly before the f64 input.
 		"optional_percentage".to_string(),
 		Box::new(|node_id, index, context| {
-			let number_input = NumberInput::default().percentage().min(0.).max(100.);
+			let number_input = NumberInput::default().mode_increment().unit("%").min(0.).max(100.);
+			let slider = SliderRange {
+				min: 0.,
+				max: 100.,
+				default: Some(100.),
+			};
 			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, false, context),
 				index - 1,
 				number_input,
+				Some(slider),
 			))])
 		}),
 	);
@@ -1239,13 +1248,13 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_fractal_weighted_strength".to_string(),
 		Box::new(|node_id, index, context| {
 			let (fractal_active, coherent_noise_active, _, _, _, domain_warp_only_fractal_type_wrongly_active) = node_properties::query_noise_pattern_state(node_id, context)?;
-			let fractal_weighted_strength = node_properties::number_widget(
+			let fractal_weighted_strength = node_properties::range_slider_widget(
 				ParameterWidgetsInfo::at_index(node_id, index, true, context),
 				NumberInput::default()
-					.mode_range()
 					.min(0.)
-					.max(1.) // Defined for the 0-1 range
+					.max(1.)
 					.disabled(!coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
+				SliderRange { min: 0., max: 1., default: Some(0.) },
 			);
 			Ok(vec![fractal_weighted_strength.into()])
 		}),
@@ -1524,6 +1533,26 @@ impl InputTypeConstraint {
 		}
 	}
 
+	/// Check if a type reaches the constraint through an `input_adapter`, the per-connector node which the preprocessor places ahead of
+	/// every ranked connector to convert or embed a convertible element, such as a color literal feeding a `Graphic` paint wire.
+	#[must_use]
+	fn satisfies_through_input_adapter(&self, ty: &Type) -> bool {
+		let provided = Self::type_name(ty);
+
+		interpreted_executor::node_registry::NODE_REGISTRY
+			.iter()
+			.filter(|(identifier, _)| identifier.as_str().starts_with("input_adapter<"))
+			.flat_map(|(_, implementations)| implementations.keys())
+			.any(|node_io| node_io.inputs.first().is_some_and(|from| Self::type_name(from) == provided) && self.satisfies(&node_io.return_value))
+	}
+
+	/// Check if a default value of this type is valid for the constraint.
+	#[must_use]
+	fn accepts_default_value(&self, ty: &Type) -> bool {
+		// Empty types are used when the input must come from the graph so they can be skipped
+		ty.nested_type() == &concrete!(()) || self.satisfies(ty) || self.satisfies_through_input_adapter(ty)
+	}
+
 	/// Compute the type constraint for one input. Note that this cannot use the infrastructure in the node network interface as the node is not placed in a network.
 	#[must_use]
 	fn compute_constraint_for_input(template_document_node: &NodeTemplate, name: &str, input_index: usize) -> Self {
@@ -1580,9 +1609,7 @@ impl InputTypeConstraint {
 		for (index, (constraint, input)) in all_input_constraints.iter().zip(&template_document_node.inputs).enumerate() {
 			if let Some(value) = input.as_value() {
 				let input_ty = value.ty();
-
-				// Empty types are used when the input must come from the graph so they can be skipped.
-				if input_ty.nested_type() != &concrete!(()) && !constraint.satisfies(&input_ty) {
+				if !constraint.accepts_default_value(&input_ty) {
 					warn!("The default value for input index {index} node {name} is {input_ty}, but does not satisfy {constraint:?}");
 				}
 			}
@@ -1678,6 +1705,27 @@ mod test {
 
 		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
 	}
+
+	// Guards the unconnected Path input, whose default must match the rank of the Morph connector it feeds
+	#[tokio::test]
+	async fn blend_resolves_and_evaluates_with_default_inputs() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().expect("drawing a rectangle should create a layer");
+		let node_id = NodeId::new();
+		let node_template = resolve_network_node_type("Blend").expect("the Blend definition should exist").default_node_template();
+		editor
+			.handle_message(NodeGraphMessage::InsertNode {
+				node_id,
+				node_template: Box::new(node_template),
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+
+		editor.eval_graph().await.expect("the Blend network should type-resolve and evaluate");
+	}
 }
 
 #[cfg(test)]
@@ -1696,6 +1744,25 @@ mod test_type_constraints {
 		for ty in values {
 			assert!(constraint.satisfies(&ty), "{ty} not satisfied by {:#?}", constraint);
 		}
+	}
+
+	#[test]
+	fn every_definition_default_value_satisfies_its_constraint() {
+		let mut violations = Vec::new();
+		for definition in super::DOCUMENT_NODE_TYPES.values() {
+			let name = &definition.node_template.display_name;
+			let constraints = InputTypeConstraint::constraints_for_all_inputs(&definition.node_template, name);
+
+			for (index, (constraint, input)) in constraints.iter().zip(&definition.node_template.inputs).enumerate() {
+				if let Some(value) = input.as_value()
+					&& !constraint.accepts_default_value(&value.ty())
+				{
+					violations.push(format!("{name} input {index}: {} does not satisfy {constraint:?}", value.ty()));
+				}
+			}
+		}
+
+		assert!(violations.is_empty(), "Default values rejected by their input constraints:\n{}", violations.join("\n"));
 	}
 
 	#[test]

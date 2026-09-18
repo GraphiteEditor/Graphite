@@ -17,10 +17,11 @@
 </script>
 
 <script lang="ts">
-	import { onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
+	import { getContext, onMount, onDestroy, afterUpdate, createEventDispatcher, tick } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import { onFloatingMenuOpenChange } from "/src/utility-functions/input";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import type { MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const POINTER_STRAY_DISTANCE = 100;
@@ -41,6 +42,9 @@
 	export let minWidth = 0;
 	export let escapeCloses = true;
 	export let strayCloses = true;
+
+	const editor = getContext<EditorWrapper>("editor");
+	const menuId = String(Math.random()).substring(2);
 
 	let tail: HTMLDivElement | undefined;
 	let self: HTMLDivElement | undefined;
@@ -64,6 +68,8 @@
 	let pointerStillDown = false;
 
 	$: watchOpenChange(open);
+
+	$: onFloatingMenuOpenChange(menuId, open && type !== "Tooltip" && type !== "Cursor", editor);
 
 	$: minWidthStyleValue = measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`;
 	$: displayTail = open && type === "Popover";
@@ -157,6 +163,7 @@
 	});
 
 	onDestroy(() => {
+		onFloatingMenuOpenChange(menuId, false, editor);
 		containerResizeObserver.disconnect();
 		dialogResizeObserver?.disconnect();
 		window.removeEventListener("pointermove", pointerMoveHandler);

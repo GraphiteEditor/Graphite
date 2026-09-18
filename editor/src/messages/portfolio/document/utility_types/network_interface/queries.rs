@@ -841,6 +841,13 @@ impl NodeNetworkInterface {
 		self.query(network_path, "is_visible", |view| view.is_visible(node_id)).unwrap_or_default()
 	}
 
+	/// Whether a layer in the document network is visible, which also requires every ancestor to be visible.
+	pub fn is_layer_visible(&self, layer: LayerNodeIdentifier) -> bool {
+		layer
+			.ancestors(self.document_metadata())
+			.all(|ancestor| ancestor == LayerNodeIdentifier::ROOT_PARENT || self.is_visible(&ancestor.to_node(), &[]))
+	}
+
 	pub fn is_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.query(network_path, "is_layer", |view| view.is_layer(node_id)).unwrap_or_default()
 	}

@@ -15,9 +15,10 @@
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
 	import ReferencePointInput from "/src/components/widgets/inputs/ReferencePointInput.svelte";
-	import SpectrumInput from "/src/components/widgets/inputs/SpectrumInput.svelte";
+	import SliderInput from "/src/components/widgets/inputs/SliderInput.svelte";
 	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
+	import TransferCurveInput from "/src/components/widgets/inputs/TransferCurveInput.svelte";
 	import VisualColorPickersInput from "/src/components/widgets/inputs/VisualColorPickersInput.svelte";
 	import WorkingColorsInput from "/src/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
@@ -232,8 +233,18 @@
 				$$events: { value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
-		SpectrumInput: {
-			component: SpectrumInput,
+		TransferCurveInput: {
+			component: TransferCurveInput,
+			getProps: (props, index) => ({
+				...props,
+				$$events: {
+					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					commit: () => widgetValueCommit(index, undefined),
+				},
+			}),
+		},
+		SliderInput: {
+			component: SliderInput,
 			getProps: (props, index) => ({
 				...props,
 				$$events: {

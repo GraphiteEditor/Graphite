@@ -201,7 +201,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
-	background.alpha_blend(target_color.apply_opacity(opacity))
+	background.alpha_blend(target_color.with_alpha(target_color.a() * opacity))
 }
 
 /// Mixes the two colors by the blend mode's own formula, leaving the alpha compositing to the caller.
@@ -283,14 +283,26 @@ mod tests {
 	}
 
 	#[test]
-	fn darker_color_compares_unassociated_channels() {
-		// The premultiplied backdrop reads as 0.1 gray but is really 0.5 gray, so the 0.4 gray foreground is the darker color
+	fn darker_color_ignores_backdrop_alpha() {
+		// The backdrop's low alpha doesn't darken its color, so the 0.4 gray foreground is the darker color
 		let foreground = Color::from_rgbaf32_unchecked(0.4, 0.4, 0.4, 1.);
-		let background = Color::from_rgbaf32_unchecked(0.1, 0.1, 0.1, 0.2);
+		let background = Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 0.2);
 
 		let blended = apply_blend_mode(foreground, background, BlendMode::DarkerColor);
 
 		assert!((blended.r() - 0.4).abs() < 1e-5, "red was {}", blended.r());
+		assert!((blended.a() - 1.).abs() < 1e-5, "alpha was {}", blended.a());
+	}
+
+	#[test]
+	fn source_over_weights_straight_colors_by_alpha() {
+		let over = Color::from_rgbaf32_unchecked(1., 0., 0., 0.5);
+		let under = Color::from_rgbaf32_unchecked(0., 0., 1., 1.);
+
+		let blended = under.alpha_blend(over);
+
+		assert!((blended.r() - 0.5).abs() < 1e-5, "red was {}", blended.r());
+		assert!((blended.b() - 0.5).abs() < 1e-5, "blue was {}", blended.b());
 		assert!((blended.a() - 1.).abs() < 1e-5, "alpha was {}", blended.a());
 	}
 

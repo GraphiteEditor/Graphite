@@ -1,0 +1,34 @@
+# Keavon Chambers (@Keavon keavon@keavon.com)
+
+
+# Dennis Kobert (@TrueDoctor dennis@kobert.dev)
+
+/document/format/ @TrueDoctor
+
+/node-graph/graph-craft/ @TrueDoctor
+/node-graph/preprocessor/ @TrueDoctor
+/node-graph/node-macro/ @TrueDoctor
+/node-graph/interpreted-executor/ @TrueDoctor
+/node-graph/graphene-cli/ @TrueDoctor
+
+# Timon Schelling (@timon-schelling me@timon.zip)
+
+/.nix/ @timon-schelling
+/flake.nix @timon-schelling
+/flake.lock @timon-schelling
+
+/desktop/ @timon-schelling
+
+/editor/src/messages/future/ @timon-schelling
+/editor/src/messages/resource_storage/ @timon-schelling
+/editor/src/messages/network/ @timon-schelling
+/editor/src/messages/app_window/ @timon-schelling
+/editor/src/messages/clipboard/ @timon-schelling
+/editor/src/messages/viewport/ @timon-schelling
+
+/libraries/wgpu-sync/ @timon-schelling
+
+/node-graph/libraries/canvas-utils/ @timon-schelling
+
+/tools/cargo-run/ @timon-schelling
+/tools/third-party-licenses/ @timon-schelling

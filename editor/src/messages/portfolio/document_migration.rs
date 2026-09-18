@@ -400,6 +400,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::SineInverseNode", "graphene_core::ops::SineInverseNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::string_to_color::IDENTIFIER,
+		aliases: &["math_nodes::HexToColorNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::subtract::IDENTIFIER,
 		aliases: &["graphene_math_nodes::SubtractNode", "graphene_core::ops::SubtractNode"],
 	},
@@ -473,11 +477,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &[
 			"graphene_raster_nodes::adjustments::BrightnessContrastNode",
 			"graphene_core::raster::adjustments::BrightnessContrastNode",
+			"graphene_raster_nodes::adjustments::brightness_contrast_classic",
+			"graphene_raster_nodes::adjustments::BrightnessContrastClassicNode",
 		],
-	},
-	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::brightness_contrast_classic::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::adjustments::BrightnessContrastClassicNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::channel_mixer::IDENTIFIER,
@@ -535,7 +537,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
+		node: graphene_std::raster_nodes::adjustments::gradient_map::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::gradient_map::GradientMapNode",
 			"graphene_raster_nodes::adjustments::GradientMapNode",
@@ -587,8 +589,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
+		node: graphene_std::raster_nodes::adjustments::desaturate::IDENTIFIER,
 		aliases: &[
+			"raster_nodes::adjustments::LuminanceNode",
 			"graphene_raster_nodes::adjustments::LuminanceNode",
 			"graphene_core::raster::adjustments::LuminanceNode",
 			"graphene_core::raster::LuminanceNode",
@@ -2123,7 +2126,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			_ => None,
 		});
 
-		if let Some(image) = image {
+		if let Some(mut image) = image {
+			// Legacy embedded pixel data is premultiplied, so restore straight alpha before encoding it
+			image.data.iter_mut().for_each(|pixel| *pixel = pixel.to_unassociated_alpha());
 			let hash = document.resources.embedded.store(Resource::new(image.to_png()));
 
 			let resource_id = ResourceId::new();
@@ -2174,6 +2179,107 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		for (i, input) in old_inputs.iter().enumerate() {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i + 1), input.clone(), network_path);
 		}
+	}
+
+	// The Threshold node's luminance calculation input was retired
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (i, input) in old_inputs.iter().enumerate().take(3) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i), input.clone(), network_path);
+		}
+		inputs_count = 3;
+	}
+
+	// Vibrance gained a Saturation input after its Vibrance input, whose default of 0 leaves old documents unchanged
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::vibrance::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		inputs_count = 3;
+	}
+
+	// The removed "Brightness/Contrast Classic" node had no Use Classic input, so its three inputs become the unified node with the toggle on
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::brightness_contrast::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(3).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+		inputs_count = 4;
+	}
+
+	// Brightness/Contrast gained the classic algorithm's pivot, whose default of 127 matches what PSD adjustment layers store
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::brightness_contrast::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(4).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		inputs_count = 5;
+	}
+
+	// Levels' Midtones became the gamma value it encoded, and each channel gained its own record after the composite one
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::levels::IDENTIFIER) && inputs_count == 6 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		let output_level = |index: usize, default: f32| match old_inputs.get(index).and_then(|input| input.as_value()) {
+			Some(TaggedValue::F32(percent)) => percent / 100.,
+			_ => default,
+		};
+		let (output_minimums, output_maximums) = (output_level(4, 0.), output_level(5, 1.));
+		for (index, input) in old_inputs.iter().take(6).enumerate() {
+			let input = match (index, input.as_value()) {
+				(2, Some(TaggedValue::F32(percent))) => {
+					// The old node's midtones-to-gamma mapping, from https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
+					let midtones = output_minimums + (output_maximums - output_minimums) * percent / 100.;
+					let gamma = if midtones < 0.5 { 1. + 9. * (1. - midtones * 2.) } else { ((1. - midtones) * 2.).max(0.01) };
+					NodeInput::value(TaggedValue::F32(gamma.clamp(0.01, 9.99)), input.is_exposed())
+				}
+				_ => input.clone(),
+			};
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		inputs_count = 27;
+	}
+
+	// Hue/Saturation gained colorize and the six hue ranges after its three master sliders
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::hue_saturation::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(4).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+		inputs_count = 51;
+	}
+
+	// Black & White gained a Use Tint toggle ahead of its tint color; a non-black tint used to be the only way to tint
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster::black_and_white::IDENTIFIER) && inputs_count == 8 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
+		for (index, input) in old_inputs.iter().enumerate().skip(1).take(7) {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index + 1), input.clone(), network_path);
+		}
+		let use_tint = !matches!(old_inputs[1].as_value(), Some(TaggedValue::Color(color)) if *color == Color::BLACK);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Bool(use_tint), false), network_path);
+		inputs_count = 9;
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {

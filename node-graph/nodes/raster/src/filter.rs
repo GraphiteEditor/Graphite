@@ -177,7 +177,7 @@ fn gaussian_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Im
 		unpremultiply_gamma_to_linear(blurred)
 	} else {
 		let mut working = buffer;
-		working.map_pixels(|px| px.apply_opacity(px.a()));
+		working.map_pixels(|px| px.to_associated_alpha());
 		let mut blurred = gaussian_separable(working, &kernel, Color::from_rgbaf32_unchecked);
 		blurred.map_pixels(|px| px.to_unassociated_alpha());
 		blurred
@@ -191,7 +191,7 @@ fn box_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Image<C
 		unpremultiply_gamma_to_linear(blurred)
 	} else {
 		let mut working = buffer;
-		working.map_pixels(|px| px.apply_opacity(px.a()));
+		working.map_pixels(|px| px.to_associated_alpha());
 		let mut blurred = box_separable(working, radius, Color::from_rgbaf32_unchecked);
 		blurred.map_pixels(|px| px.to_unassociated_alpha());
 		blurred

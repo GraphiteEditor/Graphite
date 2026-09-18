@@ -1,4 +1,4 @@
-use super::color_traits::{Alpha, AlphaMut, AssociatedAlpha, Luminance, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
+use super::color_traits::{Alpha, AlphaMut, Luminance, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -45,7 +45,6 @@ impl Luminance for RGBA16F {
 	type LuminanceChannel = f32;
 	#[inline(always)]
 	fn luminance(&self) -> f32 {
-		// TODO: verify this is correct for sRGB
 		0.2126 * self.red() + 0.7152 * self.green() + 0.0722 * self.blue()
 	}
 }
@@ -72,7 +71,7 @@ impl Alpha for RGBA16F {
 	type AlphaChannel = f32;
 	#[inline(always)]
 	fn alpha(&self) -> f32 {
-		self.alpha.to_f32() / 255.
+		self.alpha.to_f32()
 	}
 
 	const TRANSPARENT: Self = RGBA16F {
@@ -83,9 +82,8 @@ impl Alpha for RGBA16F {
 	};
 
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
-		let alpha = alpha * 255.;
 		let mut result = *self;
-		result.alpha = f16::from_f32(alpha * self.alpha());
+		result.alpha = f16::from_f32(self.alpha() * alpha);
 		result
 	}
 }
@@ -254,7 +252,7 @@ impl RGB for Luma {
 
 impl Pixel for Luma {}
 
-/// Linear-light sRGB color with `f32` channels (alpha unassociated for swatch/UI colors, associated/premultiplied for pixel data inside [`Image<Color>`]).
+/// Linear-light sRGB color with `f32` channels and unassociated (straight) alpha.
 ///
 /// Channels range from `0.` to `f32::MAX`, encoding brightness proportional to light intensity (cd/m² nits in HDR, or `0..=1` mapped to white for SDR).
 ///
@@ -359,9 +357,7 @@ impl Pixel for Color {
 	}
 
 	fn from_bytes(bytes: &[u8]) -> Self {
-		// `Image<Color>` pixel convention is linear-light with associated (premultiplied) alpha.
-		let srgba = SRGBA8::new(bytes[0], bytes[1], bytes[2], bytes[3]);
-		Color::from(srgba).apply_opacity(bytes[3] as f32 / 255.)
+		SRGBA8::new(bytes[0], bytes[1], bytes[2], bytes[3]).into()
 	}
 	fn byte_size() -> usize {
 		4
@@ -378,18 +374,7 @@ impl Alpha for Color {
 	}
 	#[inline(always)]
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
-		Self {
-			red: self.red * alpha,
-			green: self.green * alpha,
-			blue: self.blue * alpha,
-			alpha: self.alpha * alpha,
-		}
-	}
-}
-
-impl AssociatedAlpha for Color {
-	fn to_unassociated<Out: super::UnassociatedAlpha>(&self) -> Out {
-		todo!()
+		Self { alpha: self.alpha * alpha, ..*self }
 	}
 }
 
@@ -441,12 +426,6 @@ impl Color {
 	#[inline(always)]
 	pub const fn from_rgbaf32_unchecked(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
 		Color { red, green, blue, alpha }
-	}
-
-	/// Construct a `Color` from unassociated (straight) RGBA channels, premultiplying the RGB channels by alpha.
-	#[inline(always)]
-	pub fn new_from_unassociated_rgba(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
-		Color::from_rgbaf32_unchecked(red * alpha, green * alpha, blue * alpha, alpha)
 	}
 
 	/// Create a linear-light `Color` from HSL coordinates (all between 0 and 1).
@@ -561,37 +540,36 @@ impl Color {
 	}
 
 	/// Relative luminance using Rec.709 / sRGB-primary weights, computed on linear-light RGB.
-	// From https://stackoverflow.com/a/56678483/775283
 	#[inline(always)]
 	pub fn luminance_rec_709(&self) -> f32 {
+		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
 	}
 
 	/// Luma using Rec.601 SDTV coefficients.
-	// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 	#[inline(always)]
 	pub fn luminance_rec_601(&self) -> f32 {
+		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 		0.299 * self.red + 0.587 * self.green + 0.114 * self.blue
 	}
 
 	/// Luma using rounded Rec.601 coefficients (`0.3 / 0.59 / 0.11`), as used by some legacy image processing.
-	// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 	#[inline(always)]
 	pub fn luminance_rec_601_rounded(&self) -> f32 {
+		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
 		0.3 * self.red + 0.59 * self.green + 0.11 * self.blue
 	}
 
-	/// Perceptual lightness (CIE L*) of the Rec.709 luminance, normalized to 0..1.
-	// From https://stackoverflow.com/a/56678483/775283
+	/// Perceptual lightness (OkLab L) of the linear-light RGB, 0..1.
 	#[inline(always)]
-	pub fn luminance_perceptual(&self) -> f32 {
-		let luminance = self.luminance_rec_709();
+	pub fn lightness_oklab(&self) -> f32 {
+		// From https://bottosson.github.io/posts/oklab/#converting-from-linear-srgb-to-oklab
 
-		if luminance <= 0.008856 {
-			(luminance * 903.3) / 100.
-		} else {
-			(luminance.cbrt() * 116. - 16.) / 100.
-		}
+		let long = 0.41222147 * self.red + 0.53633254 * self.green + 0.05144599 * self.blue;
+		let medium = 0.2119035 * self.red + 0.6806995 * self.green + 0.10739696 * self.blue;
+		let short = 0.08830246 * self.red + 0.28171884 * self.green + 0.6299787 * self.blue;
+
+		0.21045426 * long.cbrt() + 0.7936178 * medium.cbrt() - 0.004072047 * short.cbrt()
 	}
 
 	/// Construct an opaque grayscale color where R = G = B = `luminance`.
@@ -707,8 +685,7 @@ impl Color {
 	/// Whole-color "Darker Color" blend: keeps whichever color has the lower mean RGB, with `other`'s alpha.
 	#[inline(always)]
 	pub fn blend_darker_color(&self, other: Color) -> Color {
-		let background = self.to_unassociated_alpha();
-		let darker = if background.average_rgb_channels() <= other.average_rgb_channels() { background } else { other };
+		let darker = if self.average_rgb_channels() <= other.average_rgb_channels() { *self } else { other };
 
 		darker.with_alpha(other.alpha)
 	}
@@ -740,8 +717,7 @@ impl Color {
 	/// Whole-color "Lighter Color" blend: keeps whichever color has the higher mean RGB, with `other`'s alpha.
 	#[inline(always)]
 	pub fn blend_lighter_color(&self, other: Color) -> Color {
-		let background = self.to_unassociated_alpha();
-		let lighter = if background.average_rgb_channels() >= other.average_rgb_channels() { background } else { other };
+		let lighter = if self.average_rgb_channels() >= other.average_rgb_channels() { *self } else { other };
 
 		lighter.with_alpha(other.alpha)
 	}
@@ -824,25 +800,23 @@ impl Color {
 
 	/// Whole-color "Hue" blend: source hue with this color's saturation and Rec.601 luma, with `c_s`'s alpha.
 	pub fn blend_hue(&self, c_s: Color) -> Color {
-		let background = self.to_unassociated_alpha();
-		let sat_b = background.chroma_range();
-		let lum_b = background.luminance_rec_601();
+		let sat_b = self.chroma_range();
+		let lum_b = self.luminance_rec_601();
 
 		c_s.with_saturation(sat_b).with_luminance(lum_b).with_alpha(c_s.alpha)
 	}
 
 	/// Whole-color "Saturation" blend: this color's hue/luma with source saturation, with `c_s`'s alpha.
 	pub fn blend_saturation(&self, c_s: Color) -> Color {
-		let background = self.to_unassociated_alpha();
 		let sat_s = c_s.chroma_range();
-		let lum_b = background.luminance_rec_601();
+		let lum_b = self.luminance_rec_601();
 
-		background.with_saturation(sat_s).with_luminance(lum_b).with_alpha(c_s.alpha)
+		self.with_saturation(sat_s).with_luminance(lum_b).with_alpha(c_s.alpha)
 	}
 
 	/// Whole-color "Color" blend: source hue/saturation with this color's luma, with `c_s`'s alpha.
 	pub fn blend_color(&self, c_s: Color) -> Color {
-		let lum_b = self.to_unassociated_alpha().luminance_rec_601();
+		let lum_b = self.luminance_rec_601();
 
 		c_s.with_luminance(lum_b).with_alpha(c_s.alpha)
 	}
@@ -851,7 +825,7 @@ impl Color {
 	pub fn blend_luminosity(&self, c_s: Color) -> Color {
 		let lum_s = c_s.luminance_rec_601();
 
-		self.to_unassociated_alpha().with_luminance(lum_s).with_alpha(c_s.alpha)
+		self.with_luminance(lum_s).with_alpha(c_s.alpha)
 	}
 
 	/// All four channels as `(red, green, blue, alpha)`.
@@ -990,13 +964,13 @@ impl Color {
 		Self::from_rgbaf32_unchecked(f(self.r()), f(self.g()), f(self.b()), self.a())
 	}
 
-	/// Multiply all four channels (including alpha) by `opacity`, applying an additional premultiplication factor to this Color.
+	/// Multiply RGB by alpha, giving the associated (premultiplied) form for compositing and filtering.
 	#[inline(always)]
-	pub fn apply_opacity(&self, opacity: f32) -> Self {
-		Self::from_rgbaf32_unchecked(self.r() * opacity, self.g() * opacity, self.b() * opacity, self.a() * opacity)
+	pub fn to_associated_alpha(&self) -> Self {
+		self.map_rgb(|channel| channel * self.alpha)
 	}
 
-	/// Divide RGB by alpha to recover unassociated (straight-alpha) channels; no-op if alpha is zero.
+	/// Divide RGB by alpha, undoing [`Self::to_associated_alpha`]; no-op if alpha is zero.
 	#[inline(always)]
 	pub fn to_unassociated_alpha(&self) -> Self {
 		if self.alpha == 0. {
@@ -1011,27 +985,30 @@ impl Color {
 		}
 	}
 
-	/// Apply a per-channel blend function to this color (unmultiplied) and `other`, returning a color with `other`'s alpha; channels are clamped to 0..1.
+	/// Apply a per-channel blend function to this color and `other`, returning a color with `other`'s alpha; channels are clamped to 0..1.
 	#[inline(always)]
 	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
-		let background = self.to_unassociated_alpha();
 		Color {
-			red: f(background.red, other.red).clamp(0., 1.),
-			green: f(background.green, other.green).clamp(0., 1.),
-			blue: f(background.blue, other.blue).clamp(0., 1.),
+			red: f(self.red, other.red).clamp(0., 1.),
+			green: f(self.green, other.green).clamp(0., 1.),
+			blue: f(self.blue, other.blue).clamp(0., 1.),
 			alpha: other.alpha,
 		}
 	}
 
-	/// Porter-Duff "source over" composite of `other` over `self`. Both colors must use associated (premultiplied) alpha.
+	/// Porter-Duff "source over" composite of `other` over `self`.
 	#[inline(always)]
 	pub fn alpha_blend(&self, other: Color) -> Self {
-		let inv_alpha = 1. - other.alpha;
+		let under_weight = self.alpha * (1. - other.alpha);
+		let alpha = other.alpha + under_weight;
+		if alpha == 0. {
+			return Self::TRANSPARENT;
+		}
 		Self {
-			red: self.red * inv_alpha + other.red,
-			green: self.green * inv_alpha + other.green,
-			blue: self.blue * inv_alpha + other.blue,
-			alpha: self.alpha * inv_alpha + other.alpha,
+			red: (other.red * other.alpha + self.red * under_weight) / alpha,
+			green: (other.green * other.alpha + self.green * under_weight) / alpha,
+			blue: (other.blue * other.alpha + self.blue * under_weight) / alpha,
+			alpha,
 		}
 	}
 
@@ -1083,6 +1060,15 @@ impl Color {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn oklab_lightness_spans_black_to_white() {
+		assert!(Color::BLACK.lightness_oklab().abs() < 1e-4);
+		assert!((Color::WHITE.lightness_oklab() - 1.).abs() < 1e-4);
+		// A gray keeps L at the cube root of its linear value, since the three cone responses sum to it
+		assert!((Color::from_luminance(0.18).lightness_oklab() - 0.18_f32.cbrt()).abs() < 1e-3);
+	}
+
 	#[test]
 	fn hsl_roundtrip() {
 		for (red, green, blue) in [

@@ -7,6 +7,7 @@ pub mod basic_brush;
 
 pub use brush_types::*;
 
+// Fallbacks for stroke items carrying no such attribute, mirroring the `Brush Strokes` defaults below (which the node macro requires as literals)
 pub(crate) const DEFAULT_DIAMETER: f64 = 40.;
 pub(crate) const DEFAULT_HARDNESS: f64 = 0.;
 pub(crate) const DEFAULT_FLOW: f64 = 100.;
@@ -17,9 +18,9 @@ fn brush_strokes(
 	_: impl Ctx,
 	strokes: List<Stroke>,
 	color: List<Color>,
-	#[default(DEFAULT_DIAMETER)] diameter: Item<f64>,
-	#[default(DEFAULT_HARDNESS)] hardness: Item<Percentage>,
-	#[default(DEFAULT_FLOW)] flow: Item<Percentage>,
+	#[default(40.)] diameter: Item<f64>,
+	#[default(0.)] hardness: Item<Percentage>,
+	#[default(100.)] flow: Item<Percentage>,
 ) -> List<Graphic> {
 	let (diameter, hardness, flow) = (diameter.into_element(), hardness.into_element(), flow.into_element());
 	List::new_from_item(
