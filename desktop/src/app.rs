@@ -656,9 +656,10 @@ impl ApplicationHandler for App {
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
 			},
-			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_file_paths() {
-				Ok(paths) => {
+			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_uris() {
+				Ok(uris) => {
 					self.pending_dnd_fetch = None;
+					let paths = uris.iter().filter_map(|uri| url::Url::parse(uri).ok()?.to_file_path().ok());
 					for path in paths {
 						match fs::read(&path) {
 							Ok(content) => {

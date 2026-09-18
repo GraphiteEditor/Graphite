@@ -782,7 +782,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1201,7 +1201,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1336,7 +1336,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 [[package]]
 name = "dpi"
 version = "0.1.2"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "serde",
 ]
@@ -1485,7 +1485,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1531,7 +1531,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2220,6 +2220,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vello",
  "wgpu",
  "windows 0.62.2",
@@ -3927,7 +3928,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4461,7 +4462,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4997,7 +4998,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5065,7 +5066,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5795,7 +5796,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7072,7 +7073,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0978bf7171b3d90bac376700cb56d606feb40f251a475a5d6634613564460b22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7525,7 +7526,7 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 [[package]]
 name = "winit"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "cfg_aliases",
@@ -7552,7 +7553,7 @@ dependencies = [
 [[package]]
 name = "winit-android"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "android-activity",
  "bitflags 2.11.0",
@@ -7567,7 +7568,7 @@ dependencies = [
 [[package]]
 name = "winit-appkit"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "block2",
@@ -7589,7 +7590,7 @@ dependencies = [
 [[package]]
 name = "winit-common"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "block2",
  "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
@@ -7607,7 +7608,7 @@ dependencies = [
 [[package]]
 name = "winit-core"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
@@ -7616,14 +7617,13 @@ dependencies = [
  "raw-window-handle",
  "serde",
  "smol_str",
- "url",
  "web-time",
 ]
 
 [[package]]
 name = "winit-orbital"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
@@ -7639,7 +7639,7 @@ dependencies = [
 [[package]]
 name = "winit-uikit"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "block2",
@@ -7660,7 +7660,7 @@ dependencies = [
 [[package]]
 name = "winit-wayland"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "calloop",
@@ -7687,7 +7687,7 @@ dependencies = [
 [[package]]
 name = "winit-web"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "atomic-waker",
  "bitflags 2.11.0",
@@ -7709,16 +7709,16 @@ dependencies = [
 [[package]]
 name = "winit-win32"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
  "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "percent-encoding",
  "raw-window-handle",
  "smol_str",
  "tracing",
  "unicode-segmentation",
- "url",
  "windows-sys 0.61.2",
  "winit-common",
  "winit-core",
@@ -7727,7 +7727,7 @@ dependencies = [
 [[package]]
 name = "winit-x11"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",

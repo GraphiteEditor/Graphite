@@ -44,6 +44,7 @@ rfd = { workspace = true }
 open = { workspace = true }
 lzma-rust2 = { workspace = true }
 serde = { workspace = true }
+url = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 clap = { workspace = true, features = ["derive"] }
 interprocess = "2.4.2"
