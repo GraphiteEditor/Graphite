@@ -627,6 +627,13 @@ pub fn get_text<'a>(
 		return None;
 	};
 	let Some(&TaggedValue::TextAlign(align)) = parameters.value(text::AlignInput) else { return None };
+	let Some(&TaggedValue::Bool(underline)) = parameters.value(text::UnderlineInput) else {
+		return None;
+	};
+	let Some(&TaggedValue::Bool(overline)) = parameters.value(text::OverlineInput) else { return None };
+	let Some(&TaggedValue::Bool(strikethrough)) = parameters.value(text::StrikethroughInput) else {
+		return None;
+	};
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -636,6 +643,9 @@ pub fn get_text<'a>(
 		max_width: has_max_width.then_some(max_width),
 		max_height: has_max_height.then_some(max_height),
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 	Some((text, font, typesetting))
 }
