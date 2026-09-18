@@ -71,12 +71,15 @@ impl LaneMap {
 	}
 
 	/// Level `level`'s index at `lane`.
+	/// An empty level has no lane, so every index under it reads as 0.
 	pub fn level(&self, lane: u64, level: usize) -> u64 {
 		let mut rest = lane;
 		for extent in &self.extents[..level] {
-			rest /= extent;
+			rest = rest.checked_div(*extent).unwrap_or(0);
 		}
-		let index = rest % self.extents[level];
+		let Some(index) = rest.checked_rem(self.extents[level]) else {
+			return 0;
+		};
 		match self.reversed >> level & 1 {
 			1 => self.extents[level] - 1 - index,
 			_ => index,

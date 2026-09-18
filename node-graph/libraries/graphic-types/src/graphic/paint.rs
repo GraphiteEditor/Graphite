@@ -159,8 +159,8 @@ mod run_tests {
 		let inherited = Appearance::new_single(Coverage::new_fill(), Graphic::Color(Color::WHITE));
 
 		// Lane 0 declares its own appearance, lane 1 is padded with the empty (undeclared) one
-		let mut list: List<Graphic<'static>> = List::new_from_element(Graphic::Vector(Vector::default()));
-		list.push(core_types::list::Item::new_from_element(Graphic::Vector(Vector::default())));
+		let mut list: List<Graphic<'static>> = List::new_from_element(Graphic::Vector(Vector::default().into()));
+		list.push(core_types::list::Item::new_from_element(Graphic::Vector(Vector::default().into())));
 		list.set_attribute(ATTR_APPEARANCE, 0, own.clone());
 
 		let columns = PaintColumns::new(&list);

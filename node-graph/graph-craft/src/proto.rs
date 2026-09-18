@@ -349,6 +349,7 @@ impl ProtoNetwork {
 	pub fn resolve_types(&mut self, registry: &Registry) -> Result<(), String> {
 		self.reorder_ids()?;
 		for index in 0..self.nodes.len() {
+			let mut swapped = None;
 			let resolved = {
 				let node = &self.nodes[index].1;
 				match &node.construction_args {
@@ -373,8 +374,10 @@ impl ProtoNetwork {
 							ConstructionArgs::Inline(inline) => vec![inline.ty.clone()],
 							ConstructionArgs::Value(_) => unreachable!(),
 						};
-						let impls = registry.get(&node.identifier).ok_or_else(|| format!("no implementations for {}", node.identifier.as_str()))?;
+						let identifier = specialized_identifier(node, &inputs, registry).unwrap_or_else(|| node.identifier.clone());
+						let impls = registry.get(&identifier).ok_or_else(|| format!("no implementations for {}", identifier.as_str()))?;
 						let (io, entry) = resolve_entry(node, &inputs, impls).map_err(|errors| format!("{errors:?}"))?;
+						swapped = (identifier != node.identifier).then_some(identifier);
 						Resolved {
 							io: Some(io),
 							layout_meta: entry.layout_meta.clone(),
@@ -384,6 +387,9 @@ impl ProtoNetwork {
 				}
 			};
 			self.nodes[index].1.resolved = resolved;
+			if let Some(identifier) = swapped {
+				self.nodes[index].1.identifier = identifier;
+			}
 		}
 		Ok(())
 	}
@@ -1088,7 +1094,8 @@ impl TypingContext {
 		};
 
 		// Get the node input type from the proto node declaration
-		let impls = self.lookup.get(&node.identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
+		let identifier = specialized_identifier(node, &inputs, &self.lookup).unwrap_or_else(|| node.identifier.clone());
+		let impls = self.lookup.get(&identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 		let (node_io, entry) = resolve_entry(node, &inputs, impls)?;
 		if std::env::var("GRAPHENE_TYPE_DEBUG").is_ok() {
 			eprintln!("type {} {} -> {}", node_id, node.identifier, node_io.ty());
@@ -1101,6 +1108,22 @@ impl TypingContext {
 
 /// Selects the single registry entry matching the node's resolved input types,
 /// substituting generics. Stateless and stable-id-free.
+/// An extend over graphic levels resolves to the stacking node, which holds both
+/// sides by reference: the stacking entry accepting the inputs is the test.
+fn specialized_identifier(node: &ProtoNode, inputs: &[Type], registry: &Registry) -> Option<ProtoNodeIdentifier> {
+	const EXTEND: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphene_core::list::ExtendNode");
+	const STACK: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::StackGraphicsNode");
+	if node.identifier != EXTEND {
+		return None;
+	}
+	if std::env::var_os("GRAPHENE_NO_STACK").is_some() {
+		return None;
+	}
+	let impls = registry.get(&STACK)?;
+	resolve_entry(node, inputs, impls).ok()?;
+	Some(STACK)
+}
+
 fn resolve_entry<'a>(node: &ProtoNode, inputs: &[Type], impls: &'a [RegistryEntry]) -> Result<(NodeIOTypes, &'a RegistryEntry), GraphErrors> {
 	let call_argument = &node.call_argument;
 	let candidates: Vec<(NodeIOTypes, &RegistryEntry)> = impls.iter().map(|entry| (entry.io.clone(), entry)).collect();

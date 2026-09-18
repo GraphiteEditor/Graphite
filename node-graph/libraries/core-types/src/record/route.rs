@@ -145,8 +145,12 @@ where
 		use crate::node::BatchStatus;
 		let range = dispatch.range();
 		let Some(plan) = &self.plan else {
+			#[cfg(debug_assertions)]
+			super::input::note_kernel_batch("route", "identity", range.end.saturating_sub(range.start) as usize);
 			return self.edge.eval_batch(dispatch, scratch, frames);
 		};
+		#[cfg(debug_assertions)]
+		super::input::note_kernel_batch("route", "translate", range.end.saturating_sub(range.start) as usize);
 		let Some(scratch) = scratch else {
 			return BatchStatus::NeedBuffer;
 		};

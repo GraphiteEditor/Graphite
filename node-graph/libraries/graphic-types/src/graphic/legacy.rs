@@ -49,6 +49,15 @@ pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::None => Graphic::None,
 		Graphic::Group(group) => group_to_legacy_graphic(group),
+		Graphic::Segmented(stack) => Graphic::GraphicList({
+			let mut out = List::new();
+			for group in crate::graphic::walk::segmented_groups(stack) {
+				for item in group_to_legacy_list(&group).into_iter() {
+					out.push(item);
+				}
+			}
+			out
+		}),
 		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
@@ -59,7 +68,7 @@ pub fn map_groups_to_legacy<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 			Graphic::GraphicList(out)
 		}
 		Graphic::Stroke(stroke) => Graphic::Stroke(stroke.clone()),
-		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
+		Graphic::Vector(vector) => Graphic::Vector(vector.copy_out()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
 		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
 		Graphic::Color(color) => Graphic::Color(*color),
@@ -75,7 +84,7 @@ pub fn group_to_legacy_graphic(group: &core_types::record::Group) -> Graphic<'st
 	if group.row.is_none() {
 		let item = &group.content;
 		let typed = None
-			.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, Graphic::Vector)))
+			.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, |vector| Graphic::Vector(vector.into()))))
 			.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(|list| detable_items(list, Graphic::RasterCPU)))
 			.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(|list| detable_items(list, Graphic::RasterGPU)))
 			.or_else(|| run_to_legacy_list::<Color>(item).map(|list| detable_items(list, Graphic::Color)))
@@ -98,7 +107,7 @@ pub fn group_to_legacy_list(group: &core_types::record::Group) -> List<Graphic<'
 		}
 		return list;
 	}
-	None.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, Graphic::Vector)))
+	None.or_else(|| run_to_legacy_list::<Vector>(item).map(|list| detable_items(list, |vector| Graphic::Vector(vector.into()))))
 		.or_else(|| run_to_legacy_list::<Raster<CPU>>(item).map(|list| detable_items(list, Graphic::RasterCPU)))
 		.or_else(|| run_to_legacy_list::<Raster<GPU>>(item).map(|list| detable_items(list, Graphic::RasterGPU)))
 		.or_else(|| run_to_legacy_list::<Color>(item).map(|list| detable_items(list, Graphic::Color)))

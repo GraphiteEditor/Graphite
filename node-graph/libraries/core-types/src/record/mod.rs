@@ -37,6 +37,6 @@ pub use layout::{
 pub use owned::{OwnedRecord, deepen_field_value, has_deep_element_glue, register_deep_element_clone, register_deep_field_value, replay_field_value};
 pub use promote::{Promotion, assert_promoted, register_element_promote, register_field_promote, register_retained_heap};
 pub use route::{RecordSource, SourcePlan};
-pub use run::{Group, GroupItem, RunBuilder, RunColumn, RunView, run_to_owned_list};
+pub use run::{Child, Group, GroupItem, LayoutRef, RunBuilder, RunColumn, RunView, Segmented, run_to_owned_list};
 pub use serve::{FrameClaim, LaneSpan, MaterializedSpan, Served, SlotRun, serve_input};
 pub use testkit::{LiftedSource, ServedRecord, capture, fixtures as test_fixtures, test_frames};

@@ -1193,7 +1193,16 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 			// A routing source is the forwarded record itself, not an element.
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if routing_source(ty) => quote!(#pat: #core_types::record::RecordValue<'__record>),
-			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(_), .. }) => quote!(#pat: &#ty),
+			// A lent parameter keeps the lifetime it was written with, so a kernel
+			// can hand the borrow on at the serving lifetime.
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(reference), .. }) if !field.attribute_reads.is_empty() => {
+				let lifetime = reference.lifetime.iter();
+				read_tuple_param(field, quote!(#pat), quote!(&#(#lifetime)* #ty))
+			}
+			ParsedFieldType::Regular(RegularParsedField { ty, lend: Some(reference), .. }) => {
+				let lifetime = reference.lifetime.iter();
+				quote!(#pat: &#(#lifetime)* #ty)
+			}
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !field.attribute_reads.is_empty() => read_tuple_param(field, quote!(#pat), quote!(#ty)),
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => quote!(#pat: #ty),
 			ParsedFieldType::Node(NodeParsedField { output_type, .. }) => {
@@ -2109,7 +2118,10 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let name = &regular_fields[0].pat_ident.ident;
 				Some(quote!(#name))
 			} else if let Some(ty) = carrier_read_ty.as_ref() {
-				Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) })))
+				match node.inputs[0].lend {
+					true => Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::borrow_element::<#ty>(__src_rec) }))),
+					false => Some(tuple_arg(regular_fields[0], quote!(unsafe { #core_types::record::read_element::<#ty>(__src_rec) }))),
+				}
 			} else {
 				Some(tuple_arg(regular_fields[0], quote!(#core_types::record::ElToken)))
 			}
@@ -2449,14 +2461,12 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							return #core_types::node::BatchStatus::Unbatched;
 						}
 					};
-					if #inner == 0 {
-						#[cfg(debug_assertions)]
-						#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "gather empty", 0);
-						return #core_types::node::BatchStatus::Unbatched;
-					}
 				};
 				let prologue = quote! {
 					let #batch = {
+						if #inner == 0 {
+							#core_types::node::RecordBatch::empty(#core_types::node::Node::<#ctx_ident>::layout(&self.#name))
+						} else {
 						let (__first, __last) = match #shared {
 							true => (0, 0),
 							false => (__first_group, __last_group),
@@ -2489,6 +2499,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							#core_types::node::BatchStatus::Pending => return #core_types::node::BatchStatus::Pending,
 							#core_types::node::BatchStatus::Error(__error) => return #core_types::node::BatchStatus::Error(__error),
 							_ => return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError::new("gather batch failed")),
+						}
 						}
 					};
 				};

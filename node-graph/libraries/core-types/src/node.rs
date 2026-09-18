@@ -62,6 +62,12 @@ impl<'a> RecordBatch<'a> {
 		}
 	}
 
+	/// No lanes of `layout`: nothing is read, so no frames are needed.
+	pub fn empty(layout: &'a crate::record::Layout) -> Self {
+		// SAFETY: zero lanes read no frame.
+		unsafe { Self::new(std::ptr::NonNull::<u8>::dangling().as_ptr(), 0, layout) }
+	}
+
 	pub fn len(&self) -> usize {
 		self.len
 	}

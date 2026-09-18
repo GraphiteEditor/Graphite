@@ -15,6 +15,7 @@ use core_types::node::Lane;
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
+use core_types::record::ElToken;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CacheHash, Color, Ctx, DeriveCtx, ExtractIndex, InjectIndex};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::appearance::{Appearance, Cover, CoverPlacement, Coverage};
@@ -227,7 +228,7 @@ fn assign_colors_graphic<'e>(
 	// The direct vector rows as a scratch list, one color per row, rebuilt as
 	// a native run; a lane without direct rows passes through untouched.
 	let rows = match original {
-		Graphic::Vector(vector) => Some(List::new_from_element(vector.clone())),
+		Graphic::Vector(vector) => Some(List::new_from_element((**vector).clone())),
 		Graphic::Group(group) if group.row.is_none() => graphic_types::graphic::run_to_list::<Vector>(&group.content),
 		_ => None,
 	};
@@ -349,7 +350,7 @@ fn paint_table(paint: core_types::node::List<'_, Graphic<'_>>) -> List<Graphic<'
 fn fill<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the fill style to.
-	(element, content_appearance): (Vector, Attr<AppearanceMarker>),
+	(element, content_appearance): (&Vector, Attr<AppearanceMarker>),
 	/// The paint to fill the path's interior with.
 	#[default(Color::BLACK)]
 	paint: IList<Graphic<'static>>,
@@ -358,12 +359,12 @@ fn fill<'e>(
 	_gradient_form: GradientForm,
 	_has_transform: bool,
 	_transform: DAffine2,
-) -> Result<(Vector, Attr<'e, AppearanceMarker>), Interrupt> {
+) -> Result<(ElToken, Attr<'e, AppearanceMarker>), Interrupt> {
 	let mut paint = paint_table(paint);
 	default_gradient_paint(&mut paint, element.bounding_box(), _gradient_form, _has_transform.then_some(_transform));
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
-	Ok((element, Attr(Some(parked_appearance))))
+	Ok((ElToken, Attr(Some(parked_appearance))))
 }
 
 /// The fill over graphic lanes: the appearance parks on the lane and cascades
@@ -395,7 +396,7 @@ fn fill_graphic_leveled<'e>(
 fn stroke<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
 	/// The content with vector paths to apply the stroke style to.
-	(element, content_transform, content_appearance): (Vector, Attr<TransformAttr>, Attr<AppearanceMarker>),
+	(_element, content_transform, content_appearance): (&Vector, Attr<TransformAttr>, Attr<AppearanceMarker>),
 	/// The stroke paint.
 	#[default(Color::BLACK)]
 	paint: IList<Graphic<'static>>,
@@ -417,7 +418,7 @@ fn stroke<'e>(
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
-) -> Result<(Vector, Attr<TransformAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
+) -> Result<(ElToken, Attr<TransformAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let dash_lengths = dash_pattern.clamped_lengths();
 	let stroke = Stroke {
 		weight,
@@ -438,7 +439,7 @@ fn stroke<'e>(
 	// A below stroke is the chain running the stroke node before the fill, so the coverage appends above
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
-	Ok((element, Attr(*content_transform), Attr(Some(parked_appearance))))
+	Ok((ElToken, Attr(*content_transform), Attr(Some(parked_appearance))))
 }
 
 /// The stroke over graphic lanes: the appearance parks on the lane and cascades

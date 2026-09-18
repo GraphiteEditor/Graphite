@@ -279,7 +279,8 @@ impl RenderExt for List<Graphic<'_>> {
 			| Some(Graphic::RasterGPU(_))
 			| Some(Graphic::GraphicList(_))
 			| Some(Graphic::Text(_))
-			| Some(Graphic::Group(_)) => {
+			| Some(Graphic::Group(_))
+			| Some(Graphic::Segmented(_)) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
 					let inverse = |len: f64| if len > 0. { 1. / len } else { 0. };

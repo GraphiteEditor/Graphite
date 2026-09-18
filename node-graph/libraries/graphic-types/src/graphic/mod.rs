@@ -11,7 +11,7 @@ pub use glue::{map_groups_to_owned, map_groups_to_persistent, map_groups_to_resi
 pub(crate) use legacy::run_to_legacy_list;
 pub use legacy::{group_to_legacy_graphic, group_to_legacy_list, map_groups_to_legacy, map_paint_attrs_to_legacy, run_to_list};
 pub use paint::{PaintColumns, PaintReach, bake_paint_transforms, is_paint_present, paint_cell_rows, vector_can_reduce_to_clip_path, vector_lane_can_reduce_to_clip_path};
-pub use walk::{GraphicLevel, GraphicLevelColumn, RowStep, VectorRow, direct_vector_len, flatten_vector_rows, group_is_empty, lane_attributes, run_lane_attributes, walk_vector_rows};
+pub use walk::{GraphicLevel, GraphicLevelColumn, RowStep, VectorRow, direct_vector_len, flatten_vector_rows, group_is_empty, lane_attributes, run_lane_attributes, segmented_groups, walk_vector_rows};
 use walk::{group_all_clipped, group_bounding_box, group_is_fully_transparent, group_is_opaque, group_render_complexity};
 
 use crate::appearance::Appearance;
@@ -39,7 +39,7 @@ pub enum Graphic<'e> {
 	#[default]
 	None,
 	GraphicList(List<Graphic<'e>>),
-	Vector(Vector),
+	Vector(VectorRef<'e>),
 	RasterCPU(Raster<CPU>),
 	RasterGPU(Raster<GPU>),
 	Color(Color),
@@ -47,6 +47,97 @@ pub enum Graphic<'e> {
 	Text(String),
 	Stroke(brush_types::Stroke),
 	Group(core_types::record::Group<'e>),
+	/// A stack of levels as one lane: the sides by reference, rendered as if
+	/// their lanes were inline.
+	Segmented(core_types::record::Segmented<'e>),
+}
+
+/// A vector graphic's geometry by reference: resident in an arena for the
+/// evaluation, or owned once copied out of it. Lanes sharing one geometry
+/// share the park, and a clone is a pointer copy.
+#[derive(Clone, Debug, DynAny)]
+pub enum VectorRef<'e> {
+	Resident(&'e Vector),
+	Owned(std::sync::Arc<Vector>),
+}
+
+impl<'e> VectorRef<'e> {
+	/// The geometry parked in `arena` for the arena's lifetime.
+	pub fn park(vector: Vector, arena: &'e core_types::arena::Arena) -> Option<Self> {
+		let retained = glue::vector_retained_heap(&vector);
+		Some(VectorRef::Resident(arena.alloc_sized_keyed(vector, retained)?.0))
+	}
+
+	/// The owned form, which survives the arena generation.
+	pub fn copy_out(&self) -> VectorRef<'static> {
+		VectorRef::Owned(match self {
+			VectorRef::Resident(vector) => std::sync::Arc::new((*vector).clone()),
+			VectorRef::Owned(vector) => vector.clone(),
+		})
+	}
+
+	/// The geometry by value: an owned holder gives it up, a resident one copies.
+	pub fn into_owned(self) -> Vector {
+		match self {
+			VectorRef::Resident(vector) => vector.clone(),
+			VectorRef::Owned(vector) => std::sync::Arc::try_unwrap(vector).unwrap_or_else(|shared| (*shared).clone()),
+		}
+	}
+
+	/// Mutable access, taking the geometry into an owned copy first where it is
+	/// shared or resident.
+	pub fn make_mut(&mut self) -> &mut Vector {
+		if let VectorRef::Resident(vector) = *self {
+			*self = VectorRef::Owned(std::sync::Arc::new(vector.clone()));
+		}
+		match self {
+			VectorRef::Owned(vector) => std::sync::Arc::make_mut(vector),
+			VectorRef::Resident(_) => unreachable!("taken into an owned copy above"),
+		}
+	}
+
+	/// The heap the geometry owns through this holder: a resident park is
+	/// accounted where it was parked.
+	pub fn retained_heap(&self) -> usize {
+		match self {
+			VectorRef::Resident(_) => 0,
+			VectorRef::Owned(vector) => glue::vector_retained_heap(vector),
+		}
+	}
+}
+
+impl std::ops::Deref for VectorRef<'_> {
+	type Target = Vector;
+	fn deref(&self) -> &Vector {
+		match self {
+			VectorRef::Resident(vector) => vector,
+			VectorRef::Owned(vector) => vector,
+		}
+	}
+}
+
+impl Default for VectorRef<'_> {
+	fn default() -> Self {
+		VectorRef::Owned(std::sync::Arc::new(Vector::default()))
+	}
+}
+
+impl PartialEq for VectorRef<'_> {
+	fn eq(&self, other: &Self) -> bool {
+		std::ptr::eq(&**self, &**other) || **self == **other
+	}
+}
+
+impl CacheHash for VectorRef<'_> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		(**self).cache_hash(state)
+	}
+}
+
+impl From<Vector> for VectorRef<'_> {
+	fn from(vector: Vector) -> Self {
+		VectorRef::Owned(std::sync::Arc::new(vector))
+	}
 }
 
 /// A typed legacy list as a legacy graphic list: each item de-tables to a
@@ -66,6 +157,12 @@ pub(in crate::graphic) fn detable_items<'e, T: Clone + Send + Sync + 'static>(li
 pub trait IntoGraphicElement: Clone + Send + Sync + CacheHash + 'static {
 	/// `None` reports arena exhaustion.
 	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic<'_>>;
+
+	/// The coercion from a borrowed element: a parked element hands out its
+	/// park, so lanes sharing one value share the graphic's payload.
+	fn graphic_ref<'e>(&'e self, arena: &'e core_types::arena::Arena) -> Option<Graphic<'e>> {
+		self.clone().into_graphic_element(arena)
+	}
 }
 
 fn list_group<T: Clone + Send + Sync + CacheHash + PartialEq + dyn_any::StaticTypeSized>(list: List<T>, arena: &core_types::arena::Arena) -> Option<Graphic<'_>>
@@ -96,8 +193,23 @@ macro_rules! into_graphic_element {
 	};
 }
 
+impl IntoGraphicElement for Vector {
+	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
+		Some(Graphic::Vector(VectorRef::park(self, arena)?))
+	}
+
+	fn graphic_ref<'e>(&'e self, _arena: &'e core_types::arena::Arena) -> Option<Graphic<'e>> {
+		Some(Graphic::Vector(VectorRef::Resident(self)))
+	}
+}
+
+impl IntoGraphicElement for List<Vector> {
+	fn into_graphic_element(self, arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
+		list_group(self, arena)
+	}
+}
+
 into_graphic_element! {
-	Vector: Vector;
 	RasterCPU: Raster<CPU>;
 	RasterGPU: Raster<GPU>;
 	Color: Color;
@@ -108,6 +220,10 @@ into_graphic_element! {
 impl IntoGraphicElement for Graphic<'static> {
 	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
 		Some(self)
+	}
+
+	fn graphic_ref<'e>(&'e self, _arena: &'e core_types::arena::Arena) -> Option<Graphic<'e>> {
+		Some(self.clone())
 	}
 }
 
@@ -120,7 +236,7 @@ impl IntoGraphicElement for List<Graphic<'static>> {
 // Vector
 impl From<Vector> for Graphic<'_> {
 	fn from(vector: Vector) -> Self {
-		Graphic::Vector(vector)
+		Graphic::Vector(vector.into())
 	}
 }
 
@@ -239,6 +355,12 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 					let lowered = List::new_from_item(Item::from_parts(group_to_legacy_graphic(&group), attributes.clone()));
 					flatten_recursive(output, lowered, extract_variant, parent_layer_path);
 				}
+				Graphic::Segmented(stack) => {
+					for group in segmented_groups(&stack) {
+						let lowered = List::new_from_item(Item::from_parts(group_to_legacy_graphic(&group), attributes.clone()));
+						flatten_recursive(output, lowered, extract_variant, parent_layer_path);
+					}
+				}
 				// A de-tabled leaf is one attr-less element; the extracted row rides with its containing lane's full attributes, paint included.
 				// The enclosing group lane's own layer path overrides, one hop only, matching the native walk.
 				other => {
@@ -293,8 +415,21 @@ macro_rules! try_from_graphic {
 	};
 }
 
+impl TryFromGraphic for Vector {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		if let Graphic::Vector(vector) = graphic { Some(List::new_from_element(vector.into_owned())) } else { None }
+	}
+
+	fn leaf_of<'a>(graphic: &'a Graphic<'_>) -> Option<&'a Self> {
+		if let Graphic::Vector(vector) = graphic { Some(vector) } else { None }
+	}
+
+	fn leaf_mut<'a>(graphic: &'a mut Graphic<'_>) -> Option<&'a mut Self> {
+		if let Graphic::Vector(vector) = graphic { Some(vector.make_mut()) } else { None }
+	}
+}
+
 try_from_graphic! {
-	Vector: Vector;
 	RasterCPU: Raster<CPU>;
 	Color: Color;
 	Gradient: Gradient;
@@ -322,7 +457,7 @@ impl IntoGraphicList for List<Graphic<'static>> {
 
 impl IntoGraphicList for List<Vector> {
 	fn into_graphic_list(self) -> List<Graphic<'static>> {
-		detable_items(self, Graphic::Vector)
+		detable_items(self, |vector| Graphic::Vector(vector.into()))
 	}
 }
 
@@ -379,7 +514,7 @@ impl From<brush_types::Stroke> for Graphic<'_> {
 // DVec2
 impl From<DVec2> for Graphic<'_> {
 	fn from(position: DVec2) -> Self {
-		Graphic::Vector(Vector::from_anchor_position(position))
+		Graphic::Vector(Vector::from_anchor_position(position).into())
 	}
 }
 
@@ -387,7 +522,7 @@ impl From<DVec2> for Graphic<'_> {
 /// coordinates coerces lane-for-lane into a level of single-point vectors.
 impl IntoGraphicElement for DVec2 {
 	fn into_graphic_element(self, _arena: &core_types::arena::Arena) -> Option<Graphic<'_>> {
-		Some(Graphic::Vector(Vector::from_anchor_position(self)))
+		Some(Graphic::Vector(Vector::from_anchor_position(self).into()))
 	}
 }
 // Note: List conversions handled by blanket impl in gcore
@@ -438,13 +573,14 @@ impl<'e> Graphic<'e> {
 			Graphic::None => true,
 			Graphic::GraphicList(list) => all_clipped(list),
 			Graphic::Group(group) => group_all_clipped(group),
+			Graphic::Segmented(stack) => segmented_groups(stack).all(|group| group_all_clipped(&group)),
 			_ => false,
 		}
 	}
 
 	pub fn can_reduce_to_clip_path(&self, inherited_appearance: Option<&Appearance>) -> bool {
 		match self {
-			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&core_types::lane::Single(vector), inherited_appearance),
+			Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&core_types::lane::Single(&**vector), inherited_appearance),
 			_ => false,
 		}
 	}
@@ -460,6 +596,7 @@ impl<'e> Graphic<'e> {
 			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.is_opaque()),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) => false,
 			Graphic::Group(group) => group_is_opaque(group),
+			Graphic::Segmented(stack) => !stack.is_empty() && segmented_groups(stack).all(|group| group_is_opaque(&group)),
 		}
 	}
 
@@ -473,6 +610,7 @@ impl<'e> Graphic<'e> {
 			Graphic::Gradient(stops) => stops.iter().all(|stop| stop.color.a() == 0.),
 			Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Text(_) | Graphic::Stroke(_) => false,
 			Graphic::Group(group) => group_is_fully_transparent(group),
+			Graphic::Segmented(stack) => segmented_groups(stack).all(|group| group_is_fully_transparent(&group)),
 		}
 	}
 
@@ -488,6 +626,7 @@ impl<'e> Graphic<'e> {
 			Graphic::None => true,
 			Graphic::GraphicList(list) => list.is_empty(),
 			Graphic::Group(group) => group_is_empty(group),
+			Graphic::Segmented(stack) => segmented_groups(stack).all(|group| group_is_empty(&group)),
 			_ => false,
 		}
 	}
@@ -497,7 +636,7 @@ impl BoundingBox for Graphic<'_> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		match self {
 			Graphic::None => RenderBoundingBox::None,
-			Graphic::Vector(vector) => BoundingBox::bounding_box(vector, transform, include_stroke),
+			Graphic::Vector(vector) => BoundingBox::bounding_box(&**vector, transform, include_stroke),
 			Graphic::RasterCPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::RasterGPU(raster) => raster.bounding_box(transform, include_stroke),
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
@@ -506,6 +645,7 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Text(text) => text.bounding_box(transform, include_stroke),
 			Graphic::Stroke(stroke) => stroke.bounding_box(transform, include_stroke),
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, false),
+			Graphic::Segmented(stack) => walk::segmented_bounding_box(stack, transform, include_stroke, false),
 		}
 	}
 
@@ -521,13 +661,14 @@ impl BoundingBox for Graphic<'_> {
 			Graphic::Text(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Stroke(stroke) => stroke.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Group(group) => group_bounding_box(group, transform, include_stroke, true),
+			Graphic::Segmented(stack) => walk::segmented_bounding_box(stack, transform, include_stroke, true),
 		}
 	}
 }
 
 impl<'e> ListConvert<Graphic<'e>> for Vector {
 	fn convert_item(self) -> Graphic<'e> {
-		Graphic::Vector(self)
+		Graphic::Vector(self.into())
 	}
 }
 impl<'e> ListConvert<Graphic<'e>> for Raster<CPU> {
@@ -554,6 +695,7 @@ impl RenderComplexity for Graphic<'_> {
 			Self::Text(list) => list.render_complexity(),
 			Self::Stroke(stroke) => stroke.render_complexity(),
 			Self::Group(group) => group_render_complexity(group),
+			Self::Segmented(stack) => segmented_groups(stack).map(|group| group_render_complexity(&group)).sum(),
 		}
 	}
 }
@@ -674,7 +816,7 @@ mod tests {
 	}
 
 	fn vector_graphic() -> Graphic<'static> {
-		Graphic::Vector(Vector::default())
+		Graphic::Vector(Vector::default().into())
 	}
 
 	// Flattening must not invent attribute columns that neither the parent graphic nor the child carried
@@ -758,7 +900,7 @@ mod graphic_is_opaque_tests {
 
 	#[test]
 	fn vector_is_not_opaque() {
-		let g = Graphic::Vector(Vector::default());
+		let g = Graphic::Vector(Vector::default().into());
 		assert!(!g.is_opaque());
 	}
 

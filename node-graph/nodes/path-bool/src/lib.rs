@@ -362,6 +362,11 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, ancestors, reach),
 			Graphic::GraphicList(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach)),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),
+			Graphic::Segmented(stack) => {
+				for group in graphic_types::graphic::segmented_groups(stack) {
+					flatten_group(out, &group, composed, reach);
+				}
+			}
 			Graphic::Text(text) => {
 				let one = List::new_from_item(Item::from_parts(text.clone(), graphic_types::graphic::lane_attributes(level, index)));
 				push_text_rows(out, &one, composed);
@@ -475,7 +480,7 @@ mod tests {
 		let inner_item = builder.finish();
 
 		let mut top = List::new();
-		top.push(Item::new_from_element(Graphic::Vector(square(DVec2::ZERO))));
+		top.push(Item::new_from_element(Graphic::Vector(square(DVec2::ZERO).into())));
 		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
 		top.push(Item::new_from_element(Graphic::Group(Group { row: None, content: inner_item })));
 		top.set_attribute(ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));

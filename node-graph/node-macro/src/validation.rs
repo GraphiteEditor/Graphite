@@ -120,6 +120,8 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 			continue;
 		}
 		match &field.ty {
+			// The carrier may borrow its element and carry it through.
+			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) if index == 0 => {}
 			ParsedFieldType::Regular(RegularParsedField { lend: Some(_), .. }) => {
 				emit_error!(field.pat_ident.span(), "attribute reads need an owned value; take `T` instead of `&T`");
 			}
@@ -148,7 +150,7 @@ fn validate_record_io(parsed: &ParsedNodeFn) {
 	};
 	let lazy_carrier = matches!(&crate::codegen::record_shape(parsed), Some(shape) if matches!(shape.carrier, crate::codegen::RecordCarrier::LazyToken));
 	let carrier_ty = match &carrier.ty {
-		ParsedFieldType::Regular(RegularParsedField { ty, lend: None, .. }) if !carrier.is_data_field => Some(ty),
+		ParsedFieldType::Regular(RegularParsedField { ty, .. }) if !carrier.is_data_field => Some(ty),
 		ParsedFieldType::Node(NodeParsedField { output_type, .. }) if lazy_carrier => Some(output_type),
 		_ => None,
 	};
@@ -350,8 +352,12 @@ fn validate_lend_fields(parsed: &ParsedNodeFn) {
 		if let Some(mutability) = &reference.mutability {
 			emit_error!(mutability.span(), "reference parameters are read-only lends; `&mut` is not supported");
 		}
-		if let Some(lifetime) = &reference.lifetime {
-			emit_error!(lifetime.span(), "reference parameters use the eval lifetime implicitly; write a bare `&T`");
+		// The context's declared serving lifetime may be named, so a kernel can hand
+		// the borrow on at that lifetime; any other name is an error.
+		if let Some(lifetime) = &reference.lifetime
+			&& !crate::codegen::classify::context_param(parsed).is_some_and(|ctx| quote!(#ctx).to_string().contains(&lifetime.to_string()))
+		{
+			emit_error!(lifetime.span(), "reference parameters use the eval lifetime implicitly; write a bare `&T` or name the context's lifetime");
 		}
 		if field.is_data_field {
 			emit_error!(field.pat_ident.span(), "`#[data]` fields are node-resident state and cannot be references");

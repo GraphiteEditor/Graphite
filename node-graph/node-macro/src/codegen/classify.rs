@@ -355,7 +355,11 @@ pub(crate) fn record_shape_checked(parsed: &ParsedNodeFn) -> Result<Option<Recor
 		return Err("a lazy secondary consumes a plain element, so it takes no served, ranked, or reading input");
 	}
 	let reads_well_placed = parsed.fields.iter().enumerate().all(|(index, field)| {
-		field.attribute_reads.is_empty() || (lazy_carrier && index == 0) || (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
+		// The carrier may lend its element: it is borrowed in place and carried through.
+		field.attribute_reads.is_empty()
+			|| (lazy_carrier && index == 0)
+			|| (!field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(RegularParsedField { lend: None, .. })))
+			|| (index == 0 && !field.is_data_field && matches!(&field.ty, ParsedFieldType::Regular(_)))
 	});
 	if !reads_well_placed {
 		return Err("an attribute read needs an owned regular input, not a `#[data]` field or a `&T`");
@@ -376,8 +380,8 @@ pub(crate) fn record_shape_checked(parsed: &ParsedNodeFn) -> Result<Option<Recor
 		}
 		return Ok(Some(RecordShape { carrier: RecordCarrier::LazyToken }));
 	}
-	let ParsedFieldType::Regular(RegularParsedField { ty, lend: None, implementations, .. }) = &carrier_field.ty else {
-		return Err("a record carrier is an owned value input, not a `&T` or a lazy one");
+	let ParsedFieldType::Regular(RegularParsedField { ty, lend, implementations, .. }) = &carrier_field.ty else {
+		return Err("a record carrier is a value input, not a lazy one");
 	};
 	// A gathered subject is never read as an element, so its generic stays open.
 	let gathers = crate::codegen::ir::gathers_lane(parsed);
@@ -404,6 +408,10 @@ pub(crate) fn record_shape_checked(parsed: &ParsedNodeFn) -> Result<Option<Recor
 		Some(RecordWrites { element, markers, removes }) => (element, markers, removes),
 		None => (value, Vec::new(), Vec::new()),
 	};
+	// A lent carrier is borrowed in place, so its element can only carry through.
+	if lend.is_some() && !matches!(bare_ident(&element), Some(ident) if ident == "ElToken") {
+		return Err("a `&T` carrier carries its element through, so the element position spells `ElToken`");
+	}
 	match &token {
 		// An opaque reading carrier never looks at its element, so it writes a
 		// fresh one instead of passing the token through.

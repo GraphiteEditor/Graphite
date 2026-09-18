@@ -70,6 +70,9 @@ fn main() {
 				for ((kernel, how), (calls, lanes)) in &kernels {
 					println!("  kernel {calls:>8} calls {lanes:>9} lanes  {kernel:<28} {how}");
 				}
+				if std::env::var_os("GRAPHENE_ARENA_DEBUG").is_some() {
+					core_types::arena::Arena::dump_tally();
+				}
 			}
 		}
 		return;

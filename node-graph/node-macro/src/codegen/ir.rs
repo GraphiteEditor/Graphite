@@ -15,10 +15,20 @@ pub(crate) fn build(parsed: &ParsedNodeFn) -> Node {
 	let generics = generics(parsed);
 	let generic_idents: Vec<Ident> = generics.iter().map(|generic| generic.ident.clone()).collect();
 	let fields: Vec<&ParsedField> = parsed.fields.iter().filter(|field| !field.is_data_field).collect();
+	let inputs = inputs(parsed, &fields, &generic_idents);
+	let mut output = output(parsed, &generic_idents);
+	// A carried output is the subject's element under the subject's type.
+	if output.carried && let Some(subject) = inputs.iter().find(|input| input.subject) {
+		output.shape.element = match &subject.shape.element {
+			Element::Concrete(ty) => Element::Concrete(ty.clone()),
+			Element::Generic(ident) => Element::Generic(ident.clone()),
+			Element::Opaque => Element::Opaque,
+		};
+	}
 	Node {
 		monomorphizations: monomorphizations(parsed, &fields, &generic_idents),
-		inputs: inputs(parsed, &fields, &generic_idents),
-		output: output(parsed, &generic_idents),
+		inputs,
+		output,
 		generics,
 		effect: effect(parsed),
 		derives: derives(parsed),
@@ -98,7 +108,9 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 		Some(inner) => (inner, true),
 		None => (element, false),
 	};
+	let carried = bare_ident(&element).is_some_and(|ident| ident == "ElToken");
 	Output {
+		carried,
 		shape: ItemShape {
 			element: element_of(&element, generics),
 			depth,
@@ -125,6 +137,9 @@ fn output(parsed: &ParsedNodeFn, generics: &[Ident]) -> Output {
 /// node into a silent no-op, which is exactly the regression this rule exists to prevent.
 /// Any other generic element is the lane's own and genuinely carries.
 pub(crate) fn writes_element(node: &Node, parsed: &ParsedNodeFn) -> Option<Type> {
+	if node.output.carried {
+		return None;
+	}
 	let declared = written_element_type(parsed);
 	let written = match &node.output.shape.element {
 		Element::Concrete(_) => true,
@@ -741,6 +756,9 @@ pub(crate) enum Evaluation {
 pub(crate) struct Output {
 	pub(crate) shape: ItemShape,
 	pub(crate) removes: Vec<LevelAttr>,
+	/// The element position spells `ElToken`: the subject's element carries
+	/// through by its bytes and nothing writes it.
+	pub(crate) carried: bool,
 	/// The element position spells `Lane<T>`, so the output frame is a copy of a
 	/// chosen subject lane.
 	pub(crate) gathers: bool,

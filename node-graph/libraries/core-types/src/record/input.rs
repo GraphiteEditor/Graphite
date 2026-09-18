@@ -265,6 +265,15 @@ where
 	}
 	match status {
 		BatchStatus::Unbatched => match arena.alloc_scratch::<u64>(words) {
+			// Which node type declines a batch, so a lane loop has a name in the tally.
+			#[cfg(debug_assertions)]
+			Some(scratch) => {
+				let name = core::any::type_name::<N>();
+				let short = name.split('<').next().unwrap_or(name).rsplit("::").next().unwrap_or(name);
+				note_kernel_batch(Box::leak(short.to_string().into_boxed_str()), "unbatched fill", len);
+				fill_dispatch::<C, N>(node, &dispatch, Some(scratch), frames)
+			}
+			#[cfg(not(debug_assertions))]
 			Some(scratch) => fill_dispatch::<C, N>(node, &dispatch, Some(scratch), frames),
 			None => exhausted(),
 		},

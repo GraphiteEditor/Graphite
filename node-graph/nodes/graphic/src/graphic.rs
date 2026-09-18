@@ -286,8 +286,8 @@ fn into_group_extent<T>(_content: ListIn<'_, T>, _level: LevelIn) -> GPoll<Exten
 /// Type-asserts a value to be graphical content, converting each lane of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"))]
-pub fn as_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl Ctx + ExtractArena<'e>, #[implementations(Graphic)] content: T) -> Result<Graphic<'e>, Interrupt> {
-	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
+pub fn as_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl Ctx + ExtractArena<'e>, #[implementations(Graphic)] content: &'e T) -> Result<Graphic<'e>, Interrupt> {
+	content.graphic_ref(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
 /// The elementwise `Graphic` coercion the compiler-inserted converts use: each
@@ -296,9 +296,9 @@ pub fn as_graphic<'e, T: graphic_types::graphic::IntoGraphicElement>(ctx: impl C
 #[node_macro::node(category(""))]
 pub fn to_graphic_element<'e, T: graphic_types::graphic::IntoGraphicElement>(
 	ctx: impl Ctx + ExtractArena<'e>,
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, DVec2)] content: T,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, DVec2)] content: &'e T,
 ) -> Result<Graphic<'e>, Interrupt> {
-	content.into_graphic_element(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
+	content.graphic_ref(ctx.arena()).ok_or_else(|| GraphError::new("the arena is exhausted").into())
 }
 
 /// An unconnected content input carries the unit, which renders as nothing like
@@ -603,3 +603,17 @@ pub fn colors_to_gradient_graphic(_: impl Ctx, colors: IList<Graphic<'static>>) 
 }
 
 pub use _colors_to_gradient_graphic_mod::colors_to_gradient_graphic_entries;
+
+/// Stacks two graphic levels as one lane: both sides by reference, rendered as
+/// if their lanes were inline. The compiler picks it for an extend over
+/// graphics, so a layer stack costs one node per stacking and no lane copy.
+#[node_macro::node(category(""))]
+pub fn stack_graphics<'e>(ctx: impl Ctx + ExtractArena<'e>, base: IList<Graphic<'static>>, new: IList<Graphic<'static>>) -> Result<Graphic<'e>, Interrupt> {
+	let exhausted = || Interrupt::from(GraphError::new("the arena is exhausted"));
+	// A materialized level already lives in the arena, so adopting it copies nothing.
+	let left = core_types::record::Child::Leaf(core_types::record::GroupItem::adopt(base.batch(), ctx.arena()).ok_or_else(exhausted)?);
+	let right = core_types::record::Child::Leaf(core_types::record::GroupItem::adopt(new.batch(), ctx.arena()).ok_or_else(exhausted)?);
+	Ok(Graphic::Segmented(core_types::record::Segmented::new(left, right)))
+}
+
+pub use _stack_graphics_mod::stack_graphics_entries;

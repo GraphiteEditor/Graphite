@@ -1,6 +1,6 @@
 //! The record-crossing glue: group interiors carried between the owned, resident, and persistent regions.
 
-use super::Graphic;
+use super::{Graphic, VectorRef};
 use crate::appearance::Appearance;
 use core_types::Color;
 use core_types::list::{Item, List};
@@ -14,6 +14,7 @@ pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 	match graphic {
 		Graphic::None => Graphic::None,
 		Graphic::Group(group) => Graphic::Group(group.copy_out()),
+		Graphic::Segmented(stack) => Graphic::Segmented(stack.copy_out()),
 		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
@@ -24,7 +25,7 @@ pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 			Graphic::GraphicList(out)
 		}
 		Graphic::Stroke(stroke) => Graphic::Stroke(stroke.clone()),
-		Graphic::Vector(vector) => Graphic::Vector(vector.clone()),
+		Graphic::Vector(vector) => Graphic::Vector(vector.copy_out()),
 		Graphic::RasterCPU(raster) => Graphic::RasterCPU(raster.clone()),
 		Graphic::RasterGPU(raster) => Graphic::RasterGPU(raster.clone()),
 		Graphic::Color(color) => Graphic::Color(*color),
@@ -38,6 +39,7 @@ pub fn map_groups_to_owned<'out>(graphic: &Graphic<'_>) -> Graphic<'out> {
 pub fn map_groups_to_resident<'a>(graphic: &Graphic<'a>, arena: &'a core_types::arena::Arena) -> Option<Graphic<'a>> {
 	match graphic {
 		Graphic::Group(group) => group.replay(arena).map(Graphic::Group),
+		Graphic::Segmented(stack) => stack.replay(arena).map(Graphic::Segmented),
 		Graphic::GraphicList(children) => {
 			let mut children = children.clone();
 			for child in children.iter_element_values_mut() {
@@ -83,6 +85,7 @@ pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_type
 	match graphic {
 		Graphic::None => Some(Graphic::None),
 		Graphic::Group(group) => group.to_persistent(promotion).map(Graphic::Group),
+		Graphic::Segmented(stack) => stack.to_persistent(promotion).map(Graphic::Segmented),
 		Graphic::GraphicList(children) => {
 			let mut out = List::new();
 			for item in children.clone().into_iter() {
@@ -93,7 +96,7 @@ pub fn map_groups_to_persistent<'p>(graphic: &Graphic<'_>, promotion: &core_type
 			Some(Graphic::GraphicList(out))
 		}
 		Graphic::Stroke(stroke) => Some(Graphic::Stroke(stroke.clone())),
-		Graphic::Vector(vector) => Some(Graphic::Vector(vector.clone())),
+		Graphic::Vector(vector) => Some(Graphic::Vector(vector_to_persistent(vector, promotion)?)),
 		Graphic::RasterCPU(raster) => Some(Graphic::RasterCPU(raster.clone())),
 		Graphic::RasterGPU(raster) => Some(Graphic::RasterGPU(raster.clone())),
 		Graphic::Color(color) => Some(Graphic::Color(*color)),
@@ -214,13 +217,13 @@ unsafe fn promote_graphic(src: *const u8, dst: *mut u8, promotion: &core_types::
 /// lanes park through this same glue and are counted as they land.
 fn graphic_retained_heap(graphic: &Graphic<'_>) -> usize {
 	match graphic {
-		Graphic::Vector(vector) => vector_retained_heap(vector),
+		Graphic::Vector(vector) => vector.retained_heap(),
 		Graphic::RasterCPU(raster) => raster.data.len() * size_of::<Color>(),
 		Graphic::Text(text) => text.len(),
 		Graphic::Stroke(stroke) => stroke_retained_heap(stroke),
 		Graphic::Gradient(gradient) => gradient.len() * size_of::<(f64, Color)>(),
 		Graphic::GraphicList(children) => (0..children.len()).filter_map(|index| children.element(index)).map(graphic_retained_heap).sum(),
-		Graphic::None | Graphic::Group(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
+		Graphic::None | Graphic::Group(_) | Graphic::Segmented(_) | Graphic::RasterGPU(_) | Graphic::Color(_) => 0,
 	}
 }
 
@@ -239,8 +242,29 @@ fn stroke_retained_heap(stroke: &brush_types::Stroke) -> usize {
 
 /// The heap a vector's domain columns own, summed over the columns it
 /// exposes, so the segment domain's private parallel columns are undercounted.
-fn vector_retained_heap(vector: &Vector) -> usize {
+pub(crate) fn vector_retained_heap(vector: &Vector) -> usize {
 	size_of_val(vector.point_domain.ids()) + size_of_val(vector.point_domain.positions()) + size_of_val(vector.segment_domain.ids()) + size_of_val(vector.colinear_manipulators.as_slice())
+}
+
+/// A resident vector moves with its park: the persistent region already holds
+/// it, or the park moves there and every holder forwards to the move.
+fn vector_to_persistent<'p>(vector: &VectorRef<'_>, promotion: &core_types::record::Promotion<'p>) -> Option<VectorRef<'p>> {
+	match vector {
+		VectorRef::Owned(vector) => Some(VectorRef::Owned(vector.clone())),
+		VectorRef::Resident(resident) => {
+			let ptr = std::ptr::from_ref::<Vector>(resident).cast::<u8>();
+			if promotion.persistent().contains(ptr) {
+				// SAFETY: the park already lives in the persistent region, so the
+				// reference is valid for that region's lifetime.
+				return Some(VectorRef::Resident(unsafe { &*ptr.cast::<Vector>() }));
+			}
+			// SAFETY: a resident vector is a park of its own static type owning all
+			// of its content.
+			let moved = unsafe { promotion.move_park::<Vector>(ptr, vector_retained_heap(resident)) }?;
+			// SAFETY: the move published a live vector in the persistent region.
+			Some(VectorRef::Resident(unsafe { &*moved }))
+		}
+	}
 }
 
 /// Whether any group is reachable from the graphic, so it does not own all of
@@ -248,6 +272,8 @@ fn vector_retained_heap(vector: &Vector) -> usize {
 fn graphic_contains_groups(graphic: &Graphic) -> bool {
 	match graphic {
 		Graphic::Group(_) => true,
+		Graphic::Segmented(_) => true,
+		Graphic::Vector(VectorRef::Resident(_)) => true,
 		Graphic::GraphicList(children) => list_contains_groups(children),
 		_ => false,
 	}
@@ -710,7 +736,7 @@ mod run_tests {
 		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
 		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
 
-		let paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		let paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO).into()));
 		let heap = {
 			let Some(Graphic::Vector(vector)) = paint.element(0) else { panic!("the paint carries a vector") };
 			vector.point_domain.positions().as_ptr()
@@ -743,7 +769,7 @@ mod run_tests {
 		// Group-free elements, with the resident group hidden in an item attribute.
 		let native = native_group_paint(&inner_vector, &transient);
 		let expected = map_groups_to_legacy(native.element(0).unwrap());
-		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.))));
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.)).into()));
 		// SAFETY: the erased native list serves only while `transient` is live; the
 		// promote under test replaces its borrows.
 		paint.set_attribute::<Option<List<Graphic>>>("probe:paint", 0, Some(unsafe { core_types::record::erase_static(native) }));
@@ -770,7 +796,7 @@ mod run_tests {
 		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
 		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
 
-		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO).into()));
 		// Columns of a type that cannot hold groups, and a group-capable column
 		// whose value holds none: neither denies the move.
 		paint.set_attribute::<f64>("opacity", 0, 0.5);
@@ -807,7 +833,7 @@ mod run_tests {
 
 		// The field's elements are group-free; the group rides an item attribute,
 		// which the shallow read alone would leave borrowing `source`.
-		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.)).into()));
 		// SAFETY: the erased native list serves only while `source` is live; the
 		// deep glue under test replaces its borrows at the copy-out seam.
 		paint.set_attribute::<Option<List<Graphic>>>("probe:paint", 0, Some(unsafe { core_types::record::erase_static(native) }));
@@ -915,7 +941,7 @@ mod run_tests {
 		let mut transient = core_types::arena::Arena::new(1 << 16).unwrap();
 		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
 
-		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		let appearance = Appearance::new_single(Coverage::new_fill(), Graphic::Vector(unit_square_at(DVec2::ZERO).into()));
 		let heap = {
 			let Some(Graphic::Vector(vector)) = appearance.paint_at(0) else {
 				panic!("the paint carries a vector")
@@ -973,7 +999,7 @@ mod run_tests {
 		let persistent = core_types::arena::Arena::new(1 << 16).unwrap();
 
 		// Stroke parameters on the coverage and a group-free paint: neither denies the move.
-		let mut appearance = Appearance::new_single(Coverage::new_stroke(&vector_types::vector::style::Stroke::new(2.)), Graphic::Vector(unit_square_at(DVec2::ZERO)));
+		let mut appearance = Appearance::new_single(Coverage::new_stroke(&vector_types::vector::style::Stroke::new(2.)), Graphic::Vector(unit_square_at(DVec2::ZERO).into()));
 		appearance.replace_or_insert(Coverage::new_fill(), Graphic::Color(Color::WHITE), CoverPlacement::Below);
 		let heap = {
 			let Some(Graphic::Vector(vector)) = appearance.paint_at(1) else {
@@ -1016,7 +1042,7 @@ mod run_tests {
 		// SAFETY: the erased native group serves only while `transient` is live;
 		// the promote under test replaces its borrows.
 		let paint_cell = unsafe { core_types::record::erase_static(native_group.clone()) };
-		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.))));
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(4., 4.)).into()));
 		paint.set_attribute(crate::markers::ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), paint_cell));
 		let (paint, _) = transient.alloc_sized_keyed(paint, 0).unwrap();
 
@@ -1045,7 +1071,7 @@ mod run_tests {
 		// SAFETY: the erased native group serves only while `source` is live; the
 		// deep glue under test replaces its borrows at the copy-out seam.
 		let paint_cell = unsafe { core_types::record::erase_static(native_group.clone()) };
-		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
+		let mut paint = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.)).into()));
 		paint.set_attribute(crate::markers::ATTR_APPEARANCE, 0, Appearance::new_single(Coverage::new_fill(), paint_cell));
 
 		let vector = unit_square_at(DVec2::new(4., 4.));

@@ -924,6 +924,9 @@ where
 			return BatchStatus::Error(GraphError::new("string split could not rebuild its context"));
 		};
 		let input = &input;
+		// A group's rows claim frame space that is free again at the next group.
+		let group_frames = frames.scope();
+		let frames = &*group_frames;
 		let count = match core_types::node::Node::extent(&node.strings, input, core_types::gpoll::Level::Total, frames) {
 			core_types::gpoll::GPoll::Final(Extent::Exactly(count)) => count,
 			core_types::gpoll::GPoll::Pending => return BatchStatus::Pending,

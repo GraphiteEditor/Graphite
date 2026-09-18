@@ -424,6 +424,23 @@ fn walk_vector_rows_impl<'a>(
 					RowStep::Continue
 				}
 			}
+			Graphic::Segmented(stack) => {
+				let mut step = RowStep::Continue;
+				for group in segmented_groups(stack) {
+					let item = &group.content;
+					step = if item.typed_lanes::<Vector>().is_some() {
+						walk_rows_of_run(item, scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), reach.appearance, Some(row_top), visit)
+					} else if item.typed_lanes::<Graphic>().is_some() {
+						walk_vector_rows_impl(GraphicLevel::Run(item), scale.composed(&level, index), level.try_attr::<EditorLayerPath>(index), reach, Some(row_top), visit)
+					} else {
+						RowStep::Continue
+					};
+					if let RowStep::Stop = step {
+						break;
+					}
+				}
+				step
+			}
 			_ => RowStep::Continue,
 		};
 		if let RowStep::Stop = step {
@@ -454,6 +471,7 @@ pub fn direct_vector_len(graphic: &Graphic) -> usize {
 			None => group.content.typed_lanes::<Vector>().map_or(0, |lanes| lanes.len()),
 			_ => 0,
 		},
+		Graphic::Segmented(stack) => segmented_groups(stack).map(|group| direct_vector_len(&Graphic::Group(group))).sum(),
 		_ => 0,
 	}
 }
@@ -493,13 +511,13 @@ mod run_tests {
 		// 0 within their own parents, so an implementation reporting the
 		// immediate lane rather than the top row would answer 0 and be caught,
 		// where a fixture nested at row 0 would have agreed by coincidence.
-		let deep = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(3., 3.))));
+		let deep = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(3., 3.)).into()));
 		let mut mixed = List::new();
-		mixed.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
+		mixed.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO).into())));
 		mixed.push(Item::new_from_element(Graphic::GraphicList(deep)));
 
 		let mut top = List::new();
-		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(9., 9.)))));
+		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(9., 9.)).into())));
 		top.push(Item::new_from_element(Graphic::GraphicList(mixed)));
 
 		let mut reported = Vec::new();
@@ -527,13 +545,13 @@ mod run_tests {
 		let inner_item = builder.finish();
 
 		let mut painted = List::new();
-		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
-		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE))));
+		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO).into())));
+		painted.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE).into())));
 		painted.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(1., 0.)));
 		painted.set_attribute(core_types::ATTR_TRANSFORM, 1, DAffine2::from_translation(DVec2::new(0., 1.)));
 		painted.set_attribute(ATTR_APPEARANCE, 1, single(Color::WHITE));
 
-		let mut nested = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.))));
+		let mut nested = List::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(2., 2.)).into()));
 		nested.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_scale(DVec2::splat(2.)));
 
 		let mut top = List::new();
@@ -541,7 +559,7 @@ mod run_tests {
 		top.push(Item::new_from_element(Graphic::GraphicList(nested)));
 		top.push(Item::new_from_element(Graphic::Group(core_types::record::Group { row: None, content: inner_item })));
 		top.push(Item::new_from_element(Graphic::Color(Color::BLACK)));
-		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(6., 0.)))));
+		top.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::new(6., 0.)).into())));
 		top.set_attribute(core_types::ATTR_TRANSFORM, 0, DAffine2::from_translation(DVec2::new(5., 5.)));
 		top.set_attribute(core_types::ATTR_EDITOR_LAYER_PATH, 0, vec![core_types::uuid::NodeId(7)]);
 		top.set_attribute(ATTR_APPEARANCE, 0, single(Color::BLACK));
@@ -617,8 +635,8 @@ mod run_tests {
 		let single = |color: Color| Appearance::new_single(Coverage::new_fill(), Graphic::Color(color));
 
 		let mut inner = List::new();
-		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO))));
-		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE))));
+		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ZERO).into())));
+		inner.push(Item::new_from_element(Graphic::Vector(unit_square_at(DVec2::ONE).into())));
 		inner.set_attribute(ATTR_APPEARANCE, 0, single(Color::BLACK));
 
 		let mut top = List::new_from_element(Graphic::GraphicList(inner));
@@ -638,4 +656,20 @@ mod run_tests {
 			assert_eq!(color_of(list, 1), Some(Color::WHITE), "an undeclared row inherits the level's appearance");
 		}
 	}
+}
+
+/// A stack's runs as row-less groups, each rendered and measured as its lanes
+/// would be inline.
+pub fn segmented_groups<'a, 'e>(stack: &'a core_types::record::Segmented<'e>) -> impl Iterator<Item = core_types::record::Group<'e>> + 'a {
+	stack.runs().map(|content| core_types::record::Group { row: None, content })
+}
+
+pub(in crate::graphic) fn segmented_bounding_box(stack: &core_types::record::Segmented<'_>, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox {
+	segmented_groups(stack)
+		.map(|group| group_bounding_box(&group, transform, include_stroke, thumbnail))
+		.fold(RenderBoundingBox::None, |union, bounds| match (union, bounds) {
+			(RenderBoundingBox::None, other) | (other, RenderBoundingBox::None) => other,
+			(RenderBoundingBox::Infinite, _) | (_, RenderBoundingBox::Infinite) => RenderBoundingBox::Infinite,
+			(RenderBoundingBox::Rectangle([a0, a1]), RenderBoundingBox::Rectangle([b0, b1])) => RenderBoundingBox::Rectangle([a0.min(b0), a1.max(b1)]),
+		})
 }

@@ -181,11 +181,58 @@ impl<'e> RunBuilder<'e> {
 	pub fn finish(self) -> GroupItem<'e> {
 		assert_eq!(self.pushed, self.len, "every lane pushes before the run finishes");
 		GroupItem {
-			layout: self.layout,
+			layout: LayoutRef::Shared(std::sync::Arc::new(self.layout)),
 			storage: ItemStorage::Resident(self.frames.cast_const()),
 			len: self.len,
 			_arena: std::marker::PhantomData,
 		}
+	}
+}
+
+
+/// A run's layout by reference: borrowed from the node that owns it for the
+/// evaluation, or shared once copied out. Every lane of a run reads through
+/// one layout, so a run costs no layout clone.
+#[derive(Clone, Debug)]
+pub enum LayoutRef<'e> {
+	Borrowed(&'e Layout),
+	Shared(std::sync::Arc<Layout>),
+}
+
+impl LayoutRef<'_> {
+	pub fn copy_out(&self) -> LayoutRef<'static> {
+		LayoutRef::Shared(match self {
+			LayoutRef::Borrowed(layout) => std::sync::Arc::new((*layout).clone()),
+			LayoutRef::Shared(layout) => layout.clone(),
+		})
+	}
+
+	/// The same layout at the persistent region's lifetime. A node's layout
+	/// outlives every persistent generation: the region resets when the graph
+	/// recompiles, before any node is dropped.
+	fn persistent<'p>(&self) -> LayoutRef<'p> {
+		match self {
+			// SAFETY: as documented above; the borrow names storage the graph keeps
+			// for as long as the persistent region can hold a run over it.
+			LayoutRef::Borrowed(layout) => LayoutRef::Borrowed(unsafe { &*std::ptr::from_ref::<Layout>(layout) }),
+			LayoutRef::Shared(layout) => LayoutRef::Shared(layout.clone()),
+		}
+	}
+}
+
+impl std::ops::Deref for LayoutRef<'_> {
+	type Target = Layout;
+	fn deref(&self) -> &Layout {
+		match self {
+			LayoutRef::Borrowed(layout) => layout,
+			LayoutRef::Shared(layout) => layout,
+		}
+	}
+}
+
+impl PartialEq for LayoutRef<'_> {
+	fn eq(&self, other: &Self) -> bool {
+		std::ptr::eq(&**self, &**other) || **self == **other
 	}
 }
 
@@ -198,7 +245,7 @@ impl<'e> RunBuilder<'e> {
 /// so the lifetime instantiation is the resident/owned distinction.
 #[derive(Clone, Debug)]
 pub struct GroupItem<'e> {
-	layout: Layout,
+	layout: LayoutRef<'e>,
 	storage: ItemStorage,
 	len: usize,
 	_arena: std::marker::PhantomData<&'e ()>,
@@ -240,7 +287,7 @@ impl<'e> GroupItem<'e> {
 	/// bytes. A copied lane's parked payloads re-park into `arena`, so the
 	/// adopted run names nothing the source arena's reset frees.
 	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &'e crate::arena::Arena) -> Option<Self> {
-		let layout = batch.layout().clone();
+		let layout = LayoutRef::Shared(std::sync::Arc::new(batch.layout().clone()));
 		assert_element_glue(&layout);
 		for field in &layout.fields {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
@@ -330,7 +377,7 @@ impl<'e> GroupItem<'e> {
 	/// spans only the window it lends the batch for, which is sound exactly when
 	/// `'e` is bounded to that window.
 	pub unsafe fn from_resident(batch: crate::node::RecordBatch<'e>) -> Self {
-		let layout = batch.layout().clone();
+		let layout = LayoutRef::Borrowed(batch.layout());
 		assert_element_glue(&layout);
 		for field in &layout.fields {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");
@@ -357,7 +404,7 @@ impl<'e> GroupItem<'e> {
 	pub fn copy_out(&self) -> GroupItem<'static> {
 		if let ItemStorage::Owned(_) = &self.storage {
 			return GroupItem {
-				layout: self.layout.clone(),
+				layout: self.layout.copy_out(),
 				storage: self.storage.clone(),
 				len: self.len,
 				_arena: std::marker::PhantomData,
@@ -401,7 +448,7 @@ impl<'e> GroupItem<'e> {
 			})
 			.collect();
 		GroupItem {
-			layout: self.layout.clone(),
+			layout: self.layout.copy_out(),
 			storage: ItemStorage::Owned(std::sync::Arc::new(OwnedLanes { bytes, elements, fields })),
 			len: self.len,
 			_arena: std::marker::PhantomData,
@@ -447,7 +494,7 @@ impl<'e> GroupItem<'e> {
 			}
 		}
 		Some(GroupItem {
-			layout: self.layout.clone(),
+			layout: self.layout.copy_out(),
 			storage: ItemStorage::Resident(frames.cast_const()),
 			len: self.len,
 			_arena: std::marker::PhantomData,
@@ -466,7 +513,7 @@ impl<'e> GroupItem<'e> {
 		let persistent = promotion.persistent();
 		if self.len == 0 || persistent.contains(frames) {
 			return Some(GroupItem {
-				layout: self.layout.clone(),
+				layout: self.layout.persistent(),
 				storage: ItemStorage::Resident(frames),
 				len: self.len,
 				_arena: std::marker::PhantomData,
@@ -483,7 +530,7 @@ impl<'e> GroupItem<'e> {
 			unsafe { promote_record(&self.layout, dst.add(lane * stride), promotion) }?;
 		}
 		Some(GroupItem {
-			layout: self.layout.clone(),
+			layout: self.layout.persistent(),
 			storage: ItemStorage::Resident(dst.cast_const()),
 			len: self.len,
 			_arena: std::marker::PhantomData,
@@ -1054,5 +1101,217 @@ mod tests {
 		unsafe { write_element(bytes.as_mut_ptr().cast(), String::from("parked"), &arena) }.unwrap();
 		let item = unsafe { GroupItem::from_resident(crate::node::RecordBatch::new(bytes.as_ptr().cast(), 1, &layout)) };
 		item.copy_out().lanes();
+	}
+}
+
+/// A level as an immutable pointer structure: two children and the cached
+/// lane count. Stacking two levels allocates one node and copies nothing;
+/// lanes read in order by walking the children, so a stack nested on the
+/// right iterates as a list.
+#[derive(Clone, Debug)]
+pub struct Segmented<'e> {
+	left: Child<'e>,
+	right: Child<'e>,
+	len: usize,
+}
+
+/// One side of a [`Segmented`] node: a run of lanes, a node resident in the
+/// arena, or an owned node copied out of it.
+#[derive(Clone, Debug)]
+pub enum Child<'e> {
+	Leaf(GroupItem<'e>),
+	Resident(&'e Segmented<'e>),
+	Owned(std::sync::Arc<Segmented<'static>>),
+}
+
+impl<'e> Child<'e> {
+	pub fn len(&self) -> usize {
+		match self {
+			Child::Leaf(item) => item.len(),
+			Child::Resident(node) => node.len,
+			Child::Owned(node) => node.len,
+		}
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len() == 0
+	}
+}
+
+impl<'e> Segmented<'e> {
+	pub fn new(left: Child<'e>, right: Child<'e>) -> Self {
+		let len = left.len() + right.len();
+		Self { left, right, len }
+	}
+
+	/// The node parked in `arena`, as a child for the next stack.
+	pub fn park(self, arena: &'e crate::arena::Arena) -> Option<Child<'e>> {
+		Some(Child::Resident(arena.alloc(self)?.0))
+	}
+
+	pub fn len(&self) -> usize {
+		self.len
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.len == 0
+	}
+
+	/// The runs in lane order. A right-nested stack walks with one pending
+	/// child; a left-nested one pushes its path.
+	pub fn runs(&self) -> Runs<'e> {
+		Runs {
+			stack: vec![self.right.clone(), self.left.clone()],
+		}
+	}
+
+	/// The lane's run and its offset within it.
+	pub fn locate(&self, lane: usize) -> Option<(GroupItem<'e>, usize)> {
+		let mut node = NodeRef::Resident(self);
+		let mut lane = lane;
+		loop {
+			let (left, right) = node.children();
+			let child = match lane < left.len() {
+				true => left,
+				false => {
+					lane -= left.len();
+					right
+				}
+			};
+			match child {
+				Child::Leaf(item) => return (lane < item.len()).then(|| (item.clone(), lane)),
+				Child::Resident(next) => node = NodeRef::Resident(next),
+				Child::Owned(next) => node = NodeRef::Owned(next.clone()),
+			}
+		}
+	}
+
+	pub fn copy_out(&self) -> Segmented<'static> {
+		Segmented {
+			left: self.left.copy_out(),
+			right: self.right.copy_out(),
+			len: self.len,
+		}
+	}
+
+	pub fn replay<'a>(&self, arena: &'a crate::arena::Arena) -> Option<Segmented<'a>> {
+		Some(Segmented {
+			left: self.left.replay(arena)?,
+			right: self.right.replay(arena)?,
+			len: self.len,
+		})
+	}
+
+	pub fn to_persistent<'p>(&self, promotion: &Promotion<'p>) -> Option<Segmented<'p>> {
+		Some(Segmented {
+			left: self.left.to_persistent(promotion)?,
+			right: self.right.to_persistent(promotion)?,
+			len: self.len,
+		})
+	}
+}
+
+impl<'e> Child<'e> {
+	fn copy_out(&self) -> Child<'static> {
+		match self {
+			Child::Leaf(item) => Child::Leaf(item.copy_out()),
+			Child::Resident(node) => Child::Owned(std::sync::Arc::new(node.copy_out())),
+			Child::Owned(node) => Child::Owned(node.clone()),
+		}
+	}
+
+	fn replay<'a>(&self, arena: &'a crate::arena::Arena) -> Option<Child<'a>> {
+		Some(match self {
+			Child::Leaf(item) => Child::Leaf(item.replay(arena)?),
+			Child::Resident(node) => node.replay(arena)?.park(arena)?,
+			Child::Owned(node) => node.replay(arena)?.park(arena)?,
+		})
+	}
+
+	fn to_persistent<'p>(&self, promotion: &Promotion<'p>) -> Option<Child<'p>> {
+		let persistent = promotion.persistent();
+		Some(match self {
+			Child::Leaf(item) => Child::Leaf(item.to_persistent(promotion)?),
+			Child::Resident(node) => {
+				let ptr = std::ptr::from_ref::<Segmented<'_>>(node).cast::<u8>();
+				if persistent.contains(ptr) {
+					// SAFETY: the node already lives in the persistent region, so the
+					// reference is valid for that region's lifetime.
+					Child::Resident(unsafe { &*ptr.cast::<Segmented<'p>>() })
+				} else {
+					node.to_persistent(promotion)?.park(persistent)?
+				}
+			}
+			Child::Owned(node) => node.to_persistent(promotion)?.park(persistent)?,
+		})
+	}
+}
+
+/// A node by reference or by owned handle while walking.
+#[derive(Clone)]
+enum NodeRef<'a, 'e> {
+	Resident(&'a Segmented<'e>),
+	Owned(std::sync::Arc<Segmented<'static>>),
+}
+
+impl<'a, 'e> NodeRef<'a, 'e> {
+	fn children(&self) -> (Child<'e>, Child<'e>) {
+		match self {
+			NodeRef::Resident(node) => (node.left.clone(), node.right.clone()),
+			NodeRef::Owned(node) => (relabel_child(&node.left), relabel_child(&node.right)),
+		}
+	}
+}
+
+/// An owned node's children are owned or owned-leaf, so they carry no borrow
+/// and read at any lifetime.
+fn relabel_child<'e>(child: &Child<'static>) -> Child<'e> {
+	match child {
+		Child::Leaf(item) => Child::Leaf(item.clone()),
+		Child::Owned(node) => Child::Owned(node.clone()),
+		Child::Resident(node) => Child::Resident(node),
+	}
+}
+
+/// The runs of a [`Segmented`] in lane order.
+pub struct Runs<'e> {
+	stack: Vec<Child<'e>>,
+}
+
+impl<'e> Iterator for Runs<'e> {
+	type Item = GroupItem<'e>;
+
+	fn next(&mut self) -> Option<GroupItem<'e>> {
+		loop {
+			match self.stack.pop()? {
+				Child::Leaf(item) => return Some(item),
+				Child::Resident(node) => {
+					self.stack.push(node.right.clone());
+					self.stack.push(node.left.clone());
+				}
+				Child::Owned(node) => {
+					self.stack.push(relabel_child(&node.right));
+					self.stack.push(relabel_child(&node.left));
+				}
+			}
+		}
+	}
+}
+
+impl PartialEq for Segmented<'_> {
+	fn eq(&self, other: &Self) -> bool {
+		self.len == other.len && self.runs().flat_map(|run| (0..run.len()).map(move |lane| (run.clone(), lane))).zip(other.runs().flat_map(|run| (0..run.len()).map(move |lane| (run.clone(), lane)))).all(|((a, i), (b, j))| {
+			// SAFETY: both lanes image records of their run's layout.
+			a.layout() == b.layout() && unsafe { record_content_eq(a.layout(), a.lanes().get(i).rec().ptr(), b.lanes().get(j).rec().ptr()) }
+		})
+	}
+}
+
+impl graphene_hash::CacheHash for Segmented<'_> {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		state.write_usize(self.len);
+		for run in self.runs() {
+			run.cache_hash(state);
+		}
 	}
 }

@@ -24,7 +24,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::appearance::{Appearance, Coverage};
-use graphic_types::graphic::{PaintColumns, PaintReach, is_paint_present, paint_cell_rows, vector_can_reduce_to_clip_path, vector_lane_can_reduce_to_clip_path};
+use graphic_types::graphic::{PaintColumns, PaintReach, is_paint_present, paint_cell_rows, segmented_groups, vector_can_reduce_to_clip_path, vector_lane_can_reduce_to_clip_path};
 use graphic_types::markers::{Appearance as AppearanceMarker, EditorMergedLayers};
 use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientSettings};
@@ -736,7 +736,7 @@ impl Render for Graphic<'_> {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
-			Graphic::Vector(vector) => render_vector_svg(&Single(vector), None, render, render_params),
+			Graphic::Vector(vector) => render_vector_svg(&Single(&**vector), None, render, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_svg(&Single(raster), render, render_params),
 			Graphic::RasterGPU(_) => (),
 			Graphic::Color(color) => render_color_svg(&Single(color), render, render_params),
@@ -745,6 +745,11 @@ impl Render for Graphic<'_> {
 			// A stroke is brush input, not drawable content: the brush node rasterizes it
 			Graphic::Stroke(_) => (),
 			Graphic::Group(group) => render_group_svg(group, PaintReach::NONE, render, render_params),
+			Graphic::Segmented(stack) => {
+				for group in segmented_groups(stack) {
+					render_group_svg(&group, PaintReach::NONE, render, render_params);
+				}
+			}
 		}
 	}
 
@@ -752,7 +757,7 @@ impl Render for Graphic<'_> {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(vector) => render_vector_vello(&Single(vector), None, scene, transform, context, render_params),
+			Graphic::Vector(vector) => render_vector_vello(&Single(&**vector), None, scene, transform, context, render_params),
 			Graphic::RasterCPU(raster) => render_raster_cpu_vello(&Single(raster), scene, transform, render_params),
 			Graphic::RasterGPU(raster) => render_raster_gpu_vello(&Single(raster), scene, transform, context, render_params),
 			Graphic::Color(color) => render_color_vello(&Single(color), scene, render_params),
@@ -760,6 +765,11 @@ impl Render for Graphic<'_> {
 			Graphic::Text(text) => render_text_vello(&Single(text), scene, transform, render_params),
 			Graphic::Stroke(_) => (),
 			Graphic::Group(group) => render_group_vello(group, PaintReach::NONE, scene, transform, context, render_params),
+			Graphic::Segmented(stack) => {
+				for group in segmented_groups(stack) {
+					render_group_vello(&group, PaintReach::NONE, scene, transform, context, render_params);
+				}
+			}
 		}
 	}
 
@@ -787,7 +797,7 @@ impl Render for Graphic<'_> {
 		match self {
 			Graphic::None => (),
 			Graphic::GraphicList(list) => list.new_ids_from_hash(reference),
-			Graphic::Vector(vector) => vector.vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
+			Graphic::Vector(vector) => vector.make_mut().vector_new_ids_from_hash(reference.map(|id| id.0).unwrap_or_default()),
 			_ => (),
 		}
 	}
@@ -795,29 +805,40 @@ impl Render for Graphic<'_> {
 
 fn render_element_svg<'a>(element: &'a Graphic, reach: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
 	match element {
-		Graphic::Vector(vector) => render_vector_svg(&Single(vector), reach.appearance, render, render_params),
+		Graphic::Vector(vector) => render_vector_svg(&Single(&**vector), reach.appearance, render, render_params),
 		Graphic::GraphicList(inner) => render_graphic_svg_with(inner, reach, render, render_params),
 		Graphic::Group(group) => render_group_svg(group, reach, render, render_params),
+		Graphic::Segmented(stack) => {
+			for group in segmented_groups(stack) {
+				render_group_svg(&group, reach, render, render_params);
+			}
+		}
 		_ => element.render_svg(render, render_params),
 	}
 }
 
 fn render_element_vello<'a>(element: &'a Graphic, reach: PaintReach<'a>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 	match element {
-		Graphic::Vector(vector) => render_vector_vello(&Single(vector), reach.appearance, scene, transform, context, render_params),
+		Graphic::Vector(vector) => render_vector_vello(&Single(&**vector), reach.appearance, scene, transform, context, render_params),
 		Graphic::GraphicList(inner) => render_graphic_vello_with(inner, reach, scene, transform, context, render_params),
 		Graphic::Group(group) => render_group_vello(group, reach, scene, transform, context, render_params),
+		Graphic::Segmented(stack) => {
+			for group in segmented_groups(stack) {
+				render_group_vello(&group, reach, scene, transform, context, render_params);
+			}
+		}
 		_ => element.render_to_vello(scene, transform, context, render_params),
 	}
 }
 
 fn element_can_reduce_to_clip_path<'a>(element: &'a Graphic, reach: PaintReach<'a>) -> bool {
 	match element {
-		Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&Single(vector), reach.appearance),
+		Graphic::Vector(vector) => vector_can_reduce_to_clip_path(&Single(&**vector), reach.appearance),
 		Graphic::Group(group) => match RunView::<Vector>::new(&group.content) {
 			Some(run) => vector_can_reduce_to_clip_path(&run, reach.appearance),
 			None => false,
 		},
+		Graphic::Segmented(stack) => segmented_groups(stack).all(|group| element_can_reduce_to_clip_path(&Graphic::Group(group), reach)),
 		_ => element.can_reduce_to_clip_path(reach.appearance),
 	}
 }
@@ -835,6 +856,11 @@ fn collect_element_metadata<'a>(
 		metadata.upstream_footprints.insert(element_id, footprint);
 		match element {
 			Graphic::Group(group) => collect_group_row_metadata(group, metadata, element_id),
+			Graphic::Segmented(stack) => {
+				for group in segmented_groups(stack) {
+					collect_group_row_metadata(&group, metadata, element_id);
+				}
+			}
 			Graphic::GraphicList(_) => {}
 			// A leaf's layer identity and transform ride its containing lane.
 			Graphic::Vector(_) => {
@@ -850,7 +876,7 @@ fn collect_element_metadata<'a>(
 	match element {
 		Graphic::None => {}
 		Graphic::GraphicList(list) => collect_graphic_metadata_with(list, reach, metadata, footprint, element_id),
-		Graphic::Vector(vector) => collect_vector_metadata(&Single(vector), reach.appearance, metadata, footprint, element_id),
+		Graphic::Vector(vector) => collect_vector_metadata(&Single(&**vector), reach.appearance, metadata, footprint, element_id),
 		Graphic::RasterCPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::RasterGPU(raster) => collect_raster_metadata(&Single(raster), metadata, footprint, element_id),
 		Graphic::Color(_) => {}
@@ -858,6 +884,11 @@ fn collect_element_metadata<'a>(
 		Graphic::Text(text) => collect_text_metadata(&Single(text), metadata, footprint, element_id),
 		Graphic::Stroke(_) => {}
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
+		Graphic::Segmented(stack) => {
+			for group in segmented_groups(stack) {
+				collect_group_metadata(&group, reach, metadata, footprint, element_id);
+			}
+		}
 	}
 }
 
@@ -894,13 +925,18 @@ fn add_element_upstream_click_targets<'a>(element: &'a Graphic, reach: PaintReac
 	match element {
 		Graphic::None => (),
 		Graphic::GraphicList(list) => add_graphic_upstream_click_targets_with(list, reach, click_targets),
-		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(vector), reach.appearance, click_targets),
+		Graphic::Vector(vector) => add_vector_upstream_click_targets(&Single(&**vector), reach.appearance, click_targets),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(click_targets),
 		Graphic::Color(_) => {}
 		Graphic::Gradient(gradient) => click_targets.extend(gradient_control_targets(&Single(gradient), |transform| transform, true)),
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), click_targets),
 		Graphic::Stroke(_) => (),
 		Graphic::Group(group) => add_group_upstream_click_targets(group, reach, click_targets),
+		Graphic::Segmented(stack) => {
+			for group in segmented_groups(stack) {
+				add_group_upstream_click_targets(&group, reach, click_targets);
+			}
+		}
 	}
 }
 
@@ -908,13 +944,18 @@ fn add_element_upstream_outline_targets<'a>(element: &'a Graphic, reach: PaintRe
 	match element {
 		Graphic::None => (),
 		Graphic::GraphicList(list) => add_graphic_upstream_outline_targets_with(list, reach, outlines),
-		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(vector), reach.appearance, outlines),
+		Graphic::Vector(vector) => add_vector_upstream_outline_targets(&Single(&**vector), reach.appearance, outlines),
 		Graphic::RasterCPU(_) | Graphic::RasterGPU(_) => add_raster_upstream_click_targets(outlines),
 		Graphic::Color(_) => {}
 		Graphic::Gradient(gradient) => outlines.extend(gradient_control_targets(&Single(gradient), |transform| transform, false)),
 		Graphic::Text(text) => add_text_upstream_click_targets(&Single(text), outlines),
 		Graphic::Stroke(_) => (),
 		Graphic::Group(group) => add_group_upstream_outline_targets(group, reach, outlines),
+		Graphic::Segmented(stack) => {
+			for group in segmented_groups(stack) {
+				add_group_upstream_outline_targets(&group, reach, outlines);
+			}
+		}
 	}
 }
 
@@ -1166,18 +1207,67 @@ fn render_graphic_svg<'e, S: LaneSource<Element = Graphic<'e>>>(source: &S, rend
 }
 
 fn render_graphic_svg_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, render: &mut SvgRender, render_params: &RenderParams) {
+	render_graphic_svg_composed(source, inherited, LaneCompose::IDENTITY, render, render_params)
+}
+
+/// What a stack lane hands down to the lanes it holds: its transform and
+/// opacities compose onto each of them, so the stack renders as those lanes
+/// would have inline.
+#[derive(Clone, Copy)]
+struct LaneCompose {
+	transform: DAffine2,
+	opacity: f64,
+	opacity_fill: f64,
+}
+
+impl LaneCompose {
+	const IDENTITY: Self = Self {
+		transform: DAffine2::IDENTITY,
+		opacity: 1.,
+		opacity_fill: 1.,
+	};
+}
+
+fn render_graphic_svg_composed<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(source: &'a S, inherited: PaintReach<'a>, outer: LaneCompose, render: &mut SvgRender, render_params: &RenderParams) {
 	let paint_columns = PaintColumns::new(source);
 	let mut mask_state = None;
 
 	for index in 0..source.lane_count() {
-		let transform: DAffine2 = source.attr::<Transform>(index);
+		let transform: DAffine2 = outer.transform * source.attr::<Transform>(index);
 		let blend_mode: BlendMode = source.attr::<BlendModeAttr>(index);
-		let opacity_attr: f64 = source.attr::<Opacity>(index);
-		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
+		let opacity_attr: f64 = outer.opacity * source.attr::<Opacity>(index);
+		let opacity_fill_attr: f64 = outer.opacity_fill * source.attr::<OpacityFill>(index);
 		let element = source.element(index).unwrap();
 		let reach = inherited.for_lane(&paint_columns, index);
 
 		let matrix = format_transform_matrix(transform);
+		// A stack lane renders its runs as this level's lanes, its own transform
+		// and opacities composed onto each; a blend mode cannot distribute, so
+		// such a lane wraps as any other.
+		if let Graphic::Segmented(stack) = element
+			&& blend_mode == BlendMode::default()
+		{
+			let composed = LaneCompose {
+				transform,
+				opacity: opacity_attr,
+				opacity_fill: opacity_fill_attr,
+			};
+			for group in segmented_groups(stack) {
+				match RunView::<Graphic>::new(&group.content) {
+					Some(run) => render_graphic_svg_composed(&run, reach, composed, render, render_params),
+					None => render.parent_tag(
+						"g",
+						|attributes| {
+							if !matrix.is_empty() {
+								attributes.push(ATTR_TRANSFORM, matrix.clone());
+							}
+						},
+						|render| render_group_svg(&group, reach, render, render_params),
+					),
+				}
+			}
+			continue;
+		}
 		let next_clips = index + 1 < source.lane_count() && source.element(index + 1).unwrap().had_clip_enabled();
 		let mut masked_by = None;
 
@@ -1258,6 +1348,16 @@ fn render_graphic_vello_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(
 		let opacity_fill_attr: f64 = source.attr::<OpacityFill>(index);
 		let element = source.element(index).unwrap();
 		let reach = inherited.for_lane(&paint_columns, index);
+		if let Graphic::Segmented(stack) = element
+			&& opacity_attr >= 1.
+			&& opacity_fill_attr >= 1.
+			&& blend_mode_attr == BlendMode::default()
+		{
+			for group in segmented_groups(stack) {
+				render_group_vello(&group, reach, scene, transform, context, render_params);
+			}
+			continue;
+		}
 
 		let mut layer = false;
 
@@ -1858,7 +1958,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 					let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 					scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
 				}
-				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) => {
+				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) | Graphic::Segmented(_) => {
 					scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
 					paint.render_to_vello(scene, multiplied_transform, context, render_params);
 					scene.pop_layer();
@@ -1940,7 +2040,7 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 
 					scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
 				}
-				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) => {
+				Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::GraphicList(_) | Graphic::Text(_) | Graphic::Group(_) | Graphic::Segmented(_) => {
 					let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
 
 					scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
@@ -3540,7 +3640,7 @@ mod group_walk_tests {
 	#[test]
 	fn lane_paint_on_a_graphic_run_reaches_vector_interiors() {
 		let paint = color_paint();
-		let inner = Graphic::Vector(unit_square_at(DVec2::ZERO));
+		let inner = Graphic::Vector(unit_square_at(DVec2::ZERO).into());
 		let arena = core_types::arena::Arena::new(1 << 16).unwrap();
 		let appearance = fill_appearance(&paint);
 		let mut builder = RunBuilder::new(&arena, element_write_hashed::<Graphic>(), &[FieldWrite::of::<AppearanceMarker>(0)], 1).unwrap();
