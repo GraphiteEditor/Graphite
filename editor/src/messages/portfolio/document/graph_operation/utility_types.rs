@@ -16,7 +16,7 @@ use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, GradientUnits, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 use kurbo::BezPath;
@@ -449,7 +449,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, gradient_units: GradientUnits, transform: DAffine2) {
 		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
 		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
@@ -490,6 +490,12 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(
 			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientFormInput),
 			NodeInput::value(TaggedValue::GradientForm(gradient_form), false),
+			true,
+		);
+
+		self.set_input_with_refresh(
+			InputConnector::node(fill_node_id, graphene_std::vector::fill::GradientUnitsInput),
+			NodeInput::value(TaggedValue::GradientUnits(gradient_units), false),
 			false,
 		);
 
