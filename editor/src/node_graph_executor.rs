@@ -52,7 +52,7 @@ pub enum NodeGraphUpdate {
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
-	SvgTextCopyClipboard { svg_string: String, graphite_json: String },
+	SvgTextCopyClipboard { svg_string: Option<String>, graphite_json: String },
 }
 
 #[derive(Debug, Default)]
@@ -468,10 +468,7 @@ impl NodeGraphExecutor {
 				}
 				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 				NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json } => {
-					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite {
-						svg_string: Some(svg_string),
-						graphite_json,
-					});
+					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json });
 				}
 			}
 		}

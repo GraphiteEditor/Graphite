@@ -110,7 +110,7 @@ impl InternalNodeGraphUpdateSender {
 		self.0.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response")
 	}
 
-	fn send_svg_text_clipboard(&self, svg_string: String, graphite_json: String) {
+	fn send_svg_text_clipboard(&self, svg_string: Option<String>, graphite_json: String) {
 		self.0.send(NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json }).expect("Failed to send response")
 	}
 }
@@ -363,7 +363,7 @@ impl NodeRuntime {
 		let combined_graphics = self.collect_graphics(&selected_node_ids);
 
 		if combined_graphics.is_empty() {
-			self.sender.send_svg_text_clipboard(String::new(), text_string_clipboard);
+			self.sender.send_svg_text_clipboard(None, text_string_clipboard);
 			return;
 		}
 
@@ -379,7 +379,7 @@ impl NodeRuntime {
 		combined_graphics.render_svg(&mut render, &render_params);
 		render.format_svg(final_bounds[0], final_bounds[1]);
 
-		self.sender.send_svg_text_clipboard(render.svg.to_svg_string(), text_string_clipboard);
+		self.sender.send_svg_text_clipboard(Some(render.svg.to_svg_string()), text_string_clipboard);
 	}
 
 	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
