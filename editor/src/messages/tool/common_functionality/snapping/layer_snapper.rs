@@ -734,7 +734,7 @@ pub fn get_layer_snap_points(layer: LayerNodeIdentifier, snap_data: &SnapData, p
 		if !snap_data.ignore_bounds(layer) {
 			let to_document = document.metadata().transform_to_document(layer);
 			for bezpath in document.metadata().layer_outline(layer) {
-				bezpath_anchor_snap_points(layer, bezpath, snap_data, points, to_document);
+				bezpath_anchor_snap_points(layer, &bezpath, snap_data, points, to_document);
 			}
 		}
 

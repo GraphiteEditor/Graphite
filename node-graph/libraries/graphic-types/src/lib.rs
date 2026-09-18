@@ -144,6 +144,7 @@ pub mod migrations {
 				colinear_manipulators: old.colinear_manipulators,
 				point_domain: old.point_domain,
 				segment_domain: old.segment_domain,
+				geometry_cell: Default::default(),
 			}),
 			VectorFormat::Vector(vector) => Some(vector),
 			VectorFormat::List(list) => list.element.into_iter().next(),

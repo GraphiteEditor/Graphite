@@ -20,6 +20,11 @@ pub struct Vector {
 
 	pub point_domain: PointDomain,
 	pub segment_domain: SegmentDomain,
+
+	/// The derived geometry, filled on first use and carried with the value:
+	/// a parked vector never changes, so every lane sharing it shares this.
+	#[cfg_attr(feature = "serde", serde(skip))]
+	pub geometry_cell: GeometryCell,
 }
 
 impl Default for Vector {
@@ -28,6 +33,7 @@ impl Default for Vector {
 			colinear_manipulators: Vec::new(),
 			point_domain: PointDomain::new(),
 			segment_domain: SegmentDomain::new(),
+			geometry_cell: GeometryCell::default(),
 		}
 	}
 }
@@ -559,5 +565,221 @@ mod tests {
 		assert_eq!(vector.point_domain.positions(), [DVec2::new(3., 4.)]);
 		assert_eq!(vector.point_domain.ids(), [PointId::ZERO], "expected the anchor position to be assigned the default PointId::ZERO",);
 		assert!(vector.segment_domain.ids().is_empty());
+	}
+}
+
+/// A vector's subpaths as kurbo paths, computed once and reused for bounds,
+/// stroke bounds and path data: every query below reads the same paths the
+/// per-call forms on [`Vector`] would build.
+pub struct VectorGeometry {
+	pub bezpaths: Vec<kurbo::BezPath>,
+	/// Every subpath ends in a close, which is what stroke alignment needs.
+	pub closed: bool,
+	svg_path: std::sync::OnceLock<std::sync::Arc<String>>,
+	stroke_bounds: std::sync::Mutex<Vec<(u64, Option<[DVec2; 2]>)>>,
+	click_paths: [std::sync::OnceLock<std::sync::Arc<kurbo::BezPath>>; 2],
+}
+
+impl Clone for VectorGeometry {
+	fn clone(&self) -> Self {
+		Self::new(self.bezpaths.clone(), self.closed)
+	}
+}
+
+impl std::fmt::Debug for VectorGeometry {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("VectorGeometry").field("subpaths", &self.bezpaths.len()).field("closed", &self.closed).finish()
+	}
+}
+
+/// A vector's derived geometry, filled once. Cloning a vector starts an empty
+/// cell (the copy may be edited); sharing a parked vector shares the filled one.
+/// A content fingerprint guards against a value edited in place after the fill:
+/// such a read recomputes and leaves the cell as it was.
+#[derive(Default)]
+pub struct GeometryCell(std::sync::OnceLock<(u64, std::sync::Arc<VectorGeometry>)>);
+
+impl Clone for GeometryCell {
+	fn clone(&self) -> Self {
+		Self::default()
+	}
+}
+
+impl std::fmt::Debug for GeometryCell {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		// Constant on purpose: the cell is not part of the value.
+		f.write_str("GeometryCell")
+	}
+}
+
+impl PartialEq for GeometryCell {
+	fn eq(&self, _: &Self) -> bool {
+		true
+	}
+}
+
+impl Vector {
+	fn content_fingerprint(&self) -> u64 {
+		let mut hasher = graphene_hash::FxHasher64::default();
+		graphene_hash::CacheHash::cache_hash(self, &mut hasher);
+		std::hash::Hasher::finish(&hasher)
+	}
+
+	fn build_geometry(&self) -> VectorGeometry {
+		let bezpaths: Vec<kurbo::BezPath> = self.stroke_bezpath_iter().collect();
+		let closed = bezpaths.iter().all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
+		VectorGeometry::new(bezpaths, closed)
+	}
+
+	/// The derived geometry, from the cell where it matches the content.
+	pub fn geometry(&self) -> std::sync::Arc<VectorGeometry> {
+		let fingerprint = self.content_fingerprint();
+		match self.geometry_cell.0.get() {
+			Some((filled, geometry)) if *filled == fingerprint => geometry.clone(),
+			Some(_) => std::sync::Arc::new(self.build_geometry()),
+			None => {
+				let geometry = std::sync::Arc::new(self.build_geometry());
+				let _ = self.geometry_cell.0.set((fingerprint, geometry.clone()));
+				geometry
+			}
+		}
+	}
+}
+
+impl VectorGeometry {
+	pub fn new(bezpaths: Vec<kurbo::BezPath>, closed: bool) -> Self {
+		Self {
+			bezpaths,
+			closed,
+			svg_path: std::sync::OnceLock::new(),
+			stroke_bounds: std::sync::Mutex::new(Vec::new()),
+			click_paths: [std::sync::OnceLock::new(), std::sync::OnceLock::new()],
+		}
+	}
+
+	/// The subpaths as one click path, non-empty ones only, closed when the
+	/// lane is filled; shared by every target over this geometry.
+	pub fn click_path(&self, filled: bool) -> std::sync::Arc<kurbo::BezPath> {
+		self.click_paths[usize::from(filled)]
+			.get_or_init(|| {
+				let mut combined = kurbo::BezPath::new();
+				for bezpath in self.bezpaths.iter().filter(|bezpath| !bezpath.elements().is_empty()) {
+					let mut bezpath = bezpath.clone();
+					if filled && !matches!(bezpath.elements().last(), Some(kurbo::PathEl::ClosePath)) {
+						bezpath.close_path();
+					}
+					combined.extend(bezpath);
+				}
+				std::sync::Arc::new(combined)
+			})
+			.clone()
+	}
+
+	/// The path data in the vector's own space, filled once.
+	pub fn svg_path_cached(&self) -> std::sync::Arc<String> {
+		self.svg_path.get_or_init(|| std::sync::Arc::new(self.svg_path(DAffine2::IDENTITY))).clone()
+	}
+
+	/// The stroke-inclusive bounds in the vector's own space, per stroke.
+	pub fn stroke_bounds_cached(&self, stroke: Option<&Stroke>) -> Option<[DVec2; 2]> {
+		let key = stroke.map_or(0, |stroke| {
+			let mut hasher = graphene_hash::FxHasher64::default();
+			graphene_hash::CacheHash::cache_hash(stroke, &mut hasher);
+			std::hash::Hasher::finish(&hasher)
+		});
+		if let Some((_, bounds)) = self.stroke_bounds.lock().unwrap().iter().find(|(known, _)| *known == key) {
+			return *bounds;
+		}
+		let bounds = self.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY, stroke);
+		self.stroke_bounds.lock().unwrap().push((key, bounds));
+		bounds
+	}
+
+	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+		self.bounding_box_with_transform(DAffine2::IDENTITY)
+	}
+
+	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+		self.bounding_box_with_transform_rect(transform)
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+	}
+
+	fn bounding_box_with_transform_rect(&self, transform: DAffine2) -> Option<Rect> {
+		let combine = |r1: Rect, r2: Rect| r1.union(r2);
+		self.bezpaths
+			.iter()
+			.map(|bezpath| {
+				let mut bezpath = bezpath.clone();
+				bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+				bezpath.bounding_box()
+			})
+			.reduce(combine)
+	}
+
+	/// [`Vector::stroke_inclusive_bounding_box_with_transform`] over the cached paths.
+	pub fn stroke_inclusive_bounding_box_with_transform(&self, transform: DAffine2, stroke: Option<&Stroke>) -> Option<[DVec2; 2]> {
+		let path_bounds = self.bounding_box_with_transform(transform);
+
+		let Some(stroke) = stroke else { return path_bounds };
+		let aligned_renders = stroke.align != StrokeAlign::Center && self.closed;
+		let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
+		if kurbo_width <= 0. {
+			return path_bounds;
+		}
+
+		let join = match stroke.join {
+			StrokeJoin::Miter => kurbo::Join::Miter,
+			StrokeJoin::Bevel => kurbo::Join::Bevel,
+			StrokeJoin::Round => kurbo::Join::Round,
+		};
+		let cap = match stroke.cap {
+			StrokeCap::Butt => kurbo::Cap::Butt,
+			StrokeCap::Round => kurbo::Cap::Round,
+			StrokeCap::Square => kurbo::Cap::Square,
+		};
+
+		let stroke_style = kurbo::Stroke::new(kurbo_width)
+			.with_caps(cap)
+			.with_join(join)
+			.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
+			.with_miter_limit(stroke.join_miter_limit);
+		let stroke_options = kurbo::StrokeOpts::default();
+		const STROKE_TOLERANCE: f64 = 0.25;
+
+		let stroke_local = Affine::new(stroke.transform.to_cols_array());
+		let stroke_local_inverse = (stroke.transform.matrix2.determinant() != 0.).then(|| Affine::new(stroke.transform.inverse().to_cols_array()));
+		let final_transform = Affine::new(transform.to_cols_array());
+
+		let stroke_bounds = self
+			.bezpaths
+			.iter()
+			.map(|bezpath| {
+				let mut bezpath = bezpath.clone();
+				bezpath.apply_affine(stroke_local);
+				let mut stroked = kurbo::stroke(bezpath, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+				if let Some(inverse) = stroke_local_inverse {
+					stroked.apply_affine(inverse);
+				}
+				stroked.apply_affine(final_transform);
+				stroked.bounding_box()
+			})
+			.reduce(|r1, r2| r1.union(r2))
+			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]);
+
+		match (path_bounds, stroke_bounds) {
+			(Some(path), Some(stroke)) => Some([path[0].min(stroke[0]), path[1].max(stroke[1])]),
+			(path, stroke) => stroke.or(path),
+		}
+	}
+
+	/// The SVG path data of every subpath under `transform`, concatenated.
+	pub fn svg_path(&self, transform: DAffine2) -> String {
+		let mut path = String::new();
+		for bezpath in &self.bezpaths {
+			let mut bezpath = bezpath.clone();
+			bezpath.apply_affine(Affine::new(transform.to_cols_array()));
+			path.push_str(bezpath.to_svg().as_str());
+		}
+		path
 	}
 }

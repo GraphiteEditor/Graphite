@@ -1012,6 +1012,11 @@ impl OverlayContextInternal {
 					self.manipulator_anchor(transform.transform_point2(point.position), false, None);
 				}
 				ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
+				ClickTargetType::Instance { path, transform } => {
+					let mut placed = (**path).clone();
+					placed.apply_affine(Affine::new(transform.to_cols_array()));
+					combined.extend(placed.elements().iter().copied());
+				}
 			}
 		}
 

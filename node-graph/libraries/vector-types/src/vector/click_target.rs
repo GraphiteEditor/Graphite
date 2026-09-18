@@ -63,6 +63,23 @@ pub enum ClickTargetType {
 	/// (e.g. the inside of an "O") correctly count as outside the fill.
 	Path(BezPath),
 	FreePoint(FreePoint),
+	/// A shared local path under an instance transform: every lane holding one
+	/// parked geometry shares the path and carries only its own placement.
+	Instance {
+		#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_shared_path", deserialize_with = "deserialize_shared_path"))]
+		path: Arc<BezPath>,
+		transform: DAffine2,
+	},
+}
+
+#[cfg(feature = "serde")]
+fn serialize_shared_path<S: serde::Serializer>(path: &Arc<BezPath>, serializer: S) -> Result<S::Ok, S::Error> {
+	serde::Serialize::serialize(&**path, serializer)
+}
+
+#[cfg(feature = "serde")]
+fn deserialize_shared_path<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Arc<BezPath>, D::Error> {
+	<BezPath as serde::Deserialize>::deserialize(deserializer).map(Arc::new)
 }
 
 /// Fixed-size ring buffer cache for rotated bounding boxes.
@@ -174,6 +191,32 @@ impl ClickTarget {
 		}
 	}
 
+	/// A target over a shared local path placed by `transform`; `local_bounds` are
+	/// the path's own, so the loose box is their transformed corners.
+	pub fn new_with_shared_path(path: Arc<BezPath>, local_bounds: BoundingBox, transform: DAffine2, stroke_width: f64) -> Self {
+		let bounding_box = local_bounds.map(|bounds| (transform * Quad::from_box(bounds)).bounding_box());
+		Self {
+			target_type: ClickTargetType::Instance { path, transform },
+			stroke_width,
+			bounding_box,
+			bounding_box_cache: Default::default(),
+		}
+	}
+
+	/// The path in the layer's space: borrowed for an owned path, placed for a
+	/// shared one, none for a point.
+	pub fn path_in_layer(&self) -> Option<std::borrow::Cow<'_, BezPath>> {
+		match &self.target_type {
+			ClickTargetType::Path(path) => Some(std::borrow::Cow::Borrowed(path)),
+			ClickTargetType::Instance { path, transform } => {
+				let mut placed = (**path).clone();
+				placed.apply_affine(Affine::new(transform.to_cols_array()));
+				Some(std::borrow::Cow::Owned(placed))
+			}
+			ClickTargetType::FreePoint(_) => None,
+		}
+	}
+
 	pub fn new_with_free_point(point: FreePoint) -> Self {
 		const MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT: f64 = 1e-4 / 2.;
 		let stroke_width = 10.;
@@ -203,8 +246,14 @@ impl ClickTarget {
 	}
 
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> BoundingBox {
-		match self.target_type {
-			ClickTargetType::Path(ref path) => {
+		let (path, transform) = match &self.target_type {
+			ClickTargetType::Path(path) => (path, transform),
+			ClickTargetType::Instance { path, transform: placement } => (&**path, transform * *placement),
+			// TODO: use point for calculation of bbox
+			ClickTargetType::FreePoint(_) => return self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
+		};
+		{
+			{
 				// Bypass cache for skewed transforms since rotation decomposition isn't valid
 				if transform.has_skew() {
 					return bezpath_bounding_box_with_transform(path, transform);
@@ -229,8 +278,6 @@ impl ClickTarget {
 				let mut write_lock = self.bounding_box_cache.write().unwrap();
 				write_lock.add_to_cache(path, rotation, scale, translation, fingerprint)
 			}
-			// TODO: use point for calculation of bbox
-			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
 		}
 	}
 
@@ -238,6 +285,9 @@ impl ClickTarget {
 		match self.target_type {
 			ClickTargetType::Path(ref mut path) => {
 				path.apply_affine(Affine::new(affine_transform.to_cols_array()));
+			}
+			ClickTargetType::Instance { ref mut transform, .. } => {
+				*transform = affine_transform * *transform;
 			}
 			ClickTargetType::FreePoint(ref mut point) => {
 				point.apply_transform(affine_transform);
@@ -251,6 +301,11 @@ impl ClickTarget {
 			ClickTargetType::Path(ref path) => {
 				self.bounding_box = bezpath_bounding_box_with_transform(path, DAffine2::IDENTITY);
 			}
+			// The loose box moves with the placement; exactness stays with `bounding_box_with_transform`.
+			ClickTargetType::Instance { ref path, transform } => {
+				let control = path.control_box();
+				self.bounding_box = (!path.elements().is_empty()).then(|| (transform * Quad::from_box([DVec2::new(control.min_x(), control.min_y()), DVec2::new(control.max_x(), control.max_y())])).bounding_box());
+			}
 			ClickTargetType::FreePoint(ref point) => {
 				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
 			}
@@ -261,6 +316,10 @@ impl ClickTarget {
 	pub fn intersect_path<It: Iterator<Item = PathSeg>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
 		// Check if the matrix is not invertible
 		let mut layer_transform = layer_transform;
+		// A shared path is tested in its own space: the placement joins the layer transform.
+		if let ClickTargetType::Instance { transform, .. } = &self.target_type {
+			layer_transform *= *transform;
+		}
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			layer_transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 		}
@@ -268,8 +327,13 @@ impl ClickTarget {
 		let inverse = layer_transform.inverse();
 		let mut bezier_iter = || bezier_iter().map(|bezier| Affine::new(inverse.to_cols_array()) * bezier);
 
-		match self.target_type() {
-			ClickTargetType::Path(path) => {
+		let path = match self.target_type() {
+			ClickTargetType::Path(path) => Some(path),
+			ClickTargetType::Instance { path, .. } => Some(&**path),
+			ClickTargetType::FreePoint(_) => None,
+		};
+		match (path, self.target_type()) {
+			(Some(path), _) => {
 				// Outline intersection (catches strokes and both filled/unfilled shapes)
 				let outline_intersects = |path_segment: PathSeg| bezier_iter().any(|line| !filtered_segment_intersections(path_segment, line, None, None).is_empty());
 				if path.segments().any(outline_intersects) {
@@ -288,7 +352,8 @@ impl ClickTarget {
 				selection.close_path();
 				bezpath_is_inside_bezpath(path, &selection, None, None)
 			}
-			ClickTargetType::FreePoint(point) => bezier_iter().map(|segment: PathSeg| segment.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
+			(None, ClickTargetType::FreePoint(point)) => bezier_iter().map(|segment: PathSeg| segment.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
+			(None, _) => false,
 		}
 	}
 
@@ -320,6 +385,7 @@ impl ClickTarget {
 			// Check if the point is within the shape
 			match self.target_type() {
 				ClickTargetType::Path(path) => closed_contours(path).contains(dvec2_to_point(point)),
+				ClickTargetType::Instance { path, transform } => closed_contours(path).contains(dvec2_to_point(transform.inverse().transform_point2(point))),
 				ClickTargetType::FreePoint(free_point) => free_point.position == point,
 			}
 		} else {

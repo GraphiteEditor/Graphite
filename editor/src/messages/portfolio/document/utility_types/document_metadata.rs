@@ -189,8 +189,8 @@ impl DocumentMetadata {
 		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| match click_target.target_type() {
-				ClickTargetType::Path(path) => {
-					let mut transformed = path.clone();
+				ClickTargetType::Path(_) | ClickTargetType::Instance { .. } => {
+					let mut transformed = click_target.path_in_layer().map(|path| path.into_owned()).unwrap_or_default();
 					transformed.apply_affine(Affine::new(transform.to_cols_array()));
 
 					let control_box = transformed.control_box();
@@ -254,11 +254,8 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &BezPath> {
-		self.visual_targets(layer).unwrap_or(&[]).iter().filter_map(|target| match target.target_type() {
-			ClickTargetType::Path(path) => Some(path),
-			ClickTargetType::FreePoint(_) => None,
-		})
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = std::borrow::Cow<'_, BezPath>> {
+		self.visual_targets(layer).unwrap_or(&[]).iter().filter_map(|target| target.path_in_layer())
 	}
 
 	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {

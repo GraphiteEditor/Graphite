@@ -1901,8 +1901,8 @@ impl DocumentMessageHandler {
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Path(path) => {
-					let mut path = path.clone();
+				ClickTargetType::Path(_) | ClickTargetType::Instance { .. } => {
+					let mut path = target.path_in_layer().map(|path| path.into_owned()).unwrap_or_default();
 					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
 					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
@@ -3832,8 +3832,8 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
-		.flatten()
+		.filter_map(|target| target.path_in_layer().map(|path| path.into_owned()))
+		.flat_map(|path| path.segments().collect::<Vec<_>>())
 		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
 	BezPath::from_path_segments(segments)
 }

@@ -372,15 +372,15 @@ fn fill<'e>(
 #[node_macro::node(category(""))]
 fn fill_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	(element, content_appearance): (Graphic<'static>, Attr<AppearanceMarker>),
+	(element, content_appearance): (&Graphic<'static>, Attr<AppearanceMarker>),
 	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
 	_backup_color: IList<Color>,
 	_backup_gradient: IList<Gradient>,
 	_gradient_form: GradientForm,
 	_has_transform: bool,
 	_transform: DAffine2,
-) -> Result<(Graphic<'static>, Attr<'e, AppearanceMarker>), Interrupt> {
-	let bounds = match BoundingBox::bounding_box(&element, DAffine2::IDENTITY, false) {
+) -> Result<(ElToken, Attr<'e, AppearanceMarker>), Interrupt> {
+	let bounds = match BoundingBox::bounding_box(element, DAffine2::IDENTITY, false) {
 		RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		_ => None,
 	};
@@ -388,7 +388,7 @@ fn fill_graphic_leveled<'e>(
 	default_gradient_paint(&mut paint, bounds, _gradient_form, _has_transform.then_some(_transform));
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_fill(), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
-	Ok((element, Attr(Some(parked_appearance))))
+	Ok((ElToken, Attr(Some(parked_appearance))))
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
@@ -447,7 +447,7 @@ fn stroke<'e>(
 #[node_macro::node(category(""))]
 fn stroke_graphic_leveled<'e>(
 	ctx: impl Ctx + ExtractArena<'e> + ExtractIndex + InjectIndex + Copy,
-	(element, content_transform, content_appearance): (Graphic<'static>, Attr<TransformAttr>, Attr<AppearanceMarker>),
+	(_element, content_transform, content_appearance): (&Graphic<'static>, Attr<TransformAttr>, Attr<AppearanceMarker>),
 	#[default(Color::BLACK)] paint: IList<Graphic<'static>>,
 	#[unit(" px")]
 	#[default(2.)]
@@ -458,7 +458,7 @@ fn stroke_graphic_leveled<'e>(
 	#[default(4.)] miter_limit: f64,
 	dash_pattern: DashPattern,
 	#[unit(" px")] dash_offset: f64,
-) -> Result<(Graphic<'static>, Attr<TransformAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
+) -> Result<(ElToken, Attr<TransformAttr>, Attr<'e, AppearanceMarker>), Interrupt> {
 	let dash_lengths = dash_pattern.clamped_lengths();
 	let stroke = Stroke {
 		weight,
@@ -479,7 +479,7 @@ fn stroke_graphic_leveled<'e>(
 	// A below stroke is the chain running the stroke node before the fill, so the coverage appends above
 	let appearance = stamped_appearance(*content_appearance, Coverage::new_stroke(&coverage_stroke), &paint, CoverPlacement::Above);
 	let parked_appearance = park_appearance(ctx.arena(), appearance)?;
-	Ok((element, Attr(*content_transform), Attr(Some(parked_appearance))))
+	Ok((ElToken, Attr(*content_transform), Attr(Some(parked_appearance))))
 }
 
 pub use _fill_graphic_leveled_mod::fill_graphic_leveled_entries;
@@ -2183,6 +2183,7 @@ fn sample_polyline<'e, V: MapVectorContent + Clone + Send + Sync + CacheHash + '
 			point_domain: Default::default(),
 			segment_domain: Default::default(),
 			colinear_manipulators: Default::default(),
+			geometry_cell: Default::default(),
 		};
 		// Transfer the stroke transform from the input vector content to the result.
 

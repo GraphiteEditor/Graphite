@@ -41,8 +41,10 @@ fn intermediate_of<R: Render>(data: &R, render_params: &RenderParams) -> RenderI
 		RenderOutputTypeRequest::Svg => {
 			let mut render = SvgRender::new();
 
+			#[cfg(not(target_arch = "wasm32"))]
 			let started = std::time::Instant::now();
 			data.render_svg(&mut render, render_params);
+			#[cfg(not(target_arch = "wasm32"))]
 			core_types::record::note_render_nanos(started.elapsed().as_nanos() as u64);
 
 			RenderIntermediate {
@@ -96,11 +98,13 @@ fn render(
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
 			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
 
+			#[cfg(not(target_arch = "wasm32"))]
 			let started = std::time::Instant::now();
 			let mut render = SvgRender::from(data.as_ref());
 			render.wrap_with_transform(logical_transform, Some(logical_resolution));
 
 			let output = SvgRenderOutput::from(render);
+			#[cfg(not(target_arch = "wasm32"))]
 			core_types::record::note_render_nanos(started.elapsed().as_nanos() as u64);
 			assert!(output.svg_defs.is_empty());
 

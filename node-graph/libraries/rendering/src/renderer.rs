@@ -73,8 +73,32 @@ impl MaskType {
 	}
 }
 
+/// Derived geometry per parked vector for one render pass: a park never
+/// changes, so its address keys every lane that shares it, and the paths,
+/// path data and stroke bounds compute once per distinct vector.
+/// The renderer's view of the geometry carried on each vector: the cell on
+/// the parked value fills once and every lane sharing the park reads it, so
+/// the cache flows with the data across renders.
+#[derive(Clone, Debug, Default)]
+pub struct GeometryCache;
+
+impl GeometryCache {
+	pub fn geometry(&mut self, vector: &Vector) -> Arc<graphic_types::vector_types::vector::VectorGeometry> {
+		vector.geometry()
+	}
+
+	pub fn svg_path(&mut self, vector: &Vector) -> Arc<String> {
+		vector.geometry().svg_path_cached()
+	}
+
+	pub fn stroke_bounds(&mut self, vector: &Vector, stroke: Option<&graphic_types::vector_types::vector::style::Stroke>) -> Option<[DVec2; 2]> {
+		vector.geometry().stroke_bounds_cached(stroke)
+	}
+}
+
 /// Mutable state used whilst rendering to an SVG
 pub struct SvgRender {
+	pub geometry: GeometryCache,
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
@@ -86,6 +110,7 @@ impl SvgRender {
 	pub fn new() -> Self {
 		Self {
 			svg: Vec::default(),
+			geometry: GeometryCache::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
 			image_data: HashMap::new(),
@@ -178,6 +203,7 @@ pub struct SvgRenderOutput {
 impl From<&SvgRenderOutput> for SvgRender {
 	fn from(value: &SvgRenderOutput) -> Self {
 		Self {
+			geometry: GeometryCache::default(),
 			svg: vec![value.svg.clone().into()],
 			svg_defs: value.svg_defs.clone(),
 			transform: DAffine2::IDENTITY,
@@ -205,6 +231,7 @@ impl Default for SvgRender {
 
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
+	pub geometry: GeometryCache,
 	pub resource_overrides: Vec<(peniko::ImageBrush, Texture)>,
 }
 
@@ -886,7 +913,7 @@ fn collect_element_metadata<'a>(
 		Graphic::Group(group) => collect_group_metadata(group, reach, metadata, footprint, element_id),
 		Graphic::Segmented(stack) => {
 			for group in segmented_groups(stack) {
-				collect_group_metadata(&group, reach, metadata, footprint, element_id);
+				collect_group_metadata_composed(&group, reach, metadata, footprint, element_id, lane_transform);
 			}
 		}
 	}
@@ -1002,9 +1029,13 @@ fn render_group_vello<'a>(group: &'a Group, reach: PaintReach<'a>, scene: &mut S
 /// typed variant the conversion produced, so a caller's element id passes
 /// through to the typed body unchanged.
 fn collect_group_metadata<'a>(group: &'a Group, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
+	collect_group_metadata_composed(group, reach, metadata, footprint, element_id, DAffine2::IDENTITY)
+}
+
+fn collect_group_metadata_composed<'a>(group: &'a Group, reach: PaintReach<'a>, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, outer: DAffine2) {
 	let item = &group.content;
 	if let Some(run) = RunView::<Graphic>::new(item) {
-		collect_graphic_metadata_with(&run, reach, metadata, footprint, element_id)
+		collect_graphic_metadata_composed(&run, reach, metadata, footprint, element_id, outer)
 	} else if let Some(run) = RunView::<Vector>::new(item) {
 		collect_vector_metadata(&run, reach.appearance, metadata, footprint, element_id)
 	} else if let Some(run) = RunView::<Raster<CPU>>::new(item) {
@@ -1437,16 +1468,31 @@ fn collect_graphic_metadata_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(
 	footprint: Footprint,
 	element_id: Option<NodeId>,
 ) {
+	collect_graphic_metadata_composed(source, inherited, metadata, footprint, element_id, DAffine2::IDENTITY)
+}
+
+/// The walk under a stack lane: the lane's transform composes onto each of the
+/// stacked lanes, as the flat level would have carried it. `footprint` already
+/// includes it, so only the lane's own transform advances it.
+fn collect_graphic_metadata_composed<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(
+	source: &'a S,
+	inherited: PaintReach<'a>,
+	metadata: &mut RenderMetadata,
+	footprint: Footprint,
+	element_id: Option<NodeId>,
+	outer: DAffine2,
+) {
 	let paint_columns = PaintColumns::new(source);
 	for index in 0..source.lane_count() {
-		let item_transform: DAffine2 = source.attr::<Transform>(index);
+		let own_transform: DAffine2 = source.attr::<Transform>(index);
+		let item_transform = outer * own_transform;
 		let layer_path: &[NodeId] = source.attr::<EditorLayerPath>(index);
 		let layer = layer_path.last().copied();
 		let element = source.element(index).unwrap();
 		let reach = inherited.for_lane(&paint_columns, index);
 
 		let mut footprint = footprint;
-		footprint.transform *= item_transform;
+		footprint.transform *= own_transform;
 
 		if let Some(element_id) = layer {
 			collect_element_metadata(element, reach, item_transform, layer, metadata, footprint, Some(element_id));
@@ -1461,7 +1507,7 @@ fn collect_graphic_metadata_with<'a, 'e, S: LaneSource<Element = Graphic<'e>>>(
 		let mut all_upstream_outlines = Vec::new();
 
 		for index in 0..source.lane_count() {
-			let item_transform: DAffine2 = source.attr::<Transform>(index);
+			let item_transform: DAffine2 = outer * source.attr::<Transform>(index);
 			let element = source.element(index).unwrap();
 			let reach = inherited.for_lane(&paint_columns, index);
 
@@ -1587,19 +1633,17 @@ fn render_vector_item_svg<S: LaneSource<Element = Vector>>(source: &S, index: us
 	let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 	let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
 	let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-	let layer_bounds = vector.bounding_box().unwrap_or_default();
-	let transformed_bounds = vector.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
-	let stroke_layer_bounds = vector.stroke_inclusive_bounding_box_with_transform(DAffine2::IDENTITY, element_stroke).unwrap_or(layer_bounds);
+	let geometry = render.geometry.geometry(vector);
+	let layer_bounds = geometry.bounding_box().unwrap_or_default();
+	let stroke_layer_bounds = render.geometry.stroke_bounds(vector, element_stroke).unwrap_or(layer_bounds);
 
 	let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 	let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
-	let mut path = String::new();
-
-	for mut bezpath in vector.stroke_bezpath_iter() {
-		bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-		path.push_str(bezpath.to_svg().as_str());
-	}
+	let path = match applied_stroke_transform == DAffine2::IDENTITY {
+		true => (*render.geometry.svg_path(vector)).clone(),
+		false => geometry.svg_path(applied_stroke_transform),
+	};
 
 	let mask_type = if element_stroke.map(|x| x.align) == Some(StrokeAlign::Inside) {
 		MaskType::Clip
@@ -1613,7 +1657,7 @@ fn render_vector_item_svg<S: LaneSource<Element = Vector>>(source: &S, index: us
 	let stroke_graphic_list = resolved.stroke_paint.and_then(paint_cell_rows);
 	let stroke_graphic = stroke_graphic_list.and_then(|l| l.element(0));
 
-	let path_is_closed = vector.stroke_bezpath_iter().all(|path| matches!(path.elements().last(), Some(PathEl::ClosePath)));
+	let path_is_closed = geometry.closed;
 	let can_draw_aligned_stroke = path_is_closed
 		&& element_stroke.is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 		&& stroke_graphic.is_some_and(|graphic| !graphic.is_fully_transparent());
@@ -1685,6 +1729,8 @@ fn render_vector_item_svg<S: LaneSource<Element = Vector>>(source: &S, index: us
 			// `push_id` is only `Some` when `can_draw_aligned_stroke`, which is gated on `path_is_closed`
 			let (largest_scale, _) = singular_values(applied_stroke_transform);
 			let inflation = stroke.max_aabb_inflation(true) * largest_scale;
+			// The exact transformed bounds are only needed here, so they compute on demand.
+			let transformed_bounds = geometry.bounding_box_with_transform(applied_stroke_transform).unwrap_or_default();
 			let quad = Quad::from_box(transformed_bounds).inflate(inflation);
 			let (x, y) = quad.top_left().into();
 			let (width, height) = (quad.bottom_right() - quad.top_left()).into();
@@ -1862,10 +1908,11 @@ fn render_vector_item_vello<S: LaneSource<Element = Vector>>(
 			multiplied_transform
 		};
 	}
-	let layer_bounds = element.bounding_box().unwrap_or_default();
+	let geometry = context.geometry.geometry(element);
+	let layer_bounds = geometry.bounding_box().unwrap_or_default();
 
 	let mut path = kurbo::BezPath::new();
-	for mut bezpath in element.stroke_bezpath_iter() {
+	for mut bezpath in geometry.bezpaths.iter().cloned() {
 		bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 		for element in bezpath {
 			path.push(element);
@@ -2180,6 +2227,7 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(
 	footprint: Footprint,
 	caller_element_id: Option<NodeId>,
 ) {
+	let mut cache = GeometryCache::default();
 	// Aggregate all items' targets per element_id so multi-item lists (e.g. the "Text to Vector Glyphs" node) produce hit areas for every glyph.
 	// Targets are baked relative to the first item carrying each element_id, since that is the transform recorded as its `local_transforms` entry.
 	let mut reference_transforms: HashMap<NodeId, DAffine2> = HashMap::new();
@@ -2211,12 +2259,12 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(
 			let item_relative_transform = reference_inverse * transform;
 
 			let mut click_targets_unwrapped = Vec::new();
-			extend_targets_from_vector(&mut click_targets_unwrapped, &resolved, click_target_vector, item_relative_transform);
+			extend_targets_from_vector(&mut click_targets_unwrapped, &resolved, click_target_vector, item_relative_transform, &mut cache);
 			accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
 
 			// Outlines always use source geometry so the visual outline reflects actual letterforms
 			let mut outlines_unwrapped = Vec::new();
-			extend_targets_from_vector(&mut outlines_unwrapped, &resolved, element, item_relative_transform);
+			extend_targets_from_vector(&mut outlines_unwrapped, &resolved, element, item_relative_transform, &mut cache);
 			accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
 
 			// Source geometry (not the click-target override) so editing tools work on letterforms.
@@ -2266,6 +2314,7 @@ fn collect_vector_metadata<S: LaneSource<Element = Vector>>(
 }
 
 fn add_vector_upstream_click_targets<S: LaneSource<Element = Vector>>(source: &S, inherited_appearance: Option<&Appearance>, click_targets: &mut Vec<ClickTarget>) {
+	let mut cache = GeometryCache::default();
 	for index in 0..source.lane_count() {
 		let Some(element) = source.element(index) else { continue };
 		let transform: DAffine2 = source.attr::<Transform>(index);
@@ -2276,11 +2325,12 @@ fn add_vector_upstream_click_targets<S: LaneSource<Element = Vector>>(source: &S
 		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
 		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
-		extend_targets_from_vector(click_targets, &resolved, vector, transform);
+		extend_targets_from_vector(click_targets, &resolved, vector, transform, &mut cache);
 	}
 }
 
 fn add_vector_upstream_outline_targets<S: LaneSource<Element = Vector>>(source: &S, inherited_appearance: Option<&Appearance>, outlines: &mut Vec<ClickTarget>) {
+	let mut cache = GeometryCache::default();
 	// Source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms
 	for index in 0..source.lane_count() {
 		let Some(element) = source.element(index) else { continue };
@@ -2289,7 +2339,7 @@ fn add_vector_upstream_outline_targets<S: LaneSource<Element = Vector>>(source: 
 		let appearance = Appearance::cascade(source.attr::<AppearanceMarker>(index), inherited_appearance);
 		let resolved = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
-		extend_targets_from_vector(outlines, &resolved, element, transform);
+		extend_targets_from_vector(outlines, &resolved, element, transform, &mut cache);
 	}
 }
 
@@ -2323,11 +2373,11 @@ impl Render for List<Vector> {
 
 /// Build one combined `BezPath` (non-zero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
-fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, resolved: &graphic_types::appearance::FillAndStroke<'_>, geometry: &Vector, transform: DAffine2) {
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, resolved: &graphic_types::appearance::FillAndStroke<'_>, geometry: &Vector, transform: DAffine2, cache: &mut GeometryCache) {
 	let filled = resolved.fill_paint.and_then(paint_cell_rows).is_some();
 
-	let mut bezpaths: Vec<BezPath> = geometry.stroke_bezpath_iter().filter(|bezpath| !bezpath.elements().is_empty()).collect();
-	let all_contours_closed = bezpaths.iter().all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
+	let shared = cache.geometry(geometry);
+	let all_contours_closed = shared.bezpaths.iter().filter(|bezpath| !bezpath.elements().is_empty()).all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
@@ -2339,22 +2389,11 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, resolved: &graphic
 		}
 	});
 
-	if filled {
-		for bezpath in &mut bezpaths {
-			if !matches!(bezpath.elements().last(), Some(PathEl::ClosePath)) {
-				bezpath.close_path();
-			}
-		}
-	}
-
-	if !bezpaths.is_empty() {
-		let mut combined_path = BezPath::new();
-		for bezpath in bezpaths {
-			combined_path.extend(bezpath);
-		}
-
-		let mut click_target = ClickTarget::new_with_path(combined_path, stroke_width);
-		click_target.apply_transform(transform);
+	// The click path is shared with every other lane over this geometry; the
+	// target carries only its placement.
+	let click_path = shared.click_path(filled);
+	if !click_path.elements().is_empty() {
+		let click_target = ClickTarget::new_with_shared_path(click_path, shared.bounding_box(), transform, stroke_width);
 		targets.push(click_target);
 	}
 

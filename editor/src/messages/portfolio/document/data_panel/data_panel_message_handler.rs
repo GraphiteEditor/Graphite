@@ -553,6 +553,7 @@ impl TableItemLayout for Graphic<'_> {
 			Self::Gradient(list) => list.identifier(),
 			Self::Text(list) => list.identifier(),
 			Self::Group(_) => "Group".to_string(),
+			Self::Segmented(_) => "Stack".to_string(),
 		}
 	}
 	// Don't put a breadcrumb for Graphic
@@ -571,6 +572,7 @@ impl TableItemLayout for Graphic<'_> {
 			Self::Gradient(list) => list.layout_with_breadcrumb(data),
 			Self::Text(list) => list.layout_with_breadcrumb(data),
 			Self::Group(_) => Vec::new(),
+			Self::Segmented(_) => Vec::new(),
 		}
 	}
 }

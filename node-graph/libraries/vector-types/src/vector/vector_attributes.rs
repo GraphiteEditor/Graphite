@@ -896,11 +896,13 @@ impl Vector {
 	}
 
 	pub fn transform(&mut self, transform: DAffine2) {
+		self.geometry_cell = crate::vector::GeometryCell::default();
 		self.point_domain.transform(transform);
 		self.segment_domain.transform(transform);
 	}
 
 	pub fn vector_new_ids_from_hash(&mut self, node_id: u64) {
+		self.geometry_cell = crate::vector::GeometryCell::default();
 		let point_map = self.point_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
 		let segment_map = self.segment_domain.ids().iter().map(|&old| (old, old.generate_from_hash(node_id))).collect::<HashMap<_, _>>();
 
