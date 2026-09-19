@@ -19,6 +19,7 @@ import {
 	onContextMenu,
 	onPaste,
 	onPointerLockChange,
+	updateDirectInput,
 } from "/src/utility-functions/input";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -42,7 +43,7 @@ const listeners: Listener[] = [
 	{ target: window, eventName: "mousedown", action: (e: MouseEvent) => onMouseDown(e) },
 	{ target: window, eventName: "mouseup", action: (e: MouseEvent) => editorWrapper && onPotentialDoubleClick(e, editorWrapper) },
 	{ target: window, eventName: "wheel", action: (e: WheelEvent) => editorWrapper && onWheelScroll(e, editorWrapper), options: { passive: false } },
-	{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => onModifyInputField(e) },
+	{ target: window, eventName: "modifyinputfield", action: (e: CustomEvent) => editorWrapper && onModifyInputField(e, editorWrapper) },
 	{ target: window, eventName: "focusout", action: () => onFocusOut() },
 	{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 	{ target: window.document, eventName: "fullscreenchange", action: () => fullscreenModeChanged() },
@@ -78,6 +79,8 @@ export function createInputManager(subscriptions: SubscriptionsRouter, editor: E
 
 	// Add event bindings for the lifetime of the application
 	listeners.forEach(({ target, eventName, action, options }) => target.addEventListener(eventName, action, options));
+
+	updateDirectInput(editor);
 
 	// Focus the app container
 	const app = window.document.querySelector("[data-app-container]");

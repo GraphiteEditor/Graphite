@@ -3,7 +3,6 @@
 pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
-pub mod cubic_spline;
 pub mod fullscreen_vertex;
 
 /// required by shader macro
@@ -11,11 +10,11 @@ pub mod fullscreen_vertex;
 pub use raster_nodes_shaders::WGSL_SHADER;
 
 #[cfg(feature = "std")]
+pub mod color_lookup_table;
+#[cfg(feature = "std")]
 pub mod dehaze;
 #[cfg(feature = "std")]
 pub mod filter;
-#[cfg(feature = "std")]
-pub mod gradient_map;
 #[cfg(feature = "std")]
 pub mod image_color_palette;
 #[cfg(feature = "std")]

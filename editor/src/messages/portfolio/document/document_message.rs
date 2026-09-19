@@ -9,12 +9,10 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
-use glam::{DAffine2, IVec2};
+use glam::{DAffine2, IVec2, UVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Appearance;
-use graphene_std::Color;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::ClickTarget;
@@ -117,7 +115,8 @@ pub enum DocumentMessage {
 	},
 	InsertImage {
 		name: Option<String>,
-		image: Image<Color>,
+		data: Arc<[u8]>,
+		size: UVec2,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 		/// When true (file-open flow), place the image at the document origin so `WrapContentInArtboard`

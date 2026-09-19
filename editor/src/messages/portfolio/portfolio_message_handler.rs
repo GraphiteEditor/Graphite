@@ -15,7 +15,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document_migration::*;
 use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
-use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, ToolType};
@@ -24,8 +23,6 @@ use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
-use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,6 +58,7 @@ pub struct PortfolioMessageHandler {
 	pub(crate) active_document_id: Option<DocumentId>,
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
+	ingest: IngestMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -115,6 +113,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::Fonts(message) => {
 				let context = FontsMessageContext { resource_storage };
 				self.fonts.process_message(message, responses, context);
+			}
+			PortfolioMessage::Ingest(message) => {
+				let context = IngestMessageContext {
+					document_open: self.active_document().is_some(),
+				};
+				self.ingest.process_message(message, responses, context);
 			}
 
 			// Messages
@@ -504,6 +508,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						filters: vec![FileFilter {
 							name: "Graphite Document".into(),
 							extensions: vec![FILE_EXTENSION.into()],
+							mime_types: Vec::new(),
 						}],
 						content: serde_bytes::ByteBuf::from(content),
 					});
@@ -515,6 +520,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							filters: vec![FileFilter {
 								name: "Zip Archive".into(),
 								extensions: vec!["zip".into()],
+								mime_types: Vec::new(),
 							}],
 							content: serde_bytes::ByteBuf::from(zip_bytes),
 						}),
@@ -656,109 +662,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let next_id = self.document_ids[next_index];
 
 					responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
-				}
-			}
-			PortfolioMessage::Open => {
-				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerOpen {
-					filters: vec![
-						FileFilter {
-							name: "Graphite Document".into(),
-							extensions: vec![FILE_EXTENSION.into(), GDD_FILE_EXTENSION.into()],
-						},
-						FileFilter {
-							name: "Image".into(),
-							extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
-						},
-					],
-				});
-			}
-			PortfolioMessage::Import => {
-				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				// TODO: Also offer the Graphite document filter once importing Graphite documents as nodes is supported
-				responses.add(FrontendMessage::TriggerImport {
-					filters: vec![FileFilter {
-						name: "Image".into(),
-						extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
-					}],
-				});
-			}
-			PortfolioMessage::OpenFile { path, content } => {
-				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
-				match Self::read_file(&path, content) {
-					FileContent::Document(content) => {
-						let document_path = if path.is_absolute() { Some(path) } else { None };
-						responses.add(PortfolioMessage::OpenDocumentFile {
-							document_name: name,
-							document_path,
-							document_serialized_content: content,
-						});
-					}
-					FileContent::GddDocument(content) => {
-						let document_path = if path.is_absolute() { Some(path) } else { None };
-						responses.add(PortfolioMessage::OpenGddDocument {
-							document_name: name,
-							document_path,
-							content,
-						});
-					}
-					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::OpenSvg { name, svg });
-					}
-					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::OpenImage { name, image });
-					}
-					FileContent::Unsupported => {
-						// TODO: Show a more thoughtfully designed error message to the user
-						responses.add(DialogMessage::DisplayDialogError {
-							title: "Unsupported format".into(),
-							description: "This file cannot be opened because it is not a supported image file type.".into(),
-						})
-					}
-				}
-			}
-			PortfolioMessage::ImportFile { path, content } => {
-				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
-				match Self::read_file(&path, content) {
-					FileContent::Document(content) => {
-						// TODO: Consider importing a document as a node into the current document
-						// For now treat importing a document as opening it
-						responses.add(PortfolioMessage::OpenDocumentFile {
-							document_name: name,
-							document_path: Some(path),
-							document_serialized_content: content,
-						});
-					}
-					FileContent::GddDocument(content) => {
-						responses.add(PortfolioMessage::OpenGddDocument {
-							document_name: name,
-							document_path: Some(path),
-							content,
-						});
-					}
-					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::InsertSvg {
-							name,
-							svg,
-							mouse: None,
-							parent_and_insert_index: None,
-						});
-					}
-					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::InsertImage {
-							name,
-							image,
-							mouse: None,
-							parent_and_insert_index: None,
-						});
-					}
-					FileContent::Unsupported => {
-						// TODO: Show a more thoughtfully designed error message to the user
-						responses.add(DialogMessage::DisplayDialogError {
-							title: "Unsupported format".into(),
-							description: "This file cannot be imported because it is not a supported image file type.".into(),
-						})
-					}
 				}
 			}
 			PortfolioMessage::OpenDocumentFile {
@@ -993,89 +896,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					self.tick_autosave_load_progress(responses, false);
 				}
 			}
-			PortfolioMessage::OpenImage { name, image } => {
-				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
-				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or_default(),
-				});
-
-				responses.add(DocumentMessage::InsertImage {
-					name,
-					image,
-					mouse: None,
-					parent_and_insert_index: None,
-					place_at_origin: true,
-				});
-
-				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						DocumentMessage::WrapContentInArtboard {
-							place_artboard_at_origin: true,
-							artboard_canvas: None,
-						}
-						.into(),
-					],
-				});
-				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-				});
-			}
-			PortfolioMessage::OpenSvg { name, svg } => {
-				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or_default(),
-				});
-
-				// Parse the SVG to extract its declared canvas origin and dimensions from the viewBox attribute.
-				// This preserves the full canvas rather than measuring only the tighter rendered content bounding box.
-				let artboard_canvas = usvg::roxmltree::Document::parse(&svg)
-					.ok()
-					.and_then(|doc| {
-						let vb = doc.root_element().attribute("viewBox")?;
-						let nums: Vec<f64> = vb
-							.split(|c: char| c.is_ascii_whitespace() || c == ',')
-							.filter(|s| !s.is_empty())
-							.filter_map(|s| s.parse().ok())
-							.collect();
-						if nums.len() >= 4 {
-							Some((
-								glam::IVec2::new(nums[0].round() as i32, nums[1].round() as i32),
-								glam::IVec2::new(nums[2].round() as i32, nums[3].round() as i32),
-							))
-						} else {
-							None
-						}
-					})
-					.or_else(|| {
-						// Fall back to the viewport size when there is no viewBox attribute
-						usvg::Tree::from_str(&svg, &usvg::Options::default()).ok().map(|tree| {
-							let size = tree.size();
-							(glam::IVec2::ZERO, glam::IVec2::new(size.width().round() as i32, size.height().round() as i32))
-						})
-					});
-
-				responses.add(DocumentMessage::InsertSvg {
-					name,
-					svg,
-					mouse: None,
-					parent_and_insert_index: None,
-					place_at_origin: true,
-				});
-
-				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
-				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						DocumentMessage::WrapContentInArtboard {
-							place_artboard_at_origin: true,
-							artboard_canvas,
-						}
-						.into(),
-					],
-				});
-				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-				});
-			}
 			PortfolioMessage::CenterLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
 					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.size().into_dvec2()]); // In viewport pixel coordinates
@@ -1181,42 +1001,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::InsertImage {
-				name,
-				image,
-				mouse,
-				parent_and_insert_index,
-			} => {
-				if self.document_ids.is_empty() {
-					responses.add(PortfolioMessage::OpenImage { name, image });
-				} else {
-					responses.add(DocumentMessage::InsertImage {
-						name,
-						image,
-						mouse,
-						parent_and_insert_index,
-						place_at_origin: false,
-					});
-				}
-			}
-			PortfolioMessage::InsertSvg {
-				name,
-				svg,
-				mouse,
-				parent_and_insert_index,
-			} => {
-				if self.document_ids.is_empty() {
-					responses.add(PortfolioMessage::OpenSvg { name, svg });
-				} else {
-					responses.add(DocumentMessage::InsertSvg {
-						name,
-						svg,
-						mouse,
-						parent_and_insert_index,
-						place_at_origin: false,
-					});
-				}
-			}
 			PortfolioMessage::PrevDocument => {
 				if let Some(active_document_id) = self.active_document_id {
 					let len = self.document_ids.len();
@@ -1277,12 +1061,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							ShortcutLabel::new(action_shortcut!(DialogMessageDiscriminant::RequestNewDocumentDialog)).widget_instance(),
 						],
 						vec![
-							TextButton::new("Open Document")
-								.icon("Folder")
-								.flush(true)
-								.on_commit(|_| PortfolioMessage::Open.into())
-								.widget_instance(),
-							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::Open)).widget_instance(),
+							TextButton::new("Open Document").icon("Folder").flush(true).on_commit(|_| IngestMessage::Open.into()).widget_instance(),
+							ShortcutLabel::new(action_shortcut!(IngestMessageDiscriminant::Open)).widget_instance(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
@@ -1694,9 +1474,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			Open,
 			ToggleFocusDocument,
 		);
+		common.extend(actions!(IngestMessageDiscriminant; Open));
 
 		// Extend with actions that require an active document
 		if let Some(document) = self.active_document() {
@@ -1708,8 +1488,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				ToggleRulers,
 				NextDocument,
 				PrevDocument,
-				Import,
 			));
+			common.extend(actions!(IngestMessageDiscriminant; Import));
 		}
 
 		// Extend with actions that are disabled when focusing the document
@@ -1821,33 +1601,6 @@ impl PortfolioMessageHandler {
 			}
 		} else if failed {
 			responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
-		}
-	}
-
-	fn read_file(path: &PathBuf, content: Vec<u8>) -> FileContent {
-		let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_lowercase();
-		match extension.as_str() {
-			FILE_EXTENSION => match String::from_utf8(content) {
-				Ok(content) => FileContent::Document(content),
-				Err(_) => FileContent::Unsupported,
-			},
-			GDD_FILE_EXTENSION => FileContent::GddDocument(content),
-			"svg" => match String::from_utf8(content) {
-				Ok(content) => FileContent::Svg(content),
-				Err(_) => FileContent::Unsupported,
-			},
-			_ => {
-				let format = image::guess_format(&content).unwrap_or_else(|_| image::ImageFormat::from_path(path).unwrap_or(image::ImageFormat::Png));
-				match image::load_from_memory_with_format(&content, format) {
-					Ok(image) => {
-						// TODO: Handle Image formats with more than 8 bits per channel
-						let image_data = image.to_rgba8();
-						let image = Image::<Color>::from_image_data(image_data.as_raw(), image.width(), image.height());
-						FileContent::Image(image)
-					}
-					Err(_) => FileContent::Unsupported,
-				}
-			}
 		}
 	}
 

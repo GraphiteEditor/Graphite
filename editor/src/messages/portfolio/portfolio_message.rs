@@ -3,8 +3,6 @@ use super::persistent_state::PersistentStateMessage;
 use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
-use graphene_std::Color;
-use graphene_std::raster::Image;
 use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
@@ -16,6 +14,8 @@ pub enum PortfolioMessage {
 	Document(DocumentMessage),
 	#[child]
 	Fonts(FontsMessage),
+	#[child]
+	Ingest(IngestMessage),
 	#[child]
 	PersistentState(PersistentStateMessage),
 
@@ -88,16 +88,6 @@ pub enum PortfolioMessage {
 		name: String,
 	},
 	NextDocument,
-	Open,
-	Import,
-	OpenFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
 	OpenDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -137,26 +127,6 @@ pub enum PortfolioMessage {
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
-	},
-	OpenImage {
-		name: Option<String>,
-		image: Image<Color>,
-	},
-	OpenSvg {
-		name: Option<String>,
-		svg: String,
-	},
-	InsertImage {
-		name: Option<String>,
-		image: Image<Color>,
-		mouse: Option<(f64, f64)>,
-		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
-	},
-	InsertSvg {
-		name: Option<String>,
-		svg: String,
-		mouse: Option<(f64, f64)>,
-		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	CenterLayers {
 		layers: Vec<LayerNodeIdentifier>,

@@ -255,20 +255,34 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::SpectrumInput(spectrum_input) => {
+			Widget::SliderInput(slider_input) => {
 				let callback_message = match action {
-					WidgetValueAction::Commit => (spectrum_input.on_commit.callback)(&()),
+					WidgetValueAction::Commit => (slider_input.on_commit.callback)(&()),
 					WidgetValueAction::Update => {
-						let Ok(update) = serde_json::from_value::<SpectrumInputUpdate>(value) else {
-							warn!("SpectrumInput update was not able to be parsed as SpectrumInputUpdate");
+						let Ok(update) = serde_json::from_value::<SliderInputUpdate>(value) else {
+							warn!("SliderInput update was not able to be parsed as SliderInputUpdate");
 							return;
 						};
 						// Don't mutate the stored widget here: leaving its old values lets the layout diff detect a change
 						// when the new layout is rebuilt with the updated state. Otherwise the frontend's stored layout
 						// keeps stale values for `activeMarkerIndex`, etc., and any other widget's diff (e.g. the position
-						// NumberInput) will trigger Svelte to re-spread those stale props onto SpectrumInput, clobbering
+						// NumberInput) will trigger Svelte to re-spread those stale props onto SliderInput, clobbering
 						// its local `activeMarkerIndex` and making subsequent drags target the wrong stop.
-						(spectrum_input.on_update.callback)(&update)
+						(slider_input.on_update.callback)(&update)
+					}
+				};
+
+				responses.add(callback_message);
+			}
+			Widget::TransferCurveInput(curve_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (curve_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Ok(update) = serde_json::from_value::<TransferCurveInputUpdate>(value) else {
+							warn!("TransferCurveInput update was not able to be parsed as TransferCurveInputUpdate");
+							return;
+						};
+						(curve_input.on_update.callback)(&update)
 					}
 				};
 
@@ -532,22 +546,47 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 	for instance in layout.iter_mut() {
 		match &mut *instance.widget {
 			Widget::ColorInput(color_input) => {
-				color_input.chosen_gradient = color_input.value.to_css_background_image();
+				color_input.swatch_samples = match &color_input.value {
+					FillChoice::None => Vec::new(),
+					FillChoice::Solid(color) => vec![GradientSample::new(0., graphene_std::Color::from(*color))],
+					FillChoice::Gradient(ramp) => graphene_std::vector::style::Gradient::from(&ramp.stops)
+						.interpolated_samples_or_black(ramp.into())
+						.into_iter()
+						.map(|(position, color, _)| GradientSample::new(position, color))
+						.collect(),
+				};
 			}
-			Widget::SpectrumInput(spectrum_input) => {
+			Widget::TransferCurveInput(curve_input) => {
+				const SAMPLE_COUNT: usize = 128;
+				let curve = graphene_std::transfer_curve::TransferCurve::new(curve_input.points.iter().map(|&(x, y)| glam::DVec2::new(x, y)).collect());
+				let evaluator = curve.evaluator();
+				let [x_min, x_max] = curve_input.domain;
+				let [y_min, y_max] = curve_input.range;
+				let (x_span, y_span) = ((x_max - x_min).max(f64::EPSILON), (y_max - y_min).max(f64::EPSILON));
+				// A spline overshooting the range rides its edge as a flat line, as the clamped adjustment it depicts does
+				let clamp_to_range = curve_input.clamp_to_range;
+				curve_input.samples = (0..=SAMPLE_COUNT)
+					.map(|i| {
+						let t = i as f64 / SAMPLE_COUNT as f64;
+						let y = (evaluator.evaluate(x_min + t * x_span) - y_min) / y_span;
+						(t, if clamp_to_range { y.clamp(0., 1.) } else { y })
+					})
+					.collect();
+			}
+			Widget::SliderInput(slider_input) => {
 				// The track strip spans exactly 0 to 1, which no spread affects, so the widget carries no spread of its own
 				let settings = graphene_std::vector::style::GradientSettings {
 					spread: Default::default(),
-					cyclic: spectrum_input.track_cyclic,
-					space: spectrum_input.track_space,
-					hue_direction: spectrum_input.track_hue_direction,
-					interpolation: spectrum_input.track_interpolation,
+					cyclic: slider_input.track_cyclic,
+					space: slider_input.track_space,
+					hue_direction: slider_input.track_hue_direction,
+					interpolation: slider_input.track_interpolation,
 				};
-				let track_gradient = graphene_std::vector::style::Gradient::from(&spectrum_input.track);
-				spectrum_input.track_samples = track_gradient
+				let track_gradient = graphene_std::vector::style::Gradient::from(&slider_input.track);
+				slider_input.track_samples = track_gradient
 					.interpolated_samples_or_black(settings)
 					.into_iter()
-					.map(|(position, color, _)| SpectrumSample::new(position, color))
+					.map(|(position, color, _)| GradientSample::new(position, color))
 					.collect();
 				// The end caps sample the track's boundary colors, which a cyclic wrap makes the wrapped interval's boundary-crossing color rather than the outermost stops'
 				let track_evaluator = track_gradient.evaluator(settings);
@@ -555,8 +594,8 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 					let color = track_evaluator.evaluate(t);
 					SRGBA8::from(color).to_css_hex()
 				};
-				spectrum_input.track_start_css = cap(0.);
-				spectrum_input.track_end_css = cap(1.);
+				slider_input.track_start_css = cap(0.);
+				slider_input.track_end_css = cap(1.);
 			}
 			Widget::ColorComparisonInput(comparison) => {
 				let contrasting = |color: Option<SRGBA8>| color.map_or(SRGBA8::BLACK, |color| color.contrasting_text_color()).to_css_hex();

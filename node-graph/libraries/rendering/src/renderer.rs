@@ -22,7 +22,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster, Texture};
+use graphic_types::raster_types::{CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
@@ -130,9 +130,7 @@ fn composite_paint_over(over: Color, under: Color, blend_mode: BlendMode) -> Col
 		return Color::TRANSPARENT;
 	}
 
-	// The blend formulas read their backdrop premultiplied
-	let premultiplied_under = Color::from_rgbaf32_unchecked(under.r() * under_alpha, under.g() * under_alpha, under.b() * under_alpha, under_alpha);
-	let mixed = apply_blend_mode(over, premultiplied_under, blend_mode);
+	let mixed = apply_blend_mode(over, under, blend_mode);
 
 	// The mode only mixes where the backdrop has coverage, so its alpha interpolates each source channel from the raw color to the mixed color
 	let source_channel = |over_channel: f32, mixed_channel: f32| over_channel * (1. - under_alpha) + mixed_channel * under_alpha;
@@ -428,17 +426,8 @@ fn singular_values(transform: DAffine2) -> (f64, f64) {
 pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 	let Some(bg) = background else { return core_types::consts::LAYER_OUTLINE_STROKE_COLOR };
 
-	let alpha = bg.a();
-
-	// Un-premultiply, then encode to gamma sRGB to do the composite in display space.
-	let (gamma_r, gamma_g, gamma_b) = if alpha > f32::EPSILON {
-		let [r, g, b, _] = Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb_channels();
-		(r, g, b)
-	} else {
-		(0., 0., 0.)
-	};
-
-	// Composite over black in sRGB space (premultiplied by alpha), then decode to linear for the luminance test.
+	// Composite over black in gamma sRGB space, then decode to linear for the luminance test.
+	let [gamma_r, gamma_g, gamma_b, alpha] = bg.to_gamma_srgb_channels();
 	let composited = Color::from_gamma_srgb_channels(gamma_r * alpha, gamma_g * alpha, gamma_b * alpha, 1.);
 
 	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
@@ -2295,9 +2284,7 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	}
 
 	if render_params.to_canvas() {
-		let mut image_copy = image.clone();
-		image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
-		let id = *render.image_data.entry(CacheHashWrapper(image_copy.into_data())).or_insert_with(generate_uuid);
+		let id = *render.image_data.entry(CacheHashWrapper(image.clone().into_data())).or_insert_with(generate_uuid);
 
 		render.parent_tag(
 			"foreignObject",

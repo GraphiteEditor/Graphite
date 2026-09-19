@@ -416,11 +416,6 @@
 	export function setHighlighted(newHighlight: MenuListEntry | undefined) {
 		highlighted = newHighlight;
 
-		// Interactive menus should keep the active entry the same as the highlighted one
-		// if (interactive && newHighlight?.value !== activeEntry?.value && newHighlight) {
-		// 	dispatch("activeEntry", newHighlight);
-		// }
-
 		// Scroll into view
 		let container = scroller?.div?.();
 		if (!container || !highlighted) return;

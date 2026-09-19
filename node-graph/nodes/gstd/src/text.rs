@@ -38,6 +38,7 @@ fn text(
 	letter_spacing: Item<f64>,
 	/// The angle of faux italic slant applied to each glyph.
 	#[unit("°")]
+	#[range]
 	#[hard(-85..85)]
 	letter_tilt: Item<f64>,
 	/// Enables the maximum width constraint so lines can wrap.

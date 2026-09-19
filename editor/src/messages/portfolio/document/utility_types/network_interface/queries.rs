@@ -311,7 +311,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceId>) {
-		collect_network_resources(self.document_network(), target);
+		visit_network_resources(self.document_network(), &mut |id| {
+			target.insert(id);
+		});
+	}
+
+	pub fn collect_resources_use_counts(&self) -> HashMap<ResourceId, usize> {
+		let mut counts = HashMap::new();
+		visit_network_resources(self.document_network(), &mut |id| *counts.entry(id).or_insert(0) += 1);
+		counts
 	}
 
 	pub fn frontend_imports(&self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
@@ -839,6 +847,13 @@ impl NodeNetworkInterface {
 
 	pub fn is_visible(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.query(network_path, "is_visible", |view| view.is_visible(node_id)).unwrap_or_default()
+	}
+
+	/// Whether a layer in the document network is visible, which also requires every ancestor to be visible.
+	pub fn is_layer_visible(&self, layer: LayerNodeIdentifier) -> bool {
+		layer
+			.ancestors(self.document_metadata())
+			.all(|ancestor| ancestor == LayerNodeIdentifier::ROOT_PARENT || self.is_visible(&ancestor.to_node(), &[]))
 	}
 
 	pub fn is_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {

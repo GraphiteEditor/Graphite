@@ -6,10 +6,10 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, VectorModificationType};
+use std::sync::Arc;
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -141,7 +141,7 @@ pub enum GraphOperationMessage {
 	},
 	NewBitmapLayer {
 		id: NodeId,
-		image: Image<Color>,
+		data: Arc<[u8]>,
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},

@@ -79,6 +79,10 @@ mod editor_commands {
 		}
 	}
 
+	fn app_window_direct_input(enabled: bool) -> Message {
+		AppWindowMessage::DirectInput { enabled }.into()
+	}
+
 	/// Start Pointer Lock
 	fn app_window_pointer_lock() -> Message {
 		AppWindowMessage::PointerLock.into()
@@ -205,14 +209,6 @@ mod editor_commands {
 
 	fn new_document_dialog() -> Message {
 		DialogMessage::RequestNewDocumentDialog.into()
-	}
-
-	fn open_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::OpenFile { path: PathBuf::from(path), content }.into()
-	}
-
-	fn import_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::ImportFile { path: PathBuf::from(path), content }.into()
 	}
 
 	fn trigger_auto_save(document_id: u64) -> Message {
@@ -601,62 +597,40 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
+	/// A file headed for a known action, either picked in the dialog that `TriggerBrowse` opened or dropped onto a widget that takes files
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
+		IngestMessage::Ingest {
+			data,
+			action,
+			mime_type,
+			path: Some(PathBuf::from(name)),
+		}
+		.into()
+	}
+
+	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
+	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
+		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
+			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
+				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
+				insert_index,
+			},
+			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
+			(None, None) => IngestAction::Paste,
+		};
+		IngestMessage::Ingest {
+			data,
+			action,
+			mime_type,
+			path: name.map(PathBuf::from),
+		}
+		.into()
+	}
+
 	/// Paste from a serialized JSON representation
 	fn paste_text(data: String) -> Message {
 		ClipboardMessage::ReadClipboard {
 			content: ClipboardContentRaw::Text(data),
-		}
-		.into()
-	}
-
-	/// Pastes an image
-	fn paste_image(
-		name: Option<String>,
-		image_data: Vec<u8>,
-		width: u32,
-		height: u32,
-		mouse_x: Option<f64>,
-		mouse_y: Option<f64>,
-		insert_parent_id: Option<u64>,
-		insert_index: Option<usize>,
-	) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let image = graphene_std::raster::Image::from_image_data(&image_data, width, height);
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertImage {
-			name,
-			image,
-			mouse,
-			parent_and_insert_index,
-		}
-		.into()
-	}
-
-	/// Pastes an SVG given its string representation
-	fn paste_svg(name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertSvg {
-			name,
-			svg,
-			mouse,
-			parent_and_insert_index,
 		}
 		.into()
 	}
@@ -762,6 +736,7 @@ macro_rules! editor_proxy_types {
 }
 
 editor_proxy_types! {
+	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;

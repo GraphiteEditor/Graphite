@@ -5,11 +5,14 @@ pub mod document;
 pub mod document_migration;
 pub mod document_storage_io;
 pub mod fonts;
+pub mod ingest;
 pub mod persistent_state;
 pub mod utility_types;
 
 #[doc(inline)]
 pub use fonts::{FontsMessage, FontsMessageContext, FontsMessageHandler};
+#[doc(inline)]
+pub use ingest::{IngestMessage, IngestMessageContext, IngestMessageHandler};
 #[doc(inline)]
 pub use persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 #[doc(inline)]

@@ -1,12 +1,12 @@
 [package]
 name = "graphite-desktop"
-version = "0.1.0"
 description = "Graphite Desktop"
-authors = ["Graphite Authors <contact@graphite.art>"]
-license = "Apache-2.0"
-repository = ""
-edition = "2024"
-rust-version = "1.87"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "graphite"
@@ -49,7 +49,6 @@ clap = { workspace = true, features = ["derive"] }
 interprocess = "2.4.2"
 fd-lock = "4.0.4"
 ctrlc = "3.5.1"
-window_clipboard = "0.5"
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

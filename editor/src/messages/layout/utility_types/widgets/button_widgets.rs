@@ -193,11 +193,11 @@ pub struct ColorInput {
 	// Content
 	#[widget_builder(constructor)]
 	pub value: FillChoice<SRGBA8>,
-	/// CSS `linear-gradient(...)` (or solid-color stand-in) for the swatch's `background-image`. Auto-populated from `value` at layout-send time.
-	/// `None` when `value` is `FillChoice::<SRGBA8>::None`, in which case the frontend uses its "none" fallback styling.
-	#[serde(rename = "chosenGradient")]
+	/// Straight-alpha color samples drawn by the frontend as the stops of an SVG gradient filling the swatch. Auto-populated from `value` at layout-send time.
+	/// Empty when `value` is `FillChoice::<SRGBA8>::None`, in which case the frontend uses its "none" fallback styling.
+	#[serde(rename = "swatchSamples")]
 	#[widget_builder(skip)]
-	pub chosen_gradient: Option<String>,
+	pub swatch_samples: Vec<GradientSample>,
 	#[serde(rename = "allowNone")]
 	#[derivative(Default(value = "true"))]
 	pub allow_none: bool,

@@ -1,6 +1,6 @@
 use crate::messages::color_picker::color_picker_message::{HsvChannel, RgbChannel};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::layout::utility_types::widgets::input_widgets::{ColorPresetsInputUpdate, SpectrumInputUpdate, SpectrumMarker, VisualColorPickersInputUpdate};
+use crate::messages::layout::utility_types::widgets::input_widgets::{ColorPresetsInputUpdate, SliderInputUpdate, SliderMarker, VisualColorPickersInputUpdate};
 use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
@@ -377,10 +377,10 @@ impl ColorPickerMessageHandler {
 		});
 	}
 
-	/// Apply an incoming `SpectrumInput` intent to the gradient state and broadcast the result.
-	fn apply_gradient_update(&mut self, update: SpectrumInputUpdate, responses: &mut VecDeque<Message>) {
+	/// Apply an incoming `SliderInput` intent to the gradient state and broadcast the result.
+	fn apply_gradient_update(&mut self, update: SliderInputUpdate, responses: &mut VecDeque<Message>) {
 		// Active marker selection is the one update that doesn't mutate the gradient
-		if let SpectrumInputUpdate::ActiveMarker {
+		if let SliderInputUpdate::ActiveMarker {
 			active_marker_index,
 			active_marker_is_midpoint,
 		} = update
@@ -401,19 +401,19 @@ impl ColorPickerMessageHandler {
 		let Some(mut gradient) = self.gradient.clone() else { return };
 
 		match update {
-			SpectrumInputUpdate::MoveMarker { index, position } => {
+			SliderInputUpdate::MoveMarker { index, position } => {
 				let new_index = gradient.move_stop(index as usize, position, self.gradient_cyclic);
 				if Some(index) == self.active_marker_index {
 					self.active_marker_index = Some(new_index as u32);
 				}
 			}
-			SpectrumInputUpdate::MoveMidpoint { index, position } => {
+			SliderInputUpdate::MoveMidpoint { index, position } => {
 				if (index as usize) >= gradient.len() {
 					return;
 				}
 				gradient.set_midpoint(index as usize, position.clamp(MIN_MIDPOINT, MAX_MIDPOINT));
 			}
-			SpectrumInputUpdate::InsertMarker { position } => {
+			SliderInputUpdate::InsertMarker { position } => {
 				let new_index = gradient.insert_stop(position, self.gradient_settings());
 				self.active_marker_index = Some(new_index as u32);
 				self.active_marker_is_midpoint = false;
@@ -422,7 +422,7 @@ impl ColorPickerMessageHandler {
 					self.snapshot_old();
 				}
 			}
-			SpectrumInputUpdate::InsertDuplicate { index, position } => {
+			SliderInputUpdate::InsertDuplicate { index, position } => {
 				let source = index as usize;
 				let Some(insert_index) = gradient.duplicate_stop(source, position, self.gradient_cyclic) else {
 					return;
@@ -432,7 +432,7 @@ impl ColorPickerMessageHandler {
 				self.active_marker_index = Some(dragged_index as u32);
 				self.active_marker_is_midpoint = false;
 			}
-			SpectrumInputUpdate::RemoveDuplicate { index } => {
+			SliderInputUpdate::RemoveDuplicate { index } => {
 				let anchor = index as usize;
 				if anchor >= gradient.len() || gradient.len() <= 2 {
 					return;
@@ -449,7 +449,7 @@ impl ColorPickerMessageHandler {
 					self.active_marker_index = Some(active - 1);
 				}
 			}
-			SpectrumInputUpdate::DeleteMarker { index } => {
+			SliderInputUpdate::DeleteMarker { index } => {
 				// Enforce minimum stop count. The gradient editor needs at least 2 stops to remain meaningful.
 				if gradient.len() <= 2 || (index as usize) >= gradient.len() {
 					return;
@@ -463,10 +463,10 @@ impl ColorPickerMessageHandler {
 					self.snapshot_old();
 				}
 			}
-			SpectrumInputUpdate::ResetMidpoint { index } => {
+			SliderInputUpdate::ResetMidpoint { index } => {
 				gradient.reset_midpoint(index as usize);
 			}
-			SpectrumInputUpdate::ResetMarker { index } => {
+			SliderInputUpdate::ResetMarker { index } => {
 				let i = index as usize;
 				let count = gradient.len();
 				if i >= count {
@@ -483,7 +483,7 @@ impl ColorPickerMessageHandler {
 					self.active_marker_index = Some(new_index as u32);
 				}
 			}
-			SpectrumInputUpdate::ActiveMarker { .. } => unreachable!("handled above"),
+			SliderInputUpdate::ActiveMarker { .. } => unreachable!("handled above"),
 		}
 
 		responses.add(FrontendMessage::ColorPickerColorChanged {
@@ -514,10 +514,10 @@ impl ColorPickerMessageHandler {
 		if let Some(gradient) = &self.gradient {
 			// For gradient editing, the markers' handle colors mirror their gradient stop colors
 			let markers = (0..gradient.len())
-				.filter_map(|i| Some(SpectrumMarker::new(gradient.position(i, self.gradient_cyclic), gradient.midpoint(i), gradient.color(i)?)))
+				.filter_map(|i| Some(SliderMarker::new(gradient.position(i, self.gradient_cyclic), gradient.midpoint(i), gradient.color(i)?)))
 				.collect();
 			let mut row_widgets = vec![
-				SpectrumInput::new(GradientStops::from(gradient))
+				SliderInput::new(GradientStops::from(gradient))
 					.track_space(self.gradient_space)
 					.track_cyclic(self.gradient_cyclic)
 					.track_hue_direction(self.gradient_hue_direction)
@@ -529,8 +529,9 @@ impl ColorPickerMessageHandler {
 					.allow_insert(!self.disabled)
 					.allow_delete(!self.disabled)
 					.allow_reorder(true)
+					.allow_select(true)
 					.disabled(self.disabled)
-					.on_update(|update: &SpectrumInputUpdate| ColorPickerMessage::GradientUpdate { update: update.clone() }.into())
+					.on_update(|update: &SliderInputUpdate| ColorPickerMessage::GradientUpdate { update: update.clone() }.into())
 					.widget_instance(),
 			];
 
@@ -555,12 +556,12 @@ impl ColorPickerMessageHandler {
 								return Message::NoOp;
 							};
 							let update = if is_midpoint {
-								SpectrumInputUpdate::MoveMidpoint {
+								SliderInputUpdate::MoveMidpoint {
 									index: captured_index,
 									position: new_value / 100.,
 								}
 							} else {
-								SpectrumInputUpdate::MoveMarker {
+								SliderInputUpdate::MoveMarker {
 									index: captured_index,
 									position: new_value / 100.,
 								}

@@ -32,6 +32,7 @@ pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanel
 pub use crate::messages::portfolio::document::resource::{ResourceMessage, ResourceMessageContext, ResourceMessageDiscriminant, ResourceMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageContext, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::fonts::{FontsMessage, FontsMessageContext, FontsMessageDiscriminant, FontsMessageHandler};
+pub use crate::messages::portfolio::ingest::{IngestMessage, IngestMessageContext, IngestMessageDiscriminant, IngestMessageHandler};
 pub use crate::messages::portfolio::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageDiscriminant, PersistentStateMessageHandler};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageContext, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};

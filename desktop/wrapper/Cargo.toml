@@ -1,12 +1,12 @@
 [package]
 name = "graphite-desktop-wrapper"
-version = "0.1.0"
 description = "Graphite Desktop Wrapper"
-authors = ["Graphite Authors <contact@graphite.art>"]
-license = "Apache-2.0"
-repository = ""
-edition = "2024"
-rust-version = "1.87"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
 
 [features]
 gpu = ["graphite-editor/gpu", "graphene-std/shader-nodes"]

@@ -90,13 +90,6 @@ impl From<&GradientStops<SRGBA8>> for Gradient {
 	}
 }
 
-impl GradientStops<SRGBA8> {
-	/// CSS `background-image` value drawing the stops as an SVG data URI, keeping straight-alpha interpolation.
-	pub fn to_svg_background_image(&self, settings: GradientSettings) -> String {
-		Gradient::from(self).to_svg_background_image(settings)
-	}
-}
-
 /// The serialized exchange form of a gradient: its stops, with whole-ramp settings as sibling fields serialized
 /// only when non-default. The space is the exception: it always serializes, so its absence marks a ramp
 /// from before the field existed, which deserializes as the gamma those documents rendered with.
@@ -553,6 +546,14 @@ fn knot_channels<CS: color::ColorSpace>(knots: &[GradientStop], gradient_hue_dir
 	channels
 }
 
+/// The tangent a [`MonotonicSpline`] takes at its two outermost knots: the end secant itself, or half of it as the mean of
+/// that secant and the flat continuation beyond the end, so the curve settles into its ends instead of arriving at full slope.
+#[derive(Clone, Copy)]
+enum EndTangent {
+	Secant,
+	HalfSecant,
+}
+
 /// A Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) spline, preserving its samples' monotonicity:
 /// it passes through every sample and joins the pieces with matching slopes, while the Fritsch-Carlson
 /// limiter keeps each piece bounded by its own two samples, so the curve rises and falls only where its
@@ -566,7 +567,7 @@ struct MonotonicSpline {
 }
 
 impl MonotonicSpline {
-	fn new(position: Vec<f64>, value: Vec<f64>) -> Self {
+	fn new(position: Vec<f64>, value: Vec<f64>, end_tangent: EndTangent) -> Self {
 		let count = position.len();
 		if count < 2 {
 			let tangent = vec![0.; count];
@@ -580,15 +581,20 @@ impl MonotonicSpline {
 			})
 			.collect();
 
+		let end_scale = match end_tangent {
+			EndTangent::Secant => 1.,
+			EndTangent::HalfSecant => 0.5,
+		};
+
 		// A sign change or a flat run between neighboring secants pins that tangent to zero,
 		// which is what stops the curve from bulging past a local extreme
 		let mut tangent = Vec::with_capacity(count);
-		tangent.push(secant[0]);
+		tangent.push(secant[0] * end_scale);
 		for index in 1..count - 1 {
 			let (before, after) = (secant[index - 1], secant[index]);
 			tangent.push(if before * after <= 0. { 0. } else { (before + after) / 2. });
 		}
-		tangent.push(secant[count - 2]);
+		tangent.push(secant[count - 2] * end_scale);
 
 		// Fritsch-Carlson: pull any tangent pair back inside the radius-3 circle around their shared secant
 		for index in 0..count - 1 {
@@ -635,9 +641,10 @@ impl MonotonicSpline {
 	}
 }
 
-/// The Smooth path: a monoticity-preserving spline per color channel through every stop, traversed by a second such spline that
+/// The Smooth path: a monotonicity-preserving spline per color channel through every stop, traversed by a second such spline that
 /// maps ramp position to spline parameter. Fitting the stop and midpoint constraints into one global warp is what keeps the
 /// traversal rate continuous across stops, where independent per-interval curves (what Linear uses) would kink at each one.
+/// The color splines take [`EndTangent::HalfSecant`] at a ramp's real ends while the warp keeps the full secant, so the color eases but the traversal stays even.
 struct SmoothPath {
 	space: GradientSpace,
 	hue_index: Option<usize>,
@@ -677,7 +684,9 @@ impl SmoothPath {
 
 		let channels = with_space!(settings.space, knot_channels, &knots, settings.hue_direction);
 		let parameter: Vec<f64> = (0..knots.len()).map(|index| index as f64).collect();
-		let channel = std::array::from_fn(|component| MonotonicSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect()));
+		// Wrapped copies give the end stops neighbors on both sides, so only a ramp with real ends eases into them
+		let end_tangent = if settings.cyclic && wrapped_interval { EndTangent::Secant } else { EndTangent::HalfSecant };
+		let channel = std::array::from_fn(|component| MonotonicSpline::new(parameter.clone(), channels.iter().map(|values| values[component]).collect(), end_tangent));
 
 		// Each stop pins its own knot parameter and each midpoint the half-parameter between two,
 		// so one monotonic curve satisfies every midpoint constraint at once
@@ -700,7 +709,7 @@ impl SmoothPath {
 			space: settings.space,
 			hue_index: with_space!(settings.space, space_hue_index),
 			channel,
-			warp: MonotonicSpline::new(warp_position, warp_value),
+			warp: MonotonicSpline::new(warp_position, warp_value, EndTangent::Secant),
 		}
 	}
 
@@ -1424,28 +1433,6 @@ impl Gradient {
 		if samples.is_empty() { vec![(0., Color::BLACK, None)] } else { samples }
 	}
 
-	/// Build a CSS `background-image` value embedding the gradient as an SVG data URI, sampling the midpoint curves, color
-	/// space, and spline. SVG interpolates its stops with straight alpha, matching the canvas renderers, where a CSS
-	/// `linear-gradient` interpolates premultiplied and would hide the pull a transparent stop's RGB exerts on the render.
-	pub fn to_svg_background_image(&self, settings: GradientSettings) -> String {
-		use std::fmt::Write;
-
-		let mut stops = String::new();
-		for (position, color, _) in self.interpolated_samples_or_black(settings) {
-			let srgba = SRGBA8::from(color);
-			let _ = write!(stops, "<stop offset='{}' stop-color='#{}'", (position * 1e4).round() / 1e4, srgba.to_rgb_hex());
-			if srgba.alpha < 255 {
-				let _ = write!(stops, " stop-opacity='{}'", (color.a() as f64 * 1000.).round() / 1000.);
-			}
-			stops.push_str("/>");
-		}
-
-		// A sizeless SVG stretches to fill the CSS background area; the encoding covers the URI-hostile characters
-		let svg = format!("<svg xmlns='http://www.w3.org/2000/svg'><linearGradient id='g' x1='0' y1='0' x2='1' y2='0'>{stops}</linearGradient><rect width='100%' height='100%' fill='url(#g)'/></svg>");
-		let encoded = svg.replace('%', "%25").replace('#', "%23").replace('<', "%3C").replace('>', "%3E");
-		format!("url(\"data:image/svg+xml,{encoded}\")")
-	}
-
 	/// Produce a set of linearly-interpolated color samples that approximate the gradient's true curve.
 	///
 	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
@@ -1783,7 +1770,7 @@ pub enum GradientInterpolation {
 	/// Transitions straight from each stop to the next, turning a corner at every stop.
 	#[default]
 	Linear,
-	/// Transitions along a curve that flows through the stops without corners.
+	/// Transitions along a curve that flows through the stops without corners and settles gently into the two ends.
 	///
 	/// The rate of color change carries smoothly through each stop (C1 continuity) and never overshoots beyond the stop colors, properties of its spline: a Piecewise Cubic Hermite Interpolating Polynomial (PCHIP) with Fritsch-Carlson tangent limiting.
 	Smooth,
@@ -2217,6 +2204,24 @@ mod tests {
 	}
 
 	#[test]
+	fn smooth_eases_into_the_ends_of_an_open_ramp() {
+		let smooth = GradientSettings {
+			space: GradientSpace::RgbLinear,
+			interpolation: GradientInterpolation::Smooth,
+			..Default::default()
+		};
+
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+
+		// Half the end secant as the end tangent makes a two-stop ramp the cubic 0.5 t + 1.5 t^2 - t^3, which leaves
+		// and arrives at half speed and crosses the middle at the halfway color
+		for (t, expected) in [(0.25, 0.203125), (0.5, 0.5), (0.75, 0.796875)] {
+			let red = gradient.evaluate(t, smooth).r() as f64;
+			assert!((red - expected).abs() < 1e-4, "expected {expected} at {t}, got {red}");
+		}
+	}
+
+	#[test]
 	fn smooth_cyclic_stops_on_both_boundaries_keep_a_hard_seam() {
 		let open = GradientSettings {
 			space: GradientSpace::RgbLinear,
@@ -2347,26 +2352,6 @@ mod tests {
 				}
 			}
 		}
-	}
-
-	#[test]
-	fn svg_background_image_percent_encodes_and_keeps_straight_alpha_stops() {
-		let mut gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
-		gradient.set_color(1, Color::from_rgbaf32_unchecked(1., 1., 1., 0.5));
-
-		let image = gradient.to_svg_background_image(GradientSettings::default());
-
-		assert!(image.starts_with("url(\"data:image/svg+xml,"), "the value should be an SVG data URI: {image}");
-		assert!(image.contains("stop-opacity='0.5'"), "a transparent stop should emit its straight alpha: {image}");
-		assert!(!image.contains(['#', '<', '>']), "URI-hostile characters should be percent-encoded: {image}");
-	}
-
-	#[test]
-	fn svg_background_image_paints_a_stopless_gradient_black() {
-		let image = Gradient::from(Vec::new()).to_svg_background_image(GradientSettings::default());
-
-		// The hex color's `#` arrives percent-encoded
-		assert!(image.contains("stop-color='%23000000'"), "a gradient with no stops should paint black rather than nothing: {image}");
 	}
 
 	#[test]

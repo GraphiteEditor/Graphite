@@ -7,25 +7,27 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
+use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::resource::{DataSource, Resource, ResourceId};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::{Type, concrete};
+use graph_craft::{Type, concrete, item};
 use graphene_std::animation::RealTimeMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::{
-	BlendMode, CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, LuminanceCalculation, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
-	SelectiveColorChoice,
+	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
+	RelativeAbsolute, SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
@@ -177,6 +179,38 @@ pub(crate) struct NumberOptions {
 	pub slider: bool,
 }
 
+/// The values a range slider's two ends map to linearly and the one its double-click restores, if known.
+#[derive(Clone, Copy)]
+pub struct SliderRange {
+	pub min: f64,
+	pub max: f64,
+	pub default: Option<f64>,
+}
+
+impl SliderRange {
+	fn position(self, value: f64) -> f64 {
+		((value - self.min) / (self.max - self.min)).clamp(0., 1.)
+	}
+
+	fn value(self, position: f64) -> f64 {
+		(self.min + position * (self.max - self.min)).clamp(self.min, self.max)
+	}
+}
+
+/// The number a parameter's definition gives it by default, which a slider's double-click restores.
+fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> Option<f64> {
+	let identifier = parameter_widgets_info
+		.network_interface
+		.reference(&parameter_widgets_info.node_id, parameter_widgets_info.selection_network_path)?;
+	let input = resolve_document_node_type(&identifier)?.node_template.inputs.get(parameter_widgets_info.index)?;
+
+	match input.as_value()? {
+		TaggedValue::F64(value) => Some(*value),
+		TaggedValue::F32(value) => Some(*value as f64),
+		_ => None,
+	}
+}
+
 pub(crate) fn property_from_type(
 	node_id: NodeId,
 	index: usize,
@@ -225,6 +259,21 @@ pub(crate) fn property_from_type(
 			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
 	};
 
+	// A range-mode number clamped at both ends by its own hard bounds, or by a type whose extent is a true limit, becomes a range
+	// slider beside its number input, unless a soft bound lets typing pass the slider. An Angle's type default is no such limit.
+	let no_soft_bounds = soft_min.is_none() && soft_max.is_none();
+	let hard_both_ends = hard_min.is_some() && hard_max.is_some();
+	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput, type_limits: bool| -> LayoutGroup {
+		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && (hard_both_ends || type_limits);
+		match (number_input.min, number_input.max) {
+			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() && min < max => {
+				let default = definition_default_number(&default_info);
+				range_slider_widget(default_info, number_input.mode_increment(), SliderRange { min, max, default }).into()
+			}
+			_ => number_widget(default_info, number_input).into(),
+		}
+	};
+
 	let default_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
 
 	// A type with no widget can only be supplied through the graph, labeled with a placeholder row
@@ -250,13 +299,13 @@ pub(crate) fn property_from_type(
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, bounded(number_input.percentage(), 0., 100.)).into(),
-				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, bounded(number_input.percentage(), -100., 100.)).into(),
-				Some("Angle") | Some("AngleF32") => number_widget(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°"))).into(),
+				Some("Percentage") | Some("PercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), 0., 100.), true),
+				Some("SignedPercentage") | Some("SignedPercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), -100., 100.), true),
+				Some("Angle") | Some("AngleF32") => number_or_slider(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°")), false),
 				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
 				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("Fraction") => number_widget(default_info, bounded(number_input.mode_range(), 0., 1.)).into(),
+				Some("Fraction") => number_or_slider(default_info, bounded(number_input.mode_range(), 0., 1.), true),
 				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
 				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 				Some("SeedValue") => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
@@ -276,7 +325,7 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
 						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
 						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
@@ -289,9 +338,11 @@ pub(crate) fn property_from_type(
 						// STRUCT TYPES
 						// ============
 						Some(x) if id_is::<Font>(x) => font_widget(default_info),
+						Some(x) if id_is::<TransferCurve>(x) => transfer_curve_widget(default_info),
 						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
 						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
+						Some(x) if id_is::<Resource>(x) => resource_widget(default_info, Vec::new()).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
@@ -316,6 +367,9 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
+						Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
 						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
@@ -328,7 +382,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<LuminanceCalculation>(x) => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
 						Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
@@ -987,46 +1041,74 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 }
 
 /// `parameter_widgets_info` is for the f64 parameter. `bool_input_index` is the input index of the bool parameter for the checkbox.
-pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput) -> Vec<WidgetInstance> {
-	let ParameterWidgetsInfo {
-		document_node,
-		node_id,
-		index: number_input_index,
-		..
-	} = parameter_widgets_info;
+/// A number row gated by the bool input at `bool_input_index`, drawn as a checkbox in the assist slot after the label like the
+/// Opacity node's toggles, so the caller passes `blank_assist = false`. Given a `slider`, a range slider spanning it sits between them.
+pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput, slider: Option<SliderRange>) -> Vec<WidgetInstance> {
+	let node_id = parameter_widgets_info.node_id;
+	let enabled = parameter_widgets_info
+		.document_node
+		.and_then(|document_node| document_node.inputs.get(bool_input_index))
+		.and_then(|input| input.as_non_exposed_value())
+		.and_then(|value| if let TaggedValue::Bool(enabled) = value { Some(*enabled) } else { None });
+	let label_count = start_widgets(&parameter_widgets_info).len();
+	let exposed = parameter_widgets_info.is_exposed();
 
-	let mut widgets = start_widgets(&parameter_widgets_info);
+	let number_props = number_props.disabled(enabled == Some(false));
+	let mut widgets = match slider {
+		Some(slider) => range_slider_widget(parameter_widgets_info, number_props, slider),
+		None => number_widget(parameter_widgets_info, number_props),
+	};
 
-	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(number_input) = document_node.inputs.get(number_input_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	let Some(bool_input) = document_node.inputs.get(bool_input_index) else {
-		log::warn!("A widget failed to be built because its node's input index is invalid.");
-		return vec![];
-	};
-	if let (Some(&TaggedValue::Bool(enabled)), Some(&TaggedValue::F64(number))) = (bool_input.as_non_exposed_value(), number_input.as_non_exposed_value()) {
-		widgets.extend_from_slice(&[
+	if let Some(enabled) = enabled
+		&& !exposed
+	{
+		let checkbox = [
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			// The checkbox toggles if the value is Some or None
 			CheckboxInput::new(enabled)
 				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(number))
-				.on_update(update_value_at_index(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap_or_default()), node_id, number_input_index))
-				.disabled(!enabled)
-				.on_commit(commit_value)
-				.widget_instance(),
-		]);
+		];
+		widgets.splice(label_count..label_count, checkbox);
 	}
 
 	widgets
+}
+
+/// `parameter_widgets_info` is for the color parameter. `bool_input_index` is the input index of the bool parameter, drawn as a checkbox in front of the color.
+/// A color row gated by the bool input at `bool_input_index`, whose checkbox takes the assist slot after the label like the
+/// Opacity node's toggles, so the caller passes `blank_assist = false`. An exposed color shows neither, as in that node.
+pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, color_button: ColorInput) -> LayoutGroup {
+	let node_id = parameter_widgets_info.node_id;
+	let enabled = parameter_widgets_info
+		.document_node
+		.and_then(|document_node| document_node.inputs.get(bool_input_index))
+		.and_then(|input| input.as_non_exposed_value())
+		.and_then(|value| if let TaggedValue::Bool(enabled) = value { Some(*enabled) } else { None });
+	let label_count = start_widgets(&parameter_widgets_info).len();
+	let exposed = parameter_widgets_info.is_exposed();
+
+	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
+		return LayoutGroup::row(Vec::new());
+	};
+	if let Some(enabled) = enabled
+		&& !exposed
+	{
+		let checkbox = [
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			CheckboxInput::new(enabled)
+				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+		];
+		row.widgets.splice(label_count..label_count, checkbox);
+	}
+
+	LayoutGroup::Row(row)
 }
 
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
@@ -1165,9 +1247,153 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	LayoutGroup::row(widgets)
 }
 
+/// A [`TransferCurve`] input's row: the label, then the curve editor spanning the unit square when the input is not exposed.
+pub fn transfer_curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(NodeInput::Value { tagged_value, exposed: false }) = parameter_widgets_info.input() else {
+		return LayoutGroup::row(widgets);
+	};
+	let TaggedValue::TransferCurve(points) = &**tagged_value else { return LayoutGroup::row(widgets) };
+	let curve = TransferCurve::from(points.clone());
+
+	widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	widgets.push(
+		TransferCurveInput::new(curve.points().iter().map(|point| (point.x, point.y)).collect())
+			.domain([0., 1.])
+			.range([0., 1.])
+			.clamp_to_range(true)
+			.allow_insert(true)
+			.allow_delete(true)
+			.on_update(parameter_widgets_info.update_value(move |update: &TransferCurveInputUpdate| {
+				let mut curve = curve.clone();
+				match *update {
+					TransferCurveInputUpdate::MovePoint { index, x, y } => curve.move_point(index as usize, DVec2::new(x, y)),
+					TransferCurveInputUpdate::InsertPoint { x, y } => {
+						curve.insert_point(DVec2::new(x, y));
+					}
+					// A transfer curve keeps at least its two end points
+					TransferCurveInputUpdate::DeletePoint { index } if curve.points().len() > 2 => curve.remove_point(index as usize),
+					TransferCurveInputUpdate::DeletePoint { .. } => {}
+				}
+				TaggedValue::TransferCurve(curve.points().to_vec())
+			}))
+			.on_commit(commit_value)
+			.widget_instance(),
+	);
+
+	LayoutGroup::row(widgets)
+}
+
 pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
 	let (font_widgets, style_widgets) = font_inputs(parameter_widgets_info);
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
+}
+
+/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file matching the given filters, as dropping a file onto it also does.
+pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Vec<TypeFilter>) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let selected = match input.as_non_exposed_value() {
+		Some(TaggedValue::Resource(resource_id)) => Some(*resource_id),
+		Some(TaggedValue::TypeDefault(_)) => None,
+		_ => return widgets,
+	};
+
+	let ParameterWidgetsInfo {
+		document_id,
+		node_id,
+		index,
+		resources,
+		network_interface,
+		..
+	} = parameter_widgets_info;
+	let use_counts = network_interface.collect_resources_use_counts();
+
+	// Fonts are the only resources the registry tells apart, so a picker also lists the files of other types.
+	// TODO: Record each resource's data type so a picker lists only the files its input accepts.
+	let mut files: Vec<(ResourceId, String, String)> = resources
+		.registry
+		.resolved()
+		.filter(|info| !info.sources.iter().any(|source| matches!(source, DataSource::Font { .. })))
+		.map(|info| {
+			let hash = info.hash.map(|hash| hash.to_string()[..8].to_string()).unwrap_or_default();
+			let users = use_counts.get(&info.id).copied().unwrap_or(0);
+			let tooltip_description = match users {
+				0 => "Not used by any node input. This resource will be dropped upon document reload.".to_string(),
+				users => format!("Used by {users} node input{}.", if users == 1 { "" } else { "s" }),
+			};
+			let uses = match users {
+				0 => "unused".to_string(),
+				1 => "1 use".to_string(),
+				users => format!("{users} uses"),
+			};
+			(info.id, format!("{hash} · {uses}"), tooltip_description)
+		})
+		.collect();
+	files.sort();
+
+	// Entries assign only on click, since a hover preview leaves the replaced file unreferenced and garbage collected
+	let assign_on_click = |value: TaggedValue| {
+		move |_: &()| Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::SetInputValue {
+					node_id,
+					input_index: index,
+					value: value.clone().into(),
+				}
+				.into(),
+			]),
+		}
+	};
+	let file_drop_action = IngestAction::resource_input(document_id, node_id, index, &filters);
+
+	let none = MenuListEntry::new("none")
+		.label("None")
+		.tooltip_description("No resource assigned to this input.")
+		.on_update(|_| Message::NoOp)
+		.on_commit(assign_on_click(TaggedValue::TypeDefault(item!(Resource))));
+	let browse = MenuListEntry::new("browse")
+		.label("Browse…")
+		.tooltip_description("Pick a file from disk to use for this input.")
+		.on_update(|_| Message::NoOp)
+		.on_commit(move |_| {
+			IngestMessage::SetResourceInput {
+				document_id,
+				node_id,
+				input_index: index,
+				filters: filters.clone(),
+			}
+			.into()
+		});
+	let file_entries = files
+		.iter()
+		.map(|(resource_id, label, tooltip_description)| {
+			MenuListEntry::new(format!("{resource_id:?}"))
+				.label(label.clone())
+				.tooltip_description(tooltip_description.clone())
+				.on_update(|_| Message::NoOp)
+				.on_commit(assign_on_click(TaggedValue::Resource(*resource_id)))
+		})
+		.collect();
+	let selected_index = match selected {
+		None => Some(0),
+		Some(selected) => files.iter().position(|(resource_id, ..)| *resource_id == selected).map(|position| position as u32 + 2),
+	};
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		DropdownInput::new(vec![vec![none, browse], file_entries])
+			.selected_index(selected_index)
+			.file_drop_action(Some(file_drop_action))
+			.widget_instance(),
+	]);
+	widgets
 }
 
 pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
@@ -1228,12 +1454,12 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	})
 }
 
-/// 2-stop black-to-white gradient track for spectrum sliders that map a value to a grayscale axis.
+/// 2-stop black-to-white gradient track for sliders that map a value to a grayscale axis.
 fn bw_track() -> Gradient {
 	Gradient::from(vec![Color::BLACK, Color::WHITE])
 }
 
-/// 3-stop black-to-color-to-white gradient track for spectrum sliders that map a value to a hue's full luminance range.
+/// 3-stop black-to-color-to-white gradient track for sliders that map a value to a hue's full luminance range.
 fn color_track(color: Color) -> Gradient {
 	Gradient::from(vec![Color::BLACK, color, Color::WHITE])
 }
@@ -1245,14 +1471,13 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let use_classic_value = get_document_node(node_id, context)
 		.ok()
 		.and_then(|document_node| document_node.input(UseClassicInput).and_then(|input| input.as_value()))
-		.and_then(|tagged| if let TaggedValue::Bool(value) = tagged { Some(*value) } else { None });
-	let includes_use_classic = use_classic_value.is_some();
-	let use_classic_value = use_classic_value.unwrap_or(false);
+		.and_then(|tagged| if let TaggedValue::Bool(value) = tagged { Some(*value) } else { None })
+		.unwrap_or(false);
 
 	let brightness_min = if use_classic_value { -100. } else { -150. };
 	let brightness_max = if use_classic_value { 100. } else { 150. };
 
-	let brightness = spectrum_slider_row(
+	let brightness = gradient_slider_row(
 		node_id,
 		context,
 		BrightnessInput,
@@ -1268,7 +1493,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	let zero_position = -contrast_min / (100. - contrast_min);
 	let mut contrast_track = Gradient::from(vec![Color::MIDDLE_GRAY, Color::BLACK, Color::MIDDLE_GRAY]);
 	contrast_track.set_positions(&[0., zero_position, 1.]);
-	let contrast = spectrum_slider_row(
+	let contrast = gradient_slider_row(
 		node_id,
 		context,
 		ContrastInput,
@@ -1280,121 +1505,335 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 		NumberInput::default().mode_increment().unit("%").min(contrast_min).max(100.),
 	);
 
-	let mut layout = vec![brightness, contrast];
-	if includes_use_classic {
-		// TODO: When we no longer use this function in the temporary "Brightness/Contrast Classic" node, remove this conditional pushing and just always include this
-		let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput, true, context), CheckboxInput::default());
-		layout.push(LayoutGroup::row(use_classic));
+	let use_classic = bool_widget(ParameterWidgetsInfo::new(node_id, UseClassicInput, true, context), CheckboxInput::default());
+
+	let mut layout = vec![brightness, contrast, LayoutGroup::row(use_classic)];
+	if use_classic_value {
+		let number_input = NumberInput::default().mode_increment().min(0.).max(255.);
+		layout.push(gradient_slider_row(node_id, context, ClassicPivotInput, bw_track(), Color::WHITE, 0., 255., 127., number_input));
 	}
 
 	layout
+}
+
+pub(crate) fn transfer_curves_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::curves::*;
+
+	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
+	channel_info.exposable = false;
+	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).property_row();
+
+	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
+		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
+		_ => AdjustmentChannel::Rgb,
+	};
+	let curve_parameter: ParameterRef = match channel_value {
+		AdjustmentChannel::Rgb => CurveInput.into(),
+		AdjustmentChannel::Red => RedCurveInput.into(),
+		AdjustmentChannel::Green => GreenCurveInput.into(),
+		AdjustmentChannel::Blue => BlueCurveInput.into(),
+		AdjustmentChannel::Alpha => AlphaCurveInput.into(),
+	};
+	let transfer_curve = transfer_curve_widget(ParameterWidgetsInfo::new(node_id, curve_parameter, true, context));
+
+	vec![channel, transfer_curve]
 }
 
 pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::levels::*;
 
-	// (parameter, marker handle color, default percentage for double-click reset)
-	let input_range_params = [
-		(ShadowsInput.into(), Color::BLACK, 0.),
-		(MidtonesInput.into(), Color::MIDDLE_GRAY, 50.),
-		(HighlightsInput.into(), Color::WHITE, 100.),
-	];
-	let output_range_params = [(OutputMinimumsInput.into(), Color::BLACK, 0.), (OutputMaximumsInput.into(), Color::WHITE, 100.)];
+	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
+	channel_info.exposable = false;
+	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).property_row();
 
-	let mut layout = Vec::with_capacity(5);
-	build_shared_spectrum_section(node_id, context, &input_range_params, &mut layout);
-	build_shared_spectrum_section(node_id, context, &output_range_params, &mut layout);
+	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
+		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
+		_ => AdjustmentChannel::Rgb,
+	};
+	let [shadows, midtones, highlights, output_minimums, output_maximums]: [ParameterRef; 5] = match channel_value {
+		AdjustmentChannel::Rgb => [
+			ShadowsInput.into(),
+			MidtonesInput.into(),
+			HighlightsInput.into(),
+			OutputMinimumsInput.into(),
+			OutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Red => [
+			RedShadowsInput.into(),
+			RedMidtonesInput.into(),
+			RedHighlightsInput.into(),
+			RedOutputMinimumsInput.into(),
+			RedOutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Green => [
+			GreenShadowsInput.into(),
+			GreenMidtonesInput.into(),
+			GreenHighlightsInput.into(),
+			GreenOutputMinimumsInput.into(),
+			GreenOutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Blue => [
+			BlueShadowsInput.into(),
+			BlueMidtonesInput.into(),
+			BlueHighlightsInput.into(),
+			BlueOutputMinimumsInput.into(),
+			BlueOutputMaximumsInput.into(),
+		],
+		AdjustmentChannel::Alpha => [
+			AlphaShadowsInput.into(),
+			AlphaMidtonesInput.into(),
+			AlphaHighlightsInput.into(),
+			AlphaOutputMinimumsInput.into(),
+			AlphaOutputMaximumsInput.into(),
+		],
+	};
+
+	let input_range_params = [
+		SliderSectionParam::new(shadows, Color::BLACK, 0., MarkerScale::Percent),
+		SliderSectionParam::new(midtones, Color::MIDDLE_GRAY, 1., MarkerScale::Gamma).between_neighbors(),
+		SliderSectionParam::new(highlights, Color::WHITE, 100., MarkerScale::Percent),
+	];
+	let output_range_params = [
+		SliderSectionParam::new(output_minimums, Color::BLACK, 0., MarkerScale::Percent),
+		SliderSectionParam::new(output_maximums, Color::WHITE, 100., MarkerScale::Percent),
+	];
+
+	let mut layout = vec![channel];
+	build_shared_slider_section(node_id, context, &bw_track(), &input_range_params, &mut layout);
+	build_shared_slider_section(node_id, context, &bw_track(), &output_range_params, &mut layout);
 	layout
 }
 
-/// Append a section of related percentage parameters as rows: a shared black-to-white spectrum (with one marker per non-exposed parameter) sits on the first non-exposed row
+/// How a shared slider marker's value maps onto its track.
+#[derive(Clone, Copy)]
+enum MarkerScale {
+	/// A 0..100 percentage, placed linearly.
+	Percent,
+	/// A gamma of 0.01..9.99 running from 9.99 at the left to 0.01 at the right, logarithmic on each side of the 1 at its center.
+	Gamma,
+	/// A hue of 0..360 degrees, placed linearly on a track that wraps around.
+	Degrees,
+}
+
+impl MarkerScale {
+	fn position(self, value: f64) -> f64 {
+		match self {
+			Self::Percent => value / 100.,
+			Self::Gamma if value >= 1. => 0.5 - 0.5 * value.log10() / 9.99_f64.log10(),
+			Self::Gamma => 0.5 + 0.5 * value.log10() / 0.01_f64.log10(),
+			Self::Degrees => {
+				// A full turn stays at the far end, so only a value beyond one turn wraps
+				let turns = value / 360.;
+				if (0.0..=1.).contains(&turns) { turns } else { turns.rem_euclid(1.) }
+			}
+		}
+		.clamp(0., 1.)
+	}
+
+	fn value(self, position: f64) -> f64 {
+		match self {
+			Self::Percent => (position * 100.).clamp(0., 100.),
+			Self::Gamma if position <= 0.5 => 9.99_f64.powf(1. - 2. * position).clamp(1., 9.99),
+			Self::Gamma => 0.01_f64.powf(2. * position - 1.).clamp(0.01, 1.),
+			Self::Degrees => (position * 360.).clamp(0., 360.),
+		}
+	}
+
+	fn number_input(self) -> NumberInput {
+		match self {
+			Self::Percent => NumberInput::default().mode_increment().unit("%").min(0.).max(100.).display_decimal_places(0),
+			Self::Gamma => NumberInput::default().mode_increment().min(0.01).max(9.99).display_decimal_places(2),
+			Self::Degrees => NumberInput::default().mode_increment().unit("°").min(0.).max(360.).display_decimal_places(0),
+		}
+	}
+
+	/// Whether the track wraps around, so its markers may sit in any order.
+	fn cyclic(self) -> bool {
+		matches!(self, Self::Degrees)
+	}
+}
+
+/// One parameter of a shared slider section and how its marker sits on the track.
+struct SliderSectionParam {
+	parameter: ParameterRef,
+	handle_color: Color,
+	/// The value a double-click resets to.
+	default_value: f64,
+	scale: MarkerScale,
+	/// Whether the marker and the next parameter's marker form one split handle.
+	pair_with_next: bool,
+	/// Whether a dashed line joins the marker to the next parameter's marker.
+	dash_to_next: bool,
+	/// Whether the marker takes its scale position within the span between its neighbors rather than the whole track, following them as they move.
+	between_neighbors: bool,
+}
+
+impl SliderSectionParam {
+	fn new(parameter: impl Into<ParameterRef>, handle_color: Color, default_value: f64, scale: MarkerScale) -> Self {
+		Self {
+			parameter: parameter.into(),
+			handle_color,
+			default_value,
+			scale,
+			pair_with_next: false,
+			dash_to_next: false,
+			between_neighbors: false,
+		}
+	}
+
+	fn between_neighbors(mut self) -> Self {
+		self.between_neighbors = true;
+		self
+	}
+
+	fn pair_with_next(mut self) -> Self {
+		self.pair_with_next = true;
+		self
+	}
+
+	fn dash_to_next(mut self) -> Self {
+		self.dash_to_next = true;
+		self
+	}
+}
+
+/// Append a section of related parameters as rows: a shared slider over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
 /// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
 /// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
-fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesContext, params: &[(ParameterRef, Color, f64)], layout: &mut Vec<LayoutGroup>) {
+fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SliderSectionParam], layout: &mut Vec<LayoutGroup>) {
 	// Snapshot exposure and values before the mutable-borrow loop
 	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
 		Ok(document_node) => params
 			.iter()
-			.map(|(parameter, _, _)| {
-				let input = document_node.inputs.get(parameter.input_index);
+			.map(|param| {
+				let input = document_node.inputs.get(param.parameter.input_index);
 				let exposed = input.is_some_and(|input| input.is_exposed());
-				let percent = input
+				let value = input
 					.and_then(|input| input.as_value())
 					.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None })
 					.unwrap_or(0.);
-				(exposed, percent)
+				(exposed, value)
 			})
 			.collect(),
 		Err(err) => {
-			log::error!("Could not get document node in build_shared_spectrum_section: {err}");
+			log::error!("Could not get document node in build_shared_slider_section: {err}");
 			return;
 		}
 	};
 
-	// Build markers for all non-exposed params
+	// Build markers for all non-exposed params, linking one to the next only when both have markers
 	let mut marker_input_indices = Vec::new();
-	let mut marker_default_percents = Vec::new();
+	let mut marker_default_positions = Vec::new();
+	let mut marker_scales = Vec::new();
 	let mut marker_positions = Vec::new();
-	let mut handle_colors = Vec::new();
-	for (i, &(ref parameter, handle_color, default_percent)) in params.iter().enumerate() {
-		let (exposed, percent) = exposure_and_value[i];
+	let mut marker_between = Vec::new();
+	let mut marker_colors_and_links = Vec::new();
+	for (i, param) in params.iter().enumerate() {
+		let (exposed, value) = exposure_and_value[i];
 		if exposed {
 			continue;
 		}
-		marker_positions.push((percent / 100.).clamp(0., 1.));
-		marker_input_indices.push(parameter.input_index);
-		marker_default_percents.push(default_percent);
-		handle_colors.push(handle_color);
+		let next_has_marker = exposure_and_value.get(i + 1).is_some_and(|&(next_exposed, _)| !next_exposed);
+		marker_positions.push(param.scale.position(value));
+		marker_input_indices.push(param.parameter.input_index);
+		marker_default_positions.push(param.scale.position(param.default_value));
+		marker_scales.push(param.scale);
+		marker_between.push(param.between_neighbors);
+		marker_colors_and_links.push((param.handle_color, param.pair_with_next && next_has_marker, param.dash_to_next && next_has_marker));
 	}
 
-	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence
-	for i in 1..marker_positions.len() {
-		marker_positions[i] = marker_positions[i].max(marker_positions[i - 1]);
+	// Enforce non-decreasing order so markers never visually cross, matching the node's algorithm where shadows takes precedence.
+	// A marker placed between its neighbors bounds nothing here and instead takes its scale position within their settled span.
+	let cyclic = params.iter().any(|param| param.scale.cyclic());
+	if !cyclic {
+		let mut floor = 0.;
+		for (position, &between) in marker_positions.iter_mut().zip(&marker_between) {
+			if between {
+				continue;
+			}
+			*position = position.max(floor);
+			floor = *position;
+		}
+	}
+	for i in 0..marker_positions.len() {
+		if marker_between[i] {
+			let left = if i == 0 { 0. } else { marker_positions[i - 1] };
+			let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
+			marker_positions[i] = left + marker_positions[i] * (right - left);
+		}
 	}
 
-	let spectrum_markers: Vec<SpectrumMarker> = marker_positions
+	let slider_markers: Vec<SliderMarker> = marker_positions
 		.iter()
-		.zip(&handle_colors)
-		.map(|(&position, &handle_color)| SpectrumMarker::new(position, 0.5, handle_color))
+		.zip(&marker_colors_and_links)
+		.zip(&marker_between)
+		.map(|((&position, &(handle_color, paired, dashed)), &between)| {
+			let mut marker = SliderMarker::new(position, 0.5, handle_color);
+			if paired {
+				marker = marker.pair_with_next();
+			}
+			if dashed {
+				marker = marker.dash_to_next();
+			}
+			if between {
+				marker = marker.between_neighbors();
+			}
+			marker
+		})
 		.collect();
 
-	// Build the shared spectrum widget (placed on the first non-exposed row)
-	let spectrum_widget = (!spectrum_markers.is_empty()).then(|| {
-		SpectrumInput::new(GradientStops::from(&bw_track()))
+	// Build the shared slider widget (placed on the first non-exposed row)
+	let slider_widget = (!slider_markers.is_empty()).then(|| {
+		SliderInput::new(GradientStops::from(track))
 			.track_space(GradientSpace::RgbGamma)
-			.markers(spectrum_markers)
+			.markers(slider_markers)
 			.show_midpoints(false)
 			.allow_insert(false)
 			.allow_delete(false)
 			.allow_reorder(false)
+			.allow_wrap(cyclic)
 			.narrow(true)
 			.on_update({
 				let marker_input_indices = marker_input_indices.clone();
-				let marker_default_percents = marker_default_percents.clone();
+				let marker_default_positions = marker_default_positions.clone();
+				let marker_scales = marker_scales.clone();
 				let marker_positions = marker_positions.clone();
-				move |update: &SpectrumInputUpdate| {
-					let (input_index, percent) = match update {
-						SpectrumInputUpdate::MoveMarker { index, position } => match marker_input_indices.get(*index as usize) {
-							Some(&input_index) => (input_index, *position * 100.),
-							None => return Message::NoOp,
-						},
-						SpectrumInputUpdate::ResetMarker { index } => {
-							let i = *index as usize;
-							let Some(&input_index) = marker_input_indices.get(i) else { return Message::NoOp };
-							let Some(&default_percent) = marker_default_percents.get(i) else { return Message::NoOp };
-							// Falls back to midpoint between neighbors if the default would cross one
-							let left = if i == 0 { 0. } else { marker_positions[i - 1] };
-							let right = marker_positions.get(i + 1).copied().unwrap_or(1.);
-							let default_position = default_percent / 100.;
-							let new_position = if (left..=right).contains(&default_position) { default_position } else { (left + right) / 2. };
-							(input_index, new_position * 100.)
+				let marker_between = marker_between.clone();
+				move |update: &SliderInputUpdate| {
+					let i = match update {
+						SliderInputUpdate::MoveMarker { index, .. } | SliderInputUpdate::ResetMarker { index } => *index as usize,
+						_ => return Message::NoOp,
+					};
+					let (Some(&input_index), Some(&scale), Some(&between), Some(&default_position)) =
+						(marker_input_indices.get(i), marker_scales.get(i), marker_between.get(i), marker_default_positions.get(i))
+					else {
+						return Message::NoOp;
+					};
+
+					// The span the marker's scale maps onto: its neighbors' positions when placed between them, otherwise the track between the
+					// nearest markers that bound it, which a marker placed between its neighbors never does
+					let bounding = |j: usize| between || !marker_between[j];
+					let left = (0..i).rev().find(|&j| bounding(j)).map_or(0., |j| marker_positions[j]);
+					let right = (i + 1..marker_positions.len()).find(|&j| bounding(j)).map_or(1., |j| marker_positions[j]);
+
+					let scale_position = match update {
+						SliderInputUpdate::MoveMarker { position, .. } if between => {
+							let span = right - left;
+							if span <= f64::EPSILON {
+								return Message::NoOp;
+							}
+							((position - left) / span).clamp(0., 1.)
 						}
+						SliderInputUpdate::MoveMarker { position, .. } => *position,
+						// A default that would cross a neighbor falls back to the midpoint between them
+						SliderInputUpdate::ResetMarker { .. } if between || cyclic || (left..=right).contains(&default_position) => default_position,
+						SliderInputUpdate::ResetMarker { .. } => (left + right) / 2.,
 						_ => return Message::NoOp,
 					};
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(percent.clamp(0., 100.) as f32).into(),
+						value: TaggedValue::F32(scale.value(scale_position) as f32).into(),
 					}
 					.into()
 				}
@@ -1402,14 +1841,13 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			.on_commit(commit_value)
 			.widget_instance()
 	});
-	let spectrum_owner = marker_input_indices.first().copied();
+	let slider_owner = marker_input_indices.first().copied();
 
-	let number_input = NumberInput::default().mode_increment().unit("%").min(0.).max(100.);
-
-	// One row per parameter: first non-exposed carries the shared spectrum, others get just a number input
-	for (i, (parameter, _, _)) in params.iter().enumerate() {
+	// One row per parameter: first non-exposed carries the shared slider, others get just a number input
+	for (i, param) in params.iter().enumerate() {
 		let (exposed, current) = exposure_and_value[i];
-		let input_index = parameter.input_index;
+		let input_index = param.parameter.input_index;
+		let number_input = param.scale.number_input();
 
 		if exposed {
 			let row = number_widget(ParameterWidgetsInfo::at_index(node_id, input_index, true, context), number_input.clone());
@@ -1418,10 +1856,10 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 			let mut row = start_widgets(&ParameterWidgetsInfo::at_index(node_id, input_index, true, context));
 			row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
-			if Some(input_index) == spectrum_owner
-				&& let Some(spectrum) = &spectrum_widget
+			if Some(input_index) == slider_owner
+				&& let Some(slider) = &slider_widget
 			{
-				row.push(spectrum.clone());
+				row.push(slider.clone());
 				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			}
 
@@ -1431,7 +1869,6 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 					.value(Some(current))
 					.min_width(60)
 					.max_width(60)
-					.display_decimal_places(0)
 					.on_update(update_value_at_index(
 						move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
 						node_id,
@@ -1448,62 +1885,279 @@ fn build_shared_spectrum_section(node_id: NodeId, context: &mut NodePropertiesCo
 pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::hue_saturation::*;
 
-	// Current hue position on the rainbow track, used for the saturation track's right-end color
-	let current_hue_shift = get_document_node(node_id, context)
-		.ok()
-		.and_then(|document_node| document_node.input(HueShiftInput).and_then(|input| input.as_value()))
-		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value) } else { None })
-		.unwrap_or(0.);
-	// The rainbow has cyan at position 0.5 (hue_shift=0), so offset by +180 to align
-	let marker_hue = ((current_hue_shift + 180.) / 360.).rem_euclid(1.);
-	let saturated_current_hue = Color::from_hsva(marker_hue, 1., 1., 1.);
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in hue_saturation_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let colorize_value = matches!(document_node.input_value(ColorizeInput), Some(TaggedValue::Bool(true)));
+	let range_value = match document_node.input_value(RangeInput) {
+		Some(TaggedValue::HueSaturationRange(range)) => *range,
+		_ => HueSaturationRange::Master,
+	};
+	let f32_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
+		Some(TaggedValue::F32(value)) => *value,
+		_ => 0.,
+	};
 
-	// Hue: cyclic rainbow
+	// The three sliders of the master, of the colorize mode, or of the selected range
+	let (hue, saturation, lightness): (ParameterRef, ParameterRef, ParameterRef) = if colorize_value {
+		(ColorizeHueInput.into(), ColorizeSaturationInput.into(), ColorizeLightnessInput.into())
+	} else {
+		match range_value {
+			HueSaturationRange::Master => (HueInput.into(), SaturationInput.into(), LightnessInput.into()),
+			HueSaturationRange::Reds => (RedsHueInput.into(), RedsSaturationInput.into(), RedsLightnessInput.into()),
+			HueSaturationRange::Yellows => (YellowsHueInput.into(), YellowsSaturationInput.into(), YellowsLightnessInput.into()),
+			HueSaturationRange::Greens => (GreensHueInput.into(), GreensSaturationInput.into(), GreensLightnessInput.into()),
+			HueSaturationRange::Cyans => (CyansHueInput.into(), CyansSaturationInput.into(), CyansLightnessInput.into()),
+			HueSaturationRange::Blues => (BluesHueInput.into(), BluesSaturationInput.into(), BluesLightnessInput.into()),
+			HueSaturationRange::Magentas => (MagentasHueInput.into(), MagentasSaturationInput.into(), MagentasLightnessInput.into()),
+		}
+	};
+	let range_values: Option<[ParameterRef; 4]> = match range_value {
+		HueSaturationRange::Reds => Some([RedsFalloffStartInput.into(), RedsRangeStartInput.into(), RedsRangeEndInput.into(), RedsFalloffEndInput.into()]),
+		HueSaturationRange::Yellows => Some([
+			YellowsFalloffStartInput.into(),
+			YellowsRangeStartInput.into(),
+			YellowsRangeEndInput.into(),
+			YellowsFalloffEndInput.into(),
+		]),
+		HueSaturationRange::Greens => Some([GreensFalloffStartInput.into(), GreensRangeStartInput.into(), GreensRangeEndInput.into(), GreensFalloffEndInput.into()]),
+		HueSaturationRange::Cyans => Some([CyansFalloffStartInput.into(), CyansRangeStartInput.into(), CyansRangeEndInput.into(), CyansFalloffEndInput.into()]),
+		HueSaturationRange::Blues => Some([BluesFalloffStartInput.into(), BluesRangeStartInput.into(), BluesRangeEndInput.into(), BluesFalloffEndInput.into()]),
+		HueSaturationRange::Magentas => Some([
+			MagentasFalloffStartInput.into(),
+			MagentasRangeStartInput.into(),
+			MagentasRangeEndInput.into(),
+			MagentasFalloffEndInput.into(),
+		]),
+		HueSaturationRange::Master => None,
+	};
+
+	let range_defaults: Option<[f64; 4]> = match range_value {
+		HueSaturationRange::Reds => Some([315., 345., 15., 45.]),
+		HueSaturationRange::Yellows => Some([15., 45., 75., 105.]),
+		HueSaturationRange::Greens => Some([75., 105., 135., 165.]),
+		HueSaturationRange::Cyans => Some([135., 165., 195., 225.]),
+		HueSaturationRange::Blues => Some([195., 225., 255., 285.]),
+		HueSaturationRange::Magentas => Some([255., 285., 315., 345.]),
+		HueSaturationRange::Master => None,
+	};
+
+	// Every saturation track fades from one middle gray. Colorize and a range head for the hue they act on. The master track favors none,
+	// sweeping in OkLCh at the gray's lightness the long way from azure (220°) to magenta (330°), skipping the dull blue and purple, as chroma climbs to the gamut.
+	use color::ColorSpace as _;
+	let gray_lightness = 0.7;
+	let oklch = |lightness: f32, chroma: f32, hue: f32| {
+		let [r, g, b] = color::Oklch::to_linear_srgb([lightness, chroma, hue]);
+		Color::from_rgbf32_unchecked(r.clamp(0., 1.), g.clamp(0., 1.), b.clamp(0., 1.))
+	};
+	// Fades from the gray to the pure hue at `turns` with the chroma rising evenly while the lightness eases to the hue's own
+	let toward_hue = |turns: f32| {
+		let pure = Color::from_hsva(turns.rem_euclid(1.), 1., 1., 1.);
+		let [pure_lightness, pure_chroma, pure_hue] = color::Oklch::from_linear_srgb([pure.r(), pure.g(), pure.b()]);
+		let stops = 24;
+		let stop = |i: i32| {
+			let t = i as f32 / stops as f32;
+			oklch(gray_lightness + (pure_lightness - gray_lightness) * t, pure_chroma * t, pure_hue)
+		};
+		Gradient::from((0..=stops).map(stop).collect::<Vec<_>>())
+	};
+	let saturation_track = if colorize_value {
+		toward_hue(f32_value(&hue) / 360.)
+	} else if let Some([_, range_start, range_end, _]) = &range_values {
+		let (start, end) = (f32_value(range_start), f32_value(range_end));
+		let center = start + (end - start).rem_euclid(360.) / 2.;
+		toward_hue(center / 360.)
+	} else {
+		let in_gamut = |lightness: f32, chroma: f32, hue: f32| color::Oklch::to_linear_srgb([lightness, chroma, hue]).iter().all(|channel| (0.0..=1.).contains(channel));
+		let gamut_chroma = |lightness: f32, hue: f32| {
+			let (mut inside, mut outside) = (0., 0.4);
+			for _ in 0..16 {
+				let chroma = (inside + outside) / 2.;
+				if in_gamut(lightness, chroma, hue) {
+					inside = chroma;
+				} else {
+					outside = chroma;
+				}
+			}
+			inside
+		};
+		let stops = 80;
+		let stop = |i: i32| {
+			let t = i as f32 / stops as f32;
+			// A triangle wave gives every hue the same width, where a cosine would linger at its turnarounds
+			let bounce = (4. * t + 1.).rem_euclid(2.);
+			let along = if bounce <= 1. { bounce } else { 2. - bounce };
+			let hue = 330. + 250. * along;
+			oklch(gray_lightness, gamut_chroma(gray_lightness, hue) * t, hue)
+		};
+		Gradient::from((0..=stops).map(stop).collect::<Vec<_>>())
+	};
 	let hue_track = Gradient::from(vec![Color::RED, Color::YELLOW, Color::GREEN, Color::CYAN, Color::BLUE, Color::MAGENTA, Color::RED]);
-	// Saturation: gray to the fully saturated current hue
-	let saturation_track = Gradient::from(vec![Color::MIDDLE_GRAY, saturated_current_hue]);
-	// Lightness: black to white
-	let lightness_track = bw_track();
+	let (hue_min, hue_max, hue_default) = if colorize_value { (0., 360., 24.) } else { (-180., 180., 0.) };
+	let (saturation_min, saturation_default) = if colorize_value { (0., 25.) } else { (-100., 0.) };
 
-	vec![
-		spectrum_slider_row(
+	// Colorize replaces the ranges, so while it is on the selector stays but grayed out and the selected range's edges hide
+	let mut range_info = ParameterWidgetsInfo::new(node_id, RangeInput, true, context);
+	range_info.exposable = false;
+	let mut layout = vec![enum_choice::<HueSaturationRange>().for_socket(range_info).disabled(colorize_value).property_row()];
+
+	layout.extend([
+		gradient_slider_row(
 			node_id,
 			context,
-			HueShiftInput,
-			hue_track,
+			hue,
+			hue_track.clone(),
 			Color::WHITE,
-			-180.,
-			180.,
-			0.,
-			NumberInput::default().mode_increment().unit("°").min(-180.).max(180.),
+			hue_min,
+			hue_max,
+			hue_default,
+			NumberInput::default().mode_increment().unit("°").min(hue_min).max(hue_max),
 		),
-		spectrum_slider_row(
+		gradient_slider_row(
 			node_id,
 			context,
-			SaturationShiftInput,
+			saturation,
 			saturation_track,
 			Color::WHITE,
-			-100.,
+			saturation_min,
 			100.,
-			0.,
-			NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
+			saturation_default,
+			NumberInput::default().mode_increment().unit("%").min(saturation_min).max(100.),
 		),
-		spectrum_slider_row(
+		gradient_slider_row(
 			node_id,
 			context,
-			LightnessShiftInput,
-			lightness_track,
+			lightness,
+			bw_track(),
 			Color::WHITE,
 			-100.,
 			100.,
 			0.,
 			NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
 		),
-	]
+	]);
+
+	// The selected range's edges share one rainbow as two split handles, a falloff half joined to a range half, with the range dashed between them
+	if !colorize_value && let (Some(values), Some(defaults)) = (range_values, range_defaults) {
+		let [falloff_start, range_start, range_end, falloff_end] = values;
+		let params = [
+			SliderSectionParam::new(falloff_start, Color::WHITE, defaults[0], MarkerScale::Degrees).pair_with_next(),
+			SliderSectionParam::new(range_start, Color::WHITE, defaults[1], MarkerScale::Degrees).dash_to_next(),
+			SliderSectionParam::new(range_end, Color::WHITE, defaults[2], MarkerScale::Degrees).pair_with_next(),
+			SliderSectionParam::new(falloff_end, Color::WHITE, defaults[3], MarkerScale::Degrees),
+		];
+		build_shared_slider_section(node_id, context, &hue_track, &params, &mut layout);
+	}
+
+	let colorize = bool_widget(ParameterWidgetsInfo::new(node_id, ColorizeInput, true, context), CheckboxInput::default());
+	layout.push(LayoutGroup::row(colorize));
+
+	layout
 }
 
-/// Build a row with a single-marker `SpectrumInput` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
-fn spectrum_slider_row(
+/// A single-marker `SliderInput` over `track` driving the number at `input_index`: the marker sits at `position`, double-click
+/// returns it to `default_position`, and each move sets the input to `value_at` the new position.
+fn value_slider(
+	node_id: NodeId,
+	input_index: usize,
+	track: GradientStops<SRGBA8>,
+	handle_color: Color,
+	position: f64,
+	default_position: Option<f64>,
+	value_at: impl Fn(f64) -> TaggedValue + 'static + Send + Sync,
+) -> SliderInput {
+	SliderInput::new(track)
+		.track_space(GradientSpace::RgbGamma)
+		.markers(vec![SliderMarker::new(position, 0.5, handle_color)])
+		.show_midpoints(false)
+		.allow_insert(false)
+		.allow_delete(false)
+		.allow_reorder(false)
+		.on_update(move |update: &SliderInputUpdate| {
+			let new_position = match update {
+				SliderInputUpdate::MoveMarker { index: 0, position } => Some(*position),
+				SliderInputUpdate::ResetMarker { index: 0 } => default_position,
+				_ => None,
+			};
+			let Some(new_position) = new_position else { return Message::NoOp };
+
+			NodeGraphMessage::SetInputValue {
+				node_id,
+				input_index,
+				value: value_at(new_position).into(),
+			}
+			.into()
+		})
+		.on_commit(commit_value)
+}
+
+/// A row with a range slider and a 60px number input for the number at `parameter_widgets_info`. The slider's 0..1 position maps
+/// to the number through `position_of` and `value_at`, and double-click restores `default`.
+fn slider_row(
+	parameter_widgets_info: ParameterWidgetsInfo,
+	number_props: NumberInput,
+	default: Option<f64>,
+	position_of: impl Fn(f64) -> f64,
+	value_at: impl Fn(f64) -> f64 + 'static + Send + Sync,
+) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	// An exposed input shows only its label and source
+	let (current, tagged_value): (f64, fn(f64) -> TaggedValue) = match input.as_non_exposed_value() {
+		Some(&TaggedValue::F64(value)) => (value, TaggedValue::F64),
+		Some(&TaggedValue::F32(value)) => (value as f64, |value| TaggedValue::F32(value as f32)),
+		_ => return widgets,
+	};
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		value_slider(
+			node_id,
+			index,
+			GradientStops::default(),
+			Color::WHITE,
+			position_of(current),
+			default.map(position_of),
+			move |position| tagged_value(value_at(position)),
+		)
+		.range_slider(true)
+		.disabled(number_props.disabled)
+		.widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		number_props
+			.value(Some(current))
+			.min_width(60)
+			.max_width(60)
+			.on_update(update_value_at_index(move |x: &NumberInput| tagged_value(x.value.unwrap_or_default()), node_id, index))
+			.on_commit(commit_value)
+			.widget_instance(),
+	]);
+
+	widgets
+}
+
+/// A slider row running linearly across `slider`'s bounds.
+pub(crate) fn range_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput, slider: SliderRange) -> Vec<WidgetInstance> {
+	slider_row(
+		parameter_widgets_info,
+		number_props,
+		slider.default,
+		move |value| slider.position(value),
+		move |position| slider.value(position),
+	)
+}
+
+/// Build a row with a single-marker `SliderInput` over `track` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
+fn gradient_slider_row(
 	node_id: NodeId,
 	context: &mut NodePropertiesContext,
 	parameter: impl Into<ParameterRef>,
@@ -1523,39 +2177,28 @@ fn spectrum_slider_row(
 		.and_then(|input| input.as_non_exposed_value())
 		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None });
 
-	// Only add the spectrum and number widgets when the input is not exposed
+	// Only add the slider and number widgets when the input is not exposed
 	if let Some(current) = current {
-		let value_range = value_max - value_min;
-		let position = ((current - value_min) / value_range).clamp(0., 1.);
-		let default_position = ((default_value - value_min) / value_range).clamp(0., 1.);
+		let slider = SliderRange {
+			min: value_min,
+			max: value_max,
+			default: Some(default_value),
+		};
+		let value_at = move |position| TaggedValue::F32(slider.value(position) as f32);
 
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-
-		let position_to_value = move |position: f64| value_min + position * value_range;
 		row.push(
-			SpectrumInput::new(GradientStops::from(&track))
-				.track_space(GradientSpace::RgbGamma)
-				.markers(vec![SpectrumMarker::new(position, 0.5, handle_color)])
-				.show_midpoints(false)
-				.allow_insert(false)
-				.allow_delete(false)
-				.allow_reorder(false)
-				.narrow(true)
-				.on_update(move |update: &SpectrumInputUpdate| {
-					let new_position = match update {
-						SpectrumInputUpdate::MoveMarker { index: 0, position } => *position,
-						SpectrumInputUpdate::ResetMarker { index: 0 } => default_position,
-						_ => return Message::NoOp,
-					};
-					NodeGraphMessage::SetInputValue {
-						node_id,
-						input_index,
-						value: TaggedValue::F32(position_to_value(new_position).clamp(value_min, value_max) as f32).into(),
-					}
-					.into()
-				})
-				.on_commit(commit_value)
-				.widget_instance(),
+			value_slider(
+				node_id,
+				input_index,
+				GradientStops::from(&track),
+				handle_color,
+				slider.position(current),
+				Some(slider.position(default_value)),
+				value_at,
+			)
+			.narrow(true)
+			.widget_instance(),
 		);
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		row.push(
@@ -1580,17 +2223,13 @@ fn spectrum_slider_row(
 pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::threshold::*;
 
-	let params: &[(ParameterRef, Color, f64)] = &[(MinLuminanceInput.into(), Color::BLACK, 50.), (MaxLuminanceInput.into(), Color::WHITE, 100.)];
+	let params = [
+		SliderSectionParam::new(MinLuminanceInput, Color::WHITE, 50., MarkerScale::Percent).dash_to_next(),
+		SliderSectionParam::new(MaxLuminanceInput, Color::WHITE, 100., MarkerScale::Percent),
+	];
 
-	let mut layout = Vec::with_capacity(3);
-	build_shared_spectrum_section(node_id, context, params, &mut layout);
-
-	let luminance_calc = {
-		let mut info = ParameterWidgetsInfo::new(node_id, LuminanceCalcInput, true, context);
-		info.exposable = false;
-		enum_choice::<LuminanceCalculation>().for_socket(info).property_row()
-	};
-	layout.push(luminance_calc);
+	let mut layout = Vec::with_capacity(2);
+	build_shared_slider_section(node_id, context, &bw_track(), &params, &mut layout);
 
 	layout
 }
@@ -1598,18 +2237,61 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::vibrance::*;
 
-	let track = Gradient::from(vec![Color::MIDDLE_GRAY, Color::RED]);
-	vec![spectrum_slider_row(
-		node_id,
-		context,
-		VibranceInput,
-		track,
-		Color::WHITE,
-		-100.,
-		100.,
-		0.,
-		NumberInput::default().mode_increment().unit("%").min(-100.).max(100.),
-	)]
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
+	let slider = SliderRange {
+		min: -100.,
+		max: 100.,
+		default: Some(0.),
+	};
+	let vibrance = range_slider_widget(ParameterWidgetsInfo::new(node_id, VibranceInput, true, context), number_input.clone(), slider);
+	let saturation = range_slider_widget(ParameterWidgetsInfo::new(node_id, SaturationInput, true, context), number_input, slider);
+
+	vec![LayoutGroup::row(vibrance), LayoutGroup::row(saturation)]
+}
+
+pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::color_balance::*;
+
+	let mut tone_info = ParameterWidgetsInfo::new(node_id, ToneInput, true, context);
+	tone_info.exposable = false;
+	let tone = enum_choice::<TonalRange>().for_socket(tone_info).property_row();
+	let preserve_luminosity = bool_widget(ParameterWidgetsInfo::new(node_id, PreserveLuminosityInput, true, context), CheckboxInput::default());
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in color_balance_properties: {err}");
+			return Vec::new();
+		}
+	};
+	let tone_choice = match document_node.input_value(ToneInput) {
+		Some(TaggedValue::TonalRange(choice)) => *choice,
+		_ => {
+			warn!("Color Balance node properties panel could not be displayed.");
+			return vec![];
+		}
+	};
+
+	// Only the selected tone's three sliders are shown
+	let parameters: [ParameterRef; 3] = match tone_choice {
+		TonalRange::Shadows => [ShadowsCyanRedInput.into(), ShadowsMagentaGreenInput.into(), ShadowsYellowBlueInput.into()],
+		TonalRange::Midtones => [MidtonesCyanRedInput.into(), MidtonesMagentaGreenInput.into(), MidtonesYellowBlueInput.into()],
+		TonalRange::Highlights => [HighlightsCyanRedInput.into(), HighlightsMagentaGreenInput.into(), HighlightsYellowBlueInput.into()],
+	};
+	let tracks = [
+		Gradient::from(vec![Color::CYAN, Color::RED]),
+		Gradient::from(vec![Color::MAGENTA, Color::GREEN]),
+		Gradient::from(vec![Color::YELLOW, Color::BLUE]),
+	];
+	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
+
+	let mut layout = vec![tone];
+	for (parameter, track) in parameters.into_iter().zip(tracks) {
+		layout.push(gradient_slider_row(node_id, context, parameter, track, Color::WHITE, -100., 100., 0., number_input.clone()));
+	}
+	layout.push(LayoutGroup::row(preserve_luminosity));
+
+	layout
 }
 
 pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
@@ -1617,7 +2299,8 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 
 	let number_input = NumberInput::default().mode_increment().unit("%").min(-200.).max(300.);
 
-	let tint = color_widget(ParameterWidgetsInfo::new(node_id, TintInput, true, context), ColorInput::default());
+	let use_tint: ParameterRef = UseTintInput.into();
+	let tint = optional_color_widget(ParameterWidgetsInfo::new(node_id, TintInput, false, context), use_tint.input_index, ColorInput::default());
 
 	let mut layout = vec![tint];
 	let params: &[(ParameterRef, Color, f64)] = &[
@@ -1629,7 +2312,7 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 		(MagentasInput.into(), Color::MAGENTA, 80.),
 	];
 	for (parameter, color, default) in params {
-		layout.push(spectrum_slider_row(
+		layout.push(gradient_slider_row(
 			node_id,
 			context,
 			parameter.clone(),
@@ -1693,7 +2376,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		layout.push(output_channel);
 	}
 	for (i, (parameter, &default)) in parameters.into_iter().zip(defaults.iter()).enumerate() {
-		layout.push(spectrum_slider_row(
+		layout.push(gradient_slider_row(
 			node_id,
 			context,
 			parameter,
@@ -1754,7 +2437,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 
 	let mut layout = vec![colors];
 	for (i, parameter) in parameters.into_iter().enumerate() {
-		layout.push(spectrum_slider_row(node_id, context, parameter, tracks[i].clone(), Color::WHITE, -100., 100., 0., number_input.clone()));
+		layout.push(gradient_slider_row(node_id, context, parameter, tracks[i].clone(), Color::WHITE, -100., 100., 0., number_input.clone()));
 	}
 	layout.push(mode);
 
@@ -1913,11 +2596,31 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::exposure::*;
 
-	let exposure = number_widget(ParameterWidgetsInfo::new(node_id, ExposureInput, true, context), NumberInput::default().min(-20.).max(20.));
-	let offset = number_widget(ParameterWidgetsInfo::new(node_id, OffsetInput, true, context), NumberInput::default().min(-0.5).max(0.5));
-	let gamma_correction = number_widget(
+	let exposure = range_slider_widget(
+		ParameterWidgetsInfo::new(node_id, ExposureInput, true, context),
+		NumberInput::default().min(-20.).max(20.),
+		SliderRange {
+			min: -20.,
+			max: 20.,
+			default: Some(0.),
+		},
+	);
+	let offset = range_slider_widget(
+		ParameterWidgetsInfo::new(node_id, OffsetInput, true, context),
+		NumberInput::default().min(-0.5).max(0.5),
+		SliderRange {
+			min: -0.5,
+			max: 0.5,
+			default: Some(0.),
+		},
+	);
+
+	let gamma_correction = slider_row(
 		ParameterWidgetsInfo::new(node_id, GammaCorrectionInput, true, context),
-		NumberInput::default().min(0.01).max(9.99).increment_step(0.1),
+		MarkerScale::Gamma.number_input().increment_step(0.1),
+		Some(1.),
+		|gamma| MarkerScale::Gamma.position(gamma),
+		|position| MarkerScale::Gamma.value(position),
 	);
 
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
@@ -2748,6 +3451,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
+	document_id: DocumentId,
 	network_interface: &'a NodeNetworkInterface,
 	resources: &'a ResourceMessageHandler,
 	selection_network_path: &'a [NodeId],
@@ -2793,6 +3497,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
+			document_id: context.document_id,
 			network_interface: context.network_interface,
 			resources: context.resources,
 			selection_network_path: context.selection_network_path,

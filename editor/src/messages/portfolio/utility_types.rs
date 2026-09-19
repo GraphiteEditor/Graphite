@@ -1,6 +1,3 @@
-use graphene_std::Color;
-use graphene_std::raster::Image;
-
 /// Proportional share (0-1) for the document panel's side when splitting adjacent to non-document panels.
 const DOCUMENT_PANEL_SHARE: f64 = 0.8;
 /// Proportional share for each side when neither (or both) contain the document panel.
@@ -786,17 +783,4 @@ impl PanelLayoutSubdivision {
 			children.iter_mut().for_each(|child| child.subdivision.remove_group(target_id));
 		}
 	}
-}
-
-pub enum FileContent {
-	/// A legacy `.graphite` document (serialized runtime JSON).
-	Document(String),
-	/// A `.gdd` document container (archive bytes).
-	GddDocument(Vec<u8>),
-	/// A bitmap image.
-	Image(Image<Color>),
-	/// An SVG file string.
-	Svg(String),
-	/// Any other unsupported/unrecognized file type.
-	Unsupported,
 }

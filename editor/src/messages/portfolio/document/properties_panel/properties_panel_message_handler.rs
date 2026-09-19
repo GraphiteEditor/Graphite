@@ -9,6 +9,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 #[derive(ExtractField)]
 pub struct PropertiesPanelMessageContext<'a> {
 	pub executor: &'a mut NodeGraphExecutor,
+	pub document_id: DocumentId,
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub resources: &'a ResourceMessageHandler,
 	pub selection_network_path: &'a [NodeId],
@@ -26,6 +27,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 	fn process_message(&mut self, message: PropertiesPanelMessage, responses: &mut VecDeque<Message>, context: PropertiesPanelMessageContext) {
 		let PropertiesPanelMessageContext {
 			executor,
+			document_id,
 			network_interface,
 			resources,
 			selection_network_path,
@@ -51,6 +53,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 				let mut node_properties_context = NodePropertiesContext {
 					responses,
 					executor,
+					document_id,
 					network_interface,
 					resources,
 					selection_network_path,

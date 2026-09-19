@@ -84,7 +84,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
-			editor.openFile(data.filename, await response.bytes());
+			editor.ingestPicked(data.filename, "", await response.bytes(), "Open");
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
@@ -93,14 +93,10 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerOpen", async ({ filters }) => {
-		const files = await upload(acceptStringFromFilters(filters), "data", true);
-		files.forEach((file) => editor.openFile(file.filename, file.content));
-	});
-
-	subscriptions.subscribeFrontendMessage("TriggerImport", async ({ filters }) => {
-		const data = await upload(acceptStringFromFilters(filters), "data");
-		editor.importFile(data.filename, data.content);
+	subscriptions.subscribeFrontendMessage("TriggerBrowse", async ({ options, action }) => {
+		const accept = acceptStringFromFilters(options.filters);
+		const files = options.multiple ? await upload(accept, "data", true) : [await upload(accept, "data")];
+		files.forEach((file) => editor.ingestPicked(file.filename, file.type, file.content, action));
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
@@ -190,8 +186,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");
 	subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerOpen");
-	subscriptions.unsubscribeFrontendMessage("TriggerImport");
+	subscriptions.unsubscribeFrontendMessage("TriggerBrowse");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
