@@ -597,7 +597,7 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
-	/// A file picked in the dialog that `TriggerBrowse` opened
+	/// A file headed for a known action, either picked in the dialog that `TriggerBrowse` opened or dropped onto a widget that takes files
 	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
 		IngestMessage::Ingest {
 			data,

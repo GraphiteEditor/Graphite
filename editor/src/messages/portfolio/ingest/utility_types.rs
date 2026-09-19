@@ -39,6 +39,18 @@ pub enum IngestAction {
 	},
 }
 
+impl IngestAction {
+	/// Sends a file to a node's resource input, which takes only the types that its filters list.
+	pub fn resource_input(document_id: DocumentId, node_id: NodeId, input_index: usize, filters: &[TypeFilter]) -> Self {
+		Self::ResourceInput {
+			document_id,
+			node_id,
+			input_index: input_index as u32,
+			accepted_types: filters.iter().flat_map(|filter| filter.types.iter().copied()).collect(),
+		}
+	}
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DataType {
 	GraphiteLegacy,

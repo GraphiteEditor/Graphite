@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
-use crate::messages::portfolio::ingest::utility_types::TypeFilter;
+use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
@@ -1290,7 +1290,7 @@ pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup 
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 }
 
-/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file matching the given filters.
+/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file matching the given filters, as dropping a file onto it also does.
 pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Vec<TypeFilter>) -> Vec<WidgetInstance> {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
@@ -1351,6 +1351,8 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 			]),
 		}
 	};
+	let file_drop_action = IngestAction::resource_input(document_id, node_id, index, &filters);
+
 	let none = MenuListEntry::new("none")
 		.label("None")
 		.tooltip_description("No resource assigned to this input.")
@@ -1386,7 +1388,10 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 
 	widgets.extend_from_slice(&[
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-		DropdownInput::new(vec![vec![none, browse], file_entries]).selected_index(selected_index).widget_instance(),
+		DropdownInput::new(vec![vec![none, browse], file_entries])
+			.selected_index(selected_index)
+			.file_drop_action(Some(file_drop_action))
+			.widget_instance(),
 	]);
 	widgets
 }
