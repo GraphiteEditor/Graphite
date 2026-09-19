@@ -249,7 +249,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {
 					executor,
-					document_id,
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
@@ -798,13 +797,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::InsertImage {
 				name,
-				image,
+				data,
+				size,
 				mouse,
 				parent_and_insert_index,
 				place_at_origin,
 			} => {
 				let layer_parent = self.new_layer_parent(true);
-				let image_size = DVec2::new(image.width as f64, image.height as f64);
+				let image_size = size.as_dvec2();
 
 				let mut transform = if place_at_origin {
 					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
@@ -827,7 +827,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(image.resource_id, layer_node_id, layer_parent, responses);
+				let layer = graph_modification_utils::new_image_layer(data, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -1099,6 +1099,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						filters: vec![FileFilter {
 							name: "Graphite Document".into(),
 							extensions: vec![extension.into()],
+							mimes: Vec::new(),
 						}],
 						content: content.into(),
 					})

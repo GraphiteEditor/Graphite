@@ -24,7 +24,7 @@ use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Preferences};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
 use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -205,15 +205,15 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::OpenFileDialog { title, filters, multiple, context } => {
+			DesktopFrontendMessage::OpenFileDialog { title, options, action } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
-					for filter in filters {
+					for filter in options.filters {
 						dialog = dialog.add_filter(filter.name, &filter.extensions);
 					}
 
-					let handles = if multiple {
+					let handles = if options.multiple {
 						futures::executor::block_on(dialog.pick_files()).unwrap_or_default()
 					} else {
 						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
@@ -223,7 +223,7 @@ impl App {
 						let path = handle.path().to_path_buf();
 						match fs::read(&path) {
 							Ok(content) => {
-								let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
+								let message = DesktopWrapperMessage::IngestFile { path, content, action };
 								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 							}
 							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
@@ -520,7 +520,11 @@ impl App {
 					for path in paths {
 						tracing::info!("Opening file: {}", path.display());
 						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
+							let message = DesktopWrapperMessage::IngestFile {
+								path,
+								content,
+								action: IngestAction::Open,
+							};
 							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 						} else {
 							tracing::error!("Failed to read file: {}", path.display());
@@ -657,7 +661,11 @@ impl ApplicationHandler for App {
 					for path in paths {
 						match fs::read(&path) {
 							Ok(content) => {
-								let message = DesktopWrapperMessage::ImportFile { path, content };
+								let message = DesktopWrapperMessage::IngestFile {
+									path,
+									content,
+									action: IngestAction::Import,
+								};
 								self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 							}
 							Err(e) => {

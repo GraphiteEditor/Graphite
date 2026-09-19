@@ -20,12 +20,11 @@ mod editor_commands {
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-	use editor::messages::portfolio::resource_upload::utility_types::UploadTarget;
+	use editor::messages::portfolio::ingest::utility_types::TypeHint;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 	use graph_craft::document::NodeId;
-	use graphene_std::raster::Image;
 	use graphene_std::raster::color::Color;
 	use graphene_std::vector::style::FillChoice;
 	use std::path::PathBuf;
@@ -211,14 +210,6 @@ mod editor_commands {
 
 	fn new_document_dialog() -> Message {
 		DialogMessage::RequestNewDocumentDialog.into()
-	}
-
-	fn open_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::OpenFile { path: PathBuf::from(path), content }.into()
-	}
-
-	fn import_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::ImportFile { path: PathBuf::from(path), content }.into()
 	}
 
 	fn trigger_auto_save(document_id: u64) -> Message {
@@ -607,86 +598,40 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
+	/// A file picked in the dialog that `TriggerBrowse` opened
+	fn ingest_picked(name: String, mime: String, data: Vec<u8>, action: IngestAction) -> Message {
+		IngestMessage::Ingest {
+			data: data.into(),
+			action,
+			hint: TypeHint::new(&mime, &name),
+			path: Some(PathBuf::from(name)),
+		}
+		.into()
+	}
+
+	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
+	fn ingest_file(name: Option<String>, mime: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
+		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
+			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
+				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
+				insert_index,
+			},
+			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
+			(None, None) => IngestAction::Paste,
+		};
+		IngestMessage::Ingest {
+			data: data.into(),
+			action,
+			hint: TypeHint::new(&mime, name.as_deref().unwrap_or_default()),
+			path: name.map(PathBuf::from),
+		}
+		.into()
+	}
+
 	/// Paste from a serialized JSON representation
 	fn paste_text(data: String) -> Message {
 		ClipboardMessage::ReadClipboard {
 			content: ClipboardContentRaw::Text(data),
-		}
-		.into()
-	}
-
-	/// Pastes decoded RGBA8 pixels as an image layer, encoded as PNG for storage
-	fn paste_image(
-		name: Option<String>,
-		image_data: Vec<u8>,
-		width: u32,
-		height: u32,
-		mouse_x: Option<f64>,
-		mouse_y: Option<f64>,
-		insert_parent_id: Option<u64>,
-		insert_index: Option<usize>,
-	) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let data = Image::from_image_data(&image_data, width, height).to_png();
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		ResourceUploadMessage::Upload {
-			name,
-			data: data.into(),
-			target: UploadTarget::Layer { mouse, parent_and_insert_index },
-		}
-		.into()
-	}
-
-	/// Pastes an image file as an image layer, keeping its original encoding
-	fn paste_image_file(name: Option<String>, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		ResourceUploadMessage::Upload {
-			name,
-			data: data.into(),
-			target: UploadTarget::Layer { mouse, parent_and_insert_index },
-		}
-		.into()
-	}
-
-	/// Hands the file picked for a requested resource upload to the editor
-	fn upload_resource(name: String, data: Vec<u8>) -> Message {
-		ResourceUploadMessage::ReceiveUpload { name: Some(name), data: data.into() }.into()
-	}
-
-	/// Pastes an SVG given its string representation
-	fn paste_svg(name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertSvg {
-			name,
-			svg,
-			mouse,
-			parent_and_insert_index,
 		}
 		.into()
 	}
@@ -792,6 +737,7 @@ macro_rules! editor_proxy_types {
 }
 
 editor_proxy_types! {
+	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;

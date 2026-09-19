@@ -51,15 +51,6 @@ export async function rasterizeSVG(svg: string, width: number, height: number, m
 	return blob;
 }
 
-/// Convert an image source (e.g. PNG document) into pixel data, a width, and a height
-export async function extractPixelData(imageData: ImageBitmapSource): Promise<ImageData> {
-	const canvasContext = await imageToCanvasContext(imageData);
-	const width = canvasContext.canvas.width;
-	const height = canvasContext.canvas.height;
-
-	return canvasContext.getImageData(0, 0, width, height);
-}
-
 export async function imageToCanvasContext(imageData: ImageBitmapSource): Promise<CanvasRenderingContext2D> {
 	// Special handling to rasterize an SVG file
 	let svgImageData;

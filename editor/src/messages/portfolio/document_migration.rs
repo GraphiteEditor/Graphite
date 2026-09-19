@@ -10,7 +10,7 @@ use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
-use graph_craft::{Type, item, list};
+use graph_craft::{Type, concrete, item, list};
 use graphene_std::Color;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
@@ -2877,6 +2877,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// A `Resource` input disconnected before `Resource` became an item-ranked type default stored the bare `TypeDefault(Resource)`, which no longer unwraps to an `Item<Resource>` default
+	if let Some(current_node) = document.network_interface.document_node(node_id, network_path) {
+		let bare_resource_inputs: Vec<(usize, bool)> = current_node
+			.inputs
+			.iter()
+			.enumerate()
+			.filter_map(|(index, input)| match input {
+				NodeInput::Value { tagged_value, exposed } if matches!(&**tagged_value, TaggedValue::TypeDefault(stored_type) if *stored_type == concrete!(Resource)) => Some((index, *exposed)),
+				_ => None,
+			})
+			.collect();
+		for (index, exposed) in bare_resource_inputs {
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, index), NodeInput::type_default(item!(Resource), exposed), network_path);
+		}
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
@@ -3137,29 +3155,51 @@ mod tests {
 		for legacy_input in legacy_inputs {
 			let image_id = NodeId(1);
 			let mut document = DocumentMessageHandler::default();
-			let image_template = |inputs| NodeTemplate {
+			let image_template = NodeTemplate {
 				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
-				inputs,
+				inputs: vec![NodeInput::value(TaggedValue::None, false)],
 				..Default::default()
 			};
-			document.network_interface.insert_node(upstream_id, image_template(vec![]), &[]);
-			document.network_interface.insert_node(image_id, image_template(vec![NodeInput::value(TaggedValue::None, false)]), &[]);
+			document.network_interface.insert_node(upstream_id, NodeTemplate::default(), &[]);
+			document.network_interface.insert_node(image_id, image_template, &[]);
 			document.network_interface.set_input(&InputConnector::node_at_index(image_id, 0), legacy_input.clone(), &[]);
 
 			document_migration_upgrades(&mut document, false);
 
 			let image_node = &document.network_interface.document_network().nodes[&image_id];
 			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
-			match (&legacy_input, &image_node.inputs[1]) {
-				(NodeInput::Node { .. }, migrated) => assert_eq!(migrated.as_node(), Some(upstream_id), "the wire should sit at input 1"),
-				(_, migrated) => {
+			let migrated = &image_node.inputs[1];
+			match legacy_input.as_value() {
+				None => assert_eq!(migrated.as_node(), Some(upstream_id), "the wire should sit at input 1"),
+				Some(legacy_value) => {
 					let Some(TaggedValue::Resource(stored)) = migrated.as_value() else {
 						panic!("the file should sit at input 1")
 					};
-					assert!(document.resources.registry.contains(stored) || *stored == resource_id, "the stored file should be the legacy one");
+					match legacy_value {
+						TaggedValue::Resource(legacy) => assert_eq!(stored, legacy, "the stored resource should be kept"),
+						_ => assert!(document.resources.registry.contains(stored), "the embedded pixels should be stored as a new resource"),
+					}
 				}
 			}
 		}
+	}
+
+	#[test]
+	fn bare_resource_type_defaults_become_item_defaults() {
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let image_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+			inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::TypeDefault(concrete!(Resource)), true)],
+			..Default::default()
+		};
+		document.network_interface.insert_node(node_id, image_template, &[]);
+
+		document_migration_upgrades(&mut document, false);
+
+		let migrated = &document.network_interface.document_network().nodes[&node_id].inputs[1];
+		assert_eq!(migrated.as_value(), Some(&TaggedValue::TypeDefault(item!(Resource))), "the bare default should become the item default");
+		assert!(matches!(migrated, NodeInput::Value { exposed: true, .. }), "the exposed flag should be kept");
 	}
 
 	#[test]

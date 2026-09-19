@@ -7,8 +7,8 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
 };
-use crate::messages::portfolio::resource_upload::utility_types::ResourceFileKind;
-use crate::messages::prelude::{DocumentId, FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
+use crate::messages::portfolio::ingest::utility_types::TypeFilter;
+use crate::messages::prelude::{FontsMessage, FontsMessageHandler, Message, ResourceMessageHandler, Responses};
 use crate::node_graph_executor::NodeGraphExecutor;
 use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
@@ -27,7 +27,6 @@ use std::collections::{HashMap, VecDeque};
 pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
-	pub document_id: DocumentId,
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub resources: &'a ResourceMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
@@ -1466,7 +1465,7 @@ fn static_input_properties() -> InputProperties {
 	map.insert(
 		"image_file".to_string(),
 		Box::new(|node_id, index, context| {
-			let widgets = node_properties::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ResourceFileKind::RasterImage);
+			let widgets = node_properties::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), vec![TypeFilter::raster()]);
 			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);

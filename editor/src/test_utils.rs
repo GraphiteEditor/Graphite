@@ -2,7 +2,7 @@ use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::resource_upload::utility_types::UploadTarget;
+use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeHint};
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -243,10 +243,11 @@ impl EditorTestUtils {
 	}
 
 	pub async fn create_raster_image(&mut self, image: graphene_std::raster::Image<Color>, mouse: Option<(f64, f64)>) {
-		self.handle_message(ResourceUploadMessage::Upload {
-			name: None,
+		self.handle_message(IngestMessage::Ingest {
 			data: image.to_png().into(),
-			target: UploadTarget::Layer { mouse, parent_and_insert_index: None },
+			action: mouse.map_or(IngestAction::Paste, |mouse| IngestAction::DropOnCanvas { mouse }),
+			hint: TypeHint::default(),
+			path: None,
 		})
 		.await;
 	}

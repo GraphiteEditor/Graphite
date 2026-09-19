@@ -865,27 +865,6 @@ pub(crate) enum SoleDependentStep {
 	Escape,
 }
 
-pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
-	visit_network_resources(network, &mut |id| {
-		out.insert(id);
-	});
-}
-
-/// Collects resource IDs referenced by a node and its nested networks.
-pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
-	visit_node_resources(node, &mut |id| {
-		out.insert(id);
-	});
-}
-
-/// Records the resource ID held by a value input, covering node inputs and export slots alike.
-pub(crate) fn collect_input_resource(input: &NodeInput, out: &mut HashSet<ResourceId>) {
-	visit_input_resource(input, &mut |id| {
-		out.insert(id);
-	});
-}
-
-/// Calls `visit` once per value input holding a resource ID across a network and its nested networks.
 pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl FnMut(ResourceId)) {
 	for export in &network.exports {
 		visit_input_resource(export, visit);
@@ -895,7 +874,7 @@ pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl Fn
 	}
 }
 
-fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {
+pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {
 	for input in &node.inputs {
 		visit_input_resource(input, visit);
 	}
@@ -904,7 +883,7 @@ fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId))
 	}
 }
 
-fn visit_input_resource(input: &NodeInput, visit: &mut impl FnMut(ResourceId)) {
+pub(crate) fn visit_input_resource(input: &NodeInput, visit: &mut impl FnMut(ResourceId)) {
 	if let NodeInput::Value { tagged_value, .. } = input
 		&& let TaggedValue::Resource(id) = &**tagged_value
 	{
@@ -915,6 +894,38 @@ fn visit_input_resource(input: &NodeInput, visit: &mut impl FnMut(ResourceId)) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn resource_visits_reach_nested_networks_and_exports() {
+		let shared = ResourceId::from(1);
+		let uses = |id: ResourceId| NodeInput::value(TaggedValue::Resource(id), false);
+		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
+		let inner = NodeNetwork {
+			exports: vec![uses(shared)],
+			nodes: [(NodeId(2), node(vec![uses(shared)]))].into_iter().collect(),
+			..Default::default()
+		};
+		let outer = NodeNetwork {
+			nodes: [
+				(NodeId(1), node(vec![uses(shared), uses(ResourceId::from(2))])),
+				(
+					NodeId(3),
+					DocumentNode {
+						implementation: DocumentNodeImplementation::Network(inner),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		let mut visits = Vec::new();
+		visit_network_resources(&outer, &mut |id| visits.push(id));
+		assert_eq!(visits.iter().filter(|id| **id == shared).count(), 3);
+		assert_eq!(visits.len(), 4);
+	}
 
 	#[test]
 	fn port_click_targets_are_clickable_at_their_center() {
@@ -929,32 +940,5 @@ mod tests {
 
 		assert_eq!(ports.clicked_output_port_from_point(center + DVec2::new(200., 0.)), Some(0));
 		assert_eq!(ports.clicked_output_port_from_point(center), None);
-	}
-
-	#[test]
-	fn resource_visits_count_every_referencing_input_including_nested_networks() {
-		let shared = ResourceId::from(1);
-		let other = ResourceId::from(2);
-		let uses = |id: ResourceId| NodeInput::value(TaggedValue::Resource(id), false);
-		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
-
-		let inner = NodeNetwork {
-			exports: vec![uses(shared)],
-			nodes: [(NodeId(2), node(vec![uses(shared)]))].into_iter().collect(),
-			..Default::default()
-		};
-		let nested = DocumentNode {
-			implementation: DocumentNodeImplementation::Network(inner),
-			..Default::default()
-		};
-		let outer = NodeNetwork {
-			nodes: [(NodeId(1), node(vec![uses(shared), uses(other)])), (NodeId(3), nested)].into_iter().collect(),
-			..Default::default()
-		};
-
-		let mut counts = HashMap::new();
-		visit_network_resources(&outer, &mut |id| *counts.entry(id).or_insert(0) += 1);
-		assert_eq!(counts.get(&shared), Some(&3), "every referencing input counts, nested networks included");
-		assert_eq!(counts.get(&other), Some(&1));
 	}
 }

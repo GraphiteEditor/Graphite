@@ -311,11 +311,12 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceId>) {
-		collect_network_resources(self.document_network(), target);
+		visit_network_resources(self.document_network(), &mut |id| {
+			target.insert(id);
+		});
 	}
 
-	/// How many value inputs across the document reference each resource, with no entry for a resource nothing uses.
-	pub fn resource_user_counts(&self) -> HashMap<ResourceId, usize> {
+	pub fn collect_resources_use_counts(&self) -> HashMap<ResourceId, usize> {
 		let mut counts = HashMap::new();
 		visit_network_resources(self.document_network(), &mut |id| *counts.entry(id).or_insert(0) += 1);
 		counts

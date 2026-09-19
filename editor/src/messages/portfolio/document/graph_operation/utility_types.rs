@@ -19,6 +19,7 @@ use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientIn
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 use kurbo::BezPath;
+use std::sync::Arc;
 
 #[derive(PartialEq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformIn {
@@ -269,10 +270,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, resource_id: ResourceId, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, data: Arc<[u8]>, layer: LayerNodeIdentifier) {
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
 			.default_node_template();
+
+		let resource_id = ResourceId::new();
+		self.responses.add(ResourceMessage::StoreEmbedded { resource_id, data });
 
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")

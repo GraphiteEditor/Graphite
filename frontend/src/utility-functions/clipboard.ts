@@ -1,4 +1,3 @@
-import { extractPixelData } from "/src/utility-functions/rasterization";
 import { stripIndents } from "/src/utility-functions/strip-indents";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -114,28 +113,10 @@ export async function triggerClipboardRead(editor: EditorWrapper) {
 				// Read an image from the clipboard and pass it to the editor to be loaded
 				const imageType = item.types.find((type) => type.startsWith("image/"));
 
-				// Import the actual SVG content if it's an SVG
-				if (imageType?.includes("svg")) {
-					const blob = await item.getType("text/plain");
-					const reader = new FileReader();
-					reader.onload = () => {
-						if (typeof reader.result === "string") editor.pasteSvg(undefined, reader.result);
-					};
-					reader.readAsText(blob);
-					return true;
-				}
-
-				// Import the bitmap image if it's an image
+				// The Clipboard API only exposes SVG markup through its text/plain representation
 				if (imageType) {
-					const blob = await item.getType(imageType);
-					const reader = new FileReader();
-					reader.onload = async () => {
-						if (reader.result instanceof ArrayBuffer) {
-							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-							editor.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
-						}
-					};
-					reader.readAsArrayBuffer(blob);
+					const blob = await item.getType(imageType.includes("svg") ? "text/plain" : imageType);
+					editor.ingestFile(undefined, imageType, new Uint8Array(await blob.arrayBuffer()));
 					return true;
 				}
 

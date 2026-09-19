@@ -1,7 +1,7 @@
 use super::IconName;
 use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileFilter, RasterizedImage};
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -9,6 +9,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
@@ -87,14 +88,9 @@ pub enum FrontendMessage {
 		commit_date: String,
 	},
 	TriggerDisplayThirdPartyLicensesDialog,
-	TriggerOpen {
-		filters: Vec<FileFilter>,
-	},
-	TriggerImport {
-		filters: Vec<FileFilter>,
-	},
-	TriggerUploadResource {
-		filters: Vec<FileFilter>,
+	TriggerBrowse {
+		options: FileDialogOptions,
+		action: IngestAction,
 	},
 	TriggerSaveDocument {
 		document_id: DocumentId,

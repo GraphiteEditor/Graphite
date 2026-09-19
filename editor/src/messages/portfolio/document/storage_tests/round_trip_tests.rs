@@ -15,7 +15,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
-use crate::messages::portfolio::resource_upload::utility_types::UploadTarget;
+use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeHint};
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -495,18 +495,6 @@ async fn live_undo_new_document_draw_rect() {
 /// name set, reparent, and transform in a single transaction. Were the name set to open its own nested
 /// transaction (a historical wart), the first undo would revert only the name and leave the layer behind, so
 /// this asserts the layer count returns to its pre-paste value after exactly one undo.
-/// Pastes a 2x2 image as a named layer.
-fn paste_named_image() -> ResourceUploadMessage {
-	ResourceUploadMessage::Upload {
-		name: Some("pasted".into()),
-		data: Image::new(2, 2, Color::WHITE).to_png().into(),
-		target: UploadTarget::Layer {
-			mouse: None,
-			parent_and_insert_index: None,
-		},
-	}
-}
-
 #[tokio::test]
 async fn paste_image_with_name_is_one_undo_step() {
 	let mut editor = EditorTestUtils::create();
@@ -516,7 +504,14 @@ async fn paste_image_with_name_is_one_undo_step() {
 
 	// Paste with a name so the handler emits the `SetDisplayName` sub-step that historically opened its
 	// own transaction. `create_raster_image` passes `name: None` and so wouldn't exercise this path.
-	editor.handle_message(paste_named_image()).await;
+	editor
+		.handle_message(IngestMessage::Ingest {
+			data: Image::new(2, 2, Color::WHITE).to_png().into(),
+			action: IngestAction::Paste,
+			hint: TypeHint::default(),
+			path: Some("pasted.png".into()),
+		})
+		.await;
 	assert_eq!(
 		editor.active_document().metadata().all_layers().count(),
 		layers_before + 1,
@@ -534,6 +529,7 @@ async fn paste_image_with_name_is_one_undo_step() {
 /// Choosing "None" in the Image node's file picker leaves the empty-resource placeholder, which must still render.
 #[tokio::test]
 async fn image_node_with_no_file_still_evaluates() {
+	use graph_craft::application_io::resource::Resource;
 	use graph_craft::document::DocumentNodeImplementation;
 	use graph_craft::document::value::TaggedValue;
 	use graph_craft::item;
@@ -555,7 +551,7 @@ async fn image_node_with_no_file_still_evaluates() {
 		.handle_message(NodeGraphMessage::SetInputValue {
 			node_id: image_node_id,
 			input_index: graphene_std::raster_nodes::std_nodes::image::ResourceInput::INDEX,
-			value: TaggedValue::TypeDefault(item!(graph_craft::application_io::resource::Resource)).into(),
+			value: TaggedValue::TypeDefault(item!(Resource)).into(),
 		})
 		.await;
 
@@ -574,7 +570,14 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let byte_store = mount_in_memory_storage(&mut editor).await;
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
-	editor.handle_message(paste_named_image()).await;
+	editor
+		.handle_message(IngestMessage::Ingest {
+			data: Image::new(2, 2, Color::WHITE).to_png().into(),
+			action: IngestAction::Paste,
+			hint: TypeHint::default(),
+			path: Some("pasted.png".into()),
+		})
+		.await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
 
@@ -610,7 +613,14 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	editor.draw_rect(0., 0., 100., 100.).await;
 	let after_rect = editor.active_document().network_interface.document_network().clone();
 
-	editor.handle_message(paste_named_image()).await;
+	editor
+		.handle_message(IngestMessage::Ingest {
+			data: Image::new(2, 2, Color::WHITE).to_png().into(),
+			action: IngestAction::Paste,
+			hint: TypeHint::default(),
+			path: Some("pasted.png".into()),
+		})
+		.await;
 
 	// First undo: removes the paste, back to the post-rectangle network. Cursor and legacy must agree.
 	editor.handle_message(DocumentMessage::Undo).await;
@@ -695,9 +705,11 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	// Open a real demo artwork through the normal open path and let it render.
 	let content = std::fs::read_to_string("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
 	editor
-		.handle_message(PortfolioMessage::OpenFile {
-			path: "changing-seasons.graphite".into(),
-			content: content.bytes().collect(),
+		.handle_message(IngestMessage::Ingest {
+			data: content.into_bytes().into(),
+			action: IngestAction::Open,
+			hint: TypeHint::new("", "changing-seasons.graphite"),
+			path: Some("changing-seasons.graphite".into()),
 		})
 		.await;
 
