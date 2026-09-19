@@ -13,7 +13,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 pub use vector_types::Vector;
-use vector_types::{Gradient, GradientSpread};
+use vector_types::{Gradient, GradientSpread, MeshGradient};
 
 /// The possible forms of graphical content that can be rendered by the Render node (to targets like SVG and raster) or another render boundary node.
 #[derive(Clone, Debug, CacheHash, PartialEq, DynAny)]
@@ -26,6 +26,7 @@ pub enum Graphic {
 	RasterGPU(Item<Raster<GPU>>),
 	Color(Item<Color>),
 	Gradient(Item<Gradient>),
+	MeshGradient(Box<Item<MeshGradient>>),
 	Text(Item<String>),
 	NoneList(List<none::None>),
 	GraphicList(List<Graphic>),
@@ -34,6 +35,7 @@ pub enum Graphic {
 	RasterGPUList(List<Raster<GPU>>),
 	ColorList(List<Color>),
 	GradientList(List<Gradient>),
+	MeshGradientList(List<MeshGradient>),
 	TextList(List<String>),
 	StrokeList(List<Stroke>),
 }
@@ -139,6 +141,23 @@ impl From<Item<Gradient>> for Graphic {
 impl From<List<Gradient>> for Graphic {
 	fn from(gradient: List<Gradient>) -> Self {
 		Graphic::GradientList(gradient)
+	}
+}
+
+// MeshGradient
+impl From<MeshGradient> for Graphic {
+	fn from(mesh_gradient: MeshGradient) -> Self {
+		Graphic::MeshGradient(Box::new(Item::new_from_element(mesh_gradient)))
+	}
+}
+impl From<Item<MeshGradient>> for Graphic {
+	fn from(mesh_gradient: Item<MeshGradient>) -> Self {
+		Graphic::MeshGradient(Box::new(mesh_gradient))
+	}
+}
+impl From<List<MeshGradient>> for Graphic {
+	fn from(mesh_gradient: List<MeshGradient>) -> Self {
+		Graphic::MeshGradientList(mesh_gradient)
 	}
 }
 
@@ -317,12 +336,14 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::RasterCPU(item) => bake_item_transform(item, transform),
 			Graphic::RasterGPU(item) => bake_item_transform(item, transform),
 			Graphic::Gradient(item) => bake_item_transform(item, transform),
+			Graphic::MeshGradient(item) => bake_item_transform(item, transform),
 			Graphic::Text(item) => bake_item_transform(item, transform),
 			Graphic::GraphicList(list) => bake_list_transform(list, transform),
 			Graphic::VectorList(list) => bake_list_transform(list, transform),
 			Graphic::RasterCPUList(list) => bake_list_transform(list, transform),
 			Graphic::RasterGPUList(list) => bake_list_transform(list, transform),
 			Graphic::GradientList(list) => bake_list_transform(list, transform),
+			Graphic::MeshGradientList(list) => bake_list_transform(list, transform),
 			Graphic::TextList(list) => bake_list_transform(list, transform),
 			Graphic::StrokeList(list) => bake_list_transform(list, transform),
 			// A color has no spatial extent, so there is no placement for a transform to move
@@ -452,6 +473,12 @@ impl IntoGraphicList for List<Gradient> {
 	}
 }
 
+impl IntoGraphicList for List<MeshGradient> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::MeshGradientList(self))
+	}
+}
+
 impl IntoGraphicList for List<Stroke> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		let layer_path: NodeIdPath = self.attribute_cloned_or_default(ATTR_EDITOR_LAYER_PATH, 0);
@@ -565,6 +592,7 @@ impl Graphic {
 			Graphic::RasterGPU(item) => item_clipped(item),
 			Graphic::Color(item) => item_clipped(item),
 			Graphic::Gradient(item) => item_clipped(item),
+			Graphic::MeshGradient(item) => item_clipped(item),
 			Graphic::Text(item) => item_clipped(item),
 			Graphic::NoneList(list) => all_clipped(list),
 			Graphic::VectorList(list) => all_clipped(list),
@@ -573,6 +601,7 @@ impl Graphic {
 			Graphic::RasterGPUList(list) => all_clipped(list),
 			Graphic::ColorList(list) => all_clipped(list),
 			Graphic::GradientList(list) => all_clipped(list),
+			Graphic::MeshGradientList(list) => all_clipped(list),
 			Graphic::TextList(list) => all_clipped(list),
 			Graphic::StrokeList(list) => all_clipped(list),
 		}
@@ -627,6 +656,8 @@ impl Graphic {
 							&& list.element(index).is_some_and(|stops| stops.iter().all(|stop| stop.color.is_opaque()))
 					})
 			}
+			Graphic::MeshGradient(item) => item_opacity_is_full(item) && item.element().corners().all(|corner| corner.color.is_opaque()),
+			Graphic::MeshGradientList(list) => !list.is_empty() && every_item_has_full_opacity(list) && list.iter_element_values().all(|mesh| mesh.corners().all(|corner| corner.color.is_opaque())),
 			Graphic::Text(_) | Graphic::TextList(_) => false,
 			Graphic::StrokeList(_) => false,
 		}
@@ -654,6 +685,8 @@ impl Graphic {
 			// A stopless ramp paints as solid black, matching `Gradient::evaluate`, so it counts as transparent only once it has stops
 			Graphic::Gradient(item) => item_opacity_is_zero(item) || (!item.element().is_empty() && item.element().iter().all(|stop| stop.color.a() == 0.)),
 			Graphic::GradientList(list) => every_item_has_zero_opacity(list) || list.iter_element_values().all(|stops| !stops.is_empty() && stops.iter().all(|stop| stop.color.a() == 0.)),
+			Graphic::MeshGradient(item) => item_opacity_is_zero(item) || item.element().corners().all(|corner| corner.color.a() == 0.),
+			Graphic::MeshGradientList(list) => every_item_has_zero_opacity(list) || list.iter_element_values().all(|mesh| mesh.corners().all(|corner| corner.color.a() == 0.)),
 			// Their content is never inspected, so zeroed opacity is the only invisibility these can report
 			Graphic::RasterCPU(item) => item_opacity_is_zero(item),
 			Graphic::RasterGPU(item) => item_opacity_is_zero(item),
@@ -675,11 +708,12 @@ impl Graphic {
 		match self {
 			// A leaf always holds exactly one element, so only the none-typed content is truly empty
 			Graphic::None(_) | Graphic::NoneList(_) => true,
-			Graphic::Graphic(_) | Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Text(_) => false,
+			Graphic::Graphic(_) | Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) | Graphic::MeshGradient(_) | Graphic::Text(_) => false,
 			Graphic::GraphicList(list) => list.is_empty(),
 			Graphic::VectorList(list) => list.is_empty(),
 			Graphic::ColorList(list) => list.is_empty(),
 			Graphic::GradientList(list) => list.is_empty(),
+			Graphic::MeshGradientList(list) => list.is_empty(),
 			Graphic::RasterCPUList(list) => list.is_empty(),
 			Graphic::RasterGPUList(list) => list.is_empty(),
 			Graphic::TextList(list) => list.is_empty(),
@@ -830,6 +864,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterGPU(item) => item.bounding_box(transform, include_stroke),
 			Graphic::Color(item) => item.bounding_box(transform, include_stroke),
 			Graphic::Gradient(item) => item.bounding_box(transform, include_stroke),
+			Graphic::MeshGradient(item) => item.bounding_box(transform, include_stroke),
 			Graphic::Text(item) => item.bounding_box(transform, include_stroke),
 			Graphic::VectorList(list) => vector_list_bounding_box(list, transform, include_stroke),
 			Graphic::RasterCPUList(list) => list.bounding_box(transform, include_stroke),
@@ -837,6 +872,7 @@ impl BoundingBox for Graphic {
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::ColorList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::GradientList(list) => list.bounding_box(transform, include_stroke),
+			Graphic::MeshGradientList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::StrokeList(list) => list.bounding_box(transform, include_stroke),
 		}
@@ -851,6 +887,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterGPU(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(item) => item.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::MeshGradient(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::VectorList(vector) => vector_list_bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPUList(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
@@ -858,6 +895,7 @@ impl BoundingBox for Graphic {
 			Graphic::GraphicList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::ColorList(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::GradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::MeshGradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::StrokeList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}
@@ -874,13 +912,30 @@ impl RenderComplexity for Graphic {
 			Self::RasterGPU(item) => item.render_complexity(),
 			Self::Color(item) => item.render_complexity(),
 			Self::Gradient(item) => item.render_complexity(),
+			Self::MeshGradient(item) => item.render_complexity(),
 			Self::Text(item) => item.render_complexity(),
 			Self::GraphicList(list) => list.render_complexity(),
-			Self::VectorList(list) => list.render_complexity(),
+			Self::VectorList(list) => {
+				let element_complexity = list.render_complexity();
+
+				// A mesh gradient paint costs far more to render than the geometry it covers, so an element's
+				// appearance counts toward its complexity — that is what keeps its thumbnail from being attempted.
+				let paint_complexity = list
+					.iter_attribute_values::<Appearance>(ATTR_APPEARANCE)
+					.into_iter()
+					.flatten()
+					.filter_map(|appearance| appearance.0.iter_attribute_values::<Graphic>(ATTR_PAINT))
+					.flatten()
+					.map(|paint| paint.render_complexity())
+					.fold(0, usize::saturating_add);
+
+				element_complexity.saturating_add(paint_complexity)
+			}
 			Self::RasterCPUList(list) => list.render_complexity(),
 			Self::RasterGPUList(list) => list.render_complexity(),
 			Self::ColorList(list) => list.render_complexity(),
 			Self::GradientList(list) => list.render_complexity(),
+			Self::MeshGradientList(list) => list.render_complexity(),
 			Self::TextList(list) => list.render_complexity(),
 			Self::StrokeList(list) => list.render_complexity(),
 		}
