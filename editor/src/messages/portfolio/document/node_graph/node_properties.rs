@@ -1290,6 +1290,7 @@ pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup 
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 }
 
+/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file matching the given filters.
 pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Vec<TypeFilter>) -> Vec<WidgetInstance> {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
@@ -1304,6 +1305,7 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 	};
 
 	let ParameterWidgetsInfo {
+		document_id,
 		node_id,
 		index,
 		resources,
@@ -1335,6 +1337,7 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 		.collect();
 	files.sort();
 
+	// Entries assign only on click, since a hover preview leaves the replaced file unreferenced and garbage collected
 	let assign_on_click = |value: TaggedValue| {
 		move |_: &()| Message::Batched {
 			messages: Box::new([
@@ -1359,6 +1362,7 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 		.on_update(|_| Message::NoOp)
 		.on_commit(move |_| {
 			IngestMessage::SetResourceInput {
+				document_id,
 				node_id,
 				input_index: index,
 				filters: filters.clone(),
@@ -3442,6 +3446,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
+	document_id: DocumentId,
 	network_interface: &'a NodeNetworkInterface,
 	resources: &'a ResourceMessageHandler,
 	selection_network_path: &'a [NodeId],
@@ -3487,6 +3492,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
+			document_id: context.document_id,
 			network_interface: context.network_interface,
 			resources: context.resources,
 			selection_network_path: context.selection_network_path,

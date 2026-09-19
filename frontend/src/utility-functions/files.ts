@@ -88,5 +88,5 @@ export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, m
 }
 
 export function acceptStringFromFilters(filters: FileFilter[]): string {
-	return filters.flatMap((filter) => [...filter.mimes, ...filter.extensions.map((extension) => `.${extension}`)]).join(",");
+	return filters.flatMap((filter) => [...filter.mimeTypes, ...filter.extensions.map((extension) => `.${extension}`)]).join(",");
 }

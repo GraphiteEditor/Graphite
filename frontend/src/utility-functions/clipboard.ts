@@ -113,9 +113,8 @@ export async function triggerClipboardRead(editor: EditorWrapper) {
 				// Read an image from the clipboard and pass it to the editor to be loaded
 				const imageType = item.types.find((type) => type.startsWith("image/"));
 
-				// The Clipboard API only exposes SVG markup through its text/plain representation
 				if (imageType) {
-					const blob = await item.getType(imageType.includes("svg") ? "text/plain" : imageType);
+					const blob = await item.getType(imageType);
 					editor.ingestFile(undefined, imageType, new Uint8Array(await blob.arrayBuffer()));
 					return true;
 				}

@@ -508,7 +508,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						filters: vec![FileFilter {
 							name: "Graphite Document".into(),
 							extensions: vec![FILE_EXTENSION.into()],
-							mimes: Vec::new(),
+							mime_types: Vec::new(),
 						}],
 						content: serde_bytes::ByteBuf::from(content),
 					});
@@ -520,7 +520,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							filters: vec![FileFilter {
 								name: "Zip Archive".into(),
 								extensions: vec!["zip".into()],
-								mimes: Vec::new(),
+								mime_types: Vec::new(),
 							}],
 							content: serde_bytes::ByteBuf::from(zip_bytes),
 						}),

@@ -1,5 +1,4 @@
 use graphite_editor::messages::clipboard::utility_types::ClipboardContentRaw;
-use graphite_editor::messages::portfolio::ingest::utility_types::TypeHint;
 use graphite_editor::messages::prelude::*;
 
 use super::DesktopWrapperMessageDispatcher;
@@ -17,11 +16,10 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}
 		DesktopWrapperMessage::IngestFile { path, content, action } => {
-			let hint = TypeHint::new("", &path);
 			dispatcher.queue_editor_message(IngestMessage::Ingest {
-				data: content.into(),
+				data: content,
 				action,
-				hint,
+				mime_type: String::new(),
 				path: Some(path),
 			});
 		}

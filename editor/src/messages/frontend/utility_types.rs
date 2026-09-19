@@ -82,7 +82,7 @@ impl FileType {
 		FileFilter {
 			name: name.into(),
 			extensions: vec![self.extension().into()],
-			mimes: Vec::new(),
+			mime_types: Vec::new(),
 		}
 	}
 }
@@ -118,7 +118,8 @@ pub struct RasterizedImage {
 pub struct FileFilter {
 	pub name: String,
 	pub extensions: Vec<String>,
-	pub mimes: Vec<String>,
+	#[serde(rename = "mimeTypes")]
+	pub mime_types: Vec<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

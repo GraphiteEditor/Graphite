@@ -1,16 +1,15 @@
-use super::utility_types::{IngestAction, TypeFilter, TypeHint};
+use super::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use graph_craft::document::NodeId;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 #[impl_message(Message, PortfolioMessage, Ingest)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum IngestMessage {
 	Ingest {
-		data: Arc<[u8]>,
+		data: Vec<u8>,
 		action: IngestAction,
-		hint: TypeHint,
+		mime_type: String,
 		path: Option<PathBuf>,
 	},
 	Browse {
@@ -21,6 +20,7 @@ pub enum IngestMessage {
 	Open,
 	Import,
 	SetResourceInput {
+		document_id: DocumentId,
 		node_id: NodeId,
 		input_index: usize,
 		filters: Vec<TypeFilter>,

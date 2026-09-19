@@ -427,7 +427,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
-	use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeHint};
+	use crate::messages::portfolio::ingest::utility_types::IngestAction;
 	pub use crate::test_utils::test_prelude::*;
 
 	#[tokio::test]
@@ -480,9 +480,9 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(IngestMessage::Ingest {
-				data: document_serialized_content.into_bytes().into(),
+				data: document_serialized_content.into_bytes(),
 				action: IngestAction::Open,
-				hint: TypeHint::new("", file_name),
+				mime_type: String::new(),
 				path: Some(file_name.into()),
 			});
 

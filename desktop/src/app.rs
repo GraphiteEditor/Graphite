@@ -223,6 +223,7 @@ impl App {
 						let path = handle.path().to_path_buf();
 						match fs::read(&path) {
 							Ok(content) => {
+								let action = action.clone();
 								let message = DesktopWrapperMessage::IngestFile { path, content, action };
 								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 							}

@@ -20,7 +20,6 @@ mod editor_commands {
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-	use editor::messages::portfolio::ingest::utility_types::TypeHint;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
@@ -599,18 +598,18 @@ mod editor_commands {
 	}
 
 	/// A file picked in the dialog that `TriggerBrowse` opened
-	fn ingest_picked(name: String, mime: String, data: Vec<u8>, action: IngestAction) -> Message {
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
 		IngestMessage::Ingest {
-			data: data.into(),
+			data,
 			action,
-			hint: TypeHint::new(&mime, &name),
+			mime_type,
 			path: Some(PathBuf::from(name)),
 		}
 		.into()
 	}
 
 	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
-	fn ingest_file(name: Option<String>, mime: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
+	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
 		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
 			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
 				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
@@ -620,9 +619,9 @@ mod editor_commands {
 			(None, None) => IngestAction::Paste,
 		};
 		IngestMessage::Ingest {
-			data: data.into(),
+			data,
 			action,
-			hint: TypeHint::new(&mime, name.as_deref().unwrap_or_default()),
+			mime_type,
 			path: name.map(PathBuf::from),
 		}
 		.into()

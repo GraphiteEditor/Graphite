@@ -1,44 +1,42 @@
+use crate::consts::{FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::prelude::DocumentId;
 use document_container::archive::ArchiveFormat;
 use graph_craft::document::NodeId;
 use image::ImageFormat;
 use std::ffi::OsStr;
 use std::path::Path;
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+/// How many leading bytes are inspected to recognize a text format.
+const SNIFFED_TEXT_LENGTH: usize = 4096;
+
+/// The pixel size of a file that fully decodes as a raster image.
+pub fn decoded_image_size(data: &[u8]) -> Option<(u32, u32)> {
+	image::load_from_memory(data).ok().map(|image| (image.width(), image.height()))
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 pub enum IngestAction {
 	Open,
 	Import,
 	Paste,
-	DropOnCanvas { mouse: (f64, f64) },
-	DropOnLayers { parent: LayerNodeIdentifier, insert_index: usize },
-	ResourceInput { node_id: NodeId, input_index: usize },
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct TypeHint {
-	pub mime: String,
-	pub extension: String,
-}
-
-impl TypeHint {
-	pub fn new(mime: &str, path: impl AsRef<Path>) -> Self {
-		Self {
-			mime: mime.into(),
-			extension: path.as_ref().extension().and_then(OsStr::to_str).unwrap_or_default().into(),
-		}
-	}
-}
-
-impl From<TypeHint> for DataType {
-	fn from(hint: TypeHint) -> Self {
-		match Self::from_mime(&hint.mime) {
-			Self::Unknown => Self::from_extension(&hint.extension),
-			mime => mime,
-		}
-	}
+	DropOnCanvas {
+		mouse: (f64, f64),
+	},
+	DropOnLayers {
+		parent: LayerNodeIdentifier,
+		insert_index: u32,
+	},
+	ResourceInput {
+		document_id: DocumentId,
+		node_id: NodeId,
+		input_index: u32,
+		/// The types this input takes, where none means any file.
+		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
+		accepted_types: Vec<DataType>,
+	},
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -52,6 +50,17 @@ pub enum DataType {
 }
 
 impl DataType {
+	/// The content decides, and the MIME type then the file name only settle what it leaves unknown.
+	pub fn detect(data: &[u8], mime_type: &str, path: Option<&Path>) -> Self {
+		match Self::from_content(data) {
+			Self::Unknown => match Self::from_mime(mime_type) {
+				Self::Unknown => path.map_or(Self::Unknown, Self::from_path),
+				data_type => data_type,
+			},
+			data_type => data_type,
+		}
+	}
+
 	pub fn from_mime(mime: &str) -> Self {
 		match mime.to_ascii_lowercase().as_str() {
 			"application/graphite+json" => Self::GraphiteLegacy,
@@ -63,8 +72,8 @@ impl DataType {
 
 	pub fn from_extension(extension: &str) -> Self {
 		match extension.trim_start_matches('.').to_ascii_lowercase().as_str() {
-			"graphite" => Self::GraphiteLegacy,
-			"gdd" => Self::Gdd,
+			FILE_EXTENSION => Self::GraphiteLegacy,
+			GDD_FILE_EXTENSION => Self::Gdd,
 			"svg" => Self::Svg,
 			extension => ImageFormat::from_extension(extension).map_or(Self::Unknown, Self::Raster),
 		}
@@ -81,7 +90,15 @@ impl DataType {
 		if let Ok(format) = image::guess_format(data) {
 			return Self::Raster(format);
 		}
-		let Ok(text) = std::str::from_utf8(data) else { return Self::Unknown };
+
+		// Only the head is read as text, where a character split by the cut is the one invalid sequence tolerated
+		let head = &data[..data.len().min(SNIFFED_TEXT_LENGTH)];
+		let text = match std::str::from_utf8(head) {
+			Ok(text) => text,
+			Err(error) if error.error_len().is_none() => std::str::from_utf8(&head[..error.valid_up_to()]).unwrap_or_default(),
+			Err(_) => return Self::Unknown,
+		};
+
 		let text = text.trim_start_matches('\u{feff}').trim_start();
 		if text.starts_with('{') {
 			Self::GraphiteLegacy
@@ -104,8 +121,8 @@ impl DataType {
 
 	pub fn extensions(self) -> &'static [&'static str] {
 		match self {
-			Self::GraphiteLegacy => &["graphite"],
-			Self::Gdd => &["gdd"],
+			Self::GraphiteLegacy => &[FILE_EXTENSION],
+			Self::Gdd => &[GDD_FILE_EXTENSION],
 			Self::Svg => &["svg"],
 			Self::Raster(format) => format.extensions_str(),
 			Self::Unknown => &[],
@@ -146,7 +163,7 @@ impl From<TypeFilter> for FileFilter {
 		Self {
 			name: filter.name,
 			extensions: filter.types.iter().flat_map(|data_type| data_type.extensions()).map(|extension| extension.to_string()).collect(),
-			mimes: filter.types.iter().filter_map(|data_type| data_type.mime()).map(str::to_string).collect(),
+			mime_types: filter.types.iter().filter_map(|data_type| data_type.mime()).map(str::to_string).collect(),
 		}
 	}
 }
@@ -171,25 +188,34 @@ mod tests {
 	}
 
 	#[test]
-	fn data_type_from_hint() {
-		let hint = |extension: &str, mime: &str| TypeHint {
-			mime: mime.into(),
-			extension: extension.into(),
-		};
-		assert_eq!(DataType::from(hint(".JPEG", "")), DataType::Raster(ImageFormat::Jpeg));
-		assert_eq!(DataType::from(hint("", "image/svg+xml")), DataType::Svg);
-		assert_eq!(DataType::from(hint("", "application/graphite+json")), DataType::GraphiteLegacy);
-		assert_eq!(DataType::from(hint("gdd", "image/png")), DataType::Raster(ImageFormat::Png));
-		assert_eq!(DataType::from(hint("csv", "text/csv")), DataType::Unknown);
-		assert_eq!(DataType::from(TypeHint::default()), DataType::Unknown);
-		assert_eq!(DataType::from_path("photo.jpg"), DataType::Raster(ImageFormat::Jpeg));
+	fn data_type_from_content_reads_only_the_head() {
+		let late_svg = format!("<!--{}--><svg/>", " ".repeat(SNIFFED_TEXT_LENGTH));
+		assert_eq!(DataType::from_content(late_svg.as_bytes()), DataType::Unknown);
+
+		// The three-byte euro sign straddles the cut, which must not hide the text before it
+		let straddling = format!("<svg>{}€", " ".repeat(SNIFFED_TEXT_LENGTH - 6));
+		assert_eq!(DataType::from_content(straddling.as_bytes()), DataType::Svg);
+	}
+
+	#[test]
+	fn data_type_detect() {
+		let detect = |mime_type: &str, path: &str| DataType::detect(&[], mime_type, Some(Path::new(path)));
+		assert_eq!(detect("", "photo.JPEG"), DataType::Raster(ImageFormat::Jpeg));
+		assert_eq!(detect("image/svg+xml", ""), DataType::Svg);
+		assert_eq!(detect("application/graphite+json", ""), DataType::GraphiteLegacy);
+		assert_eq!(detect("image/png", "document.gdd"), DataType::Raster(ImageFormat::Png));
+		assert_eq!(detect("text/csv", "table.csv"), DataType::Unknown);
+		assert_eq!(DataType::detect(&[], "", None), DataType::Unknown);
+
+		let png = Image::new(1, 1, Color::WHITE).to_png();
+		assert_eq!(DataType::detect(&png, "image/svg+xml", Some(Path::new("drawing.svg"))), DataType::Raster(ImageFormat::Png));
 	}
 
 	#[test]
 	fn type_filter_to_file_filter() {
 		let filter = FileFilter::from(TypeFilter::image());
-		assert!(filter.extensions.iter().any(|extension| extension == "jpeg") && filter.extensions.iter().any(|extension| extension == "webp"));
+		assert!(filter.extensions.iter().any(|extension| extension == "jpeg") && filter.extensions.iter().any(|extension| extension == "png"));
 		assert!(filter.extensions.last().is_some_and(|extension| extension == "svg"));
-		assert!(filter.mimes.contains(&"image/jpeg".to_string()) && filter.mimes.contains(&"image/svg+xml".to_string()));
+		assert!(filter.mime_types.contains(&"image/jpeg".to_string()) && filter.mime_types.contains(&"image/svg+xml".to_string()));
 	}
 }
