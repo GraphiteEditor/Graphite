@@ -22,7 +22,7 @@ mod editor_commands {
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
-	use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
+	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
 	use graph_craft::document::NodeId;
 	use graphene_std::raster::color::Color;
 	use graphene_std::vector::style::FillChoice;
@@ -174,6 +174,13 @@ mod editor_commands {
 	fn widget_value_drag_drop(layout_target: LayoutTarget, widget_id: u64) -> Message {
 		let widget_id = WidgetId(widget_id);
 		LayoutMessage::WidgetValueDragDrop { layout_target, widget_id }.into()
+	}
+
+	/// Hand a file dropped on a UI widget to the widget's file drop callback
+	fn widget_value_file_drop(layout_target: LayoutTarget, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
+		let widget_id = WidgetId(widget_id);
+		let file = DroppedFile { name, mime_type, data };
+		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
 	}
 
 	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
@@ -597,7 +604,7 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
-	/// A file headed for a known action, either picked in the dialog that `TriggerBrowse` opened or dropped onto a widget that takes files
+	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
 	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
 		IngestMessage::Ingest {
 			data,

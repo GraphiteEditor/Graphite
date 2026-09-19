@@ -70,6 +70,15 @@
 		editor.widgetValueDragDrop(layoutTarget, widgets[widgetIndex].widgetId);
 	}
 
+	async function widgetValueFileDrop(widgetIndex: number, file: File) {
+		// The layout may change while the file is read, so the widget is looked up first
+		const target = layoutTarget;
+		const widgetId = widgets[widgetIndex].widgetId;
+
+		const data = await file.bytes();
+		editor.widgetValueFileDrop(target, widgetId, file.name, file.type, data);
+	}
+
 	// Extracts the kind and props from a Widget tagged enum, validated against the widget registry.
 	// The overload declares the precise correlated return type while the implementation uses broader types.
 	function unwrapWidget(widgetInstance: WidgetInstance): UnwrappedWidget | undefined;
@@ -165,9 +174,7 @@
 					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					hoverOutEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
-					fileDrop: async (e: CustomEvent<File>) => {
-						if (props.fileDropAction) editor.ingestPicked(e.detail.name, e.detail.type, await e.detail.bytes(), props.fileDropAction);
-					},
+					fileDrop: (e: CustomEvent<File>) => widgetValueFileDrop(index, e.detail),
 				},
 			}),
 		},
