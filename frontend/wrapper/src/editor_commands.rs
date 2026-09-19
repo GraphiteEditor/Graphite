@@ -15,6 +15,7 @@ use wasm_bindgen::prelude::*;
 mod editor_commands {
 	use crate::helpers::translate_key;
 	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
+	use editor::messages::frontend::utility_types::FileType;
 	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -602,6 +603,11 @@ mod editor_commands {
 	/// Respond to selection read
 	fn read_selection(content: Option<String>, cut: bool) -> Message {
 		ClipboardMessage::ReadSelection { content, cut }.into()
+	}
+
+	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
+	fn save_rasterized_export(name: String, file_type: FileType, width: u32, height: u32, data: Vec<u8>) -> Message {
+		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
 	}
 
 	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened

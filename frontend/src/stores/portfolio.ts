@@ -3,8 +3,8 @@ import { SvelteMap } from "svelte/reactivity";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { acceptStringFromFilters, downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
-import { rasterizeSVG } from "/src/utility-functions/rasterization";
+import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
+import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 import { patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -108,17 +108,15 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerExportImage", async (data) => {
-		const { svg, name, mime, size } = data;
+		const { svg, name, fileType, size } = data;
 
-		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
-		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
-
-		// Rasterize the SVG to an image file
+		// Rasterize the SVG and hand its pixels back to the editor for encoding
 		try {
-			const blob = await rasterizeSVG(svg, size[0], size[1], mime, backgroundColor);
+			const canvas = await rasterizeSVGCanvas(svg, size[0], size[1]);
+			const pixels = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height);
+			if (!pixels) return;
 
-			// Have the browser download the file to the user's disk
-			downloadFileBlob(name, blob);
+			editor.saveRasterizedExport(name, fileType, pixels.width, pixels.height, new Uint8Array(pixels.data.buffer));
 		} catch {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}

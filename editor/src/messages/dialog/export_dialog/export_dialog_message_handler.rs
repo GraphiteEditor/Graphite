@@ -94,19 +94,38 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 
 impl LayoutHolder for ExportDialogMessageHandler {
 	fn layout(&self) -> Layout {
-		let entries = [(FileType::Png, "PNG"), (FileType::Jpg, "JPG"), (FileType::Svg, "SVG")]
+		// The vector type, then the raster ones
+		let file_types = [
+			vec![(FileType::Svg, "SVG")],
+			vec![
+				(FileType::Png, "PNG"),
+				(FileType::Jpg, "JPG"),
+				(FileType::Webp, "WEBP"),
+				(FileType::Tiff, "TIFF"),
+				(FileType::Bmp, "BMP"),
+				(FileType::Tga, "TGA"),
+				(FileType::Ico, "ICO"),
+			],
+		];
+		let selected_index = file_types.iter().flatten().position(|(file_type, _)| *file_type == self.file_type);
+		let entries = file_types
 			.into_iter()
-			.map(|(file_type, name)| {
-				RadioEntryData::new(format!("{file_type:?}"))
-					.label(name)
-					.on_update(move |_| ExportDialogMessage::FileType { file_type }.into())
+			.map(|section| {
+				section
+					.into_iter()
+					.map(|(file_type, name)| {
+						MenuListEntry::new(format!("{file_type:?}"))
+							.label(name)
+							.on_commit(move |_| ExportDialogMessage::FileType { file_type }.into())
+					})
+					.collect()
 			})
 			.collect();
 
 		let export_type = vec![
 			TextLabel::new("File Type").table_align(true).min_width(100).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_instance(),
+			DropdownInput::new(entries).selected_index(selected_index.map(|index| index as u32)).min_width(200).widget_instance(),
 		];
 
 		let resolution = vec![

@@ -751,9 +751,8 @@ impl NodeGraphExecutor {
 						content: svg.into_bytes().into(),
 					});
 				} else {
-					let mime = file_type.to_mime().to_string();
 					let size = size.as_dvec2().into();
-					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
+					responses.add(FrontendMessage::TriggerExportImage { svg, name, file_type, size });
 				}
 			}
 			#[cfg(feature = "gpu")]
@@ -761,49 +760,8 @@ impl NodeGraphExecutor {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
 			}) if file_type != FileType::Svg => {
-				use image::buffer::ConvertBuffer;
-				use image::{ImageFormat, RgbImage, RgbaImage};
-
-				let Some(mut image) = RgbaImage::from_raw(width, height, data) else {
-					return Err("Failed to create image buffer for export".to_string());
-				};
-
-				let mut encoded = Vec::new();
-				let mut cursor = std::io::Cursor::new(&mut encoded);
-
-				match file_type {
-					FileType::Png => {
-						let result = image.write_to(&mut cursor, ImageFormat::Png);
-						if let Err(err) = result {
-							return Err(format!("Failed to encode PNG: {err}"));
-						}
-					}
-					FileType::Jpg => {
-						// Composite onto a white background since JPG doesn't support transparency
-						for pixel in image.pixels_mut() {
-							let [r, g, b, a] = pixel.0;
-							let alpha = a as f32 / 255.;
-							let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
-							*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
-						}
-
-						let image: RgbImage = image.convert();
-						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
-						if let Err(err) = result {
-							return Err(format!("Failed to encode JPG: {err}"));
-						}
-					}
-					FileType::Svg => {
-						return Err("SVG cannot be exported from an image buffer".to_string());
-					}
-				}
-
-				responses.add(FrontendMessage::TriggerSaveFile {
-					name,
-					folder,
-					filters,
-					content: encoded.into(),
-				});
+				let content = file_type.encode(width, height, data)?.into();
+				responses.add(FrontendMessage::TriggerSaveFile { name, folder, filters, content });
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));

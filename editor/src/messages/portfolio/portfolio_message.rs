@@ -167,6 +167,13 @@ pub enum PortfolioMessage {
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},
+	SaveRasterizedExport {
+		name: String,
+		file_type: FileType,
+		width: u32,
+		height: u32,
+		data: Vec<u8>,
+	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,

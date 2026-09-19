@@ -2,6 +2,7 @@
 use base64::Engine;
 #[cfg(target_family = "wasm")]
 use canvas_utils::{Canvas, CanvasHandle};
+use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::list::Item;
 #[cfg(target_family = "wasm")]
@@ -12,7 +13,6 @@ use core_types::ops::Convert;
 use core_types::transform::Footprint;
 #[cfg(target_family = "wasm")]
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
-use core_types::{Color, Ctx};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
@@ -160,22 +160,13 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: It
 	}
 }
 
-/// Converts raw binary data to a raster image.
+/// Converts the raw byte data of an image file to a raster image.
 ///
-/// Works with standard image format (PNG, JPEG, WebP, etc.). Automatically converts the color space to linear sRGB for accurate compositing.
+/// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
 #[node_macro::node(category("Web Request"))]
 fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 	let data = data.into_element();
-	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
-		return Item::default();
-	};
-	let image = image.to_rgba32f();
-	let image = Image {
-		data: image.chunks(4).map(|pixel| Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
-		width: image.width(),
-		height: image.height(),
-		..Default::default()
-	};
+	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
 
 	Item::new_from_element(Raster::new_cpu(image))
 }
