@@ -2,7 +2,7 @@
 
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
-use crate::color_lookup_table::Lut;
+use crate::color_lookup_table::LutCache;
 use core::fmt::Debug;
 #[cfg(feature = "std")]
 use core_types::list::{Item, List};
@@ -2006,9 +2006,10 @@ async fn color_lookup<T: Adjust<Color> + Send>(
 	#[name("LUT File")]
 	#[widget(ParsedWidgetOverride::Custom = "lut_file")]
 	lut_file: Item<Resource>,
+	#[data] lut_cache: LutCache,
 ) -> Item<T> {
 	let mut image = image;
-	let Ok(lut) = Lut::parse(lut_file.element()) else { return image };
+	let Ok(lut) = lut_cache.parse(lut_file.element()) else { return image };
 
 	image.element_mut().adjust(|color| {
 		// Lookup tables address the gamma-encoded channels

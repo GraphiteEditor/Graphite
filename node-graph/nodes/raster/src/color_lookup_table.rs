@@ -7,9 +7,37 @@ mod format_icc;
 mod format_look;
 
 use crate::adjustments::{SRGB_TO_XYZ_D50, WHITE_XYZ_D50, XYZ_D50_TO_SRGB, multiply_matrix};
+use graphene_resource::{Resource, ResourceHash};
 use no_std_types::color::{linear_to_srgb, srgb_to_linear};
+use std::sync::{Arc, Mutex, PoisonError};
 
 pub const LUT_FILE_EXTENSIONS: &[&str] = &["cube", "3dl", "look", "csp", "icc", "icm"];
+
+/// A file's parse result, in the form the cache shares out.
+type ParsedLut = Result<Arc<Lut>, LutParseError>;
+
+/// The last file a node parsed, kept as the node's own data so the file is not parsed anew each time the node runs again.
+#[derive(Debug, Clone, Default)]
+pub struct LutCache(Arc<Mutex<Option<(ResourceHash, ParsedLut)>>>);
+
+impl LutCache {
+	/// [`Lut::parse`] for a resource, reusing the last result while the file's content hash stays the same.
+	pub fn parse(&self, resource: &Resource) -> ParsedLut {
+		// A lock poisoned by a panic elsewhere still guards a usable cache
+		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+
+		let hash = resource.hash();
+		if let Some((cached_hash, result)) = cached.as_ref()
+			&& *cached_hash == hash
+		{
+			return result.clone();
+		}
+
+		let result = Lut::parse(resource).map(Arc::new);
+		*cached = Some((hash, result.clone()));
+		result
+	}
+}
 
 /// Why a file could not be read as a lookup table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -348,5 +376,20 @@ mod tests {
 		assert!(Lut::parse(b"").is_err());
 		assert!(Lut::parse(b"hello world").is_err());
 		assert!(Lut::parse(b"LUT_3D_SIZE 2\n0 0 0\n").is_err());
+	}
+
+	#[test]
+	fn a_cache_parses_a_file_once_until_the_file_changes() {
+		let file = Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".to_vec());
+		let cache = LutCache::default();
+		let first = cache.parse(&file).unwrap();
+		assert!(Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
+
+		// A cloned node shares its cache
+		assert!(Arc::ptr_eq(&first, &cache.clone().parse(&file).unwrap()));
+
+		// Another file takes its place, a failed one included
+		assert!(cache.parse(&Resource::new(b"hello world".to_vec())).is_err());
+		assert!(!Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
 	}
 }
