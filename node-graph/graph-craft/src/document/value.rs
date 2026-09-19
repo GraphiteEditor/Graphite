@@ -11,12 +11,13 @@ use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDe
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use gradient_nodes::mesh_gradient::MeshGradientEvaluatorCache;
 use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::DashPattern;
-use graphic_types::vector_types::vector::style::{Gradient, GradientRamp, MeshGradient, MeshGradientCache, MeshGradientSurface};
+use graphic_types::vector_types::vector::style::{Gradient, GradientRamp, MeshGradient, MeshGradientSurface};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
@@ -100,7 +101,7 @@ macro_rules! tagged_value {
 			MeshGradient(MeshGradientSurface),
 			Strokes(Vec<Stroke>),
 			BrushCache(BrushCache),
-			MeshGradientCache(MeshGradientCache),
+			MeshGradientEvaluatorCache(MeshGradientEvaluatorCache),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -147,7 +148,7 @@ macro_rules! tagged_value {
 					Self::MeshGradient(surface) => surface.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
 					Self::BrushCache(cache) => cache.cache_hash(state),
-					Self::MeshGradientCache(cache) => cache.cache_hash(state),
+					Self::MeshGradientEvaluatorCache(cache) => cache.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -217,7 +218,7 @@ macro_rules! tagged_value {
 						Box::new(list)
 					}
 					Self::BrushCache(cache) => Box::new(Item::new_from_element(cache)),
-					Self::MeshGradientCache(cache) => Box::new(Item::new_from_element(cache)),
+					Self::MeshGradientEvaluatorCache(cache) => Box::new(Item::new_from_element(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -287,7 +288,7 @@ macro_rules! tagged_value {
 						Arc::new(list)
 					}
 					Self::BrushCache(cache) => Arc::new(Item::new_from_element(cache)),
-					Self::MeshGradientCache(cache) => Arc::new(Item::new_from_element(cache)),
+					Self::MeshGradientEvaluatorCache(cache) => Arc::new(Item::new_from_element(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -320,7 +321,7 @@ macro_rules! tagged_value {
 					Self::MeshGradient(_) => item!(MeshGradient),
 					Self::Strokes(_) => list!(Stroke),
 					Self::BrushCache(_) => item!(BrushCache),
-					Self::MeshGradientCache(_) => item!(MeshGradientCache),
+					Self::MeshGradientEvaluatorCache(_) => item!(MeshGradientEvaluatorCache),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -365,7 +366,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<MeshGradient>>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(&*downcast::<Item<MeshGradient>>(input).unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(downcast::<List<Stroke>>(input).unwrap().into_iter().map(Item::into_element).collect())),
 					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(downcast::<Item<BrushCache>>(input).unwrap().into_element())),
-					x if x == TypeId::of::<Item<MeshGradientCache>>() => Ok(TaggedValue::MeshGradientCache(downcast::<Item<MeshGradientCache>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Item<MeshGradientEvaluatorCache>>() => Ok(TaggedValue::MeshGradientEvaluatorCache(downcast::<Item<MeshGradientEvaluatorCache>>(input).unwrap().into_element())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -404,7 +405,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<MeshGradient>>() => Ok(TaggedValue::MeshGradient(MeshGradientSurface::from(input.downcast_ref::<Item<MeshGradient>>().unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast_ref::<List<Stroke>>().unwrap().iter_element_values().cloned().collect())),
 					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(input.downcast_ref::<Item<BrushCache>>().unwrap().element().clone())),
-					x if x == TypeId::of::<Item<MeshGradientCache>>() => Ok(TaggedValue::MeshGradientCache(input.downcast_ref::<Item<MeshGradientCache>>().unwrap().element().clone())),
+					x if x == TypeId::of::<Item<MeshGradientEvaluatorCache>>() => Ok(TaggedValue::MeshGradientEvaluatorCache(input.downcast_ref::<Item<MeshGradientEvaluatorCache>>().unwrap().element().clone())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -436,7 +437,7 @@ macro_rules! tagged_value {
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
-						if name == std::any::type_name::<MeshGradientCache>() { return Some(TaggedValue::MeshGradientCache(Default::default())) }
+						if name == std::any::type_name::<MeshGradientEvaluatorCache>() { return Some(TaggedValue::MeshGradientEvaluatorCache(Default::default())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
 						macro_rules! check_bare {
 							($type_default:ty) => {
@@ -496,7 +497,7 @@ macro_rules! tagged_value {
 					Self::MeshGradient(surface) => format!("MeshGradient({surface:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
 					Self::BrushCache(cache) => format!("{cache:?}"),
-					Self::MeshGradientCache(cache) => format!("{cache:?}"),
+					Self::MeshGradientEvaluatorCache(cache) => format!("{cache:?}"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================

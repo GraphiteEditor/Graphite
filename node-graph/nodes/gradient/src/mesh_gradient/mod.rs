@@ -1,25 +1,29 @@
+mod cache;
 mod pipeline;
-mod tessellate;
+mod renderer;
+mod tessellator;
+mod utils;
 
-// FIXME: create MeshGradientCache type
+use std::sync::Arc;
+
+// FIXME: create MeshGradientRenderCache type or make the BrushCache to FootprintCache
 use brush_types::BrushCache;
 
 use core_types::{
 	ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_TRANSFORM, Ctx, ExtractFootprint, ExtractPaintRenderParams,
-	bounds::{BoundingBox, RenderBoundingBox},
 	list::{ATTR_TEXTURE, Item},
-	math::bbox::AxisAlignedBbox,
-	transform::Footprint,
 };
-use glam::{DAffine2, DVec2, UVec2};
-use vector_types::mesh_gradient::{MeshGradient, MeshGradientCache, MeshGradientEvaluator};
+use vector_types::mesh_gradient::{MeshGradient, MeshGradientEvaluator};
 use vector_types::{GradientInterpolation, GradientSpace};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
 use crate::mesh_gradient::{
+	cache::evaluator_cache_key,
 	pipeline::{MeshGradientPipeline, MeshGradientPipelineArgs},
-	tessellate::{MeshGradientTessellator, Metadata},
+	tessellator::MeshGradientTessellator,
 };
+
+pub use crate::mesh_gradient::cache::MeshGradientEvaluatorCache;
 
 /// Constructs a mesh gradient value composed of a grid of patches defined by colored corners and curved boundary segments.
 #[node_macro::node(category("Value"))]
@@ -31,34 +35,43 @@ pub async fn mesh_gradient_value<'a: 'n>(
 	#[default(false)]
 	debug: Item<bool>,
 	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<BrushCache>,
-	#[widget(ParsedWidgetOverride::Hidden)] mesh_gradient_cache: Item<MeshGradientCache>,
+	#[widget(ParsedWidgetOverride::Hidden)] evaluator_cache: Item<MeshGradientEvaluatorCache>,
 	#[scope(mesh_gradient_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> Item<MeshGradient> {
 	// FIXME: debug
 	let debug = *debug.element();
 	let pipeline = pipeline.into_element();
-	let (cache, mesh_gradient_cache) = (cache.into_element(), mesh_gradient_cache.into_element());
+	let (cache, evaluator_cache) = (&cache.into_element(), &evaluator_cache.into_element());
 
 	let mut mesh_gradient_item = mesh_gradient;
 	let mesh_gradient = mesh_gradient_item.element();
 
 	let footprint = *ctx.footprint();
-	let Some(paint_to_target) = ctx.paint_render_params().fallback_paint_to_target else {
-		return Item::default();
-	};
 	let mesh_to_target = ctx.paint_render_params().fallback_paint_to_target.unwrap_or_default();
 
 	let interpolation_space: GradientSpace = mesh_gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_SPACE);
 	let interpolation_method: GradientInterpolation = mesh_gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION);
 
+	let evaluator_key = evaluator_cache_key(mesh_gradient, interpolation_space, interpolation_method);
+	let cached_evaluator = evaluator_cache.get_cloned::<Arc<MeshGradientEvaluator>>(&evaluator_key);
+
+	let mesh_gradient_evaluator = match cached_evaluator {
+		Some(cached) => cached,
+		None => {
+			let Some(fresh_evaluator) = mesh_gradient.evaluator(interpolation_space, interpolation_method).ok() else {
+				return Item::default();
+			};
+			evaluator_cache.store(&evaluator_key, Arc::clone(&fresh_evaluator));
+			fresh_evaluator
+		}
+	};
+
 	let args = MeshGradientPipelineArgs {
 		footprint,
 		mesh_to_target,
-		mesh_gradient,
-		interpolation_space,
-		interpolation_method,
-		cache: &cache,
-		mesh_gradient_cache: &mesh_gradient_cache,
+		mesh_gradient_evaluator,
+		evaluator_key,
+		cache,
 		debug,
 	};
 

@@ -15,11 +15,8 @@ use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
 use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2, Mat4, Vec4};
-use graphene_cache::{Cache, Lru};
 use kurbo::{BezPath, CubicBez, ParamCurve, PathSeg};
 use num_traits::Float;
-
-pub type MeshGradientCache = Cache<u64, Lru<4>>;
 
 // =============
 // Mesh Gradient
@@ -36,7 +33,7 @@ pub struct MeshGradient {
 	vertical_edges: MeshGrid<SegmentId>,
 	#[cache_hash(skip)]
 	#[cfg_attr(feature = "serde", serde(skip, default))]
-	evaluator_cache: MeshGradientEvaluatorCache,
+	evaluator_cache: EvaluatorInnerCache,
 }
 
 impl Default for MeshGradient {
@@ -130,7 +127,7 @@ impl MeshGradient {
 			corner_colors: MeshGrid::new(corner_colors, corner_rows, corner_columns)?,
 			horizontal_edges: MeshGrid::new(horizontal_edges, corner_rows, corner_columns - 1)?,
 			vertical_edges: MeshGrid::new(vertical_edges, corner_rows - 1, corner_columns)?,
-			evaluator_cache: MeshGradientEvaluatorCache::default(),
+			evaluator_cache: EvaluatorInnerCache::default(),
 		})
 	}
 
@@ -478,9 +475,6 @@ impl RenderComplexity for MeshGradient {
 
 impl core_types::bounds::BoundingBox for MeshGradient {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
-		let mut mesh_min = DVec2::MAX;
-		let mut mesh_max = DVec2::MIN;
-
 		let evaluator = {
 			let mut guard = self.evaluator_cache.get_clean_guard();
 			match guard.as_ref() {
@@ -497,13 +491,7 @@ impl core_types::bounds::BoundingBox for MeshGradient {
 			}
 		};
 
-		for patch_evaluator in evaluator.patches() {
-			let [patch_min, patch_max] = patch_evaluator.position_bezier_net().control_net_bounds(transform);
-			mesh_min = mesh_min.min(patch_min);
-			mesh_max = mesh_max.max(patch_max);
-		}
-
-		RenderBoundingBox::Rectangle([mesh_min, mesh_max])
+		evaluator.bounding_box(transform)
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
@@ -887,11 +875,11 @@ impl BicubicBezierNet<Vec4> {
 // =====================
 
 #[derive(Default)]
-struct MeshGradientEvaluatorCache {
+struct EvaluatorInnerCache {
 	evaluator: Mutex<Option<Arc<MeshGradientEvaluator>>>,
 }
 
-impl MeshGradientEvaluatorCache {
+impl EvaluatorInnerCache {
 	fn invalidate(&mut self) {
 		match self.evaluator.get_mut() {
 			Ok(slot) => *slot = None,
@@ -941,7 +929,7 @@ impl MeshGradientEvaluatorCache {
 	}
 }
 
-impl Clone for MeshGradientEvaluatorCache {
+impl Clone for EvaluatorInnerCache {
 	fn clone(&self) -> Self {
 		let guard = match self.evaluator.lock() {
 			Ok(guard) => guard,
@@ -958,15 +946,15 @@ impl Clone for MeshGradientEvaluatorCache {
 	}
 }
 
-impl PartialEq for MeshGradientEvaluatorCache {
+impl PartialEq for EvaluatorInnerCache {
 	fn eq(&self, _other: &Self) -> bool {
 		true
 	}
 }
 
-impl std::fmt::Debug for MeshGradientEvaluatorCache {
+impl std::fmt::Debug for EvaluatorInnerCache {
 	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("MeshGradientEvaluatorCache")
+		formatter.write_str("EvaluatorInnerCache")
 	}
 }
 
@@ -1182,6 +1170,19 @@ impl MeshGradientEvaluator {
 			return None;
 		}
 		Some(MeshPatchEvaluator { mesh: self, index: patch_index })
+	}
+
+	pub fn bounding_box(&self, transform: DAffine2) -> RenderBoundingBox {
+		let mut mesh_min = DVec2::MAX;
+		let mut mesh_max = DVec2::MIN;
+
+		for patch_evaluator in self.patches() {
+			let [patch_min, patch_max] = patch_evaluator.position_bezier_net().control_net_bounds(transform);
+			mesh_min = mesh_min.min(patch_min);
+			mesh_max = mesh_max.max(patch_max);
+		}
+
+		RenderBoundingBox::Rectangle([mesh_min, mesh_max])
 	}
 }
 
