@@ -17,7 +17,7 @@ pub(in crate::record) struct DeepElementGlue {
 	pub(in crate::record) repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
 }
 
-static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepElementGlue>>> = std::sync::LazyLock::new(Default::default);
+static DEEP_ELEMENT_CLONES: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<std::any::TypeId, DeepElementGlue, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>>> = std::sync::LazyLock::new(Default::default);
 
 /// Registers the deep copy-out and re-park pair for elements of `T`. Called
 /// at startup from the crate that owns the type.
@@ -25,18 +25,18 @@ pub fn register_deep_element_clone<T: dyn_any::StaticTypeSized>(
 	clone_out: unsafe fn(*const u8) -> Box<dyn std::any::Any + Send + Sync>,
 	repark: unsafe fn(&(dyn std::any::Any + Send + Sync), *mut u8, &crate::arena::Arena) -> Option<()>,
 ) {
-	DEEP_ELEMENT_CLONES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), DeepElementGlue { clone_out, repark });
+	DEEP_ELEMENT_CLONES.write().unwrap().insert(std::any::TypeId::of::<T::Static>(), DeepElementGlue { clone_out, repark });
 }
 
 pub(in crate::record) fn deep_element_glue(type_id: std::any::TypeId) -> Option<DeepElementGlue> {
-	DEEP_ELEMENT_CLONES.lock().unwrap().get(&type_id).copied()
+	DEEP_ELEMENT_CLONES.read().unwrap().get(&type_id).copied()
 }
 
 /// Whether elements of a type registered deep glue. The shallow clone path is
 /// only sound for types that did not need to, so a host that drives the
 /// registration itself checks the types it owes before it evaluates anything.
 pub fn has_deep_element_glue(type_id: std::any::TypeId) -> bool {
-	DEEP_ELEMENT_CLONES.lock().unwrap().contains_key(&type_id)
+	DEEP_ELEMENT_CLONES.read().unwrap().contains_key(&type_id)
 }
 
 /// Deep-copy overrides for field values whose content borrows the
@@ -53,16 +53,16 @@ pub(in crate::record) struct DeepFieldGlue {
 	pub(in crate::record) replay: crate::list::FieldReplayFn,
 }
 
-static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, DeepFieldGlue>>> = std::sync::LazyLock::new(Default::default);
+static DEEP_FIELD_VALUES: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<std::any::TypeId, DeepFieldGlue, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>>> = std::sync::LazyLock::new(Default::default);
 
 /// Registers the deep copy-out and replay pair for field values of `T`.
 /// Called at startup from the crate that owns the type.
 pub fn register_deep_field_value<T: 'static>(copy_out: fn(&dyn crate::list::AnyAttributeValue) -> Option<Box<dyn crate::list::AnyAttributeValue>>, replay: crate::list::FieldReplayFn) {
-	DEEP_FIELD_VALUES.lock().unwrap().insert(std::any::TypeId::of::<T>(), DeepFieldGlue { copy_out, replay });
+	DEEP_FIELD_VALUES.write().unwrap().insert(std::any::TypeId::of::<T>(), DeepFieldGlue { copy_out, replay });
 }
 
 pub(in crate::record) fn deep_field_glue(type_id: std::any::TypeId) -> Option<DeepFieldGlue> {
-	DEEP_FIELD_VALUES.lock().unwrap().get(&type_id).copied()
+	DEEP_FIELD_VALUES.read().unwrap().get(&type_id).copied()
 }
 
 /// The copy-out half over an erased field value: the owned form a value takes

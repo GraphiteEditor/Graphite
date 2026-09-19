@@ -155,17 +155,17 @@ pub unsafe fn assert_promoted(layout: &Layout, ptr: *const u8, promotion: &Promo
 /// region and copies only the rest.
 type ElementPromote = unsafe fn(*const u8, *mut u8, &Promotion<'_>) -> Option<()>;
 
-static ELEMENT_PROMOTES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, ElementPromote>>> = std::sync::LazyLock::new(Default::default);
+static ELEMENT_PROMOTES: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<std::any::TypeId, ElementPromote, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>>> = std::sync::LazyLock::new(Default::default);
 
 /// Registers the promote for elements of `T`. Called at startup from the crate
 /// that owns the type. The promote must leave no reference the promotion calls
 /// evaluation-lived.
 pub fn register_element_promote<T: dyn_any::StaticTypeSized>(promote: ElementPromote) {
-	ELEMENT_PROMOTES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), promote);
+	ELEMENT_PROMOTES.write().unwrap().insert(std::any::TypeId::of::<T::Static>(), promote);
 }
 
 fn element_promote_glue(type_id: std::any::TypeId) -> Option<ElementPromote> {
-	ELEMENT_PROMOTES.lock().unwrap().get(&type_id).copied()
+	ELEMENT_PROMOTES.read().unwrap().get(&type_id).copied()
 }
 
 /// The deep field glue's third half, opt-in beside [`register_deep_field_value`]'s
@@ -186,17 +186,17 @@ fn element_promote_glue(type_id: std::any::TypeId) -> Option<ElementPromote> {
 /// dies with the evaluation is copied or moved.
 type FieldPromote = unsafe fn(*const u8, *mut u8, &Promotion<'_>) -> Option<()>;
 
-static FIELD_PROMOTES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, FieldPromote>>> = std::sync::LazyLock::new(Default::default);
+static FIELD_PROMOTES: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<std::any::TypeId, FieldPromote, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>>> = std::sync::LazyLock::new(Default::default);
 
 /// Registers the promote for fields stored as `T`. Called at startup from the
 /// crate that owns the type. The promote must leave no reference the promotion
 /// calls evaluation-lived.
 pub fn register_field_promote<T: 'static>(promote: FieldPromote) {
-	FIELD_PROMOTES.lock().unwrap().insert(std::any::TypeId::of::<T>(), promote);
+	FIELD_PROMOTES.write().unwrap().insert(std::any::TypeId::of::<T>(), promote);
 }
 
 fn field_promote_glue(type_id: std::any::TypeId) -> Option<FieldPromote> {
-	FIELD_PROMOTES.lock().unwrap().get(&type_id).copied()
+	FIELD_PROMOTES.read().unwrap().get(&type_id).copied()
 }
 
 /// The park glue's heap estimate for values of a type, keyed as the deep glue
@@ -204,17 +204,17 @@ fn field_promote_glue(type_id: std::any::TypeId) -> Option<FieldPromote> {
 /// without walking it.
 type RetainedMeasure = fn(&(dyn std::any::Any + Send + Sync)) -> usize;
 
-static RETAINED_MEASURES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<std::any::TypeId, RetainedMeasure>>> = std::sync::LazyLock::new(Default::default);
+static RETAINED_MEASURES: std::sync::LazyLock<std::sync::RwLock<std::collections::HashMap<std::any::TypeId, RetainedMeasure, std::hash::BuildHasherDefault<graphene_hash::FxHasher64>>>> = std::sync::LazyLock::new(Default::default);
 
 /// Registers the retained-heap estimate for values of `T`. Called at startup
 /// from the crate that owns the type. The estimate is a hint: an unregistered
 /// type contributes 0, so a region's counter is a lower bound.
 pub fn register_retained_heap<T: dyn_any::StaticTypeSized>(measure: RetainedMeasure) {
-	RETAINED_MEASURES.lock().unwrap().insert(std::any::TypeId::of::<T::Static>(), measure);
+	RETAINED_MEASURES.write().unwrap().insert(std::any::TypeId::of::<T::Static>(), measure);
 }
 
 pub(in crate::record) fn retained_measure(type_id: std::any::TypeId) -> Option<RetainedMeasure> {
-	RETAINED_MEASURES.lock().unwrap().get(&type_id).copied()
+	RETAINED_MEASURES.read().unwrap().get(&type_id).copied()
 }
 
 impl MaterializedSpan {

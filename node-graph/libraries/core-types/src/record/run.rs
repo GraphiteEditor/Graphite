@@ -281,13 +281,29 @@ unsafe impl Send for GroupItem<'_> {}
 unsafe impl Sync for GroupItem<'_> {}
 
 impl<'e> GroupItem<'e> {
+	/// As [`Self::adopt`], borrowing the batch's layout instead of cloning it.
+	///
+	/// # Safety
+	/// The batch must read through a layout the compiled graph owns for as
+	/// long as `arena` can hold the run (a node's own layout, as a materialized
+	/// input's batch does; see [`LayoutRef::persistent`]), never a run's
+	/// shared layout that dies with the run.
+	pub unsafe fn adopt_borrowing(batch: crate::node::RecordBatch<'_>, arena: &'e crate::arena::Arena) -> Option<Self> {
+		// SAFETY: the caller's contract on the layout's storage.
+		let layout = LayoutRef::Borrowed(unsafe { &*std::ptr::from_ref::<Layout>(batch.layout()) });
+		Self::adopt_with(batch, layout, arena)
+	}
+
 	/// Copies the batch's lanes into the arena and clones its layout.
 	/// Returns `None` when the arena is exhausted. Parked regions must carry
 	/// the content glue, so equality and hashing never fall back to pointer
 	/// bytes. A copied lane's parked payloads re-park into `arena`, so the
 	/// adopted run names nothing the source arena's reset frees.
 	pub fn adopt(batch: crate::node::RecordBatch<'_>, arena: &'e crate::arena::Arena) -> Option<Self> {
-		let layout = LayoutRef::Shared(std::sync::Arc::new(batch.layout().clone()));
+		Self::adopt_with(batch, LayoutRef::Shared(std::sync::Arc::new(batch.layout().clone())), arena)
+	}
+
+	fn adopt_with(batch: crate::node::RecordBatch<'_>, layout: LayoutRef<'e>, arena: &'e crate::arena::Arena) -> Option<Self> {
 		assert_element_glue(&layout);
 		for field in &layout.fields {
 			assert!(field.repark.is_none() || field.content_hash.is_some(), "a parked field adopts only with content glue");

@@ -611,8 +611,10 @@ pub use _colors_to_gradient_graphic_mod::colors_to_gradient_graphic_entries;
 pub fn stack_graphics<'e>(ctx: impl Ctx + ExtractArena<'e>, base: IList<Graphic<'static>>, new: IList<Graphic<'static>>) -> Result<Graphic<'e>, Interrupt> {
 	let exhausted = || Interrupt::from(GraphError::new("the arena is exhausted"));
 	// A materialized level already lives in the arena, so adopting it copies nothing.
-	let left = core_types::record::Child::Leaf(core_types::record::GroupItem::adopt(base.batch(), ctx.arena()).ok_or_else(exhausted)?);
-	let right = core_types::record::Child::Leaf(core_types::record::GroupItem::adopt(new.batch(), ctx.arena()).ok_or_else(exhausted)?);
+	// SAFETY: a materialized input's batch reads through its source node's
+	// layout, which the compiled graph owns beyond any evaluation.
+	let left = core_types::record::Child::Leaf(unsafe { core_types::record::GroupItem::adopt_borrowing(base.batch(), ctx.arena()) }.ok_or_else(exhausted)?);
+	let right = core_types::record::Child::Leaf(unsafe { core_types::record::GroupItem::adopt_borrowing(new.batch(), ctx.arena()) }.ok_or_else(exhausted)?);
 	Ok(Graphic::Segmented(core_types::record::Segmented::new(left, right)))
 }
 
