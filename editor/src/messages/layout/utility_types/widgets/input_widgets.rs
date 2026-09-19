@@ -3,6 +3,7 @@ use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
@@ -83,6 +84,9 @@ pub struct DropdownInput {
 	pub virtual_scrolling: bool,
 	#[derivative(Default(value = "true"))]
 	pub interactive: bool,
+	// Where a file dropped on the widget is sent, which also makes the widget take dropped files
+	#[serde(rename = "fileDropAction")]
+	pub file_drop_action: Option<IngestAction>,
 
 	// Sizing
 	#[serde(rename = "minWidth")]

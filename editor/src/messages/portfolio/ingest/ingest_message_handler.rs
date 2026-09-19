@@ -33,18 +33,9 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 				input_index,
 				filters,
 			} => {
-				let accepted_types = filters.iter().flat_map(|filter| filter.types.iter().copied()).collect();
+				let action = IngestAction::resource_input(document_id, node_id, input_index, &filters);
 
-				responses.add(IngestMessage::Browse {
-					filters,
-					multiple: false,
-					action: IngestAction::ResourceInput {
-						document_id,
-						node_id,
-						input_index: input_index as u32,
-						accepted_types,
-					},
-				});
+				responses.add(IngestMessage::Browse { filters, multiple: false, action });
 			}
 			IngestMessage::Browse { filters, multiple, action } => responses.add(FrontendMessage::TriggerBrowse {
 				options: FileDialogOptions {
@@ -280,6 +271,24 @@ mod tests {
 			assert_eq!(responses.len(), 1, "a rejected file should not become a resource");
 			assert!(matches!(responses[0], Message::Dialog(DialogMessage::DisplayDialogError { .. })), "the user should be told why");
 		}
+	}
+
+	#[test]
+	fn browsing_for_a_resource_input_carries_the_action_a_dropped_file_uses() {
+		let filters = vec![TypeFilter::documents(), TypeFilter::raster()];
+		let accepted_types = [TypeFilter::documents().types, TypeFilter::raster().types].concat();
+		let dropped = IngestAction::resource_input(REQUESTING_DOCUMENT, NodeId(7), 1, &filters);
+		assert_eq!(dropped, resource_input(accepted_types));
+
+		let mut responses = VecDeque::new();
+		let message = IngestMessage::SetResourceInput {
+			document_id: REQUESTING_DOCUMENT,
+			node_id: NodeId(7),
+			input_index: 1,
+			filters,
+		};
+		IngestMessageHandler::default().process_message(message, &mut responses, IngestMessageContext { document_open: true });
+		assert!(matches!(&responses[0], Message::Portfolio(PortfolioMessage::Ingest(IngestMessage::Browse { action, .. })) if *action == dropped));
 	}
 
 	#[test]

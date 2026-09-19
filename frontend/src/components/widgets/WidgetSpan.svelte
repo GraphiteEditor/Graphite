@@ -165,6 +165,9 @@
 					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					hoverOutEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
+					fileDrop: async (e: CustomEvent<File>) => {
+						if (props.fileDropAction) editor.ingestPicked(e.detail.name, e.detail.type, await e.detail.bytes(), props.fileDropAction);
+					},
 				},
 			}),
 		},
