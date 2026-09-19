@@ -1354,6 +1354,7 @@ mod tests {
 			named_read_defaults: Vec::new(),
 			lane_invariant: 0,
 			footprint_free: 0,
+			single_lane: 0,
 			input_levels: Vec::new(),
 			..mirror_layout_meta().resolve(&[Some(&layout)])
 		};

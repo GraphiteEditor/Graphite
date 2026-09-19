@@ -28,7 +28,7 @@ pub use input::{
 	inner_extent_of, materialize_batch, materialize_dispatch, materialize_level,
 };
 #[cfg(debug_assertions)]
-pub use input::{note_batch_consumer, note_kernel_batch, take_batch_tally, take_kernel_tally};
+pub use input::{note_batch_consumer, note_kernel_batch, ragged_checks_enabled, take_batch_tally, take_kernel_tally};
 pub use input::{note_render_nanos, take_render_nanos};
 pub use layout::{
 	ElToken, ElementSpec, ElementWrite, ElementWritePick, ElementWritePickHashed, ElementWritePickPlain, FieldDesc, FieldOffset, FieldWrite, InputReads, Layout, LayoutMeta, NamedRead, NamedWrite,

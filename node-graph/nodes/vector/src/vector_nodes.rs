@@ -225,38 +225,61 @@ fn assign_colors_graphic<'e>(
 		(entry.offsets[content.len()], entry.offsets[lane])
 	};
 
-	// The direct vector rows as a scratch list, one color per row, rebuilt as
-	// a native run; a lane without direct rows passes through untouched.
+	let color_at = |index: usize| assign_color_at(gradient_element, settings, index, length, randomize, seed, repeat_every);
+	let mut position = position;
+	let element = recolor_graphic(original, ctx.arena(), &mut position, fill, stroke, &color_at)?;
+
+	Ok(content.lane(lane).map_element(element))
+}
+
+/// The recolor over one lane element: a vector or a group's direct vector rows
+/// take one color each from `position` on, a stack's runs are the lane's own
+/// rows inline, and anything else passes through untouched.
+fn recolor_graphic<'e>(original: &Graphic<'e>, arena: &'e core_types::arena::Arena, position: &mut usize, fill: bool, stroke: bool, color_at: &dyn Fn(usize) -> Color) -> Result<Graphic<'e>, Interrupt> {
+	let exhausted = || Interrupt::from(GraphError::new("the arena is exhausted"));
 	let rows = match original {
 		Graphic::Vector(vector) => Some(List::new_from_element((**vector).clone())),
 		Graphic::Group(group) if group.row.is_none() => graphic_types::graphic::run_to_list::<Vector>(&group.content),
+		Graphic::Segmented(stack) => {
+			let mut runs = Vec::new();
+			for run in stack.runs() {
+				runs.push(match graphic_types::graphic::run_to_list::<Graphic>(&run) {
+					Some(mut lanes) => {
+						for element in lanes.iter_element_values_mut() {
+							let recolored = recolor_graphic(element, arena, position, fill, stroke, color_at)?;
+							*element = recolored;
+						}
+						core_types::record::GroupItem::from_list(lanes, arena).ok_or_else(exhausted)?
+					}
+					None => run,
+				});
+			}
+			let stack = core_types::record::Segmented::from_runs(runs, arena).ok_or_else(exhausted)?;
+			return Ok(Graphic::Segmented(stack));
+		}
 		_ => None,
 	};
-	let element = match rows {
-		Some(mut rows) => {
-			for row in 0..rows.len() {
-				let color = assign_color_at(gradient_element, settings, position + row, length, randomize, seed, repeat_every);
-				let paint = List::new_from_element(color).into_graphic_list();
-
-				// The recolor lands on the row's appearance coverage paints
-				let mut appearance = rows.attribute_cloned_or_default::<Appearance>(graphic_types::ATTR_APPEARANCE, row);
-				let paint_cell = Graphic::GraphicList(paint);
-				if fill && !appearance.set_paint_of(Cover::Fill, paint_cell.clone()) {
-					appearance.replace_or_insert(Coverage::new_fill(), paint_cell.clone(), CoverPlacement::Below);
-				}
-				// The stroke recolor is gated on an existing stroke coverage, since restyling never adds a stroke
-				if stroke {
-					appearance.set_paint_of(Cover::Stroke, paint_cell);
-				}
-				rows.set_attribute(graphic_types::ATTR_APPEARANCE, row, appearance);
-			}
-			let content = core_types::record::GroupItem::from_list(rows, ctx.arena()).ok_or_else(|| Interrupt::from(GraphError::new("the arena is exhausted")))?;
-			Graphic::Group(core_types::record::Group { row: None, content })
-		}
-		None => original.clone(),
+	let Some(mut rows) = rows else {
+		return Ok(original.clone());
 	};
+	for row in 0..rows.len() {
+		let paint = List::new_from_element(color_at(*position)).into_graphic_list();
+		*position += 1;
 
-	Ok(content.lane(lane).map_element(element))
+		// The recolor lands on the row's appearance coverage paints
+		let mut appearance = rows.attribute_cloned_or_default::<Appearance>(graphic_types::ATTR_APPEARANCE, row);
+		let paint_cell = Graphic::GraphicList(paint);
+		if fill && !appearance.set_paint_of(Cover::Fill, paint_cell.clone()) {
+			appearance.replace_or_insert(Coverage::new_fill(), paint_cell.clone(), CoverPlacement::Below);
+		}
+		// The stroke recolor is gated on an existing stroke coverage, since restyling never adds a stroke
+		if stroke {
+			appearance.set_paint_of(Cover::Stroke, paint_cell);
+		}
+		rows.set_attribute(graphic_types::ATTR_APPEARANCE, row, appearance);
+	}
+	let content = core_types::record::GroupItem::from_list(rows, arena).ok_or_else(exhausted)?;
+	Ok(Graphic::Group(core_types::record::Group { row: None, content }))
 }
 
 /// Where each lane's colors start in the level's flattened vector run, valid

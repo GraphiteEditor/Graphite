@@ -39,6 +39,8 @@ impl GraphError {
 	}
 
 	pub fn past_end() -> Self {
+		#[cfg(debug_assertions)]
+		trace_past_end("past_end()", 0, 0);
 		Self {
 			kind: ErrorKind::PastEnd,
 			trace: Vec::new(),
@@ -294,4 +296,26 @@ mod tests {
 		let interrupt = Interrupt::from(GraphError::new("boom"));
 		assert!(matches!(GPoll::<u32>::from(interrupt), GPoll::Error(e) if e.kind == "boom"));
 	}
+}
+
+/// Debug trace of a past-end signal ending a level at its first lane, under
+/// `GRAPHENE_PASTEND_TRACE`: the site and the node frames of the backtrace.
+#[cfg(debug_assertions)]
+pub fn trace_past_end(site: &str, lane: usize, start: u64) {
+	static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	static COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+	if !*ENABLED.get_or_init(|| std::env::var_os("GRAPHENE_PASTEND_TRACE").is_some()) {
+		return;
+	}
+	if COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 40 {
+		return;
+	}
+	let backtrace = std::backtrace::Backtrace::force_capture().to_string();
+	let frames: Vec<&str> = backtrace
+		.lines()
+		.filter(|line| line.contains("_nodes::") || line.contains("gcore::") || line.contains("graphic_nodes") || line.contains("core_types::record"))
+		.map(|line| line.trim().split("core_types::registry::SharedSource").next().unwrap_or(line).trim_end_matches(['<', ':']))
+		.take(12)
+		.collect();
+	eprintln!("pastend> {site} lane {lane} start {start}\n{}", frames.join("\n"));
 }

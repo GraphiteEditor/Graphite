@@ -195,6 +195,8 @@ where
 			// A lane past a lower-bound level ends the data: the fill comes
 			// back short and the hint turns exact.
 			GPoll::Error(error) if error.kind == crate::gpoll::ErrorKind::PastEnd => {
+				#[cfg(debug_assertions)]
+				crate::gpoll::trace_past_end("fill_dispatch", lane, range.start);
 				hint = crate::gpoll::Extent::Exactly(range.start as usize + lane);
 				break;
 			}
@@ -811,4 +813,11 @@ pub fn note_render_nanos(nanos: u64) {
 /// Drains the render time accumulated since the last drain.
 pub fn take_render_nanos() -> u64 {
 	RENDER_NANOS.swap(0, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Whether grouped gathers and repeats verify their groups are rectangular
+/// before batching; `GRAPHENE_NO_RAGGED_CHECK` skips the probes for measurement.
+pub fn ragged_checks_enabled() -> bool {
+	static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ENABLED.get_or_init(|| std::env::var_os("GRAPHENE_NO_RAGGED_CHECK").is_none())
 }

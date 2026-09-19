@@ -279,6 +279,7 @@ mod tests {
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
 			footprint_free: u32::MAX,
+			single_lane: 0,
 			input_levels: Vec::new(),
 			named_writes: Vec::new(),
 			named_reads: Vec::new(),

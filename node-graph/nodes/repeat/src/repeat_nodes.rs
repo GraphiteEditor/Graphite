@@ -518,6 +518,20 @@ where
 		Ok(inner) => inner,
 		Err(interrupt) => return interrupt.into(),
 	};
+	// Copies are rectangular unless the content reads the copy index; a copy
+	// whose inner extent differs leaves the lanes to serve their own copies.
+	let reads_copy = node.__lane_invariant & 1 == 0 && !(node.__single_lane & 1 != 0 && inner == 1) && core_types::record::ragged_checks_enabled();
+	for copy in 1..count.min(if reads_copy { u64::MAX } else { 1 }) {
+		match core_types::record::inner_extent_of(&node.content, &base, copy, inner_levels, 0, frames) {
+			Ok(extent) if extent == inner => {}
+			Ok(_) => {
+				#[cfg(debug_assertions)]
+				core_types::record::note_kernel_batch("repeat", "ragged", 0);
+				return BatchStatus::Unbatched;
+			}
+			Err(interrupt) => return interrupt.into(),
+		}
+	}
 	// The level ends at the last copy of the last enclosing lane: a range
 	// reaching past it comes back short with the exact flat total, so a
 	// lower-bound consumer stops guessing. Open enclosing levels leave it unbounded.
@@ -569,6 +583,8 @@ where
 				GPoll::Pending => return BatchStatus::Pending,
 				GPoll::Fallback(boxed) => return BatchStatus::Error(boxed.1),
 				GPoll::Error(error) if error.kind == core_types::gpoll::ErrorKind::PastEnd => {
+					#[cfg(debug_assertions)]
+					core_types::gpoll::trace_past_end("repeat", lane, range.start);
 					hint = Extent::Exactly(range.start as usize + lane);
 					break;
 				}

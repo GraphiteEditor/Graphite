@@ -362,9 +362,10 @@ fn flatten_vector_run_into<'a>(out: &mut List<Vector>, level: GraphicLevel<'a>, 
 			Graphic::Vector(vector) => push_leaf_vector_row(out, level, index, vector, ancestors, reach),
 			Graphic::GraphicList(children) => push_union(out, flatten_vector_run(GraphicLevel::Legacy(children), composed, reach)),
 			Graphic::Group(group) => flatten_group(out, group, composed, reach),
+			// A stack's runs are this level's lanes inline
 			Graphic::Segmented(stack) => {
-				for group in graphic_types::graphic::segmented_groups(stack) {
-					flatten_group(out, &group, composed, reach);
+				for run in stack.runs() {
+					flatten_vector_run_into(out, GraphicLevel::Run(&run), composed, reach);
 				}
 			}
 			Graphic::Text(text) => {

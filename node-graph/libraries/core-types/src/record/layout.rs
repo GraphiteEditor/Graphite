@@ -370,6 +370,9 @@ pub struct RecordLayout {
 	/// positions. Empty is the safe default: an uninstalled layout treats
 	/// every input as footprint-dependent.
 	pub footprint_free: u32,
+	/// Inputs whose branch serves at most one lane per context (a depth-0
+	/// producer), as a bitmask over input positions. Empty is the safe default.
+	pub single_lane: u32,
 	/// The index levels each input's branch reads, by input position; a
 	/// missing entry reads as every level.
 	pub input_levels: Vec<crate::context::IndexLevels>,
@@ -611,6 +614,7 @@ impl LayoutMeta {
 			plan,
 			lane_invariant: 0,
 			footprint_free: 0,
+			single_lane: 0,
 			input_levels: Vec::new(),
 			named_writes: self.folded_names.clone(),
 			named_reads,

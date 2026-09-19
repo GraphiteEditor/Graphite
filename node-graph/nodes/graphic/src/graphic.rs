@@ -607,13 +607,21 @@ pub use _colors_to_gradient_graphic_mod::colors_to_gradient_graphic_entries;
 /// Stacks two graphic levels as one lane: both sides by reference, rendered as
 /// if their lanes were inline. The compiler picks it for an extend over
 /// graphics, so a layer stack costs one node per stacking and no lane copy.
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), extent(stack_graphics_extent))]
 pub fn stack_graphics<'e>(ctx: impl Ctx + ExtractArena<'e>, base: IList<Graphic<'static>>, new: IList<Graphic<'static>>) -> Result<Graphic<'e>, Interrupt> {
 	let exhausted = || Interrupt::from(GraphError::new("the arena is exhausted"));
 	// A materialized level already lives in the arena, so adopting it copies nothing.
 	let left = core_types::record::Child::Leaf(core_types::record::GroupItem::adopt(base.batch(), ctx.arena()).ok_or_else(exhausted)?);
 	let right = core_types::record::Child::Leaf(core_types::record::GroupItem::adopt(new.batch(), ctx.arena()).ok_or_else(exhausted)?);
 	Ok(Graphic::Segmented(core_types::record::Segmented::new(left, right)))
+}
+
+/// One lane holding both sides; none when neither side has a lane.
+fn stack_graphics_extent(base: ListIn<'_, Graphic>, new: ListIn<'_, Graphic>, _level: LevelIn) -> GPoll<Extent> {
+	Extent::sum(base.total(), new.total()).map(|total| match total {
+		Extent::Exactly(0) => Extent::Exactly(0),
+		_ => Extent::Exactly(1),
+	})
 }
 
 pub use _stack_graphics_mod::stack_graphics_entries;

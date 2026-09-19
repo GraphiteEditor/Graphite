@@ -471,7 +471,14 @@ pub fn direct_vector_len(graphic: &Graphic) -> usize {
 			None => group.content.typed_lanes::<Vector>().map_or(0, |lanes| lanes.len()),
 			_ => 0,
 		},
-		Graphic::Segmented(stack) => segmented_groups(stack).map(|group| direct_vector_len(&Graphic::Group(group))).sum(),
+		// A stack's runs are the lane's own rows inline
+		Graphic::Segmented(stack) => stack
+			.runs()
+			.map(|run| match run.typed_lanes::<Graphic>() {
+				Some(lanes) => (0..lanes.len()).map(|lane| direct_vector_len(lanes.element_ref(lane))).sum(),
+				None => direct_vector_len(&Graphic::Group(core_types::record::Group { row: None, content: run.clone() })),
+			})
+			.sum(),
 		_ => 0,
 	}
 }

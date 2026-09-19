@@ -390,6 +390,16 @@ impl<'e> GroupItem<'e> {
 		}
 	}
 
+	/// A run of no lanes at this run's layout.
+	pub fn empty_like(&self) -> GroupItem<'e> {
+		Self {
+			layout: self.layout.clone(),
+			storage: ItemStorage::Resident(std::ptr::NonNull::<u64>::dangling().as_ptr().cast_const().cast()),
+			len: 0,
+			_arena: std::marker::PhantomData,
+		}
+	}
+
 	/// A batch view over the stored records. Panics on an owned item, which
 	/// must [`Self::replay`] first.
 	pub fn lanes(&self) -> crate::node::RecordBatch<'_> {
@@ -1142,6 +1152,18 @@ impl<'e> Segmented<'e> {
 	pub fn new(left: Child<'e>, right: Child<'e>) -> Self {
 		let len = left.len() + right.len();
 		Self { left, right, len }
+	}
+
+	/// A right-nested stack over `runs` in order, parking one node per run
+	/// beyond the first pair. `None` for no runs or an exhausted arena.
+	pub fn from_runs(runs: Vec<GroupItem<'e>>, arena: &'e crate::arena::Arena) -> Option<Self> {
+		let mut runs = runs.into_iter().rev();
+		let last = runs.next()?;
+		let mut node = Segmented::new(Child::Leaf(last.empty_like()), Child::Leaf(last));
+		for run in runs {
+			node = Segmented::new(Child::Leaf(run), node.park(arena)?);
+		}
+		Some(node)
 	}
 
 	/// The node parked in `arena`, as a child for the next stack.

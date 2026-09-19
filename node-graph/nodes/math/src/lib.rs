@@ -1726,6 +1726,7 @@ mod graphene_test {
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
 				footprint_free: u32::MAX,
+				single_lane: 0,
 			input_levels: Vec::new(),
 		});
 		node
@@ -1792,6 +1793,7 @@ mod graphene_test {
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
 				footprint_free: u32::MAX,
+				single_lane: 0,
 			input_levels: Vec::new(),
 		});
 		let edge = wired.downcast_record::<bool>().unwrap();
@@ -1843,6 +1845,7 @@ mod graphene_test {
 			layout: layout.clone(),
 			lane_invariant: u32::MAX,
 				footprint_free: u32::MAX,
+				single_lane: 0,
 			input_levels: Vec::new(),
 		});
 		let edge = wired.downcast_record::<f64>().unwrap();

@@ -578,6 +578,9 @@ pub struct VectorGeometry {
 	svg_path: std::sync::OnceLock<std::sync::Arc<String>>,
 	stroke_bounds: std::sync::Mutex<Vec<(u64, Option<[DVec2; 2]>)>>,
 	click_paths: [std::sync::OnceLock<std::sync::Arc<kurbo::BezPath>>; 2],
+	local_bounds: std::sync::OnceLock<Option<[DVec2; 2]>>,
+	/// Every non-empty subpath ends in a close, the click target's reading.
+	pub closed_nonempty: bool,
 }
 
 impl Clone for VectorGeometry {
@@ -631,6 +634,15 @@ impl Vector {
 		VectorGeometry::new(bezpaths, closed)
 	}
 
+	/// The derived geometry of a value read out of a park, which never changes,
+	/// so the cell is trusted without the fingerprint.
+	pub fn geometry_parked(&self) -> std::sync::Arc<VectorGeometry> {
+		match self.geometry_cell.0.get() {
+			Some((_, geometry)) => geometry.clone(),
+			None => self.geometry(),
+		}
+	}
+
 	/// The derived geometry, from the cell where it matches the content.
 	pub fn geometry(&self) -> std::sync::Arc<VectorGeometry> {
 		let fingerprint = self.content_fingerprint();
@@ -648,9 +660,12 @@ impl Vector {
 
 impl VectorGeometry {
 	pub fn new(bezpaths: Vec<kurbo::BezPath>, closed: bool) -> Self {
+		let closed_nonempty = bezpaths.iter().filter(|path| !path.elements().is_empty()).all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
 		Self {
 			bezpaths,
 			closed,
+			closed_nonempty,
+			local_bounds: std::sync::OnceLock::new(),
 			svg_path: std::sync::OnceLock::new(),
 			stroke_bounds: std::sync::Mutex::new(Vec::new()),
 			click_paths: [std::sync::OnceLock::new(), std::sync::OnceLock::new()],
@@ -696,7 +711,7 @@ impl VectorGeometry {
 	}
 
 	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
-		self.bounding_box_with_transform(DAffine2::IDENTITY)
+		*self.local_bounds.get_or_init(|| self.bounding_box_with_transform(DAffine2::IDENTITY))
 	}
 
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {

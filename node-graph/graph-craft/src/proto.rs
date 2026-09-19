@@ -348,6 +348,7 @@ impl ProtoNetwork {
 
 	pub fn resolve_types(&mut self, registry: &Registry) -> Result<(), String> {
 		self.reorder_ids()?;
+		let stack_safe = stack_safe_extends(&self.nodes);
 		for index in 0..self.nodes.len() {
 			let mut swapped = None;
 			let resolved = {
@@ -374,7 +375,7 @@ impl ProtoNetwork {
 							ConstructionArgs::Inline(inline) => vec![inline.ty.clone()],
 							ConstructionArgs::Value(_) => unreachable!(),
 						};
-						let identifier = specialized_identifier(node, &inputs, registry).unwrap_or_else(|| node.identifier.clone());
+						let identifier = specialized_identifier(node, &inputs, registry, stack_safe.contains(&self.nodes[index].0)).unwrap_or_else(|| node.identifier.clone());
 						let impls = registry.get(&identifier).ok_or_else(|| format!("no implementations for {}", identifier.as_str()))?;
 						let (io, entry) = resolve_entry(node, &inputs, impls).map_err(|errors| format!("{errors:?}"))?;
 						swapped = (identifier != node.identifier).then_some(identifier);
@@ -401,6 +402,15 @@ impl ProtoNetwork {
 			let lane_invariant = self.nodes[index].1.lane_invariant_inputs;
 			let footprint_free = self.nodes[index].1.footprint_free_inputs;
 			let input_levels = self.nodes[index].1.input_index_levels.clone();
+			// A depth-0 producer serves at most one lane per context.
+			let single_lane = match &self.nodes[index].1.construction_args {
+				ConstructionArgs::Nodes(inputs) => inputs
+					.iter()
+					.enumerate()
+					.filter(|(position, input)| *position < 32 && self.nodes[input.0 as usize].1.resolved.layout.as_ref().is_some_and(|resolved| resolved.layout.depth == 0))
+					.fold(0u32, |mask, (position, _)| mask | (1 << position)),
+				_ => 0,
+			};
 			let layout = {
 				let node = &self.nodes[index].1;
 				match &node.construction_args {
@@ -409,6 +419,7 @@ impl ProtoNetwork {
 						plan: Vec::new(),
 						lane_invariant,
 						footprint_free,
+						single_lane,
 						input_levels: input_levels.clone(),
 						named_writes: Vec::new(),
 						named_reads: Vec::new(),
@@ -427,6 +438,7 @@ impl ProtoNetwork {
 						meta.sources.iter().all(|&source| input_layouts[source as usize].is_some()).then(|| core_types::record::RecordLayout {
 							lane_invariant,
 							footprint_free,
+							single_lane,
 							input_levels,
 							..meta.resolve(&input_layouts)
 						})
@@ -1024,6 +1036,7 @@ pub struct TypingContext {
 	lookup: Cow<'static, Registry>,
 	inferred: HashMap<NodeId, NodeIOTypes>,
 	constructor: HashMap<NodeId, NodeConstructor>,
+	stack_safe: HashSet<NodeId>,
 }
 
 impl TypingContext {
@@ -1043,6 +1056,7 @@ impl TypingContext {
 	/// and store them in the `inferred` field. The proto network has to be topologically sorted
 	/// and contain fully resolved stable node ids.
 	pub fn update(&mut self, network: &mut ProtoNetwork) -> Result<(), GraphErrors> {
+		self.stack_safe = stack_safe_extends(&network.nodes);
 		for (id, node) in &network.nodes {
 			self.infer(*id, node)?;
 		}
@@ -1094,7 +1108,7 @@ impl TypingContext {
 		};
 
 		// Get the node input type from the proto node declaration
-		let identifier = specialized_identifier(node, &inputs, &self.lookup).unwrap_or_else(|| node.identifier.clone());
+		let identifier = specialized_identifier(node, &inputs, &self.lookup, self.stack_safe.contains(&node_id)).unwrap_or_else(|| node.identifier.clone());
 		let impls = self.lookup.get(&identifier).ok_or_else(|| vec![GraphError::new(node, GraphErrorType::NoImplementations)])?;
 		let (node_io, entry) = resolve_entry(node, &inputs, impls)?;
 		if std::env::var("GRAPHENE_TYPE_DEBUG").is_ok() {
@@ -1106,14 +1120,75 @@ impl TypingContext {
 	}
 }
 
+/// The extend nodes every consumer accepts in stacked form. A stack lane
+/// renders inline but reads as one lane, so only consumers that forward or
+/// render lanes may see it; a wrapper forwards the question to its consumers.
+fn stack_safe_extends(nodes: &[(NodeId, ProtoNode)]) -> HashSet<NodeId> {
+	const EXTEND: &str = "graphene_core::list::ExtendNode";
+	const FORWARDING: &[&str] = &[
+		"graphene_core::memo::MonitorNode",
+		"graphene_core::memo::MemoizeNode",
+		"graphene_core::memo::FrameMemoNode",
+		"graphene_core::context_modification::ContextModificationNode",
+		"graphene_core::ops::IntoNode<Graphic>",
+		"graphic_nodes::graphic::AsGraphicNode",
+		"graphic_nodes::graphic::StampLayerPathNode",
+		"graphic_nodes::graphic::WriteAttributeNode",
+		"graphic_nodes::artboard::TranslateFootprintNode",
+		"transform_nodes::transform_nodes::TransformNode",
+		"blending_nodes::OpacityNode",
+		"blending_nodes::BlendModeNode",
+		"blending_nodes::ClippingMaskNode",
+		"graphene_std::render_cache::RenderOutputCacheNode",
+	];
+	const ACCEPTING: &[&str] = &[
+		EXTEND,
+		"graphic_nodes::graphic::StackGraphicsNode",
+		"graphic_nodes::graphic::IntoGroupNode",
+		"graphic_nodes::artboard::CreateArtboardNode",
+		"graphene_std::render_node::RenderIntermediateNode",
+		"graphene_std::render_node::RenderNode",
+		"graphene_std::render_node::CreateContextNode",
+		"graphene_std::render_background::RenderBackgroundNode",
+		"graphene_std::render_pixel_preview::RenderPixelPreviewNode",
+	];
+	let index: HashMap<NodeId, usize> = nodes.iter().enumerate().map(|(position, (id, _))| (*id, position)).collect();
+	let mut consumers: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+	for (id, node) in nodes {
+		if let ConstructionArgs::Nodes(inputs) = &node.construction_args {
+			for input in inputs {
+				consumers.entry(*input).or_default().push(*id);
+			}
+		}
+	}
+	fn accepted(id: NodeId, nodes: &[(NodeId, ProtoNode)], index: &HashMap<NodeId, usize>, consumers: &HashMap<NodeId, Vec<NodeId>>, depth: usize) -> bool {
+		// The network output renders; a runaway chain is refused.
+		let Some(list) = consumers.get(&id) else { return true };
+		depth < 64
+			&& list.iter().all(|consumer| {
+				let name = index.get(consumer).map_or("", |&position| nodes[position].1.identifier.as_str());
+				let accepts = ACCEPTING.contains(&name) || (FORWARDING.contains(&name) && accepted(*consumer, nodes, index, consumers, depth + 1));
+				if !accepts && std::env::var_os("GRAPHENE_STACK_DEBUG").is_some() {
+					eprintln!("stack refused> {id} consumed by {name}");
+				}
+				accepts
+			})
+	}
+	nodes
+		.iter()
+		.filter(|(id, node)| node.identifier.as_str() == EXTEND && accepted(*id, nodes, &index, &consumers, 0))
+		.map(|(id, _)| *id)
+		.collect()
+}
+
 /// Selects the single registry entry matching the node's resolved input types,
 /// substituting generics. Stateless and stable-id-free.
 /// An extend over graphic levels resolves to the stacking node, which holds both
 /// sides by reference: the stacking entry accepting the inputs is the test.
-fn specialized_identifier(node: &ProtoNode, inputs: &[Type], registry: &Registry) -> Option<ProtoNodeIdentifier> {
+fn specialized_identifier(node: &ProtoNode, inputs: &[Type], registry: &Registry, stack_safe: bool) -> Option<ProtoNodeIdentifier> {
 	const EXTEND: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphene_core::list::ExtendNode");
 	const STACK: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphic_nodes::graphic::StackGraphicsNode");
-	if node.identifier != EXTEND {
+	if node.identifier != EXTEND || !stack_safe {
 		return None;
 	}
 	if std::env::var_os("GRAPHENE_NO_STACK").is_some() {

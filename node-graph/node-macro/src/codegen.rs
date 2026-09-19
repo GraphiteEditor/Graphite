@@ -237,6 +237,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		state.push(quote!(pub(super) __frame_bytes: usize));
 		state.push(quote!(pub(super) __lane_invariant: u32));
 		state.push(quote!(pub(super) __footprint_free: u32));
+		state.push(quote!(pub(super) __single_lane: u32));
 		state.push(quote!(pub(super) __input_levels: ::std::vec::Vec<gcore::context::IndexLevels>));
 		state.extend(reading_secondary_indices(&struct_regular_fields, record_skips_carrier).into_iter().map(|index| {
 			let slot = format_ident!("__in_{index}");
@@ -273,6 +274,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(pub(super) __layout: gcore::record::Layout),
 			quote!(pub(super) __lane_invariant: u32),
 			quote!(pub(super) __footprint_free: u32),
+			quote!(pub(super) __single_lane: u32),
 			quote!(pub(super) __input_levels: ::std::vec::Vec<gcore::context::IndexLevels>),
 		];
 		state.extend(
@@ -292,6 +294,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(pub(super) __frame_bytes: usize),
 			quote!(pub(super) __lane_invariant: u32),
 			quote!(pub(super) __footprint_free: u32),
+			quote!(pub(super) __single_lane: u32),
 			quote!(pub(super) __input_levels: ::std::vec::Vec<gcore::context::IndexLevels>),
 		];
 		if carrier_flip {
@@ -485,7 +488,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let routing_layout_init = (routing_generic.is_some() || opaque).then(|| quote!(__layout: __layout.clone(),)).into_iter();
 	// The lane-invariance mask arrives with the resolved layout, so `new` starts
 	// from the safe empty mask.
-	let routing_invariant_init = routing_generic.is_some().then(|| quote!(__lane_invariant: 0, __footprint_free: 0, __input_levels: ::std::vec::Vec::new(),)).into_iter();
+	let routing_invariant_init = routing_generic.is_some().then(|| quote!(__lane_invariant: 0, __footprint_free: 0, __single_lane: 0, __input_levels: ::std::vec::Vec::new(),)).into_iter();
 	let routing_value_layouts: Vec<usize> = routing_generic.as_ref().map(|generic| routing_value_indices(&struct_regular_fields, generic)).unwrap_or_default();
 	let routing_in_params = routing_value_layouts.iter().map(|index| {
 		let slot = format_ident!("__in_{index}");
@@ -540,7 +543,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let flip_output_inits = flip
 		.then(|| {
 			let plan = carrier_flip.then(|| quote!(__plan: ::std::vec::Vec::new(),));
-			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, __lane_invariant: 0, __footprint_free: 0, __input_levels: ::std::vec::Vec::new(), #plan)
+			quote!(__layout: ::core::default::Default::default(), __frame_bytes: 0, __lane_invariant: 0, __footprint_free: 0, __single_lane: 0, __input_levels: ::std::vec::Vec::new(), #plan)
 		})
 		.into_iter();
 	let marker_init = (!carried_generic_idents.is_empty()).then(|| quote!(__marker: ::core::marker::PhantomData,)).into_iter();
@@ -2461,6 +2464,27 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							return #core_types::node::BatchStatus::Unbatched;
 						}
 					};
+					// Groups are rectangular: a group whose extent differs leaves the
+					// lanes to serve their own inputs.
+					// A single-lane producer serving one lane in the first group cannot
+					// serve more in another; a short fill below covers fewer.
+					let __single = self.__single_lane & (1 << #index) != 0 && #inner == 1;
+					if !#shared && !__single && #core_types::record::ragged_checks_enabled() {
+						for __group in (__first_group + 1)..=__last_group {
+							let ::core::option::Option::Some(__group_ctx) = <#ctx_ident as #core_types::dispatch::AsDispatch<'__serve>>::at_lane(&__dispatch, __group * __gather_extent) else {
+								return #core_types::node::BatchStatus::Error(#core_types::gpoll::GraphError { kind: #core_types::gpoll::ErrorKind::ArenaExhausted, trace: ::std::vec::Vec::new() });
+							};
+							match #core_types::node::Node::extent(&self.#name, &__group_ctx, #core_types::gpoll::Level::Total, (&*__frames)) {
+								#core_types::gpoll::GPoll::Final(#core_types::gpoll::Extent::Exactly(__count)) if __count as u64 == #inner => {}
+								#core_types::gpoll::GPoll::Pending => return #core_types::node::BatchStatus::Pending,
+								_ => {
+									#[cfg(debug_assertions)]
+									#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "gather ragged", 0);
+									return #core_types::node::BatchStatus::Unbatched;
+								}
+							}
+						}
+					}
 				};
 				let prologue = quote! {
 					let #batch = {
@@ -2502,6 +2526,13 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						}
 						}
 					};
+					// A grouped fill that came back short has a group with fewer lanes
+					// than probed: the lanes serve their own inputs instead.
+					if !#shared && #inner > 0 && (#batch.len() as u64) < (__last_group + 1 - __first_group) * #inner {
+						#[cfg(debug_assertions)]
+						#core_types::record::note_kernel_batch(::std::stringify!(#fn_name), "gather short", 0);
+						return #core_types::node::BatchStatus::Unbatched;
+					}
 				};
 				let lane = quote! {
 					let #name = {
@@ -2509,11 +2540,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							true => 0,
 							false => __lane_group * #inner,
 						};
-						let __hi = __lo + #inner;
-						if __hi as usize > #batch.len() {
+						// A short materialization is the list as delivered; a group starting
+						// past the delivered lanes ends the level.
+						let __available = #batch.len() as u64;
+						if __lo > 0 && __lo >= __available {
 							__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
 							break;
 						}
+						let __hi = (__lo + #inner).min(__available);
 						let ::core::option::Option::Some(__lanes) = #batch.slice(__lo as usize..__hi as usize) else {
 							return #core_types::node::BatchStatus::InvalidRange;
 						};
@@ -2730,6 +2764,8 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 							// A lane past a lower-bound level ends the data: the fill
 							// comes back short and the hint turns exact.
 							#core_types::gpoll::GPoll::Error(__error) if __error.kind == #core_types::gpoll::ErrorKind::PastEnd => {
+								#[cfg(debug_assertions)]
+								#core_types::gpoll::trace_past_end(::std::stringify!(#fn_name), __lane, __range.start);
 								__hint = #core_types::gpoll::Extent::Exactly(__range.start as usize + __lane);
 								break;
 							}
@@ -2903,7 +2939,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		Some(quote! {
 			self.__frame_bytes = __resolved.frame_bytes;
 			self.__lane_invariant = __resolved.lane_invariant;
-			self.__footprint_free = __resolved.footprint_free; self.__input_levels = __resolved.input_levels.clone();
+			self.__footprint_free = __resolved.footprint_free; self.__single_lane = __resolved.single_lane; self.__input_levels = __resolved.input_levels.clone();
 			#plan
 			self.__layout = __resolved.layout;
 		})
@@ -2954,14 +2990,14 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#read_installs)*
 			self.__frame_bytes = __resolved.frame_bytes;
 			self.__lane_invariant = __resolved.lane_invariant;
-			self.__footprint_free = __resolved.footprint_free; self.__input_levels = __resolved.input_levels.clone();
+			self.__footprint_free = __resolved.footprint_free; self.__single_lane = __resolved.single_lane; self.__input_levels = __resolved.input_levels.clone();
 			#plan
 			self.__layout = __resolved.layout;
 		})
 	} else if routing_generic.is_some() {
 		Some(quote! {
 			self.__lane_invariant = __resolved.lane_invariant;
-			self.__footprint_free = __resolved.footprint_free; self.__input_levels = __resolved.input_levels.clone();
+			self.__footprint_free = __resolved.footprint_free; self.__single_lane = __resolved.single_lane; self.__input_levels = __resolved.input_levels.clone();
 			self.__layout = __resolved.layout;
 		})
 	} else {
@@ -3163,6 +3199,7 @@ pub(crate) fn generate_node_impl(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						__frame_bytes: 0,
 						__lane_invariant: 0,
 						__footprint_free: 0,
+						__single_lane: 0,
 						__input_levels: ::std::vec::Vec::new(),
 						#(#read_names)*
 						#(#read_default_inits)*

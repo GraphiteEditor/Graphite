@@ -38,6 +38,26 @@ pub(crate) fn group_locate<'e>(group: &core_types::record::Group<'e>, transform:
 	})
 }
 
+/// A stack's run is this level's lanes inline: a graphic run's lanes count on
+/// their own, any other run as one group.
+fn run_leaf_count(run: &core_types::record::GroupItem, fully_flatten: bool, depth: usize) -> usize {
+	match run.typed_lanes::<Graphic>() {
+		Some(lanes) => (0..lanes.len()).map(|lane| leaf_count(lanes.element_ref(lane), fully_flatten, depth)).sum(),
+		None => leaf_count(&Graphic::Group(core_types::record::Group { row: None, content: run.clone() }), fully_flatten, depth),
+	}
+}
+
+fn run_locate<'e>(run: &core_types::record::GroupItem<'e>, transform: DAffine2, fully_flatten: bool, depth: usize, remaining: &mut usize) -> Option<(Graphic<'e>, DAffine2)> {
+	let Some(lanes) = run.typed_lanes::<Graphic>() else {
+		return locate(&Graphic::Group(core_types::record::Group { row: None, content: run.clone() }), transform, fully_flatten, depth, remaining);
+	};
+	let field = core_types::record::FieldOffset::<Transform>::of(run.layout(), 0);
+	(0..lanes.len()).find_map(|lane| {
+		let lane_transform = run.lanes().get(lane).attr_at(field);
+		locate(lanes.element_ref(lane), transform * lane_transform, fully_flatten, depth, remaining)
+	})
+}
+
 /// Leaf rows a graphic expands to: its children's counts when the walk
 /// descends (top rows always, deeper groups only in a full flatten), one for
 /// itself otherwise.
@@ -47,6 +67,7 @@ pub(crate) fn leaf_count(graphic: &Graphic, fully_flatten: bool, depth: usize) -
 			.map(|index| children.element(index).map_or(0, |child| leaf_count(child, fully_flatten, depth + 1)))
 			.sum(),
 		Graphic::Group(group) if (fully_flatten || depth == 0) && group_expands(group) => group_leaf_count(group, fully_flatten, depth),
+		Graphic::Segmented(stack) => stack.runs().map(|run| run_leaf_count(&run, fully_flatten, depth)).sum(),
 		_ => 1,
 	}
 }
@@ -61,6 +82,7 @@ pub(crate) fn locate<'e>(graphic: &Graphic<'e>, transform: DAffine2, fully_flatt
 			locate(child, transform * child_transform, fully_flatten, depth + 1, remaining)
 		}),
 		Graphic::Group(group) if (fully_flatten || depth == 0) && group_expands(group) => group_locate(group, transform, fully_flatten, depth, remaining),
+		Graphic::Segmented(stack) => stack.runs().find_map(|run| run_locate(&run, transform, fully_flatten, depth, remaining)),
 		_ if *remaining == 0 => Some((graphic.clone(), transform)),
 		_ => {
 			*remaining -= 1;
@@ -132,6 +154,18 @@ pub(crate) fn walk_typed_leaves<T: TryFromGraphic + dyn_any::StaticTypeSized>(gr
 					if let RowStep::Stop = visit(leaf, inherited.composed(&run, lane)) {
 						return RowStep::Stop;
 					}
+				}
+			}
+			RowStep::Continue
+		}
+		Graphic::Segmented(stack) => {
+			for run in stack.runs() {
+				let stopped = match RunView::<Graphic>::new(&run) {
+					Some(view) => (0..run.len()).any(|lane| view.element(lane).is_some_and(|child| matches!(walk_typed_leaves(child, inherited.composed(&view, lane), visit), RowStep::Stop))),
+					None => matches!(walk_typed_leaves(&Graphic::Group(core_types::record::Group { row: None, content: run.clone() }), inherited, visit), RowStep::Stop),
+				};
+				if stopped {
+					return RowStep::Stop;
 				}
 			}
 			RowStep::Continue

@@ -84,15 +84,16 @@ pub struct GeometryCache;
 
 impl GeometryCache {
 	pub fn geometry(&mut self, vector: &Vector) -> Arc<graphic_types::vector_types::vector::VectorGeometry> {
-		vector.geometry()
+		// The renderer reads vectors out of parks, which never change.
+		vector.geometry_parked()
 	}
 
 	pub fn svg_path(&mut self, vector: &Vector) -> Arc<String> {
-		vector.geometry().svg_path_cached()
+		vector.geometry_parked().svg_path_cached()
 	}
 
 	pub fn stroke_bounds(&mut self, vector: &Vector, stroke: Option<&graphic_types::vector_types::vector::style::Stroke>) -> Option<[DVec2; 2]> {
-		vector.geometry().stroke_bounds_cached(stroke)
+		vector.geometry_parked().stroke_bounds_cached(stroke)
 	}
 }
 
@@ -2377,7 +2378,7 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, resolved: &graphic
 	let filled = resolved.fill_paint.and_then(paint_cell_rows).is_some();
 
 	let shared = cache.geometry(geometry);
-	let all_contours_closed = shared.bezpaths.iter().filter(|bezpath| !bezpath.elements().is_empty()).all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
+	let all_contours_closed = shared.closed_nonempty;
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
