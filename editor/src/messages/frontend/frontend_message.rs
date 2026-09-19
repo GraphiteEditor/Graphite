@@ -149,8 +149,9 @@ pub enum FrontendMessage {
 		url: String,
 	},
 	TriggerClipboardRead,
-	TriggerClipboardWrite {
-		content: String,
+	TriggerClipboardSvgAndJsonWrite {
+		svg_string: Option<String>,
+		graphite_json: String,
 	},
 	TriggerSelectionRead {
 		cut: bool,

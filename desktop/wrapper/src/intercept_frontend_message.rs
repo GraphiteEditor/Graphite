@@ -112,8 +112,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardRead => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardRead);
 		}
-		FrontendMessage::TriggerClipboardWrite { content } => {
-			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
+		FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { svg_string, graphite_json });
 		}
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
