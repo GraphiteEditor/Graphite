@@ -24,7 +24,7 @@ fn parse_transform(bytes: &[u8], lab: bool) -> Option<Lut> {
 		if bytes.get(entry..entry + 4)? == b"A2B0" {
 			let offset = big_endian_u32(bytes, entry + 4)? as usize;
 			let size = big_endian_u32(bytes, entry + 8)? as usize;
-			tag = bytes.get(offset..offset + size);
+			tag = bytes.get(offset..offset.checked_add(size)?);
 		}
 	}
 	let tag = tag?;
@@ -75,6 +75,10 @@ fn parse_lut_a_to_b(tag: &[u8], lab_encoding: Option<LabEncoding>) -> Option<Lut
 	let (b_curves, matrix, m_curves, clut, a_curves) = (offset_at(12)?, offset_at(16)?, offset_at(20)?, offset_at(24)?, offset_at(28)?);
 	// The A curves and the CLUT come together or not at all
 	if b_curves == 0 || (clut == 0) != (a_curves == 0) {
+		return None;
+	}
+	// Offsets within the tag cannot overflow when stepped through
+	if [b_curves, matrix, m_curves, clut, a_curves].iter().any(|&offset| offset > tag.len()) {
 		return None;
 	}
 
@@ -158,7 +162,7 @@ fn read_curve_set(bytes: &[u8], offset: &mut usize, entries: usize, width: usize
 
 /// `count` unsigned samples of `width` bytes each, scaled to 0..1.
 fn read_samples(bytes: &[u8], offset: usize, count: usize, width: usize) -> Option<Vec<f32>> {
-	let data = bytes.get(offset..offset + count * width)?;
+	let data = bytes.get(offset..offset.checked_add(count.checked_mul(width)?)?)?;
 	Some(match width {
 		1 => data.iter().map(|&byte| byte as f32 / 255.).collect(),
 		_ => data.chunks(2).map(|pair| u16::from_be_bytes([pair[0], pair[1]]) as f32 / 65535.).collect(),

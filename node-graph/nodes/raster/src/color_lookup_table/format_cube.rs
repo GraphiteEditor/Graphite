@@ -36,7 +36,7 @@ pub(super) fn parse(text: &str) -> Option<Lut> {
 	}
 
 	let table = match (size_3d, size_1d) {
-		(Some(size), _) if size >= 2 && entries.len() == size * size * size => LutTable::ThreeDimensional {
+		(Some(size), _) if size >= 2 && size.checked_pow(3) == Some(entries.len()) => LutTable::ThreeDimensional {
 			size: [size; 3],
 			red_fastest: true,
 			entries,

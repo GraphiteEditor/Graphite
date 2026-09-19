@@ -231,22 +231,44 @@ impl Lut {
 			return format_icc::parse(bytes);
 		}
 
-		Self::parse_text(bytes).ok_or(LutParseError::Unreadable)
+		Self::parse_text(bytes).filter(Self::is_finite).ok_or(LutParseError::Unreadable)
+	}
+
+	/// O(n): whether every number in the table is finite.
+	fn is_finite(&self) -> bool {
+		let all_finite = |values: &[f32]| values.iter().all(|value| value.is_finite());
+		let curve_is_finite = |curve: &Curve| match curve {
+			Curve::Sampled(samples) => all_finite(samples),
+			Curve::Piecewise { inputs, outputs } => all_finite(inputs) && all_finite(outputs),
+			Curve::Power(gamma) => gamma.is_finite(),
+			Curve::Parametric { parameters, .. } => all_finite(parameters),
+		};
+		let stage_is_finite = |stage: &Stage| match stage {
+			Stage::Curves(curves) => curves.iter().all(curve_is_finite),
+			Stage::Matrix { matrix, offset } => matrix.iter().all(|row| all_finite(row)) && all_finite(offset),
+		};
+		let table_is_finite = match &self.table {
+			Some(LutTable::OneDimensional { entries } | LutTable::ThreeDimensional { entries, .. }) => entries.iter().all(|entry| all_finite(entry)),
+			None => true,
+		};
+
+		all_finite(&self.domain_min) && all_finite(&self.domain_max) && self.input_curves.iter().flatten().all(curve_is_finite) && table_is_finite && self.output_stages.iter().all(stage_is_finite)
 	}
 
 	fn parse_text(bytes: &[u8]) -> Option<Self> {
 		let text = String::from_utf8_lossy(bytes);
-		let trimmed = text.trim_start_matches('\u{feff}').trim_start();
-		if trimmed.starts_with("CSPLUTV100") {
-			return format_csp::parse(trimmed);
+		let text = text.trim_start_matches('\u{feff}').trim_start();
+
+		if text.starts_with("CSPLUTV100") {
+			return format_csp::parse(text);
 		}
-		if trimmed.starts_with('<') {
-			return format_look::parse(&text);
+		if text.starts_with('<') {
+			return format_look::parse(text);
 		}
 		if text.contains("LUT_3D_SIZE") || text.contains("LUT_1D_SIZE") {
-			return format_cube::parse(&text);
+			return format_cube::parse(text);
 		}
-		format_3dl::parse(&text)
+		format_3dl::parse(text)
 	}
 
 	pub fn apply(&self, rgb: [f32; 3]) -> [f32; 3] {
@@ -372,10 +394,28 @@ mod tests {
 	}
 
 	#[test]
+	fn a_byte_order_mark_is_skipped() {
+		let lut = Lut::parse("\u{feff}LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".as_bytes()).unwrap();
+		assert_close(lut.apply([0.25, 0.5, 0.75]), [0.25, 0.5, 0.75]);
+	}
+
+	#[test]
 	fn rejects_garbage() {
 		assert!(Lut::parse(b"").is_err());
 		assert!(Lut::parse(b"hello world").is_err());
 		assert!(Lut::parse(b"LUT_3D_SIZE 2\n0 0 0\n").is_err());
+	}
+
+	#[test]
+	fn rejects_a_number_that_is_not_finite() {
+		// An entry and a domain bound of a text file
+		assert!(Lut::parse(b"LUT_1D_SIZE 2\n0 0 0\nnan 1 1\n").is_err());
+		assert!(Lut::parse(b"LUT_1D_SIZE 2\nDOMAIN_MAX inf inf inf\n0 0 0\n1 1 1\n").is_err());
+
+		// Infinity among the hex floats of a look, which otherwise reads fine
+		let look = |data: String| format!("<LUT><size>2</size><data>{data}</data></LUT>");
+		assert!(Lut::parse(look("00000000".repeat(24)).as_bytes()).is_ok());
+		assert!(Lut::parse(look("0000807F".to_string() + &"00000000".repeat(23)).as_bytes()).is_err());
 	}
 
 	#[test]
@@ -391,5 +431,12 @@ mod tests {
 		// Another file takes its place, a failed one included
 		assert!(cache.parse(&Resource::new(b"hello world".to_vec())).is_err());
 		assert!(!Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
+	}
+
+	#[test]
+	fn rejects_a_size_whose_entry_count_overflows() {
+		assert!(Lut::parse(b"LUT_3D_SIZE 4194304\n").is_err());
+		assert!(Lut::parse(b"<LUT><size>4194304</size><data></data></LUT>").is_err());
+		assert!(Lut::parse(b"CSPLUTV100\n3D\n0\n0\n0\n4194304 4194304 4194304\n").is_err());
 	}
 }

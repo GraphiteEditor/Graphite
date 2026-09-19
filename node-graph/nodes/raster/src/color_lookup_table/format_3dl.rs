@@ -34,7 +34,8 @@ pub(super) fn parse(text: &str) -> Option<Lut> {
 	// Entries are integers on the output bit depth's scale, inferred from the largest value when no header names it
 	let largest = entries.iter().flatten().fold(0_f32, |largest, &value| largest.max(value));
 	let scale = match output_bits {
-		Some(bits) => ((1_u64 << bits) - 1) as f32,
+		Some(bits @ 1..=32) => ((1_u64 << bits) - 1) as f32,
+		Some(_) => return None,
 		None => likely_bit_depth_scale(largest)?,
 	};
 	for entry in &mut entries {
@@ -135,6 +136,21 @@ mod tests {
 		let lut = Lut::parse(text.as_bytes()).unwrap();
 		assert_close(lut.apply([0.5, 0.5, 0.5]), [0., 0., 0.]);
 		assert_close(lut.apply([1., 1., 1.]), [1., 1., 1.]);
+
+		// A byte order mark must not make the sample line pass for an ignored token
+		let marked = Lut::parse(format!("\u{feff}{text}").as_bytes()).unwrap();
+		assert_close(marked.apply([0.5, 0.5, 0.5]), [0., 0., 0.]);
+
+		// Nor may a sample that is not finite, which refuses the file
+		assert!(Lut::parse(text.replacen("0 0 0 1023", "0 nan 0 1023", 1).as_bytes()).is_err());
+	}
+
+	#[test]
+	fn rejects_a_header_bit_depth_no_sample_could_have() {
+		let entries = "0 0 0\n0 0 1023\n0 1023 0\n0 1023 1023\n1023 0 0\n1023 0 1023\n1023 1023 0\n1023 1023 1023\n";
+		assert!(Lut::parse(format!("Mesh 4 10\n{entries}").as_bytes()).is_ok());
+		assert!(Lut::parse(format!("Mesh 4 0\n{entries}").as_bytes()).is_err());
+		assert!(Lut::parse(format!("Mesh 4 64\n{entries}").as_bytes()).is_err());
 	}
 
 	#[test]

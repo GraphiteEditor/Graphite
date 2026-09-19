@@ -15,7 +15,7 @@ pub(super) fn parse(text: &str) -> Option<Lut> {
 		})
 		.collect::<Option<_>>()?;
 	let entries: Vec<[f32; 3]> = floats.chunks(3).map(parse_triple).collect::<Option<_>>()?;
-	if size < 2 || entries.len() != size * size * size {
+	if size < 2 || size.checked_pow(3) != Some(entries.len()) {
 		return None;
 	}
 

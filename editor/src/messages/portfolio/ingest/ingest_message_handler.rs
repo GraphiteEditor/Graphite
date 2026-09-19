@@ -173,7 +173,7 @@ fn unsupported(responses: &mut VecDeque<Message>) {
 	});
 }
 
-/// The reason a node input refuses the file, or `None` if it accepts it. An image or LUT is accepted only if it fully parses.
+/// The reason a node input refuses the file, or `None` if it accepts it. An input that lists its accepted types takes an image or LUT only if it fully parses.
 fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> Option<&'static str> {
 	const WRONG_TYPE: &str = "This input does not accept the format of the chosen file.";
 
@@ -185,7 +185,7 @@ fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> O
 	}
 
 	match data_type {
-		DataType::Raster(_) => decoded_image_size(data).is_none().then_some(WRONG_TYPE),
+		DataType::Raster(_) => decoded_image_size(data).is_none().then_some("This file could not be read as an image."),
 		DataType::Lut => Lut::parse(data).err().map(|error| match error {
 			LutParseError::IccProfileClass => {
 				"This ICC profile describes the colors of a device (like a monitor or printer) instead\n\
@@ -335,6 +335,21 @@ mod tests {
 		assert!(refusal(&monitor_profile, "display.icc").contains("monitor"));
 		assert!(refusal(b"not a table", "grade.cube").contains("could not be read"));
 		assert!(refusal(IDENTITY_CUBE, "grade.png").contains("does not accept"));
+	}
+
+	#[test]
+	fn resource_input_tells_a_corrupt_image_apart_from_a_wrong_type() {
+		let png = Image::new(8, 8, Color::WHITE).to_png();
+		let refusal = |data: &[u8]| {
+			let responses = ingest(data, resource_input(TypeFilter::raster().types), true);
+			match &responses[0] {
+				Message::Dialog(DialogMessage::DisplayDialogError { description, .. }) => description.clone(),
+				_ => panic!("the user should be told why"),
+			}
+		};
+
+		assert!(refusal(&png[..40]).contains("could not be read as an image"));
+		assert!(refusal(b"not an image").contains("does not accept"));
 	}
 
 	#[test]

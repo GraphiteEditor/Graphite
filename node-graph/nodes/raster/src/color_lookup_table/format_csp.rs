@@ -48,8 +48,9 @@ pub(super) fn parse(text: &str) -> Option<Lut> {
 	let sizes = parse_numbers(lines.next()?)?;
 	let table = if three_dimensional {
 		let size = [*sizes.first()? as usize, *sizes.get(1)? as usize, *sizes.get(2)? as usize];
-		let entries: Vec<[f32; 3]> = lines.take(size[0] * size[1] * size[2]).map(|line| parse_triple(&parse_numbers(line)?)).collect::<Option<_>>()?;
-		if size.iter().any(|&axis| axis < 2) || entries.len() != size[0] * size[1] * size[2] {
+		let count = size.iter().try_fold(1_usize, |count, &axis| count.checked_mul(axis))?;
+		let entries: Vec<[f32; 3]> = lines.take(count).map(|line| parse_triple(&parse_numbers(line)?)).collect::<Option<_>>()?;
+		if size.iter().any(|&axis| axis < 2) || entries.len() != count {
 			return None;
 		}
 		LutTable::ThreeDimensional { size, red_fastest: true, entries }
