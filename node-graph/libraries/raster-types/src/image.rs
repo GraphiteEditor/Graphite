@@ -203,7 +203,8 @@ impl Image<Color> {
 
 /// A TGA file has no signature to recognize it by, so a file of no recognized format is tried as one.
 fn decode(data: &[u8]) -> Option<::image::DynamicImage> {
-	::image::load_from_memory(data).or_else(|_| ::image::load_from_memory_with_format(data, ::image::ImageFormat::Tga)).ok()
+	let format = ::image::guess_format(data).unwrap_or(::image::ImageFormat::Tga);
+	::image::load_from_memory_with_format(data, format).ok()
 }
 
 use super::*;
@@ -351,6 +352,26 @@ mod test {
 		}
 
 		assert!(Image::from_encoded(b"not an image").is_none());
+	}
+
+	#[test]
+	fn recognized_format_that_cannot_be_read_is_not_tried_as_tga() {
+		use super::*;
+
+		// The signature of a PNM file, a format that is recognized but not read, begins what is also a well-formed TGA header
+		let mut file = vec![0; 18];
+		file[..3].copy_from_slice(b"P6\n");
+		// One pixel wide and tall, at 24 bits per pixel and per color map entry, since the `6` reads as having a color map
+		file[7] = 24;
+		file[12] = 1;
+		file[14] = 1;
+		file[16] = 24;
+		// The ID field whose length the `P` gives, then a run of one blue pixel
+		file.extend([0; b'P' as usize]);
+		file.extend([0, 255, 0, 0]);
+
+		assert!(::image::load_from_memory_with_format(&file, ::image::ImageFormat::Tga).is_ok());
+		assert!(Image::from_encoded(&file).is_none());
 	}
 
 	#[test]
