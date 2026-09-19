@@ -293,6 +293,23 @@ export function onPaste(e: ClipboardEvent, editor: EditorWrapper) {
 	});
 }
 
+// A spot that takes dropped files has canceled the event by the time it bubbles up to the window
+function isUnclaimedFileDrag(e: DragEvent): boolean {
+	return !e.defaultPrevented && Boolean(e.dataTransfer?.types.includes("Files"));
+}
+
+export function onDragOver(e: DragEvent) {
+	if (!isUnclaimedFileDrag(e)) return;
+
+	// Refusing the drop here keeps the browser from navigating away to open the file
+	e.preventDefault();
+	if (e.dataTransfer) e.dataTransfer.dropEffect = "none";
+}
+
+export function onDrop(e: DragEvent) {
+	if (isUnclaimedFileDrag(e)) e.preventDefault();
+}
+
 export function onFocusOut() {
 	canvasFocused = false;
 }

@@ -39,6 +39,7 @@ use graphene_std::vector::style::{
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
+use std::path::PathBuf;
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
@@ -1390,7 +1391,15 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		DropdownInput::new(vec![vec![none, browse], file_entries])
 			.selected_index(selected_index)
-			.file_drop_action(Some(file_drop_action))
+			.on_file_drop(move |file| {
+				IngestMessage::Ingest {
+					data: file.data.clone(),
+					action: file_drop_action.clone(),
+					mime_type: file.mime_type.clone(),
+					path: Some(PathBuf::from(&file.name)),
+				}
+				.into()
+			})
 			.widget_instance(),
 	]);
 	widgets

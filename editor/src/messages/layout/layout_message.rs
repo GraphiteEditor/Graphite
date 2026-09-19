@@ -30,4 +30,9 @@ pub enum LayoutMessage {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,
 	},
+	WidgetValueFileDrop {
+		layout_target: LayoutTarget,
+		widget_id: WidgetId,
+		file: DroppedFile,
+	},
 }

@@ -76,6 +76,21 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 					responses.add((icon_button.on_drag_drop.callback)(icon_button));
 				}
 			}
+			LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file } => {
+				let Some(layout) = self.layouts.get_mut(layout_target as usize) else {
+					warn!("WidgetValueFileDrop referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+					warn!("WidgetValueFileDrop referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				if let Widget::DropdownInput(dropdown_input) = &*widget_instance.widget
+					&& dropdown_input.takes_file_drop
+				{
+					responses.add((dropdown_input.on_file_drop.callback)(&file));
+				}
+			}
 		}
 	}
 

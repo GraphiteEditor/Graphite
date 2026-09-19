@@ -4,7 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { MenuListEntry, ActionShortcut, IngestAction } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const DASH_ENTRY: MenuListEntry = {
 		value: "",
@@ -35,7 +35,7 @@
 	// Behavior
 	export let virtualScrolling = false;
 	export let interactive = true;
-	export let fileDropAction: IngestAction | undefined = undefined;
+	export let takesFileDrop = false;
 	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
@@ -117,7 +117,7 @@
 	}
 
 	function takesDraggedFile(e: DragEvent): boolean {
-		return Boolean(fileDropAction) && !disabled && Boolean(e.dataTransfer?.types.includes("Files"));
+		return takesFileDrop && !disabled && Boolean(e.dataTransfer?.types.includes("Files"));
 	}
 
 	function fileDragOverWidget(e: DragEvent) {

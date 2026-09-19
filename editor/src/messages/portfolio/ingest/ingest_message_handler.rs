@@ -342,6 +342,7 @@ mod tests {
 		let png = Image::new(8, 8, Color::WHITE).to_png();
 		let refusal = |data: &[u8]| {
 			let responses = ingest(data, resource_input(TypeFilter::raster().types), true);
+			assert_eq!(responses.len(), 1, "a refused file should only show a dialog");
 			match &responses[0] {
 				Message::Dialog(DialogMessage::DisplayDialogError { description, .. }) => description.clone(),
 				_ => panic!("the user should be told why"),

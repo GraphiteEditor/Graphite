@@ -3,7 +3,6 @@ use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use derivative::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
@@ -84,9 +83,10 @@ pub struct DropdownInput {
 	pub virtual_scrolling: bool,
 	#[derivative(Default(value = "true"))]
 	pub interactive: bool,
-	// Where a file dropped on the widget is sent, which also makes the widget take dropped files
-	#[serde(rename = "fileDropAction")]
-	pub file_drop_action: Option<IngestAction>,
+	// Set along with the `on_file_drop` callback
+	#[serde(rename = "takesFileDrop")]
+	#[widget_builder(skip)]
+	pub takes_file_drop: bool,
 
 	// Sizing
 	#[serde(rename = "minWidth")]
@@ -101,8 +101,28 @@ pub struct DropdownInput {
 	pub tooltip_description: String,
 	#[serde(rename = "tooltipShortcut")]
 	pub tooltip_shortcut: Option<ActionShortcut>,
-	//
-	// Callbacks exists on the `MenuListEntry` children, not this parent `DropdownInput`
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	#[widget_builder(skip)]
+	pub on_file_drop: WidgetCallback<DroppedFile>,
+}
+
+impl DropdownInput {
+	/// Makes the widget take a file dropped on it, which is handed to the callback.
+	pub fn on_file_drop(mut self, callback: impl Fn(&DroppedFile) -> Message + 'static + Send + Sync) -> Self {
+		self.takes_file_drop = true;
+		self.on_file_drop = WidgetCallback::new(callback);
+		self
+	}
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DroppedFile {
+	pub name: String,
+	pub mime_type: String,
+	pub data: Vec<u8>,
 }
 
 pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
