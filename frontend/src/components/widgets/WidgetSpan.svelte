@@ -71,8 +71,12 @@
 	}
 
 	async function widgetValueFileDrop(widgetIndex: number, file: File) {
+		// The layout may change while the file is read, so the widget is looked up first
+		const target = layoutTarget;
+		const widgetId = widgets[widgetIndex].widgetId;
+
 		const data = await file.bytes();
-		editor.widgetValueFileDrop(layoutTarget, widgets[widgetIndex].widgetId, file.name, file.type, data);
+		editor.widgetValueFileDrop(target, widgetId, file.name, file.type, data);
 	}
 
 	// Extracts the kind and props from a Widget tagged enum, validated against the widget registry.
