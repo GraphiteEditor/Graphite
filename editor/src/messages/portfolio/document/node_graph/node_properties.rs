@@ -1314,8 +1314,8 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 	} = parameter_widgets_info;
 	let use_counts = network_interface.collect_resources_use_counts();
 
-	// This is a heuristic to filter for image resources and will break once other data types are loaded.
-	// TODO: Add a proper way to filter for image resources.
+	// Fonts are the only resources the registry tells apart, so a picker also lists the files of other types.
+	// TODO: Record each resource's data type so a picker lists only the files its input accepts.
 	let mut files: Vec<(ResourceId, String, String)> = resources
 		.registry
 		.resolved()

@@ -2004,6 +2004,7 @@ async fn color_lookup<T: Adjust<Color> + Send>(
 	image: Item<T>,
 	/// A LUT (lookup table) file in the `.cube`, `.3dl`, `.look`, `.csp`, or `.icc` (*abstract* or *device link* ICC profile) format.
 	#[name("LUT File")]
+	#[widget(ParsedWidgetOverride::Custom = "lut_file")]
 	lut_file: Item<Resource>,
 ) -> Item<T> {
 	let mut image = image;

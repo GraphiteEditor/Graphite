@@ -9,6 +9,8 @@ mod format_look;
 use crate::adjustments::{SRGB_TO_XYZ_D50, WHITE_XYZ_D50, XYZ_D50_TO_SRGB, multiply_matrix};
 use no_std_types::color::{linear_to_srgb, srgb_to_linear};
 
+pub const LUT_FILE_EXTENSIONS: &[&str] = &["cube", "3dl", "look", "csp", "icc", "icm"];
+
 /// Why a file could not be read as a lookup table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LutParseError {

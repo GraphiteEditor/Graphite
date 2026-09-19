@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::prelude::DocumentId;
 use document_container::archive::ArchiveFormat;
 use graph_craft::document::NodeId;
+use graphene_std::raster_nodes::color_lookup_table::LUT_FILE_EXTENSIONS;
 use image::ImageFormat;
 use std::ffi::OsStr;
 use std::path::Path;
@@ -57,6 +58,7 @@ pub enum DataType {
 	Gdd,
 	Svg,
 	Raster(ImageFormat),
+	Lut,
 	#[default]
 	Unknown,
 }
@@ -87,6 +89,7 @@ impl DataType {
 			FILE_EXTENSION => Self::GraphiteLegacy,
 			GDD_FILE_EXTENSION => Self::Gdd,
 			"svg" => Self::Svg,
+			extension if LUT_FILE_EXTENSIONS.contains(&extension) => Self::Lut,
 			extension => ImageFormat::from_extension(extension).map_or(Self::Unknown, Self::Raster),
 		}
 	}
@@ -127,7 +130,8 @@ impl DataType {
 			Self::Gdd => "application/vnd.graphite.document",
 			Self::Svg => "image/svg+xml",
 			Self::Raster(format) => format.to_mime_type(),
-			Self::Unknown => return None,
+			// The LUT formats share no MIME type
+			Self::Lut | Self::Unknown => return None,
 		})
 	}
 
@@ -137,6 +141,7 @@ impl DataType {
 			Self::Gdd => &[GDD_FILE_EXTENSION],
 			Self::Svg => &["svg"],
 			Self::Raster(format) => format.extensions_str(),
+			Self::Lut => LUT_FILE_EXTENSIONS,
 			Self::Unknown => &[],
 		}
 	}
@@ -167,6 +172,13 @@ impl TypeFilter {
 		let mut images = Self::raster();
 		images.types.push(DataType::Svg);
 		images
+	}
+
+	pub fn lut() -> Self {
+		Self {
+			name: "LUT".into(),
+			types: vec![DataType::Lut],
+		}
 	}
 }
 
@@ -216,6 +228,8 @@ mod tests {
 		assert_eq!(detect("image/svg+xml", ""), DataType::Svg);
 		assert_eq!(detect("application/graphite+json", ""), DataType::GraphiteLegacy);
 		assert_eq!(detect("image/png", "document.gdd"), DataType::Raster(ImageFormat::Png));
+		assert_eq!(detect("", "grade.CUBE"), DataType::Lut);
+		assert_eq!(detect("application/vnd.iccprofile", "profile.icm"), DataType::Lut);
 		assert_eq!(detect("text/csv", "table.csv"), DataType::Unknown);
 		assert_eq!(DataType::detect(&[], "", None), DataType::Unknown);
 
@@ -229,5 +243,9 @@ mod tests {
 		assert!(filter.extensions.iter().any(|extension| extension == "jpeg") && filter.extensions.iter().any(|extension| extension == "png"));
 		assert!(filter.extensions.last().is_some_and(|extension| extension == "svg"));
 		assert!(filter.mime_types.contains(&"image/jpeg".to_string()) && filter.mime_types.contains(&"image/svg+xml".to_string()));
+
+		// LUTs are picked by extension alone
+		let filter = FileFilter::from(TypeFilter::lut());
+		assert!(filter.extensions.iter().any(|extension| extension == "cube") && filter.mime_types.is_empty());
 	}
 }
