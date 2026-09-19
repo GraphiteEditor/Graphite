@@ -267,10 +267,15 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
-			GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index } => {
+			GraphOperationMessage::NewBitmapLayer {
+				id,
+				resource_id,
+				parent,
+				insert_index,
+			} => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 				let layer = modify_inputs.create_layer(id);
-				modify_inputs.insert_image_data(image, layer);
+				modify_inputs.insert_image_data(resource_id, layer);
 				network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}

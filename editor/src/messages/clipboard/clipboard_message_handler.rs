@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
+use crate::messages::portfolio::resource_upload::utility_types::UploadTarget;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::utility_types::ToolType;
@@ -60,11 +61,13 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					});
 				}
 				ClipboardContentRaw::Image { data, width, height } => {
-					responses.add(PortfolioMessage::InsertImage {
-						image: Image::from_image_data(&data, width, height),
+					responses.add(ResourceUploadMessage::Upload {
 						name: None,
-						mouse: None,
-						parent_and_insert_index: None,
+						data: Image::from_image_data(&data, width, height).to_png().into(),
+						target: UploadTarget::Layer {
+							mouse: None,
+							parent_and_insert_index: None,
+						},
 					});
 				}
 			},

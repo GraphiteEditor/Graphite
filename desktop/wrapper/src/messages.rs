@@ -107,6 +107,7 @@ pub enum DesktopWrapperMessage {
 pub enum OpenFileDialogContext {
 	Open,
 	Import,
+	UploadResource,
 }
 
 pub enum SaveFileDialogContext {

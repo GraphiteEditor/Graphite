@@ -93,6 +93,9 @@ pub enum FrontendMessage {
 	TriggerImport {
 		filters: Vec<FileFilter>,
 	},
+	TriggerUploadResource {
+		filters: Vec<FileFilter>,
+	},
 	TriggerSaveDocument {
 		document_id: DocumentId,
 		name: String,

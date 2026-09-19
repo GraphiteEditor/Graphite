@@ -26,6 +26,14 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				context: OpenFileDialogContext::Import,
 			});
 		}
+		FrontendMessage::TriggerUploadResource { filters } => {
+			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
+				title: "Select File".to_string(),
+				filters,
+				multiple: false,
+				context: OpenFileDialogContext::UploadResource,
+			});
+		}
 		FrontendMessage::TriggerSaveDocument {
 			document_id,
 			name,

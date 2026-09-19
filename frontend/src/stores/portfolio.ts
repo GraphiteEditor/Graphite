@@ -103,6 +103,11 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		editor.importFile(data.filename, data.content);
 	});
 
+	subscriptions.subscribeFrontendMessage("TriggerUploadResource", async ({ filters }) => {
+		const data = await upload(acceptStringFromFilters(filters), "data");
+		editor.uploadResource(data.filename, data.content);
+	});
+
 	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
 		downloadFile(data.name, data.content);
 	});
@@ -192,6 +197,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerOpen");
 	subscriptions.unsubscribeFrontendMessage("TriggerImport");
+	subscriptions.unsubscribeFrontendMessage("TriggerUploadResource");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");

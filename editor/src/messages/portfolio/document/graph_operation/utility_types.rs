@@ -14,7 +14,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
@@ -270,20 +269,14 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, image: Image<Color>, layer: LayerNodeIdentifier) {
+	pub fn insert_image_data(&mut self, resource_id: ResourceId, layer: LayerNodeIdentifier) {
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
 			.default_node_template();
 
-		let resource_id = ResourceId::new();
-		self.responses.add(ResourceMessage::StoreEmbedded {
-			resource_id,
-			data: image.to_png().into(),
-		});
-
 		let image_node = resolve_proto_node_type(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
 			.expect("Image node does not exist")
-			.node_template_input_override([Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Resource(resource_id), false))]);
 
 		let image_node_id = NodeId::new();
 		self.network_interface.insert_node(image_node_id, image_node, &[]);
