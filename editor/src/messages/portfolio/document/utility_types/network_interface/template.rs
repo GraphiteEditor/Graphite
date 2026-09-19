@@ -283,12 +283,16 @@ impl NodeTemplateImplementation {
 /// Collects resource IDs referenced by a template and its nested networks.
 pub fn collect_template_resources(template: &NodeTemplate, out: &mut HashSet<ResourceId>) {
 	for input in &template.inputs {
-		collect_input_resource(input, out);
+		visit_input_resource(input, &mut |id| {
+			out.insert(id);
+		});
 	}
 
 	if let NodeTemplateImplementation::Network(network_template) = &template.implementation {
 		for export in &network_template.exports {
-			collect_input_resource(export, out);
+			visit_input_resource(export, &mut |id| {
+				out.insert(id);
+			});
 		}
 		for nested_template in network_template.nodes.values() {
 			collect_template_resources(nested_template, out);

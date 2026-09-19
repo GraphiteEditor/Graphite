@@ -427,6 +427,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
+	use crate::messages::portfolio::ingest::utility_types::IngestAction;
 	pub use crate::test_utils::test_prelude::*;
 
 	#[tokio::test]
@@ -478,9 +479,11 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
-				path: file_name.into(),
-				content: document_serialized_content.bytes().collect(),
+			let responses = editor.editor.handle_message(IngestMessage::Ingest {
+				data: document_serialized_content.into_bytes(),
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some(file_name.into()),
 			});
 
 			// Check if the graph renders

@@ -1,6 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
-use super::resource_upload::ResourceUploadMessage;
 use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
@@ -16,9 +15,9 @@ pub enum PortfolioMessage {
 	#[child]
 	Fonts(FontsMessage),
 	#[child]
-	PersistentState(PersistentStateMessage),
+	Ingest(IngestMessage),
 	#[child]
-	ResourceUpload(ResourceUploadMessage),
+	PersistentState(PersistentStateMessage),
 
 	// Messages
 	Init,
@@ -89,16 +88,6 @@ pub enum PortfolioMessage {
 		name: String,
 	},
 	NextDocument,
-	Open,
-	Import,
-	OpenFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
 	OpenDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -138,16 +127,6 @@ pub enum PortfolioMessage {
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
-	},
-	OpenSvg {
-		name: Option<String>,
-		svg: String,
-	},
-	InsertSvg {
-		name: Option<String>,
-		svg: String,
-		mouse: Option<(f64, f64)>,
-		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	CenterLayers {
 		layers: Vec<LayerNodeIdentifier>,

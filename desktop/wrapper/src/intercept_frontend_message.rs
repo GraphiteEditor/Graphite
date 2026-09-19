@@ -3,35 +3,23 @@ use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarge
 use graphite_editor::messages::prelude::FrontendMessage;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, IngestAction, SaveFileDialogContext};
 
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
 		FrontendMessage::RenderOverlays { context } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
 		}
-		FrontendMessage::TriggerOpen { filters } => {
+		FrontendMessage::TriggerBrowse { options, action } => {
+			let title = match action {
+				IngestAction::Open => "Open Document",
+				IngestAction::Import => "Import File",
+				_ => "Select File",
+			};
 			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
-				title: "Open Document".to_string(),
-				filters,
-				multiple: true,
-				context: OpenFileDialogContext::Open,
-			});
-		}
-		FrontendMessage::TriggerImport { filters } => {
-			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
-				title: "Import File".to_string(),
-				filters,
-				multiple: false,
-				context: OpenFileDialogContext::Import,
-			});
-		}
-		FrontendMessage::TriggerUploadResource { filters } => {
-			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
-				title: "Select File".to_string(),
-				filters,
-				multiple: false,
-				context: OpenFileDialogContext::UploadResource,
+				title: title.to_string(),
+				options,
+				action,
 			});
 		}
 		FrontendMessage::TriggerSaveDocument {

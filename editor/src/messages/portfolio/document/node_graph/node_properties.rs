@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
-use crate::messages::portfolio::resource_upload::utility_types::{ResourceFileKind, UploadTarget};
+use crate::messages::portfolio::ingest::utility_types::TypeFilter;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use choice::enum_choice;
@@ -342,7 +342,7 @@ pub(crate) fn property_from_type(
 						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
 						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
 						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
-						Some(x) if id_is::<Resource>(x) => resource_widget(default_info, ResourceFileKind::Any).into(),
+						Some(x) if id_is::<Resource>(x) => resource_widget(default_info, Vec::new()).into(),
 						// ===============================
 						// MANUALLY IMPLEMENTED ENUM TYPES
 						// ===============================
@@ -1290,8 +1290,8 @@ pub fn font_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup 
 	font_widgets.into_iter().chain(style_widgets.unwrap_or_default()).collect::<Vec<_>>().into()
 }
 
-/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file of the given kind.
-pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: ResourceFileKind) -> Vec<WidgetInstance> {
+/// A dropdown of the document's uploaded files, led by "None" and a "Browse…" entry that uploads another file matching the given filters.
+pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Vec<TypeFilter>) -> Vec<WidgetInstance> {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
 	let Some(input) = parameter_widgets_info.input() else {
@@ -1304,7 +1304,6 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 		_ => return widgets,
 	};
 
-	// Fonts have their own picker, so only uploaded files are listed, labeled by hash and user count until resources carry names
 	let ParameterWidgetsInfo {
 		document_id,
 		node_id,
@@ -1313,14 +1312,17 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 		network_interface,
 		..
 	} = parameter_widgets_info;
-	let user_counts = network_interface.resource_user_counts();
+	let use_counts = network_interface.collect_resources_use_counts();
+
+	// This is a heuristic to filter for image resources and will break once other data types are loaded.
+	// TODO: Add a proper way to filter for image resources.
 	let mut files: Vec<(ResourceId, String, String)> = resources
 		.registry
 		.resolved()
 		.filter(|info| !info.sources.iter().any(|source| matches!(source, DataSource::Font { .. })))
 		.map(|info| {
 			let hash = info.hash.map(|hash| hash.to_string()[..8].to_string()).unwrap_or_default();
-			let users = user_counts.get(&info.id).copied().unwrap_or(0);
+			let users = use_counts.get(&info.id).copied().unwrap_or(0);
 			let tooltip_description = match users {
 				0 => "Not used by any node input. This resource will be dropped upon document reload.".to_string(),
 				users => format!("Used by {users} node input{}.", if users == 1 { "" } else { "s" }),
@@ -1359,13 +1361,11 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, kind: Resou
 		.tooltip_description("Pick a file from disk to use for this input.")
 		.on_update(|_| Message::NoOp)
 		.on_commit(move |_| {
-			ResourceUploadMessage::RequestUpload {
-				target: UploadTarget::NodeInput {
-					document_id,
-					node_id,
-					input_index: index,
-					kind,
-				},
+			IngestMessage::SetResourceInput {
+				document_id,
+				node_id,
+				input_index: index,
+				filters: filters.clone(),
 			}
 			.into()
 		});

@@ -2834,6 +2834,7 @@ dependencies = [
  "gif",
  "num-traits",
  "png 0.17.16",
+ "serde",
  "zune-core",
  "zune-jpeg",
 ]

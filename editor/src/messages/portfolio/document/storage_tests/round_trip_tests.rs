@@ -15,7 +15,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
-use crate::messages::portfolio::resource_upload::utility_types::UploadTarget;
+use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -491,22 +491,19 @@ async fn live_undo_new_document_draw_rect() {
 	assert_eq!(editor.active_document().network_interface.document_network(), &before_rect, "undo should restore the pre-rect network");
 }
 
+fn paste_named_image() -> IngestMessage {
+	IngestMessage::Ingest {
+		data: Image::new(2, 2, Color::WHITE).to_png(),
+		action: IngestAction::Paste,
+		mime_type: String::new(),
+		path: Some("pasted.png".into()),
+	}
+}
+
 /// Pasting an image is one user action and must be one undo step: the paste handler brackets the layer add,
 /// name set, reparent, and transform in a single transaction. Were the name set to open its own nested
 /// transaction (a historical wart), the first undo would revert only the name and leave the layer behind, so
 /// this asserts the layer count returns to its pre-paste value after exactly one undo.
-/// Pastes a 2x2 image as a named layer.
-fn paste_named_image() -> ResourceUploadMessage {
-	ResourceUploadMessage::Upload {
-		name: Some("pasted".into()),
-		data: Image::new(2, 2, Color::WHITE).to_png().into(),
-		target: UploadTarget::Layer {
-			mouse: None,
-			parent_and_insert_index: None,
-		},
-	}
-}
-
 #[tokio::test]
 async fn paste_image_with_name_is_one_undo_step() {
 	let mut editor = EditorTestUtils::create();
@@ -534,6 +531,7 @@ async fn paste_image_with_name_is_one_undo_step() {
 /// Choosing "None" in the Image node's file picker leaves the empty-resource placeholder, which must still render.
 #[tokio::test]
 async fn image_node_with_no_file_still_evaluates() {
+	use graph_craft::application_io::resource::Resource;
 	use graph_craft::document::DocumentNodeImplementation;
 	use graph_craft::document::value::TaggedValue;
 	use graph_craft::item;
@@ -555,7 +553,7 @@ async fn image_node_with_no_file_still_evaluates() {
 		.handle_message(NodeGraphMessage::SetInputValue {
 			node_id: image_node_id,
 			input_index: graphene_std::raster_nodes::std_nodes::image::ResourceInput::INDEX,
-			value: TaggedValue::TypeDefault(item!(graph_craft::application_io::resource::Resource)).into(),
+			value: TaggedValue::TypeDefault(item!(Resource)).into(),
 		})
 		.await;
 
@@ -695,9 +693,11 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	// Open a real demo artwork through the normal open path and let it render.
 	let content = std::fs::read_to_string("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
 	editor
-		.handle_message(PortfolioMessage::OpenFile {
-			path: "changing-seasons.graphite".into(),
-			content: content.bytes().collect(),
+		.handle_message(IngestMessage::Ingest {
+			data: content.into_bytes(),
+			action: IngestAction::Open,
+			mime_type: String::new(),
+			path: Some("changing-seasons.graphite".into()),
 		})
 		.await;
 

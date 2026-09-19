@@ -784,16 +784,3 @@ impl PanelLayoutSubdivision {
 		}
 	}
 }
-
-pub enum FileContent {
-	/// A legacy `.graphite` document (serialized runtime JSON).
-	Document(String),
-	/// A `.gdd` document container (archive bytes).
-	GddDocument(Vec<u8>),
-	/// Any other file, expected to be a bitmap image.
-	Image(Vec<u8>),
-	/// An SVG file string.
-	Svg(String),
-	/// Any other unsupported/unrecognized file type.
-	Unsupported,
-}
