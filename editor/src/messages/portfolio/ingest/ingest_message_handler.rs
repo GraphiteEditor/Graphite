@@ -4,6 +4,7 @@ use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::raster_nodes::color_lookup_table::{Lut, LutParseError};
 
 #[derive(ExtractField)]
 pub struct IngestMessageContext {
@@ -54,10 +55,10 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						input_index,
 						accepted_types,
 					} => {
-						if !is_accepted(&data, data_type, &accepted_types) {
+						if let Some(description) = rejection(&data, data_type, &accepted_types) {
 							responses.add(DialogMessage::DisplayDialogError {
 								title: "Unsupported file".into(),
-								description: "This file is not a type that this input accepts.".into(),
+								description: description.into(),
 							});
 							return;
 						}
@@ -134,7 +135,8 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						};
 						(insert, None)
 					}
-					DataType::Unknown => return unsupported(responses),
+					// A LUT is only ever the file of a node input
+					DataType::Lut | DataType::Unknown => return unsupported(responses),
 				};
 
 				if !place_at_origin {
@@ -171,13 +173,32 @@ fn unsupported(responses: &mut VecDeque<Message>) {
 	});
 }
 
-/// Whether a node input takes the file, where an image must also fully decode.
-fn is_accepted(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> bool {
+/// The reason a node input refuses the file, or `None` if it accepts it. An input that lists its accepted types takes an image or LUT only if it fully parses.
+fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> Option<&'static str> {
+	const WRONG_TYPE: &str = "This input does not accept the format of the chosen file.";
+
 	if accepted_types.is_empty() {
-		return true;
+		return None;
+	}
+	if !accepted_types.contains(&data_type) {
+		return Some(WRONG_TYPE);
 	}
 
-	accepted_types.contains(&data_type) && (!matches!(data_type, DataType::Raster(_)) || decoded_image_size(data).is_some())
+	match data_type {
+		DataType::Raster(_) => decoded_image_size(data).is_none().then_some("This file could not be read as an image."),
+		DataType::Lut => Lut::parse(data).err().map(|error| match error {
+			LutParseError::IccProfileClass => {
+				"This ICC profile describes the colors of a device (like a monitor or printer) instead\n\
+				of remapping colors. Only \"abstract\" and \"device link\" profiles work as LUTs."
+			}
+			LutParseError::IccColorSpaces => {
+				"This ICC profile remaps within color spaces that are currently unsupported, such as CMYK.\n\
+				A \"device link\" profile must map RGB to RGB. An \"abstract\" profile must map Lab to Lab."
+			}
+			LutParseError::Unreadable => "This file could not be read as a LUT. It may be corrupted or an unsupported format variant.",
+		}),
+		_ => None,
+	}
 }
 
 // The viewBox preserves the full canvas rather than the tighter bounding box of the rendered content
@@ -208,14 +229,19 @@ mod tests {
 	use graphene_std::raster::Image;
 
 	const REQUESTING_DOCUMENT: DocumentId = DocumentId(3);
+	const IDENTITY_CUBE: &[u8] = b"LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
 
 	fn ingest(data: &[u8], action: IngestAction, document_open: bool) -> VecDeque<Message> {
+		ingest_named(data, None, action, document_open)
+	}
+
+	fn ingest_named(data: &[u8], file_name: Option<&str>, action: IngestAction, document_open: bool) -> VecDeque<Message> {
 		let mut responses = VecDeque::new();
 		let message = IngestMessage::Ingest {
 			data: data.into(),
 			action,
 			mime_type: String::new(),
-			path: None,
+			path: file_name.map(Into::into),
 		};
 		IngestMessageHandler::default().process_message(message, &mut responses, IngestMessageContext { document_open });
 		responses
@@ -289,6 +315,64 @@ mod tests {
 		};
 		IngestMessageHandler::default().process_message(message, &mut responses, IngestMessageContext { document_open: true });
 		assert!(matches!(&responses[0], Message::Portfolio(PortfolioMessage::Ingest(IngestMessage::Browse { action, .. })) if *action == dropped));
+	}
+
+	#[test]
+	fn resource_input_says_why_an_icc_profile_of_the_wrong_kind_is_refused() {
+		let mut monitor_profile = vec![0; 128];
+		monitor_profile[12..16].copy_from_slice(b"mntr");
+		monitor_profile[36..40].copy_from_slice(b"acsp");
+
+		let refusal = |data: &[u8], file_name: &str| {
+			let responses = ingest_named(data, Some(file_name), resource_input(TypeFilter::lut().types), true);
+			assert_eq!(responses.len(), 1, "a refused file should only show a dialog");
+			match &responses[0] {
+				Message::Dialog(DialogMessage::DisplayDialogError { description, .. }) => description.clone(),
+				_ => panic!("the user should be told why"),
+			}
+		};
+
+		assert!(refusal(&monitor_profile, "display.icc").contains("monitor"));
+		assert!(refusal(b"not a table", "grade.cube").contains("could not be read"));
+		assert!(refusal(IDENTITY_CUBE, "grade.png").contains("does not accept"));
+	}
+
+	#[test]
+	fn resource_input_tells_a_corrupt_image_apart_from_a_wrong_type() {
+		let png = Image::new(8, 8, Color::WHITE).to_png();
+		let refusal = |data: &[u8]| {
+			let responses = ingest(data, resource_input(TypeFilter::raster().types), true);
+			match &responses[0] {
+				Message::Dialog(DialogMessage::DisplayDialogError { description, .. }) => description.clone(),
+				_ => panic!("the user should be told why"),
+			}
+		};
+
+		assert!(refusal(&png[..40]).contains("could not be read as an image"));
+		assert!(refusal(b"not an image").contains("does not accept"));
+	}
+
+	#[test]
+	fn resource_input_takes_a_lookup_table_only_when_it_parses() {
+		let png = Image::new(8, 8, Color::WHITE).to_png();
+		let stores = |data: &[u8], filter: TypeFilter| {
+			let responses = ingest_named(data, Some("grade.cube"), resource_input(filter.types), true);
+			responses.iter().any(|message| stored_resource(message).is_some())
+		};
+
+		assert!(stores(IDENTITY_CUBE, TypeFilter::lut()));
+
+		// A table cut off partway, an image named as a table, and a table offered to an image input
+		assert!(!stores(&IDENTITY_CUBE[..30], TypeFilter::lut()));
+		assert!(!stores(&png, TypeFilter::lut()));
+		assert!(!stores(IDENTITY_CUBE, TypeFilter::raster()));
+	}
+
+	#[test]
+	fn lookup_table_outside_a_node_input_only_shows_a_dialog() {
+		let responses = ingest_named(IDENTITY_CUBE, Some("grade.cube"), IngestAction::Import, true);
+		assert_eq!(responses.len(), 1);
+		assert!(matches!(responses[0], Message::Dialog(DialogMessage::DisplayDialogError { .. })));
 	}
 
 	#[test]

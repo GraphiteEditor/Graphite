@@ -1471,6 +1471,13 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
+		"lut_file".to_string(),
+		Box::new(|node_id, index, context| {
+			let widgets = node_properties::resource_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), vec![TypeFilter::lut()]);
+			Ok(vec![LayoutGroup::row(widgets)])
+		}),
+	);
+	map.insert(
 		"artboard_background".to_string(),
 		Box::new(|node_id, index, context| {
 			Ok(vec![node_properties::color_widget(
