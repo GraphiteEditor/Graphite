@@ -458,6 +458,7 @@ struct TextToolData {
 	new_text: String,
 	is_lorem_ipsum: bool,
 	last_lorem_ipsum_constraint: Option<DVec2>,
+	last_lorem_ipsum_position: Option<DVec2>,
 	lorem_ipsum_preview: String,
 	lorem_ipsum_preview_word_count: usize,
 	lorem_ipsum_preview_font_hash: Option<ResourceHash>,
@@ -648,6 +649,7 @@ impl TextToolData {
 
 	fn reset_lorem_ipsum_preview(&mut self) {
 		self.last_lorem_ipsum_constraint = None;
+		self.last_lorem_ipsum_position = None;
 		self.lorem_ipsum_preview = String::new();
 		self.lorem_ipsum_preview_word_count = 0;
 		self.lorem_ipsum_preview_font_hash = None;
@@ -855,8 +857,10 @@ impl Fsm for TextToolFsmState {
 					let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 					let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
 					let floor_constraint = constraint_size.map(|c| c.floor());
+					let position = start.min(end);
 					if tool_data.last_lorem_ipsum_constraint != floor_constraint {
 						tool_data.last_lorem_ipsum_constraint = floor_constraint;
+						tool_data.last_lorem_ipsum_position = Some(position);
 
 						let typesetting = new_text_typesetting(tool_options, constraint_size);
 						let mut font_data = Vec::new();
@@ -876,7 +880,6 @@ impl Fsm for TextToolFsmState {
 						}
 						let word_count = lorem_ipsum_word_count(constraint_size, tool_data.lorem_ipsum_preview_average_advance, typesetting);
 						let text = tool_data.lorem_ipsum_preview(word_count);
-						let position = start.min(end);
 						let (align, align_last) = tool_options.align.css();
 
 						responses.add(FrontendMessage::DisplayEditableTextbox {
@@ -891,6 +894,11 @@ impl Fsm for TextToolFsmState {
 							max_height: constraint_size.map(|size| size.y),
 							align: align.to_string(),
 							align_last: align_last.to_string(),
+						});
+					} else if tool_data.last_lorem_ipsum_position.is_some_and(|last_position| last_position != position) {
+						tool_data.last_lorem_ipsum_position = Some(position);
+						responses.add(FrontendMessage::DisplayEditableTextboxTransform {
+							transform: window_aligned_transform(document, position, DVec2::ONE).to_cols_array(),
 						});
 					}
 				}
