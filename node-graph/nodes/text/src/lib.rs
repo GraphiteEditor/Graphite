@@ -10,10 +10,11 @@ use convert_case::{Boundary, Converter, pattern};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
-use core_types::registry::types::{SignedInteger, TextArea};
+use core_types::registry::types::{SeedValue, SignedInteger, TextArea};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
+use rand::{Rng, SeedableRng};
 use unicode_segmentation::UnicodeSegmentation;
 
 // Re-export for convenience
@@ -187,6 +188,68 @@ pub enum StringCapitalization {
 #[node_macro::node(category("Value"))]
 fn string_value(_: impl Ctx, _primary: (), string: Item<TextArea>) -> Item<String> {
 	string
+}
+
+/// Denomination used to measure a quantity of text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
+#[widget(Dropdown)]
+pub enum TextDenomination {
+	/// Text measured character-by-character.
+	Characters,
+	/// Text measured word-by-word.
+	#[default]
+	Words,
+	/// Text measured sentence-by-sentence.
+	Sentences,
+	/// Text measured paragraph-by-paragraph.
+	Paragraphs,
+}
+
+impl From<TextDenomination> for ipsum::Unit {
+	fn from(unit: TextDenomination) -> Self {
+		match unit {
+			TextDenomination::Characters => ipsum::Unit::Characters,
+			TextDenomination::Words => ipsum::Unit::Words,
+			TextDenomination::Sentences => ipsum::Unit::Sentences,
+			TextDenomination::Paragraphs => ipsum::Unit::Paragraphs,
+		}
+	}
+}
+
+/// Generates *Lorem Ipsum* placeholder text of a desired length. The classic "Lorem ipsum dolor sit amet…" intro may be included up to its full four-sentence (or one-paragraph) length, or used in part or not at all, after which the randomized Latin-like text continues producing paragraphs until the requested length is reached.
+#[node_macro::node(category("Value"))]
+fn lorem_ipsum(
+	_: impl Ctx,
+	_primary: (),
+	/// Total length of generated text in the chosen denomination (characters, words, sentences, or paragraphs), including the classic "Lorem ipsum dolor sit amet…" intro. A length in characters is never exceeded but may fall a few characters short, since words are never cut.
+	#[default(50)]
+	length: Item<u32>,
+	/// How the desired quantity of generated text is counted.
+	length_in: Item<TextDenomination>,
+	/// Length of the classic "Lorem ipsum dolor sit amet…" intro to include at the start of the generated text. Disable by setting this to 0.
+	#[default(8)]
+	#[name("\"Lorem…\" Intro")]
+	lorem_intro: Item<u32>,
+	/// How the desired quantity of classic intro text is counted for inclusion at the start.
+	///
+	/// If one paragraph is chosen, the full intro is included and the randomized continuation begins on the next paragraph; otherwise the continuation may follow in the same paragraph.
+	#[name("\"Lorem…\" Intro In")]
+	lorem_intro_in: Item<TextDenomination>,
+	/// Seed to determine unique variations on the randomized text generated after the optional classic intro.
+	seed: Item<SeedValue>,
+) -> Item<String> {
+	let mut rng = rand::rngs::StdRng::seed_from_u64((*seed.element()).into());
+	let rng = |n| rng.random_range(0..n);
+
+	let text = ipsum::generate(
+		*lorem_intro.element() as usize,
+		(*lorem_intro_in.element()).into(),
+		*length.element() as usize,
+		(*length_in.element()).into(),
+		rng,
+	);
+
+	Item::new_from_element(text)
 }
 
 /// Type-asserts a value to be a string.

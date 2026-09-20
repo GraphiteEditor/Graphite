@@ -21,7 +21,7 @@ use graphene_std::raster::{
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
-use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
@@ -238,6 +238,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
 		List<StringCapitalization>,
+		List<TextDenomination>,
 		List<DesaturateMethod>,
 		List<RedGreenBlue>,
 		List<RedGreenBlueAlpha>,
@@ -297,6 +298,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
 		Item<StringCapitalization>,
+		Item<TextDenomination>,
 		Item<DesaturateMethod>,
 		Item<RedGreenBlue>,
 		Item<RedGreenBlueAlpha>,
@@ -1069,6 +1071,7 @@ impl_table_item_layout_for_choice_enum!(
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	StringCapitalization,
+	TextDenomination,
 	DesaturateMethod,
 	RedGreenBlue,
 	RedGreenBlueAlpha,
@@ -1290,6 +1293,7 @@ macro_rules! known_item_types {
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
 			StringCapitalization,
+			TextDenomination,
 			DesaturateMethod,
 			RedGreenBlue,
 			RedGreenBlueAlpha,
