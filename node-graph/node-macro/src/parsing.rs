@@ -708,13 +708,15 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						| "ExtractPosition"
 						| "ExtractIndex"
 						| "ExtractVarArgs"
+						| "ExtractPaintRenderParams"
 						| "InjectFootprint"
 						| "InjectRealTime"
 						| "InjectAnimationTime"
 						| "InjectPointerPosition"
 						| "InjectPosition"
 						| "InjectIndex"
-						| "InjectVarArgs" => {
+						| "InjectVarArgs"
+						| "InjectPaintRenderParams" => {
 							features.push(segment.ident.clone());
 						}
 						// Skip Modify* traits as they don't affect usage tracking

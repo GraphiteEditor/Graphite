@@ -1,6 +1,7 @@
 //! Contains stylistic options for SVG elements.
 
 pub use crate::gradient::*;
+pub use crate::mesh_gradient::*;
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
