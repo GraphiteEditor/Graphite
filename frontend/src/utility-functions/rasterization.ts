@@ -33,24 +33,6 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 	return canvas;
 }
 
-// Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
-export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
-	if (!width || !height) throw new Error("Width and height must be nonzero when given to rasterizeSVG()");
-
-	const canvas = await rasterizeSVGCanvas(svg, width, height, backgroundColor);
-
-	// Convert the canvas to an image of the correct MIME type
-	const blob = await new Promise<Blob | undefined>((resolve) => {
-		canvas.toBlob((blob) => {
-			resolve(blob || undefined);
-		}, mime);
-	});
-
-	if (!blob) throw new Error("Converting canvas to blob data failed in rasterizeSVG()");
-
-	return blob;
-}
-
 export async function imageToCanvasContext(imageData: ImageBitmapSource): Promise<CanvasRenderingContext2D> {
 	// Special handling to rasterize an SVG file
 	let svgImageData;

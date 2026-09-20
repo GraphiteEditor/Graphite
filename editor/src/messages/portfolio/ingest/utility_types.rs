@@ -12,11 +12,6 @@ use std::path::Path;
 /// How many leading bytes are inspected to recognize a text format.
 const SNIFFED_TEXT_LENGTH: usize = 4096;
 
-/// The pixel size of a file that fully decodes as a raster image.
-pub fn decoded_image_size(data: &[u8]) -> Option<(u32, u32)> {
-	image::load_from_memory(data).ok().map(|image| (image.width(), image.height()))
-}
-
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 pub enum IngestAction {
@@ -241,6 +236,9 @@ mod tests {
 	fn type_filter_to_file_filter() {
 		let filter = FileFilter::from(TypeFilter::image());
 		assert!(filter.extensions.iter().any(|extension| extension == "jpeg") && filter.extensions.iter().any(|extension| extension == "png"));
+		for enabled in ["webp", "tiff", "ico", "tga", "hdr", "exr"] {
+			assert!(filter.extensions.iter().any(|extension| extension == enabled), "{enabled} should be offered");
+		}
 		assert!(filter.extensions.last().is_some_and(|extension| extension == "svg"));
 		assert!(filter.mime_types.contains(&"image/jpeg".to_string()) && filter.mime_types.contains(&"image/svg+xml".to_string()));
 

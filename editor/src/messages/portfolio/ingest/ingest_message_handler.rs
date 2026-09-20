@@ -1,9 +1,10 @@
-use super::utility_types::{DataType, IngestAction, TypeFilter, decoded_image_size};
+use super::utility_types::{DataType, IngestAction, TypeFilter};
 use crate::messages::frontend::utility_types::{FileDialogOptions, FileFilter};
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::raster::Image;
 use graphene_std::raster_nodes::color_lookup_table::{Lut, LutParseError};
 
 #[derive(ExtractField)]
@@ -124,7 +125,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						(insert, artboard_canvas)
 					}
 					DataType::Raster(_) => {
-						let Some(size) = decoded_image_size(&data) else { return unsupported(responses) };
+						let Some(size) = Image::encoded_size(&data) else { return unsupported(responses) };
 						let insert = DocumentMessage::InsertImage {
 							name: name.clone(),
 							data: data.into(),
@@ -185,7 +186,7 @@ fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> O
 	}
 
 	match data_type {
-		DataType::Raster(_) => decoded_image_size(data).is_none().then_some("This file could not be read as an image."),
+		DataType::Raster(_) => Image::encoded_size(data).is_none().then_some("This file could not be read as an image."),
 		DataType::Lut => Lut::parse(data).err().map(|error| match error {
 			LutParseError::IccProfileClass => {
 				"This ICC profile describes the colors of a device (like a monitor or printer) instead\n\
@@ -226,7 +227,6 @@ mod tests {
 	use super::*;
 	use graph_craft::document::NodeId;
 	use graphene_std::Color;
-	use graphene_std::raster::Image;
 
 	const REQUESTING_DOCUMENT: DocumentId = DocumentId(3);
 	const IDENTITY_CUBE: &[u8] = b"LUT_3D_SIZE 2\n0 0 0\n1 0 0\n0 1 0\n1 1 0\n0 0 1\n1 0 1\n0 1 1\n1 1 1\n";
@@ -335,6 +335,19 @@ mod tests {
 		assert!(refusal(&monitor_profile, "display.icc").contains("monitor"));
 		assert!(refusal(b"not a table", "grade.cube").contains("could not be read"));
 		assert!(refusal(IDENTITY_CUBE, "grade.png").contains("does not accept"));
+	}
+
+	#[test]
+	fn resource_input_takes_an_image_format_that_has_no_signature() {
+		// A TGA file is only told apart by its name
+		let tga = crate::messages::frontend::utility_types::FileType::Tga.encode(2, 1, vec![255; 8]).unwrap();
+		let stores = |file_name: &str| {
+			let responses = ingest_named(&tga, Some(file_name), resource_input(TypeFilter::raster().types), true);
+			responses.iter().any(|message| stored_resource(message).is_some())
+		};
+
+		assert!(stores("photo.tga"));
+		assert!(!stores("photo.unknown"));
 	}
 
 	#[test]

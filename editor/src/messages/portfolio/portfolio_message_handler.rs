@@ -1266,6 +1266,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
+			PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data } => match file_type.encode(width, height, data) {
+				Ok(content) => responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder: None,
+					filters: vec![file_type.file_filter()],
+					content: content.into(),
+				}),
+				Err(description) => responses.add(DialogMessage::DisplayDialogError {
+					title: "Unable to export document".to_string(),
+					description,
+				}),
+			},
 			PortfolioMessage::SubmitActiveGraphRender => {
 				if let Some(document_id) = self.active_document_id {
 					responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });

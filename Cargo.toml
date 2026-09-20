@@ -192,6 +192,12 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 	"gif",
+	"webp",
+	"tiff",
+	"ico",
+	"tga",
+	"hdr",
+	"exr",
 	"serde",
 ] }
 pretty_assertions = "1.4"
