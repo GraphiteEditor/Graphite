@@ -713,19 +713,19 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Editing
 			}
-			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				if matches!(self, Self::Placing) {
-					// Get the updated selection box bounds
-					let quad = Quad::from_box(tool_data.cached_resize_bounds);
+			(TextToolFsmState::Placing, TextToolMessage::Overlays { context: mut overlay_context }) => {
+				// Get the updated selection box bounds
+				let quad = Quad::from_box(tool_data.cached_resize_bounds);
 
-					// Draw a bounding box on the layers to be selected
-					for layer in document.intersect_quad_no_artboards(quad, viewport) {
-						overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
-					}
-
-					overlay_context.quad(quad, None, Some(fill_color));
+				// Draw bounding boxes on the layers to be selected
+				for layer in document.intersect_quad_no_artboards(quad, viewport) {
+					overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
 				}
+				overlay_context.quad(quad, None, Some(fill_color));
 
+				self
+			}
+			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -876,6 +876,7 @@ impl Fsm for TextToolFsmState {
 						}
 						let word_count = lorem_ipsum_word_count(constraint_size, tool_data.lorem_ipsum_preview_average_advance, typesetting);
 						let text = tool_data.lorem_ipsum_preview(word_count);
+						let position = start.min(end);
 						let (align, align_last) = tool_options.align.css();
 
 						responses.add(FrontendMessage::DisplayEditableTextbox {
@@ -885,7 +886,7 @@ impl Fsm for TextToolFsmState {
 							font_size: tool_options.font_size,
 							color: tool_options.fill.active_color().map_or(COLOR_OVERLAY_BLACK.to_string(), |color| SRGBA8::from(color).to_css_hex()),
 							font_data: font_data.into(),
-							transform: window_aligned_transform(document, start, DVec2::ONE).to_cols_array(),
+							transform: window_aligned_transform(document, position, DVec2::ONE).to_cols_array(),
 							max_width: constraint_size.map(|size| size.x),
 							max_height: constraint_size.map(|size| size.y),
 							align: align.to_string(),
@@ -1071,7 +1072,7 @@ impl Fsm for TextToolFsmState {
 				tool_data.reset_lorem_ipsum_preview();
 				let editing_text = EditingText {
 					text,
-					transform: window_aligned_transform(document, start, DVec2::ONE),
+					transform: window_aligned_transform(document, start.min(end), DVec2::ONE),
 					typesetting,
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),
