@@ -34,6 +34,7 @@
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
+	let textInputEditable = false;
 	let textInputMatrix: [number, number, number, number, number, number];
 
 	// Scrollbars
@@ -361,6 +362,7 @@
 
 	export async function displayEditableTextbox(data: MessageBody<"DisplayEditableTextbox">) {
 		showTextInput = true;
+		textInputEditable = data.editable;
 
 		await tick();
 
@@ -375,7 +377,8 @@
 		const lineHeight = data.lineHeightRatio * data.fontSize;
 		let height = data.maxHeight === undefined ? "auto" : `${Math.floor(data.maxHeight / lineHeight) * lineHeight}px`;
 
-		textInput.contentEditable = "true";
+		textInput.contentEditable = data.editable ? "true" : "false";
+		textInput.style.pointerEvents = data.editable ? "auto" : "none";
 		textInput.style.transformOrigin = "0 0";
 		textInput.style.width = data.maxWidth ? `${data.maxWidth}px` : "max-content";
 		textInput.style.height = height;
@@ -400,27 +403,29 @@
 			textInput.style.fontFamily = "text-font";
 		}
 
-		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
+		if (data.editable) {
+			// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
+			const range = window.document.createRange();
+			range.selectNodeContents(textInput);
 
-		const range = window.document.createRange();
-		range.selectNodeContents(textInput);
+			const selection = window.getSelection();
+			if (selection) {
+				selection.removeAllRanges();
+				selection.addRange(range);
+			}
 
-		const selection = window.getSelection();
-		if (selection) {
-			selection.removeAllRanges();
-			selection.addRange(range);
+			textInput.focus();
+			textInput.click();
+
+			// Sends the text input element used for interactively editing with the text tool in a custom event
+			window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
 		}
-
-		textInput.focus();
-		textInput.click();
-
-		// Sends the text input element used for interactively editing with the text tool in a custom event
-		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: textInput }));
 	}
 
 	export function displayRemoveEditableTextbox() {
 		window.dispatchEvent(new CustomEvent("modifyinputfield", { detail: undefined }));
 		showTextInput = false;
+		textInputEditable = false;
 	}
 
 	function updateViewportInfo() {
@@ -700,7 +705,7 @@
 								{@html artworkSvg}
 							</svg>
 						{/if}
-						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
+						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput && textInputEditable ? "auto" : ""}>
 							{#if showTextInput}
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
