@@ -319,4 +319,100 @@ mod tests {
 		assert!((half.a() - 0.5).abs() < 1e-5, "alpha was {}", half.a());
 		assert!((half.r() - 0.3).abs() < 1e-5, "red was {}", half.r());
 	}
+
+	// A transcription of the specification's pseudocode for the component blend modes, on gamma-encoded channels:
+	// https://www.w3.org/TR/compositing-1/#blendingnonseparable
+	mod specification {
+		pub fn lum(c: [f32; 3]) -> f32 {
+			0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2]
+		}
+
+		fn clip_color(c: [f32; 3]) -> [f32; 3] {
+			let l = lum(c);
+			let n = c[0].min(c[1]).min(c[2]);
+			let x = c[0].max(c[1]).max(c[2]);
+
+			let mut c = c;
+			if n < 0. {
+				c = c.map(|channel| l + (channel - l) * l / (l - n));
+			}
+			if x > 1. {
+				c = c.map(|channel| l + (channel - l) * (1. - l) / (x - l));
+			}
+			c
+		}
+
+		pub fn set_lum(c: [f32; 3], l: f32) -> [f32; 3] {
+			let d = l - lum(c);
+			clip_color(c.map(|channel| channel + d))
+		}
+
+		pub fn sat(c: [f32; 3]) -> f32 {
+			c[0].max(c[1]).max(c[2]) - c[0].min(c[1]).min(c[2])
+		}
+
+		pub fn set_sat(c: [f32; 3], s: f32) -> [f32; 3] {
+			let mut order = [0, 1, 2];
+			order.sort_by(|&a, &b| c[a].total_cmp(&c[b]));
+			let [min, mid, max] = order;
+
+			let mut result = [0.; 3];
+			if c[max] > c[min] {
+				result[mid] = (c[mid] - c[min]) * s / (c[max] - c[min]);
+				result[max] = s;
+			}
+			result
+		}
+	}
+
+	#[test]
+	fn component_modes_match_the_specification() {
+		use specification::{lum, sat, set_lum, set_sat};
+
+		let colors = [
+			[0.8, 0.3, 0.6],
+			[0.2, 0.7, 0.4],
+			[1., 0., 0.],
+			[0.05, 0.1, 0.95],
+			[0.5, 0.5, 0.5],
+			[0.95, 0.9, 0.1],
+			[0., 0., 0.],
+			[1., 1., 1.],
+		];
+
+		for backdrop in colors {
+			for source in colors {
+				let expectations = [
+					(BlendMode::Hue, set_lum(set_sat(source, sat(backdrop)), lum(backdrop))),
+					(BlendMode::Saturation, set_lum(set_sat(backdrop, sat(source)), lum(backdrop))),
+					(BlendMode::Color, set_lum(source, lum(backdrop))),
+					(BlendMode::Luminosity, set_lum(backdrop, lum(source))),
+				];
+
+				for (mode, expected) in expectations {
+					let foreground = Color::from_gamma_srgb_channels(source[0], source[1], source[2], 1.);
+					let background = Color::from_gamma_srgb_channels(backdrop[0], backdrop[1], backdrop[2], 1.);
+					let [r, g, b, _] = apply_blend_mode(foreground, background, mode).to_gamma_srgb_channels();
+
+					for (ours, expected) in [r, g, b].into_iter().zip(expected) {
+						assert!((ours - expected).abs() < 1e-5, "{mode} of {source:?} over {backdrop:?} gave {:?}, not {expected:?}", [r, g, b]);
+					}
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn color_mode_pulls_an_overshooting_channel_back_without_shifting_its_luma() {
+		let red = Color::from_gamma_srgb_channels(1., 0., 0., 1.);
+		let gray = Color::from_gamma_srgb_channels(0.5, 0.5, 0.5, 1.);
+
+		// Raising red's 0.3 luma to the gray's 0.5 puts red at 1.2, so every channel is pulled 5/7 of the way back toward 0.5
+		let [r, g, b, _] = apply_blend_mode(red, gray, BlendMode::Color).to_gamma_srgb_channels();
+		assert!((r - 1.).abs() < 1e-5 && (g - 2. / 7.).abs() < 1e-5 && (b - 2. / 7.).abs() < 1e-5, "got {r}, {g}, {b}");
+
+		// A gray backdrop has only luma to keep, so it takes on the red's
+		let [r, g, b, _] = apply_blend_mode(red, gray, BlendMode::Luminosity).to_gamma_srgb_channels();
+		assert!((r - 0.3).abs() < 1e-5 && (g - 0.3).abs() < 1e-5 && (b - 0.3).abs() < 1e-5, "got {r}, {g}, {b}");
+	}
 }

@@ -217,7 +217,7 @@ impl From<TextDenomination> for ipsum::Unit {
 }
 
 /// Generates *Lorem Ipsum* placeholder text of a desired length. The classic "Lorem ipsum dolor sit amet…" intro may be included up to its full four-sentence (or one-paragraph) length, or used in part or not at all, after which the randomized Latin-like text continues producing paragraphs until the requested length is reached.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Text"))]
 fn lorem_ipsum(
 	_: impl Ctx,
 	_primary: (),

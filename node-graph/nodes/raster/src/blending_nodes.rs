@@ -93,6 +93,7 @@ fn mix<T: Blend<Color> + Send>(
 	over
 }
 
+// TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
 #[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
