@@ -15,10 +15,10 @@ pub struct FailedDocumentsMessageHandler {
 	/// Pairs of `(info, raw serialized content)` for autosaved documents that failed to deserialize.
 	/// The info entries are folded back into `persisted_state_snapshot` so their on-disk autosave files survive garbage collection.
 	// TODO: Eventually remove this document upgrade code
-	pub(crate) failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
+	failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
 	/// In-flight count of autosaved-document loads from the initial startup batch; the batched failure dialog fires when this hits 0.
 	// TODO: Eventually remove this document upgrade code
-	pub(crate) pending_initial_autosave_loads: usize,
+	pending_initial_autosave_loads: usize,
 }
 
 #[message_handler_data]
@@ -52,23 +52,21 @@ impl MessageHandler<FailedDocumentsMessage, FailedDocumentsMessageContext<'_>> f
 					return;
 				}
 
-				let mut used_names: HashMap<String, u32> = HashMap::new();
+				let mut used_names = HashSet::new();
 				let files: Vec<(String, Vec<u8>)> = self
 					.failed_to_load_documents
 					.values()
 					.map(|(info, content)| {
 						let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
-						let base = format!("{stem}.{FILE_EXTENSION}");
-						let unique = match used_names.get(&base).copied() {
-							None => {
-								used_names.insert(base.clone(), 1);
-								base
-							}
-							Some(n) => {
-								used_names.insert(base.clone(), n + 1);
-								format!("{stem} ({n}).{FILE_EXTENSION}")
-							}
-						};
+
+						// A name that was already given out, even as another document's numbered copy, takes the next free number
+						let mut unique = format!("{stem}.{FILE_EXTENSION}");
+						let mut copy_number = 1;
+						while !used_names.insert(unique.clone()) {
+							unique = format!("{stem} ({copy_number}).{FILE_EXTENSION}");
+							copy_number += 1;
+						}
+
 						(unique, content.as_bytes().to_vec())
 					})
 					.collect();
@@ -117,10 +115,34 @@ impl MessageHandler<FailedDocumentsMessage, FailedDocumentsMessageContext<'_>> f
 
 impl FailedDocumentsMessageHandler {
 	// TODO: Eventually remove this document upgrade code
+	/// Keeps a document that failed to load, with its raw serialized content, so it can be offered for download.
+	pub(crate) fn record_failure(&mut self, document_id: DocumentId, info: DocumentInfo, serialized_content: String) {
+		self.failed_to_load_documents.insert(document_id, (info, serialized_content));
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Counts more autosaved documents of the startup batch whose loads the batched failure dialog waits for.
+	pub(crate) fn expect_autosave_loads(&mut self, count: usize) {
+		self.pending_initial_autosave_loads = self.pending_initial_autosave_loads.saturating_add(count);
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Whether documents failed to load and none of the startup batch is still loading, so the failure dialog is due.
+	pub(crate) fn has_failures_to_report(&self) -> bool {
+		self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty()
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// The info of each document that failed to load.
+	pub(crate) fn failed_document_infos(&self) -> impl Iterator<Item = &DocumentInfo> {
+		self.failed_to_load_documents.values().map(|(info, _)| info)
+	}
+
+	// TODO: Eventually remove this document upgrade code
 	pub(crate) fn tick_autosave_load_progress(&mut self, responses: &mut VecDeque<Message>, failed: bool) {
 		if self.pending_initial_autosave_loads > 0 {
 			self.pending_initial_autosave_loads -= 1;
-			if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
+			if self.has_failures_to_report() {
 				responses.add(FailedDocumentsMessage::ShowFailedToLoadDocumentsDialog);
 			}
 		} else if failed {
@@ -200,4 +222,32 @@ fn build_recovery_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> 
 
 	writer.finish().map_err(|e| format!("finish: {e}"))?;
 	Ok(buffer.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn recovered_documents_sharing_a_name_with_a_numbered_copy_still_download() {
+		let mut handler = FailedDocumentsMessageHandler::default();
+		for (id, name) in [(1, "Art"), (2, "Art"), (3, "Art (1)")] {
+			let info = DocumentInfo {
+				id: DocumentId(id),
+				name: name.to_string(),
+				resources: None,
+				path: None,
+				is_saved: true,
+			};
+			handler.record_failure(DocumentId(id), info, "content".to_string());
+		}
+
+		let mut document_ids = VecDeque::new();
+		let mut responses = VecDeque::new();
+		let context = FailedDocumentsMessageContext { document_ids: &mut document_ids };
+		handler.process_message(FailedDocumentsMessage::DownloadFailedToLoadDocuments, &mut responses, context);
+
+		// A file name given out twice makes the archive fail to build, which shows an error dialog in place of the download
+		assert!(matches!(responses.front(), Some(Message::Frontend(FrontendMessage::TriggerSaveFile { .. }))));
+	}
 }

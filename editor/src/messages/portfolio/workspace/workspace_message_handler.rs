@@ -190,6 +190,17 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				// Preserve the source panel's visual weight at its new location
 				let source_slot_size = self.panel_layout.find_source_slot_size(&tabs);
 
+				// The other panel groups that the dragged tabs leave, since the target group is refreshed regardless
+				let mut source_groups = Vec::new();
+				for &panel_type in &tabs {
+					if let Some(group) = self.panel_layout.find_panel(panel_type)
+						&& group != target_group
+						&& !source_groups.contains(&group)
+					{
+						source_groups.push(group);
+					}
+				}
+
 				// Remove the dragged tabs from their current panel groups (without pruning, so the target group survives)
 				for &panel_type in &tabs {
 					self.remove_panel_from_layout(panel_type);
@@ -213,6 +224,14 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				// Refresh the target group's active panel since its component may have been remounted
 				if let Some(target_active) = self.panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
 					Self::refresh_panel_content(target_active, has_active_document, has_no_documents, responses);
+				}
+
+				// Refresh each source panel group's newly active tab (if any remain) so it's not left stale
+				for source_group in source_groups {
+					if let Some(new_source_active) = self.panel_layout.panel_group(source_group).and_then(|g| g.active_panel_type()) {
+						Self::destroy_panel_layouts(new_source_active, responses);
+						Self::refresh_panel_content(new_source_active, has_active_document, has_no_documents, responses);
+					}
 				}
 			}
 			WorkspaceMessage::ToggleFocusDocument => {
@@ -404,5 +423,41 @@ impl WorkspaceMessageHandler {
 				}
 			}
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::messages::portfolio::utility_types::DockingSplitDirection;
+
+	#[test]
+	fn splitting_a_tab_out_of_a_group_refreshes_the_tab_left_active_there() {
+		let mut handler = WorkspaceMessageHandler::default();
+		let context = || WorkspaceMessageContext {
+			has_active_document: true,
+			has_no_documents: false,
+		};
+		let group_of = |handler: &WorkspaceMessageHandler, panel_type| handler.panel_layout.find_panel(panel_type).expect("the default layout has this panel");
+
+		// The Layers panel joins the Properties panel's group as its active tab
+		let join = WorkspaceMessage::MovePanelTab {
+			source_group: group_of(&handler, PanelType::Layers),
+			target_group: group_of(&handler, PanelType::Properties),
+			insert_index: 1,
+		};
+		handler.process_message(join, &mut VecDeque::new(), context());
+
+		// Splitting it back out beside the document leaves the Properties panel as the active tab of the group it left
+		let split = WorkspaceMessage::SplitPanelGroup {
+			target_group: group_of(&handler, PanelType::Document),
+			direction: DockingSplitDirection::Right,
+			tabs: vec![PanelType::Layers],
+			active_tab_index: 0,
+		};
+		let mut responses = VecDeque::new();
+		handler.process_message(split, &mut responses, context());
+
+		assert!(responses.contains(&PropertiesPanelMessage::Refresh.into()));
 	}
 }

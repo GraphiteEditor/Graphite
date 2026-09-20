@@ -414,7 +414,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Eagerly load every autosaved doc on startup so deserialization failures can be reported in one batched dialog at the end.
 				// The active doc's read is deferred to the `SelectDocument` below, but is still counted.
 				// TODO: Eventually remove this document upgrade code
-				self.failed_documents.pending_initial_autosave_loads = self.failed_documents.pending_initial_autosave_loads.saturating_add(newly_unloaded_ids.len());
+				self.failed_documents.expect_autosave_loads(newly_unloaded_ids.len());
 
 				// TODO: Eventually remove this document upgrade code
 				for document_id in &newly_unloaded_ids {
@@ -428,7 +428,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 				// TODO: Eventually remove this document upgrade code
-				else if self.failed_documents.pending_initial_autosave_loads == 0 && !self.failed_documents.failed_to_load_documents.is_empty() {
+				else if self.failed_documents.has_failures_to_report() {
 					responses.add(FailedDocumentsMessage::ShowFailedToLoadDocumentsDialog);
 				}
 			}
@@ -598,7 +598,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								is_saved: document_is_saved,
 							};
 							self.document_ids.retain(|id| id != &document_id);
-							self.failed_documents.failed_to_load_documents.insert(document_id, (info, document_serialized_content));
+							self.failed_documents.record_failure(document_id, info, document_serialized_content);
 
 							if self.active_document_id == Some(document_id) {
 								self.active_document_id = None;
@@ -1193,7 +1193,7 @@ impl PortfolioMessageHandler {
 
 		// Keep failed-to-load docs referenced in `state.documents` so their autosave files survive `garbage_collect_document_files`
 		// TODO: Eventually remove this document upgrade code
-		for (info, _) in self.failed_documents.failed_to_load_documents.values() {
+		for info in self.failed_documents.failed_document_infos() {
 			documents.push(info.clone());
 		}
 
