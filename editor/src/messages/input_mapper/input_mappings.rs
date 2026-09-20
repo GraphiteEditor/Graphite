@@ -447,8 +447,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=IngestMessage::Open),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=IngestMessage::Import),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
-		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleDataPanelOpen),
-		entry!(KeyDown(Enter); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleFocusDocument),
+		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=WorkspaceMessage::ToggleDataPanelOpen),
+		entry!(KeyDown(Enter); modifiers=[Alt], action_dispatch=WorkspaceMessage::ToggleFocusDocument),
 		//
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),

@@ -231,7 +231,7 @@ mod editor_commands {
 	}
 
 	fn reorder_panel_group_tab(group: u64, old_index: usize, new_index: usize) -> Message {
-		PortfolioMessage::ReorderPanelGroupTab {
+		WorkspaceMessage::ReorderPanelGroupTab {
 			group: PanelGroupId(group),
 			old_index,
 			new_index,
@@ -240,7 +240,7 @@ mod editor_commands {
 	}
 
 	fn move_all_panel_tabs(source_group: u64, target_group: u64, insert_index: usize) -> Message {
-		PortfolioMessage::MoveAllPanelTabs {
+		WorkspaceMessage::MoveAllPanelTabs {
 			source_group: PanelGroupId(source_group),
 			target_group: PanelGroupId(target_group),
 			insert_index,
@@ -249,7 +249,7 @@ mod editor_commands {
 	}
 
 	fn move_panel_tab(source_group: u64, target_group: u64, insert_index: usize) -> Message {
-		PortfolioMessage::MovePanelTab {
+		WorkspaceMessage::MovePanelTab {
 			source_group: PanelGroupId(source_group),
 			target_group: PanelGroupId(target_group),
 			insert_index,
@@ -258,7 +258,7 @@ mod editor_commands {
 	}
 
 	fn set_panel_group_active_tab(group: u64, tab_index: usize) -> Message {
-		PortfolioMessage::SetPanelGroupActiveTab {
+		WorkspaceMessage::SetPanelGroupActiveTab {
 			group: PanelGroupId(group),
 			tab_index,
 		}
@@ -266,7 +266,7 @@ mod editor_commands {
 	}
 
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
-		PortfolioMessage::SplitPanelGroup {
+		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
 			tabs,
@@ -277,7 +277,7 @@ mod editor_commands {
 
 	fn set_panel_group_sizes(split_path: Vec<u32>, sizes: Vec<f64>) -> Message {
 		let split_path = split_path.into_iter().map(|i| i as usize).collect();
-		PortfolioMessage::SetPanelGroupSizes { split_path, sizes }.into()
+		WorkspaceMessage::SetPanelGroupSizes { split_path, sizes }.into()
 	}
 
 	fn close_document_with_confirmation(document_id: u64) -> Message {

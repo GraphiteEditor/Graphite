@@ -18,7 +18,7 @@ impl DialogLayoutHolder for FailedToLoadDocumentsDialog {
 				.tooltip_description("Save the raw document data to disk so it can be recovered later.")
 				.on_update(|_| {
 					DialogMessage::CloseAndThen {
-						followups: vec![PortfolioMessage::DownloadFailedToLoadDocuments.into()],
+						followups: vec![FailedDocumentsMessage::DownloadFailedToLoadDocuments.into()],
 					}
 					.into()
 				})
@@ -27,7 +27,7 @@ impl DialogLayoutHolder for FailedToLoadDocumentsDialog {
 				.tooltip_description("Permanently delete the autosaved data for these documents.")
 				.on_update(|_| {
 					DialogMessage::CloseAndThen {
-						followups: vec![PortfolioMessage::DiscardFailedToLoadDocuments.into()],
+						followups: vec![FailedDocumentsMessage::DiscardFailedToLoadDocuments.into()],
 					}
 					.into()
 				})

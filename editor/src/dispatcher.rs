@@ -266,8 +266,8 @@ impl Dispatcher {
 				Message::MenuBar(message) => {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
-					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace_panel_layout.focus_document;
-					let layout = &self.message_handlers.portfolio_message_handler.workspace_panel_layout;
+					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace.panel_layout.focus_document;
+					let layout = &self.message_handlers.portfolio_message_handler.workspace.panel_layout;
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);

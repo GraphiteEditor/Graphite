@@ -31,9 +31,11 @@ pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, Overla
 pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::resource::{ResourceMessage, ResourceMessageContext, ResourceMessageDiscriminant, ResourceMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageContext, DocumentMessageDiscriminant, DocumentMessageHandler};
+pub use crate::messages::portfolio::failed_documents::{FailedDocumentsMessage, FailedDocumentsMessageContext, FailedDocumentsMessageDiscriminant, FailedDocumentsMessageHandler};
 pub use crate::messages::portfolio::fonts::{FontsMessage, FontsMessageContext, FontsMessageDiscriminant, FontsMessageHandler};
 pub use crate::messages::portfolio::ingest::{IngestMessage, IngestMessageContext, IngestMessageDiscriminant, IngestMessageHandler};
 pub use crate::messages::portfolio::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageDiscriminant, PersistentStateMessageHandler};
+pub use crate::messages::portfolio::workspace::{WorkspaceMessage, WorkspaceMessageContext, WorkspaceMessageDiscriminant, WorkspaceMessageHandler};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageContext, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::resource_storage::{ResourceStorageMessage, ResourceStorageMessageContext, ResourceStorageMessageDiscriminant, ResourceStorageMessageHandler};
