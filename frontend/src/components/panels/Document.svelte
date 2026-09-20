@@ -371,7 +371,7 @@
 		// eslint-disable-next-line svelte/no-dom-manipulating
 		if (data.text === "") textInput.textContent = "";
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${data.text}\n`;
+		else textInput.textContent = data.editable ? `${data.text}\n` : data.text;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
 		const lineHeight = data.lineHeightRatio * data.fontSize;
@@ -388,11 +388,6 @@
 		textInput.style.textAlign = data.align;
 		textInput.style.textAlignLast = data.alignLast;
 
-		textInput.oninput = () => {
-			if (!textInput) return;
-			editor.updateBounds(textInputCleanup(textInput.innerText));
-		};
-
 		textInputMatrix = data.transform;
 
 		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
@@ -404,6 +399,11 @@
 		}
 
 		if (data.editable) {
+			textInput.oninput = () => {
+				if (!textInput) return;
+				editor.updateBounds(textInputCleanup(textInput.innerText));
+			};
+
 			// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 			const range = window.document.createRange();
 			range.selectNodeContents(textInput);
@@ -705,7 +705,7 @@
 								{@html artworkSvg}
 							</svg>
 						{/if}
-						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput && textInputEditable ? "auto" : ""}>
+						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={textInputEditable ? "auto" : ""}>
 							{#if showTextInput}
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
