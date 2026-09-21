@@ -1,5 +1,5 @@
 //! The luma and saturation constructions that the component blend modes (hue, saturation, color, and luminosity)
-//! and the adjustments derived from them are built on. All of them work on gamma-encoded channels.
+//! and the adjustments derived from them are built on. All of them work on gamma-encoded channels across 0..1.
 //!
 //! <https://www.w3.org/TR/compositing-1/#blendingnonseparable>
 

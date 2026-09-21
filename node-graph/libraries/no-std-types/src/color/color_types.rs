@@ -774,11 +774,14 @@ impl Color {
 	/// Runs `blend` on this color's and `c_s`'s gamma-encoded channels, which the component blend modes are defined on, keeping `c_s`'s alpha.
 	#[inline(always)]
 	fn blend_gamma_rgb<F: Fn([f32; 3], [f32; 3]) -> [f32; 3]>(&self, c_s: Color, blend: F) -> Color {
-		let [r_b, g_b, b_b, _] = self.to_gamma_srgb_channels();
-		let [r_s, g_s, b_s, alpha] = c_s.to_gamma_srgb_channels();
-		let [r, g, b] = blend([r_b, g_b, b_b], [r_s, g_s, b_s]);
+		// Light brighter than white is clipped, since the constructions are defined only across 0..1
+		let in_range = |color: &Color| {
+			let [red, green, blue, _] = color.to_gamma_srgb_channels();
+			[red.clamp(0., 1.), green.clamp(0., 1.), blue.clamp(0., 1.)]
+		};
+		let [r, g, b] = blend(in_range(self), in_range(&c_s));
 
-		Color::from_gamma_srgb_channels(r, g, b, alpha)
+		Color::from_gamma_srgb_channels(r, g, b, c_s.alpha)
 	}
 
 	/// Whole-color "Hue" blend: source hue with this color's saturation and luma, with `c_s`'s alpha.

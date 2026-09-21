@@ -415,4 +415,19 @@ mod tests {
 		let [r, g, b, _] = apply_blend_mode(red, gray, BlendMode::Luminosity).to_gamma_srgb_channels();
 		assert!((r - 0.3).abs() < 1e-5 && (g - 0.3).abs() < 1e-5 && (b - 0.3).abs() < 1e-5, "got {r}, {g}, {b}");
 	}
+
+	#[test]
+	fn component_modes_survive_light_brighter_than_white() {
+		// An exposure raised above white reaches these modes as a gray whose largest channel is also its luma
+		let bright_gray = Color::from_rgbaf32_unchecked(4., 4., 4., 1.);
+		let ordinary = Color::from_rgbaf32_unchecked(0.8, 0.3, 0.6, 1.);
+
+		for mode in [BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity] {
+			for (foreground, background) in [(bright_gray, ordinary), (ordinary, bright_gray), (bright_gray, bright_gray)] {
+				let blended = apply_blend_mode(foreground, background, mode);
+
+				assert!(blended.r().is_finite() && blended.g().is_finite() && blended.b().is_finite(), "{mode} gave {blended:?}");
+			}
+		}
+	}
 }
