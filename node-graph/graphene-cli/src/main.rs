@@ -133,18 +133,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	init_logging(log_level);
 
 	let document_path = match app.command {
-		Command::Host { ref document, ref signaling } => {
-			live::install_crypto_provider();
-			return live::host(signaling, document.as_deref()).await;
-		}
-		Command::Join { token, ref signaling } => {
-			live::install_crypto_provider();
-			return live::join(signaling, token).await;
-		}
-		Command::Watch { token, ref signaling } => {
-			live::install_crypto_provider();
-			return live::watch(signaling, token).await;
-		}
+		Command::Host { ref document, ref signaling } => return live::host(signaling, document.as_deref()).await,
+		Command::Join { token, ref signaling } => return live::join(signaling, token).await,
+		Command::Watch { token, ref signaling } => return live::watch(signaling, token).await,
 		Command::Compile { ref document, .. } => document,
 		Command::Export { ref document, .. } => document,
 		Command::ExtractLegacyDoc { ref document } => document,

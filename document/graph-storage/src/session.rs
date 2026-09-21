@@ -16,6 +16,9 @@ pub struct Session {
 	/// leader-eligibility computation (lowest PeerId among peers whose tip matches the session max).
 	#[expect(dead_code, reason = "Populated once heartbeat/leader-election transport lands; held now so the field and constructors are in place.")]
 	remote_tips: HashMap<PeerId, Rev>,
+	/// The registry the runtime was last built from or staged to. Local diffs are taken against it,
+	/// so edits peers applied to the working registry in the meantime are not diffed away.
+	runtime_base: Option<Registry>,
 }
 
 impl Session {
@@ -44,6 +47,7 @@ impl Session {
 				next_node_counter: 0,
 			},
 			remote_tips: HashMap::new(),
+			runtime_base: None,
 		}
 	}
 
@@ -77,9 +81,16 @@ impl Session {
 		resources: &graphene_resource::ResourceRegistry,
 	) -> Result<(Vec<HotOp>, from_runtime::RuntimeConversion), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
-		let ops = crate::delta::compute_deltas(&self.document.working_registry, &conversion.registry);
+		let base = self.runtime_base.as_ref().unwrap_or(&self.document.working_registry);
+		let ops = crate::delta::compute_deltas(base, &conversion.registry);
+		self.runtime_base = Some(conversion.registry);
 		let hot_ops = self.stage_ops(ops)?;
 		Ok((hot_ops, conversion))
+	}
+
+	/// Record that the runtime now reflects the working registry, after the caller rebuilt it from there.
+	pub fn mark_runtime_current(&mut self) {
+		self.runtime_base = Some(self.document.working_registry.clone());
 	}
 
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`] for this document's peer, so the
@@ -231,6 +242,7 @@ impl Session {
 				next_node_counter,
 			},
 			remote_tips: HashMap::new(),
+			runtime_base: None,
 		}
 	}
 
@@ -399,6 +411,8 @@ impl Session {
 			return Err(CrdtError::NothingToUndo);
 		}
 		let checkpoint = self.document.head.ok_or(CrdtError::NothingToUndo)?;
+		// The caller rebuilds the runtime from the rewound registry; until then diff against it directly.
+		self.runtime_base = None;
 
 		// Revert this interaction's last delta, then keep going back until `head` rests on the previous
 		// interaction's boundary (its `interaction_end` delta) or the root.
@@ -429,6 +443,7 @@ impl Session {
 	/// parents back from the checkpoint to `head` (the chain is linear in the silent solo zone).
 	pub fn redo(&mut self) -> Result<Rev, CrdtError> {
 		let checkpoint = self.document.redo_stack.pop().ok_or(CrdtError::NothingToRedo)?;
+		self.runtime_base = None;
 
 		let mut forward = Vec::new();
 		let mut cursor = Some(checkpoint);

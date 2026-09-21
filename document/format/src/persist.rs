@@ -65,10 +65,15 @@ impl<L: Layout> Gdd<L> {
 		self.persist_staged(&hot_ops)?;
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
-		// the working-copy container for standalone export). Content-addressed, so re-storing
+		// the working-copy container for standalone export) and into the working copy itself, so the
+		// document stays self-contained for peers and exports. Content-addressed, so re-storing
 		// identical bytes on every commit is an idempotent no-op.
-		for bytes in conversion.declaration_bytes.values() {
+		for (hash, bytes) in &conversion.declaration_bytes {
 			byte_store.store(bytes);
+			let path = self.layout.resource_path(hash);
+			if !self.working.exists_non_blocking(&path) {
+				self.working.write_non_blocking(&path, bytes)?;
+			}
 		}
 		Ok(conversion.declarations)
 	}

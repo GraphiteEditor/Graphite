@@ -36,6 +36,11 @@ impl<L: Layout> Gdd<L> {
 		self.network.as_ref().is_none_or(Replica::is_synced)
 	}
 
+	/// Record that the runtime was rebuilt from the registry, so the next staged diff is taken against it.
+	pub fn mark_runtime_current(&mut self) {
+		self.session.mark_runtime_current();
+	}
+
 	pub fn poll_peers(&mut self) -> Vec<Event> {
 		let Some(mut replica) = self.network.take() else { return Vec::new() };
 		let events = replica.poll(self);

@@ -13,7 +13,7 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-pub const DEFAULT_SIGNALING_SERVER: &str = "ws://graphite.kobert.dev:3536";
+pub use document_live::DEFAULT_SIGNALING_SERVER;
 
 pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dyn Error>> {
 	let (peer, user) = identity();
@@ -72,11 +72,6 @@ async fn repl_loop(live: &mut LiveDocument) {
 
 fn spawn_driver(driver: document_live::MessageLoopFuture) {
 	tokio::spawn(driver);
-}
-
-/// WebRTC's DTLS goes through rustls, which can't pick between the workspace's `ring` and `aws-lc-rs`.
-pub fn install_crypto_provider() {
-	let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
 fn identity() -> (PeerId, UserId) {

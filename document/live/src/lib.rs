@@ -11,7 +11,7 @@ use peer_transport::{Room, SyncTarget};
 
 pub use document_format::Error as FormatError;
 pub use document_graph_storage::to_runtime::ConversionError;
-pub use peer_transport::{Event, MessageLoopFuture, Role, SessionToken};
+pub use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, MessageLoopFuture, Role, SessionToken};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LiveError {

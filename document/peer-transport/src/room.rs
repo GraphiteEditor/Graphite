@@ -19,6 +19,10 @@ pub struct Room {
 
 impl Room {
 	pub fn connect(signaling_url: &str) -> (Self, MessageLoopFuture) {
+		// WebRTC's DTLS goes through rustls, which needs one provider chosen when several are linked.
+		#[cfg(not(target_family = "wasm"))]
+		let _ = rustls::crypto::ring::default_provider().install_default();
+
 		let (socket, driver) = WebRtcSocket::new_reliable(signaling_url);
 		(Self { socket, partial: HashMap::new() }, driver)
 	}

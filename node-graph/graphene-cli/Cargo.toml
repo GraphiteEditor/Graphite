@@ -33,7 +33,6 @@ wgpu = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "time"] }
 serde_json = { workspace = true }
 winit = { workspace = true }
-rustls = { version = "0.23", default-features = false, features = ["ring"] }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
 wgpu-executor = { workspace = true, optional = true }

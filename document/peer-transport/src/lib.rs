@@ -14,3 +14,6 @@ pub use token::{InvalidSessionToken, SessionToken};
 pub use transport::{Transport, TransportEvent, TransportPeerId};
 
 pub use matchbox_socket::MessageLoopFuture;
+
+/// Matchbox signaling server for sessions, behind TLS so browsers on HTTPS pages can reach it.
+pub const DEFAULT_SIGNALING_SERVER: &str = "wss://graphite.kobert.dev";
