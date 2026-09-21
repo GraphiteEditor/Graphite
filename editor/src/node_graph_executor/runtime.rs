@@ -513,8 +513,8 @@ impl NodeRuntime {
 			let mut render = SvgRender::new();
 			graphic.render_svg(&mut render, &render_params);
 
-			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-			render.format_svg(bounds[0], bounds[1]);
+			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag as isolation group to prevent blending against the background checker
+			render.format_svg_with_attributes(bounds[0], bounds[1], |attributes| attributes.push("style", "isolation: isolate;"));
 
 			render.svg
 		};
