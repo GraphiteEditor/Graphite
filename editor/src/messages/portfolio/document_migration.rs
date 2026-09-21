@@ -416,8 +416,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::as_f_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node"],
+		node: graphene_std::math_nodes::as_number::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node", "math_nodes::AsF64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,

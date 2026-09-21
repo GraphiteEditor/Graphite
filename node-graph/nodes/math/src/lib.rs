@@ -713,23 +713,30 @@ fn random(
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs.
+/// Converts a number to an integer of the type u32, which may be the required type for certain node inputs.
 #[node_macro::node(name("As u32"), category("Type Assertion"))]
 fn as_u32(_: impl Ctx, value: Item<u32>) -> Item<u32> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs.
+/// Converts a number to an integer of the type u64, which may be the required type for certain node inputs.
 #[node_macro::node(name("As u64"), category("Type Assertion"))]
 fn as_u64(_: impl Ctx, value: Item<u64>) -> Item<u64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As f64"), category("Type Assertion"))]
-fn as_f64(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+/// Converts an integer or bool to the decimal number type, which may be the required type for certain node inputs. A bool becomes 0 (false) or 1 (true).
+#[node_macro::node(category("Type Assertion"))]
+fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+	value
+}
+
+// TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
+/// Passes a true or false value through as the type bool, which may be the required type for certain node inputs.
+#[node_macro::node(category("Type Assertion"))]
+fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
 }
 
@@ -1060,6 +1067,18 @@ fn any(_: impl Ctx, values: List<bool>) -> Item<bool> {
 #[node_macro::node(category("Math: Logic"))]
 fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 	Item::new_from_element(values.iter_element_values().all(|&value| value))
+}
+
+/// Outputs true if the value is anything other than zero. A vector counts as zero only when every component is zero.
+#[node_macro::node(category("Math: Logic"))]
+fn is_nonzero<T: Default + std::cmp::PartialEq>(
+	_: impl Ctx,
+	/// The value compared against zero.
+	#[implementations(f64, f32, u32, u64, i32, i64, DVec2)]
+	value: Item<T>,
+) -> Item<bool> {
+	let (value, attributes) = value.into_parts();
+	Item::from_parts(value != T::default(), attributes)
 }
 
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
@@ -1825,6 +1844,19 @@ mod test {
 	fn test_default_expression() {
 		let result = math((), Item::new_from_element(0.), Item::new_from_element("0".to_string()), Item::new_from_element(0.));
 		assert_eq!(result.into_element(), 0.);
+	}
+
+	#[test]
+	fn test_is_nonzero() {
+		assert!(!is_nonzero((), Item::new_from_element(0.)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(0.5)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(-3_i64)).into_element());
+		assert!(!is_nonzero((), Item::new_from_element(DVec2::ZERO)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(DVec2::new(0., 1.))).into_element());
+
+		// Negative zero is zero, while NaN, being unequal to zero, is nonzero
+		assert!(!is_nonzero((), Item::new_from_element(-0.)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(f64::NAN)).into_element());
 	}
 
 	#[test]

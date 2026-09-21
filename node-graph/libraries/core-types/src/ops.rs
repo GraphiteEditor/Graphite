@@ -121,3 +121,18 @@ impl_convert!(i128);
 impl_convert!(u128);
 impl_convert!(isize);
 impl_convert!(usize);
+
+/// Implements the [`Convert`] trait from `bool` into each numeric type, embedding `false` and `true` as exactly 0 and 1.
+/// The reverse direction is deliberately absent: a number only becomes a truth value through an explicit comparison.
+macro_rules! impl_convert_from_bool {
+	($($to:ty),* $(,)?) => {
+		$(
+			impl Convert<$to, ()> for bool {
+				async fn convert(self, _: Footprint, _: ()) -> $to {
+					self as u8 as $to
+				}
+			}
+		)*
+	};
+}
+impl_convert_from_bool!(f32, f64, i8, u8, u16, i16, i32, u32, i64, u64, i128, u128, isize, usize);
