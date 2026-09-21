@@ -3431,10 +3431,12 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 							TaggedValue::String({
 								let mut expression = x.value.trim().to_string();
 
-								if ["+", "-", "*", "/", "^", "%"].iter().any(|&infix| infix == expression) {
+								if ["+", "-", "*", "/", "^"].iter().any(|&infix| infix == expression) {
 									expression = format!("A {expression} B");
 								} else if expression == "^" {
 									expression = String::from("A^B");
+								} else if expression == "%" || expression == "mod" {
+									expression = String::from("mod(a, b)");
 								}
 
 								expression

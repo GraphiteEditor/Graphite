@@ -49,7 +49,15 @@ impl Node {
 
 		match parser::<Lexer, extra::Err<Rich<Token, Span>>>().parse(Lexer::new(src)).into_result() {
 			Ok(ast) => Ok(ast),
-			Err(parse_errs) => Err(ParseError(parse_errs.into_iter().map(|e| format!("{e} at {}", e.span())).collect())),
+			Err(parse_errs) => Err(ParseError(
+				parse_errs
+					.into_iter()
+					.map(|e| match e.found() {
+						Some(Token::Percent) => format!("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at {}", e.span()),
+						_ => format!("{e} at {}", e.span()),
+					})
+					.collect(),
+			)),
 		}
 	}
 }
@@ -92,7 +100,7 @@ where
 		let atom = choice((constant, if_expr, call_or_var, parens, magnitude)).labelled("atom");
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
-		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div), just(Token::Modulo).to(BinaryOp::Modulo)));
+		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
 		let pow_op = just(Token::Caret).to(BinaryOp::Pow);
 		let unary_op = choice((
 			just(Token::Minus).to(UnaryOp::Neg),

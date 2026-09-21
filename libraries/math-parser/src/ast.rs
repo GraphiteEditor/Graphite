@@ -22,7 +22,6 @@ pub enum BinaryOp {
 	Div,
 	/// Logical OR over operands that must each be exactly 0 or 1, returning 0 or 1.
 	Or,
-	Modulo,
 	Pow,
 	Leq,
 	Lt,
