@@ -44,10 +44,7 @@ where
 	E::Error: LabelError<'src, I, &'static str>,
 {
 	recursive(|expr| {
-		let constant = select! {
-			Token::Float(f) => Node::Lit(Literal::Float(f)),
-			Token::Const(c) => Node::Lit(c.value())
-		};
+		let constant = select! { Token::Float(f) => Node::Lit(Literal::Float(f)) };
 
 		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
 
@@ -152,7 +149,6 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::value::Complex;
 
 	macro_rules! test_parser {
 		($($name:ident: $input:expr_2021 => $expected:expr_2021),* $(,)?) => {
@@ -201,10 +197,10 @@ mod tests {
 			name: "ii".to_string(),
 			expr: vec![Node::Lit(Literal::Float(16.))]
 		},
-		test_parse_i_mul: "i(16)" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Complex(Complex::new(0., 1.)))),
-			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Float(16.))),
+		// `i` is a name a binding may shadow, so only the evaluator can read this call as `i` times its argument
+		test_parse_i_mul: "i(16)" => Node::FnCall {
+			name: "i".to_string(),
+			expr: vec![Node::Lit(Literal::Float(16.))],
 		},
 		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {

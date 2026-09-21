@@ -10,7 +10,6 @@ pub type Span = SimpleSpan;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
 	Float(f64),
-	Const(Constant),
 	Ident(&'src str),
 
 	AndAnd,
@@ -45,7 +44,6 @@ impl<'src> fmt::Display for Token<'src> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Token::Float(x) => write!(f, "{x}"),
-			Token::Const(c) => write!(f, "{c}"),
 			Token::Ident(name) => write!(f, "{name}"),
 
 			Token::AndAnd => f.write_str("&&"),
@@ -120,7 +118,6 @@ impl Constant {
 			("φ", Phi),
 			("inf", Inf),
 			("infinity", Inf),
-			("∞", Inf),
 			("true", True),
 			("false", False),
 		];
@@ -311,6 +308,9 @@ impl<'a> Lexer<'a> {
 			'^' => Caret,
 			'≠' => Neq,
 
+			// A symbol can't be a name, so unlike `inf`, no binding can shadow `∞`
+			'∞' => Float(f64::INFINITY),
+
 			// Typeset math symbol aliases
 			'−' => Minus,
 			'×' | '⋅' => Star,
@@ -379,15 +379,16 @@ impl<'a> Lexer<'a> {
 			}
 
 			_ => {
-				self.consume_identifier_body(ch);
+				let body = self.consume_identifier_body(ch);
 				let ident = &self.input[start..self.pos];
 
 				if ident == "if" {
 					If
-				} else if let Some(lit) = Constant::from_name(ident) {
-					Const(lit)
 				} else if unicode_ident::is_xid_start(ch) {
 					// A name is a Unicode identifier, as in Rust, so any script's letters may spell one
+					Ident(ident)
+				} else if ch == '\\' && body.chars().next().is_some_and(unicode_ident::is_xid_start) {
+					// The `\` prefix names the language's own builtin, like `\pi`, and is never an identifier by itself
 					Ident(ident)
 				} else {
 					// Digits, combining marks, invisible formatting characters, and symbols never begin a name, which also

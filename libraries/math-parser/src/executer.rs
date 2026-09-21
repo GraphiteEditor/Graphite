@@ -1,6 +1,7 @@
 use crate::ast::{BinaryOp, Literal, Node};
 use crate::constants::{builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
+use crate::lexer::Constant;
 use crate::value::{Number, Value};
 use thiserror::Error;
 
@@ -19,6 +20,22 @@ pub enum EvalError {
 	OperatorTypeError,
 }
 
+/// Resolves a name against the environment before the builtin constants, so a binding of exactly that spelling shadows the builtin.
+/// The `\` prefix skips the environment.
+fn resolve_value<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<V, F>, name: &str) -> Option<Value> {
+	let constant = |name: &str| {
+		Constant::from_name(name).map(|constant| match constant.value() {
+			Literal::Float(real) => Value::from_f64(real),
+			Literal::Complex(complex) => Value::Number(Number::Complex(complex)),
+		})
+	};
+
+	match name.strip_prefix('\\') {
+		Some(builtin_name) => constant(builtin_name),
+		None => context.get_value(name).or_else(|| constant(name)),
+	}
+}
+
 impl Node {
 	pub fn eval<V: ValueProvider, F: FunctionProvider>(&self, context: &EvalContext<V, F>) -> Result<Value, EvalError> {
 		match self {
@@ -33,7 +50,7 @@ impl Node {
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
 				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
 			},
-			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
+			Node::Var(name) => resolve_value(context, name).ok_or_else(|| EvalError::MissingValue(name.clone())),
 			Node::FnCall { name, expr } => {
 				// Arguments land in a stack buffer when they fit (builtins take at most 5), avoiding a heap allocation per call
 				let mut stack_values = [Value::from_f64(0.); 5];
@@ -48,15 +65,21 @@ impl Node {
 					&heap_values
 				};
 
-				if let Some(function) = builtin_function(name) {
+				// A host-supplied function shadows the builtin of the same name, unless the `\` prefix asks for the language's own
+				let (prefixed, bare_name) = match name.strip_prefix('\\') {
+					Some(bare_name) => (true, bare_name),
+					None => (false, name.as_str()),
+				};
+
+				if !prefixed && let Some(value) = context.run_function(bare_name, values) {
+					Ok(value)
+				} else if let Some(function) = builtin_function(bare_name) {
 					function(values).ok_or(EvalError::TypeError)
-				} else if let Some((function, base)) = suffixed_function(name) {
+				} else if let Some((function, base)) = suffixed_function(bare_name) {
 					// A base-suffixed call like `log10(x)` runs the two-argument form with the suffix baked in as its second argument
 					let [value] = values else { return Err(EvalError::TypeError) };
 					function(&[*value, Value::from_f64(base)]).ok_or(EvalError::TypeError)
-				} else if let Some(val) = context.run_function(name, values) {
-					Ok(val)
-				} else if let Some(Value::Number(value)) = context.get_value(name)
+				} else if let Some(Value::Number(value)) = resolve_value(context, name)
 					&& let [Value::Number(argument)] = values
 				{
 					// A known value applied to one argument is implicit multiplication, so `x(2)` matches `2(3)` and `i(16)`
