@@ -1939,7 +1939,8 @@ fn photo_filter<T: Adjust<Color>>(
 		let mut b = linear_to_srgb(filtered[2].clamp(0., 1.));
 
 		if preserve_luminosity {
-			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed_point(r, g, b), luma_rec_601_fixed_point(r_in, g_in, b_in));
+			let luma_in = luma_rec_601_fixed_point(r_in.clamp(0., 1.), g_in.clamp(0., 1.), b_in.clamp(0., 1.));
+			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed_point(r, g, b), luma_in);
 		}
 
 		Color::from_gamma_srgb_channels(r, g, b, alpha)
@@ -2646,5 +2647,12 @@ mod tests {
 		assert_close(run_photo_filter([20., 20., 20.], [255., 0., 0.], 100., true), [34., 14., 14.]);
 		assert_close(run_photo_filter([160., 160., 160.], [255., 0., 0.], 100., true), [255., 120., 120.]);
 		assert_close(run_photo_filter([90., 90., 90.], [236., 138., 0.], 25., true), [95., 88., 85.]);
+	}
+
+	#[test]
+	fn photo_filter_clips_light_brighter_than_white_when_preserving_luminosity() {
+		// Above white, where the luma to take on falls outside the 0..1 domain the construction needs
+		// A white filter alters nothing, so the pixel keeps its channels once the above-white red is clipped
+		assert_close(run_photo_filter([300., 200., 100.], [255., 255., 255.], 100., true), [255., 200., 100.]);
 	}
 }

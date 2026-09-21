@@ -417,16 +417,26 @@ mod tests {
 	}
 
 	#[test]
-	fn component_modes_survive_light_brighter_than_white() {
-		// An exposure raised above white reaches these modes as a gray whose largest channel is also its luma
+	fn component_modes_clip_light_brighter_than_white() {
+		// An exposure raised above white reaches these modes as a gray, which they take as the white it clips to
 		let bright_gray = Color::from_rgbaf32_unchecked(4., 4., 4., 1.);
+		let white = Color::from_gamma_srgb_channels(1., 1., 1., 1.);
 		let ordinary = Color::from_rgbaf32_unchecked(0.8, 0.3, 0.6, 1.);
 
 		for mode in [BlendMode::Hue, BlendMode::Saturation, BlendMode::Color, BlendMode::Luminosity] {
-			for (foreground, background) in [(bright_gray, ordinary), (ordinary, bright_gray), (bright_gray, bright_gray)] {
-				let blended = apply_blend_mode(foreground, background, mode);
+			for (bright, clipped) in [
+				((bright_gray, ordinary), (white, ordinary)),
+				((ordinary, bright_gray), (ordinary, white)),
+				((bright_gray, bright_gray), (white, white)),
+			] {
+				let blended = apply_blend_mode(bright.0, bright.1, mode);
+				let expected = apply_blend_mode(clipped.0, clipped.1, mode);
 
-				assert!(blended.r().is_finite() && blended.g().is_finite() && blended.b().is_finite(), "{mode} gave {blended:?}");
+				let close = |ours: f32, theirs: f32| (ours - theirs).abs() < 1e-5;
+				assert!(
+					close(blended.r(), expected.r()) && close(blended.g(), expected.g()) && close(blended.b(), expected.b()),
+					"{mode} gave {blended:?}, not {expected:?}"
+				);
 			}
 		}
 	}
