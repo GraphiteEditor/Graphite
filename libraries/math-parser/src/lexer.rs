@@ -186,8 +186,22 @@ impl<'a> Lexer<'a> {
 		(digits, value)
 	}
 
-	// A numeric literal cannot follow another operand across whitespace (`10 000`, `sqrt(4).5`), only constants/calls/parens may juxtapose
-	fn juxtaposes_with_preceding_operand(&self, literal_start: usize) -> bool {
+	// Two number literals never juxtapose, so digit grouping like `10 000` can't silently multiply
+	fn follows_number_literal(&self, literal_start: usize) -> bool {
+		let preceding = self.input[..literal_start].trim_end();
+
+		// The preceding token begins within its run of name and number characters (`2pi`, `1e5`), whose start is a token boundary to lex from
+		let run_start = preceding
+			.char_indices()
+			.rev()
+			.take_while(|&(_, c)| unicode_ident::is_xid_continue(c) || c == '.')
+			.last()
+			.map_or(preceding.len(), |(index, _)| index);
+		Lexer::new(&preceding[run_start..]).last().is_some_and(|token| matches!(token, Token::Float(_)))
+	}
+
+	// A `.`-led literal can't follow an operand (`sqrt(4).5`), which must write its leading zero instead
+	fn follows_operand(&self, literal_start: usize) -> bool {
 		let mut preceding = self.input[..literal_start].trim_end();
 
 		// A `!` run is postfix factorial only when an operand precedes it, otherwise it's a prefix logical not
@@ -226,7 +240,8 @@ impl<'a> Lexer<'a> {
 		}
 
 		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication
-		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.juxtaposes_with_preceding_operand(start_pos) {
+		let leading_dot = self.input[start_pos..].starts_with('.');
+		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.follows_number_literal(start_pos) || (leading_dot && self.follows_operand(start_pos)) {
 			self.pos = start_pos;
 			return None;
 		}

@@ -50,15 +50,15 @@ mod tests {
 
 	#[test]
 	fn juxtaposed_numbers_fail_to_parse() {
-		// Adjacent number literals like digit-grouped `10 000` must not silently multiply
-		for input in ["2 3", "10 000", "1 .5", "sqrt(4).5", "2 3 + 1"] {
+		// Adjacent number literals like digit-grouped `10 000` must not silently multiply, and a `.`-led literal after any operand needs its leading zero
+		for input in ["2 3", "10 000", "1 .5", "2 3 + 1", "1e5 3", "2. 3", "sqrt(4).5", "sqrt(4) .5", "pi.5", "5!.5"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
 
 	#[test]
 	fn dot_led_function_suffixes_fail_to_parse() {
-		// A `.`-led base suffix must stay an error, keeping dot-after-identifier free for possible future accessor syntax (the supported spelling is `log0.5`)
+		// A `.`-led base suffix is an error (the supported spelling is `log0.5`)
 		for input in ["log.5(8)", "log.5", "root.5(9)", "log_.5(8)"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
@@ -194,6 +194,13 @@ mod tests {
 		implicit_multiplication_power_operand: "2pi^2" => 2. * std::f64::consts::PI.powi(2),
 		implicit_multiplication_function: "2sqrt(4)" => 4.,
 		implicit_multiplication_excludes_unary_minus: "2 -3" => -1.,
+		implicit_multiplication_trailing_number: "pi 2" => 2. * std::f64::consts::PI,
+		implicit_multiplication_trailing_number_after_call: "sqrt(4) 3" => 6.,
+		implicit_multiplication_trailing_number_unspaced: "sqrt(4)3" => 6.,
+		implicit_multiplication_trailing_leading_zero: "sqrt(4) 0.5" => 1.,
+		implicit_multiplication_trailing_number_after_name_run: "2pi 3" => 6. * std::f64::consts::PI,
+		implicit_multiplication_trailing_number_after_factorial: "3! 2" => 12.,
+		implicit_multiplication_trailing_number_after_infinity: "∞ 2" => f64::INFINITY,
 
 		// Factorial (postfix !)
 		factorial_simple: "5!" => 120.,
@@ -448,9 +455,9 @@ mod tests {
 			assert!(ast::Node::try_parse_from_str(&input).is_err(), "expected `{input}` to be a parse error");
 		}
 
-		// A name ending in a combining mark is still an operand, so a spaced number after it doesn't silently multiply
+		// A name ending in a combining mark is an operand like any other, so a spaced number after it multiplies
 		for input in ["x 2".to_string(), format!("{decomposed_e_acute} 2")] {
-			assert!(ast::Node::try_parse_from_str(&input).is_err(), "expected `{input}` to be a parse error");
+			assert!(ast::Node::try_parse_from_str(&input).is_ok(), "expected `{input}` to parse");
 		}
 	}
 
