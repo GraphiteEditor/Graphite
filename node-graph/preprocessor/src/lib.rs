@@ -22,7 +22,7 @@ pub struct Preprocessor {
 impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
-		self.replace_resource_inputs(network, resolve_resource)?;
+		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
 		self.expand_network(network);
 		Ok(())
 	}
@@ -41,45 +41,67 @@ impl Preprocessor {
 		}
 	}
 
-	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
-		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
-		let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
+	/// Replace every `TaggedValue::Resource(hash)` and `TaggedValue::AnimationCurve(curve)` input with a reference to a freshly inserted `resource` / `eval_curve` proto node.
+	fn replace_inputs_with_producer_nodes(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
+		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
-			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				self.replace_resource_inputs(nested, resolve_resource)?;
-				continue;
-			}
+			let identifier = match &mut node.implementation {
+				DocumentNodeImplementation::Network(nested) => {
+					self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
+					continue;
+				}
+				DocumentNodeImplementation::ProtoNode(identifier) => Some(&*identifier),
+				DocumentNodeImplementation::Extract => None,
+			};
 
-			if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == platform_application_io::resource::IDENTIFIER) {
-				continue;
-			}
+			let is_resource_node = identifier == Some(&platform_application_io::resource::IDENTIFIER);
+			let is_eval_curve_node = identifier == Some(&graphene_core::animation::eval_curve::IDENTIFIER);
 
 			for input in node.inputs.iter_mut() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
-				let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
 
-				let Some(hash) = resolve_resource(resource_id) else {
-					return Err(PreprocessorError::ResourceNotFound(resource_id));
+				let node_id = match &**tagged_value {
+					TaggedValue::Resource(resource_id) if !is_resource_node => {
+						let resource_id = *resource_id;
+						let Some(hash) = resolve_resource(resource_id) else {
+							return Err(PreprocessorError::ResourceNotFound(resource_id));
+						};
+
+						*hash_to_node_id.entry(hash).or_insert_with(|| {
+							let id = NodeId::new();
+							let resource_node = DocumentNode {
+								inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
+								..Default::default()
+							};
+							new_nodes.push((id, resource_node));
+							id
+						})
+					}
+					TaggedValue::AnimationCurve(curve) if !is_eval_curve_node => {
+						let id = NodeId::new();
+						let curve_node = DocumentNode {
+							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
+							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::eval_curve::IDENTIFIER),
+							context_features: ContextDependencies {
+								extract: ContextFeatures::ANIMATION_TIME,
+								inject: ContextFeatures::empty(),
+							},
+							..Default::default()
+						};
+						new_nodes.push((id, curve_node));
+						id
+					}
+					_ => continue,
 				};
 
-				let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
-					let id = NodeId::new();
-					let resource_node = DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::ResourceHash(hash), false), NodeInput::scope("editor-api")],
-						implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
-						..Default::default()
-					};
-					new_resource_nodes.push((id, resource_node));
-					id
-				});
-
-				*input = NodeInput::node(resource_id, 0);
+				*input = NodeInput::node(node_id, 0);
 			}
 		}
 
-		for (id, node) in new_resource_nodes {
+		for (id, node) in new_nodes {
 			network.nodes.insert(id, node);
 		}
 
