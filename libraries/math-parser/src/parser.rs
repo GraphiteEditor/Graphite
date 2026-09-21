@@ -67,8 +67,12 @@ where
 		});
 
 		let parens = expr.clone().delimited_by(just(Token::LParen), just(Token::RParen));
+		let magnitude = expr.clone().delimited_by(just(Token::BarOpen), just(Token::BarClose)).map(|expr| Node::UnaryOp {
+			op: UnaryOp::Magnitude,
+			expr: Box::new(expr),
+		});
 
-		let atom = choice((constant, if_expr, call_or_var, parens)).labelled("atom");
+		let atom = choice((constant, if_expr, call_or_var, parens, magnitude)).labelled("atom");
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div), just(Token::Modulo).to(BinaryOp::Modulo)));

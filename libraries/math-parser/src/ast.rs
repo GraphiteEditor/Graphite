@@ -38,6 +38,8 @@ pub enum UnaryOp {
 	Neg,
 	Fac,
 	Not,
+	/// The magnitude bars `|x|`: absolute value on the reals, extending to the Euclidean magnitude.
+	Magnitude,
 }
 
 #[derive(Debug, PartialEq)]

@@ -16,6 +16,8 @@ pub enum Token<'src> {
 	OrOr,
 	Bang,
 	Not,
+	BarOpen,
+	BarClose,
 
 	LParen,
 	RParen,
@@ -50,6 +52,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::OrOr => f.write_str("||"),
 			Token::Bang => f.write_str("!"),
 			Token::Not => f.write_str("¬"),
+			Token::BarOpen | Token::BarClose => f.write_str("|"),
 
 			Token::LParen => f.write_str("("),
 			Token::RParen => f.write_str(")"),
@@ -141,14 +144,82 @@ impl fmt::Display for Constant {
 	}
 }
 
+/// How a `|` reads at its position: opening or closing a magnitude, or, as the first of a `||` pair, the Or operator.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Bar {
+	Open,
+	Close,
+	Or,
+}
+
+/// Whether a character ends an operand: a name, a number, a closing parenthesis, or the `∞` literal.
+fn ends_operand(c: char) -> bool {
+	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '∞')
+}
+
+/// Reads every `|` in the source up front, since each depends on what precedes it: a bar opens a magnitude where an operand
+/// is expected and closes one after an operand. A `||` likewise opens or closes two, but is Or after an operand unless two are
+/// open, or with nothing after it. So `|a||b|` is the magnitude of `a` or `b`, `||a|-b|` and `|a*|b||` nest, and `|a|b||` is rejected.
+fn classify_bars(input: &str) -> Vec<(usize, Bar)> {
+	let mut bars = Vec::new();
+	let mut depth = 0_usize;
+	let mut after_operand = false;
+	let mut chars = input.char_indices().peekable();
+
+	while let Some((position, c)) = chars.next() {
+		match c {
+			'|' if chars.next_if(|(_, next)| *next == '|').is_some() => {
+				let at_end = chars.clone().all(|(_, c)| c.is_whitespace());
+				if !after_operand && !at_end {
+					bars.push((position, Bar::Open));
+					bars.push((position + 1, Bar::Open));
+					depth += 2;
+				} else if depth >= 2 {
+					bars.push((position, Bar::Close));
+					bars.push((position + 1, Bar::Close));
+					depth -= 2;
+				} else {
+					bars.push((position, Bar::Or));
+					after_operand = false;
+				}
+			}
+			'|' if after_operand && depth > 0 => {
+				bars.push((position, Bar::Close));
+				depth -= 1;
+				after_operand = true;
+			}
+			'|' => {
+				bars.push((position, Bar::Open));
+				depth += 1;
+				after_operand = false;
+			}
+			// Whitespace changes nothing, and neither does `!`, a postfix factorial after an operand or a prefix not before one
+			c if c.is_whitespace() || c == '!' => {}
+			c => after_operand = ends_operand(c),
+		}
+	}
+
+	bars
+}
+
 pub struct Lexer<'a> {
 	input: &'a str,
 	pos: usize,
+	bars: Vec<(usize, Bar)>,
 }
 
 impl<'a> Lexer<'a> {
 	pub fn new(input: &'a str) -> Self {
-		Self { input, pos: 0 }
+		Self {
+			input,
+			pos: 0,
+			bars: classify_bars(input),
+		}
+	}
+
+	/// The reading of the `|` at the given byte position.
+	fn bar_at(&self, position: usize) -> Option<Bar> {
+		self.bars.binary_search_by_key(&position, |(bar_position, _)| *bar_position).ok().map(|index| self.bars[index].1)
 	}
 
 	fn peek(&self) -> Option<char> {
@@ -209,7 +280,7 @@ impl<'a> Lexer<'a> {
 		preceding
 			.chars()
 			.next_back()
-			.is_some_and(|c| c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || c == '.' || c == ')' || c == '∞')
+			.is_some_and(|c| ends_operand(c) || (c == '|' && self.bar_at(preceding.len() - 1) == Some(Bar::Close)))
 	}
 
 	fn lex_number(&mut self) -> Option<f64> {
@@ -288,14 +359,15 @@ impl<'a> Lexer<'a> {
 					Error
 				}
 			}
-			'|' => {
-				if self.peek() == Some('|') {
+			'|' => match self.bar_at(start) {
+				Some(Bar::Or) => {
 					self.bump();
 					OrOr
-				} else {
-					Error
 				}
-			}
+				Some(Bar::Open) => BarOpen,
+				Some(Bar::Close) => BarClose,
+				None => Error,
+			},
 
 			'(' => LParen,
 			')' => RParen,

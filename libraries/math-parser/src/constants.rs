@@ -1,6 +1,6 @@
 use crate::value::{Complex, Number, Value};
 use num_complex::ComplexFloat;
-use std::f64::consts::{LN_2, PI};
+use std::f64::consts::LN_2;
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
@@ -223,9 +223,10 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 		},
 
 		// Mapping Functions
+		// Each part's absolute value, where `|x|` is instead the one magnitude of the whole value
 		"abs" => |values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.abs()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Real(complex.abs()))),
+			[Value::Number(Number::Complex(complex))] => Some(Value::from(Complex::new(complex.re.abs(), complex.im.abs()))),
 			_ => None,
 		},
 
@@ -442,31 +443,10 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
-		// Complex Number Functions
-		"real" => |values| match values {
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Real(complex.re))),
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(*real))),
-			_ => None,
-		},
-
-		"imag" => |values| match values {
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Real(complex.im))),
-			[Value::Number(Number::Real(_))] => Some(Value::Number(Number::Real(0.))),
-			_ => None,
-		},
-
+		// The conjugate negates the imaginary part
 		"conj" => |values| match values {
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.conj()))),
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(*real))),
-			_ => None,
-		},
-
-		"arg" => |values| match values {
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Real(complex.arg()))),
-			[Value::Number(Number::Real(real))] => {
-				let angle = if *real >= 0. { 0. } else { PI };
-				Some(Value::Number(Number::Real(angle)))
-			}
 			_ => None,
 		},
 
