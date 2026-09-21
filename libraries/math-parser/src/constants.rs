@@ -1,4 +1,4 @@
-use crate::value::{Number, Value};
+use crate::value::{Complex, Number, Value};
 use num_complex::ComplexFloat;
 use std::f64::consts::{LN_2, PI};
 
@@ -45,6 +45,24 @@ fn real_operands(values: &[Value]) -> Option<Vec<f64>> {
 			_ => None,
 		})
 		.collect()
+}
+
+/// Applies a one-argument function that may climb into the complex plane: a real result that does not exist,
+/// like `sqrt(-4)`, `ln(-1)`, or `asin(2)`, is recomputed as the function's principal complex value.
+fn climbing(values: &[Value], real_function: fn(f64) -> f64, complex_function: fn(Complex) -> Complex) -> Option<Value> {
+	match values {
+		[Value::Number(Number::Real(real))] => {
+			let result = real_function(*real);
+			let result = if result.is_nan() {
+				Value::from(complex_function(Complex::new(*real, 0.)))
+			} else {
+				Value::from_f64(result)
+			};
+			Some(result)
+		}
+		[Value::Number(Number::Complex(complex))] => Some(Value::from(complex_function(*complex))),
+		_ => None,
+	}
 }
 
 /// The power of two at or below the largest magnitude, dividing by which is exact and brings every value within ±2, so sums and
@@ -130,203 +148,68 @@ pub fn suffixed_function(name: &str) -> Option<(BuiltinFunction, f64)> {
 /// Looks up a built-in math function by name, returning a plain function pointer so dispatch avoids hashing and dynamic allocation.
 pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 	Some(match name {
-		"sin" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sin()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sin()))),
-			_ => None,
-		},
-
-		"cos" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cos()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cos()))),
-			_ => None,
-		},
-
-		"tan" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tan()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tan()))),
-			_ => None,
-		},
-
-		"csc" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sin().recip()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sin().recip()))),
-			_ => None,
-		},
-
-		"sec" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cos().recip()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cos().recip()))),
-			_ => None,
-		},
-
-		"cot" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tan().recip()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tan().recip()))),
-			_ => None,
-		},
+		// Trigonometric functions, with the inverses climbing into the complex plane outside the real domain (`asin(2)`)
+		"sin" => |values| climbing(values, f64::sin, Complex::sin),
+		"cos" => |values| climbing(values, f64::cos, Complex::cos),
+		"tan" => |values| climbing(values, f64::tan, Complex::tan),
+		"csc" => |values| climbing(values, |x| x.sin().recip(), |z| z.sin().recip()),
+		"sec" => |values| climbing(values, |x| x.cos().recip(), |z| z.cos().recip()),
+		"cot" => |values| climbing(values, |x| x.tan().recip(), |z| z.tan().recip()),
 
 		// TODO: Offer the `arc-`/`ar-` spellings (`arcsin`, `artanh`) and the legacy `inv-` names as autocomplete aliases in the expression widget, resolving to these canonical names
-		"asin" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asin()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asin()))),
-			_ => None,
-		},
+		"asin" => |values| climbing(values, f64::asin, Complex::asin),
+		"acos" => |values| climbing(values, f64::acos, Complex::acos),
+		"atan" => |values| climbing(values, f64::atan, Complex::atan),
+		"acsc" => |values| climbing(values, |x| x.recip().asin(), |z| z.recip().asin()),
+		"asec" => |values| climbing(values, |x| x.recip().acos(), |z| z.recip().acos()),
+		"acot" => |values| climbing(values, |x| x.recip().atan(), |z| z.recip().atan()),
 
-		"acos" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.acos()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.acos()))),
-			_ => None,
-		},
+		// Hyperbolic functions, with the inverses likewise climbing outside the real domain (`acosh(0.5)`, `atanh(2)`)
+		"sinh" => |values| climbing(values, f64::sinh, Complex::sinh),
+		"cosh" => |values| climbing(values, f64::cosh, Complex::cosh),
+		"tanh" => |values| climbing(values, f64::tanh, Complex::tanh),
+		"csch" => |values| climbing(values, |x| x.sinh().recip(), |z| z.sinh().recip()),
+		"sech" => |values| climbing(values, |x| x.cosh().recip(), |z| z.cosh().recip()),
+		"coth" => |values| climbing(values, |x| x.tanh().recip(), |z| z.tanh().recip()),
+		"asinh" => |values| climbing(values, f64::asinh, Complex::asinh),
+		"acosh" => |values| climbing(values, f64::acosh, Complex::acosh),
+		"atanh" => |values| climbing(values, f64::atanh, Complex::atanh),
+		"acsch" => |values| climbing(values, |x| x.recip().asinh(), |z| z.recip().asinh()),
+		"asech" => |values| climbing(values, |x| x.recip().acosh(), |z| z.recip().acosh()),
+		"acoth" => |values| climbing(values, |x| x.recip().atanh(), |z| z.recip().atanh()),
 
-		"atan" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atan()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atan()))),
-			_ => None,
-		},
+		// Logarithms, exponentials, and roots, climbing outside the real domain (`ln(-1)`, `sqrt(-4)`)
+		"ln" => |values| climbing(values, f64::ln, Complex::ln),
+		"exp" => |values| climbing(values, f64::exp, Complex::exp),
+		"sqrt" => |values| climbing(values, f64::sqrt, Complex::sqrt),
+		"cbrt" => |values| climbing(values, f64::cbrt, |z| z.powf(1. / 3.)),
+		"log2" => |values| climbing(values, f64::log2, |z| z.ln() / LN_2),
 
-		"acsc" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asin()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asin()))),
-			_ => None,
-		},
-
-		"asec" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acos()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acos()))),
-			_ => None,
-		},
-
-		"acot" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().atan()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().atan()))),
-			_ => None,
-		},
-		// Hyperbolic Functions
-		"sinh" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sinh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sinh()))),
-			_ => None,
-		},
-
-		"cosh" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cosh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cosh()))),
-			_ => None,
-		},
-
-		"tanh" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tanh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tanh()))),
-			_ => None,
-		},
-
-		// Reciprocal hyperbolic functions
-		"csch" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sinh().recip()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sinh().recip()))),
-			_ => None,
-		},
-
-		"sech" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cosh().recip()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.cosh().recip()))),
-			_ => None,
-		},
-
-		"coth" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.tanh().recip()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.tanh().recip()))),
-			_ => None,
-		},
-
-		// Inverse Hyperbolic Functions
-		"asinh" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.asinh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.asinh()))),
-			_ => None,
-		},
-
-		"acosh" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.acosh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.acosh()))),
-			_ => None,
-		},
-
-		"atanh" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.atanh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.atanh()))),
-			_ => None,
-		},
-
-		// Inverse reciprocal hyperbolic functions
-		"acsch" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().asinh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().asinh()))),
-			_ => None,
-		},
-
-		"asech" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().acosh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().acosh()))),
-			_ => None,
-		},
-
-		"acoth" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.recip().atanh()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.recip().atanh()))),
-			_ => None,
-		},
-
-		// Logarithm Functions
-		"ln" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.ln()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.ln()))),
-			_ => None,
-		},
-
-		// Exponential / power helpers
-		"exp" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.exp()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.exp()))),
+		"log" => |values| match values {
+			[value] => climbing(std::slice::from_ref(value), f64::log10, |z| z.log10()),
+			// Change of base, staying real when it can and climbing into the complex plane when it cannot
+			[Value::Number(Number::Real(x)), Value::Number(Number::Real(base))] => {
+				let log = x.ln() / base.ln();
+				Some(if log.is_nan() {
+					Value::from(Complex::new(*x, 0.).ln() / Complex::new(*base, 0.).ln())
+				} else {
+					Value::from_f64(log)
+				})
+			}
+			[Value::Number(x), Value::Number(base)] => Some(Value::from(x.as_complex().ln() / base.as_complex().ln())),
 			_ => None,
 		},
 
 		"root" => |values| match values {
 			[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => {
-				// Odd integer roots of negative reals are real, which powf alone would report as NaN
-				let root = if *x < 0. && n.rem_euclid(2.) == 1. { -(-x).powf(1. / *n) } else { x.powf(1. / *n) };
-				Some(Value::Number(Number::Real(root)))
+				// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
+				if *x < 0. && n.rem_euclid(2.) == 1. {
+					return Some(Value::from_f64(-(-x).powf(1. / *n)));
+				}
+				let root = x.powf(1. / *n);
+				Some(if root.is_nan() { Value::from(Complex::new(*x, 0.).powf(1. / *n)) } else { Value::from_f64(root) })
 			}
-			[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => Some(Value::Number(Number::Complex(x.powf(1. / *n)))),
-			_ => None,
-		},
-
-		"log" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.log10()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.log10()))),
-			// Change of base, staying real when both operands are, and widening into the complex plane when either is not
-			[Value::Number(Number::Real(x)), Value::Number(Number::Real(base))] => Some(Value::Number(Number::Real(x.ln() / base.ln()))),
-			[Value::Number(x), Value::Number(base)] => Some(Value::Number(Number::Complex(x.as_complex().ln() / base.as_complex().ln()))),
-			_ => None,
-		},
-
-		"log2" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.log2()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.ln() / LN_2))),
-			_ => None,
-		},
-
-		// Root Functions
-		"sqrt" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.sqrt()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.sqrt()))),
-			_ => None,
-		},
-
-		"cbrt" => |values| match values {
-			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.cbrt()))),
-			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.powf(1. / 3.)))),
+			[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => Some(Value::from(x.powf(1. / *n))),
 			_ => None,
 		},
 
@@ -366,9 +249,8 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
-		// Variadic across one or more real arguments, ignoring NaN like Rust's own f64::min/f64::max
+		// Variadic across one or more real arguments
 		"min" => |values| {
-			// Seeded from the first argument so that arguments which are all NaN give back NaN rather than an infinity of their own, even though a NaN input should represent a bug
 			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
 			let mut min = *first;
 			for value in rest {
@@ -398,10 +280,6 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 
 		"median" => |values| {
 			let mut reals = real_operands(values)?;
-			if reals.iter().any(|real| real.is_nan()) {
-				return Some(Value::from_f64(f64::NAN));
-			}
-
 			reals.sort_by(f64::total_cmp);
 			let middle = reals.len() / 2;
 			// An even count has no single middle value, so the two straddling it are averaged
@@ -427,9 +305,6 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 
 		"harmmean" => |values| {
 			let reals = real_operands(values)?;
-			if reals.iter().any(|real| real.is_nan()) {
-				return Some(Value::from_f64(f64::NAN));
-			}
 
 			// Like the geometric mean, a negative operand has no meaningful harmonic mean, while a zero one makes it zero
 			if reals.iter().any(|real| *real < 0.) {
@@ -525,15 +400,17 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 		},
 
 		"gcd" => |values| {
-			let reduced = real_operands(values)?.into_iter().try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)));
-			Some(Value::from_f64(reduced.map_or(f64::NAN, |reduced| reduced as f64)))
+			let reduced = real_operands(values)?
+				.into_iter()
+				.try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)))?;
+			Some(Value::from_f64(reduced as f64))
 		},
 
 		"lcm" => |values| {
 			let reduced = real_operands(values)?
 				.into_iter()
-				.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?));
-			Some(Value::from_f64(reduced.map_or(f64::NAN, |reduced| reduced as f64)))
+				.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?))?;
+			Some(Value::from_f64(reduced as f64))
 		},
 
 		// Combinatorics over whole numbers: `choose(n, r)` is the binomial coefficient and `pick(n, r)` the falling factorial
