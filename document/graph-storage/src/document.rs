@@ -66,12 +66,12 @@ impl Document {
 		self.revert_delta(target, delta)
 	}
 
-	/// Search every delta reachable from `head` (following all parents, including a merge's
-	/// `extra_parents`) for the first matching `predicate`, breadth-first. Resurrection needs full
-	/// ancestry reachability, so a node added only on a merged-in branch is still found.
+	/// Search every delta reachable from `head` or any history tip (following all parents, including a
+	/// merge's `extra_parents`) for the first matching `predicate`, breadth-first. Tips cover deltas
+	/// absorbed mid-merge that `head` doesn't reach yet.
 	fn find_in_ancestry(&self, predicate: impl Fn(&Delta) -> bool) -> Option<Delta> {
-		let mut queue: std::collections::VecDeque<Rev> = self.head.into_iter().collect();
-		let mut seen: std::collections::HashSet<Rev> = self.head.into_iter().collect();
+		let mut queue: std::collections::VecDeque<Rev> = self.head.into_iter().chain(self.history.tips()).collect();
+		let mut seen: std::collections::HashSet<Rev> = queue.iter().copied().collect();
 		while let Some(rev) = queue.pop_front() {
 			let Some(delta) = self.history.get(rev) else { continue };
 			if predicate(delta) {
@@ -296,7 +296,7 @@ impl Document {
 	/// Resurrect (from history) any nodes/networks an op references that were concurrently removed, so
 	/// the op applies against a consistent registry. Cascading: a node's owning network is restored
 	/// before the node. No-op for ops that reference nothing absent.
-	fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
+	pub(crate) fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
 		match op {
 			RegistryDelta::AddNode { node, .. } => self.ensure_network_exists(target, node.network())?,
 			RegistryDelta::ChangeNodeInput { id, new_input, .. } => {
@@ -321,17 +321,33 @@ impl Document {
 	}
 
 	fn ensure_node_exists(&mut self, target: RegistryTarget, node_id: NodeId) -> Result<(), CrdtError> {
-		if !self.registry_ref(target).node_instances.contains_key(&node_id) {
-			self.restore_node_from_history(target, node_id)?;
+		if self.registry_ref(target).node_instances.contains_key(&node_id) {
+			return Ok(());
 		}
-		Ok(())
+		let removal = self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
+			RegistryDelta::RemoveNode { id, snapshot } if *id == node_id => Some((RegistryDelta::AddNode { id: *id, node: snapshot.clone() }, hot_op.timestamp)),
+			_ => None,
+		});
+		match removal {
+			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
+			None => self.restore_node_from_history(target, node_id),
+		}
 	}
 
+	/// A concurrent edit to a removed network revives it. The removal is searched for in the hot log
+	/// first, where a broadcast removal sits until the host retires it, then in retired history.
 	fn ensure_network_exists(&mut self, target: RegistryTarget, network_id: NetworkId) -> Result<(), CrdtError> {
-		if !self.registry_ref(target).networks.contains_key(&network_id) {
-			self.restore_network_from_history(target, network_id)?;
+		if self.registry_ref(target).networks.contains_key(&network_id) {
+			return Ok(());
 		}
-		Ok(())
+		let removal = self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
+			RegistryDelta::RemoveNetwork { id, snapshot } if *id == network_id => Some((RegistryDelta::AddNetwork { id: *id, network: snapshot.clone() }, hot_op.timestamp)),
+			_ => None,
+		});
+		match removal {
+			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
+			None => self.restore_network_from_history(target, network_id),
+		}
 	}
 
 	/// Compute the inverse of `delta` against the registry named by `target`. Retirement passes

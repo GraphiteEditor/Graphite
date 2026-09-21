@@ -64,22 +64,13 @@ impl History {
 		self.deltas.iter()
 	}
 
-	/// Absorb `incoming` (dedup by `Rev`) and canonically re-sort the whole combined history.
-	///
-	/// The sort is deterministic (topological, ties broken by `Rev`), so two peers that absorb the same
-	/// delta set produce byte-identical history, not merely two different valid orderings. This is the
-	/// history-convergence mechanism: arrival order is erased. Callers update the registry separately
-	/// (LWW apply is commutative, so the registry converges regardless of order).
-	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) {
-		for delta in incoming {
-			self.push(delta);
-		}
-		self.canonical_sort();
-	}
-
 	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
 	/// children, and among deltas whose parents are all emitted the lowest `Rev` goes first. O(V + E).
-	fn canonical_sort(&mut self) {
+	///
+	/// The sort is deterministic, so two peers that absorb the same delta set produce byte-identical
+	/// history, not merely two different valid orderings. This is the history-convergence mechanism:
+	/// arrival order is erased.
+	pub fn canonical_sort(&mut self) {
 		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
 		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());
 		let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();

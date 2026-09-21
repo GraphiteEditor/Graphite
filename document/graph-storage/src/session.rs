@@ -135,7 +135,7 @@ impl Session {
 	/// The peer's first contribution is preceded by a `RegisterPeer` op, so the device's
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
 	/// before any of its edits. A no-op batch doesn't register — registration rides a real edit.
-	fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
 		let mut pending: Vec<RegistryDelta> = ops.into_iter().collect();
 		if pending.is_empty() {
 			return Ok(Vec::new());
@@ -180,6 +180,8 @@ impl Session {
 				self.document.redo_stack.clear();
 			}
 
+			// The reverse must read the pre-op value of a target that may have been concurrently removed.
+			self.document.ensure_referenced_exist(target, &op)?;
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
 			let timestamp = self.document.clock.tick();
 			let parent = self.document.head;
@@ -252,13 +254,19 @@ impl Session {
 
 	/// Apply a hot op received from another peer.
 	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.document.clock.observe(hot_op.timestamp);
 		self.document.apply_hot_op(hot_op)
 	}
 
-	/// Drop hot ops stamped at or before `up_to` without retiring them, once another peer has retired them.
-	pub fn discard_hot_ops(&mut self, up_to: TimeStamp) {
-		self.document.hot_log.retain(|hot_op| hot_op.timestamp > up_to);
+	/// Timestamps of the hot ops a `retire(up_to)` call would drain. Broadcast alongside the retired
+	/// deltas so guests drop exactly these; a cutoff alone doesn't transfer, since a lagging peer's op
+	/// can carry a timestamp below the cutoff yet reach the host only after that retirement.
+	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<TimeStamp> {
+		self.document.hot_log.iter().map(|hot_op| hot_op.timestamp).filter(|&timestamp| timestamp <= up_to).collect()
+	}
+
+	/// Drop hot ops another peer has retired without retiring them locally.
+	pub fn discard_hot_ops(&mut self, retired: &[TimeStamp]) {
+		self.document.hot_log.retain(|hot_op| !retired.contains(&hot_op.timestamp));
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -271,21 +279,21 @@ impl Session {
 	/// without a new delta when the incoming history extends it, otherwise joins `head` and the
 	/// incoming tips with a [`RegistryDelta::Merge`].
 	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<MergeOutcome, CrdtError> {
-		let mut absorbed: Vec<Delta> = Vec::new();
+		// Each delta enters history before the next is applied, so a later delta in the batch that
+		// targets something an earlier one removed can resurrect it.
+		let mut absorbed_ids = HashSet::new();
 		for delta in incoming {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
-			self.document.clock.observe(delta.timestamp);
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			absorbed.push(delta);
+			absorbed_ids.insert(delta.id);
+			self.document.history.push(delta);
 		}
-		if absorbed.is_empty() {
+		if absorbed_ids.is_empty() {
 			return Ok(MergeOutcome::NoOp);
 		}
-
-		let absorbed_ids: HashSet<Rev> = absorbed.iter().map(|delta| delta.id).collect();
-		self.document.history.merge(absorbed);
+		self.document.history.canonical_sort();
 
 		let history = &self.document.history;
 		let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();
