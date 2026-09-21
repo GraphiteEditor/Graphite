@@ -13,7 +13,7 @@ use glam::DVec2;
 use glam::Vec3;
 #[cfg(feature = "std")]
 use graphene_resource::Resource;
-use no_std_types::color::{Color, linear_to_srgb, srgb_to_linear};
+use no_std_types::color::{Color, linear_to_srgb, set_luminosity, srgb_to_linear};
 use no_std_types::context::Ctx;
 #[cfg(not(feature = "std"))]
 use no_std_types::list::ShaderItem as Item;
@@ -48,6 +48,8 @@ pub enum DesaturateMethod {
 	#[label("Luma (Rec. 709)")]
 	LumaRec709,
 	/// Light level approximation for the color, the Y′ (luma) of Rec. 601, which weights the gamma-encoded RGB channels by `0.299, 0.587, 0.114`.
+	///
+	/// The Luminosity family of blend modes uses this, rounded to `0.3, 0.59, 0.11`.
 	#[label("Luma (Rec. 601)")]
 	LumaRec601,
 	/// Perceptually uniform scale from black to white, the L (lightness) of OkLab.
@@ -1937,7 +1939,8 @@ fn photo_filter<T: Adjust<Color>>(
 		let mut b = linear_to_srgb(filtered[2].clamp(0., 1.));
 
 		if preserve_luminosity {
-			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed_point(r, g, b), luma_rec_601_fixed_point(r_in, g_in, b_in));
+			let luma_in = luma_rec_601_fixed_point(r_in.clamp(0., 1.), g_in.clamp(0., 1.), b_in.clamp(0., 1.));
+			[r, g, b] = set_luminosity(r, g, b, luma_rec_601_fixed_point(r, g, b), luma_in);
 		}
 
 		Color::from_gamma_srgb_channels(r, g, b, alpha)
@@ -1961,32 +1964,6 @@ pub(crate) fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32;
 /// The Rec. 601 luma in the 14-bit fixed point that PSD interop depends on.
 fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 	(4915. * r + 9667. * g + 1802. * b) / 16384.
-}
-
-fn pull_toward_luminosity(channels: [f32; 3], luminosity: f32, scale: f32) -> [f32; 3] {
-	[
-		luminosity + (channels[0] - luminosity) * scale,
-		luminosity + (channels[1] - luminosity) * scale,
-		luminosity + (channels[2] - luminosity) * scale,
-	]
-}
-
-/// The Luminosity blend mode's construction: shifts gamma-encoded channels from `luma` to `luminosity`,
-/// then pulls them toward it just enough to bring every channel back into 0..1.
-fn set_luminosity(r: f32, g: f32, b: f32, luma: f32, luminosity: f32) -> [f32; 3] {
-	let shift = luminosity - luma;
-	let mut channels = [r + shift, g + shift, b + shift];
-
-	let low = channels[0].min(channels[1]).min(channels[2]);
-	if low < 0. {
-		channels = pull_toward_luminosity(channels, luminosity, luminosity / (luminosity - low));
-	}
-	let high = channels[0].max(channels[1]).max(channels[2]);
-	if high > 1. {
-		channels = pull_toward_luminosity(channels, luminosity, (1. - luminosity) / (high - luminosity));
-	}
-
-	[channels[0].clamp(0., 1.), channels[1].clamp(0., 1.), channels[2].clamp(0., 1.)]
 }
 
 // Aims for interoperable compatibility with:
@@ -2670,5 +2647,12 @@ mod tests {
 		assert_close(run_photo_filter([20., 20., 20.], [255., 0., 0.], 100., true), [34., 14., 14.]);
 		assert_close(run_photo_filter([160., 160., 160.], [255., 0., 0.], 100., true), [255., 120., 120.]);
 		assert_close(run_photo_filter([90., 90., 90.], [236., 138., 0.], 25., true), [95., 88., 85.]);
+	}
+
+	#[test]
+	fn photo_filter_clips_light_brighter_than_white_when_preserving_luminosity() {
+		// Above white, where the luma to take on falls outside the 0..1 domain the construction needs
+		// A white filter alters nothing, so the pixel keeps its channels once the above-white red is clipped
+		assert_close(run_photo_filter([300., 200., 100.], [255., 255., 255.], 100., true), [255., 200., 100.]);
 	}
 }
