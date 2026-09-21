@@ -11,23 +11,20 @@ pub enum Role {
 /// MessagePack-encoded on the wire.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SyncPacket {
-	/// Sent first on every new connection.
+	/// Sent first on every new connection. `seq` anchors the receiver's counter for this sender, since
+	/// broadcasts made before the connection were never sent to it.
 	Hello {
 		peer: PeerId,
 		user: UserId,
 		role: Role,
+		seq: u64,
 	},
 	/// `known_revs` come from `Session::known_revs`, so the host can send only what's missing.
 	SyncRequest {
 		known_revs: Vec<Rev>,
 	},
 	Sync(Box<SyncPayload>),
-	HotOps(Vec<HotOp>),
-	/// `deltas` are in causal order. With `retires_up_to`, they replace hot ops stamped at or before it.
-	Deltas {
-		deltas: Vec<Delta>,
-		retires_up_to: Option<TimeStamp>,
-	},
+	Broadcast(Broadcast),
 	ResourceRequest(Vec<ResourceHash>),
 	Resource {
 		hash: ResourceHash,
@@ -37,7 +34,8 @@ pub enum SyncPacket {
 }
 
 /// The host's answer to a `SyncRequest`. `registry` is only sent when the host recognized none of
-/// the requester's revs; otherwise `deltas` extend the requester's history.
+/// the requester's revs; otherwise `deltas` extend the requester's history. `seen` is the host's
+/// delivery vector at snapshot time, which the guest adopts so later broadcasts line up.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SyncPayload {
 	pub registry: Option<Registry>,
@@ -45,6 +43,26 @@ pub struct SyncPayload {
 	pub head: Option<Rev>,
 	pub hot_log: Vec<HotOp>,
 	pub known_revs: Vec<Rev>,
+	pub seen: Vec<(PeerId, u64)>,
+}
+
+/// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1, and `seen` is the
+/// sender's delivery vector; a receiver holds the packet until it has delivered everything in `seen`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Broadcast {
+	pub seq: u64,
+	pub seen: Vec<(PeerId, u64)>,
+	pub body: BroadcastBody,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BroadcastBody {
+	HotOps(Vec<HotOp>),
+	/// `deltas` are in causal order. `retires` names the hot ops they replace (empty for a plain history transfer).
+	Deltas {
+		deltas: Vec<Delta>,
+		retires: Vec<TimeStamp>,
+	},
 }
 
 #[derive(Debug, thiserror::Error)]

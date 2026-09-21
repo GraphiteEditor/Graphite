@@ -1,6 +1,6 @@
-use crate::packet::{PacketError, Role, SyncPacket, SyncPayload};
-use crate::room::{Room, RoomEvent, TransportPeerId};
+use crate::packet::{Broadcast, BroadcastBody, PacketError, Role, SyncPacket, SyncPayload};
 use crate::target::{SyncTarget, TargetError};
+use crate::transport::{Transport, TransportEvent, TransportPeerId};
 use document_graph_storage::{Delta, HotOp, PeerId, ResourceHash, TimeStamp, UserId};
 use std::collections::HashMap;
 
@@ -30,6 +30,8 @@ pub enum ReplicaError {
 	Packet(#[from] PacketError),
 	#[error(transparent)]
 	Target(#[from] TargetError),
+	#[error("packet from {0} before its hello")]
+	UnknownPeer(TransportPeerId),
 }
 
 struct RemotePeer {
@@ -40,38 +42,49 @@ struct RemotePeer {
 	role: Role,
 }
 
+/// Broadcasts that arrive before the host's `Sync` are held back, since they target state the guest
+/// doesn't have yet.
 enum SyncState {
 	Synced,
-	AwaitingSync { pending_hot_ops: Vec<HotOp> },
+	AwaitingSync { pending: Vec<(PeerId, Broadcast)> },
 }
 
 /// Protocol state for one peer in a room. Owns no document; `poll` applies into a `SyncTarget`.
+///
+/// Broadcasts are delivered in causal order: each carries the sender's sequence number and delivery
+/// vector, and is held until everything the sender had delivered has been delivered here too.
 pub struct Replica {
-	room: Room,
+	transport: Box<dyn Transport>,
 	role: Role,
 	peer: PeerId,
 	user: UserId,
 	peers: HashMap<TransportPeerId, RemotePeer>,
 	sync: SyncState,
+	seq: u64,
+	delivered: HashMap<PeerId, u64>,
+	held: Vec<(PeerId, Broadcast)>,
 }
 
 impl Replica {
-	pub fn host(room: Room, peer: PeerId, user: UserId) -> Self {
-		Self::new(room, Role::Host, peer, user, SyncState::Synced)
+	pub fn host(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
+		Self::new(Box::new(transport), Role::Host, peer, user, SyncState::Synced)
 	}
 
-	pub fn guest(room: Room, peer: PeerId, user: UserId) -> Self {
-		Self::new(room, Role::Guest, peer, user, SyncState::AwaitingSync { pending_hot_ops: Vec::new() })
+	pub fn guest(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
+		Self::new(Box::new(transport), Role::Guest, peer, user, SyncState::AwaitingSync { pending: Vec::new() })
 	}
 
-	fn new(room: Room, role: Role, peer: PeerId, user: UserId, sync: SyncState) -> Self {
+	fn new(transport: Box<dyn Transport>, role: Role, peer: PeerId, user: UserId, sync: SyncState) -> Self {
 		Self {
-			room,
+			transport,
 			role,
 			peer,
 			user,
 			peers: HashMap::new(),
 			sync,
+			seq: 0,
+			delivered: HashMap::new(),
+			held: Vec::new(),
 		}
 	}
 
@@ -87,50 +100,65 @@ impl Replica {
 		if ops.is_empty() {
 			return Ok(());
 		}
-		self.room.broadcast(&SyncPacket::HotOps(ops.to_vec()))
+		self.broadcast(BroadcastBody::HotOps(ops.to_vec()))
 	}
 
 	/// Host only.
-	pub fn broadcast_retired(&mut self, deltas: &[Delta], up_to: TimeStamp) -> Result<(), PacketError> {
+	pub fn broadcast_retired(&mut self, deltas: &[Delta], retires: &[TimeStamp]) -> Result<(), PacketError> {
 		debug_assert_eq!(self.role, Role::Host);
 		if deltas.is_empty() {
 			return Ok(());
 		}
-		self.room.broadcast(&SyncPacket::Deltas {
+		self.broadcast(BroadcastBody::Deltas {
 			deltas: deltas.to_vec(),
-			retires_up_to: Some(up_to),
+			retires: retires.to_vec(),
 		})
+	}
+
+	fn broadcast(&mut self, body: BroadcastBody) -> Result<(), PacketError> {
+		self.seq += 1;
+		let broadcast = Broadcast {
+			seq: self.seq,
+			seen: self.seen_vector(),
+			body,
+		};
+		self.transport.broadcast(&SyncPacket::Broadcast(broadcast))
+	}
+
+	/// Everything delivered here, including this peer's own broadcasts.
+	fn seen_vector(&self) -> Vec<(PeerId, u64)> {
+		self.delivered.iter().map(|(&peer, &seq)| (peer, seq)).chain([(self.peer, self.seq)]).collect()
 	}
 
 	pub fn request_resources(&mut self, hashes: Vec<ResourceHash>) -> Result<(), PacketError> {
 		if hashes.is_empty() {
 			return Ok(());
 		}
-		self.room.broadcast(&SyncPacket::ResourceRequest(hashes))
+		self.transport.broadcast(&SyncPacket::ResourceRequest(hashes))
 	}
 
 	pub fn send_resource(&mut self, to: TransportPeerId, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), PacketError> {
-		self.room.send(to, &SyncPacket::Resource { hash, bytes })
+		self.transport.send(to, &SyncPacket::Resource { hash, bytes })
 	}
 
 	pub fn leave(&mut self) {
-		self.room.close();
+		self.transport.close();
 	}
 
 	pub fn poll(&mut self, target: &mut dyn SyncTarget) -> Vec<Event> {
 		let mut events = Vec::new();
 
-		for room_event in self.room.poll() {
-			let result = match room_event {
-				RoomEvent::PeerConnected(transport_peer) => self.send_hello(transport_peer),
-				RoomEvent::PeerDisconnected(transport_peer) => {
+		for transport_event in self.transport.poll() {
+			let result = match transport_event {
+				TransportEvent::PeerConnected(transport_peer) => self.send_hello(transport_peer),
+				TransportEvent::PeerDisconnected(transport_peer) => {
 					if let Some(remote) = self.peers.remove(&transport_peer) {
 						events.push(Event::PeerLeft { peer: remote.peer });
 					}
 					Ok(())
 				}
-				RoomEvent::Packet(transport_peer, packet) => self.handle_packet(transport_peer, packet, target, &mut events),
-				RoomEvent::Malformed(transport_peer, error) => {
+				TransportEvent::Packet(transport_peer, packet) => self.handle_packet(transport_peer, packet, target, &mut events),
+				TransportEvent::Malformed(transport_peer, error) => {
 					log::warn!("Dropping malformed packet from {transport_peer}: {error}");
 					Ok(())
 				}
@@ -149,19 +177,21 @@ impl Replica {
 			peer: self.peer,
 			user: self.user,
 			role: self.role,
+			seq: self.seq,
 		};
-		self.room.send(transport_peer, &hello)?;
+		self.transport.send(transport_peer, &hello)?;
 		Ok(())
 	}
 
 	fn handle_packet(&mut self, from: TransportPeerId, packet: SyncPacket, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
 		match packet {
-			SyncPacket::Hello { peer, user, role } => {
+			SyncPacket::Hello { peer, user, role, seq } => {
 				self.peers.insert(from, RemotePeer { peer, user, role });
+				self.observe_delivered(peer, seq);
 				events.push(Event::PeerJoined { peer, user });
 
 				if role == Role::Host && !self.is_synced() {
-					self.room.send(from, &SyncPacket::SyncRequest { known_revs: target.known_revs() })?;
+					self.transport.send(from, &SyncPacket::SyncRequest { known_revs: target.known_revs() })?;
 				}
 			}
 			SyncPacket::SyncRequest { known_revs } => {
@@ -175,60 +205,54 @@ impl Replica {
 					head: target.head(),
 					hot_log: target.hot_log(),
 					known_revs: target.known_revs(),
+					seen: self.seen_vector(),
 				};
-				self.room.send(from, &SyncPacket::Sync(Box::new(sync)))?;
+				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
 			}
 			SyncPacket::Sync(sync) => {
-				let SyncState::AwaitingSync { pending_hot_ops } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
+				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
 					return Ok(());
 				};
 
 				match sync.registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
-					None => target.merge_remote(sync.deltas, None)?,
+					None => target.merge_remote(sync.deltas, &[])?,
 				}
-				let pending = Self::hot_ops_missing_from_snapshot(pending_hot_ops, &sync.hot_log);
 				target.apply_remote_hot_ops(sync.hot_log)?;
-				target.apply_remote_hot_ops(pending)?;
+
+				// Broadcasts the host had delivered before answering are already reflected in the snapshot.
+				for (peer, seq) in sync.seen {
+					self.observe_delivered(peer, seq);
+				}
+				let already_reflected = |sender: PeerId, broadcast: &Broadcast| broadcast.seq <= self.delivered.get(&sender).copied().unwrap_or(0);
+				self.held.extend(pending.into_iter().filter(|(sender, broadcast)| !already_reflected(*sender, broadcast)));
+				self.deliver_held(target, events)?;
 
 				let host_is_missing = target.deltas_unknown_to(&sync.known_revs);
 				if !host_is_missing.is_empty() {
-					self.room.send(
-						from,
-						&SyncPacket::Deltas {
-							deltas: host_is_missing,
-							retires_up_to: None,
-						},
-					)?;
+					self.broadcast(BroadcastBody::Deltas {
+						deltas: host_is_missing,
+						retires: Vec::new(),
+					})?;
 				}
-				self.room.send(from, &SyncPacket::ResourceRequest(target.missing_resources().into_iter().collect()))?;
+				self.transport.send(from, &SyncPacket::ResourceRequest(target.missing_resources().into_iter().collect()))?;
 
 				events.push(Event::Synced);
 			}
-			SyncPacket::HotOps(ops) => match &mut self.sync {
-				SyncState::AwaitingSync { pending_hot_ops } => pending_hot_ops.extend(ops),
-				SyncState::Synced => {
-					target.apply_remote_hot_ops(ops)?;
-					events.push(Event::Changed);
+			SyncPacket::Broadcast(broadcast) => {
+				let sender = self.peers.get(&from).ok_or(ReplicaError::UnknownPeer(from))?.peer;
+				match &mut self.sync {
+					SyncState::AwaitingSync { pending } => pending.push((sender, broadcast)),
+					SyncState::Synced => {
+						self.held.push((sender, broadcast));
+						self.deliver_held(target, events)?;
+					}
 				}
-			},
-			SyncPacket::Deltas { deltas, retires_up_to } => {
-				if self.role == Role::Host {
-					self.room.broadcast_except(
-						from,
-						&SyncPacket::Deltas {
-							deltas: deltas.clone(),
-							retires_up_to,
-						},
-					)?;
-				}
-				target.merge_remote(deltas, retires_up_to)?;
-				events.push(Event::Changed);
 			}
 			SyncPacket::ResourceRequest(hashes) => {
 				for hash in hashes {
 					match target.resource_bytes(hash) {
-						Some(bytes) => self.room.send(from, &SyncPacket::Resource { hash, bytes })?,
+						Some(bytes) => self.transport.send(from, &SyncPacket::Resource { hash, bytes })?,
 						None => events.push(Event::ResourceRequested { from, hash }),
 					}
 				}
@@ -246,9 +270,39 @@ impl Replica {
 		Ok(())
 	}
 
-	/// Hot ops that arrived while the sync was in flight may already be included in it.
-	fn hot_ops_missing_from_snapshot(mut pending: Vec<HotOp>, snapshot_hot_log: &[HotOp]) -> Vec<HotOp> {
-		pending.retain(|rev| !snapshot_hot_log.iter().any(|existing| existing.timestamp == rev.timestamp));
-		pending
+	fn observe_delivered(&mut self, peer: PeerId, seq: u64) {
+		if peer != self.peer {
+			let delivered = self.delivered.entry(peer).or_default();
+			*delivered = (*delivered).max(seq);
+		}
+	}
+
+	/// Deliver every held broadcast whose causal dependencies are met, repeating since each delivery
+	/// can unblock others.
+	fn deliver_held(&mut self, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
+		while let Some(index) = self.held.iter().position(|(sender, broadcast)| self.is_deliverable(*sender, broadcast)) {
+			let (sender, broadcast) = self.held.remove(index);
+			self.delivered.insert(sender, broadcast.seq);
+
+			match broadcast.body {
+				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops)?,
+				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires)?,
+			}
+			events.push(Event::Changed);
+		}
+		Ok(())
+	}
+
+	fn is_deliverable(&self, sender: PeerId, broadcast: &Broadcast) -> bool {
+		let next_from_sender = self.delivered.get(&sender).copied().unwrap_or(0) + 1;
+		let has_delivered = |peer: PeerId, seq: u64| {
+			if peer == self.peer {
+				seq <= self.seq
+			} else {
+				self.delivered.get(&peer).copied().unwrap_or(0) >= seq
+			}
+		};
+
+		broadcast.seq == next_from_sender && broadcast.seen.iter().all(|&(peer, seq)| peer == sender || has_delivered(peer, seq))
 	}
 }

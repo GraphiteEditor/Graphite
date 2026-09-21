@@ -7,19 +7,19 @@ use std::collections::HashSet;
 
 use document_container::AsyncContainer;
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp, UserId};
-use peer_transport::{Event, Replica, Role, Room, SyncTarget, TargetError};
+use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::Gdd;
 use crate::error::Error;
 use crate::layout::Layout;
 
 impl<L: Layout> Gdd<L> {
-	pub fn share(&mut self, room: Room, user: UserId) {
-		self.network = Some(Replica::host(room, self.session.peer(), user));
+	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) {
+		self.network = Some(Replica::host(transport, self.session.peer(), user));
 	}
 
-	pub fn join(&mut self, room: Room, user: UserId) {
-		self.network = Some(Replica::guest(room, self.session.peer(), user));
+	pub fn join(&mut self, transport: impl Transport + 'static, user: UserId) {
+		self.network = Some(Replica::guest(transport, self.session.peer(), user));
 	}
 
 	pub fn leave(&mut self) {
@@ -92,16 +92,16 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
 		for hot_op in ops {
-			self.session.apply_hot_op(hot_op.clone())?;
+			self.session.replay_hot_op(hot_op.clone())?;
 			self.append_hot_frame(&hot_op)?;
 		}
 		Ok(())
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), TargetError> {
-		self.session.merge_remote(deltas, retires_up_to)?;
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
+		self.session.merge_remote(deltas, retires)?;
 		self.rewrite_history()?;
-		if retires_up_to.is_some() {
+		if !retires.is_empty() {
 			self.rewrite_hot_log()?;
 		}
 		self.persist_registry_snapshot()?;

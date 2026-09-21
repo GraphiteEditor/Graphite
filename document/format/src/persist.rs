@@ -240,6 +240,8 @@ impl<L: Layout> Gdd<L> {
 			return Ok(Vec::new());
 		}
 
+		#[cfg(feature = "network")]
+		let retired_hot_ops = self.session.hot_ops_up_to(up_to);
 		let new_revs = self.session.retire(up_to)?;
 
 		// Mark before `append_history_deltas` so the on-disk frame carries the boundary.
@@ -258,7 +260,7 @@ impl<L: Layout> Gdd<L> {
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
 			let deltas: Vec<_> = new_revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
-			replica.broadcast_retired(&deltas, up_to)?;
+			replica.broadcast_retired(&deltas, &retired_hot_ops)?;
 		}
 
 		Ok(new_revs)

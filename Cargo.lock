@@ -4974,13 +4974,16 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "document-graph-storage",
+ "env_logger",
  "futures",
  "log",
  "matchbox_socket",
  "rmp-serde",
  "serde",
  "serde_bytes",
+ "serde_json",
  "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]

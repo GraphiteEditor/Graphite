@@ -15,8 +15,9 @@ pub trait SyncTarget {
 
 	/// Replace all state with the given retired state.
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;
+	/// Must be idempotent on structural ops: a buffered op may already be reflected by the sync.
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError>;
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), TargetError>;
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError>;
 
 	/// Referenced resources whose bytes are not available locally.
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
@@ -69,16 +70,15 @@ impl SyncTarget for Session {
 
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
 		for hot_op in ops {
-			self.apply_hot_op(hot_op)?;
+			self.replay_hot_op(hot_op)?;
 		}
 		Ok(())
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), TargetError> {
-		if let Some(up_to) = retires_up_to {
-			self.discard_hot_ops(up_to);
-		}
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
+		// Hot ops stay until after the merge: a delta may target something a still-hot removal took away.
 		self.merge(deltas)?;
+		self.discard_hot_ops(retires);
 		Ok(())
 	}
 }

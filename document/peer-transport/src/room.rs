@@ -1,8 +1,7 @@
 use crate::packet::{PacketError, SyncPacket};
+use crate::transport::{Transport, TransportEvent, TransportPeerId};
 use matchbox_socket::{MessageLoopFuture, PeerState, WebRtcSocket};
 use std::collections::HashMap;
-
-pub use matchbox_socket::PeerId as TransportPeerId;
 
 const CHANNEL: usize = 0;
 /// Largest SCTP message every browser accepts.
@@ -10,14 +9,7 @@ const CHUNK_BYTES: usize = 16 * 1024;
 const FRAME_FINAL: u8 = 1;
 const FRAME_MORE: u8 = 0;
 
-pub enum RoomEvent {
-	PeerConnected(TransportPeerId),
-	PeerDisconnected(TransportPeerId),
-	Packet(TransportPeerId, SyncPacket),
-	Malformed(TransportPeerId, PacketError),
-}
-
-/// Typed view of one matchbox room. Packets are split into `[flag][bytes]` chunks; the reliable
+/// One matchbox room over WebRTC. Packets are split into `[flag][bytes]` chunks; the reliable
 /// channel is ordered per peer, so the receiver reassembles by appending until the final flag.
 /// The returned future must be polled continuously by the caller.
 pub struct Room {
@@ -31,52 +23,43 @@ impl Room {
 		(Self { socket, partial: HashMap::new() }, driver)
 	}
 
-	pub fn send(&mut self, peer: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError> {
-		let bytes = packet.encode()?;
-		self.send_chunks(&bytes, [peer]);
-		Ok(())
-	}
-
-	pub fn broadcast(&mut self, packet: &SyncPacket) -> Result<(), PacketError> {
-		let bytes = packet.encode()?;
-		let peers: Vec<_> = self.socket.connected_peers().collect();
-		self.send_chunks(&bytes, peers);
-		Ok(())
-	}
-
-	pub fn broadcast_except(&mut self, excluded: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError> {
-		let bytes = packet.encode()?;
-		let peers: Vec<_> = self.socket.connected_peers().filter(|&peer| peer != excluded).collect();
-		self.send_chunks(&bytes, peers);
-		Ok(())
-	}
-
-	fn send_chunks(&mut self, bytes: &[u8], peers: impl IntoIterator<Item = TransportPeerId> + Clone) {
+	fn send_chunks(&mut self, bytes: &[u8], peers: &[TransportPeerId]) {
 		let channel = self.socket.channel_mut(CHANNEL);
 		let chunk_count = bytes.len().div_ceil(CHUNK_BYTES);
 
 		for (index, chunk) in bytes.chunks(CHUNK_BYTES).enumerate() {
 			let flag = if index + 1 == chunk_count { FRAME_FINAL } else { FRAME_MORE };
 			let frame: Box<[u8]> = std::iter::once(flag).chain(chunk.iter().copied()).collect();
-			for peer in peers.clone() {
+			for &peer in peers {
 				channel.send(frame.clone(), peer);
 			}
 		}
 	}
+}
 
-	pub fn connected_peers(&self) -> impl Iterator<Item = TransportPeerId> + '_ {
-		self.socket.connected_peers()
+impl Transport for Room {
+	fn send(&mut self, to: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError> {
+		let bytes = packet.encode()?;
+		self.send_chunks(&bytes, &[to]);
+		Ok(())
 	}
 
-	pub fn poll(&mut self) -> Vec<RoomEvent> {
+	fn broadcast_except(&mut self, excluded: Option<TransportPeerId>, packet: &SyncPacket) -> Result<(), PacketError> {
+		let bytes = packet.encode()?;
+		let peers: Vec<_> = self.socket.connected_peers().filter(|&peer| Some(peer) != excluded).collect();
+		self.send_chunks(&bytes, &peers);
+		Ok(())
+	}
+
+	fn poll(&mut self) -> Vec<TransportEvent> {
 		let mut events = Vec::new();
 
 		for (peer, state) in self.socket.update_peers() {
 			events.push(match state {
-				PeerState::Connected => RoomEvent::PeerConnected(peer),
+				PeerState::Connected => TransportEvent::PeerConnected(peer),
 				PeerState::Disconnected => {
 					self.partial.remove(&peer);
-					RoomEvent::PeerDisconnected(peer)
+					TransportEvent::PeerDisconnected(peer)
 				}
 			});
 		}
@@ -91,15 +74,15 @@ impl Room {
 
 			let bytes = std::mem::take(buffer);
 			events.push(match SyncPacket::decode(&bytes) {
-				Ok(packet) => RoomEvent::Packet(peer, packet),
-				Err(error) => RoomEvent::Malformed(peer, error),
+				Ok(packet) => TransportEvent::Packet(peer, packet),
+				Err(error) => TransportEvent::Malformed(peer, error),
 			});
 		}
 
 		events
 	}
 
-	pub fn close(&mut self) {
+	fn close(&mut self) {
 		self.socket.close();
 	}
 }
