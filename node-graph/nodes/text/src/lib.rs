@@ -10,6 +10,7 @@ use convert_case::{Boundary, Converter, pattern};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
+use core_types::misc::{format_f64, parse_f64};
 use core_types::registry::types::{SeedValue, SignedInteger, TextArea};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
@@ -364,6 +365,9 @@ fn format_number(
 ) -> Item<String> {
 	let (number, attributes) = number.into_parts();
 	let number = round_away_float_noise(number);
+	if number.is_infinite() {
+		return Item::from_parts(format_f64(number), attributes);
+	}
 	let (decimal_places, fixed_decimals, use_thousands_separator, start_at_10000) =
 		(*decimal_places.element(), *fixed_decimals.element(), *use_thousands_separator.element(), *start_at_10000.element());
 	let decimal_separator = decimal_separator.element().clone();
@@ -447,14 +451,14 @@ fn format_number(
 #[node_macro::node(category("Text"), name("String to Number"))]
 fn string_to_number(
 	_: impl Ctx,
-	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, and scientific notation (e.g. "1e-3") is supported.
+	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, scientific notation (e.g. "1e-3") is supported, and infinity may be written "inf", "infinity", or "∞".
 	string: Item<String>,
 	/// The value of the result if the string cannot be parsed as a valid number.
 	fallback: Item<f64>,
 ) -> Item<f64> {
 	let (string, attributes) = string.into_parts();
 
-	Item::from_parts(string.trim().parse::<f64>().unwrap_or(*fallback.element()), attributes)
+	Item::from_parts(parse_f64(string.trim()).unwrap_or(*fallback.element()), attributes)
 }
 
 /// Parses a string like `"3, 4.5"` into a Vec2, using a comma and/or whitespace as separators. Falls back to the chosen value if the string is not a valid pair of numbers.
@@ -474,9 +478,9 @@ fn string_to_vec2(
 		.unwrap_or(trimmed);
 
 	// Exactly two numbers, so a longer list is not quietly truncated into a pair
-	let mut numbers = unwrapped.split(|c: char| c == ',' || c.is_whitespace()).filter(|piece| !piece.is_empty()).map(str::parse::<f64>);
+	let mut numbers = unwrapped.split(|c: char| c == ',' || c.is_whitespace()).filter(|piece| !piece.is_empty()).map(parse_f64);
 	let parsed = match (numbers.next(), numbers.next(), numbers.next()) {
-		(Some(Ok(x)), Some(Ok(y)), None) => DVec2::new(x, y),
+		(Some(Some(x)), Some(Some(y)), None) => DVec2::new(x, y),
 		_ => *fallback.element(),
 	};
 

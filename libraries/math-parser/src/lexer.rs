@@ -195,7 +195,10 @@ impl<'a> Lexer<'a> {
 			preceding = rest.trim_end();
 		}
 
-		preceding.chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '.' || c == ')' || c == '∞')
+		preceding
+			.chars()
+			.next_back()
+			.is_some_and(|c| c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || c == '.' || c == ')' || c == '∞')
 	}
 
 	fn lex_number(&mut self) -> Option<f64> {
@@ -235,14 +238,17 @@ impl<'a> Lexer<'a> {
 		self.input[start_pos..self.pos].parse::<f64>().ok()
 	}
 
-	/// Consumes identifier continuation characters: alphanumerics, underscores, and a decimal point sandwiched
-	/// between digits so that base-suffixed function names like `log3.25` lex as a single identifier.
+	/// Consumes identifier continuation characters: Unicode's `XID_Continue`, which covers letters, digits,
+	/// underscores, and the combining marks that complete a cluster like a decomposed `é`, plus a decimal point
+	/// sandwiched between digits so that base-suffixed function names like `log3.25` lex as a single identifier.
 	fn consume_identifier_body(&mut self, first: char) -> &'a str {
 		let start = self.pos;
 		let mut previous = first;
 		while let Some(c) = self.peek() {
 			let dot_between_digits = c == '.' && previous.is_ascii_digit() && self.input[self.pos + 1..].chars().next().is_some_and(|next| next.is_ascii_digit());
-			if !(c.is_alphanumeric() || c == '_' || dot_between_digits) {
+			// The middle dot and its Greek twin are identifier characters in Unicode, but they would pass for the `⋅` operator mid-name
+			let middle_dot = matches!(c as u32, 0xB7 | 0x387);
+			if !((unicode_ident::is_xid_continue(c) && !middle_dot) || dot_between_digits) {
 				break;
 			}
 			previous = c;
@@ -365,10 +371,12 @@ impl<'a> Lexer<'a> {
 					If
 				} else if let Some(lit) = Constant::from_name(ident) {
 					Const(lit)
-				} else if ch.is_alphanumeric() {
+				} else if unicode_ident::is_xid_start(ch) {
+					// A name is a Unicode identifier, as in Rust, so any script's letters may spell one
 					Ident(ident)
 				} else {
-					// Punctuation never begins a name, which leaves `#`, `$`, `~`, and `@` free to become namespace prefixes once a host scope needs them
+					// Digits, combining marks, invisible formatting characters, and symbols never begin a name, which also
+					// leaves `#`, `$`, `~`, and `@` free to become namespace prefixes once a host scope needs them
 					Error
 				}
 			}

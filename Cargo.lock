@@ -3415,6 +3415,7 @@ dependencies = [
  "criterion",
  "num-complex",
  "thiserror 2.0.18",
+ "unicode-ident",
 ]
 
 [[package]]
