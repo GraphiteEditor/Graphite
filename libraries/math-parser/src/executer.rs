@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Literal, Node};
+use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
 use crate::constants::{builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::lexer::Constant;
@@ -18,6 +18,9 @@ pub enum EvalError {
 
 	#[error("Unsupported operand types for operator")]
 	OperatorTypeError,
+
+	#[error("Logic requires values of exactly 0 (false) or 1 (true)")]
+	NotATruthValue,
 
 	#[error("Indeterminate result, like `0/0` or `∞ - ∞`")]
 	Indeterminate,
@@ -71,11 +74,47 @@ impl Node {
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
-				(Value::Number(lhs), Value::Number(rhs)) => settle(Value::Number(lhs.binary_op(*op, rhs).ok_or(EvalError::OperatorTypeError)?)),
+				(Value::Number(lhs), Value::Number(rhs)) => {
+					// Logic rejects operands that aren't truth values, while the other operators reject operand types they don't support
+					let rejected = if matches!(op, BinaryOp::And | BinaryOp::Or) {
+						EvalError::NotATruthValue
+					} else {
+						EvalError::OperatorTypeError
+					};
+					settle(Value::Number(lhs.binary_op(*op, rhs).ok_or(rejected)?))
+				}
 			},
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
-				Value::Number(num) => settle(Value::Number(num.unary_op(*op).ok_or(EvalError::OperatorTypeError)?)),
+				Value::Number(num) => {
+					let rejected = if *op == UnaryOp::Not { EvalError::NotATruthValue } else { EvalError::OperatorTypeError };
+					settle(Value::Number(num.unary_op(*op).ok_or(rejected)?))
+				}
 			},
+			Node::Comparison { first, rest } => {
+				let Value::Number(first) = first.eval(context)?;
+				let rest = rest
+					.iter()
+					.map(|(op, operand)| operand.eval(context).map(|Value::Number(number)| (*op, number)))
+					.collect::<Result<Vec<(BinaryOp, Number)>, EvalError>>()?;
+
+				// A `!=` chain asserts every pair distinct, while the ordered chains assert each adjacent pair's relation; every pair is checked so an unsupported comparison errors regardless of the others
+				let holds = if rest.iter().all(|(op, _)| *op == BinaryOp::Neq) {
+					let numbers: Vec<Number> = std::iter::once(first).chain(rest.iter().map(|(_, number)| *number)).collect();
+					numbers
+						.iter()
+						.enumerate()
+						.all(|(index, a)| numbers[index + 1..].iter().all(|b| a.binary_op(BinaryOp::Neq, *b) == Some(Number::Real(1.))))
+				} else {
+					let mut holds = true;
+					let mut previous = first;
+					for (op, number) in rest {
+						holds &= previous.binary_op(op, number).ok_or(EvalError::OperatorTypeError)? == Number::Real(1.);
+						previous = number;
+					}
+					holds
+				};
+				Ok(Value::from_f64(holds as u8 as f64))
+			}
 			Node::Var(name) => {
 				let value = resolve_value(context, name).ok_or_else(|| EvalError::MissingValue(name.clone()))?;
 				canonical_host_value(name, value)
@@ -120,7 +159,9 @@ impl Node {
 			}
 			Node::Conditional { condition, if_block, else_block } => {
 				let Value::Number(number) = condition.eval(context)?;
-				if number.as_bool() { if_block.eval(context) } else { else_block.eval(context) }
+				let Some(condition) = number.as_bool() else { return Err(EvalError::NotATruthValue) };
+
+				if condition { if_block.eval(context) } else { else_block.eval(context) }
 			}
 		}
 	}

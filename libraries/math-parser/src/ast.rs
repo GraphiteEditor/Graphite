@@ -17,10 +17,10 @@ pub enum BinaryOp {
 	Add,
 	Sub,
 	Mul,
-	/// Logical AND (nonzero treated as true, returns 1. or 0.)
+	/// Logical AND over operands that must each be exactly 0 or 1, returning 0 or 1.
 	And,
 	Div,
-	/// Logical OR (nonzero treated as true, returns 1. or 0.)
+	/// Logical OR over operands that must each be exactly 0 or 1, returning 0 or 1.
 	Or,
 	Modulo,
 	Pow,
@@ -30,6 +30,16 @@ pub enum BinaryOp {
 	Gt,
 	Neq,
 	Eq,
+}
+
+impl BinaryOp {
+	/// Whether a chain of comparisons reads in one direction: `<`/`<=`/`==` ascending, `>`/`>=`/`==` descending, or `!=` alone.
+	pub fn chain_in_one_direction(ops: &[BinaryOp]) -> bool {
+		let ascending = ops.iter().all(|op| matches!(op, BinaryOp::Lt | BinaryOp::Leq | BinaryOp::Eq));
+		let descending = ops.iter().all(|op| matches!(op, BinaryOp::Gt | BinaryOp::Geq | BinaryOp::Eq));
+		let distinct = ops.iter().all(|op| matches!(op, BinaryOp::Neq));
+		ascending || descending || distinct
+	}
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -46,8 +56,27 @@ pub enum UnaryOp {
 pub enum Node {
 	Lit(Literal),
 	Var(String),
-	FnCall { name: String, expr: Vec<Node> },
-	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
-	UnaryOp { expr: Box<Node>, op: UnaryOp },
-	Conditional { condition: Box<Node>, if_block: Box<Node>, else_block: Box<Node> },
+	FnCall {
+		name: String,
+		expr: Vec<Node>,
+	},
+	BinOp {
+		lhs: Box<Node>,
+		op: BinaryOp,
+		rhs: Box<Node>,
+	},
+	UnaryOp {
+		expr: Box<Node>,
+		op: UnaryOp,
+	},
+	/// A chain of two or more comparisons like `a < b < c`, each operator paired with the operand after it: one predicate over each adjacent pair, or over every pair for `!=`.
+	Comparison {
+		first: Box<Node>,
+		rest: Vec<(BinaryOp, Node)>,
+	},
+	Conditional {
+		condition: Box<Node>,
+		if_block: Box<Node>,
+		else_block: Box<Node>,
+	},
 }
