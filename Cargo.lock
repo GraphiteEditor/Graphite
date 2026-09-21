@@ -1793,6 +1793,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-live"
+version = "0.0.0"
+dependencies = [
+ "document-container",
+ "document-format",
+ "document-graph-storage",
+ "graph-craft",
+ "log",
+ "peer-transport",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2735,6 +2748,8 @@ dependencies = [
  "clap",
  "document-container",
  "document-format",
+ "document-graph-storage",
+ "document-live",
  "fern",
  "futures",
  "graph-craft",
@@ -2743,9 +2758,12 @@ dependencies = [
  "interpreted-executor",
  "log",
  "preprocessor",
+ "rustls 0.23.31",
+ "serde_json",
  "tokio",
  "wgpu",
  "wgpu-executor",
+ "winit",
 ]
 
 [[package]]

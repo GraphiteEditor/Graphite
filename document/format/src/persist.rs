@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HotOp, Rev, TimeStamp};
+use document_graph_storage::{HotOp, RegistryDelta, Rev, TimeStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -62,14 +62,7 @@ impl<L: Layout> Gdd<L> {
 		byte_store: &dyn ResourceStorage,
 	) -> Result<document_graph_storage::Declarations, Error> {
 		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
-
-		for hot_op in &hot_ops {
-			self.append_hot_frame(hot_op)?;
-		}
-		#[cfg(feature = "network")]
-		if let Some(replica) = &mut self.network {
-			replica.broadcast_hot_ops(&hot_ops)?;
-		}
+		self.persist_staged(&hot_ops)?;
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
@@ -78,6 +71,24 @@ impl<L: Layout> Gdd<L> {
 			byte_store.store(bytes);
 		}
 		Ok(conversion.declarations)
+	}
+
+	/// Stage raw registry ops as hot ops, for callers that don't go through the runtime diff.
+	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, Error> {
+		let hot_ops = self.session.stage_ops(ops)?;
+		self.persist_staged(&hot_ops)?;
+		Ok(hot_ops)
+	}
+
+	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
+		for hot_op in hot_ops {
+			self.append_hot_frame(hot_op)?;
+		}
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_hot_ops(hot_ops)?;
+		}
+		Ok(())
 	}
 
 	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last

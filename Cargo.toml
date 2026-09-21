@@ -12,6 +12,7 @@ members = [
 	"document/graph-storage",
 	"document/container",
 	"document/peer-transport",
+	"document/live",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -100,6 +101,7 @@ document-format = { path = "document/format" }
 document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
 peer-transport = { path = "document/peer-transport" }
+document-live = { path = "document/live" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }

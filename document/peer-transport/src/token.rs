@@ -3,6 +3,9 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use std::fmt;
 use std::str::FromStr;
 
+/// Identifies the text form as a Graphite session token, like GitLab's `glpat-` tokens.
+const PREFIX: &str = "graphite-";
+
 /// Random session ID, used as the matchbox room name. Entropy is supplied by the caller.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SessionToken(pub [u8; 16]);
@@ -15,7 +18,7 @@ impl SessionToken {
 
 impl fmt::Display for SessionToken {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		f.write_str(&URL_SAFE_NO_PAD.encode(self.0))
+		write!(f, "{PREFIX}{}", URL_SAFE_NO_PAD.encode(self.0))
 	}
 }
 
@@ -27,7 +30,8 @@ impl FromStr for SessionToken {
 	type Err = InvalidSessionToken;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let bytes = URL_SAFE_NO_PAD.decode(s).map_err(|_| InvalidSessionToken)?;
+		let encoded = s.strip_prefix(PREFIX).ok_or(InvalidSessionToken)?;
+		let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| InvalidSessionToken)?;
 		let bytes = bytes.try_into().map_err(|_| InvalidSessionToken)?;
 		Ok(Self(bytes))
 	}
@@ -44,7 +48,8 @@ mod tests {
 	}
 
 	#[test]
-	fn rejects_wrong_length() {
-		assert!("AAAA".parse::<SessionToken>().is_err());
+	fn rejects_wrong_length_or_missing_prefix() {
+		assert!("graphite-AAAA".parse::<SessionToken>().is_err());
+		assert!("BwcHBwcHBwcHBwcHBwcHBw".parse::<SessionToken>().is_err());
 	}
 }
