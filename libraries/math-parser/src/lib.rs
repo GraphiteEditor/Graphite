@@ -57,6 +57,60 @@ mod tests {
 	}
 
 	#[test]
+	fn statistics_without_an_answer_are_errors() {
+		// No value repeats, so no mode exists, and negative operands have no geometric or harmonic mean
+		for input in ["mode(1, 2, 3)", "geomean(-1, 4)", "harmmean(1, -1)"] {
+			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
+
+		// A single value has no spread to estimate a sample from
+		for input in ["variance(5)", "stdev(5)"] {
+			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
+	}
+
+	#[test]
+	fn statistics_avoid_intermediate_overflow_and_underflow() {
+		// Each result fits in f64 even though naively summing, squaring, or taking reciprocals of the operands would not
+		for (input, expected) in [
+			("mean(1e308, 1e308)", 1e308),
+			("median(1e308, 1e308)", 1e308),
+			("rms(1e308)", 1e308),
+			("rms(1e-200)", 1e-200),
+			("stdevpop(1e-200, -1e-200)", 1e-200),
+			("variancepop(1e308, 1e308)", 0.),
+			("stdevpop(1e308, -1e308)", 1e308),
+			("harmmean(1e-308, 1e-308)", 1e-308),
+			("lerp(-1e308, 1e308, 0.5)", 0.),
+			("lerp(-1e308, 1e308, 1)", 1e308),
+			("remap(0, -1e308, 1e308, 0, 1)", 0.5),
+			("remap(0.5, 0, 1, -1e308, 1e308)", 0.),
+		] {
+			assert_eq!(evaluate(input).unwrap().unwrap().as_real(), Some(expected), "`{input}`");
+		}
+
+		// Three large operands whose least common multiple exceeds integer storage must not wrap around
+		let input = "lcm(9007199254740992, 9007199254740991, 9007199254740990)";
+		assert!(!matches!(evaluate(input), Ok(Ok(value)) if value.as_real().is_some_and(f64::is_finite)), "`{input}`");
+	}
+
+	#[test]
+	fn harmonic_mean_shortcuts_keep_an_invalid_operand_invalid() {
+		// The zero and infinity shortcuts must not turn an operand with no real value into a number
+		for input in ["harmmean(sqrt(-1), 0)", "harmmean(sqrt(-1), inf)"] {
+			assert!(!matches!(evaluate(input), Ok(Ok(value)) if value.as_real().is_some_and(|real| !real.is_nan())), "`{input}`");
+		}
+	}
+
+	#[test]
+	fn xor_requires_logical_operands() {
+		// Logical operands must be exactly 0 or 1
+		for input in ["xor(2, 1)", "xor(0.5, 1)"] {
+			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
+	}
+
+	#[test]
 	fn bindings_shadow_constants_and_the_prefix_reaches_the_builtin() {
 		struct ShadowingBindings;
 		impl context::ValueProvider for ShadowingBindings {
@@ -383,6 +437,26 @@ mod tests {
 		alias_logical_and: "if(1 ∧ 1, 2, 3)" => 2.,
 		alias_logical_or: "if(0 ∨ 1, 2, 3)" => 2.,
 		alias_logical_not: "¬0" => 1.,
+
+		// Variadic generalizations and statistics
+		geometry_hypot_variadic: "hypot(2, 3, 6)" => 7.,
+		gcd_variadic: "gcd(24, 18, 60)" => 6.,
+		lcm_variadic: "lcm(4, 6, 10)" => 60.,
+		statistics_mean: "mean(1, 2, 3, 6)" => 3.,
+		statistics_median_odd: "median(5, 1, 3)" => 3.,
+		statistics_median_even: "median(4, 1, 3, 2)" => 2.5,
+		statistics_variance: "variance(2, 4, 4, 4, 5, 5, 7, 9)" => 32. / 7.,
+		statistics_variance_population: "variancepop(2, 4, 4, 4, 5, 5, 7, 9)" => 4.,
+		statistics_stdev: "stdev(2, 4, 4, 4, 5, 5, 7, 9)" => (32_f64 / 7.).sqrt(),
+		statistics_stdev_population: "stdevpop(2, 4, 4, 4, 5, 5, 7, 9)" => 2.,
+		statistics_stdev_population_single: "stdevpop(5)" => 0.,
+		statistics_geomean: "geomean(1, 4, 16)" => 4.,
+		statistics_harmmean: "harmmean(1, 4, 4)" => 2.,
+		statistics_rms: "rms(3, 4)" => 12.5_f64.sqrt(),
+		statistics_mode: "mode(2, 3, 3, 1, 2)" => 2.,
+		statistics_count: "count(1, 2, 3)" => 3.,
+		logical_xor_odd_parity: "xor(1, 1, 1)" => 1.,
+		logical_xor_even_parity: "xor(1, 0, 1)" => 0.,
 		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
 
 		// GCD / LCM
