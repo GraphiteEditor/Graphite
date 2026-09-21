@@ -57,6 +57,55 @@ mod tests {
 	}
 
 	#[test]
+	fn indeterminate_forms_are_errors() {
+		// No operation returns NaN: an indeterminate form is an evaluation error, as is a domain failure with no complex answer
+		for input in [
+			"0/0",
+			"inf - inf",
+			"0 * inf",
+			"inf / inf",
+			"sin(inf)",
+			"gcd(inf, 6)",
+			"gcd(10000000000000000000, 2)",
+			"(-1)!",
+			"2.5!",
+			"i!",
+			"inf!",
+		] {
+			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
+	}
+
+	#[test]
+	fn host_values_are_admitted_where_read() {
+		struct Host;
+		impl context::ValueProvider for Host {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				match name {
+					"x" => Some(Value::from_f64(f64::NAN)),
+					"z" => Some(Value::from_f64(-0.)),
+					_ => None,
+				}
+			}
+		}
+		impl context::FunctionProvider for Host {
+			fn run_function(&self, name: &str, _: &[Value]) -> Option<Value> {
+				(name == "f").then(|| Value::from_f64(f64::NAN))
+			}
+		}
+		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(Host, Host));
+
+		// A NaN from a host binding or function is an error where it is read, and nowhere else
+		assert!(matches!(eval("x + 1"), Err(EvalError::NotANumber(name)) if name == "x"));
+		assert!(matches!(eval("x(2)"), Err(EvalError::NotANumber(name)) if name == "x"));
+		assert!(matches!(eval("f(1)"), Err(EvalError::NotANumber(name)) if name == "f"));
+		assert_eq!(eval("if(1, 2, x)").unwrap().as_real(), Some(2.));
+
+		// A host's signed zero is plain zero, like every other value
+		assert_eq!(eval("1/z").unwrap().as_real(), Some(f64::INFINITY));
+	}
+
+	#[test]
 	fn statistics_without_an_answer_are_errors() {
 		// No value repeats, so no mode exists, and negative operands have no geometric or harmonic mean
 		for input in ["mode(1, 2, 3)", "geomean(-1, 4)", "harmmean(1, -1)"] {
@@ -92,14 +141,6 @@ mod tests {
 		// Three large operands whose least common multiple exceeds integer storage must not wrap around
 		let input = "lcm(9007199254740992, 9007199254740991, 9007199254740990)";
 		assert!(!matches!(evaluate(input), Ok(Ok(value)) if value.as_real().is_some_and(f64::is_finite)), "`{input}`");
-	}
-
-	#[test]
-	fn harmonic_mean_shortcuts_keep_an_invalid_operand_invalid() {
-		// The zero and infinity shortcuts must not turn an operand with no real value into a number
-		for input in ["harmmean(sqrt(-1), 0)", "harmmean(sqrt(-1), inf)"] {
-			assert!(!matches!(evaluate(input), Ok(Ok(value)) if value.as_real().is_some_and(|real| !real.is_nan())), "`{input}`");
-		}
 	}
 
 	#[test]
@@ -423,10 +464,6 @@ mod tests {
 		mapping_max: "max(3, 7)" => 7.,
 		mapping_min_variadic: "min(5, 2, 8, 4)" => 2.,
 		mapping_max_variadic: "max(5, 2, 8, 4)" => 8.,
-		mapping_min_skips_nan: "min(sqrt(-1), 5)" => 5.,
-		mapping_max_skips_nan: "max(sqrt(-1), 5)" => 5.,
-		mapping_min_all_nan: "min(sqrt(-1))" => f64::NAN,
-		mapping_max_all_nan: "max(sqrt(-1))" => f64::NAN,
 
 		// Typeset math symbol aliases
 		alias_minus_sign: "5 − 3" => 2.,
@@ -507,33 +544,38 @@ mod tests {
 		factorial_overflows_to_infinity: "171!" => f64::INFINITY,
 		factorial_huge_input: "10000000000000000000000!" => f64::INFINITY,
 		lcm_huge_no_overflow: "lcm(1099511627776, 1099511627775)" => 1099511627776. * 1099511627775.,
-		gcd_non_finite: "gcd(inf, 6)" => f64::NAN,
 		long_literal: "10000000000000000000000" => 1e22,
 		huge_exponent_saturates: "1e4294967296" => f64::INFINITY,
 
-		// Odd integer roots of negative values are real
+		// Odd integer roots of negative values are real, while even ones climb into the complex plane
 		root_negative_odd: "root(-8, 3)" => -2.,
 		root_negative_odd_reciprocal: "root(-8, -3)" => -0.5,
-		root_negative_even: "root(-4, 2)" => f64::NAN,
-
-		// NaN poisons conditions and logic instead of acting as a boolean
-		if_nan_condition: "if(sqrt(-1), 1, 2)" => f64::NAN,
-		nan_and: "sqrt(-1) && 1" => f64::NAN,
-		nan_or: "sqrt(-1) || 1" => f64::NAN,
-		nan_not: "!sqrt(-1)" => f64::NAN,
+		root_negative_even: "root(-4, 2)" => Complex::new(0., 2.),
 
 		// Logic and equality span real and complex operands
 		mixed_equality: "1 == i" => 0.,
 		complex_equality: "i == i" => 1.,
 		mixed_and: "1 && i" => 1.,
-		mixed_nan_and: "sqrt(-1) && i" => f64::NAN,
+
+		// Value identity: a zero imaginary part or a signed zero never changes a result, so a result landing on the real line is real
+		value_identity_product: "sqrt(-4) * sqrt(-4)" => -4.,
+		value_identity_conjugate_product: "(1 + i)(1 - i)" => 2.,
+		value_identity_ordering: "(2 + 0i) < 3" => 1.,
+		value_identity_branch_selection: "root(-8 + 0i, 3)" => -2.,
+		value_identity_signed_zero: "1/(-0)" => f64::INFINITY,
+		value_identity_ceiling: "1/ceil(-0.5)" => f64::INFINITY,
+
+		// Domain climbs: a real input whose answer is complex resolves into the `1, i` plane
+		climb_sqrt: "sqrt(-4)" => Complex::new(0., 2.),
+		climb_ln: "ln(-1)" => Complex::new(0., std::f64::consts::PI),
+		climb_log_base: "log(-1, 10)" => Complex::new(0., std::f64::consts::PI / std::f64::consts::LN_10),
+		climb_asin: "abs(sin(asin(2)))" => 2.,
+		climb_acosh: "abs(cosh(acosh(0.5)))" => 0.5,
+		climb_power: "abs((-8)^(1/3))" => 2.,
 
 		// Correctly rounded literals via std parsing
 		seventeen_digit_literal: "999999999999999999" => 1e18,
 		long_fraction_literal: "0.1111111111111111111111111111111111111111" => 1. / 9.,
-
-		// Integer functions reject inputs beyond f64's exact integer range
-		gcd_beyond_exact_integers: "gcd(10000000000000000000, 2)" => f64::NAN,
 
 		// Implicit multiplication with parenthesized and negative-coefficient operands
 		implicit_multiplication_parenthesized_negative: "2 (-3)" => -6.,

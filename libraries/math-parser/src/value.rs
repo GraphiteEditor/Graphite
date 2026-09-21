@@ -96,11 +96,29 @@ impl Number {
 		}
 	}
 
-	/// The value's truthiness for conditions and logic operators, or `None` for NaN values, which poison the result rather than acting as a boolean.
-	pub fn as_bool(self) -> Option<bool> {
+	/// The value's truthiness for conditions and logic operators, where any nonzero number is true.
+	pub fn as_bool(self) -> bool {
 		match self {
-			Number::Real(real) => (!real.is_nan()).then_some(real != 0.),
-			Number::Complex(complex) => (!complex.re.is_nan() && !complex.im.is_nan()).then_some(complex != Complex::ZERO),
+			Number::Real(real) => real != 0.,
+			Number::Complex(complex) => complex != Complex::ZERO,
+		}
+	}
+
+	/// The number's canonical form: a zero imaginary part is dropped, since `n + 0i` is exactly `n`, and a signed zero is plain zero, so no zero-valued part can ever change a result.
+	pub fn canonical(self) -> Number {
+		let unsigned_zero = |x: f64| if x == 0. { 0. } else { x };
+		match self {
+			Number::Real(real) => Number::Real(unsigned_zero(real)),
+			Number::Complex(complex) if complex.im == 0. => Number::Real(unsigned_zero(complex.re)),
+			Number::Complex(complex) => Number::Complex(Complex::new(unsigned_zero(complex.re), unsigned_zero(complex.im))),
+		}
+	}
+
+	/// Whether any part is NaN, which no operation may produce: an indeterminate form is an evaluation error instead.
+	pub fn is_nan(self) -> bool {
+		match self {
+			Number::Real(real) => real.is_nan(),
+			Number::Complex(complex) => complex.re.is_nan() || complex.im.is_nan(),
 		}
 	}
 
@@ -108,9 +126,7 @@ impl Number {
 		// Logic and equality work uniformly across real and complex operands
 		match op {
 			BinaryOp::And | BinaryOp::Or => {
-				let (Some(lhs), Some(rhs)) = (self.as_bool(), other.as_bool()) else {
-					return Some(Number::Real(f64::NAN));
-				};
+				let (lhs, rhs) = (self.as_bool(), other.as_bool());
 				let result = if matches!(op, BinaryOp::And) { lhs && rhs } else { lhs || rhs };
 				return Some(Number::Real(result as u8 as f64));
 			}
@@ -133,7 +149,14 @@ impl Number {
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Modulo => lhs % rhs,
-					BinaryOp::Pow => lhs.powf(rhs),
+					BinaryOp::Pow => {
+						// A negative base under a fractional exponent has no real power, so it climbs to the principal complex one
+						let power = lhs.powf(rhs);
+						if power.is_nan() {
+							return Some(Number::Complex(Complex::new(lhs, 0.).powf(rhs)));
+						}
+						power
+					}
 					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
 					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
 					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
@@ -188,49 +211,28 @@ impl Number {
 		}
 	}
 
-	pub fn unary_op(self, op: UnaryOp) -> Number {
-		if matches!(op, UnaryOp::Not) {
-			return match self.as_bool() {
-				Some(boolean) => Number::Real(!boolean as u8 as f64),
-				None => Number::Real(f64::NAN),
-			};
-		}
-
-		match self {
-			Number::Real(real) => match op {
-				UnaryOp::Pos => Number::Real(real),
-				UnaryOp::Neg => Number::Real(-real),
-				UnaryOp::Fac => {
-					// n! for real n: use integer semantics when n is a
-					// non-negative integer, otherwise return NaN.
-					if !real.is_finite() {
-						return Number::Real(f64::NAN);
-					}
-					let truncated = real.trunc();
-					if truncated < 0. || (real - truncated).abs() > f64::EPSILON {
-						return Number::Real(f64::NAN);
-					}
-
-					// Return infinity above 170! since that overflows f64, which also keeps huge inputs from spinning the loop
-					let n = truncated as u64;
-					if n > 170 {
-						return Number::Real(f64::INFINITY);
-					}
-					let mut acc = 1_f64;
-					for k in 1..=n {
-						acc *= k as f64;
-					}
-					Number::Real(acc)
+	pub fn unary_op(self, op: UnaryOp) -> Option<Number> {
+		match op {
+			UnaryOp::Pos => Some(self),
+			UnaryOp::Neg => Some(match self {
+				Number::Real(real) => Number::Real(-real),
+				Number::Complex(complex) => Number::Complex(-complex),
+			}),
+			UnaryOp::Not => Some(Number::Real(!self.as_bool() as u8 as f64)),
+			UnaryOp::Fac => {
+				// A factorial is defined for whole numbers at or above zero
+				let Number::Real(real) = self else { return None };
+				let whole = real.round();
+				if !real.is_finite() || whole < 0. || (real - whole).abs() > f64::EPSILON {
+					return None;
 				}
-				UnaryOp::Not => unreachable!("handled above"),
-			},
 
-			Number::Complex(complex) => match op {
-				UnaryOp::Pos => Number::Complex(complex),
-				UnaryOp::Neg => Number::Complex(-complex),
-				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
-				UnaryOp::Not => unreachable!("handled above"),
-			},
+				// Infinity above 170!, which overflows f64, also keeps huge inputs from spinning the loop
+				if whole > 170. {
+					return Some(Number::Real(f64::INFINITY));
+				}
+				Some(Number::Real((1..=whole as u64).fold(1., |accumulated, k| accumulated * k as f64)))
+			}
 		}
 	}
 

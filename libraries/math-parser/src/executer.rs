@@ -13,11 +13,37 @@ pub enum EvalError {
 	#[error("Missing function: {0}")]
 	MissingFunction(String),
 
-	#[error("Wrong argument types for function call")]
+	#[error("Invalid arguments for function call")]
 	TypeError,
 
 	#[error("Unsupported operand types for operator")]
 	OperatorTypeError,
+
+	#[error("Indeterminate result, like `0/0` or `∞ - ∞`")]
+	Indeterminate,
+
+	#[error("Value of {0} is not a number")]
+	NotANumber(String),
+}
+
+/// Settles an operation's result: no operation may produce NaN, so an indeterminate form is an error, and the value takes
+/// its canonical form so that a zero imaginary part or a signed zero never changes a later result.
+fn settle(value: Value) -> Result<Value, EvalError> {
+	let Value::Number(number) = value;
+	if number.is_nan() {
+		return Err(EvalError::Indeterminate);
+	}
+	Ok(Value::Number(number.canonical()))
+}
+
+/// The canonical form of a value the host supplied for `name`, like [`settle`], except that NaN (which only a host can
+/// supply) is an error naming its source.
+fn canonical_host_value(name: &str, value: Value) -> Result<Value, EvalError> {
+	let Value::Number(number) = value;
+	if number.is_nan() {
+		return Err(EvalError::NotANumber(name.to_string()));
+	}
+	Ok(Value::Number(number.canonical()))
 }
 
 /// Resolves a name against the environment before the builtin constants, so a binding of exactly that spelling shadows the builtin.
@@ -45,12 +71,15 @@ impl Node {
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
-				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs).ok_or(EvalError::OperatorTypeError)?)),
+				(Value::Number(lhs), Value::Number(rhs)) => settle(Value::Number(lhs.binary_op(*op, rhs).ok_or(EvalError::OperatorTypeError)?)),
 			},
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
-				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
+				Value::Number(num) => settle(Value::Number(num.unary_op(*op).ok_or(EvalError::OperatorTypeError)?)),
 			},
-			Node::Var(name) => resolve_value(context, name).ok_or_else(|| EvalError::MissingValue(name.clone())),
+			Node::Var(name) => {
+				let value = resolve_value(context, name).ok_or_else(|| EvalError::MissingValue(name.clone()))?;
+				canonical_host_value(name, value)
+			}
 			Node::FnCall { name, expr } => {
 				// Arguments land in a stack buffer when they fit (builtins take at most 5), avoiding a heap allocation per call
 				let mut stack_values = [Value::from_f64(0.); 5];
@@ -72,28 +101,26 @@ impl Node {
 				};
 
 				if !prefixed && let Some(value) = context.run_function(bare_name, values) {
-					Ok(value)
+					settle(canonical_host_value(bare_name, value)?)
 				} else if let Some(function) = builtin_function(bare_name) {
-					function(values).ok_or(EvalError::TypeError)
+					settle(function(values).ok_or(EvalError::TypeError)?)
 				} else if let Some((function, base)) = suffixed_function(bare_name) {
 					// A base-suffixed call like `log10(x)` runs the two-argument form with the suffix baked in as its second argument
 					let [value] = values else { return Err(EvalError::TypeError) };
-					function(&[*value, Value::from_f64(base)]).ok_or(EvalError::TypeError)
-				} else if let Some(Value::Number(value)) = resolve_value(context, name)
+					settle(function(&[*value, Value::from_f64(base)]).ok_or(EvalError::TypeError)?)
+				} else if let Some(value) = resolve_value(context, name)
 					&& let [Value::Number(argument)] = values
 				{
 					// A known value applied to one argument is implicit multiplication, so `x(2)` matches `2(3)` and `i(16)`
-					Ok(Value::Number(value.binary_op(BinaryOp::Mul, *argument).ok_or(EvalError::OperatorTypeError)?))
+					let Value::Number(value) = canonical_host_value(name, value)?;
+					settle(Value::Number(value.binary_op(BinaryOp::Mul, *argument).ok_or(EvalError::OperatorTypeError)?))
 				} else {
 					Err(EvalError::MissingFunction(name.to_string()))
 				}
 			}
 			Node::Conditional { condition, if_block, else_block } => {
-				// A NaN condition yields NaN rather than arbitrarily picking a branch
 				let Value::Number(number) = condition.eval(context)?;
-				let Some(condition) = number.as_bool() else { return Ok(Value::from_f64(f64::NAN)) };
-
-				if condition { if_block.eval(context) } else { else_block.eval(context) }
+				if number.as_bool() { if_block.eval(context) } else { else_block.eval(context) }
 			}
 		}
 	}
