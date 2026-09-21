@@ -250,9 +250,15 @@ impl Session {
 		Ok(session)
 	}
 
-	/// Apply a hot op without going through the broadcast stream.
+	/// Apply a hot op received from another peer.
 	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
+		self.document.clock.observe(hot_op.timestamp);
 		self.document.apply_hot_op(hot_op)
+	}
+
+	/// Drop hot ops stamped at or before `up_to` without retiring them, once another peer has retired them.
+	pub fn discard_hot_ops(&mut self, up_to: TimeStamp) {
+		self.document.hot_log.retain(|hot_op| hot_op.timestamp > up_to);
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -261,36 +267,48 @@ impl Session {
 		self.document.replay_hot_op(hot_op)
 	}
 
-	/// Integrate `incoming` retired deltas from another branch and emit a [`RegistryDelta::Merge`]
-	/// joining the resulting tips, returning the new merge `Rev` (or `None` if `incoming` adds nothing).
-	/// Applies each incoming op to the registry, then hands the set to [`History::merge`]. Incoming
-	/// deltas must arrive in causal order.
-	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<Option<Rev>, CrdtError> {
+	/// Integrate `incoming` retired deltas (in causal order) from another peer. Moves `head` forward
+	/// without a new delta when the incoming history extends it, otherwise joins `head` and the
+	/// incoming tips with a [`RegistryDelta::Merge`].
+	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<MergeOutcome, CrdtError> {
 		let mut absorbed: Vec<Delta> = Vec::new();
 		for delta in incoming {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
+			self.document.clock.observe(delta.timestamp);
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
 			absorbed.push(delta);
 		}
 		if absorbed.is_empty() {
-			return Ok(None);
+			return Ok(MergeOutcome::NoOp);
 		}
 
+		let absorbed_ids: HashSet<Rev> = absorbed.iter().map(|delta| delta.id).collect();
 		self.document.history.merge(absorbed);
-		let tips = self.document.history.tips();
-		let timestamp = self.document.clock.tick();
-		let merge = Delta::merge(tips, self.document.peer, timestamp);
-		let merge_rev = merge.id;
-		// The merge's parents are the current tips, so it sorts last: `push` preserves the canonical
-		// order without re-sorting the whole history.
-		self.document.history.push(merge);
-		self.document.head = Some(merge_rev);
+
+		let history = &self.document.history;
+		let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();
+		candidates.extend(self.document.head);
+		let is_dominated = |candidate: Rev| candidates.iter().any(|&other| other != candidate && history.is_ancestor(candidate, other));
+		let parents: Vec<Rev> = candidates.iter().copied().filter(|&candidate| !is_dominated(candidate)).collect();
+
+		let outcome = match parents.as_slice() {
+			[tip] => MergeOutcome::FastForward(*tip),
+			_ => {
+				let timestamp = self.document.clock.tick();
+				let merge = Delta::merge(parents, self.document.peer, timestamp);
+				let merge_rev = merge.id;
+				// Its parents are tips, so `push` keeps the canonical order without a re-sort.
+				self.document.history.push(merge);
+				MergeOutcome::Merged(merge_rev)
+			}
+		};
+		self.document.head = outcome.head();
 
 		// Merge runs with an empty hot log; keep the retired snapshot in step with the working registry.
 		self.document.retired_snapshot = self.document.working_registry.clone();
-		Ok(Some(merge_rev))
+		Ok(outcome)
 	}
 
 	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, re-applied with fresh
@@ -441,6 +459,17 @@ impl Session {
 		self.document.history.iter()
 	}
 
+	/// Revs sampled at exponentially growing distances behind `head`, for a remote peer to locate what
+	/// this session is missing (see [`History::sample_chain`]).
+	pub fn known_revs(&self) -> Vec<Rev> {
+		self.document.head.map(|head| self.document.history.sample_chain(head)).unwrap_or_default()
+	}
+
+	/// Retired deltas not reachable from `known`, in replay order.
+	pub fn deltas_unknown_to(&self, known: impl IntoIterator<Item = Rev>) -> Vec<&Delta> {
+		self.document.history.deltas_unknown_to(known)
+	}
+
 	/// The retired delta for `rev`, or `None` if it isn't in history. O(1) lookup, for callers that
 	/// already hold the revs they want (e.g. persisting a freshly-retired batch) and don't need a scan.
 	pub fn delta(&self, rev: Rev) -> Option<&Delta> {
@@ -563,6 +592,23 @@ pub enum CommitError {
 impl Default for Session {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MergeOutcome {
+	NoOp,
+	FastForward(Rev),
+	Merged(Rev),
+}
+
+impl MergeOutcome {
+	/// The head after the merge, or `None` when nothing changed.
+	pub fn head(self) -> Option<Rev> {
+		match self {
+			Self::NoOp => None,
+			Self::FastForward(rev) | Self::Merged(rev) => Some(rev),
+		}
 	}
 }
 

@@ -182,15 +182,39 @@ fn merge_converges_to_identical_history() {
 	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
 	let deltas_a = session_a.cloned_deltas();
 	let deltas_b = session_b.cloned_deltas();
-	let merge_a = session_a.merge(deltas_b).expect("merge into A failed").expect("A produced a merge");
-	let merge_b = session_b.merge(deltas_a).expect("merge into B failed").expect("B produced a merge");
+	let merge_a = session_a.merge(deltas_b).expect("merge into A failed");
+	let merge_b = session_b.merge(deltas_a).expect("merge into B failed");
 
+	assert!(matches!(merge_a, crate::MergeOutcome::Merged(_)), "divergent branches must produce a merge delta");
 	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
 
 	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
 	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
 	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
 	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
+}
+
+/// A peer whose history is a prefix of the incoming one moves its head forward without minting a
+/// merge delta, and the negotiated transfer sends only the deltas past the sampled known revs.
+#[test]
+fn merge_fast_forwards_a_prefix_history() {
+	let mut session_a = Session::with_peer(PeerId(1));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
+	let mut session_b = session_a.clone();
+
+	for value in 1..=5 {
+		session_b.commit_op_for_test(set_document_attribute("compute::b", value)).expect("B edit");
+	}
+
+	let known = session_a.known_revs();
+	let missing: Vec<_> = session_b.deltas_unknown_to(known).into_iter().cloned().collect();
+	assert_eq!(missing.len(), 5, "only B's new commits are unknown to A");
+
+	let outcome = session_a.merge(missing).expect("merge failed");
+	assert_eq!(outcome, crate::MergeOutcome::FastForward(session_b.head_rev().unwrap()));
+	assert_eq!(session_a.history().count(), session_b.history().count(), "no merge delta was added");
+
+	assert_eq!(session_b.merge(session_a.cloned_deltas()).expect("merge failed"), crate::MergeOutcome::NoOp);
 }
 
 /// Resurrection must reach into a merged-in branch: a network added then removed on the other peer's
