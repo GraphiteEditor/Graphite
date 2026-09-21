@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
-use crate::constants::{builtin_function, suffixed_function};
+use crate::constants::{Builtin, builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::lexer::Constant;
 use crate::value::{Number, Value};
@@ -141,7 +141,7 @@ impl Node {
 
 				if !prefixed && let Some(value) = context.run_function(bare_name, values) {
 					settle(canonical_host_value(bare_name, value)?)
-				} else if let Some(function) = builtin_function(bare_name) {
+				} else if let Some(Builtin { function, .. }) = builtin_function(bare_name) {
 					settle(function(values).ok_or(EvalError::TypeError)?)
 				} else if let Some((function, base)) = suffixed_function(bare_name) {
 					// A base-suffixed call like `log10(x)` runs the two-argument form with the suffix baked in as its second argument

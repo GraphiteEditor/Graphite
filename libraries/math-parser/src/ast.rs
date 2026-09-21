@@ -32,6 +32,16 @@ pub enum BinaryOp {
 }
 
 impl BinaryOp {
+	/// The operand that leaves the other unchanged, like 0 for `+`, which is also what a fold of no items yields.
+	pub fn identity_element(self) -> Option<f64> {
+		use BinaryOp as Op;
+		match self {
+			Op::Add | Op::Or => Some(0.),
+			Op::Mul | Op::And => Some(1.),
+			Op::Sub | Op::Div | Op::Pow | Op::Leq | Op::Lt | Op::Geq | Op::Gt | Op::Neq | Op::Eq => None,
+		}
+	}
+
 	/// Whether a chain of comparisons reads in one direction: `<`/`<=`/`==` ascending, `>`/`>=`/`==` descending, or `!=` alone.
 	pub fn chain_in_one_direction(ops: &[BinaryOp]) -> bool {
 		let ascending = ops.iter().all(|op| matches!(op, BinaryOp::Lt | BinaryOp::Leq | BinaryOp::Eq));

@@ -27,10 +27,8 @@ impl Value {
 	}
 
 	pub fn as_real(&self) -> Option<f64> {
-		match self {
-			Self::Number(Number::Real(val)) => Some(*val),
-			_ => None,
-		}
+		let Self::Number(number) = self;
+		number.as_real()
 	}
 
 	/// Reads the value as a single-precision float, or `None` if it isn't a real number.
@@ -94,6 +92,15 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
+	/// Reads the number as a real, or `None` if it has an imaginary part.
+	pub fn as_real(self) -> Option<f64> {
+		match self {
+			Number::Real(real) => Some(real),
+			// Canonical form stores a zero imaginary part as a real, so a canonical complex number is never real
+			Number::Complex(_) => None,
+		}
+	}
+
 	/// Widens the number into the complex plane, since every real number is a complex number without an imaginary part.
 	pub fn as_complex(self) -> Complex {
 		match self {
