@@ -218,6 +218,11 @@ mod editor_commands {
 		DialogMessage::RequestNewDocumentDialog.into()
 	}
 
+	/// Join the live session named in the page's `?session=` parameter
+	fn join_session(token: String) -> Message {
+		SyncMessage::Join { token }.into()
+	}
+
 	fn trigger_auto_save(document_id: u64) -> Message {
 		PortfolioMessage::AutoSaveDocument { document_id: DocumentId(document_id) }.into()
 	}

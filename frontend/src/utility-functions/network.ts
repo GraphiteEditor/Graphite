@@ -34,6 +34,18 @@ export function requestWithUploadDownloadProgress(
 	return [promise, xhrValue];
 }
 
+// If the URL carries a `?session=` token, join that live session and drop it from the address bar
+export function joinSessionFromUrl(editor: EditorWrapper) {
+	const token = new URLSearchParams(window.location.search).get("session");
+	if (!token) return;
+
+	editor.joinSession(token);
+
+	const url = new URL(window.location.href);
+	url.searchParams.delete("session");
+	history.replaceState("", "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 // If the URL hash fragment contains a demo artwork path (e.g. #demo/isometric-light), fetch and open it
 export async function loadDemoArtwork(editor: EditorWrapper) {
 	const demoArtwork = window.location.hash.trim().match(/#demo\/(.*)/)?.[1];

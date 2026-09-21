@@ -16,6 +16,13 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 		navigator.clipboard?.writeText?.(data.content);
 	});
 
+	subscriptions.subscribeFrontendMessage("TriggerSessionLinkCopy", (data) => {
+		const url = new URL(window.location.href);
+		url.hash = "";
+		url.search = `?session=${data.token}`;
+		navigator.clipboard?.writeText?.(url.toString());
+	});
+
 	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		editor.readSelection(readAtCaret(data.cut), data.cut);
 	});
@@ -30,6 +37,7 @@ export function destroyClipboardManager() {
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerSessionLinkCopy");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
 }

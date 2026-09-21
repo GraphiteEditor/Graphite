@@ -149,6 +149,10 @@ pub struct DocumentMessageHandler {
 	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
 	history: DocumentHistory,
+	/// Peers changed the registry and the interface hasn't been rebuilt from it yet, so a staged diff
+	/// would read as reverting their edits.
+	#[serde(skip)]
+	pub(crate) runtime_stale: bool,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -200,6 +204,7 @@ impl Default for DocumentMessageHandler {
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
+			runtime_stale: false,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -407,8 +412,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, preferences.validate_storage_round_trip, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, resource_storage, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, resource_storage, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -2031,7 +2036,7 @@ impl DocumentMessageHandler {
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
-		if self.history.storage().is_none() {
+		if self.history.storage().is_none() || self.runtime_stale {
 			return;
 		}
 
@@ -2109,6 +2114,10 @@ impl DocumentMessageHandler {
 		}
 
 		self.network_interface = rebuilt;
+		self.runtime_stale = false;
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
 
 		if validate {
 			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
@@ -2410,7 +2419,7 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
 			true
@@ -2418,7 +2427,21 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		if self.is_in_session() {
+			self.stage_session_undo(resource_storage);
+			return;
+		}
 		self.drive_storage_undo_redo(legacy_applied, true, validate, responses);
+	}
+
+	fn is_in_session(&self) -> bool {
+		self.storage().is_some_and(|gdd| gdd.role().is_some())
+	}
+
+	/// In a session every op is already public, so an undo is a new forward edit: the restored snapshot
+	/// diffs against the last staged state into the inverse ops, broadcast like any other change.
+	fn stage_session_undo(&mut self, resource_storage: &ResourceStorageMessageHandler) {
+		self.commit_storage_snapshot(&resource_storage.resources_mut(), false);
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2452,7 +2475,7 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
 			true
@@ -2460,6 +2483,10 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		if self.is_in_session() {
+			self.stage_session_undo(resource_storage);
+			return;
+		}
 		self.drive_storage_undo_redo(legacy_applied, false, validate, responses);
 	}
 

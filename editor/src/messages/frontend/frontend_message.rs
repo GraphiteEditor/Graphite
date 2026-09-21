@@ -150,6 +150,10 @@ pub enum FrontendMessage {
 		url: String,
 	},
 	TriggerClipboardRead,
+	/// Copy a link to join the live session behind `token`, built from the page's own origin.
+	TriggerSessionLinkCopy {
+		token: String,
+	},
 	TriggerClipboardWrite {
 		content: String,
 	},
