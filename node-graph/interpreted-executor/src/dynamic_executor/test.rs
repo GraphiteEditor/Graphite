@@ -538,6 +538,54 @@ fn number_value_formats_through_the_string_input_adapter() {
 	assert_eq!(result.map(|item| item.element().clone()), Some("42".to_string()), "The number should format as its text representation");
 }
 
+// A boolean wire feeding a number connector embeds as exactly 0 or 1 through the input adapter's `Convert` row
+#[test]
+fn bool_value_embeds_through_the_number_input_adapter() {
+	for (value, expected) in [(true, 1.), (false, 0.)] {
+		let bool_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(value).into()), vec![NodeId(0)]);
+
+		let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), bool_node), (NodeId(1), input_adapter_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A bool wire should resolve the adapter's embedding conversion row");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The embedding constructor should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert_eq!(result.map(|item| *item.element()), Some(expected), "{value} should embed as exactly {expected}");
+	}
+}
+
+// A boolean wire feeding a `String` connector formats as "true" or "false", not as its 0 or 1 number embedding
+#[test]
+fn bool_value_formats_through_the_string_input_adapter() {
+	for (value, expected) in [(true, "true"), (false, "false")] {
+		let bool_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(value).into()), vec![NodeId(0)]);
+
+		let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+		input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<String>");
+
+		let network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(1),
+			nodes: vec![(NodeId(0), bool_node), (NodeId(1), input_adapter_node)],
+		};
+		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).expect("A bool wire should resolve the adapter's formatting conversion row");
+		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The formatting constructor should instantiate");
+
+		let context: Context = None;
+		let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		assert_eq!(result.map(|item| item.element().clone()), Some(expected.to_string()), "{value} should format as `{expected}`");
+	}
+}
+
 // A `List` wire feeding a `ListDyn` connector erases its element type through the input adapter's `Into` row
 #[test]
 fn list_wire_erases_through_the_list_dyn_input_adapter() {

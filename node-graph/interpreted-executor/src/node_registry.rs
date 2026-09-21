@@ -551,8 +551,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(convert_adapter_wildcard!(from: u64, to: [f64, f32, u32, i32, i64, DVec2, String]));
 	node_types.extend(convert_adapter_wildcard!(from: i32, to: [f64, f32, u32, u64, i64, DVec2, String]));
 	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, f32, u32, u64, i32, DVec2, String]));
-	// Bool, position, and transform wires may feed a ranked `String` connector by formatting each element as text
-	node_types.extend(convert_adapter_node!(from_element: bool, element: String));
+	// A bool embeds in number types as exactly 0 or 1 and formats as text as true or false, but deliberately has no `DVec2` row, which would silently turn a stray bool wire into (1., 1.)
+	node_types.extend(convert_adapter_wildcard!(from: bool, to: [f64, f32, u32, u64, i32, i64, String]));
+	// Position and transform wires may feed a ranked `String` connector by formatting each element as text
 	node_types.extend(convert_adapter_node!(from_element: DVec2, element: String));
 	node_types.extend(convert_adapter_node!(from_element: DAffine2, element: String));
 	// The sanctioned attribute value conversions: an Item wire's elements box per cell, while a List wire boxes whole as one value
