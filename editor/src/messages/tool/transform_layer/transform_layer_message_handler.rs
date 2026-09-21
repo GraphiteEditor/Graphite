@@ -1184,8 +1184,8 @@ mod test_transform_layer {
 
 		let new_scale_x = final_transform.matrix2.x_axis.length();
 		let new_scale_y = final_transform.matrix2.y_axis.length();
-		assert!(new_scale_x > 0., "After rescaling, scale factor X should be non-zero");
-		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be non-zero");
+		assert!(new_scale_x > 0., "After rescaling, scale factor X should be nonzero");
+		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be nonzero");
 	}
 
 	#[tokio::test]

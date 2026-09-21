@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Literal, Node};
-use crate::constants::builtin_function;
+use crate::constants::{builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::value::{Number, Value};
 use thiserror::Error;
@@ -50,6 +50,10 @@ impl Node {
 
 				if let Some(function) = builtin_function(name) {
 					function(values).ok_or(EvalError::TypeError)
+				} else if let Some((function, base)) = suffixed_function(name) {
+					// A base-suffixed call like `log10(x)` runs the two-argument form with the suffix baked in as its second argument
+					let [value] = values else { return Err(EvalError::TypeError) };
+					function(&[*value, Value::from_f64(base)]).ok_or(EvalError::TypeError)
 				} else if let Some(val) = context.run_function(name, values) {
 					Ok(val)
 				} else if let Some(Value::Number(value)) = context.get_value(name)
@@ -143,9 +147,9 @@ mod tests {
 			expr: Box::new(Node::Lit(Literal::Float(3.))),
 			op: UnaryOp::Neg,
 		},
-		test_sqrt: Value::from_f64(2.) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(4.))),
-			op: UnaryOp::Sqrt,
+		test_sqrt: Value::from_f64(2.) => Node::FnCall {
+			name: "sqrt".to_string(),
+			expr: vec![Node::Lit(Literal::Float(4.))],
 		},
 		 test_power: Value::from_f64(8.) => Node::BinOp {
 			 lhs: Box::new(Node::Lit(Literal::Float(2.))),

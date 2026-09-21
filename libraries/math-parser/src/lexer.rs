@@ -16,6 +16,7 @@ pub enum Token<'src> {
 	AndAnd,
 	OrOr,
 	Bang,
+	Not,
 
 	LParen,
 	RParen,
@@ -50,6 +51,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::AndAnd => f.write_str("&&"),
 			Token::OrOr => f.write_str("||"),
 			Token::Bang => f.write_str("!"),
+			Token::Not => f.write_str("¬"),
 
 			Token::LParen => f.write_str("("),
 			Token::RParen => f.write_str(")"),
@@ -83,7 +85,8 @@ pub enum Constant {
 	Phi,
 	Inf,
 	I,
-	G,
+	True,
+	False,
 }
 
 impl Constant {
@@ -94,25 +97,34 @@ impl Constant {
 			Pi => Literal::Float(consts::PI),
 			Tau => Literal::Float(consts::TAU),
 			E => Literal::Float(consts::E),
-			Phi => Literal::Float(1.618_033_988_75),
+			// TODO: Replace with f64::GOLDEN_RATIO when we bump MSRV to 1.94
+			Phi => Literal::Float(1.618033988749895),
 			Inf => Literal::Float(f64::INFINITY),
 			I => Literal::Complex(Complex64::new(0., 1.)),
-			G => Literal::Float(9.80665),
+			True => Literal::Float(1.),
+			False => Literal::Float(0.),
 		}
 	}
 
+	/// The word and typeset spellings, matched exactly: constants are lowercase-only, since uppercase-initial names are reserved for matrices.
 	pub fn from_name(name: &str) -> Option<Constant> {
 		use Constant::*;
-		Some(match name {
-			"pi" | "π" => Pi,
-			"tau" | "τ" => Tau,
-			"e" => E,
-			"phi" | "φ" => Phi,
-			"inf" | "∞" => Inf,
-			"i" => I,
-			"G" => G,
-			_ => return None,
-		})
+		let spellings = [
+			("e", E),
+			("i", I),
+			("pi", Pi),
+			("π", Pi),
+			("tau", Tau),
+			("τ", Tau),
+			("phi", Phi),
+			("φ", Phi),
+			("inf", Inf),
+			("infinity", Inf),
+			("∞", Inf),
+			("true", True),
+			("false", False),
+		];
+		spellings.into_iter().find_map(|(spelling, constant)| (name == spelling).then_some(constant))
 	}
 }
 
@@ -126,7 +138,8 @@ impl fmt::Display for Constant {
 			Phi => "phi",
 			Inf => "inf",
 			I => "i",
-			G => "G",
+			True => "true",
+			False => "false",
 		})
 	}
 }
@@ -222,6 +235,22 @@ impl<'a> Lexer<'a> {
 		self.input[start_pos..self.pos].parse::<f64>().ok()
 	}
 
+	/// Consumes identifier continuation characters: alphanumerics, underscores, and a decimal point sandwiched
+	/// between digits so that base-suffixed function names like `log3.25` lex as a single identifier.
+	fn consume_identifier_body(&mut self, first: char) -> &'a str {
+		let start = self.pos;
+		let mut previous = first;
+		while let Some(c) = self.peek() {
+			let dot_between_digits = c == '.' && previous.is_ascii_digit() && self.input[self.pos + 1..].chars().next().is_some_and(|next| next.is_ascii_digit());
+			if !(c.is_alphanumeric() || c == '_' || dot_between_digits) {
+				break;
+			}
+			previous = c;
+			self.bump();
+		}
+		&self.input[start..self.pos]
+	}
+
 	fn skip_ws(&mut self) {
 		self.consume_while(char::is_whitespace);
 	}
@@ -260,6 +289,15 @@ impl<'a> Lexer<'a> {
 			'/' => Slash,
 			'^' => Caret,
 			'≠' => Neq,
+
+			// Typeset math symbol aliases
+			'−' => Minus,
+			'×' | '⋅' => Star,
+			'÷' => Slash,
+			'∧' => AndAnd,
+			'∨' => OrOr,
+			// Its own token rather than a `Bang` alias, since `!` is also the postfix factorial and `5¬` is not one
+			'¬' => Not,
 
 			'!' => {
 				if self.peek() == Some('=') {
@@ -320,7 +358,7 @@ impl<'a> Lexer<'a> {
 			}
 
 			_ => {
-				self.consume_while(|c| c.is_alphanumeric() || c == '_');
+				self.consume_identifier_body(ch);
 				let ident = &self.input[start..self.pos];
 
 				if ident == "if" {
@@ -330,6 +368,7 @@ impl<'a> Lexer<'a> {
 				} else if ch.is_alphanumeric() {
 					Ident(ident)
 				} else {
+					// Punctuation never begins a name, which leaves `#`, `$`, `~`, and `@` free to become namespace prefixes once a host scope needs them
 					Error
 				}
 			}

@@ -1,5 +1,5 @@
 pub mod ast;
-mod constants;
+pub mod constants;
 pub mod context;
 pub mod executer;
 pub mod lexer;
@@ -20,7 +20,7 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use value::Number;
+	use value::{Complex, Number};
 
 	const EPSILON: f64 = 1e-10_f64;
 
@@ -41,11 +41,55 @@ mod tests {
 	}
 
 	#[test]
+	fn not_sign_is_prefix_only() {
+		// `¬` spells only the prefix logical not, so it must not stand in for `!` in its postfix factorial role
+		for input in ["5¬", "5¬3", "(2 + 3)¬", "3¬¬"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
 	fn juxtaposed_numbers_fail_to_parse() {
 		// Adjacent number literals like digit-grouped `10 000` must not silently multiply
 		for input in ["2 3", "10 000", "1 .5", "sqrt(4).5", "2 3 + 1"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
+	}
+
+	#[test]
+	fn dot_led_function_suffixes_fail_to_parse() {
+		// A `.`-led base suffix must stay an error, keeping dot-after-identifier free for possible future accessor syntax (the supported spelling is `log0.5`)
+		for input in ["log.5(8)", "log.5", "root.5(9)"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn scientific_function_suffixes_are_not_bases() {
+		struct ScientificName;
+		impl context::ValueProvider for ScientificName {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				(name == "log2e5").then(|| Value::from_f64(10.))
+			}
+		}
+
+		// A base is plain decimal, so `log2e5(8)` reads as the variable `log2e5` times 8, never a base-200000 log
+		let result = ast::Node::try_parse_from_str("log2e5(8)").unwrap().eval(&EvalContext::new(ScientificName, context::NothingMap));
+		assert_eq!(result.unwrap().as_real(), Some(80.));
+	}
+
+	#[test]
+	fn underscore_dot_suffix_stays_implicit_multiplication() {
+		struct LogUnderscore;
+		impl context::ValueProvider for LogUnderscore {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				(name == "log_").then(|| Value::from_f64(10.))
+			}
+		}
+
+		// `log_.5(8)` is not a suffixed function call: it reads as the variable `log_` times 0.5 times 8
+		let result = ast::Node::try_parse_from_str("log_.5(8)").unwrap().eval(&EvalContext::new(LogUnderscore, context::NothingMap));
+		assert_eq!(result.unwrap().as_real(), Some(40.));
 	}
 
 	#[test]
@@ -255,18 +299,12 @@ mod tests {
 		logical_not_nonzero: "!5" => 0.,
 		logical_not_expression: "!(2 - 2)" => 1.,
 
-		// Logical helpers as functions
-		logical_isnan: "isnan(0/0)" => 1.,
-		logical_eq: "eq(2, 2)" => 1.,
-		logical_greater: "greater(3, 2)" => 1.,
-
 		// Log / exp / pow / root
 		log_ln: "ln(e)" => 1.,
 		log_log10: "log(100)" => 2.,
 		log_log2: "log2(8)" => 3.,
 		log_change_of_base: "log(8, 2)" => 3.,
 		exp_function: "exp(1)" => std::f64::consts::E,
-		pow_real: "pow(2, 3)" => 8.,
 		root_square: "root(9, 2)" => 3.,
 		root_cube: "root(8, 3)" => 2.,
 
@@ -286,11 +324,46 @@ mod tests {
 
 		// Geometry / mapping extras
 		geometry_hypot: "hypot(3, 4)" => 5.,
+
+		// Minimum and maximum accept two or more arguments
+		mapping_min: "min(3, 7)" => 3.,
+		mapping_max: "max(3, 7)" => 7.,
+		mapping_min_variadic: "min(5, 2, 8, 4)" => 2.,
+		mapping_max_variadic: "max(5, 2, 8, 4)" => 8.,
+		mapping_min_skips_nan: "min(sqrt(-1), 5)" => 5.,
+		mapping_max_skips_nan: "max(sqrt(-1), 5)" => 5.,
+		mapping_min_all_nan: "min(sqrt(-1))" => f64::NAN,
+		mapping_max_all_nan: "max(sqrt(-1))" => f64::NAN,
+
+		// Typeset math symbol aliases
+		alias_minus_sign: "5 − 3" => 2.,
+		alias_unary_minus_sign: "−5 + 6" => 1.,
+		alias_multiplication_sign: "3 × 4" => 12.,
+		alias_dot_operator: "3 ⋅ 4" => 12.,
+		alias_division_sign: "8 ÷ 2" => 4.,
+		alias_logical_and: "if(1 ∧ 1, 2, 3)" => 2.,
+		alias_logical_or: "if(0 ∨ 1, 2, 3)" => 2.,
+		alias_logical_not: "¬0" => 1.,
 		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
 
 		// GCD / LCM
 		gcd_simple: "gcd(24, 18)" => 6.,
 		lcm_simple: "lcm(4, 6)" => 12.,
+		gcd_negative_operand: "gcd(-24, 18)" => 6.,
+		lcm_negative_operand: "lcm(-4, 6)" => 12.,
+
+		// Combinatorics over whole numbers
+		combinatorics_choose: "choose(5, 2)" => 10.,
+		combinatorics_choose_symmetric: "choose(30, 28)" => 435.,
+		combinatorics_choose_beyond_n: "choose(3, 5)" => 0.,
+		combinatorics_pick: "pick(5, 2)" => 20.,
+		combinatorics_pick_all: "pick(4, 4)" => 24.,
+		// A result beyond f64 stops at infinity instead of stepping through quadrillions of terms
+		combinatorics_choose_overflows: "choose(9007199254740992, 4503599627370496)" => f64::INFINITY,
+		combinatorics_pick_overflows: "pick(9007199254740992, 9007199254740992)" => f64::INFINITY,
+
+		// Truth values are the numbers 1 and 0
+		constant_truth_values: "true + true - false" => 2.,
 
 		// atan2
 		trig_atan2_axis: "atan2(1, 0)" => std::f64::consts::FRAC_PI_2,
@@ -343,5 +416,50 @@ mod tests {
 
 		// Integer functions reject inputs beyond f64's exact integer range
 		gcd_beyond_exact_integers: "gcd(10000000000000000000, 2)" => f64::NAN,
+
+		// Implicit multiplication with parenthesized and negative-coefficient operands
+		implicit_multiplication_parenthesized_negative: "2 (-3)" => -6.,
+		implicit_multiplication_glued_parenthesized_negative: "2(-3)" => -6.,
+		implicit_multiplication_negative_coefficient: "-3(2)" => -6.,
+
+		// Unary plus
+		unary_plus: "+5" => 5.,
+		unary_plus_spaced_addition: "1 +2" => 3.,
+		unary_plus_exponent: "2^+3" => 8.,
+
+		// Base-suffixed logarithm and root function names
+		log_suffixed: "log10(100)" => 2.,
+		log_suffixed_underscore: "log_10(100)" => 2.,
+		log_suffixed_fractional_base: "log3.25(5)" => 5f64.ln() / 3.25f64.ln(),
+		root_suffixed: "root2(9)" => 3.,
+		root_suffixed_underscore: "root_3(8)" => 2.,
+
+		// Change of base widens into the complex plane, including through the base-suffixed spellings
+		log_complex_change_of_base: "log(i, 2)" => Complex::new(0., std::f64::consts::FRAC_PI_2 / std::f64::consts::LN_2),
+		log_complex_suffixed_base: "log3(i)" => Complex::new(0., std::f64::consts::FRAC_PI_2 / 3f64.ln()),
+	}
+
+	#[test]
+	fn sigils_do_not_begin_names() {
+		// Punctuation never begins a name, so these stay available as future namespace prefixes
+		for input in ["# + 1", "#foo", "$", "$foo", "~foo * 2", "@foo", "2 ~ 3"] {
+			assert!(ast::Node::try_parse_from_str(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn value_accessors_read_reals_only() {
+		let value = evaluate("2.6").unwrap().unwrap();
+		assert_eq!(value.as_f32(), Some(2.6_f32));
+		assert_eq!(value.as_u8(), Some(3));
+		assert_eq!(value.as_i32(), Some(3));
+
+		let negative = evaluate("-2.6").unwrap().unwrap();
+		assert_eq!(negative.as_i8(), Some(-3));
+		assert_eq!(negative.as_u8(), None);
+
+		assert_eq!(evaluate("300").unwrap().unwrap().as_u8(), None);
+		assert_eq!(evaluate("i").unwrap().unwrap().as_i64(), None);
+		assert_eq!(evaluate("inf").unwrap().unwrap().as_u64(), None);
 	}
 }

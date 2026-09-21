@@ -7,6 +7,20 @@ pub enum Value {
 	Number(Number),
 }
 
+/// Generates accessors reading the value rounded to the nearest whole number of the target integer type.
+macro_rules! integer_accessors {
+	($($fn_name:ident: $int:ty),* $(,)?) => {
+		$(
+			#[doc = concat!("Reads the value rounded to the nearest whole `", stringify!($int), "`, or `None` if it isn't a real number, isn't finite, or lies outside the type's range.")]
+			pub fn $fn_name(&self) -> Option<$int> {
+				let rounded = self.as_real()?.round();
+				// The MAX comparison is one float rounding step generous for the widest types, where the cast saturates
+				(rounded.is_finite() && rounded >= <$int>::MIN as f64 && rounded <= <$int>::MAX as f64).then_some(rounded as $int)
+			}
+		)*
+	};
+}
+
 impl Value {
 	pub fn from_f64(x: f64) -> Self {
 		Self::Number(Number::Real(x))
@@ -18,11 +32,35 @@ impl Value {
 			_ => None,
 		}
 	}
+
+	/// Reads the value as a single-precision float, or `None` if it isn't a real number.
+	pub fn as_f32(&self) -> Option<f32> {
+		self.as_real().map(|real| real as f32)
+	}
+
+	integer_accessors! {
+		as_u8: u8,
+		as_u16: u16,
+		as_u32: u32,
+		as_u64: u64,
+		as_u128: u128,
+		as_i8: i8,
+		as_i16: i16,
+		as_i32: i32,
+		as_i64: i64,
+		as_i128: i128,
+	}
 }
 
 impl From<f64> for Value {
 	fn from(x: f64) -> Self {
 		Self::from_f64(x)
+	}
+}
+
+impl From<Complex> for Value {
+	fn from(complex: Complex) -> Self {
+		Self::Number(Number::Complex(complex))
 	}
 }
 
@@ -50,6 +88,14 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
+	/// Widens the number into the complex plane, since every real number is a complex number without an imaginary part.
+	pub fn as_complex(self) -> Complex {
+		match self {
+			Number::Real(real) => Complex::new(real, 0.),
+			Number::Complex(complex) => complex,
+		}
+	}
+
 	/// The value's truthiness for conditions and logic operators, or `None` for NaN values, which poison the result rather than acting as a boolean.
 	pub fn as_bool(self) -> Option<bool> {
 		match self {
@@ -152,8 +198,8 @@ impl Number {
 
 		match self {
 			Number::Real(real) => match op {
+				UnaryOp::Pos => Number::Real(real),
 				UnaryOp::Neg => Number::Real(-real),
-				UnaryOp::Sqrt => Number::Real(real.sqrt()),
 				UnaryOp::Fac => {
 					// n! for real n: use integer semantics when n is a
 					// non-negative integer, otherwise return NaN.
@@ -180,8 +226,8 @@ impl Number {
 			},
 
 			Number::Complex(complex) => match op {
+				UnaryOp::Pos => Number::Complex(complex),
 				UnaryOp::Neg => Number::Complex(-complex),
-				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
 				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
 				UnaryOp::Not => unreachable!("handled above"),
 			},
