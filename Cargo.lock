@@ -1769,6 +1769,7 @@ dependencies = [
  "graph-craft",
  "graphene-resource",
  "log",
+ "peer-transport",
  "rmp-serde",
  "serde",
  "serde_json",

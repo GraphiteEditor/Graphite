@@ -1,5 +1,7 @@
-use document_graph_storage::{CrdtError, Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp};
+use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp};
 use std::collections::HashSet;
+
+pub type TargetError = Box<dyn std::error::Error>;
 
 /// The document state a `Replica` reads from and applies remote changes to.
 pub trait SyncTarget {
@@ -12,20 +14,22 @@ pub trait SyncTarget {
 	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta>;
 
 	/// Replace all state with the given retired state.
-	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), CrdtError>;
-	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), CrdtError>;
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), CrdtError>;
+	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;
+	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError>;
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), TargetError>;
 
 	/// Referenced resources whose bytes are not available locally.
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
 		HashSet::new()
 	}
+	/// `None` when the bytes can't be produced synchronously; the request is then surfaced as an event.
 	fn resource_bytes(&self, hash: ResourceHash) -> Option<Vec<u8>> {
 		let _ = hash;
 		None
 	}
-	fn store_resource(&mut self, hash: ResourceHash, bytes: Vec<u8>) {
+	fn store_resource(&mut self, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), TargetError> {
 		let _ = (hash, bytes);
+		Ok(())
 	}
 }
 
@@ -58,19 +62,19 @@ impl SyncTarget for Session {
 		Session::deltas_unknown_to(self, known.iter().copied()).into_iter().cloned().collect()
 	}
 
-	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), CrdtError> {
+	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
 		*self = Session::load(self.peer(), registry, history, head, Vec::new(), self.next_node_counter());
 		Ok(())
 	}
 
-	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), CrdtError> {
+	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
 		for hot_op in ops {
 			self.apply_hot_op(hot_op)?;
 		}
 		Ok(())
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), CrdtError> {
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires_up_to: Option<TimeStamp>) -> Result<(), TargetError> {
 		if let Some(up_to) = retires_up_to {
 			self.discard_hot_ops(up_to);
 		}

@@ -1,7 +1,7 @@
 use crate::packet::{PacketError, Role, SyncPacket, SyncPayload};
 use crate::room::{Room, RoomEvent, TransportPeerId};
-use crate::target::SyncTarget;
-use document_graph_storage::{CrdtError, Delta, HotOp, PeerId, ResourceHash, TimeStamp, UserId};
+use crate::target::{SyncTarget, TargetError};
+use document_graph_storage::{Delta, HotOp, PeerId, ResourceHash, TimeStamp, UserId};
 use std::collections::HashMap;
 
 pub enum Event {
@@ -17,6 +17,11 @@ pub enum Event {
 	/// Remote ops changed the target.
 	Changed,
 	ResourceReceived(ResourceHash),
+	/// The target couldn't serve this synchronously; answer with `send_resource`.
+	ResourceRequested {
+		from: TransportPeerId,
+		hash: ResourceHash,
+	},
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -24,7 +29,7 @@ pub enum ReplicaError {
 	#[error(transparent)]
 	Packet(#[from] PacketError),
 	#[error(transparent)]
-	Crdt(#[from] CrdtError),
+	Target(#[from] TargetError),
 }
 
 struct RemotePeer {
@@ -102,6 +107,10 @@ impl Replica {
 			return Ok(());
 		}
 		self.room.broadcast(&SyncPacket::ResourceRequest(hashes))
+	}
+
+	pub fn send_resource(&mut self, to: TransportPeerId, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), PacketError> {
+		self.room.send(to, &SyncPacket::Resource { hash, bytes })
 	}
 
 	pub fn leave(&mut self) {
@@ -218,8 +227,9 @@ impl Replica {
 			}
 			SyncPacket::ResourceRequest(hashes) => {
 				for hash in hashes {
-					if let Some(bytes) = target.resource_bytes(hash) {
-						self.room.send(from, &SyncPacket::Resource { hash, bytes })?;
+					match target.resource_bytes(hash) {
+						Some(bytes) => self.room.send(from, &SyncPacket::Resource { hash, bytes })?,
+						None => events.push(Event::ResourceRequested { from, hash }),
 					}
 				}
 			}
@@ -228,7 +238,7 @@ impl Replica {
 					log::warn!("Resource from {from} does not match its hash; dropping");
 					return Ok(());
 				}
-				target.store_resource(hash, bytes);
+				target.store_resource(hash, bytes)?;
 				events.push(Event::ResourceReceived(hash));
 			}
 		}

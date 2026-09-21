@@ -7,7 +7,7 @@ mod token;
 pub use packet::{PacketError, Role, SyncPacket, SyncPayload};
 pub use replica::{Event, Replica, ReplicaError};
 pub use room::{Room, RoomEvent, TransportPeerId};
-pub use target::SyncTarget;
+pub use target::{SyncTarget, TargetError};
 pub use token::{InvalidSessionToken, SessionToken};
 
 pub use matchbox_socket::MessageLoopFuture;

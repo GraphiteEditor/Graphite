@@ -28,6 +28,8 @@ pub mod export;
 pub mod io;
 pub mod layout;
 pub mod manifest;
+#[cfg(feature = "network")]
+pub mod network;
 pub mod persist;
 pub mod resource;
 pub mod session_state;
@@ -68,8 +70,8 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
 /// read.
 /// `Clone` shares the working-copy container (`Arc<AnyContainer>`) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
-/// `Session` is cloned (a snapshot copy); the container is shared.
-#[derive(Clone)]
+/// `Session` is cloned (a snapshot copy); the container is shared. A live collaboration session is
+/// not carried over, so a clone is a read-only copy for asynchronous writes.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: Arc<AnyContainer>,
@@ -84,6 +86,23 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	#[cfg(feature = "network")]
+	pub(crate) network: Option<peer_transport::Replica>,
+}
+
+impl<L: Layout + Clone> Clone for Gdd<L> {
+	fn clone(&self) -> Self {
+		Self {
+			session: self.session.clone(),
+			working: self.working.clone(),
+			layout: self.layout.clone(),
+			manifest: self.manifest.clone(),
+			view_settings: self.view_settings.clone(),
+			network_view_settings: self.network_view_settings.clone(),
+			#[cfg(feature = "network")]
+			network: None,
+		}
+	}
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -168,6 +187,8 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
+			#[cfg(feature = "network")]
+			network: None,
 		})
 	}
 
@@ -190,6 +211,8 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
 			network_view_settings: std::collections::BTreeMap::new(),
+			#[cfg(feature = "network")]
+			network: None,
 		})
 	}
 }

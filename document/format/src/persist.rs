@@ -66,6 +66,10 @@ impl<L: Layout> Gdd<L> {
 		for hot_op in &hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_hot_ops(&hot_ops)?;
+		}
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
@@ -159,7 +163,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
 	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
-	fn rewrite_history(&mut self) -> Result<(), Error> {
+	pub(crate) fn rewrite_history(&mut self) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		for delta in self.session.history() {
 			self.manifest.codecs.history.append(&mut buffer, delta)?;
@@ -168,7 +172,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	fn persist_session_state(&mut self) -> Result<(), Error> {
+	pub(crate) fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			peer_id: self.session.peer(),
 			head_rev: self.session.head_rev(),
@@ -186,7 +190,7 @@ impl<L: Layout> Gdd<L> {
 	/// registry to match the persisted `head`, so any cursor move (undo/redo) that rewinds the working
 	/// registry without retiring must re-persist it or a reopen would read a registry inconsistent with
 	/// `head`. Synchronous and hot-path-safe (`write_non_blocking`).
-	fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
+	pub(crate) fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
 		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
 		Ok(())
 	}
@@ -215,7 +219,7 @@ impl<L: Layout> Gdd<L> {
 		self.persist_session_state()
 	}
 
-	fn append_hot_frame(&mut self, op: &HotOp) -> Result<(), Error> {
+	pub(crate) fn append_hot_frame(&mut self, op: &HotOp) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		self.manifest.codecs.hot_log.append(&mut buffer, op)?;
 		self.working.append_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &buffer)?;
@@ -232,6 +236,10 @@ impl<L: Layout> Gdd<L> {
 	/// `interaction_end`: mark the batch's last delta as an interaction boundary (one undo unit) before its
 	/// history frame is written, so the marker persists on reopen without a later frame rewrite.
 	fn retire_inner(&mut self, up_to: TimeStamp, interaction_end: bool) -> Result<Vec<Rev>, Error> {
+		if !self.retires_locally() {
+			return Ok(Vec::new());
+		}
+
 		let new_revs = self.session.retire(up_to)?;
 
 		// Mark before `append_history_deltas` so the on-disk frame carries the boundary.
@@ -243,17 +251,36 @@ impl<L: Layout> Gdd<L> {
 			self.append_history_deltas(&new_revs)?;
 		}
 
-		// Rewrite hot log with whatever survived retirement.
-		let mut hot_buffer = Vec::new();
-		for hot_op in self.session.hot_log() {
-			self.manifest.codecs.hot_log.append(&mut hot_buffer, hot_op)?;
-		}
-		self.working
-			.write_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &hot_buffer)?;
-
+		self.rewrite_hot_log()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			let deltas: Vec<_> = new_revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+			replica.broadcast_retired(&deltas, up_to)?;
+		}
+
 		Ok(new_revs)
+	}
+
+	/// Guests leave retirement to the session host and keep their hot ops until the host's retired
+	/// deltas arrive.
+	fn retires_locally(&self) -> bool {
+		#[cfg(feature = "network")]
+		{
+			self.network.as_ref().is_none_or(|replica| replica.role() == peer_transport::Role::Host)
+		}
+		#[cfg(not(feature = "network"))]
+		true
+	}
+
+	pub(crate) fn rewrite_hot_log(&mut self) -> Result<(), Error> {
+		let mut buffer = Vec::new();
+		for hot_op in self.session.hot_log() {
+			self.manifest.codecs.hot_log.append(&mut buffer, hot_op)?;
+		}
+		self.working.write_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &buffer)?;
+		Ok(())
 	}
 }
