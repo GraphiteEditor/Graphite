@@ -51,7 +51,59 @@ mod tests {
 	#[test]
 	fn juxtaposed_numbers_fail_to_parse() {
 		// Adjacent number literals like digit-grouped `10 000` must not silently multiply, and a `.`-led literal after any operand needs its leading zero
-		for input in ["2 3", "10 000", "1 .5", "2 3 + 1", "1e5 3", "2. 3", "sqrt(4).5", "sqrt(4) .5", "pi.5", "5!.5"] {
+		for input in ["2 3", "10 000", "1 .5", "2 3 + 1", "1e5 3", "2. 3", "sqrt(4).5", "sqrt(4) .5", "pi.5", "5!.5", "|2| .5"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn lone_double_bar_is_or() {
+		// Two opening bars with nothing after them could never close, so a lone `||` is the Or operator itself
+		for source in ["||", " || ", "\t||\n"] {
+			assert_eq!(lexer::Lexer::new(source).collect::<Vec<_>>(), [lexer::Token::OrOr], "`{source}`");
+		}
+	}
+
+	#[test]
+	fn unbalanced_magnitude_bars_fail_to_parse() {
+		// Each leaves a magnitude unclosed or empty, or an Or missing an operand, like `|1|2||`, which closes after the 1 and leaves `2 ||` dangling
+		for input in [
+			"|1|2||",
+			"|2",
+			"|1||2||",
+			"2|",
+			"|",
+			"||",
+			"|||",
+			"||||",
+			"| |",
+			"|1|2|",
+			"1 |",
+			"|1| |",
+			"||1|",
+			"|1||",
+			"|1 || |",
+			"|| 1",
+			"1 ||",
+			"|1|||0|",
+			"|0|||1|",
+			"|2*||-3||",
+			"(|1)|",
+			"|(1|)",
+			"| 1 | | 2",
+			"|2|-3|",
+			"0 || || 1",
+			"|| || 1",
+			"|1| ||",
+			"||1||2||",
+			"|1 ∨|",
+			"∨ 1",
+			"|∨|",
+			"|1|||",
+			"1 ||| 0",
+			"||| |",
+			"|0 || |1|",
+		] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -342,6 +394,7 @@ mod tests {
 		implicit_multiplication_trailing_number_after_name_run: "2pi 3" => 6. * std::f64::consts::PI,
 		implicit_multiplication_trailing_number_after_factorial: "3! 2" => 12.,
 		implicit_multiplication_trailing_number_after_infinity: "∞ 2" => f64::INFINITY,
+		implicit_multiplication_trailing_number_after_magnitude: "|2| 3" => 6.,
 
 		// Factorial (postfix !)
 		factorial_simple: "5!" => 120.,
@@ -569,9 +622,125 @@ mod tests {
 		climb_sqrt: "sqrt(-4)" => Complex::new(0., 2.),
 		climb_ln: "ln(-1)" => Complex::new(0., std::f64::consts::PI),
 		climb_log_base: "log(-1, 10)" => Complex::new(0., std::f64::consts::PI / std::f64::consts::LN_10),
-		climb_asin: "abs(sin(asin(2)))" => 2.,
-		climb_acosh: "abs(cosh(acosh(0.5)))" => 0.5,
-		climb_power: "abs((-8)^(1/3))" => 2.,
+		climb_asin: "|sin(asin(2))|" => 2.,
+		climb_acosh: "|cosh(acosh(0.5))|" => 0.5,
+		climb_power: "|(-8)^(1/3)|" => 2.,
+
+		// Magnitude bars: absolute value on the reals and the Euclidean magnitude beyond, with `||` reading as Or unless two magnitudes are open
+		magnitude_real: "|-3|" => 3.,
+		mapping_abs: "abs(-3)" => 3.,
+		mapping_abs_per_part: "abs(-3 - 4i)" => Complex::new(3., 4.),
+		magnitude_complex: "|3 + 4i|" => 5.,
+		magnitude_implicit_multiplication: "2|-3|" => 6.,
+		magnitude_juxtaposed: "|-2| |-3|" => 6.,
+		magnitude_then_subtraction: "|-2|-3" => -1.,
+		magnitude_nested: "|2*|-3||" => 6.,
+		magnitude_nested_open: "||-3| - 5|" => 2.,
+		magnitude_nested_both_ends: "|1 + ||-2| - 3||" => 2.,
+		magnitude_double_bars: "||-3||" => 3.,
+		magnitude_or_inside: "|1||0|" => 1.,
+		magnitude_factorial: "|-3|!" => 6.,
+
+		// Magnitude bars around single values
+		magnitude_zero: "|0|" => 0.,
+		magnitude_negative_zero: "|-0|" => 0.,
+		magnitude_positive: "|5|" => 5.,
+		magnitude_inner_spaces: "| - 2 |" => 2.,
+		magnitude_inner_tab_and_newline: "|\t-2\n|" => 2.,
+		magnitude_fraction: "|-2.5|" => 2.5,
+		magnitude_leading_dot_fraction: "|-.5|" => 0.5,
+		magnitude_scientific: "|-1e-3|" => 0.001,
+		magnitude_infinity_word: "|-inf|" => f64::INFINITY,
+		magnitude_infinity_symbol: "|-∞|" => f64::INFINITY,
+		magnitude_imaginary_unit: "|-i|" => 1.,
+		magnitude_complex_negative_parts: "|-3 - 4i|" => 5.,
+		magnitude_of_parenthesized: "|(-3)|" => 3.,
+		magnitude_in_parentheses: "(|-3|)" => 3.,
+		magnitude_of_difference: "|2 - 5|" => 3.,
+
+		// Magnitude bars among operators, where each bar after an operand closes and each bar after an operator opens
+		magnitude_negated: "-|-3|" => -3.,
+		magnitude_squared: "|-3|^2" => 9.,
+		magnitude_as_exponent: "2^|-3|" => 8.,
+		magnitude_power_of_magnitudes: "|-2|^|-3|" => 8.,
+		magnitude_product_spaced: "|-2| * |-3|" => 6.,
+		magnitude_product_unspaced: "|-2|*|-3|" => 6.,
+		magnitude_sum_spaced: "|-2| + |-3|" => 5.,
+		magnitude_sum_unspaced: "|-2|+|-3|" => 5.,
+		magnitude_difference_spaced: "|-2| - |-3|" => -1.,
+		magnitude_difference_unspaced: "|-2|-|-3|" => -1.,
+		magnitude_quotient: "|-2| / |-4|" => 0.5,
+		magnitude_modulo: "|-7| % |-4|" => 3.,
+		magnitude_factorial_inside: "|3!|" => 6.,
+		magnitude_factorial_then_sum: "|-3|! + 1" => 7.,
+		magnitude_less_than_spaced: "|-3| < |-5|" => 1.,
+		magnitude_less_than_unspaced: "|-3|<|-5|" => 1.,
+		magnitude_equality: "|-3| == 3" => 1.,
+
+		// Magnitude bars juxtaposed with other operands multiply
+		magnitude_then_number: "|-2|3" => 6.,
+		magnitude_after_number: "3|-2|" => 6.,
+		magnitude_then_parenthesized: "|-2|(3)" => 6.,
+		magnitude_after_parenthesized: "(3)|-2|" => 6.,
+		magnitude_then_constant: "|-1|pi" => std::f64::consts::PI,
+		magnitude_after_constant: "pi|-1|" => std::f64::consts::PI,
+		magnitude_three_juxtaposed: "|2| |3| |4|" => 24.,
+		magnitude_juxtaposed_then_sum: "|-2| |-3| + 1" => 7.,
+		magnitude_number_then_two_magnitudes: "2 |-3| |-4|" => 24.,
+		magnitude_difference_then_implicit_product: "|-2|-3|-4|" => -10.,
+
+		// Magnitude bars around function calls and function arguments
+		magnitude_as_argument: "sqrt(|-16|)" => 4.,
+		magnitude_of_complex_result: "|sqrt(-16)|" => 4.,
+		magnitude_as_both_arguments: "max(|-3|, |2|)" => 3.,
+		magnitude_as_two_argument_log: "log(|-100|, |-10|)" => 2.,
+		magnitude_of_call: "|max(-3, -5)|" => 3.,
+		magnitude_of_call_with_magnitude_argument: "|log(|-100|)|" => 2.,
+		magnitude_of_conditional: "|if(1, -2, 3)|" => 2.,
+		magnitude_in_conditional: "if(|-1| == 1, |-7|, 0)" => 7.,
+
+		// Nested magnitude bars, spaced and unspaced, including runs of three bars
+		magnitude_nested_closing_spaced: "|1 - |2 - 5| |" => 2.,
+		magnitude_nested_closing_unspaced: "|1 - |2 - 5||" => 2.,
+		magnitude_nested_both_spaced: "| |-3| |" => 3.,
+		magnitude_nested_negated: "|-|-3||" => 3.,
+		magnitude_nested_negated_sum: "|-|-3| + 1|" => 2.,
+		magnitude_nested_open_product: "||-3|*2|" => 6.,
+		magnitude_nested_open_difference: "||-3| - |-5||" => 2.,
+		magnitude_triple_nested: "|||-3|||" => 3.,
+		magnitude_triple_nested_differences: "|1 - |1 - |1 - 5|||" => 2.,
+		magnitude_triple_open_run: "|||1|-2|-3|" => 2.,
+		magnitude_product_of_nested: "|2*||-3|||" => 6.,
+
+		// Or among magnitude bars, where `||` after an operand is Or unless two magnitudes are open
+		or_spaced: "1 || 0" => 1.,
+		or_unspaced: "0||1" => 1.,
+		or_both_false: "0 || 0" => 0.,
+		or_typeset: "1 ∨ 0" => 1.,
+		or_of_parenthesized: "(1)||(0)" => 1.,
+		or_of_parenthesized_magnitudes: "(|1|)||(|0|)" => 1.,
+		or_of_magnitudes_spaced: "|1| || |0|" => 1.,
+		or_of_magnitudes_typeset: "|1|∨|0|" => 1.,
+		or_then_magnitude_spaced: "0 || |-1|" => 1.,
+		or_then_magnitude_unspaced: "0|||-1|" => 1.,
+		or_then_magnitude_bar_run_spaced: "0 ||| -1|" => 1.,
+		or_magnitude_then_bar_run: "|0| ||| -1 |" => 1.,
+		or_of_magnitude_first: "|-1| || 0" => 1.,
+		or_of_double_bars: "||1|| || ||0||" => 1.,
+		or_of_double_bars_unspaced: "||1||||||0||" => 1.,
+		or_inside_both_false: "|0||0|" => 0.,
+		or_inside_then_product: "|0 || 1| * 5" => 5.,
+		or_inside_after_product: "2 * |0 || 1|" => 2.,
+		or_inside_parenthesized: "|(1 || 0)|" => 1.,
+		or_parenthesized_plus_magnitude: "(1 || 0) + |-2|" => 3.,
+		or_inside_after_and: "1 && |0 || 1|" => 1.,
+		or_after_and_inside: "|1 && 0| || 1" => 1.,
+		or_after_comparison_of_magnitude: "|3 - 5| > 1 || 0" => 1.,
+		or_as_condition: "if(0 || 1, |-2|, |-3|)" => 2.,
+		not_of_magnitude: "!|0|" => 1.,
+		not_of_magnitude_then_or: "!|0| || 0" => 1.,
+		not_inside_magnitude: "|!0|" => 1.,
+		not_inside_magnitude_with_or: "| !0 || 0 |" => 1.,
 
 		// Correctly rounded literals via std parsing
 		seventeen_digit_literal: "999999999999999999" => 1e18,

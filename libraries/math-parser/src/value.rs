@@ -219,6 +219,10 @@ impl Number {
 				Number::Complex(complex) => Number::Complex(-complex),
 			}),
 			UnaryOp::Not => Some(Number::Real(!self.as_bool() as u8 as f64)),
+			UnaryOp::Magnitude => Some(Number::Real(match self {
+				Number::Real(real) => real.abs(),
+				Number::Complex(complex) => complex.norm(),
+			})),
 			UnaryOp::Fac => {
 				// A factorial is defined for whole numbers at or above zero
 				let Number::Real(real) = self else { return None };
