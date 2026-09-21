@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
 use crate::lexer::{Lexer, Span, Token};
-use chumsky::error::LabelError;
+use chumsky::error::{EmptyErr, LabelError};
 use chumsky::input::ValueInput;
 use chumsky::{Parser, prelude::*};
 use std::fmt;
@@ -23,6 +23,23 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Builds a parse error from a plain message, for a failure that no "expected ..., found ..." phrasing describes.
+pub trait CustomError {
+	fn custom(span: Span, message: &'static str) -> Self;
+}
+
+impl CustomError for EmptyErr {
+	fn custom(_: Span, _: &'static str) -> Self {
+		EmptyErr::default()
+	}
+}
+
+impl<'src> CustomError for Rich<'src, Token<'src>, Span> {
+	fn custom(span: Span, message: &'static str) -> Self {
+		Rich::custom(span, message)
+	}
+}
+
 impl Node {
 	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError> {
 		// Parse with zero-cost errors first (several times faster), then re-parse invalid input with rich errors to build the messages
@@ -41,7 +58,7 @@ pub fn parser<'src, I, E>() -> impl Parser<'src, I, Node, E>
 where
 	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 	E: extra::ParserExtra<'src, I>,
-	E::Error: LabelError<'src, I, &'static str>,
+	E::Error: LabelError<'src, I, &'static str> + CustomError,
 {
 	recursive(|expr| {
 		let constant = select! { Token::Float(f) => Node::Lit(Literal::Float(f)) };
@@ -130,11 +147,33 @@ where
 			rhs: Box::new(rhs),
 		});
 
-		let cmp = add.clone().foldl(cmp_op.then(add).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
-			lhs: Box::new(lhs),
-			op,
-			rhs: Box::new(rhs),
-		});
+		// A chain like `0 <= x < 1` is one predicate over its adjacent pairs, not an implicit `(0 <= x) < 1` (which is only read that way when its parentheses are written out), and must read in one direction
+		let cmp = add
+			.clone()
+			.then(cmp_op.then(add).repeated().collect::<Vec<_>>())
+			.try_map(|(first, mut rest): (Node, Vec<(BinaryOp, Node)>), span| {
+				// A lone comparison is an ordinary binary operation
+				if rest.len() <= 1 {
+					return Ok(match rest.pop() {
+						Some((op, second)) => Node::BinOp {
+							lhs: Box::new(first),
+							op,
+							rhs: Box::new(second),
+						},
+						None => first,
+					});
+				}
+
+				let ops: Vec<BinaryOp> = rest.iter().map(|(op, _)| *op).collect();
+				if !BinaryOp::chain_in_one_direction(&ops) {
+					return Err(CustomError::custom(
+						span,
+						"A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`",
+					));
+				}
+
+				Ok(Node::Comparison { first: Box::new(first), rest })
+			});
 
 		let and = cmp.clone().foldl(and_op.then(cmp).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),

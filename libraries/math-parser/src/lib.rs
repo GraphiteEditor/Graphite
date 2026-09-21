@@ -109,6 +109,23 @@ mod tests {
 	}
 
 	#[test]
+	fn comparison_chains_stay_in_one_direction() {
+		for input in ["1 < 2 > 1", "1 < 2 != 3", "1 == 2 != 2"] {
+			let error = evaluate(input).unwrap_err().to_string();
+			let expected = "A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`";
+			assert_eq!(error, format!("{expected} at 0..{}", input.len()), "`{input}`");
+		}
+	}
+
+	#[test]
+	fn logic_requires_truth_values() {
+		// A logical operand must be exactly 0 or 1, so a general number becomes a truth value only through a comparison
+		for input in ["!5", "2 && 1", "0.5 || 0", "if(3, 1, 0)", "1 && i", "if(sqrt(-1), 1, 2)"] {
+			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::NotATruthValue)), "expected `{input}` to need a truth value");
+		}
+	}
+
+	#[test]
 	fn indeterminate_forms_are_errors() {
 		// No operation returns NaN: an indeterminate form is an evaluation error, as is a domain failure with no complex answer
 		for input in [
@@ -469,7 +486,7 @@ mod tests {
 		if_arithmetic_false: "if(3*2-5, 1, 0)" => 1.,
 
 		// Nested arithmetic
-		if_complex_arithmetic: "if((5+3)*(2-1), 10, 20)" => 10.,
+		if_complex_arithmetic: "if((5+3)*(2-1) > 0, 10, 20)" => 10.,
 		if_with_division: "if(8/4-2 == 0, 15, 25)" => 15.,
 		if_with_division_ne: "if(8/4-2 ≠ 0, 15, 25)" => 25.,
 
@@ -483,7 +500,7 @@ mod tests {
 
 		// Logical NOT (prefix !)
 		logical_not_zero: "!0" => 1.,
-		logical_not_nonzero: "!5" => 0.,
+		logical_not_one: "!1" => 0.,
 		logical_not_expression: "!(2 - 2)" => 1.,
 
 		// Log / exp / pow / root
@@ -591,7 +608,7 @@ mod tests {
 		if_zero: "if(0.0, 1, 2)" => 2.,
 
 		// Complex nested expressions
-		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1), 3 + 4 * 2, 5 - 2 / 1)" => 11.,
+		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1) > 5, 3 + 4 * 2, 5 - 2 / 1)" => 11.,
 
 		// Overflow-safe evaluation
 		factorial_overflows_to_infinity: "171!" => f64::INFINITY,
@@ -605,10 +622,9 @@ mod tests {
 		root_negative_odd_reciprocal: "root(-8, -3)" => -0.5,
 		root_negative_even: "root(-4, 2)" => Complex::new(0., 2.),
 
-		// Logic and equality span real and complex operands
+		// Equality spans real and complex operands
 		mixed_equality: "1 == i" => 0.,
 		complex_equality: "i == i" => 1.,
-		mixed_and: "1 && i" => 1.,
 
 		// Value identity: a zero imaginary part or a signed zero never changes a result, so a result landing on the real line is real
 		value_identity_product: "sqrt(-4) * sqrt(-4)" => -4.,
@@ -742,6 +758,15 @@ mod tests {
 		not_inside_magnitude: "|!0|" => 1.,
 		not_inside_magnitude_with_or: "| !0 || 0 |" => 1.,
 
+		// Ordered chains are one predicate over adjacent pairs, like interval notation, rather than `(a < b) < c`, while `!=` chains require every pair to differ
+		chain_interval: "0 <= 0.5 < 1" => 1.,
+		chain_fails_on_one_pair: "1 < 2 < 2" => 0.,
+		chain_not_c_style: "3 < 2 < 1" => 0.,
+		chain_descending: "3 > 2 >= 2" => 1.,
+		chain_equality: "1 == 1 == 1" => 1.,
+		chain_distinct: "1 != 2 != 3" => 1.,
+		chain_distinct_all_pairs: "1 != 2 != 1" => 0.,
+
 		// Correctly rounded literals via std parsing
 		seventeen_digit_literal: "999999999999999999" => 1e18,
 		long_fraction_literal: "0.1111111111111111111111111111111111111111" => 1. / 9.,
@@ -819,5 +844,9 @@ mod tests {
 		assert_eq!(evaluate("300").unwrap().unwrap().as_u8(), None);
 		assert_eq!(evaluate("i").unwrap().unwrap().as_i64(), None);
 		assert_eq!(evaluate("inf").unwrap().unwrap().as_u64(), None);
+
+		// A truth value is exactly 0 or 1
+		assert_eq!(evaluate("2 > 1").unwrap().unwrap().as_bool(), Some(true));
+		assert_eq!(evaluate("0.5").unwrap().unwrap().as_bool(), None);
 	}
 }

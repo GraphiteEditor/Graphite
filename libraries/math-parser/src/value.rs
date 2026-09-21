@@ -38,6 +38,12 @@ impl Value {
 		self.as_real().map(|real| real as f32)
 	}
 
+	/// Reads the value as a truth value, or `None` unless it is exactly 0 or 1.
+	pub fn as_bool(&self) -> Option<bool> {
+		let Self::Number(number) = self;
+		number.as_bool()
+	}
+
 	integer_accessors! {
 		as_u8: u8,
 		as_u16: u16,
@@ -96,11 +102,12 @@ impl Number {
 		}
 	}
 
-	/// The value's truthiness for conditions and logic operators, where any nonzero number is true.
-	pub fn as_bool(self) -> bool {
+	/// The truth value of a logical operand, which must be exactly 0 or 1: any other number is not a truth value, so logic on it is an error rather than a guess.
+	pub fn as_bool(self) -> Option<bool> {
 		match self {
-			Number::Real(real) => real != 0.,
-			Number::Complex(complex) => complex != Complex::ZERO,
+			Number::Real(0.) => Some(false),
+			Number::Real(1.) => Some(true),
+			_ => None,
 		}
 	}
 
@@ -126,7 +133,7 @@ impl Number {
 		// Logic and equality work uniformly across real and complex operands
 		match op {
 			BinaryOp::And | BinaryOp::Or => {
-				let (lhs, rhs) = (self.as_bool(), other.as_bool());
+				let (Some(lhs), Some(rhs)) = (self.as_bool(), other.as_bool()) else { return None };
 				let result = if matches!(op, BinaryOp::And) { lhs && rhs } else { lhs || rhs };
 				return Some(Number::Real(result as u8 as f64));
 			}
@@ -218,7 +225,7 @@ impl Number {
 				Number::Real(real) => Number::Real(-real),
 				Number::Complex(complex) => Number::Complex(-complex),
 			}),
-			UnaryOp::Not => Some(Number::Real(!self.as_bool() as u8 as f64)),
+			UnaryOp::Not => self.as_bool().map(|boolean| Number::Real(!boolean as u8 as f64)),
 			UnaryOp::Magnitude => Some(Number::Real(match self {
 				Number::Real(real) => real.abs(),
 				Number::Complex(complex) => complex.norm(),
