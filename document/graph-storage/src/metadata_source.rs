@@ -110,6 +110,11 @@ pub trait NodeMetadataSource {
 		HashMap::new()
 	}
 
+	/// The identity the document minted for this node, if it has one. Nodes created before identities
+	/// were stored have none, and fall back to a hash of their location.
+	fn storage_node_id(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<crate::NodeId> {
+		None
+	}
 	fn reference(&self, _network_path: &[RuntimeNodeId]) -> Option<&str> {
 		None
 	}

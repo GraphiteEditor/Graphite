@@ -114,6 +114,9 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.persistent(network_path, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
 	}
 
+	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
+		self.persistent(network_path, local_id)?.storage_id.map(document_graph_storage::NodeId)
+	}
 	fn reference(&self, network_path: &[NodeId]) -> Option<&str> {
 		let network_metadata = self.interface.network_metadata.nested_metadata(network_path)?;
 		network_metadata.persistent_metadata.reference.as_deref()

@@ -60,6 +60,33 @@ impl NodePath {
 	}
 }
 
+/// Resolves a node's storage identity: the identity the document minted for it where there is one, and a
+/// hash of its location otherwise.
+///
+/// A minted identity travels with the node, so moving it between networks keeps it. A hashed one is
+/// derived from the node's place in the tree, so it changes when the node moves; it exists only for
+/// documents written before identities were stored.
+pub(crate) struct NodeIds<'a, M: NodeMetadataSource + ?Sized> {
+	pub(crate) metadata: Option<&'a M>,
+	pub(crate) metadata_path: &'a [RuntimeNodeId],
+	pub(crate) peer: PeerId,
+}
+
+impl<M: NodeMetadataSource + ?Sized> Clone for NodeIds<'_, M> {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+
+impl<M: NodeMetadataSource + ?Sized> Copy for NodeIds<'_, M> {}
+
+impl<M: NodeMetadataSource + ?Sized> NodeIds<'_, M> {
+	fn resolve(&self, path: &NodePath, local_id: RuntimeNodeId) -> NodeId {
+		self.metadata
+			.and_then(|metadata| metadata.storage_node_id(self.metadata_path, local_id))
+			.unwrap_or_else(|| path.to_global_id(self.peer))
+	}
+}
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
 	#[error("Failed to serialize value: {0}")]
@@ -296,7 +323,16 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 		.iter()
 		.map(|export| {
 			Ok(ExportSlot {
-				target: Some(convert_input(export, parent_path, network_id, ctx.peer)?),
+				target: Some(convert_input(
+					export,
+					parent_path,
+					network_id,
+					NodeIds {
+						metadata: Some(ctx.metadata),
+						metadata_path,
+						peer: ctx.peer,
+					},
+				)?),
 				timestamp: TimeStamp::ORIGIN,
 			})
 		})
@@ -381,7 +417,16 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 		write_ui_input_attributes(&mut input_attrs, ctx.metadata, metadata_path, runtime_node_id, input_index, timestamp)?;
 
 		inputs.push(InputSlot {
-			input: convert_input(input, parent_path, network_id, ctx.peer)?,
+			input: convert_input(
+				input,
+				parent_path,
+				network_id,
+				NodeIds {
+					metadata: Some(ctx.metadata),
+					metadata_path,
+					peer: ctx.peer,
+				},
+			)?,
 			timestamp,
 			attributes: input_attrs,
 		});
@@ -522,10 +567,10 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 	Ok(())
 }
 
-fn convert_input(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, network_id: NetworkId, peer: PeerId) -> Result<NodeInput, ConversionError> {
+fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, parent_path: Option<&NodePath>, network_id: NetworkId, ids: NodeIds<'_, M>) -> Result<NodeInput, ConversionError> {
 	Ok(match input {
 		GraphCraftNodeInput::Node { node_id, output_index } => NodeInput::Node {
-			id: child_path(parent_path, network_id, *node_id).to_global_id(peer),
+			id: ids.resolve(&child_path(parent_path, network_id, *node_id), *node_id),
 			index: (*output_index).try_into().map_err(|_| ConversionError::IndexOverflow(*output_index))?,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
@@ -640,7 +685,16 @@ impl PathResolver {
 	/// node references to their stable global IDs.
 	pub fn convert_input_at(&self, input: &GraphCraftNodeInput, local_path: &[RuntimeNodeId]) -> Result<NodeInput, ConversionError> {
 		let owner = self.owner_path(local_path);
-		convert_input(input, owner.as_ref(), self.network_id(local_path), self.peer)
+		convert_input::<NoMetadata>(
+			input,
+			owner.as_ref(),
+			self.network_id(local_path),
+			NodeIds {
+				metadata: None,
+				metadata_path: local_path,
+				peer: self.peer,
+			},
+		)
 	}
 
 	/// The `NodePath` of the node owning the network at `local_path`, or `None` for the root network.
@@ -707,7 +761,16 @@ impl<'m, M: NodeMetadataSource + ?Sized> ScopedConversion<'m, M> {
 			.iter()
 			.map(|export| {
 				Ok(ExportSlot {
-					target: Some(convert_input(export, owner_path.as_ref(), network_id, self.ctx.peer)?),
+					target: Some(convert_input(
+						export,
+						owner_path.as_ref(),
+						network_id,
+						NodeIds {
+							metadata: Some(self.ctx.metadata),
+							metadata_path: local_path,
+							peer: self.ctx.peer,
+						},
+					)?),
 					timestamp: TimeStamp::ORIGIN,
 				})
 			})

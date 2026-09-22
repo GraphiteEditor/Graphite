@@ -114,6 +114,7 @@ impl NodeTemplate {
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
+			storage_id: _,
 			display_name,
 			input_metadata,
 			output_names,
@@ -196,6 +197,7 @@ impl NodeTemplate {
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {
+			storage_id: None,
 			display_name,
 			input_metadata,
 			output_names,
