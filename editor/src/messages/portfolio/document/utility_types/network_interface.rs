@@ -12,6 +12,7 @@ mod mutations;
 mod queries;
 mod resolved_types;
 pub mod storage_metadata;
+mod store;
 mod structure;
 mod template;
 mod types;
@@ -19,6 +20,7 @@ mod types;
 mod validation;
 mod view;
 
+pub use store::NodeLocator;
 pub use template::*;
 pub use types::*;
 pub use view::{NetworkError, NetworkView};

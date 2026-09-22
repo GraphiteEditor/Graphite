@@ -105,18 +105,11 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in add_export");
+		let inserted_index = if insert_index == -1 { self.number_of_exports(network_path) } else { insert_index as usize };
+		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string()) {
 			return;
-		};
-
-		let input = NodeInput::value(default_value, true);
-		let inserted_index = if insert_index == -1 { network.exports.len() } else { insert_index as usize };
-		if insert_index == -1 {
-			network.exports.push(input);
-		} else {
-			network.exports.insert(insert_index as usize, input);
 		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
@@ -127,19 +120,6 @@ impl NodeNetworkInterface {
 			&& self.is_layer(&parent_id, &encapsulating_path)
 		{
 			self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
-		};
-
-		// There will not be an encapsulating node if the network is the document network
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			if insert_index == -1 {
-				encapsulating_node_metadata.persistent_metadata.output_names.push(output_name.to_string());
-			} else {
-				encapsulating_node_metadata.persistent_metadata.output_names.insert(insert_index as usize, output_name.to_string());
-			}
-			// Clear the reference to the nodes definition
-			if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-				network_metadata.persistent_metadata.reference = None
-			}
 		};
 
 		// Update the export ports and outward wires for the current network
@@ -173,44 +153,18 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(network) = self.network_mut(&encapsulating_network_path) else {
-			log::error!("Could not get nested network in insert_input");
+		let locator = NodeLocator::new(node_id, &encapsulating_network_path);
+		let inserted_index = if insert_index == -1 { self.number_of_inputs(&node_id, &encapsulating_network_path) } else { insert_index as usize };
+		if !self.insert_input_slot(locator, inserted_index, NodeInput::value(default_value, exposed), (input_name, input_description).into()) {
 			return;
-		};
-		let Some(node) = network.nodes.get_mut(&node_id) else {
-			log::error!("Could not get node in insert_input");
-			return;
-		};
-
-		let input = NodeInput::value(default_value, exposed);
-		let inserted_index = if insert_index == -1 { node.inputs.len() } else { insert_index as usize };
-		if insert_index == -1 {
-			node.inputs.push(input);
-		} else {
-			node.inputs.insert(insert_index as usize, input);
 		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
 		// Set the node to be a non layer if it is no longer eligible to be a layer
 		if !self.is_eligible_to_be_layer(&node_id, &encapsulating_network_path) && self.is_layer(&node_id, &encapsulating_network_path) {
 			self.set_to_node_or_layer(&node_id, &encapsulating_network_path, false);
-		}
-
-		let Some(node_metadata) = self.node_metadata_mut(&node_id, &encapsulating_network_path) else {
-			log::error!("Could not get node_metadata in insert_input");
-			return;
-		};
-		let new_input = (input_name, input_description).into();
-		if insert_index == -1 {
-			node_metadata.persistent_metadata.input_metadata.push(new_input);
-		} else {
-			node_metadata.persistent_metadata.input_metadata.insert(insert_index as usize, new_input);
-		}
-
-		// Clear the reference to the nodes definition
-		if let Some(network_metadata) = node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None
 		}
 
 		// Update the metadata for the encapsulating node
@@ -295,22 +249,12 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in add_export");
+		if self.remove_export_slot(network_path, export_index).is_none() {
 			return;
-		};
-		network.exports.remove(export_index);
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
-
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
-			log::error!("Could not get encapsulating node metadata in remove_export");
-			return;
-		};
-		encapsulating_node_metadata.persistent_metadata.output_names.remove(export_index);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
 
 		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
 	}
@@ -347,30 +291,16 @@ impl NodeNetworkInterface {
 			self.create_wire(&output_connector, &input_wire, network_path);
 		}
 
-		let Some(network) = self.network_mut(encapsulating_network_path) else {
-			log::error!("Could not get parent node in remove_import");
+		let parent_id = *parent_id;
+		let encapsulating_network_path = encapsulating_network_path.to_vec();
+		if self.remove_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), import_index).is_none() {
 			return;
-		};
-		let Some(node) = network.nodes.get_mut(parent_id) else {
-			log::error!("Could not get node in remove_import");
-			return;
-		};
-
-		node.inputs.remove(import_index);
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		// There will not be an encapsulating node if the network is the document network
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(parent_id, encapsulating_network_path) else {
-			log::error!("Could not get encapsulating node metadata in remove_export");
-			return;
-		};
-		encapsulating_node_metadata.persistent_metadata.input_metadata.remove(import_index);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
-
-		self.finish_signature_edit(*parent_id, encapsulating_network_path, network_path);
+		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
 	}
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
@@ -381,28 +311,15 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in reorder_export");
-			return;
-		};
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		let export = network.exports.remove(start_index);
-		network.exports.insert(end_index, export);
+		if !self.move_export_slot(network_path, start_index, end_index) {
+			return;
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
-
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
-			log::error!("Could not get encapsulating network_metadata in reorder_export");
-			return;
-		};
-
-		let name = encapsulating_node_metadata.persistent_metadata.output_names.remove(start_index);
-		encapsulating_node_metadata.persistent_metadata.output_names.insert(end_index, name);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
 
 		// Update the metadata for the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -470,33 +387,15 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(encapsulating_network) = self.network_mut(&encapsulating_network_path) else {
-			log::error!("Could not get nested network in reorder_import");
-			return;
-		};
-		let Some(encapsulating_node) = encapsulating_network.nodes.get_mut(&parent_id) else {
-			log::error!("Could not get encapsulating node in reorder_import");
-			return;
-		};
-
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		let import = encapsulating_node.inputs.remove(start_index);
-		encapsulating_node.inputs.insert(end_index, import);
+		if !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
+			return;
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
-
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
-			log::error!("Could not get encapsulating network_metadata in reorder_import");
-			return;
-		};
-
-		let properties_row = encapsulating_node_metadata.persistent_metadata.input_metadata.remove(start_index);
-		encapsulating_node_metadata.persistent_metadata.input_metadata.insert(end_index, properties_row);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
 
 		// Update the metadata for the outer network
 		self.unload_outward_wires(&encapsulating_network_path);
