@@ -1,6 +1,7 @@
-use crate::value::{Complex, Number, Value};
+use crate::ast::BinaryOp;
+use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma};
 use num_complex::ComplexFloat;
-use std::f64::consts::LN_2;
+use std::f64::consts::{LN_2, PI, TAU};
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
@@ -13,10 +14,10 @@ fn integer_operand(value: f64) -> Option<u128> {
 	(value.is_finite() && value.abs() <= EXACT_INTEGER_LIMIT).then(|| (value as i64).unsigned_abs() as u128)
 }
 
-/// Rounds a combinatorics operand to the nearest whole number, or `None` when it is negative, non-finite, or beyond f64's exactly-representable integer range.
-fn whole_operand(value: f64) -> Option<u64> {
-	let value = value.round();
-	(0. ..=EXACT_INTEGER_LIMIT).contains(&value).then_some(value as u64)
+/// Reads a combinatorics count as a whole number from zero up to f64's exactly-representable limit, or `None` for a fractional one rather than rounding it.
+fn whole_count(value: &Value) -> Option<u64> {
+	let value = value.as_real()?;
+	(value.fract() == 0. && (0. ..=EXACT_INTEGER_LIMIT).contains(&value)).then_some(value as u64)
 }
 
 /// Accumulates one multiplicative `step` per iteration, stopping once the running product reaches infinity, since it stays there.
@@ -32,19 +33,25 @@ fn bounded_product(steps: impl Iterator<Item = u64>, step: impl Fn(f64, u64) -> 
 	product
 }
 
-/// Collects every argument as a real number, or `None` if any is complex or there are no arguments at all.
-fn real_operands(values: &[Value]) -> Option<Vec<f64>> {
+/// Every argument as a real number, or `None` if any is complex or there are no arguments at all.
+fn real_operands(values: &[Value]) -> Option<impl Iterator<Item = f64> + Clone + '_> {
+	if values.is_empty() || !values.iter().all(|value| value.as_real().is_some()) {
+		return None;
+	}
+	Some(values.iter().filter_map(Value::as_real))
+}
+
+/// Every argument in the complex plane, or `None` if there are no arguments at all.
+fn complex_operands(values: &[Value]) -> Option<impl Iterator<Item = Complex> + Clone + '_> {
 	if values.is_empty() {
 		return None;
 	}
+	Some(values.iter().map(|Value::Number(number)| number.as_complex()))
+}
 
-	values
-		.iter()
-		.map(|value| match value {
-			Value::Number(Number::Real(real)) => Some(*real),
-			_ => None,
-		})
-		.collect()
+/// The [`power_of_two_scale`] of the numbers' largest part.
+fn scale_of(numbers: impl Iterator<Item = Complex>) -> f64 {
+	power_of_two_scale(numbers.flat_map(|number| [number.re, number.im]))
 }
 
 /// Applies a one-argument function that may climb into the complex plane: a real result that does not exist,
@@ -67,8 +74,8 @@ fn climbing(values: &[Value], real_function: fn(f64) -> f64, complex_function: f
 
 /// The power of two at or below the largest magnitude, dividing by which is exact and brings every value within ±2, so sums and
 /// squares of the scaled values neither overflow nor underflow. It's 1 when the largest magnitude is zero, subnormal, or infinite.
-fn power_of_two_scale(reals: &[f64]) -> f64 {
-	let largest = reals.iter().fold(0_f64, |largest, real| largest.max(real.abs()));
+fn power_of_two_scale(reals: impl Iterator<Item = f64>) -> f64 {
+	let largest = reals.fold(0_f64, |largest, real| largest.max(real.abs()));
 	if !largest.is_normal() {
 		return 1.;
 	}
@@ -77,15 +84,15 @@ fn power_of_two_scale(reals: &[f64]) -> f64 {
 	f64::from_bits(largest.to_bits() & (0x7FF << 52))
 }
 
-/// Computes the variance of the real arguments divided by the returned scale, over the count less `correction` (1 for a sample,
-/// undefined for a single value, or 0 for a population). Staying scaled lets a standard deviation take its root before overflowing.
+/// Computes the variance of the arguments, the mean of `|x - mean|²`, divided by the returned scale, over the count less `correction`
+/// (1 for a sample, undefined for a single value, or 0 for a population). Staying scaled lets a standard deviation take its root before overflowing.
 fn scaled_variance(values: &[Value], correction: usize) -> Option<(f64, f64)> {
-	let reals = real_operands(values)?;
-	let divisor = reals.len().checked_sub(correction).filter(|divisor| *divisor > 0)? as f64;
-	let scale = power_of_two_scale(&reals);
+	let numbers = complex_operands(values)?;
+	let divisor = values.len().checked_sub(correction).filter(|divisor| *divisor > 0)? as f64;
+	let scale = scale_of(numbers.clone());
 
-	let mean = reals.iter().map(|real| real / scale).sum::<f64>() / reals.len() as f64;
-	let variance = reals.iter().map(|real| (real / scale - mean).powi(2)).sum::<f64>() / divisor;
+	let mean = numbers.clone().map(|number| number / scale).sum::<Complex>() / values.len() as f64;
+	let variance = numbers.map(|number| (number / scale - mean).norm_sqr()).sum::<f64>() / divisor;
 	Some((variance, scale))
 }
 
@@ -128,6 +135,61 @@ fn checked_lcm(a: u128, b: u128) -> Option<u128> {
 		return Some(0);
 	}
 	(a / gcd(a, b)).checked_mul(b)
+}
+
+/// `choose(n, r)` over a whole nonnegative top, exact while it fits, and zero once `r` exceeds `n`.
+fn whole_binomial(n: f64, r: u64) -> f64 {
+	if r as f64 > n {
+		return 0.;
+	}
+
+	// Multiplying then dividing at each step keeps every intermediate whole, and the smaller of `r` and `n - r` halves the steps
+	let r = r.min((n - r as f64) as u64);
+	bounded_product(1..=r, |accumulated, k| accumulated * (n - r as f64 + k as f64) / k as f64)
+}
+
+/// `pick(n, r)` over a whole nonnegative top, and zero once `r` exceeds `n`.
+fn whole_falling_factorial(n: f64, r: u64) -> f64 {
+	if r as f64 > n {
+		return 0.;
+	}
+	bounded_product(0..r, |accumulated, k| accumulated * (n - k as f64))
+}
+
+/// The falling factorial `x (x - 1) ... (x - r + 1)` over any top, or the binomial coefficient dividing it by `r!`, by direct
+/// product (a negative whole top as `(-1)^r` times that of `|x| + r - 1`), or past a few thousand terms of any other top, the gamma function.
+fn combinatorial(x: Number, r: u64, binomial: bool) -> Value {
+	if let Some(real) = x.as_real()
+		&& (real.fract() == 0. || real.is_infinite())
+	{
+		let sign = if real < 0. && r % 2 == 1 { -1. } else { 1. };
+		let top = if real < 0. { r as f64 - 1. - real } else { real };
+		let product = if binomial { whole_binomial(top, r) } else { whole_falling_factorial(top, r) };
+		return Value::from_f64(sign * product);
+	}
+
+	// The direct product keeps small cases exact at a step per count, so only a count past a few thousand takes the gamma function
+	const DIRECT_PRODUCT_LIMIT: u64 = 4096;
+	let z = x.as_complex();
+	let product = (r <= DIRECT_PRODUCT_LIMIT).then(|| {
+		if binomial {
+			(1..=r).fold(Complex::from(1.), |accumulated, k| accumulated * (z - (k - 1) as f64) / k as f64)
+		} else {
+			(0..r).fold(Complex::from(1.), |accumulated, k| accumulated * (z - k as f64))
+		}
+	});
+
+	// An overflowed product has NaN cross terms, so the gamma function takes over with the overflow's direction
+	let result = match product {
+		Some(product) if !Number::Complex(product).is_nan() => product,
+		_ => {
+			let count_log = if binomial { complex_log_gamma(Complex::from(r as f64 + 1.)) } else { Complex::from(0.) };
+			(complex_log_gamma(z + 1.) - complex_log_gamma(z - r as f64 + 1.) - count_log).exp()
+		}
+	};
+
+	// A real top has a real answer, so the rounding residue in the imaginary part is dropped
+	Value::Number(if x.as_real().is_some() { Number::Real(result.re) } else { Number::Complex(result) })
 }
 
 /// Resolves a base-suffixed function name like `log2` or `root3.25` into the corresponding two-argument
@@ -228,12 +290,14 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 				Some(if root.is_nan() { Value::from(Complex::new(*x, 0.).powf(1. / *n)) } else { Value::from_f64(root) })
 			}
 			[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => Some(Value::from(x.powf(1. / *n))),
+			// A complex degree is the general power `x^(1/n)`
+			[Value::Number(x), Value::Number(n)] => Some(Value::from(x.as_complex().powc(n.as_complex().inv()))),
 			_ => None,
 		}),
 
 		// Geometry Functions
 		// Folding pairwise hypotenuses gives the root of the sum of squares without ever squaring, avoiding overflow
-		"hypot" => variadic(|values| Some(Value::from_f64(real_operands(values)?.into_iter().fold(0., f64::hypot)))),
+		"hypot" => variadic(|values| Some(Value::from_f64(real_operands(values)?.fold(0., f64::hypot)))),
 
 		"atan2" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(y)), Value::Number(Number::Real(x))] => Some(Value::Number(Number::Real(y.atan2(*x)))),
@@ -289,20 +353,24 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(Value::Number(Number::Real(max)))
 		}),
 
-		// Statistics across one or more real arguments
+		// Statistics across one or more arguments, with the median and mode over real ones since they need an order
 		// TODO: Offer `avg` and `average` as autocomplete aliases in the expression widget, resolving to `mean`
 		"mean" => variadic(|values| {
-			let reals = real_operands(values)?;
-			let scale = power_of_two_scale(&reals);
-			Some(Value::from_f64(reals.iter().map(|real| real / scale).sum::<f64>() / reals.len() as f64 * scale))
+			let numbers = complex_operands(values)?;
+			let scale = scale_of(numbers.clone());
+			Some(Value::from(numbers.map(|number| number / scale).sum::<Complex>() / values.len() as f64 * scale))
 		}),
 
 		"median" => variadic(|values| {
-			let mut reals = real_operands(values)?;
+			let mut reals: Vec<f64> = real_operands(values)?.collect();
 			reals.sort_by(f64::total_cmp);
 			let middle = reals.len() / 2;
 			// An even count has no single middle value, so the two straddling it are averaged
-			let median = if reals.len() % 2 == 0 { reals[middle - 1].midpoint(reals[middle]) } else { reals[middle] };
+			let median = if reals.len().is_multiple_of(2) {
+				reals[middle - 1].midpoint(reals[middle])
+			} else {
+				reals[middle]
+			};
 
 			Some(Value::from_f64(median))
 		}),
@@ -313,41 +381,54 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"stdev" => variadic(|values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale))),
 		"stdevpop" => variadic(|values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale))),
 
+		// The principal root of the product, from the mean of the magnitudes' logarithms (so nothing overflows) and the product's
+		// argument wrapped into `(-π, π]`, so `geomean(-1, -4)` is 2 and `geomean(-1, 2)` climbs to `i√2` like `sqrt(-2)`
 		"geomean" => variadic(|values| {
-			let reals = real_operands(values)?;
-			// A negative operand has no real geometric mean, and averaging the logarithms keeps the product from overflowing
-			if reals.iter().any(|real| *real < 0.) {
-				return None;
+			let numbers = complex_operands(values)?;
+			// One value is its own mean exactly, where the polar form below would leave a residue on a negative one
+			if let [value] = values {
+				return Some(*value);
 			}
-			Some(Value::from_f64((reals.iter().map(|real| real.ln()).sum::<f64>() / reals.len() as f64).exp()))
+
+			let count = values.len() as f64;
+			let log_magnitude = numbers.clone().map(|number| number.norm().ln()).sum::<f64>() / count;
+			let argument = numbers.map(|number| number.arg()).sum::<f64>().rem_euclid(TAU);
+			let argument = if argument > PI { argument - TAU } else { argument };
+			Some(Value::from(Complex::new(log_magnitude, argument / count).exp()))
 		}),
 
 		"harmmean" => variadic(|values| {
-			let reals = real_operands(values)?;
+			let numbers = complex_operands(values)?;
 
-			// Like the geometric mean, a negative operand has no meaningful harmonic mean, while a zero one makes it zero
-			if reals.iter().any(|real| *real < 0.) {
-				return None;
+			// A zero operand makes the mean zero, and only infinite ones make it their own mean, each contributing a zero reciprocal
+			let smallest = numbers.clone().map(|number| number.norm()).fold(f64::INFINITY, f64::min);
+			if smallest == 0. {
+				return Some(Value::from_f64(0.));
 			}
-			let smallest = reals.iter().copied().fold(f64::INFINITY, f64::min);
-			if smallest == 0. || smallest.is_infinite() {
-				return Some(Value::from_f64(smallest));
+			if smallest.is_infinite() {
+				return Some(Value::from(numbers.sum::<Complex>() / values.len() as f64));
 			}
 
-			// Dividing the smallest operand by each keeps every reciprocal term within 1, so their sum can't overflow
-			let scaled_reciprocal_sum = reals.iter().map(|real| smallest / real).sum::<f64>();
-			Some(Value::from_f64(reals.len() as f64 / scaled_reciprocal_sum * smallest))
+			// Dividing the smallest magnitude by each operand keeps every reciprocal term within 1, so their sum can't overflow
+			let scaled_reciprocal_sum = Number::Complex(numbers.map(|number| complex_divide(Complex::from(smallest), number)).sum::<Complex>()).canonical();
+
+			// Reciprocals that cancel, as in `harmmean(-1, 1)`, sum to zero, and the language's own division takes that to infinity
+			let count = Number::Real(values.len() as f64);
+			count
+				.binary_op(BinaryOp::Div, scaled_reciprocal_sum)?
+				.binary_op(BinaryOp::Mul, Number::Real(smallest))
+				.map(Value::Number)
 		}),
 
 		"rms" => variadic(|values| {
-			let reals = real_operands(values)?;
-			let scale = power_of_two_scale(&reals);
-			let mean_square = reals.iter().map(|real| (real / scale).powi(2)).sum::<f64>() / reals.len() as f64;
+			let numbers = complex_operands(values)?;
+			let scale = scale_of(numbers.clone());
+			let mean_square = numbers.map(|number| (number / scale).norm_sqr()).sum::<f64>() / values.len() as f64;
 			Some(Value::from_f64(mean_square.sqrt() * scale))
 		}),
 
 		"mode" => variadic(|values| {
-			let mut reals = real_operands(values)?;
+			let mut reals: Vec<f64> = real_operands(values)?.collect();
 			reals.sort_by(f64::total_cmp);
 
 			// In ascending order, the first run of the greatest length is the smallest of the most frequent values, and no mode exists when no value repeats
@@ -428,46 +509,24 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		}),
 
 		"gcd" => variadic(|values| {
-			let reduced = real_operands(values)?
-				.into_iter()
-				.try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)))?;
+			let reduced = real_operands(values)?.try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)))?;
 			Some(Value::from_f64(reduced as f64))
 		}),
 
 		"lcm" => variadic(|values| {
-			let reduced = real_operands(values)?
-				.into_iter()
-				.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?))?;
+			let reduced = real_operands(values)?.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?))?;
 			Some(Value::from_f64(reduced as f64))
 		}),
 
-		// Combinatorics over whole numbers: `choose(n, r)` is the binomial coefficient and `pick(n, r)` the falling factorial
-		"choose" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(n)), Value::Number(Number::Real(r))] => {
-				let (n, r) = (whole_operand(*n)?, whole_operand(*r)?);
-				if r > n {
-					return Some(Value::from_f64(0.));
-				}
-
-				// Multiplying then dividing at each step keeps every intermediate whole, and the smaller of `r` and `n - r` halves the steps
-				let r = r.min(n - r);
-				let binomial = bounded_product(1..=r, |accumulated, k| accumulated * (n - r + k) as f64 / k as f64);
-				Some(Value::from_f64(binomial))
-			}
-			_ => None,
+		// Combinatorics over any top and a whole count: `choose(x, r)` is the binomial coefficient and `pick(x, r)` the falling factorial
+		"choose" => fixed_arity(|values| {
+			let [Value::Number(x), r] = values else { return None };
+			Some(combinatorial(*x, whole_count(r)?, true))
 		}),
 
-		"pick" => fixed_arity(|values| match values {
-			[Value::Number(Number::Real(n)), Value::Number(Number::Real(r))] => {
-				let (n, r) = (whole_operand(*n)?, whole_operand(*r)?);
-				if r > n {
-					return Some(Value::from_f64(0.));
-				}
-
-				let falling_factorial = bounded_product(0..r, |accumulated, k| accumulated * (n - k) as f64);
-				Some(Value::from_f64(falling_factorial))
-			}
-			_ => None,
+		"pick" => fixed_arity(|values| {
+			let [Value::Number(x), r] = values else { return None };
+			Some(combinatorial(*x, whole_count(r)?, false))
 		}),
 
 		// The conjugate negates the imaginary part

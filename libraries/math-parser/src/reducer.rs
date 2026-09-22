@@ -97,7 +97,9 @@ impl Reducer {
 
 			Reducer::Function(function) => {
 				let values: Vec<Value> = items.iter().map(|&item| Value::from_f64(item)).collect();
-				function(&values)?.as_real()
+				// Canonical like a settled result, so a mean that lands on the real line reads as real
+				let Value::Number(result) = function(&values)?;
+				result.canonical().as_real()
 			}
 		}
 	}

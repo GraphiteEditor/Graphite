@@ -147,6 +147,9 @@ mod tests {
 			"gcd(inf, 6)",
 			"gcd(10000000000000000000, 2)",
 			"mod(5, 0)",
+			"choose(2.5, 1.5)",
+			"pick(3, 0.5)",
+			"choose(3, -1)",
 			"(-1)!",
 			"(-2)!",
 			"(-inf)!",
@@ -176,6 +179,52 @@ mod tests {
 			let actual = actual.as_complex();
 			assert!((actual - expected).norm() / expected.norm() < 1e-12, "`{input}`: expected {expected}, got {actual}");
 		}
+	}
+
+	#[test]
+	fn combinatorics_extend_past_the_whole_numbers() {
+		// Compared relatively like the factorial: a count up to a few thousand multiplies out directly, and a larger one goes
+		// through the gamma function, whose logarithms in the tens of thousands cost a couple of digits
+		for (input, expected, tolerance) in [
+			("choose(0.5, 200)", Complex::from(-9.992306256589706e-5), 1e-12),
+			("choose(10.5, 100)", Complex::from(-7.091868840771164e-17), 1e-12),
+			("choose(-2.5, 7)", Complex::from(-17.80517578125), 1e-12),
+			("choose(-0.5, 50)", Complex::from(0.07958923738717877), 1e-12),
+			("pick(-2.5, 7)", Complex::from(-89738.0859375), 1e-12),
+			("choose(1e22, 2)", Complex::from(5e43), 1e-12),
+			("choose(1.5 + 2i, 3)", Complex::new(-1.0625, -1.4166666666666667), 1e-12),
+			("pick(1.5 + 2i, 3)", Complex::new(-6.375, -8.5), 1e-12),
+			("choose(0.5, 5000)", Complex::from(-7.979444083790532e-7), 1e-10),
+			("choose(10.5, 8000)", Complex::from(-4.9672984268570704e-39), 1e-10),
+			("choose(-0.5, 5000)", Complex::from(0.007978646139382154), 1e-10),
+			("choose(1.5 + 2i, 5000)", Complex::new(-2.541871408941716e-8, -8.84744846043224e-9), 1e-10),
+		] {
+			let Value::Number(actual) = evaluate(input).unwrap().unwrap();
+			let actual = actual.as_complex();
+			assert!((actual - expected).norm() / expected.norm() < tolerance, "`{input}`: expected {expected}, got {actual}");
+		}
+	}
+
+	#[test]
+	fn simple_complex_quotients_are_exact() {
+		// Smith's algorithm rounds nothing on these, where dividing by the norm twice loses an ulp
+		for (input, expected) in [
+			("(1 + i) / (1 - i)", Complex::new(0., 1.)),
+			("2 / (1 - i)", Complex::new(1., 1.)),
+			("(3 + 4i) / (1 + 2i)", Complex::new(2.2, -0.4)),
+			("harmmean(i, 1)", Complex::new(1., 1.)),
+		] {
+			assert_eq!(evaluate(input).unwrap().unwrap(), Value::from(expected), "`{input}`");
+		}
+	}
+
+	#[test]
+	fn small_combinatorics_are_exact() {
+		// The direct product leaves no rounding behind on these, where the gamma function would
+		for (input, expected) in [("choose(2.5, 2)", 1.875), ("pick(2.5, 2)", 3.75), ("choose(-0.5, 2)", 0.375)] {
+			assert_eq!(evaluate(input).unwrap().unwrap().as_real(), Some(expected), "`{input}`");
+		}
+		assert_eq!(evaluate("choose(i, 2)").unwrap().unwrap(), Value::from(Complex::new(-0.5, -0.5)));
 	}
 
 	#[test]
@@ -209,10 +258,8 @@ mod tests {
 
 	#[test]
 	fn statistics_without_an_answer_are_errors() {
-		// No value repeats, so no mode exists, and negative operands have no geometric or harmonic mean
-		for input in ["mode(1, 2, 3)", "geomean(-1, 4)", "harmmean(1, -1)"] {
-			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
-		}
+		// No value repeats, so no mode exists
+		assert!(evaluate("mode(1, 2, 3)").unwrap().is_err());
 
 		// A single value has no spread to estimate a sample from
 		for input in ["variance(5)", "stdev(5)"] {
@@ -605,6 +652,22 @@ mod tests {
 		statistics_rms: "rms(3, 4)" => 12.5_f64.sqrt(),
 		statistics_mode: "mode(2, 3, 3, 1, 2)" => 2.,
 		statistics_count: "count(1, 2, 3)" => 3.,
+		statistics_mean_complex: "mean(i, 3i)" => Complex::new(0., 2.),
+		statistics_mean_lands_real: "mean(1 + i, 3 - i)" => 2.,
+		statistics_variance_complex: "variance(i, -i)" => 2.,
+		statistics_stdev_population_complex: "stdevpop(1 + i, 1 - i)" => 1.,
+		statistics_rms_complex: "rms(3i, 4)" => 12.5_f64.sqrt(),
+		statistics_geomean_single: "geomean(-3)" => -3.,
+		statistics_geomean_negative_pair: "geomean(-1, -4)" => 2.,
+		statistics_geomean_climbs: "geomean(-1, 2)" => Complex::new(0., 2_f64.sqrt()),
+		statistics_geomean_complex: "geomean(i, 1)" => Complex::new(std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
+		statistics_harmmean_negative: "harmmean(-1, -3)" => -1.5,
+		statistics_harmmean_cancelling: "harmmean(-1, 1)" => f64::INFINITY,
+		statistics_harmmean_complex: "harmmean(i, 1)" => Complex::new(1., 1.),
+		statistics_geomean_infinite: "geomean(inf, 1)" => f64::INFINITY,
+		statistics_harmmean_infinite_operand: "harmmean(inf, 1)" => 2.,
+		statistics_harmmean_all_infinite: "harmmean(-inf, -inf)" => f64::NEG_INFINITY,
+		statistics_harmmean_huge: "harmmean(1e308, 1e308)" => 1e308,
 		logical_xor_odd_parity: "xor(1, 1, 1)" => 1.,
 		logical_xor_even_parity: "xor(1, 0, 1)" => 0.,
 		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
@@ -615,15 +678,28 @@ mod tests {
 		gcd_negative_operand: "gcd(-24, 18)" => 6.,
 		lcm_negative_operand: "lcm(-4, 6)" => 12.,
 
-		// Combinatorics over whole numbers
+		// Combinatorics over any top and a whole count
 		combinatorics_choose: "choose(5, 2)" => 10.,
 		combinatorics_choose_symmetric: "choose(30, 28)" => 435.,
 		combinatorics_choose_beyond_n: "choose(3, 5)" => 0.,
+		combinatorics_choose_fractional_top: "choose(2.4, 1)" => 2.4,
+		combinatorics_choose_half: "choose(0.5, 2)" => -0.125,
+		combinatorics_choose_negative_top: "choose(-1, 3)" => -1.,
+		combinatorics_choose_negative_top_larger: "choose(-5, 3)" => -35.,
+		combinatorics_choose_zero_count: "choose(2.5, 0)" => 1.,
+		combinatorics_choose_complex_top: "choose(i, 2)" => Complex::new(-0.5, -0.5),
 		combinatorics_pick: "pick(5, 2)" => 20.,
 		combinatorics_pick_all: "pick(4, 4)" => 24.,
+		combinatorics_pick_fractional_top: "pick(2.5, 2)" => 3.75,
+		combinatorics_pick_negative_top: "pick(-5, 3)" => -210.,
+		combinatorics_pick_complex_top: "pick(i, 2)" => Complex::new(-1., -1.),
 		// A result beyond f64 stops at infinity instead of stepping through quadrillions of terms
 		combinatorics_choose_overflows: "choose(9007199254740992, 4503599627370496)" => f64::INFINITY,
 		combinatorics_pick_overflows: "pick(9007199254740992, 9007199254740992)" => f64::INFINITY,
+		combinatorics_pick_fractional_overflows: "pick(0.5, 200)" => f64::NEG_INFINITY,
+		combinatorics_pick_complex_overflows: "|pick(1.5 + 2i, 300)|" => f64::INFINITY,
+		combinatorics_choose_infinite_top: "choose(inf, 2)" => f64::INFINITY,
+		combinatorics_pick_negative_infinite_top: "pick(-inf, 3)" => f64::NEG_INFINITY,
 
 		// Truth values are the numbers 1 and 0
 		constant_truth_values: "true + true - false" => 2.,
@@ -669,6 +745,8 @@ mod tests {
 		root_negative_odd: "root(-8, 3)" => -2.,
 		root_negative_odd_reciprocal: "root(-8, -3)" => -0.5,
 		root_negative_even: "root(-4, 2)" => Complex::new(0., 2.),
+		root_complex_degree: "root(8, 3i)" => Complex::new(0.7692389013639721, -0.6389612763136348),
+		root_complex_degree_lands_real: "root(i, i)" => std::f64::consts::FRAC_PI_2.exp(),
 
 		// Equality spans real and complex operands
 		mixed_equality: "1 == i" => 0.,
@@ -681,6 +759,27 @@ mod tests {
 		value_identity_branch_selection: "root(-8 + 0i, 3)" => -2.,
 		value_identity_signed_zero: "1/(-0)" => f64::INFINITY,
 		value_identity_ceiling: "1/ceil(-0.5)" => f64::INFINITY,
+
+		// Division by zero heads to infinity part by part with each part's own sign, like an overflow, rather than turning indeterminate
+		division_by_zero_imaginary: "i / 0" => Complex::new(0., f64::INFINITY),
+		division_by_zero_complex: "(1 + i) / 0" => Complex::new(f64::INFINITY, f64::INFINITY),
+		division_by_zero_complex_signs: "(1 - i) / 0" => Complex::new(f64::INFINITY, f64::NEG_INFINITY),
+		division_scaled_tiny: "(1e-200i) / (1e-200i)" => 1.,
+		division_scaled_huge: "(1e200 + 1e200i) / (1e200 + 1e200i)" => 1.,
+		division_scaled_max: "(1e308 + 1e308i) / (1e308 + 1e308i)" => 1.,
+		division_scaled_max_dividend: "(1e308 + 1e308i) / (1 + i)" => 1e308,
+		division_scaled_max_dividend_signs: "(1e308 - 1e308i) / (1 + i)" => Complex::new(0., -1e308),
+
+		// A whole exponent on a complex base multiplies out exactly
+		power_imaginary_square: "i^2" => -1.,
+		power_imaginary_cube: "i^3" => Complex::new(0., -1.),
+		power_imaginary_zero: "i^0" => 1.,
+		power_imaginary_huge: "i^(2^70)" => 1.,
+		power_complex_square: "(3 + 4i)^2" => Complex::new(-7., 24.),
+		power_complex_negative: "(1 + i)^-2" => Complex::new(0., -0.5),
+		power_complex_negative_tiny: "(1e-200i)^-1" => Complex::new(0., -1e200),
+		power_complex_negative_underflow: "|(1e-200i)^-2|" => f64::INFINITY,
+		power_complex_overflow: "|(1.5 + 2i)^1000|" => f64::INFINITY,
 
 		// Domain climbs: a real input whose answer is complex resolves into the `1, i` plane
 		climb_sqrt: "sqrt(-4)" => Complex::new(0., 2.),
