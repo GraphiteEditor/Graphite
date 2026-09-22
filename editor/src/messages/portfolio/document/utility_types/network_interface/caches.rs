@@ -543,7 +543,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 		// Initialize all output connectors for nodes
-		for (node_id, _) in network.nodes.iter() {
+		for node_id in network.nodes.keys() {
 			let number_of_outputs = self.number_of_outputs(node_id, network_path);
 			for output_index in 0..number_of_outputs {
 				outward_wires.insert(OutputConnector::node(*node_id, output_index), Vec::new());

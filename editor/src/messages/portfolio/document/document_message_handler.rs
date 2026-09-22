@@ -4106,10 +4106,11 @@ mod document_message_handler_tests {
 		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
 			let document = editor.active_document();
 			for layer in document.metadata().all_layers() {
-				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
-						return Some(layer);
-					}
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer)
+					&& (bbox[0].x - min_x).abs() < 1.
+					&& (bbox[0].y - min_y).abs() < 1.
+				{
+					return Some(layer);
 				}
 			}
 			None
@@ -4166,7 +4167,6 @@ mod document_message_handler_tests {
 		// The operation completed without crashing
 		// Verifying application still functions by performing another operation
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		assert!(true, "Application didn't crash after folder move operation");
 	}
 
 	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.

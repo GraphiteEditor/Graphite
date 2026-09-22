@@ -219,7 +219,7 @@ impl SvgRender {
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
 		let svg_header = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,
-			defs = &self.svg_defs
+			defs = self.svg_defs
 		);
 		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
@@ -237,7 +237,7 @@ impl SvgRender {
 
 		let svg_header = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#,
-			defs = &self.svg_defs
+			defs = self.svg_defs
 		);
 		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());

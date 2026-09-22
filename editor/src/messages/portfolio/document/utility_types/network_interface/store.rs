@@ -389,7 +389,9 @@ impl NodeNetworkInterface {
 			},
 		);
 
-		previous_node.zip(previous_metadata).map(|(node, metadata)| NodeTemplate::from_parts(node, metadata.persistent_metadata))
+		previous_node
+			.zip(previous_metadata)
+			.map(|(node, metadata)| NodeTemplate::from_parts(node, metadata.persistent_metadata))
 	}
 
 	/// Removes a node and its metadata, returning them joined as a template.

@@ -3708,7 +3708,7 @@ mod test {
 		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
 		let vector = result.element();
 		assert!(vector.use_face_fill());
-		assert!(vector.segment_domain.ids().len() > 0);
+		assert!(!vector.segment_domain.ids().is_empty());
 	}
 
 	#[tokio::test]
@@ -3739,8 +3739,8 @@ mod test {
 		assert_eq!(vector.point_domain.ids().len(), points.len());
 		assert_ne!(vector.point_domain.positions(), &points[..]);
 		// The convex-hull corners are pinned.
-		for i in 0..4 {
-			assert_eq!(vector.point_domain.positions()[i], points[i], "hull corner {i} should be pinned");
+		for (corner, (&position, &point)) in vector.point_domain.positions().iter().zip(&points).take(4).enumerate() {
+			assert_eq!(position, point, "hull corner {corner} should be pinned");
 		}
 		for &point in vector.point_domain.positions() {
 			assert!(point.x >= -1e-6 && point.x <= 10. + 1e-6);

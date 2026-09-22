@@ -227,7 +227,13 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 
 	/// Input rows the node displays: every exposed input, plus the primary input, whose row is shown even when it is not exposed.
 	pub fn input_row_count(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
-		Ok(self.node(node_id)?.inputs.iter().enumerate().filter(|(input_index, input)| *input_index == 0 || input.is_exposed()).count())
+		Ok(self
+			.node(node_id)?
+			.inputs
+			.iter()
+			.enumerate()
+			.filter(|(input_index, input)| *input_index == 0 || input.is_exposed())
+			.count())
 	}
 
 	/// Grid rows the node body spans, which is the greater of its input rows and its output count.

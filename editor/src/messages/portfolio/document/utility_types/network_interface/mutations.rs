@@ -156,7 +156,11 @@ impl NodeNetworkInterface {
 		};
 
 		let locator = NodeLocator::new(node_id, &encapsulating_network_path);
-		let inserted_index = if insert_index == -1 { self.number_of_inputs(&node_id, &encapsulating_network_path) } else { insert_index as usize };
+		let inserted_index = if insert_index == -1 {
+			self.number_of_inputs(&node_id, &encapsulating_network_path)
+		} else {
+			insert_index as usize
+		};
 		if !self.insert_input_slot(locator, inserted_index, NodeInput::value(default_value, exposed), (input_name, input_description).into()) {
 			return;
 		}
@@ -540,7 +544,9 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else { return };
+		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else {
+			return;
+		};
 
 		self.transaction_modified();
 		self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
@@ -608,7 +614,9 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else { return };
+		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else {
+			return;
+		};
 
 		if old_input == new_input {
 			return;
@@ -1037,7 +1045,7 @@ impl NodeNetworkInterface {
 			if !(matches!(reconnect_to_input, Some(NodeInput::Import { .. })) && matches!(downstream_input, InputConnector::Export(_)))
 				&& let Some(reconnect_input) = &reconnect_to_input
 			{
-				reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
+				reconnect_node = reconnect_input.as_node().filter(|&node_id| self.is_stack(&node_id, network_path));
 				self.disconnect_input(&InputConnector::primary_input(*node_id), network_path);
 				self.set_input(downstream_input, reconnect_input.clone(), network_path);
 			}
