@@ -1277,6 +1277,22 @@ fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 	value
 }
 
+/// Creates vector points at the given positions, as a point cloud with nothing connecting them. **Points to Polyline** can join them into a path.
+#[node_macro::node(category("Vector"), name("Points to Vector"), path(core_types::vector))]
+fn points_to_vector(
+	_: impl Ctx,
+	/// The positions to place the points at, in order.
+	points: List<DVec2>,
+) -> Item<Vector> {
+	let mut vector = Vector::default();
+	let mut next_point = PointId::ZERO;
+	for &position in points.iter_element_values() {
+		vector.point_domain.push(next_point.next_id(), position);
+	}
+
+	Item::new_from_element(vector)
+}
+
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
 async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
@@ -3587,15 +3603,17 @@ mod test {
 	}
 
 	fn vector_item_from_points(points: &[DVec2]) -> Item<Vector> {
-		let mut vector = Vector::default();
-		let mut next_point = PointId::ZERO;
-		for &position in points {
-			vector.point_domain.push(next_point.next_id(), position);
-		}
-		Item::new_from_element(vector)
+		super::points_to_vector((), points.iter().map(|&position| Item::new_from_element(position)).collect())
 	}
 
 	const SQUARE_WITH_CENTER: [DVec2; 5] = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(10., 10.), DVec2::new(0., 10.), DVec2::new(5., 5.)];
+
+	#[test]
+	fn points_to_vector_keeps_positions_in_order_and_unconnected() {
+		let result = vector_item_from_points(&SQUARE_WITH_CENTER);
+		assert_eq!(result.element().point_domain.positions(), SQUARE_WITH_CENTER);
+		assert!(result.element().segment_domain.ids().is_empty());
+	}
 
 	#[tokio::test]
 	async fn offset_path_does_not_duplicate_closing_anchors() {
