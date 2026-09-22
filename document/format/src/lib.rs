@@ -301,6 +301,10 @@ impl<L: Layout> Gdd<L> {
 		let mut declarations = document_graph_storage::Declarations::new();
 
 		for (id, hash) in self.session.all_declaration_resources() {
+			let Some(hash) = hash else {
+				log::error!("Declaration resource {id} has no resolved hash; cannot load ProtoNode");
+				continue;
+			};
 			let Some(resource) = byte_store.load(hash).await else {
 				log::error!("Declaration bytes for {id} (hash {hash}) missing from byte store");
 				continue;

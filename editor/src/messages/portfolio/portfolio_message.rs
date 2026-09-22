@@ -148,7 +148,8 @@ pub enum PortfolioMessage {
 	UpdateOpenDocumentsList,
 }
 
-/// Clone helper for the non-serializable `gdd` payload: a cloned mount message carries no `Gdd`.
+/// Clone helper for non-serializable payloads: a cloned message carries none of the `Gdd` working copy,
+/// its declarations, or the built document.
 fn clone_to_none<T>(_: &Option<T>) -> Option<T> {
 	None
 }

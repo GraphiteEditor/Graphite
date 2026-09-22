@@ -1,10 +1,10 @@
-use super::DocumentHistory;
 use super::document_diff::diff_networks;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
+use super::{CursorMoveError, DocumentHistory};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
@@ -2086,8 +2086,16 @@ impl DocumentMessageHandler {
 	/// Move the `Gdd` undo/redo cursor and swap in the interface rebuilt from it. `had_oracle` records
 	/// whether the legacy snapshot already applied, so the rebuild can be compared against it.
 	fn drive_storage_undo_redo(&mut self, had_oracle: bool, undo: bool, validate: bool, responses: &mut VecDeque<Message>) {
-		let Some(rebuilt) = self.history.move_cursor(undo) else { return };
-		self.apply_gdd_cursor_rebuild(rebuilt, had_oracle, validate, responses);
+		match self.history.move_cursor(undo) {
+			Ok(rebuilt) => self.apply_gdd_cursor_rebuild(rebuilt, had_oracle, validate, responses),
+			Err(CursorMoveError::NotMoved) => {}
+			// Without the legacy snapshot the interface stayed put, so the cursor has to follow it back.
+			Err(CursorMoveError::RebuildFailed) => {
+				if !had_oracle {
+					self.history.revert_cursor(undo);
+				}
+			}
+		}
 	}
 
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.

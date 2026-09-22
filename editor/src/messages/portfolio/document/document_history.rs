@@ -30,6 +30,15 @@ pub struct DocumentHistory {
 	declarations: Declarations,
 }
 
+/// Why [`DocumentHistory::move_cursor`] produced no interface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorMoveError {
+	/// Nothing to move to, unmounted, or the move itself failed. The cursor did not move.
+	NotMoved,
+	/// The cursor moved but the rebuild from it failed. It stays moved unless the caller reverts it.
+	RebuildFailed,
+}
+
 impl DocumentHistory {
 	// ===== Legacy snapshot stacks =====
 
@@ -150,45 +159,47 @@ impl DocumentHistory {
 	}
 
 	/// Move the `Gdd` undo/redo cursor along the retired interaction chain, flushing any open interaction
-	/// first, and rebuild the interface from the rewound registry using the declaration cache. `None` when
-	/// there is nothing to move to, unmounted, or the move failed. A failed rebuild moves the cursor back.
-	pub fn move_cursor(&mut self, undo: bool) -> Option<NodeNetworkInterface> {
+	/// first, and rebuild the interface from the rewound registry using the declaration cache.
+	pub fn move_cursor(&mut self, undo: bool) -> Result<NodeNetworkInterface, CursorMoveError> {
 		self.retire_storage_interaction();
 
-		let storage = self.storage.as_mut()?;
+		let storage = self.storage.as_mut().ok_or(CursorMoveError::NotMoved)?;
 
 		let moved = if undo {
 			if !storage.can_undo() {
-				return None;
+				return Err(CursorMoveError::NotMoved);
 			}
 			storage.undo().map(|_| ())
 		} else {
 			if !storage.can_redo() {
-				return None;
+				return Err(CursorMoveError::NotMoved);
 			}
 			storage.redo().map(|_| ())
 		};
 		if let Err(error) = moved {
 			log::error!("Storage undo/redo cursor move failed: {error}");
-			return None;
+			return Err(CursorMoveError::NotMoved);
 		}
 
-		let rebuilt = storage
+		storage
 			.registry()
 			.to_runtime_with_full_metadata(&self.declarations)
 			.map_err(|error| error.to_string())
-			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()));
+			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
+			.map_err(|error| {
+				log::error!("Storage undo/redo rebuild failed: {error}");
+				CursorMoveError::RebuildFailed
+			})
+	}
 
-		match rebuilt {
-			Ok(interface) => Some(interface),
-			Err(error) => {
-				log::error!("Storage undo/redo rebuild failed, reverting cursor move: {error}");
-				let reverted = if undo { storage.redo() } else { storage.undo() };
-				if let Err(error) = reverted {
-					log::error!("Storage undo/redo cursor revert failed: {error}");
-				}
-				None
-			}
+	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`
+	/// direction whose rebuild failed.
+	pub fn revert_cursor(&mut self, undo: bool) {
+		let Some(storage) = self.storage.as_mut() else { return };
+
+		let reverted = if undo { storage.redo() } else { storage.undo() };
+		if let Err(error) = reverted {
+			log::error!("Storage undo/redo cursor revert failed: {error}");
 		}
 	}
 

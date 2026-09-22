@@ -473,8 +473,8 @@ impl Session {
 	}
 
 	/// Every proto-node declaration resource referenced by the current registry or anywhere in history,
-	/// with its content hash.
-	pub fn all_declaration_resources(&self) -> HashMap<ResourceId, ResourceHash> {
+	/// with its content hash, or `None` where the hash never resolved.
+	pub fn all_declaration_resources(&self) -> HashMap<ResourceId, Option<ResourceHash>> {
 		let registry = &self.document.working_registry;
 
 		let mut hashes: HashMap<ResourceId, ResourceHash> = registry.resources.iter().filter_map(|(id, entry)| Some((*id, entry.hash?))).collect();
@@ -502,7 +502,7 @@ impl Session {
 				Implementation::ProtoNode(id) => Some(*id),
 				Implementation::Network(_) => None,
 			})
-			.filter_map(|id| Some((id, *hashes.get(&id)?)))
+			.map(|id| (id, hashes.get(&id).copied()))
 			.collect()
 	}
 
