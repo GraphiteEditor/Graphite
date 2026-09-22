@@ -41,6 +41,15 @@ mod tests {
 	}
 
 	#[test]
+	fn percent_is_not_the_remainder() {
+		// `%` is reserved for percentages, so a C-style remainder is a parse error naming the function that computes it
+		for input in ["5 % 3", "x % 2", "%", "50%"] {
+			let error = evaluate(input).unwrap_err().to_string();
+			assert!(error.contains("`mod(a, b)`"), "`{input}` gave the error `{error}`");
+		}
+	}
+
+	#[test]
 	fn not_sign_is_prefix_only() {
 		// `¬` spells only the prefix logical not, so it must not stand in for `!` in its postfix factorial role
 		for input in ["5¬", "5¬3", "(2 + 3)¬", "3¬¬"] {
@@ -136,6 +145,7 @@ mod tests {
 			"sin(inf)",
 			"gcd(inf, 6)",
 			"gcd(10000000000000000000, 2)",
+			"mod(5, 0)",
 			"(-1)!",
 			"2.5!",
 			"i!",
@@ -359,10 +369,13 @@ mod tests {
 		infix_subtraction: "5 - 3" => 2.,
 		infix_multiplication: "4 * 4" => 16.,
 		infix_division: "8/2" => 4.,
-		modulo_pos_pos: "3.2 % 2" => 1.2,
-		modulo_pos_neg: "3.2 % -2" => 1.2,
-		modulo_neg_neg: "(-3.2) % -2" => -1.2,
-		modulo_neg_pos: "(-3.2) % 2" => -1.2,
+		modulo_pos_pos: "mod(3.2, 2)" => 1.2,
+		modulo_pos_neg: "mod(3.2, -2)" => -0.8,
+		modulo_neg_neg: "mod(-3.2, -2)" => -1.2,
+		modulo_neg_pos: "mod(-3.2, 2)" => 0.8,
+		modulo_neg_multiple: "mod(-4, 2)" => 0.,
+		modulo_integer_wrap: "mod(-7, 3)" => 2.,
+		modulo_angle_wrap: "mod(-pi/2, tau)" => 1.5 * std::f64::consts::PI,
 		exp_pos_pos: "3.2 ^ 2" => 256. / 25.,
 		exp_pos_neg: "3.2 ^ -2" => 25. / 256.,
 		exp_neg_neg: "-3.2 ^ -2" => -25. / 256.,
@@ -686,7 +699,7 @@ mod tests {
 		magnitude_difference_spaced: "|-2| - |-3|" => -1.,
 		magnitude_difference_unspaced: "|-2|-|-3|" => -1.,
 		magnitude_quotient: "|-2| / |-4|" => 0.5,
-		magnitude_modulo: "|-7| % |-4|" => 3.,
+		magnitude_modulo: "mod(|-7|, |-4|)" => 3.,
 		magnitude_factorial_inside: "|3!|" => 6.,
 		magnitude_factorial_then_sum: "|-3|! + 1" => 7.,
 		magnitude_less_than_spaced: "|-3| < |-5|" => 1.,

@@ -155,7 +155,6 @@ impl Number {
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
-					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => {
 						// A negative base under a fractional exponent has no real power, so it climbs to the principal complex one
 						let power = lhs.powf(rhs);
@@ -180,7 +179,6 @@ impl Number {
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
-					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
 					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
 						return None;

@@ -400,6 +400,15 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			_ => None,
 		},
 
+		"mod" => |values| match values {
+			[Value::Number(Number::Real(x)), Value::Number(Number::Real(modulus))] => {
+				// Floored, so a truncated remainder with the opposite sign from the modulus moves over by one modulus
+				let remainder = x % modulus;
+				Some(Value::from_f64(if remainder != 0. && (remainder < 0.) != (*modulus < 0.) { remainder + modulus } else { remainder }))
+			}
+			_ => None,
+		},
+
 		"gcd" => |values| {
 			let reduced = real_operands(values)?
 				.into_iter()
