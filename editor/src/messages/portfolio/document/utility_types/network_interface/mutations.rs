@@ -403,7 +403,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Moves each given downstream connection onto `output_connector`.
-	fn rewire_downstream(&mut self, downstream_connections: Vec<InputConnector>, output_connector: &OutputConnector, network_path: &[NodeId]) {
+	pub(super) fn rewire_downstream(&mut self, downstream_connections: Vec<InputConnector>, output_connector: &OutputConnector, network_path: &[NodeId]) {
 		for downstream_connection in downstream_connections {
 			self.disconnect_input(&downstream_connection, network_path);
 			self.create_wire(output_connector, &downstream_connection, network_path);

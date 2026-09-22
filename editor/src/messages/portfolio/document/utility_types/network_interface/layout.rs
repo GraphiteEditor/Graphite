@@ -803,11 +803,21 @@ impl NodeNetworkInterface {
 		self.invalidate_positions(vec![*node_id], network_path);
 	}
 
-	/// Lightweight version of `move_layer_to_stack` for SVG import. Performs only the wiring
-	/// (connecting the layer into the stack) without any position calculation or push/collision logic.
-	/// Positions should be set separately after the full import tree is built.
-	pub fn move_layer_to_stack_for_import(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
-		// Artboard redirection: if a non-artboard layer targets ROOT_PARENT and an artboard exists, redirect into the artboard
+	/// The grid rows a node occupies when stacked, as absolute `(top, bottom)` rows. A layer's box starts
+	/// one row above its position and reaches `STACK_VERTICAL_GAP` below it; a node spans two rows down.
+	fn stacked_box_rows(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<(i32, i32)> {
+		let position = self.position(node_id, network_path)?;
+
+		Some(if self.is_layer(node_id, network_path) {
+			(position.y - 1, position.y + STACK_VERTICAL_GAP)
+		} else {
+			(position.y, position.y + 2)
+		})
+	}
+
+	/// A layer that is not an artboard cannot sit beside one at the root, so a move aimed at the root
+	/// while an artboard already holds the first slot is redirected to the top of that artboard's stack.
+	fn redirect_into_artboard(&self, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize, network_path: &[NodeId]) -> (LayerNodeIdentifier, usize) {
 		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next()
 			&& parent == LayerNodeIdentifier::ROOT_PARENT
 			&& self
@@ -815,9 +825,17 @@ impl NodeNetworkInterface {
 				.is_none_or(|reference| reference != DefinitionIdentifier::Network("Artboard".into()))
 			&& self.is_artboard(&first_layer.to_node(), network_path)
 		{
-			parent = first_layer;
-			insert_index = 0;
+			return (first_layer, 0);
 		}
+
+		(parent, insert_index)
+	}
+
+	/// Lightweight version of `move_layer_to_stack` for SVG import. Performs only the wiring
+	/// (connecting the layer into the stack) without any position calculation or push/collision logic.
+	/// Positions should be set separately after the full import tree is built.
+	pub fn move_layer_to_stack_for_import(&mut self, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize, network_path: &[NodeId]) {
+		let (parent, insert_index) = self.redirect_into_artboard(layer, parent, insert_index, network_path);
 
 		let post_node = self.post_node_with_index(parent, insert_index, network_path);
 		let Some(post_node_input) = self.input_from_connector(&post_node, network_path).cloned() else {
@@ -862,42 +880,19 @@ impl NodeNetworkInterface {
 	}
 
 	/// Disconnect the layers primary output and the input to the last non layer node feeding into it through primary flow, reconnects, then moves the layer to the new layer and stack index
-	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, mut parent: LayerNodeIdentifier, mut insert_index: usize, network_path: &[NodeId]) {
+	pub fn move_layer_to_stack(&mut self, layer: LayerNodeIdentifier, parent: LayerNodeIdentifier, insert_index: usize, network_path: &[NodeId]) {
 		// Prevent moving an artboard anywhere but to the ROOT_PARENT child stack
 		if self.is_artboard(&layer.to_node(), network_path) && parent != LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Artboard can only be moved to the root parent stack");
 			return;
 		}
 
-		// A layer is considered to be the height of that layer plus the height to the upstream layer sibling
-		// If a non artboard layer is attempted to be connected to the exports, and there is already an artboard connected, then connect the layer to the artboard.
-		if let Some(first_layer) = LayerNodeIdentifier::ROOT_PARENT.children(&self.document_metadata).next()
-			&& parent == LayerNodeIdentifier::ROOT_PARENT
-			&& self
-				.reference(&layer.to_node(), network_path)
-				.is_none_or(|reference| reference != DefinitionIdentifier::Network("Artboard".into()))
-			&& self.is_artboard(&first_layer.to_node(), network_path)
-		{
-			parent = first_layer;
-			insert_index = 0;
-		}
+		let (parent, mut insert_index) = self.redirect_into_artboard(layer, parent, insert_index, network_path);
 
 		let Some(layer_to_move_position) = self.position(&layer.to_node(), network_path) else {
 			log::error!("Could not get layer_to_move_position in move_layer_to_stack");
 			return;
 		};
-
-		let mut lowest_upstream_node_height = 0;
-		for upstream_node in self
-			.upstream_flow_back_from_nodes(vec![layer.to_node()], network_path, FlowType::LayerChildrenUpstreamFlow)
-			.collect::<Vec<_>>()
-		{
-			let Some(upstream_node_position) = self.position(&upstream_node, network_path) else {
-				log::error!("Could not get upstream node position in move_layer_to_stack");
-				return;
-			};
-			lowest_upstream_node_height = lowest_upstream_node_height.max((upstream_node_position.y - layer_to_move_position.y).max(0) as u32);
-		}
 
 		// If the moved layer is a child of the new parent, then get its index after the disconnect
 		if let Some(moved_layer_previous_index) = parent.children(&self.document_metadata).position(|child| child == layer) {
@@ -945,10 +940,11 @@ impl NodeNetworkInterface {
 			};
 			let mut lowest_y_position = downstream_node_position.y + STACK_VERTICAL_GAP;
 
-			for bottom_position in self.upstream_nodes_below_layer(&downstream_node, network_path).iter().filter_map(|node_id| {
-				let is_layer = self.is_layer(node_id, network_path);
-				self.position(node_id, network_path).map(|position| position.y + if is_layer { STACK_VERTICAL_GAP } else { 2 })
-			}) {
+			for (_, bottom_position) in self
+				.upstream_nodes_below_layer(&downstream_node, network_path)
+				.iter()
+				.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
+			{
 				lowest_y_position = lowest_y_position.max(bottom_position);
 			}
 			downstream_height = lowest_y_position - (downstream_node_position.y + STACK_VERTICAL_GAP);
@@ -957,43 +953,22 @@ impl NodeNetworkInterface {
 		let mut highest_y_position = layer_to_move_position.y;
 		let mut lowest_y_position = layer_to_move_position.y;
 
-		for (bottom_position, top_position) in self.upstream_nodes_below_layer(&layer.to_node(), network_path).iter().filter_map(|node_id| {
-			let is_layer = self.is_layer(node_id, network_path);
-			let bottom_position = self.position(node_id, network_path).map(|position| position.y + if is_layer { STACK_VERTICAL_GAP } else { 2 });
-			let top_position = self.position(node_id, network_path).map(|position| if is_layer { position.y - 1 } else { position.y });
-			bottom_position.zip(top_position)
-		}) {
+		for (top_position, bottom_position) in self
+			.upstream_nodes_below_layer(&layer.to_node(), network_path)
+			.iter()
+			.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
+		{
 			highest_y_position = highest_y_position.min(top_position);
 			lowest_y_position = lowest_y_position.max(bottom_position);
 		}
 		let height_above_layer = layer_to_move_position.y - highest_y_position + downstream_height;
 		let height_below_layer = lowest_y_position - layer_to_move_position.y - STACK_VERTICAL_GAP;
 
-		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
-		if let Some(upstream_node_id) = post_node_input.as_node() {
-			// Build the stack dependents from the upstream node rather than the selection so the shifting works correctly
-			self.unload_stack_dependents(network_path);
-			self.load_stack_dependents_for_nodes(vec![upstream_node_id], network_path);
-
-			// Create the minimum amount space for the moved layer
-			for _ in 0..STACK_VERTICAL_GAP {
-				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
-			}
-
-			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
-				log::error!("Could not get stack position in move_layer_to_stack");
-				self.unload_stack_dependents(network_path);
-				return;
-			};
-
-			let current_gap = stack_position.y - (after_move_post_layer_position.y + 2);
-			let target_gap = 1 + height_above_layer + 2 + height_below_layer + 1;
-
-			for _ in 0..(target_gap - current_gap).max(0) {
-				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
-			}
-
-			self.unload_stack_dependents(network_path);
+		// Whatever already occupies the destination has to move down to leave room for the layer
+		if let Some(upstream_node_id) = post_node_input.as_node()
+			&& !self.push_stack_down_to_fit(upstream_node_id, after_move_post_layer_position, height_above_layer, height_below_layer, network_path)
+		{
+			return;
 		}
 
 		// If true, this node should be inserted before the post node (toward root from the layer), and all outward wires from the pre node should be moved to its output.
@@ -1049,28 +1024,58 @@ impl NodeNetworkInterface {
 
 		if insert_node_after_post {
 			self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
-
-			// Get the other wires which need to be moved to the output of the moved layer
-			let layer_input_connector = InputConnector::primary_input(layer.to_node());
-			let other_outward_wires = self
-				.upstream_output_connector(&layer_input_connector, network_path)
-				.and_then(|pre_node_output| self.outward_wires(network_path).and_then(|wires| wires.get(&pre_node_output)))
-				.map(|other| {
-					other
-						.iter()
-						.filter(|other_input_connector| **other_input_connector != layer_input_connector)
-						.cloned()
-						.collect::<Vec<_>>()
-				})
-				.unwrap_or_default();
-
-			// Disconnect and reconnect
-			for other_outward_wire in &other_outward_wires {
-				self.disconnect_input(other_outward_wire, network_path);
-				self.create_wire(&OutputConnector::primary_output(layer.to_node()), other_outward_wire, network_path);
-			}
+			self.take_over_outward_wires(layer.to_node(), network_path);
 		}
 		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
+	}
+
+	/// Shifts `upstream_node_id` and everything stacked below it down until a layer needing
+	/// `height_above` rows above it and `height_below` below fits between it and `post_layer_position`.
+	///
+	/// Returns whether the gap could be measured; the caller abandons the move when it could not.
+	fn push_stack_down_to_fit(&mut self, upstream_node_id: NodeId, post_layer_position: IVec2, height_above: i32, height_below: i32, network_path: &[NodeId]) -> bool {
+		// The push follows the stack dependents of the node being moved, not those of the selection
+		self.unload_stack_dependents(network_path);
+		self.load_stack_dependents_for_nodes(vec![upstream_node_id], network_path);
+
+		// Open the minimum gap first, so the measurement below sees a stack that has already parted
+		for _ in 0..STACK_VERTICAL_GAP {
+			self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+		}
+
+		let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
+			log::error!("Could not get stack position in push_stack_down_to_fit");
+			self.unload_stack_dependents(network_path);
+			return false;
+		};
+
+		let current_gap = stack_position.y - (post_layer_position.y + 2);
+		let target_gap = 1 + height_above + 2 + height_below + 1;
+		for _ in 0..(target_gap - current_gap).max(0) {
+			self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+		}
+
+		self.unload_stack_dependents(network_path);
+		true
+	}
+
+	/// Moves every other consumer of the node now feeding `layer` onto `layer`'s own output, so a layer
+	/// inserted above a node serves the wires that node used to serve.
+	fn take_over_outward_wires(&mut self, layer: NodeId, network_path: &[NodeId]) {
+		let layer_input_connector = InputConnector::primary_input(layer);
+		let other_outward_wires = self
+			.upstream_output_connector(&layer_input_connector, network_path)
+			.and_then(|pre_node_output| self.outward_wires(network_path).and_then(|wires| wires.get(&pre_node_output)))
+			.map(|other| {
+				other
+					.iter()
+					.filter(|other_input_connector| **other_input_connector != layer_input_connector)
+					.cloned()
+					.collect::<Vec<_>>()
+			})
+			.unwrap_or_default();
+
+		self.rewire_downstream(other_outward_wires, &OutputConnector::primary_output(layer), network_path);
 	}
 
 	// Insert a node onto a wire. Ensure insert_node_input_index is an exposed input
