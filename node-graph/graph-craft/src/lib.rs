@@ -7,6 +7,7 @@ pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, descri
 
 pub mod application_io;
 pub mod document;
+pub mod runtime_delta;
 pub use document::{DocumentNode, NodeNetwork};
 pub mod graphene_compiler;
 pub mod proto;

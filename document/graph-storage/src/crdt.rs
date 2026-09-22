@@ -92,7 +92,7 @@ impl Delta {
 
 /// Op payload. Timestamps live on the wrapping `Delta` — one per delta, applied to all LWW-eligible
 /// writes within. See `notes/document-format-collaboration.md`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum RegistryDelta {
 	AddNode {
 		id: NodeId,
@@ -190,7 +190,7 @@ pub enum RegistryDelta {
 }
 
 /// `value: None` means remove. The timestamp comes from the wrapping `Delta`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeDelta {
 	pub key: String,
 	pub value: Option<serde_json::Value>,
