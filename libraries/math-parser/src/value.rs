@@ -1,5 +1,6 @@
 use crate::ast::{BinaryOp, UnaryOp};
 use std::f64::consts::PI;
+use std::ops::Mul;
 
 pub type Complex = num_complex::Complex<f64>;
 
@@ -186,7 +187,8 @@ impl Number {
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
-					BinaryOp::Div => lhs / rhs,
+					BinaryOp::Div => complex_divide(lhs, rhs),
+					BinaryOp::Pow if rhs.im == 0. => return complex_real_power(lhs, rhs.re),
 					BinaryOp::Pow => lhs.powc(rhs),
 					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
 						return None;
@@ -202,7 +204,7 @@ impl Number {
 					BinaryOp::Add => lhs_complex + rhs,
 					BinaryOp::Sub => lhs_complex - rhs,
 					BinaryOp::Mul => lhs_complex * rhs,
-					BinaryOp::Div => lhs_complex / rhs,
+					BinaryOp::Div => complex_divide(lhs_complex, rhs),
 					BinaryOp::Pow => lhs_complex.powc(rhs),
 					_ => return None,
 				};
@@ -215,8 +217,9 @@ impl Number {
 					BinaryOp::Add => lhs + rhs_complex,
 					BinaryOp::Sub => lhs - rhs_complex,
 					BinaryOp::Mul => lhs * rhs_complex,
-					BinaryOp::Div => lhs / rhs_complex,
-					BinaryOp::Pow => lhs.powf(rhs),
+					BinaryOp::Div if rhs == 0. => complex_over_zero(lhs, rhs),
+					BinaryOp::Div => lhs / rhs,
+					BinaryOp::Pow => return complex_real_power(lhs, rhs),
 					_ => return None,
 				};
 				Some(Number::Complex(result))
@@ -246,6 +249,72 @@ impl Number {
 	pub fn from_f64(x: f64) -> Self {
 		Self::Real(x)
 	}
+}
+
+/// Division by a real zero, sending each nonzero part to the infinity of its own sign as an overflow would, so `i / 0` is `∞i`.
+fn complex_over_zero(dividend: Complex, zero: f64) -> Complex {
+	let part_over_zero = |part: f64| if part == 0. { 0. } else { part / zero };
+	Complex::new(part_over_zero(dividend.re), part_over_zero(dividend.im))
+}
+
+/// Complex division by Smith's algorithm, scaling by the divisor's larger part so neither `|divisor|²` nor the quotient
+/// overflows or underflows while the answer fits, and a simple quotient like `(1 + i) / (1 - i)` stays exact.
+pub(crate) fn complex_divide(dividend: Complex, divisor: Complex) -> Complex {
+	// Every part is halved when one passes half of f64::MAX, keeping the quotient while the sums below stay in range
+	let largest_part = [dividend.re, dividend.im, divisor.re, divisor.im].into_iter().map(f64::abs).fold(0., f64::max);
+	let (dividend, divisor) = if largest_part > f64::MAX / 2. { (dividend / 2., divisor / 2.) } else { (dividend, divisor) };
+
+	let Complex { re: a, im: b } = dividend;
+	let Complex { re: c, im: d } = divisor;
+	if c.abs() >= d.abs() {
+		let ratio = d / c;
+		let denominator = c + d * ratio;
+		Complex::new((a + b * ratio) / denominator, (b - a * ratio) / denominator)
+	} else {
+		let ratio = c / d;
+		let denominator = d + c * ratio;
+		Complex::new((a * ratio + b) / denominator, (b * ratio - a) / denominator)
+	}
+}
+
+/// A complex base under a real exponent: a whole exponent multiplies out exactly by squaring, so `i^2` is `-1` where the polar
+/// form leaves a `sin(π)` residue, and any other exponent takes the polar form.
+fn complex_real_power(base: Complex, exponent: f64) -> Option<Number> {
+	if exponent.fract() != 0. || exponent.abs() >= u128::MAX as f64 {
+		return Some(Number::Complex(base.powf(exponent)));
+	}
+
+	let power = match exponent.abs() as u128 {
+		0 => Complex::from(1.),
+		count => whole_power(base, count),
+	};
+	// An overflowed product has NaN cross terms, so the polar form takes over with the overflow's direction
+	if Number::Complex(power).is_nan() {
+		return Some(Number::Complex(base.powf(exponent)));
+	}
+
+	if exponent < 0. {
+		return Number::Real(1.).binary_op(BinaryOp::Div, Number::Complex(power).canonical());
+	}
+	Some(Number::Complex(power))
+}
+
+/// `base^n` for a whole `n` of at least 1 by repeated squaring, in O(log n) multiplications.
+fn whole_power<T: Copy + Mul<Output = T>>(mut base: T, mut exponent: u128) -> T {
+	while exponent & 1 == 0 {
+		base = base * base;
+		exponent >>= 1;
+	}
+
+	let mut result = base;
+	while exponent > 1 {
+		exponent >>= 1;
+		base = base * base;
+		if exponent & 1 == 1 {
+			result = result * base;
+		}
+	}
+	result
 }
 
 /// The factorial of a real number: the exact product for a whole number, and `x! = Γ(x + 1)` past the whole numbers, or
@@ -298,7 +367,7 @@ fn complex_gamma(z: Complex) -> Complex {
 }
 
 /// The natural logarithm of the gamma function over the complex plane, by the same approximation and reflection as [`real_gamma`].
-fn complex_log_gamma(z: Complex) -> Complex {
+pub(crate) fn complex_log_gamma(z: Complex) -> Complex {
 	if z.re < 0.5 {
 		// Shifting the real part into `[0, 1)` keeps the sine exact, with a half turn (a sign) for each odd shift
 		let shift = z.re.floor();
