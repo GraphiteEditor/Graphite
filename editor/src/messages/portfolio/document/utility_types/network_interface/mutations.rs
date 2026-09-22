@@ -457,108 +457,75 @@ impl NodeNetworkInterface {
 
 	/// Replaces the implementation and corresponding metadata.
 	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
-			return;
-		};
 		let (new_implementation, new_network_metadata) = std::mem::take(&mut new_template.implementation).into_parts();
-		node.implementation = new_implementation;
-		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get metadata in set_implementation");
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in replace_implementation");
 			return;
 		};
-		metadata.persistent_metadata.network_metadata = new_network_metadata;
+		node.replace_implementation(new_implementation, new_network_metadata);
 	}
 
 	/// Replaces the inputs and corresponding metadata.
 	pub fn replace_inputs(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) -> Option<Vec<NodeInput>> {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
-			return None;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
-			return None;
-		};
 		let new_inputs = std::mem::take(&mut new_template.inputs);
-		let old_inputs = std::mem::replace(&mut node.inputs, new_inputs);
-		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get metadata in set_implementation");
+		let new_input_metadata = std::mem::take(&mut new_template.input_metadata);
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;
 		};
-		let new_metadata = std::mem::take(&mut new_template.input_metadata);
-		let _ = std::mem::replace(&mut metadata.persistent_metadata.input_metadata, new_metadata);
-		Some(old_inputs)
+		Some(node.replace_inputs(new_inputs, new_input_metadata))
 	}
 
 	/// Used when opening an old document to add the persistent metadata for each input if it doesnt exist, which is where the name/description are saved.
 	pub fn validate_input_metadata(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let number_of_inputs = node.inputs.len();
-		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-		for added_input_index in metadata.persistent_metadata.input_metadata.len()..number_of_inputs {
-			let input_metadata = self
-				.reference(node_id, network_path)
-				.as_ref()
-				.and_then(resolve_document_node_type)
-				.and_then(|definition| definition.node_template.input_metadata.get(added_input_index))
-				.cloned();
-			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-			metadata.persistent_metadata.input_metadata.push(input_metadata.unwrap_or_default());
-		}
+		let definition = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type);
+
+		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		node_entry.pad_input_metadata(number_of_inputs, |input_index| {
+			definition.and_then(|definition| definition.node_template.input_metadata.get(input_index).cloned())
+		});
 	}
 
 	// When opening an old document to ensure the output names match the number of exports
 	pub fn validate_output_names(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
-		if let DocumentNodeImplementation::Network(network) = &node.implementation {
-			let number_of_exports = network.exports.len();
-			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-				log::error!("Could not get metadata for node: {node_id:?}");
-				return;
-			};
-			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
-		}
+		let DocumentNodeImplementation::Network(network) = &node.implementation else { return };
+		let number_of_exports = network.exports.len();
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in validate_output_names");
+			return;
+		};
+		node.resize_output_names(number_of_exports);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
 	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {
-		let Some(node_network_metadata) = self
-			.node_metadata_mut(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.as_mut())
-		else {
-			log::error!("Could not get network metadata in replace_reference_name");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_reference");
 			return;
 		};
-		node_network_metadata.persistent_metadata.reference = reference_name;
+		node.set_reference(reference_name);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn set_call_argument(&mut self, node_id: &NodeId, network_path: &[NodeId], call_argument: Type) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_call_argument");
 			return;
 		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
-			return;
-		};
-		node.call_argument = call_argument;
+		node.set_call_argument(call_argument);
 	}
 
 	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_context_features");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_context_features");
 			return;
 		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_context_features");
-			return;
-		};
-		node.context_features = context_features;
+		node.set_context_features(context_features);
 	}
 
 	/// Lightweight version of `set_input` for bulk import operations.
@@ -1133,47 +1100,36 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in set_visibility");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_display_name");
 			return;
 		};
 
-		if node_metadata.persistent_metadata.display_name == display_name {
+		if !node.set_display_name(display_name) {
 			return;
 		}
-
-		node_metadata.persistent_metadata.display_name = display_name;
 
 		self.transaction_modified();
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
 	}
 
-	pub fn set_import_export_name(&mut self, mut name: String, index: ImportOrExport, network_path: &[NodeId]) {
-		let Some(encapsulating_node) = self.encapsulating_node_metadata_mut(network_path) else {
+	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {
+		let Some((encapsulating_node_id, encapsulating_network_path)) = network_path.split_last() else {
 			log::error!("Could not get encapsulating network in set_import_export_name");
 			return;
 		};
 
-		let name_changed = match index {
-			ImportOrExport::Import(import_index) => {
-				let Some(input_properties) = encapsulating_node.persistent_metadata.input_metadata.get_mut(import_index) else {
-					log::error!("Could not get input properties in set_import_export_name");
-					return;
-				};
-				// Only return false if the previous value is the same as the current value
-				std::mem::swap(&mut input_properties.persistent_metadata.input_name, &mut name);
-				input_properties.persistent_metadata.input_name != name
-			}
-			ImportOrExport::Export(export_index) => {
-				let Some(export_name) = encapsulating_node.persistent_metadata.output_names.get_mut(export_index) else {
-					log::error!("Could not get export_name in set_import_export_name");
-					return;
-				};
-				std::mem::swap(export_name, &mut name);
-				*export_name != name
-			}
+		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+			log::error!("Could not get encapsulating node in set_import_export_name");
+			return;
 		};
+
+		let name_changed = match index {
+			ImportOrExport::Import(import_index) => node.set_input_name(import_index, name),
+			ImportOrExport::Export(export_index) => node.set_output_name(export_index, name),
+		};
+
 		if name_changed {
 			self.transaction_modified();
 		}
@@ -1227,25 +1183,26 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_visibility(&mut self, node_id: &NodeId, network_path: &[NodeId], is_visible: bool) {
-		let Some(network) = self.network_mut(network_path) else {
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_visibility");
 			return;
 		};
 
-		node.visible = is_visible;
-		self.transaction_modified();
+		if node.set_visible(is_visible) {
+			self.transaction_modified();
+		}
 	}
 
 	pub fn set_locked(&mut self, node_id: &NodeId, network_path: &[NodeId], locked: bool) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in set_visibility");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_locked");
 			return;
 		};
 
-		node_metadata.persistent_metadata.locked = locked;
+		if !node.set_locked(locked) {
+			return;
+		}
+
 		self.transaction_modified();
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);

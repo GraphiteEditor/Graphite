@@ -22,7 +22,7 @@ impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network.network()
 	}
-	pub fn document_network_mut(&mut self) -> &mut NodeNetwork {
+	pub(super) fn document_network_mut(&mut self) -> &mut NodeNetwork {
 		self.network.network_mut()
 	}
 
@@ -772,14 +772,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
-		let Some(metadata) = self
-			.node_metadata_mut(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get_mut(index))
-		else {
-			log::error!("Could not get input metadata for {node_id} index {index} in set_input_override");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_input_override");
 			return;
 		};
-		metadata.persistent_metadata.widget_override = widget_override;
+		node.set_widget_override(index, widget_override);
 	}
 
 	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
@@ -1173,15 +1170,15 @@ impl NodeNetworkInterface {
 
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
-	pub(crate) fn network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
+	pub(super) fn network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
 		self.document_network_mut().nested_network_mut(network_path)
 	}
 
-	pub(crate) fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
+	pub(super) fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
 		self.network_metadata.nested_metadata_mut(network_path)
 	}
 
-	pub(crate) fn node_metadata_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
+	pub(super) fn node_metadata_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata");
 			return None;
@@ -1194,7 +1191,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Mutably get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
-	pub(crate) fn encapsulating_network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
+	pub(super) fn encapsulating_network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
 		let mut encapsulating_path = network_path.to_vec();
 		encapsulating_path.pop()?;
 		let Some(parent_metadata) = self.network_metadata_mut(&encapsulating_path) else {
@@ -1205,7 +1202,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
-	pub(crate) fn encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
+	pub(super) fn encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
 		let mut encapsulating_path = network_path.to_vec();
 		let encapsulating_node_id = encapsulating_path.pop()?;
 		let Some(parent_metadata) = self.network_metadata_mut(&encapsulating_path) else {

@@ -97,6 +97,11 @@ impl PartialEq for NodeNetworkInterface {
 }
 
 impl NodeNetworkInterface {
+	/// Normalizes the stored types of every node at every nesting level, for an older document whose stored types predate the current form.
+	pub fn normalize_stored_types(&mut self) {
+		self.network.network_mut().normalize_stored_types();
+	}
+
 	/// Add DocumentNodePath input to the PathModifyNode protonode
 	pub fn migrate_path_modify_node(&mut self) {
 		fix_network(self.document_network_mut());

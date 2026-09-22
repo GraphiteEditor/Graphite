@@ -23,9 +23,114 @@ impl<'a> NodeLocator<'a> {
 
 /// The graph and metadata halves of one node, resolved together so the two parallel trees are never
 /// reached separately and cannot drift apart.
+///
+/// Holds the halves directly rather than the interface, so a write cannot reach back out to query the
+/// graph or unload a cache: what a write invalidates is declared, not performed here.
 pub(crate) struct NodeMut<'a> {
-	pub node: &'a mut DocumentNode,
-	pub metadata: &'a mut DocumentNodePersistentMetadata,
+	node: &'a mut DocumentNode,
+	metadata: &'a mut DocumentNodePersistentMetadata,
+}
+
+impl NodeMut<'_> {
+	/// Whether the node is rendered, which the compiler reads to replace it with a passthrough.
+	pub(crate) fn set_visible(&mut self, visible: bool) -> bool {
+		let changed = self.node.visible != visible;
+		self.node.visible = visible;
+		changed
+	}
+
+	/// The type of argument the node can be evaluated with.
+	pub(crate) fn set_call_argument(&mut self, call_argument: Type) {
+		self.node.call_argument = call_argument;
+	}
+
+	/// The Extract and Inject annotations the node declares for the Context.
+	pub(crate) fn set_context_features(&mut self, context_features: ContextDependencies) {
+		self.node.context_features = context_features;
+	}
+
+	/// The user-chosen name for this instance, empty when it has none.
+	pub(crate) fn set_display_name(&mut self, display_name: String) -> bool {
+		let changed = self.metadata.display_name != display_name;
+		self.metadata.display_name = display_name;
+		changed
+	}
+
+	pub(crate) fn set_locked(&mut self, locked: bool) -> bool {
+		let changed = self.metadata.locked != locked;
+		self.metadata.locked = locked;
+		changed
+	}
+
+	pub(crate) fn set_pinned(&mut self, pinned: bool) -> bool {
+		let changed = self.metadata.pinned != pinned;
+		self.metadata.pinned = pinned;
+		changed
+	}
+
+	/// Whether the node is displayed as a layer or a node, together with its position, which are one
+	/// choice: a layer and a node do not have the same kinds of position.
+	pub(crate) fn set_node_type(&mut self, node_type: NodeTypePersistentMetadata) -> bool {
+		let changed = self.metadata.node_type_metadata != node_type;
+		self.metadata.node_type_metadata = node_type;
+		changed
+	}
+
+	/// The definition this node's nested network was instantiated from, dropped once the node is edited
+	/// away from it. Only network nodes carry one.
+	pub(crate) fn set_reference(&mut self, reference: Option<String>) -> bool {
+		let Some(network_metadata) = self.metadata.network_metadata.as_mut() else { return false };
+		let changed = network_metadata.persistent_metadata.reference != reference;
+		network_metadata.persistent_metadata.reference = reference;
+		changed
+	}
+
+	pub(crate) fn set_input_name(&mut self, input_index: usize, input_name: String) -> bool {
+		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		let changed = input_metadata.persistent_metadata.input_name != input_name;
+		input_metadata.persistent_metadata.input_name = input_name;
+		changed
+	}
+
+	/// The identifier of the widget override the properties panel uses for this input, or `None` for the
+	/// widget generated from its type.
+	pub(crate) fn set_widget_override(&mut self, input_index: usize, widget_override: Option<String>) -> bool {
+		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		input_metadata.persistent_metadata.widget_override = widget_override;
+		true
+	}
+
+	pub(crate) fn set_output_name(&mut self, output_index: usize, output_name: String) -> bool {
+		let Some(existing) = self.metadata.output_names.get_mut(output_index) else { return false };
+		let changed = *existing != output_name;
+		*existing = output_name;
+		changed
+	}
+
+	/// Grows `output_names` to one entry per export, which an older document may be missing.
+	pub(crate) fn resize_output_names(&mut self, number_of_exports: usize) {
+		self.metadata.output_names.resize(number_of_exports, String::new());
+	}
+
+	/// Appends input metadata until there is one entry per input, filling from `defaults` where it has an
+	/// entry for the added index. Restores the parallel-array invariant for an older document.
+	pub(crate) fn pad_input_metadata(&mut self, number_of_inputs: usize, defaults: impl Fn(usize) -> Option<InputMetadata>) {
+		for added_input_index in self.metadata.input_metadata.len()..number_of_inputs {
+			self.metadata.input_metadata.push(defaults(added_input_index).unwrap_or_default());
+		}
+	}
+
+	/// Swaps in a new implementation together with the nested network metadata that belongs to it.
+	pub(crate) fn replace_implementation(&mut self, implementation: DocumentNodeImplementation, network_metadata: Option<NodeNetworkMetadata>) {
+		self.node.implementation = implementation;
+		self.metadata.network_metadata = network_metadata;
+	}
+
+	/// Swaps in new inputs together with their metadata, returning the inputs replaced.
+	pub(crate) fn replace_inputs(&mut self, inputs: Vec<NodeInput>, input_metadata: Vec<InputMetadata>) -> Vec<NodeInput> {
+		self.metadata.input_metadata = input_metadata;
+		std::mem::replace(&mut self.node.inputs, inputs)
+	}
 }
 
 // The store: the only writer of the node graph and its parallel metadata tree. Every write keeps the
