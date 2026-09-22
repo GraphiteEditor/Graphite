@@ -70,10 +70,10 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 		// is unchanged but whose timestamp differs should not emit a delta.
 		for (input_idx, (from_slot, to_slot)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
 			if from_slot.input != to_slot.input {
-				deltas.push(RegistryDelta::ChangeNodeInput {
+				deltas.push(RegistryDelta::SetNodeInput {
 					id: node_id,
 					index: input_idx as u32,
-					new_input: to_slot.input.clone(),
+					value: to_slot.input.clone(),
 				});
 			}
 		}

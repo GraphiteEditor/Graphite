@@ -182,10 +182,10 @@ impl EditorDelta {
 				let new_input = context.resolver.convert_input_at(input, network_path)?;
 				construct_referenced_resource(Some(context.resolver.node_id(network_path, *node_id)), &new_input, context, batch, ops)?;
 
-				ops.push(RegistryDelta::ChangeNodeInput {
+				ops.push(RegistryDelta::SetNodeInput {
 					id: context.resolver.node_id(network_path, *node_id),
 					index: (*input_index).try_into().map_err(|_| ConversionError::IndexOverflow(*input_index))?,
-					new_input,
+					value: new_input,
 				});
 			}
 

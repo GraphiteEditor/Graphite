@@ -416,10 +416,10 @@ fn apply_op_advances_clock_even_when_op_errors() {
 	let mut document = fresh_document(PeerId(1));
 
 	let observed = TimeStamp { counter: 17, peer: PeerId(2) };
-	let failing_op = RegistryDelta::ChangeNodeInput {
+	let failing_op = RegistryDelta::SetNodeInput {
 		id: NodeId(7),
 		index: 0,
-		new_input: crate::NodeInput::Import { index: 0 },
+		value: crate::NodeInput::Import { index: 0 },
 	};
 
 	let result = document.apply_op(failing_op, observed);

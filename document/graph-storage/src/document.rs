@@ -206,7 +206,7 @@ impl Document {
 					node.inputs = inputs.into_iter().map(|slot| crate::InputSlot { timestamp, ..slot }).collect();
 				}
 			}
-			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
+			RegistryDelta::SetNodeInput { id, index, value: new_input } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
 				if force || timestamp > input.timestamp {
@@ -318,7 +318,7 @@ impl Document {
 	fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
 		match op {
 			RegistryDelta::AddNode { node, .. } => self.ensure_network_exists(target, node.network())?,
-			RegistryDelta::ChangeNodeInput { id, new_input, .. } => {
+			RegistryDelta::SetNodeInput { id, value: new_input, .. } => {
 				if let NodeInput::Node { id: referenced, .. } = new_input {
 					self.ensure_node_exists(target, *referenced)?;
 				}
@@ -386,13 +386,13 @@ impl Document {
 					implementation: node.implementation.clone(),
 				}
 			}
-			&RegistryDelta::ChangeNodeInput { id, index: input_idx, .. } => {
+			&RegistryDelta::SetNodeInput { id, index: input_idx, .. } => {
 				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let slot = node.inputs().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
-				RegistryDelta::ChangeNodeInput {
+				RegistryDelta::SetNodeInput {
 					id,
 					index: input_idx,
-					new_input: slot.input.clone(),
+					value: slot.input.clone(),
 				}
 			}
 			&RegistryDelta::ChangeNodeAttribute { id, ref delta } => {

@@ -93,8 +93,7 @@ impl Delta {
 	}
 }
 
-/// Op payload. Timestamps live on the wrapping `Delta` — one per delta, applied to all LWW-eligible
-/// writes within. See `notes/document-format-collaboration.md`.
+/// Op payload. Timestamps live on the wrapping `Delta` one per delta, applied to all LWW-eligible writes within.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum RegistryDelta {
 	AddNode {
@@ -107,13 +106,13 @@ pub enum RegistryDelta {
 		id: NodeId,
 		snapshot: Node,
 	},
-	ChangeNodeInput {
+	SetNodeInput {
 		id: NodeId,
 		index: u32,
-		new_input: NodeInput,
+		value: NodeInput,
 	},
 	/// A node's whole input list, for a change to the number or order of its slots that the
-	/// index-addressed `ChangeNodeInput` cannot express. Assigns rather than merging: concurrent
+	/// index-addressed `SetNodeInput` cannot express. Assigns rather than merging: concurrent
 	/// per-slot edits are lost, which is inherent to the indices themselves moving.
 	///
 	/// Touches only the inputs, leaving the node's attributes and implementation alone, so it composes
@@ -140,6 +139,15 @@ pub enum RegistryDelta {
 		index: u32,
 		delta: AttributeDelta,
 	},
+	AddNetwork {
+		id: NetworkId,
+		network: Network,
+	},
+	/// `snapshot` lets the reverse delta rebuild without re-walking history.
+	RemoveNetwork {
+		id: NetworkId,
+		snapshot: Network,
+	},
 	/// LWW per slot. `export == None` removes the slot.
 	SetNetworkExport {
 		id: NetworkId,
@@ -151,31 +159,22 @@ pub enum RegistryDelta {
 		id: NetworkId,
 		delta: AttributeDelta,
 	},
-	AddNetwork {
-		id: NetworkId,
-		network: Network,
-	},
-	/// `snapshot` lets the reverse delta rebuild without re-walking history.
-	RemoveNetwork {
-		id: NetworkId,
-		snapshot: Network,
-	},
 	/// Register a whole resource entry at once. Overwrites any existing entry for `id`; the reverse
 	/// of `RemoveResource`, the way `AddNetwork` pairs with `RemoveNetwork`.
 	AddResource {
 		id: ResourceId,
 		entry: ResourceEntry,
 	},
+	/// Remove a whole resource entry. `snapshot` is the state of the resource before it was removed.
+	RemoveResource {
+		id: ResourceId,
+		snapshot: ResourceEntry,
+	},
 	/// LWW on a resource's resolved content hash. Creates the resource entry if absent.
 	/// Concurrent resolves agree by construction (the hash is content-derived), so LWW is safe.
 	SetResourceHash {
 		id: ResourceId,
 		hash: Option<ResourceHash>,
-	},
-	/// Remove a whole resource entry. `snapshot` is the state of the resource before it was removed.
-	RemoveResource {
-		id: ResourceId,
-		snapshot: ResourceEntry,
 	},
 	/// Add (or LWW-overwrite) one entry in a resource's source fallback chain. The source body is
 	/// type-erased; `key` carries the fractional priority + peer that order it. Add-wins: concurrent
