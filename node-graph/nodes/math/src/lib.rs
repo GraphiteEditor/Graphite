@@ -10,6 +10,8 @@ use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
+use math_parser::lexer::Constant;
+use math_parser::reducer::classify_reducer;
 use math_parser::value::{Number, Value};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
@@ -82,6 +84,162 @@ fn math<T: num_traits::float::Float>(
 	};
 
 	Item::from_parts(result, attributes)
+}
+
+/// Parses and evaluates a math expression with the given variable bindings, logging and returning `None` on failure.
+fn evaluate_expression(expression: &str, provider: impl ValueProvider) -> Option<Value> {
+	let node = match ast::Node::try_parse_from_str(expression) {
+		Ok(node) => node,
+		Err(error) => {
+			warn!("Invalid expression: `{expression}`\n{error}");
+			return None;
+		}
+	};
+
+	match node.eval(&EvalContext::new(provider, NothingMap)) {
+		Ok(value) => Some(value),
+		Err(error) => {
+			warn!("Expression evaluation error: {error:?}");
+			None
+		}
+	}
+}
+
+/// Converts a node item type to and from the values the expression evaluator runs in.
+trait ExpressionValue: Copy + Default {
+	fn into_f64(self) -> f64;
+	/// Reads an evaluated result as this type, or `None` when it does not fit, like a complex number read as a Number.
+	fn from_value(value: &Value) -> Option<Self>;
+}
+
+impl ExpressionValue for f64 {
+	fn into_f64(self) -> f64 {
+		self
+	}
+	fn from_value(value: &Value) -> Option<Self> {
+		value.as_real()
+	}
+}
+
+/// Reads an expression's result into the node's output type, warning and falling back to the type's default when it does not fit.
+fn output<T: ExpressionValue>(result: Option<Value>) -> T {
+	result
+		.and_then(|value| {
+			let output = T::from_value(&value);
+			if output.is_none() {
+				warn!("The expression's result {value} does not fit the output type");
+			}
+			output
+		})
+		.unwrap_or_default()
+}
+
+impl ExpressionValue for f32 {
+	fn into_f64(self) -> f64 {
+		self as f64
+	}
+	fn from_value(value: &Value) -> Option<Self> {
+		value.as_f32()
+	}
+}
+
+impl ExpressionValue for bool {
+	fn into_f64(self) -> f64 {
+		self as u8 as f64
+	}
+
+	// A truth value is exactly 0 or 1 in the expression language, so any other result does not fit
+	fn from_value(value: &Value) -> Option<Self> {
+		value.as_bool()
+	}
+}
+
+/// Supplies the value of `x` for the "Math f(x)" node's expression.
+struct SingleVariableMathContext {
+	x: f64,
+}
+
+impl ValueProvider for SingleVariableMathContext {
+	fn get_value(&self, name: &str) -> Option<Value> {
+		// Bound by exact spelling, per the language's rule that a binding shadows the builtin of exactly its spelling
+		(name == "x").then(|| Value::from_f64(self.x))
+	}
+}
+
+/// Evaluates a math expression written in terms of the single variable `x`, which carries the input value.
+///
+/// A boolean input reads as 0 or 1, and a boolean output requires the expression to produce exactly 0 or 1, since any other number is not a truth value.
+#[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"))]
+fn math_fx<T: ExpressionValue>(
+	_: impl Ctx,
+	/// The value passed into the expression as `x`.
+	#[implementations(f64, f32, bool)]
+	value: Item<T>,
+	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`.
+	#[name("f(x) =")]
+	#[default("x")]
+	fx: Item<String>,
+) -> Item<T> {
+	let (value, attributes) = value.into_parts();
+
+	let x = value.into_f64();
+	let result = output(evaluate_expression(fx.element(), SingleVariableMathContext { x }));
+
+	Item::from_parts(result, attributes)
+}
+
+/// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on.
+struct PositionalMathContext {
+	items: Vec<f64>,
+}
+
+impl ValueProvider for PositionalMathContext {
+	fn get_value(&self, name: &str) -> Option<Value> {
+		let mut characters = name.chars();
+		let letter = characters.next()?;
+		if characters.next().is_some() || !letter.is_ascii_lowercase() {
+			return None;
+		}
+
+		// A wired item shadows the constant spelled by its letter (`e` as the fifth item, `i` as the ninth), which stay reachable
+		// as `\e` and `\i`; an unwired letter reads as its default of 0, except that a constant's letter stays the constant
+		let index = (letter as u8 - b'a') as usize;
+		match self.items.get(index) {
+			Some(item) => Some(Value::from_f64(*item)),
+			None if Constant::from_name(name).is_some() => None,
+			None => Some(Value::from_f64(0.)),
+		}
+	}
+}
+
+/// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
+///
+/// Boolean items read as 0 or 1, and a boolean output requires the expression to produce exactly 0 or 1, since any other number is not a truth value.
+#[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
+fn math_f<T: ExpressionValue>(
+	_: impl Ctx,
+	/// The items the expression reads.
+	#[implementations(List<f64>, List<f32>, List<bool>)]
+	values: List<T>,
+	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
+	#[name("f(…) =")]
+	f: Item<String>,
+) -> Item<T> {
+	let expression = f.element();
+	let items: Vec<f64> = values.iter_element_values().map(|&value| value.into_f64()).collect();
+	let bindings = PositionalMathContext { items };
+
+	// A lone operator or variadic function name applies across all items rather than parsing as an expression
+	if let Some(reducer) = classify_reducer(expression, &bindings) {
+		let Some(result) = reducer.evaluate(&bindings.items) else {
+			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
+			return Item::new_from_element(T::default());
+		};
+		return Item::new_from_element(output(Some(Value::from_f64(result))));
+	}
+
+	let result = output(evaluate_expression(expression, bindings));
+	Item::new_from_element(result)
 }
 
 /// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
@@ -713,23 +871,30 @@ fn random(
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs.
+/// Converts a number to an integer of the type u32, which may be the required type for certain node inputs.
 #[node_macro::node(name("As u32"), category("Type Assertion"))]
 fn as_u32(_: impl Ctx, value: Item<u32>) -> Item<u32> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs.
+/// Converts a number to an integer of the type u64, which may be the required type for certain node inputs.
 #[node_macro::node(name("As u64"), category("Type Assertion"))]
 fn as_u64(_: impl Ctx, value: Item<u64>) -> Item<u64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As f64"), category("Type Assertion"))]
-fn as_f64(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+/// Converts an integer or bool to the decimal number type, which may be the required type for certain node inputs. A bool becomes 0 (false) or 1 (true).
+#[node_macro::node(category("Type Assertion"))]
+fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+	value
+}
+
+// TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
+/// Passes a true or false value through as the type bool, which may be the required type for certain node inputs.
+#[node_macro::node(category("Type Assertion"))]
+fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
 }
 
@@ -980,7 +1145,7 @@ where
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
 #[node_macro::node(category("Math: Numeric"))]
-fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
+fn greatest_common_divisor<T: num_traits::int::PrimInt>(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
 	#[implementations(u32, u64, i32)]
@@ -992,20 +1157,15 @@ fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let result = if value == T::zero() {
-		other_value
-	} else if other_value == T::zero() {
-		value
-	} else {
-		binary_gcd(value, other_value)
-	};
+	let gcd = math_parser::constants::gcd(integer_magnitude(value), integer_magnitude(other_value));
 
-	Item::from_parts(result, attributes)
+	// A result too large for the output type (like the GCD of `i32::MIN` and 0) saturates at the type's maximum
+	Item::from_parts(T::from(gcd).unwrap_or_else(T::max_value), attributes)
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive + num_traits::identities::Zero>(
+fn least_common_multiple<T: num_traits::int::PrimInt>(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
 	#[implementations(u32, u64, i32)]
@@ -1015,48 +1175,17 @@ fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive 
 	other_value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
+	let other_value = *other_value.element();
 
-	let value = value.to_i128().unwrap();
-	let other_value = other_value.element().to_i128().unwrap();
+	let lcm = math_parser::constants::lcm(integer_magnitude(value), integer_magnitude(other_value));
 
-	if value == 0 || other_value == 0 {
-		return Item::from_parts(T::zero(), attributes);
-	}
-	let gcd = binary_gcd(value, other_value);
-
-	Item::from_parts(T::from_i128((value * other_value).abs() / gcd).unwrap(), attributes)
+	// A result too large for the output type saturates at the type's maximum rather than overflowing
+	Item::from_parts(T::from(lcm).unwrap_or_else(T::max_value), attributes)
 }
 
-fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(mut a: T, mut b: T) -> T {
-	if a == T::zero() {
-		return b;
-	}
-	if b == T::zero() {
-		return a;
-	}
-
-	let mut shift = 0;
-	while (a | b) & T::one() == T::zero() {
-		a >>= 1;
-		b >>= 1;
-		shift += 1;
-	}
-
-	while a & T::one() == T::zero() {
-		a >>= 1;
-	}
-
-	while b != T::zero() {
-		while b & T::one() == T::zero() {
-			b >>= 1;
-		}
-		if a > b {
-			std::mem::swap(&mut a, &mut b);
-		}
-		b -= a;
-	}
-
-	a << shift
+/// Reads an integer's magnitude as a `u128`, which every implemented input type fits within.
+fn integer_magnitude<T: num_traits::int::PrimInt>(value: T) -> u128 {
+	value.to_i128().map_or(0, i128::unsigned_abs)
 }
 
 /// Adds together all the numbers in the input list, producing their total.
@@ -1096,6 +1225,18 @@ fn any(_: impl Ctx, values: List<bool>) -> Item<bool> {
 #[node_macro::node(category("Math: Logic"))]
 fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 	Item::new_from_element(values.iter_element_values().all(|&value| value))
+}
+
+/// Outputs true if the value is anything other than zero. A vector counts as zero only when every component is zero.
+#[node_macro::node(category("Math: Logic"))]
+fn is_nonzero<T: Default + std::cmp::PartialEq>(
+	_: impl Ctx,
+	/// The value compared against zero.
+	#[implementations(f64, f32, u32, u64, i32, i64, DVec2)]
+	value: Item<T>,
+) -> Item<bool> {
+	let (value, attributes) = value.into_parts();
+	Item::from_parts(value != T::default(), attributes)
 }
 
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
@@ -1861,6 +2002,34 @@ mod test {
 	fn test_default_expression() {
 		let result = math((), Item::new_from_element(0.), Item::new_from_element("0".to_string()), Item::new_from_element(0.));
 		assert_eq!(result.into_element(), 0.);
+	}
+
+	#[test]
+	fn test_boolean_items() {
+		// Booleans read as exactly 0 and 1, and logical results convert back
+		assert!(!math_fx((), Item::new_from_element(true), Item::new_from_element("!x".to_string())).into_element());
+		assert!(math_fx((), Item::new_from_element(false), Item::new_from_element("x == 0".to_string())).into_element());
+
+		// A result that is not exactly 0 or 1 cannot be a truth value, so it reads as false
+		assert!(!math_fx((), Item::new_from_element(true), Item::new_from_element("x + 1".to_string())).into_element());
+
+		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
+		assert!(!math_f((), bools(), Item::new_from_element("&&".to_string())).into_element());
+		assert!(math_f((), bools(), Item::new_from_element("||".to_string())).into_element());
+		assert!(!math_f((), bools(), Item::new_from_element("xor".to_string())).into_element());
+	}
+
+	#[test]
+	fn test_is_nonzero() {
+		assert!(!is_nonzero((), Item::new_from_element(0.)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(0.5)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(-3_i64)).into_element());
+		assert!(!is_nonzero((), Item::new_from_element(DVec2::ZERO)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(DVec2::new(0., 1.))).into_element());
+
+		// Negative zero is zero, while NaN, being unequal to zero, is nonzero
+		assert!(!is_nonzero((), Item::new_from_element(-0.)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(f64::NAN)).into_element());
 	}
 
 	#[test]

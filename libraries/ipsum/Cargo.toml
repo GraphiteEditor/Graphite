@@ -1,0 +1,9 @@
+[package]
+name = "ipsum"
+description = "Generator of Lorem Ipsum placeholder text"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true

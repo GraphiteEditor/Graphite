@@ -865,37 +865,67 @@ pub(crate) enum SoleDependentStep {
 	Escape,
 }
 
-pub(crate) fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
+pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl FnMut(ResourceId)) {
 	for export in &network.exports {
-		collect_input_resource(export, out);
+		visit_input_resource(export, visit);
 	}
 	for node in network.nodes.values() {
-		collect_node_resources(node, out);
+		visit_node_resources(node, visit);
 	}
 }
 
-/// Collects resource IDs referenced by a node and its nested networks.
-pub fn collect_node_resources(node: &DocumentNode, out: &mut HashSet<ResourceId>) {
+pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {
 	for input in &node.inputs {
-		collect_input_resource(input, out);
+		visit_input_resource(input, visit);
 	}
 	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-		collect_network_resources(nested, out);
+		visit_network_resources(nested, visit);
 	}
 }
 
-/// Records the resource ID held by a value input, covering node inputs and export slots alike.
-pub(crate) fn collect_input_resource(input: &NodeInput, out: &mut HashSet<ResourceId>) {
+pub(crate) fn visit_input_resource(input: &NodeInput, visit: &mut impl FnMut(ResourceId)) {
 	if let NodeInput::Value { tagged_value, .. } = input
 		&& let TaggedValue::Resource(id) = &**tagged_value
 	{
-		out.insert(*id);
+		visit(*id);
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn resource_visits_reach_nested_networks_and_exports() {
+		let shared = ResourceId::from(1);
+		let uses = |id: ResourceId| NodeInput::value(TaggedValue::Resource(id), false);
+		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
+		let inner = NodeNetwork {
+			exports: vec![uses(shared)],
+			nodes: [(NodeId(2), node(vec![uses(shared)]))].into_iter().collect(),
+			..Default::default()
+		};
+		let outer = NodeNetwork {
+			nodes: [
+				(NodeId(1), node(vec![uses(shared), uses(ResourceId::from(2))])),
+				(
+					NodeId(3),
+					DocumentNode {
+						implementation: DocumentNodeImplementation::Network(inner),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		let mut visits = Vec::new();
+		visit_network_resources(&outer, &mut |id| visits.push(id));
+		assert_eq!(visits.iter().filter(|id| **id == shared).count(), 3);
+		assert_eq!(visits.len(), 4);
+	}
 
 	#[test]
 	fn port_click_targets_are_clickable_at_their_center() {

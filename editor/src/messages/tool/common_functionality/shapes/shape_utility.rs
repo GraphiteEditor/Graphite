@@ -16,6 +16,7 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::core_types::misc::format_f64;
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::vector::algorithms::shapes::{arc_bezpath, regular_polygon_bezpath, star_polygon_bezpath};
 use graphene_std::vector::click_target::ClickTargetType;
@@ -558,6 +559,10 @@ pub fn wrap_to_tau(angle: f64) -> f64 {
 }
 
 pub fn format_rounded(value: f64, precision: usize) -> String {
+	if value.is_infinite() {
+		return format_f64(value);
+	}
+
 	// Denoised values within floating point noise of zero (including -0) display as unsigned zero, unless the precision is fine enough to display them
 	let value = round_away_float_noise(value);
 	let value = if value.abs() < f64::min(1e-12, 0.5 * 10_f64.powi(-(precision as i32))) { 0. } else { value };
@@ -636,6 +641,12 @@ mod tests {
 	fn format_rounded_denoises_before_judging_exactness() {
 		assert_eq!(format_rounded(29.999999999999996, 2), "30");
 		assert_eq!(format_rounded(45.00000000000001, 2), "45");
+	}
+
+	#[test]
+	fn format_rounded_spells_infinity_as_the_symbol() {
+		assert_eq!(format_rounded(f64::INFINITY, 2), "∞");
+		assert_eq!(format_rounded(f64::NEG_INFINITY, 2), "-∞");
 	}
 
 	#[test]

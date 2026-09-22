@@ -153,6 +153,44 @@ impl Image<Color> {
 		}
 	}
 
+	/// Decodes an image file of any supported format.
+	pub fn from_encoded(data: &[u8]) -> Option<Self> {
+		let image = decode(data)?;
+
+		// Float samples hold linear light, as in HDR and EXR files, while integer samples are gamma encoded
+		let linear = matches!(image.color(), ::image::ColorType::Rgb32F | ::image::ColorType::Rgba32F);
+		// An EXR file stores its color multiplied by its alpha, unlike the other formats and unlike `Color`
+		let premultiplied = ::image::guess_format(data).is_ok_and(|format| format == ::image::ImageFormat::OpenExr);
+		// Light brighter than white is clipped, since adjustments, the GPU upload, and export all work within this range
+		let in_range = |value: f32| if value.is_nan() { 0. } else { value.clamp(0., 1.) };
+
+		let image = image.to_rgba32f();
+		let data = image
+			.chunks_exact(4)
+			.map(|pixel| {
+				if !linear {
+					return Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3]);
+				}
+
+				let alpha = in_range(pixel[3]);
+				let divisor = if premultiplied && alpha > 0. { alpha } else { 1. };
+				Color::from_rgbaf32_unchecked(in_range(pixel[0] / divisor), in_range(pixel[1] / divisor), in_range(pixel[2] / divisor), alpha)
+			})
+			.collect();
+
+		Some(Image {
+			width: image.width(),
+			height: image.height(),
+			data,
+			base64_string: None,
+		})
+	}
+
+	/// The pixel size of an image file, if it decodes in full as [`Image::from_encoded`] needs it to.
+	pub fn encoded_size(data: &[u8]) -> Option<(u32, u32)> {
+		decode(data).map(|image| (image.width(), image.height()))
+	}
+
 	pub fn to_png(&self) -> Vec<u8> {
 		use ::image::ImageEncoder;
 		let (data, width, height) = self.to_flat_u8();
@@ -161,6 +199,12 @@ impl Image<Color> {
 		encoder.write_image(&data, width, height, ::image::ExtendedColorType::Rgba8).expect("failed to encode image as png");
 		png
 	}
+}
+
+/// A TGA file has no signature to recognize it by, so a file of no recognized format is tried as one.
+fn decode(data: &[u8]) -> Option<::image::DynamicImage> {
+	let format = ::image::guess_format(data).unwrap_or(::image::ImageFormat::Tga);
+	::image::load_from_memory_with_format(data, format).ok()
 }
 
 use super::*;
@@ -288,5 +332,66 @@ mod test {
 		let image = Image::from_image_data(&bytes, 4, 1);
 
 		assert_eq!(image.to_flat_u8().0, bytes);
+	}
+
+	#[test]
+	fn decodes_each_format_including_one_with_no_signature() {
+		use super::*;
+		use ::image::ImageFormat::{Bmp, Ico, Png, Tga, Tiff, WebP};
+
+		// Opaque red, then half transparent blue
+		let pixels = ::image::RgbaImage::from_raw(2, 1, vec![255, 0, 0, 255, 0, 0, 255, 128]).unwrap();
+
+		for format in [Png, WebP, Tiff, Bmp, Tga, Ico] {
+			let mut encoded = Vec::new();
+			pixels.write_to(&mut std::io::Cursor::new(&mut encoded), format).unwrap();
+
+			let image = Image::from_encoded(&encoded).unwrap_or_else(|| panic!("{format:?} should decode"));
+			assert_eq!(Image::encoded_size(&encoded), Some((2, 1)), "{format:?}");
+			assert_eq!(image.to_flat_u8().0, pixels.as_raw().as_slice(), "{format:?}");
+		}
+
+		assert!(Image::from_encoded(b"not an image").is_none());
+	}
+
+	#[test]
+	fn recognized_format_that_cannot_be_read_is_not_tried_as_tga() {
+		use super::*;
+
+		// The signature of a PNM file, a format that is recognized but not read, begins what is also a well-formed TGA header
+		let mut file = vec![0; 18];
+		file[..3].copy_from_slice(b"P6\n");
+		// One pixel wide and tall, at 24 bits per pixel and per color map entry, since the `6` reads as having a color map
+		file[7] = 24;
+		file[12] = 1;
+		file[14] = 1;
+		file[16] = 24;
+		// The ID field whose length the `P` gives, then a run of one blue pixel
+		file.extend([0; b'P' as usize]);
+		file.extend([0, 255, 0, 0]);
+
+		assert!(::image::load_from_memory_with_format(&file, ::image::ImageFormat::Tga).is_ok());
+		assert!(Image::from_encoded(&file).is_none());
+	}
+
+	#[test]
+	fn float_samples_are_read_as_linear_light_within_range() {
+		use super::*;
+
+		let exr = |image: ::image::DynamicImage| {
+			let mut encoded = Vec::new();
+			image.write_to(&mut std::io::Cursor::new(&mut encoded), ::image::ImageFormat::OpenExr).unwrap();
+			Image::from_encoded(&encoded).unwrap().data[0]
+		};
+
+		// Not decoded as gamma, light brighter than white clipped, and a sample that is not a number zeroed
+		let color = exr(::image::DynamicImage::ImageRgb32F(::image::Rgb32FImage::from_raw(1, 1, vec![0.5, 2., f32::NAN]).unwrap()));
+		assert_eq!((color.r(), color.g(), color.b(), color.a()), (0.5, 1., 0., 1.));
+
+		// Color stored multiplied by its alpha comes out straight, and stays as stored where the alpha is zero
+		let color = exr(::image::DynamicImage::ImageRgba32F(::image::Rgba32FImage::from_raw(1, 1, vec![0.25, 0.125, 0., 0.5]).unwrap()));
+		assert_eq!((color.r(), color.g(), color.b(), color.a()), (0.5, 0.25, 0., 0.5));
+		let color = exr(::image::DynamicImage::ImageRgba32F(::image::Rgba32FImage::from_raw(1, 1, vec![0.25, 0., 0., 0.]).unwrap()));
+		assert_eq!((color.r(), color.a()), (0.25, 0.));
 	}
 }

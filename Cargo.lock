@@ -277,6 +277,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b71798fca2c1fe1086445a7258a4bc81e6e49dcd24c8d0dd9a1e57395b603f51"
 
 [[package]]
+name = "bit_field"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e4b40c7323adcfc0a41c4b88143ed58346ff65a288fc144329c5c45e05d70c6"
+
+[[package]]
 name = "bitflags"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,7 +788,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
 dependencies = [
  "lazy_static",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1201,7 +1207,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1336,7 +1342,7 @@ checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 [[package]]
 name = "dpi"
 version = "0.1.2"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "serde",
 ]
@@ -1485,7 +1491,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "778e2ac28f6c47af28e4907f13ffd1e1ddbd400980a9abd7c8df189bf578a5ad"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1495,6 +1501,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1a05365e3b1c6d1650318537c7460c6923f1abdd272ad6842baa2b509957a06"
 dependencies = [
  "num-traits",
+]
+
+[[package]]
+name = "exr"
+version = "1.74.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "711fe42c9964295e01ee3fba3f9fe0e1d24b98886950d68efe81b1c76e21adf3"
+dependencies = [
+ "bit_field",
+ "half",
+ "lebe",
+ "miniz_oxide",
+ "num-complex",
+ "pulp",
+ "rayon-core",
+ "smallvec",
+ "zune-inflate",
 ]
 
 [[package]]
@@ -1531,7 +1554,7 @@ checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
 dependencies = [
  "cfg-if",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2220,6 +2243,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "vello",
  "wgpu",
  "windows 0.62.2",
@@ -2831,11 +2855,25 @@ dependencies = [
  "bytemuck",
  "byteorder-lite",
  "color_quant",
+ "exr",
  "gif",
+ "image-webp",
  "num-traits",
  "png 0.17.16",
+ "serde",
+ "tiff",
  "zune-core",
  "zune-jpeg",
+]
+
+[[package]]
+name = "image-webp"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "525e9ff3e1a4be2fbea1fdf0e98686a6d98b4d8f937e1bf7402245af1909e8c3"
+dependencies = [
+ "byteorder-lite",
+ "quick-error",
 ]
 
 [[package]]
@@ -2985,6 +3023,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "469fb0b9cefa57e3ef31275ee7cacb78f2fdca44e4765491884a2b119d4eb130"
 
 [[package]]
+name = "ipsum"
+version = "0.0.0"
+
+[[package]]
 name = "iri-string"
 version = "0.7.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3091,6 +3133,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "jpeg-decoder"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00810f1d8b74be64b13dbf3db89ac67740615d6c891f0e7b6179326533011a07"
+
+[[package]]
 name = "js-sys"
 version = "0.3.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3167,6 +3215,12 @@ name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
+
+[[package]]
+name = "lebe"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7a79a3332a6609480d7d0c9eab957bca6b455b91bb84e66d19f5ff66294b85b8"
 
 [[package]]
 name = "libbz2-rs-sys"
@@ -3363,6 +3417,7 @@ dependencies = [
  "criterion",
  "num-complex",
  "thiserror 2.0.18",
+ "unicode-ident",
 ]
 
 [[package]]
@@ -3654,6 +3709,7 @@ version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "73f88a1307638156682bada9d7604135552957b7818057dcef22705b4d509495"
 dependencies = [
+ "bytemuck",
  "num-traits",
 ]
 
@@ -3926,7 +3982,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d8fae84b431384b68627d0f9b3b1245fcf9f46f6c0e3dc902e9dce64edd1967"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3993,6 +4049,12 @@ checksum = "19ab9ace3fad1b9ed603ddac5b595e69931fc50263d7e04e4055015b77b02da5"
 dependencies = [
  "icu_properties",
 ]
+
+[[package]]
+name = "paste"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "path-bool-nodes"
@@ -4384,10 +4446,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
 
 [[package]]
+name = "pulp"
+version = "0.22.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "046aa45b989642ec2e4717c8e72d677b13edd831a4d3b6cf37d9a3e54912496a"
+dependencies = [
+ "bytemuck",
+ "cfg-if",
+ "libm",
+ "num-complex",
+ "paste",
+ "pulp-wasm-simd-flag",
+ "raw-cpuid",
+ "reborrow",
+ "version_check",
+]
+
+[[package]]
+name = "pulp-wasm-simd-flag"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d8f70e07b9c3962945a74e59ca1c511bba65b6419468acc217c457d93f3c740"
+
+[[package]]
 name = "qrcodegen"
 version = "1.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4339fc7a1021c9c1621d87f5e3505f2805c8c105420ba2f2a4df86814590c142"
+
+[[package]]
+name = "quick-error"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a993555f31e5a609f617c12db6250dedcac1b0a85076912c436e6fc9b2c8e6a3"
 
 [[package]]
 name = "quick-xml"
@@ -4460,7 +4551,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4587,6 +4678,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "raw-cpuid"
+version = "11.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "498cd0dc59d73224351ee52a95fee0f1a617a2eae0e7d9d720cc622c73a54186"
+dependencies = [
+ "bitflags 2.11.0",
+]
+
+[[package]]
 name = "raw-string"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4657,6 +4757,12 @@ dependencies = [
  "font-types 0.12.3",
  "once_cell",
 ]
+
+[[package]]
+name = "reborrow"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
 
 [[package]]
 name = "recvmsg"
@@ -4996,7 +5102,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5064,7 +5170,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5794,7 +5900,7 @@ dependencies = [
  "getrandom 0.3.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5828,9 +5934,11 @@ dependencies = [
  "glam",
  "graphene-hash",
  "graphene-resource",
+ "ipsum",
  "log",
  "node-macro",
  "parley",
+ "rand",
  "raster-types",
  "serde",
  "serde_json",
@@ -5901,6 +6009,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "tiff"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba1310fcea54c6a9a4fd1aad794ecc02c31682f6bfbecdf460bf19533eed1e3e"
+dependencies = [
+ "flate2",
+ "jpeg-decoder",
+ "weezl",
 ]
 
 [[package]]
@@ -7071,7 +7190,7 @@ version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0978bf7171b3d90bac376700cb56d606feb40f251a475a5d6634613564460b22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7524,7 +7643,7 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 [[package]]
 name = "winit"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "cfg_aliases",
@@ -7551,7 +7670,7 @@ dependencies = [
 [[package]]
 name = "winit-android"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "android-activity",
  "bitflags 2.11.0",
@@ -7566,7 +7685,7 @@ dependencies = [
 [[package]]
 name = "winit-appkit"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "block2",
@@ -7588,7 +7707,7 @@ dependencies = [
 [[package]]
 name = "winit-common"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "block2",
  "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
@@ -7606,7 +7725,7 @@ dependencies = [
 [[package]]
 name = "winit-core"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
@@ -7615,14 +7734,13 @@ dependencies = [
  "raw-window-handle",
  "serde",
  "smol_str",
- "url",
  "web-time",
 ]
 
 [[package]]
 name = "winit-orbital"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
@@ -7638,7 +7756,7 @@ dependencies = [
 [[package]]
 name = "winit-uikit"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "block2",
@@ -7659,7 +7777,7 @@ dependencies = [
 [[package]]
 name = "winit-wayland"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "calloop",
@@ -7686,7 +7804,7 @@ dependencies = [
 [[package]]
 name = "winit-web"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "atomic-waker",
  "bitflags 2.11.0",
@@ -7708,16 +7826,16 @@ dependencies = [
 [[package]]
 name = "winit-win32"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "cursor-icon",
  "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "percent-encoding",
  "raw-window-handle",
  "smol_str",
  "tracing",
  "unicode-segmentation",
- "url",
  "windows-sys 0.61.2",
  "winit-common",
  "winit-core",
@@ -7726,7 +7844,7 @@ dependencies = [
 [[package]]
 name = "winit-x11"
 version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#739828c05de222d0851899e4441343eb14aaf922"
+source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "bitflags 2.11.0",
  "bytemuck",
@@ -7991,6 +8109,15 @@ name = "zune-core"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f423a2c17029964870cfaabb1f13dfab7d092a62a29a89264f4d36990ca414a"
+
+[[package]]
+name = "zune-inflate"
+version = "0.2.54"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73ab332fe2f6680068f3582b16a24f90ad7096d5d39b974d1c0aff0125116f02"
+dependencies = [
+ "simd-adler32",
+]
 
 [[package]]
 name = "zune-jpeg"

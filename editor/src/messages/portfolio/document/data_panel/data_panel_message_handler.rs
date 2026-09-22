@@ -10,6 +10,7 @@ use graph_craft::document::NodeId;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
+use graphene_std::core_types::misc::format_f64;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
@@ -21,7 +22,7 @@ use graphene_std::raster::{
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
-use graphene_std::text_nodes::StringCapitalization;
+use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
@@ -238,6 +239,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
 		List<StringCapitalization>,
+		List<TextDenomination>,
 		List<DesaturateMethod>,
 		List<RedGreenBlue>,
 		List<RedGreenBlueAlpha>,
@@ -297,6 +299,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
 		Item<StringCapitalization>,
+		Item<TextDenomination>,
 		Item<DesaturateMethod>,
 		Item<RedGreenBlue>,
 		Item<RedGreenBlueAlpha>,
@@ -857,12 +860,24 @@ macro_rules! impl_table_item_layout_for_number {
 	}
 }
 impl_table_item_layout_for_number!(
-	f32 => "Number (f32)",
 	u32 => "Number (u32)",
 	i32 => "Number (i32)",
 	u64 => "Number (u64)",
 	i64 => "Number (i64)",
 );
+
+impl TableItemLayout for f32 {
+	fn type_name() -> &'static str {
+		"Number (f32)"
+	}
+	fn identifier(&self) -> String {
+		// Only infinity widens to f64 without gaining digits, so finite values keep the f32 spelling
+		if self.is_infinite() { format_f64(*self as f64) } else { format!("{self}") }
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+	}
+}
 
 // Denoised so 0.1 + 0.2 reads as 0.3 rather than 0.30000000000000004. We don't do this for f32 because it lacks precision to reliably distinguish between intentional digits and noise.
 impl TableItemLayout for f64 {
@@ -870,7 +885,7 @@ impl TableItemLayout for f64 {
 		"Number"
 	}
 	fn identifier(&self) -> String {
-		format!("{}", round_away_float_noise(*self))
+		format_f64(round_away_float_noise(*self))
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
@@ -962,7 +977,7 @@ impl TableItemLayout for Option<f64> {
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		let text = match self {
-			Some(value) => format!("Some({})", round_away_float_noise(*value)),
+			Some(value) => format!("Some({})", format_f64(round_away_float_noise(*value))),
 			None => "None".to_string(),
 		};
 
@@ -1069,6 +1084,7 @@ impl_table_item_layout_for_choice_enum!(
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	StringCapitalization,
+	TextDenomination,
 	DesaturateMethod,
 	RedGreenBlue,
 	RedGreenBlueAlpha,
@@ -1290,6 +1306,7 @@ macro_rules! known_item_types {
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
 			StringCapitalization,
+			TextDenomination,
 			DesaturateMethod,
 			RedGreenBlue,
 			RedGreenBlueAlpha,

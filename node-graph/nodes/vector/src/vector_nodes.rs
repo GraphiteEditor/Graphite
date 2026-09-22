@@ -1098,7 +1098,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 	#[range]
 	#[soft(0..1)]
 	spread: Item<f64>,
-	/// If active, existing non-zero handles won't be affected.
+	/// If active, existing nonzero handles won't be affected.
 	#[default(true)]
 	preserve_existing: Item<bool>,
 ) -> Item<V> {
@@ -1275,6 +1275,22 @@ async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 #[node_macro::node(category("Type Assertion"), path(core_types::vector))]
 fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 	value
+}
+
+/// Creates vector points at the given positions, as a point cloud with nothing connecting them. **Points to Polyline** can join them into a path.
+#[node_macro::node(category("Vector"), name("Points to Vector"), path(core_types::vector))]
+fn points_to_vector(
+	_: impl Ctx,
+	/// The positions to place the points at, in order.
+	points: List<DVec2>,
+) -> Item<Vector> {
+	let mut vector = Vector::default();
+	let mut next_point = PointId::ZERO;
+	for &position in points.iter_element_values() {
+		vector.point_domain.push(next_point.next_id(), position);
+	}
+
+	Item::new_from_element(vector)
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
@@ -2935,7 +2951,7 @@ async fn morph(
 	// the item transform (which will be group_transform * lerped_transform after the
 	// pipeline's Transform node runs), the lerped_transform cancels out and children
 	// get the correct footprint: parent * group_transform * child_transform.
-	// Only pre-compensate if the lerped transform is invertible (non-zero determinant).
+	// Only pre-compensate if the lerped transform is invertible (nonzero determinant).
 	// A zero determinant can occur when interpolated scale passes through zero (e.g., flipped axes),
 	// in which case we skip pre-compensation to avoid propagating NaN through merged_layers transforms.
 	if lerped_transform.matrix2.determinant().abs() > f64::EPSILON {
@@ -3587,15 +3603,17 @@ mod test {
 	}
 
 	fn vector_item_from_points(points: &[DVec2]) -> Item<Vector> {
-		let mut vector = Vector::default();
-		let mut next_point = PointId::ZERO;
-		for &position in points {
-			vector.point_domain.push(next_point.next_id(), position);
-		}
-		Item::new_from_element(vector)
+		super::points_to_vector((), points.iter().map(|&position| Item::new_from_element(position)).collect())
 	}
 
 	const SQUARE_WITH_CENTER: [DVec2; 5] = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(10., 10.), DVec2::new(0., 10.), DVec2::new(5., 5.)];
+
+	#[test]
+	fn points_to_vector_keeps_positions_in_order_and_unconnected() {
+		let result = vector_item_from_points(&SQUARE_WITH_CENTER);
+		assert_eq!(result.element().point_domain.positions(), SQUARE_WITH_CENTER);
+		assert!(result.element().segment_domain.ids().is_empty());
+	}
 
 	#[tokio::test]
 	async fn offset_path_does_not_duplicate_closing_anchors() {
@@ -3746,7 +3764,7 @@ mod test {
 
 		assert_eq!(&manipulator_groups_anchors[..4], &[DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE, DVec2::new(-1., 1.),]);
 
-		// Test a rectangular path with non-zero rotation
+		// Test a rectangular path with nonzero rotation
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = List::new_from_element(square);
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));

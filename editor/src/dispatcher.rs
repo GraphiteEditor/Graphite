@@ -266,8 +266,8 @@ impl Dispatcher {
 				Message::MenuBar(message) => {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
-					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace_panel_layout.focus_document;
-					let layout = &self.message_handlers.portfolio_message_handler.workspace_panel_layout;
+					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace.panel_layout.focus_document;
+					let layout = &self.message_handlers.portfolio_message_handler.workspace.panel_layout;
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
@@ -427,6 +427,7 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod test {
+	use crate::messages::portfolio::ingest::utility_types::IngestAction;
 	pub use crate::test_utils::test_prelude::*;
 
 	#[tokio::test]
@@ -478,9 +479,11 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
-				path: file_name.into(),
-				content: document_serialized_content.bytes().collect(),
+			let responses = editor.editor.handle_message(IngestMessage::Ingest {
+				data: document_serialized_content.into_bytes(),
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some(file_name.into()),
 			});
 
 			// Check if the graph renders

@@ -249,6 +249,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::PropertiesPanel(message) => {
 				let context = PropertiesPanelMessageContext {
 					executor,
+					document_id,
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
@@ -797,13 +798,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::InsertImage {
 				name,
-				image,
+				data,
+				size,
 				mouse,
 				parent_and_insert_index,
 				place_at_origin,
 			} => {
 				let layer_parent = self.new_layer_parent(true);
-				let image_size = DVec2::new(image.width as f64, image.height as f64);
+				let image_size = size.as_dvec2();
 
 				let mut transform = if place_at_origin {
 					// File-open flow: place at document origin without centering so `WrapContentInArtboard` can wrap it
@@ -811,7 +813,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					// Clipboard paste or drag-drop: center at cursor or viewport center.
 					// Convert the document-space cursor to the parent's local coordinate space so that
-					// an artboard at a non-zero position does not offset the placement.
+					// an artboard at a nonzero position does not offset the placement.
 					let parent_to_document = {
 						let metadata = self.metadata();
 						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
@@ -826,7 +828,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::StartTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(image, layer_node_id, layer_parent, responses);
+				let layer = graph_modification_utils::new_image_layer(data, layer_node_id, layer_parent, responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -874,7 +876,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					// Clipboard paste or drag-drop: center at cursor or viewport center.
 					// Convert the document-space cursor to the parent's local coordinate space so that
-					// an artboard at a non-zero position does not offset the placement.
+					// an artboard at a nonzero position does not offset the placement.
 					let parent_to_document = {
 						let metadata = self.metadata();
 						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
@@ -1098,6 +1100,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						filters: vec![FileFilter {
 							name: "Graphite Document".into(),
 							extensions: vec![extension.into()],
+							mime_types: Vec::new(),
 						}],
 						content: content.into(),
 					})
@@ -2775,7 +2778,7 @@ impl DocumentMessageHandler {
 			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
 			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
-			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			// A visible stroke needs both renderable geometry (nonzero weight) and paint that draws something
 			let has_stroke = appearance.is_some_and(|appearance| {
 				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
 					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
@@ -3748,7 +3751,7 @@ impl DocumentMessageHandler {
 		let first_or_last_selected_layer = match relative_index_offset.signum() {
 			-1 => selected_layers.next(),
 			1 => selected_layers.last(),
-			_ => panic!("selected_layers_reorder() must be given a non-zero value"),
+			_ => panic!("selected_layers_reorder() must be given a nonzero value"),
 		};
 
 		let Some(pivot_layer) = first_or_last_selected_layer else {

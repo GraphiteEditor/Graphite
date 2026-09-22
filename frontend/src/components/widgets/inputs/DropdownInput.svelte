@@ -19,7 +19,7 @@
 		tooltipShortcut: undefined,
 	};
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number; fileDrop: File }>();
 
 	let self: LayoutRow | undefined;
 
@@ -35,6 +35,7 @@
 	// Behavior
 	export let virtualScrolling = false;
 	export let interactive = true;
+	export let takesFileDrop = false;
 	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
@@ -47,6 +48,7 @@
 	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
+	let fileDragOver = false;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchEntries(entries);
@@ -113,15 +115,49 @@
 		const blurTarget = (e.target instanceof Element ? e.target.closest("[data-dropdown-input]") : undefined) || undefined;
 		if (blurTarget !== self?.div?.()) open = false;
 	}
+
+	function takesDraggedFile(e: DragEvent): boolean {
+		return takesFileDrop && !disabled && Boolean(e.dataTransfer?.types.includes("Files"));
+	}
+
+	function fileDragOverWidget(e: DragEvent) {
+		if (!takesDraggedFile(e)) return;
+
+		// The browser refuses the drop unless the dragover is canceled
+		e.preventDefault();
+		fileDragOver = true;
+	}
+
+	function fileDragLeaveWidget(e: DragEvent) {
+		// Moving between the widget's own children is not leaving it
+		if (e.relatedTarget instanceof Node && self?.div?.()?.contains(e.relatedTarget)) return;
+
+		fileDragOver = false;
+	}
+
+	function fileDropOnWidget(e: DragEvent) {
+		if (!takesDraggedFile(e)) return;
+
+		// The drop is kept from also reaching a panel that imports dropped files
+		e.preventDefault();
+		e.stopPropagation();
+		fileDragOver = false;
+
+		const file = e.dataTransfer?.files[0];
+		if (file) dispatch("fileDrop", file);
+	}
 </script>
 
 <LayoutRow
 	class="dropdown-input"
-	classes={{ narrow }}
+	classes={{ narrow, "file-drag-over": fileDragOver }}
 	styles={{
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
 		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
 	}}
+	on:dragover={fileDragOverWidget}
+	on:dragleave={fileDragLeaveWidget}
+	on:drop={fileDropOnWidget}
 	bind:this={self}
 	data-dropdown-input
 >
@@ -167,6 +203,15 @@
 
 		&.narrow.narrow {
 			--widget-height: 20px;
+		}
+
+		&.file-drag-over::after {
+			content: "";
+			position: absolute;
+			inset: -4px;
+			border: 1px dashed var(--color-e-nearwhite);
+			border-radius: 4px;
+			pointer-events: none;
 		}
 
 		.dropdown-box {

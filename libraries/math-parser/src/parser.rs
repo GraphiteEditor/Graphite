@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
 use crate::lexer::{Lexer, Span, Token};
-use chumsky::error::LabelError;
+use chumsky::error::{EmptyErr, LabelError};
 use chumsky::input::ValueInput;
 use chumsky::{Parser, prelude::*};
 use std::fmt;
@@ -23,6 +23,23 @@ impl fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Builds a parse error from a plain message, for a failure that no "expected ..., found ..." phrasing describes.
+pub trait CustomError {
+	fn custom(span: Span, message: &'static str) -> Self;
+}
+
+impl CustomError for EmptyErr {
+	fn custom(_: Span, _: &'static str) -> Self {
+		EmptyErr::default()
+	}
+}
+
+impl<'src> CustomError for Rich<'src, Token<'src>, Span> {
+	fn custom(span: Span, message: &'static str) -> Self {
+		Rich::custom(span, message)
+	}
+}
+
 impl Node {
 	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError> {
 		// Parse with zero-cost errors first (several times faster), then re-parse invalid input with rich errors to build the messages
@@ -32,7 +49,15 @@ impl Node {
 
 		match parser::<Lexer, extra::Err<Rich<Token, Span>>>().parse(Lexer::new(src)).into_result() {
 			Ok(ast) => Ok(ast),
-			Err(parse_errs) => Err(ParseError(parse_errs.into_iter().map(|e| format!("{e} at {}", e.span())).collect())),
+			Err(parse_errs) => Err(ParseError(
+				parse_errs
+					.into_iter()
+					.map(|e| match e.found() {
+						Some(Token::Percent) => format!("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at {}", e.span()),
+						_ => format!("{e} at {}", e.span()),
+					})
+					.collect(),
+			)),
 		}
 	}
 }
@@ -41,13 +66,10 @@ pub fn parser<'src, I, E>() -> impl Parser<'src, I, Node, E>
 where
 	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 	E: extra::ParserExtra<'src, I>,
-	E::Error: LabelError<'src, I, &'static str>,
+	E::Error: LabelError<'src, I, &'static str> + CustomError,
 {
 	recursive(|expr| {
-		let constant = select! {
-			Token::Float(f) => Node::Lit(Literal::Float(f)),
-			Token::Const(c) => Node::Lit(c.value())
-		};
+		let constant = select! { Token::Float(f) => Node::Lit(Literal::Float(f)) };
 
 		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
 
@@ -70,13 +92,22 @@ where
 		});
 
 		let parens = expr.clone().delimited_by(just(Token::LParen), just(Token::RParen));
+		let magnitude = expr.clone().delimited_by(just(Token::BarOpen), just(Token::BarClose)).map(|expr| Node::UnaryOp {
+			op: UnaryOp::Magnitude,
+			expr: Box::new(expr),
+		});
 
-		let atom = choice((constant, if_expr, call_or_var, parens)).labelled("atom");
+		let atom = choice((constant, if_expr, call_or_var, parens, magnitude)).labelled("atom");
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
-		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div), just(Token::Modulo).to(BinaryOp::Modulo)));
+		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
 		let pow_op = just(Token::Caret).to(BinaryOp::Pow);
-		let unary_op = choice((just(Token::Minus).to(UnaryOp::Neg), just(Token::Bang).to(UnaryOp::Not)));
+		let unary_op = choice((
+			just(Token::Minus).to(UnaryOp::Neg),
+			just(Token::Plus).to(UnaryOp::Pos),
+			just(Token::Bang).to(UnaryOp::Not),
+			just(Token::Not).to(UnaryOp::Not),
+		));
 		let and_op = just(Token::AndAnd).to(BinaryOp::And);
 		let or_op = just(Token::OrOr).to(BinaryOp::Or);
 		let cmp_op = choice((
@@ -110,7 +141,7 @@ where
 		let unary = unary_op.clone().repeated().foldr(pow.clone(), |op, expr| Node::UnaryOp { op, expr: Box::new(expr) });
 
 		// Juxtaposed factors like `2pi` or `2sqrt(4)` multiply implicitly at the same precedence as `*` and `/`.
-		// The implicit operand is a `pow`, not a full unary, so `2 -3` stays a subtraction; the lexer rejects a bare number as the right operand (`10 000` is not `10*000`).
+		// The implicit operand is a `pow`, not a full unary, so `2 -3` stays a subtraction; the lexer rejects a number right after another number (`10 000` is not `10*000`).
 		let implicit_mul = pow.map(|rhs| (BinaryOp::Mul, rhs));
 		let product = unary.clone().foldl(choice((mul_op.then(unary), implicit_mul)).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
@@ -124,11 +155,33 @@ where
 			rhs: Box::new(rhs),
 		});
 
-		let cmp = add.clone().foldl(cmp_op.then(add).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
-			lhs: Box::new(lhs),
-			op,
-			rhs: Box::new(rhs),
-		});
+		// A chain like `0 <= x < 1` is one predicate over its adjacent pairs, not an implicit `(0 <= x) < 1` (which is only read that way when its parentheses are written out), and must read in one direction
+		let cmp = add
+			.clone()
+			.then(cmp_op.then(add).repeated().collect::<Vec<_>>())
+			.try_map(|(first, mut rest): (Node, Vec<(BinaryOp, Node)>), span| {
+				// A lone comparison is an ordinary binary operation
+				if rest.len() <= 1 {
+					return Ok(match rest.pop() {
+						Some((op, second)) => Node::BinOp {
+							lhs: Box::new(first),
+							op,
+							rhs: Box::new(second),
+						},
+						None => first,
+					});
+				}
+
+				let ops: Vec<BinaryOp> = rest.iter().map(|(op, _)| *op).collect();
+				if !BinaryOp::chain_in_one_direction(&ops) {
+					return Err(CustomError::custom(
+						span,
+						"A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`",
+					));
+				}
+
+				Ok(Node::Comparison { first: Box::new(first), rest })
+			});
 
 		let and = cmp.clone().foldl(and_op.then(cmp).repeated(), |lhs, (op, rhs)| Node::BinOp {
 			lhs: Box::new(lhs),
@@ -147,7 +200,6 @@ where
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::value::Complex;
 
 	macro_rules! test_parser {
 		($($name:ident: $input:expr_2021 => $expected:expr_2021),* $(,)?) => {
@@ -188,7 +240,7 @@ mod tests {
 			op: BinaryOp::Pow,
 			rhs: Box::new(Node::Lit(Literal::Float(3.))),
 		},
-		test_parse_unary_sqrt: "sqrt(16)" => Node::FnCall {
+		test_parse_sqrt_call: "sqrt(16)" => Node::FnCall {
 			name: "sqrt".to_string(),
 			expr: vec![Node::Lit(Literal::Float(16.))],
 		},
@@ -196,10 +248,10 @@ mod tests {
 			name: "ii".to_string(),
 			expr: vec![Node::Lit(Literal::Float(16.))]
 		},
-		test_parse_i_mul: "i(16)" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Complex(Complex::new(0., 1.)))),
-			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Float(16.))),
+		// `i` is a name a binding may shadow, so only the evaluator can read this call as `i` times its argument
+		test_parse_i_mul: "i(16)" => Node::FnCall {
+			name: "i".to_string(),
+			expr: vec![Node::Lit(Literal::Float(16.))],
 		},
 		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {

@@ -22,7 +22,7 @@ mod editor_commands {
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
-	use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
+	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
 	use graph_craft::document::NodeId;
 	use graphene_std::raster::color::Color;
 	use graphene_std::vector::style::FillChoice;
@@ -176,6 +176,13 @@ mod editor_commands {
 		LayoutMessage::WidgetValueDragDrop { layout_target, widget_id }.into()
 	}
 
+	/// Hand a file dropped on a UI widget to the widget's file drop callback
+	fn widget_value_file_drop(layout_target: LayoutTarget, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
+		let widget_id = WidgetId(widget_id);
+		let file = DroppedFile { name, mime_type, data };
+		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
+	}
+
 	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
 	fn end_transaction() -> Message {
 		DocumentMessage::EndTransaction.into()
@@ -211,14 +218,6 @@ mod editor_commands {
 		DialogMessage::RequestNewDocumentDialog.into()
 	}
 
-	fn open_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::OpenFile { path: PathBuf::from(path), content }.into()
-	}
-
-	fn import_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::ImportFile { path: PathBuf::from(path), content }.into()
-	}
-
 	fn trigger_auto_save(document_id: u64) -> Message {
 		PortfolioMessage::AutoSaveDocument { document_id: DocumentId(document_id) }.into()
 	}
@@ -232,7 +231,7 @@ mod editor_commands {
 	}
 
 	fn reorder_panel_group_tab(group: u64, old_index: usize, new_index: usize) -> Message {
-		PortfolioMessage::ReorderPanelGroupTab {
+		WorkspaceMessage::ReorderPanelGroupTab {
 			group: PanelGroupId(group),
 			old_index,
 			new_index,
@@ -241,7 +240,7 @@ mod editor_commands {
 	}
 
 	fn move_all_panel_tabs(source_group: u64, target_group: u64, insert_index: usize) -> Message {
-		PortfolioMessage::MoveAllPanelTabs {
+		WorkspaceMessage::MoveAllPanelTabs {
 			source_group: PanelGroupId(source_group),
 			target_group: PanelGroupId(target_group),
 			insert_index,
@@ -250,7 +249,7 @@ mod editor_commands {
 	}
 
 	fn move_panel_tab(source_group: u64, target_group: u64, insert_index: usize) -> Message {
-		PortfolioMessage::MovePanelTab {
+		WorkspaceMessage::MovePanelTab {
 			source_group: PanelGroupId(source_group),
 			target_group: PanelGroupId(target_group),
 			insert_index,
@@ -259,7 +258,7 @@ mod editor_commands {
 	}
 
 	fn set_panel_group_active_tab(group: u64, tab_index: usize) -> Message {
-		PortfolioMessage::SetPanelGroupActiveTab {
+		WorkspaceMessage::SetPanelGroupActiveTab {
 			group: PanelGroupId(group),
 			tab_index,
 		}
@@ -267,7 +266,7 @@ mod editor_commands {
 	}
 
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
-		PortfolioMessage::SplitPanelGroup {
+		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
 			tabs,
@@ -278,7 +277,7 @@ mod editor_commands {
 
 	fn set_panel_group_sizes(split_path: Vec<u32>, sizes: Vec<f64>) -> Message {
 		let split_path = split_path.into_iter().map(|i| i as usize).collect();
-		PortfolioMessage::SetPanelGroupSizes { split_path, sizes }.into()
+		WorkspaceMessage::SetPanelGroupSizes { split_path, sizes }.into()
 	}
 
 	fn close_document_with_confirmation(document_id: u64) -> Message {
@@ -605,62 +604,45 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
+	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
+	fn save_rasterized_export(name: String, file_type: FileType, width: u32, height: u32, data: Vec<u8>) -> Message {
+		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
+	}
+
+	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
+		IngestMessage::Ingest {
+			data,
+			action,
+			mime_type,
+			path: Some(PathBuf::from(name)),
+		}
+		.into()
+	}
+
+	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
+	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
+		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
+			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
+				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
+				insert_index,
+			},
+			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
+			(None, None) => IngestAction::Paste,
+		};
+		IngestMessage::Ingest {
+			data,
+			action,
+			mime_type,
+			path: name.map(PathBuf::from),
+		}
+		.into()
+	}
+
 	/// Paste from a serialized JSON representation
 	fn paste_text(data: String) -> Message {
 		ClipboardMessage::ReadClipboard {
 			content: ClipboardContentRaw::Text(data),
-		}
-		.into()
-	}
-
-	/// Pastes an image
-	fn paste_image(
-		name: Option<String>,
-		image_data: Vec<u8>,
-		width: u32,
-		height: u32,
-		mouse_x: Option<f64>,
-		mouse_y: Option<f64>,
-		insert_parent_id: Option<u64>,
-		insert_index: Option<usize>,
-	) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let image = graphene_std::raster::Image::from_image_data(&image_data, width, height);
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertImage {
-			name,
-			image,
-			mouse,
-			parent_and_insert_index,
-		}
-		.into()
-	}
-
-	/// Pastes an SVG given its string representation
-	fn paste_svg(name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertSvg {
-			name,
-			svg,
-			mouse,
-			parent_and_insert_index,
 		}
 		.into()
 	}
@@ -766,6 +748,8 @@ macro_rules! editor_proxy_types {
 }
 
 editor_proxy_types! {
+	FileType = editor::messages::frontend::utility_types::FileType;
+	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;

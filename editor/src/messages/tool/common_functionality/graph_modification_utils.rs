@@ -9,13 +9,13 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
 pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> Option<NodeId> {
@@ -207,9 +207,9 @@ pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifie
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image: Image<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(data: Arc<[u8]>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
-	responses.add(GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index });
+	responses.add(GraphOperationMessage::NewBitmapLayer { id, data, parent, insert_index });
 	LayerNodeIdentifier::new_unchecked(id)
 }
 

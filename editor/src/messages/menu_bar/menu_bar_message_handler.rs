@@ -123,8 +123,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Open…")
 							.label("Open…")
 							.icon("Folder")
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Open))
-							.on_commit(|_| PortfolioMessage::Open.into()),
+							.tooltip_shortcut(action_shortcut!(IngestMessageDiscriminant::Open))
+							.on_commit(|_| IngestMessage::Open.into()),
 						MenuListEntry::new("Open Demo Artwork…")
 							.label("Open Demo Artwork…")
 							.icon("Image")
@@ -163,8 +163,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Import…")
 							.label("Import…")
 							.icon("FileImport")
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Import))
-							.on_commit(|_| PortfolioMessage::Import.into())
+							.tooltip_shortcut(action_shortcut!(IngestMessageDiscriminant::Import))
+							.on_commit(|_| IngestMessage::Import.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Export…")
 							.label("Export…")
@@ -651,33 +651,33 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Focus Document")
 							.label("Focus Document")
 							.icon(if self.focus_document { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleFocusDocument))
-							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
+							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleFocusDocument))
+							.on_commit(|_| WorkspaceMessage::ToggleFocusDocument.into()),
 					],
 					vec![
 						MenuListEntry::new("Reset Workspace")
 							.label("Reset Workspace")
 							.icon("Reset")
-							.on_commit(|_| PortfolioMessage::ResetWorkspaceLayout.into()),
+							.on_commit(|_| WorkspaceMessage::ResetWorkspaceLayout.into()),
 					],
 					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen))
-							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into())
+							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::TogglePropertiesPanelOpen))
+							.on_commit(|_| WorkspaceMessage::TogglePropertiesPanelOpen.into())
 							.disabled(self.focus_document),
 						MenuListEntry::new("Layers")
 							.label("Layers")
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
-							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into())
+							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleLayersPanelOpen))
+							.on_commit(|_| WorkspaceMessage::ToggleLayersPanelOpen.into())
 							.disabled(self.focus_document),
 						MenuListEntry::new("Data")
 							.label("Data")
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleDataPanelOpen))
-							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into())
+							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleDataPanelOpen))
+							.on_commit(|_| WorkspaceMessage::ToggleDataPanelOpen.into())
 							.disabled(self.focus_document),
 					],
 				])

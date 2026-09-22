@@ -1,42 +1,5 @@
 use crate::value::Complex;
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct Unit {
-	// Exponent of length unit (meters)
-	pub length: i32,
-	// Exponent of mass unit (kilograms)
-	pub mass: i32,
-	// Exponent of time unit (seconds)
-	pub time: i32,
-}
-
-impl Default for Unit {
-	fn default() -> Self {
-		Self::BASE_UNIT
-	}
-}
-
-impl Unit {
-	pub const BASE_UNIT: Unit = Unit { length: 0, mass: 0, time: 0 };
-
-	pub const LENGTH: Unit = Unit { length: 1, mass: 0, time: 0 };
-	pub const MASS: Unit = Unit { length: 0, mass: 1, time: 0 };
-	pub const TIME: Unit = Unit { length: 0, mass: 0, time: 1 };
-
-	pub const VELOCITY: Unit = Unit { length: 1, mass: 0, time: -1 };
-	pub const ACCELERATION: Unit = Unit { length: 1, mass: 0, time: -2 };
-
-	pub const FORCE: Unit = Unit { length: 1, mass: 1, time: -2 };
-
-	pub fn base_unit() -> Self {
-		Self::BASE_UNIT
-	}
-
-	pub fn is_base(&self) -> bool {
-		*self == Self::BASE_UNIT
-	}
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
 	Float(f64),
@@ -54,12 +17,11 @@ pub enum BinaryOp {
 	Add,
 	Sub,
 	Mul,
-	/// Logical AND (nonzero treated as true, returns 1. or 0.)
+	/// Logical AND over operands that must each be exactly 0 or 1, returning 0 or 1.
 	And,
 	Div,
-	/// Logical OR (nonzero treated as true, returns 1. or 0.)
+	/// Logical OR over operands that must each be exactly 0 or 1, returning 0 or 1.
 	Or,
-	Modulo,
 	Pow,
 	Leq,
 	Lt,
@@ -69,20 +31,61 @@ pub enum BinaryOp {
 	Eq,
 }
 
+impl BinaryOp {
+	/// The operand that leaves the other unchanged, like 0 for `+`, which is also what a fold of no items yields.
+	pub fn identity_element(self) -> Option<f64> {
+		use BinaryOp as Op;
+		match self {
+			Op::Add | Op::Or => Some(0.),
+			Op::Mul | Op::And => Some(1.),
+			Op::Sub | Op::Div | Op::Pow | Op::Leq | Op::Lt | Op::Geq | Op::Gt | Op::Neq | Op::Eq => None,
+		}
+	}
+
+	/// Whether a chain of comparisons reads in one direction: `<`/`<=`/`==` ascending, `>`/`>=`/`==` descending, or `!=` alone.
+	pub fn chain_in_one_direction(ops: &[BinaryOp]) -> bool {
+		let ascending = ops.iter().all(|op| matches!(op, BinaryOp::Lt | BinaryOp::Leq | BinaryOp::Eq));
+		let descending = ops.iter().all(|op| matches!(op, BinaryOp::Gt | BinaryOp::Geq | BinaryOp::Eq));
+		let distinct = ops.iter().all(|op| matches!(op, BinaryOp::Neq));
+		ascending || descending || distinct
+	}
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum UnaryOp {
+	Pos,
 	Neg,
-	Sqrt,
 	Fac,
 	Not,
+	/// The magnitude bars `|x|`: absolute value on the reals, extending to the Euclidean magnitude.
+	Magnitude,
 }
 
 #[derive(Debug, PartialEq)]
 pub enum Node {
 	Lit(Literal),
 	Var(String),
-	FnCall { name: String, expr: Vec<Node> },
-	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
-	UnaryOp { expr: Box<Node>, op: UnaryOp },
-	Conditional { condition: Box<Node>, if_block: Box<Node>, else_block: Box<Node> },
+	FnCall {
+		name: String,
+		expr: Vec<Node>,
+	},
+	BinOp {
+		lhs: Box<Node>,
+		op: BinaryOp,
+		rhs: Box<Node>,
+	},
+	UnaryOp {
+		expr: Box<Node>,
+		op: UnaryOp,
+	},
+	/// A chain of two or more comparisons like `a < b < c`, each operator paired with the operand after it: one predicate over each adjacent pair, or over every pair for `!=`.
+	Comparison {
+		first: Box<Node>,
+		rest: Vec<(BinaryOp, Node)>,
+	},
+	Conditional {
+		condition: Box<Node>,
+		if_block: Box<Node>,
+		else_block: Box<Node>,
+	},
 }

@@ -11,7 +11,6 @@ use crate::messages::tool::utility_types::ToolType;
 use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
-use graphene_std::raster::Image;
 use graphene_std::vector::misc::{BezierHandles, HandleId, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use graphite_proc_macros::{ExtractField, message_handler_data};
@@ -50,22 +49,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					} else {
 						responses.add(FrontendMessage::TriggerSelectionWrite { content: text });
 					}
-				}
-				ClipboardContentRaw::Svg(svg) => {
-					responses.add(PortfolioMessage::InsertSvg {
-						svg,
-						name: None,
-						mouse: None,
-						parent_and_insert_index: None,
-					});
-				}
-				ClipboardContentRaw::Image { data, width, height } => {
-					responses.add(PortfolioMessage::InsertImage {
-						image: Image::from_image_data(&data, width, height),
-						name: None,
-						mouse: None,
-						parent_and_insert_index: None,
-					});
 				}
 			},
 			ClipboardMessage::ReadSelection { content, cut } => {

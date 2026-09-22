@@ -1,6 +1,7 @@
-use crate::ast::{BinaryOp, Literal, Node};
-use crate::constants::builtin_function;
+use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
+use crate::constants::{Builtin, builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
+use crate::lexer::Constant;
 use crate::value::{Number, Value};
 use thiserror::Error;
 
@@ -12,11 +13,56 @@ pub enum EvalError {
 	#[error("Missing function: {0}")]
 	MissingFunction(String),
 
-	#[error("Wrong argument types for function call")]
+	#[error("Invalid arguments for function call")]
 	TypeError,
 
 	#[error("Unsupported operand types for operator")]
 	OperatorTypeError,
+
+	#[error("Logic requires values of exactly 0 (false) or 1 (true)")]
+	NotATruthValue,
+
+	#[error("Indeterminate result, like `0/0` or `∞ - ∞`")]
+	Indeterminate,
+
+	#[error("Value of {0} is not a number")]
+	NotANumber(String),
+}
+
+/// Settles an operation's result: no operation may produce NaN, so an indeterminate form is an error, and the value takes
+/// its canonical form so that a zero imaginary part or a signed zero never changes a later result.
+fn settle(value: Value) -> Result<Value, EvalError> {
+	let Value::Number(number) = value;
+	if number.is_nan() {
+		return Err(EvalError::Indeterminate);
+	}
+	Ok(Value::Number(number.canonical()))
+}
+
+/// The canonical form of a value the host supplied for `name`, like [`settle`], except that NaN (which only a host can
+/// supply) is an error naming its source.
+fn canonical_host_value(name: &str, value: Value) -> Result<Value, EvalError> {
+	let Value::Number(number) = value;
+	if number.is_nan() {
+		return Err(EvalError::NotANumber(name.to_string()));
+	}
+	Ok(Value::Number(number.canonical()))
+}
+
+/// Resolves a name against the environment before the builtin constants, so a binding of exactly that spelling shadows the builtin.
+/// The `\` prefix skips the environment.
+fn resolve_value<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<V, F>, name: &str) -> Option<Value> {
+	let constant = |name: &str| {
+		Constant::from_name(name).map(|constant| match constant.value() {
+			Literal::Float(real) => Value::from_f64(real),
+			Literal::Complex(complex) => Value::Number(Number::Complex(complex)),
+		})
+	};
+
+	match name.strip_prefix('\\') {
+		Some(builtin_name) => constant(builtin_name),
+		None => context.get_value(name).or_else(|| constant(name)),
+	}
 }
 
 impl Node {
@@ -28,12 +74,51 @@ impl Node {
 			},
 
 			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
-				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs).ok_or(EvalError::OperatorTypeError)?)),
+				(Value::Number(lhs), Value::Number(rhs)) => {
+					// Logic rejects operands that aren't truth values, while the other operators reject operand types they don't support
+					let rejected = if matches!(op, BinaryOp::And | BinaryOp::Or) {
+						EvalError::NotATruthValue
+					} else {
+						EvalError::OperatorTypeError
+					};
+					settle(Value::Number(lhs.binary_op(*op, rhs).ok_or(rejected)?))
+				}
 			},
 			Node::UnaryOp { expr, op } => match expr.eval(context)? {
-				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
+				Value::Number(num) => {
+					let rejected = if *op == UnaryOp::Not { EvalError::NotATruthValue } else { EvalError::OperatorTypeError };
+					settle(Value::Number(num.unary_op(*op).ok_or(rejected)?))
+				}
 			},
-			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
+			Node::Comparison { first, rest } => {
+				let Value::Number(first) = first.eval(context)?;
+				let rest = rest
+					.iter()
+					.map(|(op, operand)| operand.eval(context).map(|Value::Number(number)| (*op, number)))
+					.collect::<Result<Vec<(BinaryOp, Number)>, EvalError>>()?;
+
+				// A `!=` chain asserts every pair distinct, while the ordered chains assert each adjacent pair's relation; every pair is checked so an unsupported comparison errors regardless of the others
+				let holds = if rest.iter().all(|(op, _)| *op == BinaryOp::Neq) {
+					let numbers: Vec<Number> = std::iter::once(first).chain(rest.iter().map(|(_, number)| *number)).collect();
+					numbers
+						.iter()
+						.enumerate()
+						.all(|(index, a)| numbers[index + 1..].iter().all(|b| a.binary_op(BinaryOp::Neq, *b) == Some(Number::Real(1.))))
+				} else {
+					let mut holds = true;
+					let mut previous = first;
+					for (op, number) in rest {
+						holds &= previous.binary_op(op, number).ok_or(EvalError::OperatorTypeError)? == Number::Real(1.);
+						previous = number;
+					}
+					holds
+				};
+				Ok(Value::from_f64(holds as u8 as f64))
+			}
+			Node::Var(name) => {
+				let value = resolve_value(context, name).ok_or_else(|| EvalError::MissingValue(name.clone()))?;
+				canonical_host_value(name, value)
+			}
 			Node::FnCall { name, expr } => {
 				// Arguments land in a stack buffer when they fit (builtins take at most 5), avoiding a heap allocation per call
 				let mut stack_values = [Value::from_f64(0.); 5];
@@ -48,23 +133,33 @@ impl Node {
 					&heap_values
 				};
 
-				if let Some(function) = builtin_function(name) {
-					function(values).ok_or(EvalError::TypeError)
-				} else if let Some(val) = context.run_function(name, values) {
-					Ok(val)
-				} else if let Some(Value::Number(value)) = context.get_value(name)
+				// A host-supplied function shadows the builtin of the same name, unless the `\` prefix asks for the language's own
+				let (prefixed, bare_name) = match name.strip_prefix('\\') {
+					Some(bare_name) => (true, bare_name),
+					None => (false, name.as_str()),
+				};
+
+				if !prefixed && let Some(value) = context.run_function(bare_name, values) {
+					settle(canonical_host_value(bare_name, value)?)
+				} else if let Some(Builtin { function, .. }) = builtin_function(bare_name) {
+					settle(function(values).ok_or(EvalError::TypeError)?)
+				} else if let Some((function, base)) = suffixed_function(bare_name) {
+					// A base-suffixed call like `log10(x)` runs the two-argument form with the suffix baked in as its second argument
+					let [value] = values else { return Err(EvalError::TypeError) };
+					settle(function(&[*value, Value::from_f64(base)]).ok_or(EvalError::TypeError)?)
+				} else if let Some(value) = resolve_value(context, name)
 					&& let [Value::Number(argument)] = values
 				{
 					// A known value applied to one argument is implicit multiplication, so `x(2)` matches `2(3)` and `i(16)`
-					Ok(Value::Number(value.binary_op(BinaryOp::Mul, *argument).ok_or(EvalError::OperatorTypeError)?))
+					let Value::Number(value) = canonical_host_value(name, value)?;
+					settle(Value::Number(value.binary_op(BinaryOp::Mul, *argument).ok_or(EvalError::OperatorTypeError)?))
 				} else {
 					Err(EvalError::MissingFunction(name.to_string()))
 				}
 			}
 			Node::Conditional { condition, if_block, else_block } => {
-				// A NaN condition yields NaN rather than arbitrarily picking a branch
 				let Value::Number(number) = condition.eval(context)?;
-				let Some(condition) = number.as_bool() else { return Ok(Value::from_f64(f64::NAN)) };
+				let Some(condition) = number.as_bool() else { return Err(EvalError::NotATruthValue) };
 
 				if condition { if_block.eval(context) } else { else_block.eval(context) }
 			}
@@ -143,9 +238,9 @@ mod tests {
 			expr: Box::new(Node::Lit(Literal::Float(3.))),
 			op: UnaryOp::Neg,
 		},
-		test_sqrt: Value::from_f64(2.) => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(4.))),
-			op: UnaryOp::Sqrt,
+		test_sqrt: Value::from_f64(2.) => Node::FnCall {
+			name: "sqrt".to_string(),
+			expr: vec![Node::Lit(Literal::Float(4.))],
 		},
 		 test_power: Value::from_f64(8.) => Node::BinOp {
 			 lhs: Box::new(Node::Lit(Literal::Float(2.))),

@@ -250,21 +250,20 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
-#[node_macro::node(category(""))]
-pub fn image<'a: 'n>(_: impl Ctx, resource: Item<Resource>) -> Item<Raster<CPU>> {
+/// Displays an image from a file.
+///
+/// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
+#[node_macro::node(category("Raster"))]
+pub fn image<'a: 'n>(
+	_: impl Ctx,
+	_primary: (),
+	/// The image file to display.
+	#[widget(ParsedWidgetOverride::Custom = "image_file")]
+	resource: Item<Resource>,
+) -> Item<Raster<CPU>> {
 	let resource = resource.into_element();
-	let image_data = resource.as_ref();
+	let Some(image) = Image::from_encoded(resource.as_ref()) else { return Item::default() };
 
-	let Some(image) = ::image::load_from_memory(image_data).ok() else {
-		return Item::default();
-	};
-	let image = image.to_rgba32f();
-	let image = Image {
-		data: image.chunks(4).map(|pixel| Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
-		width: image.width(),
-		height: image.height(),
-		..Default::default()
-	};
 	Item::new_from_element(Raster::new_cpu(image))
 }
 

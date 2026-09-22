@@ -10,19 +10,22 @@ pub type Span = SimpleSpan;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
 	Float(f64),
-	Const(Constant),
 	Ident(&'src str),
 
 	AndAnd,
 	OrOr,
 	Bang,
+	Not,
+	BarOpen,
+	BarClose,
 
 	LParen,
 	RParen,
 	Comma,
 	Plus,
 	Minus,
-	Modulo,
+	/// Reserved for percentages, so the parser never matches it and its error points a C-style remainder to `mod(a, b)`.
+	Percent,
 	Star,
 	Slash,
 	Caret,
@@ -44,19 +47,20 @@ impl<'src> fmt::Display for Token<'src> {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
 			Token::Float(x) => write!(f, "{x}"),
-			Token::Const(c) => write!(f, "{c}"),
 			Token::Ident(name) => write!(f, "{name}"),
 
 			Token::AndAnd => f.write_str("&&"),
 			Token::OrOr => f.write_str("||"),
 			Token::Bang => f.write_str("!"),
+			Token::Not => f.write_str("¬"),
+			Token::BarOpen | Token::BarClose => f.write_str("|"),
 
 			Token::LParen => f.write_str("("),
 			Token::RParen => f.write_str(")"),
 			Token::Comma => f.write_str(","),
 			Token::Plus => f.write_str("+"),
 			Token::Minus => f.write_str("-"),
-			Token::Modulo => f.write_str("%"),
+			Token::Percent => f.write_str("%"),
 			Token::Star => f.write_str("*"),
 			Token::Slash => f.write_str("/"),
 			Token::Caret => f.write_str("^"),
@@ -83,7 +87,8 @@ pub enum Constant {
 	Phi,
 	Inf,
 	I,
-	G,
+	True,
+	False,
 }
 
 impl Constant {
@@ -94,25 +99,33 @@ impl Constant {
 			Pi => Literal::Float(consts::PI),
 			Tau => Literal::Float(consts::TAU),
 			E => Literal::Float(consts::E),
-			Phi => Literal::Float(1.618_033_988_75),
+			// TODO: Replace with f64::GOLDEN_RATIO when we bump MSRV to 1.94
+			Phi => Literal::Float(1.618033988749895),
 			Inf => Literal::Float(f64::INFINITY),
 			I => Literal::Complex(Complex64::new(0., 1.)),
-			G => Literal::Float(9.80665),
+			True => Literal::Float(1.),
+			False => Literal::Float(0.),
 		}
 	}
 
+	/// The word and typeset spellings, matched exactly: constants are lowercase-only, since uppercase-initial names are reserved for matrices.
 	pub fn from_name(name: &str) -> Option<Constant> {
 		use Constant::*;
-		Some(match name {
-			"pi" | "π" => Pi,
-			"tau" | "τ" => Tau,
-			"e" => E,
-			"phi" | "φ" => Phi,
-			"inf" | "∞" => Inf,
-			"i" => I,
-			"G" => G,
-			_ => return None,
-		})
+		let spellings = [
+			("e", E),
+			("i", I),
+			("pi", Pi),
+			("π", Pi),
+			("tau", Tau),
+			("τ", Tau),
+			("phi", Phi),
+			("φ", Phi),
+			("inf", Inf),
+			("infinity", Inf),
+			("true", True),
+			("false", False),
+		];
+		spellings.into_iter().find_map(|(spelling, constant)| (name == spelling).then_some(constant))
 	}
 }
 
@@ -126,19 +139,88 @@ impl fmt::Display for Constant {
 			Phi => "phi",
 			Inf => "inf",
 			I => "i",
-			G => "G",
+			True => "true",
+			False => "false",
 		})
 	}
+}
+
+/// How a `|` reads at its position: opening or closing a magnitude, or, as the first of a `||` pair, the Or operator.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Bar {
+	Open,
+	Close,
+	Or,
+}
+
+/// Whether a character ends an operand: a name, a number, a closing parenthesis, or the `∞` literal.
+fn ends_operand(c: char) -> bool {
+	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '∞')
+}
+
+/// Reads every `|` in the source up front, since each depends on what precedes it: a bar opens a magnitude where an operand
+/// is expected and closes one after an operand. A `||` likewise opens or closes two, but is Or after an operand unless two are
+/// open, or with nothing after it. So `|a||b|` is the magnitude of `a` or `b`, `||a|-b|` and `|a*|b||` nest, and `|a|b||` is rejected.
+fn classify_bars(input: &str) -> Vec<(usize, Bar)> {
+	let mut bars = Vec::new();
+	let mut depth = 0_usize;
+	let mut after_operand = false;
+	let mut chars = input.char_indices().peekable();
+
+	while let Some((position, c)) = chars.next() {
+		match c {
+			'|' if chars.next_if(|(_, next)| *next == '|').is_some() => {
+				let at_end = chars.clone().all(|(_, c)| c.is_whitespace());
+				if !after_operand && !at_end {
+					bars.push((position, Bar::Open));
+					bars.push((position + 1, Bar::Open));
+					depth += 2;
+				} else if depth >= 2 {
+					bars.push((position, Bar::Close));
+					bars.push((position + 1, Bar::Close));
+					depth -= 2;
+				} else {
+					bars.push((position, Bar::Or));
+					after_operand = false;
+				}
+			}
+			'|' if after_operand && depth > 0 => {
+				bars.push((position, Bar::Close));
+				depth -= 1;
+				after_operand = true;
+			}
+			'|' => {
+				bars.push((position, Bar::Open));
+				depth += 1;
+				after_operand = false;
+			}
+			// Whitespace changes nothing, and neither does `!`, a postfix factorial after an operand or a prefix not before one
+			c if c.is_whitespace() || c == '!' => {}
+			c => after_operand = ends_operand(c),
+		}
+	}
+
+	bars
 }
 
 pub struct Lexer<'a> {
 	input: &'a str,
 	pos: usize,
+	bars: Vec<(usize, Bar)>,
 }
 
 impl<'a> Lexer<'a> {
 	pub fn new(input: &'a str) -> Self {
-		Self { input, pos: 0 }
+		Self {
+			input,
+			pos: 0,
+			bars: classify_bars(input),
+		}
+	}
+
+	/// The reading of the `|` at the given byte position.
+	fn bar_at(&self, position: usize) -> Option<Bar> {
+		self.bars.binary_search_by_key(&position, |(bar_position, _)| *bar_position).ok().map(|index| self.bars[index].1)
 	}
 
 	fn peek(&self) -> Option<char> {
@@ -173,8 +255,22 @@ impl<'a> Lexer<'a> {
 		(digits, value)
 	}
 
-	// A numeric literal cannot follow another operand across whitespace (`10 000`, `sqrt(4).5`), only constants/calls/parens may juxtapose
-	fn juxtaposes_with_preceding_operand(&self, literal_start: usize) -> bool {
+	// Two number literals never juxtapose, so digit grouping like `10 000` can't silently multiply
+	fn follows_number_literal(&self, literal_start: usize) -> bool {
+		let preceding = self.input[..literal_start].trim_end();
+
+		// The preceding token begins within its run of name and number characters (`2pi`, `1e5`), whose start is a token boundary to lex from
+		let run_start = preceding
+			.char_indices()
+			.rev()
+			.take_while(|&(_, c)| unicode_ident::is_xid_continue(c) || c == '.')
+			.last()
+			.map_or(preceding.len(), |(index, _)| index);
+		Lexer::new(&preceding[run_start..]).last().is_some_and(|token| matches!(token, Token::Float(_)))
+	}
+
+	// A `.`-led literal can't follow an operand (`sqrt(4).5`), which must write its leading zero instead
+	fn follows_operand(&self, literal_start: usize) -> bool {
 		let mut preceding = self.input[..literal_start].trim_end();
 
 		// A `!` run is postfix factorial only when an operand precedes it, otherwise it's a prefix logical not
@@ -182,7 +278,10 @@ impl<'a> Lexer<'a> {
 			preceding = rest.trim_end();
 		}
 
-		preceding.chars().next_back().is_some_and(|c| c.is_alphanumeric() || c == '.' || c == ')' || c == '∞')
+		preceding
+			.chars()
+			.next_back()
+			.is_some_and(|c| ends_operand(c) || (c == '|' && self.bar_at(preceding.len() - 1) == Some(Bar::Close)))
 	}
 
 	fn lex_number(&mut self) -> Option<f64> {
@@ -210,7 +309,8 @@ impl<'a> Lexer<'a> {
 		}
 
 		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication
-		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.juxtaposes_with_preceding_operand(start_pos) {
+		let leading_dot = self.input[start_pos..].starts_with('.');
+		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.follows_number_literal(start_pos) || (leading_dot && self.follows_operand(start_pos)) {
 			self.pos = start_pos;
 			return None;
 		}
@@ -220,6 +320,25 @@ impl<'a> Lexer<'a> {
 			return Some(int_value);
 		}
 		self.input[start_pos..self.pos].parse::<f64>().ok()
+	}
+
+	/// Consumes identifier continuation characters: Unicode's `XID_Continue`, which covers letters, digits,
+	/// underscores, and the combining marks that complete a cluster like a decomposed `é`, plus a decimal point
+	/// sandwiched between digits so that base-suffixed function names like `log3.25` lex as a single identifier.
+	fn consume_identifier_body(&mut self, first: char) -> &'a str {
+		let start = self.pos;
+		let mut previous = first;
+		while let Some(c) = self.peek() {
+			let dot_between_digits = c == '.' && previous.is_ascii_digit() && self.input[self.pos + 1..].chars().next().is_some_and(|next| next.is_ascii_digit());
+			// The middle dot and its Greek twin are identifier characters in Unicode, but they would pass for the `⋅` operator mid-name
+			let middle_dot = matches!(c as u32, 0xB7 | 0x387);
+			if !((unicode_ident::is_xid_continue(c) && !middle_dot) || dot_between_digits) {
+				break;
+			}
+			previous = c;
+			self.bump();
+		}
+		&self.input[start..self.pos]
 	}
 
 	fn skip_ws(&mut self) {
@@ -241,14 +360,15 @@ impl<'a> Lexer<'a> {
 					Error
 				}
 			}
-			'|' => {
-				if self.peek() == Some('|') {
+			'|' => match self.bar_at(start) {
+				Some(Bar::Or) => {
 					self.bump();
 					OrOr
-				} else {
-					Error
 				}
-			}
+				Some(Bar::Open) => BarOpen,
+				Some(Bar::Close) => BarClose,
+				None => Error,
+			},
 
 			'(' => LParen,
 			')' => RParen,
@@ -256,10 +376,22 @@ impl<'a> Lexer<'a> {
 			'+' => Plus,
 			'-' => Minus,
 			'*' => Star,
-			'%' => Modulo,
+			'%' => Percent,
 			'/' => Slash,
 			'^' => Caret,
 			'≠' => Neq,
+
+			// A symbol can't be a name, so unlike `inf`, no binding can shadow `∞`
+			'∞' => Float(f64::INFINITY),
+
+			// Typeset math symbol aliases
+			'−' => Minus,
+			'×' | '⋅' => Star,
+			'÷' => Slash,
+			'∧' => AndAnd,
+			'∨' => OrOr,
+			// Its own token rather than a `Bang` alias, since `!` is also the postfix factorial and `5¬` is not one
+			'¬' => Not,
 
 			'!' => {
 				if self.peek() == Some('=') {
@@ -320,16 +452,20 @@ impl<'a> Lexer<'a> {
 			}
 
 			_ => {
-				self.consume_while(|c| c.is_alphanumeric() || c == '_');
+				let body = self.consume_identifier_body(ch);
 				let ident = &self.input[start..self.pos];
 
 				if ident == "if" {
 					If
-				} else if let Some(lit) = Constant::from_name(ident) {
-					Const(lit)
-				} else if ch.is_alphanumeric() {
+				} else if unicode_ident::is_xid_start(ch) {
+					// A name is a Unicode identifier, as in Rust, so any script's letters may spell one
+					Ident(ident)
+				} else if ch == '\\' && body.chars().next().is_some_and(unicode_ident::is_xid_start) {
+					// The `\` prefix names the language's own builtin, like `\pi`, and is never an identifier by itself
 					Ident(ident)
 				} else {
+					// Digits, combining marks, invisible formatting characters, and symbols never begin a name, which also
+					// leaves `#`, `$`, `~`, and `@` free to become namespace prefixes once a host scope needs them
 					Error
 				}
 			}

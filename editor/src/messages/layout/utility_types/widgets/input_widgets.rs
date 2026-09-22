@@ -83,6 +83,10 @@ pub struct DropdownInput {
 	pub virtual_scrolling: bool,
 	#[derivative(Default(value = "true"))]
 	pub interactive: bool,
+	// Set along with the `on_file_drop` callback
+	#[serde(rename = "takesFileDrop")]
+	#[widget_builder(skip)]
+	pub takes_file_drop: bool,
 
 	// Sizing
 	#[serde(rename = "minWidth")]
@@ -97,8 +101,28 @@ pub struct DropdownInput {
 	pub tooltip_description: String,
 	#[serde(rename = "tooltipShortcut")]
 	pub tooltip_shortcut: Option<ActionShortcut>,
-	//
-	// Callbacks exists on the `MenuListEntry` children, not this parent `DropdownInput`
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	#[widget_builder(skip)]
+	pub on_file_drop: WidgetCallback<DroppedFile>,
+}
+
+impl DropdownInput {
+	/// Makes the widget take a file dropped on it, which is handed to the callback.
+	pub fn on_file_drop(mut self, callback: impl Fn(&DroppedFile) -> Message + 'static + Send + Sync) -> Self {
+		self.takes_file_drop = true;
+		self.on_file_drop = WidgetCallback::new(callback);
+		self
+	}
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DroppedFile {
+	pub name: String,
+	pub mime_type: String,
+	pub data: Vec<u8>,
 }
 
 pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;

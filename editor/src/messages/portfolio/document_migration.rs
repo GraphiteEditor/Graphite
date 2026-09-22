@@ -10,7 +10,7 @@ use glam::{DVec2, IVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
-use graph_craft::{Type, item, list};
+use graph_craft::{Type, concrete, item, list};
 use graphene_std::Color;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
@@ -416,8 +416,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::as_f_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node"],
+		node: graphene_std::math_nodes::as_number::IDENTIFIER,
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node", "math_nodes::AsF64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,
@@ -2140,8 +2140,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
 			document
 				.network_interface
-				.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
+				.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
 		}
+	}
+
+	// Move the Image node's resource, whether a stored value or a wire, from the primary input to the first secondary input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER)
+		&& inputs_count == 1
+		&& !matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::ImageData(_)))
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[0].clone(), network_path);
 	}
 
 	// Convert text nodes from the old `editor-api` scope + `Font` input to a single font `Resource` input.
@@ -2866,6 +2877,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// A `Resource` input disconnected before `Resource` became an item-ranked type default stored the bare `TypeDefault(Resource)`, which no longer unwraps to an `Item<Resource>` default
+	if let Some(current_node) = document.network_interface.document_node(node_id, network_path) {
+		let bare_resource_inputs: Vec<(usize, bool)> = current_node
+			.inputs
+			.iter()
+			.enumerate()
+			.filter_map(|(index, input)| match input {
+				NodeInput::Value { tagged_value, exposed } if matches!(&**tagged_value, TaggedValue::TypeDefault(stored_type) if *stored_type == concrete!(Resource)) => Some((index, *exposed)),
+				_ => None,
+			})
+			.collect();
+		for (index, exposed) in bare_resource_inputs {
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, index), NodeInput::type_default(item!(Resource), exposed), network_path);
+		}
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
@@ -3109,6 +3138,68 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	#[test]
+	fn every_legacy_image_shape_stores_its_resource_as_secondary_input() {
+		use graphene_std::raster::Image;
+
+		let resource_id = ResourceId::new();
+		let upstream_id = NodeId(2);
+		let legacy_inputs = [
+			NodeInput::value(TaggedValue::ImageData(Image::new(2, 2, Color::WHITE)), false),
+			NodeInput::value(TaggedValue::Resource(resource_id), false),
+			NodeInput::node(upstream_id, 0),
+		];
+
+		for legacy_input in legacy_inputs {
+			let image_id = NodeId(1);
+			let mut document = DocumentMessageHandler::default();
+			let image_template = NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+				inputs: vec![NodeInput::value(TaggedValue::None, false)],
+				..Default::default()
+			};
+			document.network_interface.insert_node(upstream_id, NodeTemplate::default(), &[]);
+			document.network_interface.insert_node(image_id, image_template, &[]);
+			document.network_interface.set_input(&InputConnector::node_at_index(image_id, 0), legacy_input.clone(), &[]);
+
+			document_migration_upgrades(&mut document, false);
+
+			let image_node = &document.network_interface.document_network().nodes[&image_id];
+			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
+			let migrated = &image_node.inputs[1];
+			match legacy_input.as_value() {
+				None => assert_eq!(migrated.as_node(), Some(upstream_id), "the wire should sit at input 1"),
+				Some(legacy_value) => {
+					let Some(TaggedValue::Resource(stored)) = migrated.as_value() else {
+						panic!("the file should sit at input 1")
+					};
+					match legacy_value {
+						TaggedValue::Resource(legacy) => assert_eq!(stored, legacy, "the stored resource should be kept"),
+						_ => assert!(document.resources.registry.contains(stored), "the embedded pixels should be stored as a new resource"),
+					}
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn bare_resource_type_defaults_become_item_defaults() {
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let image_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+			inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::TypeDefault(concrete!(Resource)), true)],
+			..Default::default()
+		};
+		document.network_interface.insert_node(node_id, image_template, &[]);
+
+		document_migration_upgrades(&mut document, false);
+
+		let migrated = &document.network_interface.document_network().nodes[&node_id].inputs[1];
+		assert_eq!(migrated.as_value(), Some(&TaggedValue::TypeDefault(item!(Resource))), "the bare default should become the item default");
+		assert!(matches!(migrated, NodeInput::Value { exposed: true, .. }), "the exposed flag should be kept");
 	}
 
 	#[test]

@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, UnaryOp};
+use std::f64::consts::PI;
 
 pub type Complex = num_complex::Complex<f64>;
 
@@ -7,22 +8,64 @@ pub enum Value {
 	Number(Number),
 }
 
+/// Generates accessors reading the value rounded to the nearest whole number of the target integer type.
+macro_rules! integer_accessors {
+	($($fn_name:ident: $int:ty),* $(,)?) => {
+		$(
+			#[doc = concat!("Reads the value rounded to the nearest whole `", stringify!($int), "`, or `None` if it isn't a real number, isn't finite, or lies outside the type's range.")]
+			pub fn $fn_name(&self) -> Option<$int> {
+				let rounded = self.as_real()?.round();
+				// The MAX comparison is one float rounding step generous for the widest types, where the cast saturates
+				(rounded.is_finite() && rounded >= <$int>::MIN as f64 && rounded <= <$int>::MAX as f64).then_some(rounded as $int)
+			}
+		)*
+	};
+}
+
 impl Value {
 	pub fn from_f64(x: f64) -> Self {
 		Self::Number(Number::Real(x))
 	}
 
 	pub fn as_real(&self) -> Option<f64> {
-		match self {
-			Self::Number(Number::Real(val)) => Some(*val),
-			_ => None,
-		}
+		let Self::Number(number) = self;
+		number.as_real()
+	}
+
+	/// Reads the value as a single-precision float, or `None` if it isn't a real number.
+	pub fn as_f32(&self) -> Option<f32> {
+		self.as_real().map(|real| real as f32)
+	}
+
+	/// Reads the value as a truth value, or `None` unless it is exactly 0 or 1.
+	pub fn as_bool(&self) -> Option<bool> {
+		let Self::Number(number) = self;
+		number.as_bool()
+	}
+
+	integer_accessors! {
+		as_u8: u8,
+		as_u16: u16,
+		as_u32: u32,
+		as_u64: u64,
+		as_u128: u128,
+		as_i8: i8,
+		as_i16: i16,
+		as_i32: i32,
+		as_i64: i64,
+		as_i128: i128,
 	}
 }
 
 impl From<f64> for Value {
 	fn from(x: f64) -> Self {
 		Self::from_f64(x)
+	}
+}
+
+impl From<Complex> for Value {
+	fn from(complex: Complex) -> Self {
+		Self::Number(Number::Complex(complex))
 	}
 }
 
@@ -50,11 +93,47 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
-	/// The value's truthiness for conditions and logic operators, or `None` for NaN values, which poison the result rather than acting as a boolean.
+	/// Reads the number as a real, or `None` if it has an imaginary part.
+	pub fn as_real(self) -> Option<f64> {
+		match self {
+			Number::Real(real) => Some(real),
+			// Canonical form stores a zero imaginary part as a real, so a canonical complex number is never real
+			Number::Complex(_) => None,
+		}
+	}
+
+	/// Widens the number into the complex plane, since every real number is a complex number without an imaginary part.
+	pub fn as_complex(self) -> Complex {
+		match self {
+			Number::Real(real) => Complex::new(real, 0.),
+			Number::Complex(complex) => complex,
+		}
+	}
+
+	/// The truth value of a logical operand, which must be exactly 0 or 1: any other number is not a truth value, so logic on it is an error rather than a guess.
 	pub fn as_bool(self) -> Option<bool> {
 		match self {
-			Number::Real(real) => (!real.is_nan()).then_some(real != 0.),
-			Number::Complex(complex) => (!complex.re.is_nan() && !complex.im.is_nan()).then_some(complex != Complex::ZERO),
+			Number::Real(0.) => Some(false),
+			Number::Real(1.) => Some(true),
+			_ => None,
+		}
+	}
+
+	/// The number's canonical form: a zero imaginary part is dropped, since `n + 0i` is exactly `n`, and a signed zero is plain zero, so no zero-valued part can ever change a result.
+	pub fn canonical(self) -> Number {
+		let unsigned_zero = |x: f64| if x == 0. { 0. } else { x };
+		match self {
+			Number::Real(real) => Number::Real(unsigned_zero(real)),
+			Number::Complex(complex) if complex.im == 0. => Number::Real(unsigned_zero(complex.re)),
+			Number::Complex(complex) => Number::Complex(Complex::new(unsigned_zero(complex.re), unsigned_zero(complex.im))),
+		}
+	}
+
+	/// Whether any part is NaN, which no operation may produce: an indeterminate form is an evaluation error instead.
+	pub fn is_nan(self) -> bool {
+		match self {
+			Number::Real(real) => real.is_nan(),
+			Number::Complex(complex) => complex.re.is_nan() || complex.im.is_nan(),
 		}
 	}
 
@@ -62,9 +141,7 @@ impl Number {
 		// Logic and equality work uniformly across real and complex operands
 		match op {
 			BinaryOp::And | BinaryOp::Or => {
-				let (Some(lhs), Some(rhs)) = (self.as_bool(), other.as_bool()) else {
-					return Some(Number::Real(f64::NAN));
-				};
+				let (Some(lhs), Some(rhs)) = (self.as_bool(), other.as_bool()) else { return None };
 				let result = if matches!(op, BinaryOp::And) { lhs && rhs } else { lhs || rhs };
 				return Some(Number::Real(result as u8 as f64));
 			}
@@ -86,8 +163,14 @@ impl Number {
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
-					BinaryOp::Modulo => lhs % rhs,
-					BinaryOp::Pow => lhs.powf(rhs),
+					BinaryOp::Pow => {
+						// A negative base under a fractional exponent has no real power, so it climbs to the principal complex one
+						let power = lhs.powf(rhs);
+						if power.is_nan() {
+							return Some(Number::Complex(Complex::new(lhs, 0.).powf(rhs)));
+						}
+						power
+					}
 					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
 					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
 					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
@@ -104,7 +187,6 @@ impl Number {
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
-					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
 					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
 						return None;
@@ -142,53 +224,100 @@ impl Number {
 		}
 	}
 
-	pub fn unary_op(self, op: UnaryOp) -> Number {
-		if matches!(op, UnaryOp::Not) {
-			return match self.as_bool() {
-				Some(boolean) => Number::Real(!boolean as u8 as f64),
-				None => Number::Real(f64::NAN),
-			};
-		}
-
-		match self {
-			Number::Real(real) => match op {
-				UnaryOp::Neg => Number::Real(-real),
-				UnaryOp::Sqrt => Number::Real(real.sqrt()),
-				UnaryOp::Fac => {
-					// n! for real n: use integer semantics when n is a
-					// non-negative integer, otherwise return NaN.
-					if !real.is_finite() {
-						return Number::Real(f64::NAN);
-					}
-					let truncated = real.trunc();
-					if truncated < 0. || (real - truncated).abs() > f64::EPSILON {
-						return Number::Real(f64::NAN);
-					}
-
-					// Return infinity above 170! since that overflows f64, which also keeps huge inputs from spinning the loop
-					let n = truncated as u64;
-					if n > 170 {
-						return Number::Real(f64::INFINITY);
-					}
-					let mut acc = 1_f64;
-					for k in 1..=n {
-						acc *= k as f64;
-					}
-					Number::Real(acc)
-				}
-				UnaryOp::Not => unreachable!("handled above"),
-			},
-
-			Number::Complex(complex) => match op {
-				UnaryOp::Neg => Number::Complex(-complex),
-				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
-				UnaryOp::Fac => Number::Complex(Complex::new(f64::NAN, f64::NAN)),
-				UnaryOp::Not => unreachable!("handled above"),
-			},
+	pub fn unary_op(self, op: UnaryOp) -> Option<Number> {
+		match op {
+			UnaryOp::Pos => Some(self),
+			UnaryOp::Neg => Some(match self {
+				Number::Real(real) => Number::Real(-real),
+				Number::Complex(complex) => Number::Complex(-complex),
+			}),
+			UnaryOp::Not => self.as_bool().map(|boolean| Number::Real(!boolean as u8 as f64)),
+			UnaryOp::Magnitude => Some(Number::Real(match self {
+				Number::Real(real) => real.abs(),
+				Number::Complex(complex) => complex.norm(),
+			})),
+			UnaryOp::Fac => Some(match self {
+				Number::Real(real) => Number::Real(real_factorial(real)?),
+				Number::Complex(complex) => Number::Complex(complex_gamma(complex + 1.)),
+			}),
 		}
 	}
 
 	pub fn from_f64(x: f64) -> Self {
 		Self::Real(x)
 	}
+}
+
+/// The factorial of a real number: the exact product for a whole number, and `x! = Γ(x + 1)` past the whole numbers, or
+/// `None` at the negative integers (the gamma function's poles, where no signed limit exists) and at -∞.
+fn real_factorial(x: f64) -> Option<f64> {
+	// The factorial overflows f64 from 171! on, and returning early keeps a huge whole number from spinning the product loop
+	if x > 171. {
+		return Some(f64::INFINITY);
+	}
+
+	if x.fract() == 0. {
+		(x >= 0.).then(|| (1..=x as u64).fold(1., |accumulated, k| accumulated * k as f64))
+	} else {
+		x.is_finite().then(|| real_gamma(x + 1.))
+	}
+}
+
+/// The Lanczos approximation's shift, for which [`LANCZOS_COEFFICIENTS`] give 15 significant digits near 1, falling to 13 by the f64 overflow limit.
+const LANCZOS_G: f64 = 7.;
+const LANCZOS_COEFFICIENTS: [f64; 9] = [
+	0.9999999999998099,
+	676.5203681218851,
+	-1259.1392167224028,
+	771.3234287776531,
+	-176.6150291621406,
+	12.507343278686905,
+	-0.13857109526572012,
+	9.984369578019572e-6,
+	1.5056327351493116e-7,
+];
+
+/// The gamma function on the reals by the Lanczos approximation. Below 1/2, where the series loses accuracy, it reflects
+/// through `Γ(x) Γ(1 - x) = π / sin(πx)`.
+fn real_gamma(x: f64) -> f64 {
+	if x < 0.5 {
+		return PI / (PI * x).sin() / real_gamma(1. - x);
+	}
+
+	let x = x - 1.;
+	let series = (1..LANCZOS_COEFFICIENTS.len()).fold(LANCZOS_COEFFICIENTS[0], |sum, k| sum + LANCZOS_COEFFICIENTS[k] / (x + k as f64));
+	let t = x + LANCZOS_G + 0.5;
+
+	// One exponential for the whole `t^(x + 1/2) e^-t` factor, so past f64's range it is ∞ rather than the NaN of ∞ × 0
+	(2. * PI).sqrt() * ((x + 0.5) * t.ln() - t).exp() * series
+}
+
+/// The gamma function over the complex plane, taken as one exponential of its logarithm so a magnitude past f64's range is ∞ or 0.
+fn complex_gamma(z: Complex) -> Complex {
+	complex_log_gamma(z).exp()
+}
+
+/// The natural logarithm of the gamma function over the complex plane, by the same approximation and reflection as [`real_gamma`].
+fn complex_log_gamma(z: Complex) -> Complex {
+	if z.re < 0.5 {
+		// Shifting the real part into `[0, 1)` keeps the sine exact, with a half turn (a sign) for each odd shift
+		let shift = z.re.floor();
+		let log_sin = complex_log_sin(PI * (z - shift)) + Complex::new(0., if shift.rem_euclid(2.) == 0. { 0. } else { PI });
+		return PI.ln() - log_sin - complex_log_gamma(1. - z);
+	}
+
+	let z = z - 1.;
+	let series = (1..LANCZOS_COEFFICIENTS.len()).fold(Complex::from(LANCZOS_COEFFICIENTS[0]), |sum, k| sum + LANCZOS_COEFFICIENTS[k] / (z + k as f64));
+	let t = z + LANCZOS_G + 0.5;
+
+	0.5 * (2. * PI).ln() + (z + 0.5) * t.ln() - t + series.ln()
+}
+
+/// `ln sin(w)` without forming `sin(w)`, which overflows past an imaginary part of about 710: with `s` the sign of that part,
+/// `sin(w) = e^(-siw) (e^(2siw) - 1) / (2si)`, and the growing exponential becomes a plain shift of the logarithm.
+fn complex_log_sin(w: Complex) -> Complex {
+	let s = if w.im < 0. { -1. } else { 1. };
+	let siw = Complex::new(0., s) * w;
+
+	-siw + (((2. * siw).exp() - 1.) / Complex::new(0., 2. * s)).ln()
 }

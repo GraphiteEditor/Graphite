@@ -1,10 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
-use super::utility_types::{DockingSplitDirection, PanelGroupId, PanelType};
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
-use graphene_std::Color;
-use graphene_std::raster::Image;
 use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
@@ -15,9 +12,15 @@ pub enum PortfolioMessage {
 	#[child]
 	Document(DocumentMessage),
 	#[child]
+	FailedDocuments(FailedDocumentsMessage),
+	#[child]
 	Fonts(FontsMessage),
 	#[child]
+	Ingest(IngestMessage),
+	#[child]
 	PersistentState(PersistentStateMessage),
+	#[child]
+	Workspace(WorkspaceMessage),
 
 	// Messages
 	Init,
@@ -68,36 +71,10 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		document_serialized_content: String,
 	},
-	// TODO: Eventually remove this document upgrade code
-	ShowFailedToLoadDocumentsDialog,
-	// TODO: Eventually remove this document upgrade code
-	DiscardFailedToLoadDocuments,
-	// TODO: Eventually remove this document upgrade code
-	DownloadFailedToLoadDocuments,
-	MoveAllPanelTabs {
-		source_group: PanelGroupId,
-		target_group: PanelGroupId,
-		insert_index: usize,
-	},
-	MovePanelTab {
-		source_group: PanelGroupId,
-		target_group: PanelGroupId,
-		insert_index: usize,
-	},
 	NewDocumentWithName {
 		name: String,
 	},
 	NextDocument,
-	Open,
-	Import,
-	OpenFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
 	OpenDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -138,26 +115,6 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 	},
-	OpenImage {
-		name: Option<String>,
-		image: Image<Color>,
-	},
-	OpenSvg {
-		name: Option<String>,
-		svg: String,
-	},
-	InsertImage {
-		name: Option<String>,
-		image: Image<Color>,
-		mouse: Option<(f64, f64)>,
-		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
-	},
-	InsertSvg {
-		name: Option<String>,
-		svg: String,
-		mouse: Option<(f64, f64)>,
-		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
-	},
 	CenterLayers {
 		layers: Vec<LayerNodeIdentifier>,
 	},
@@ -166,23 +123,8 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		new_index: usize,
 	},
-	ReorderPanelGroupTab {
-		group: PanelGroupId,
-		old_index: usize,
-		new_index: usize,
-	},
 	RequestWelcomeScreenButtonsLayout,
 	RequestStatusBarInfoLayout,
-	SetPanelGroupActiveTab {
-		group: PanelGroupId,
-		tab_index: usize,
-	},
-	SplitPanelGroup {
-		target_group: PanelGroupId,
-		direction: DockingSplitDirection,
-		tabs: Vec<PanelType>,
-		active_tab_index: usize,
-	},
 	SelectDocument {
 		document_id: DocumentId,
 	},
@@ -197,6 +139,13 @@ pub enum PortfolioMessage {
 		artboard_name: Option<String>,
 		artboard_count: usize,
 	},
+	SaveRasterizedExport {
+		name: String,
+		file_type: FileType,
+		width: u32,
+		height: u32,
+		data: Vec<u8>,
+	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
@@ -204,21 +153,9 @@ pub enum PortfolioMessage {
 	},
 	SubmitEyedropperPreviewRender,
 	ToggleResetNodesToDefinitionsOnOpen,
-	ToggleFocusDocument,
-	ToggleDataPanelOpen,
-	TogglePropertiesPanelOpen,
-	ToggleLayersPanelOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
-	UpdateWorkspacePanelLayout,
-	ResetWorkspaceLayout,
-	SetPanelGroupSizes {
-		/// Path of child indices from the root to the split node whose children's sizes are being set.
-		split_path: Vec<usize>,
-		/// New sizes for the children at that split node.
-		sizes: Vec<f64>,
-	},
 	RequestSvgTextCopy {
 		graphite_json: String,
 	},

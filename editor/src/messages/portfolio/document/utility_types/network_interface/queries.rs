@@ -311,7 +311,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn collect_used_resources(&self, target: &mut HashSet<ResourceId>) {
-		collect_network_resources(self.document_network(), target);
+		visit_network_resources(self.document_network(), &mut |id| {
+			target.insert(id);
+		});
+	}
+
+	pub fn collect_resources_use_counts(&self) -> HashMap<ResourceId, usize> {
+		let mut counts = HashMap::new();
+		visit_network_resources(self.document_network(), &mut |id| *counts.entry(id).or_insert(0) += 1);
+		counts
 	}
 
 	pub fn frontend_imports(&self, network_path: &[NodeId]) -> Vec<Option<FrontendGraphOutput>> {
