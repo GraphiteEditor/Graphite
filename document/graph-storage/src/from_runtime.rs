@@ -89,31 +89,15 @@ impl TryFrom<&NodeNetwork> for Registry {
 pub type DeclarationBytes = HashMap<ResourceHash, Vec<u8>>;
 
 /// A `from_runtime` conversion result: the reference-only [`Registry`] plus the proto-node
-/// declaration *bytes* it extracted, keyed by content hash. `document-graph-storage` doesn't own a byte
-/// store, so the caller (the `Gdd`) persists these into its content store; the registry only holds
-/// the `ResourceId`/`ResourceHash` references.
+/// declarations it extracted, as bytes keyed by content hash (for the caller's byte store) and as
+/// decoded [`ProtoNode`]s keyed by id (for the caller's declaration cache).
 pub struct RuntimeConversion {
 	pub registry: Registry,
 	pub declaration_bytes: DeclarationBytes,
+	pub declarations: crate::Declarations,
 	/// Each network's runtime `metadata_path` mapped to its stable storage `NetworkId`, for associating
 	/// per-network, per-peer view state (`session.json`) without re-deriving ids.
 	pub network_ids: HashMap<Vec<RuntimeNodeId>, NetworkId>,
-}
-
-impl RuntimeConversion {
-	/// Rebuild the [`Declarations`](crate::Declarations) map (`ResourceId` → [`ProtoNode`]) from the
-	/// extracted bytes, for callers that keep the bytes in hand instead of routing them through a
-	/// byte store (tests, the round-trip CLI). Editor/`Gdd` paths persist the bytes and resolve via
-	/// their byte store instead.
-	pub fn declarations(&self) -> Result<crate::Declarations, ConversionError> {
-		self.declaration_bytes
-			.iter()
-			.map(|(hash, bytes)| {
-				let proto = decode_declaration(bytes).map_err(|error| ConversionError::SerializationError(format!("declaration {hash}: {error}")))?;
-				Ok((ResourceId::from_hash(hash), proto))
-			})
-			.collect()
-	}
 }
 
 /// Encode a [`ProtoNode`] declaration to its content-addressed bytes: through a self-describing
@@ -149,6 +133,7 @@ impl Registry {
 		let mut ctx = ConversionContext {
 			declaration_ids: HashMap::new(),
 			declaration_bytes: HashMap::new(),
+			declarations: HashMap::new(),
 			network_ids: HashMap::new(),
 			metadata,
 			peer,
@@ -167,6 +152,7 @@ impl Registry {
 		Ok(RuntimeConversion {
 			registry,
 			declaration_bytes: ctx.declaration_bytes,
+			declarations: ctx.declarations,
 			network_ids: ctx.network_ids,
 		})
 	}
@@ -254,6 +240,8 @@ struct ConversionContext<'m, M: NodeMetadataSource + ?Sized> {
 	declaration_ids: HashMap<String, ResourceId>,
 	/// Extracted declaration content keyed by hash, handed back for the caller's byte store.
 	declaration_bytes: DeclarationBytes,
+	/// The same declarations decoded, keyed by id, handed back for the caller's declaration cache.
+	declarations: crate::Declarations,
 	/// Maps each network's runtime `metadata_path` to its stable storage `NetworkId`, so the caller can
 	/// associate per-network, per-peer view state (in `session.json`) with networks without re-deriving ids.
 	network_ids: HashMap<Vec<RuntimeNodeId>, NetworkId>,
@@ -555,6 +543,7 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 
 			register_declaration_resource(registry, id, hash, ctx.peer);
 			ctx.declaration_bytes.insert(hash, bytes);
+			ctx.declarations.insert(id, proto);
 			ctx.declaration_ids.insert(identifier_str, id);
 
 			Implementation::ProtoNode(id)

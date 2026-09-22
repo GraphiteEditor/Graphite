@@ -292,24 +292,16 @@ impl<L: Layout> Gdd<L> {
 		(working, self.layout)
 	}
 
-	/// Resolve the proto-node declarations referenced by the registry into a [`document_graph_storage::Declarations`]
-	/// map, loading each `ProtoNode`'s bytes from `byte_store` (the global cache in the editor, the
-	/// working-copy container for standalone). Only resources referenced by `Implementation::ProtoNode`
-	/// are visited, so image/font resources are skipped. Cold-path (open / `to_runtime`); async
-	/// because resource loads are.
+	/// Resolve every proto-node declaration referenced by the registry or its history into a
+	/// [`document_graph_storage::Declarations`] map, loading each `ProtoNode`'s bytes from `byte_store`
+	/// (the global cache in the editor, the working-copy container for standalone). Covers history so
+	/// the map can serve any undo/redo target. Cold-path (mount / open); async because resource loads are.
 	#[cfg(feature = "conversion")]
 	pub async fn declarations(&self, byte_store: &dyn LoadResource) -> document_graph_storage::Declarations {
-		use document_graph_storage::Implementation;
-
-		let registry = self.session.registry();
 		let mut declarations = document_graph_storage::Declarations::new();
 
-		for node in registry.node_instances.values() {
-			let Implementation::ProtoNode(id) = node.implementation() else { continue };
-			if declarations.contains_key(id) {
-				continue;
-			}
-			let Some(hash) = registry.resources.get(id).and_then(|entry| entry.hash) else {
+		for (id, hash) in self.session.all_declaration_resources() {
+			let Some(hash) = hash else {
 				log::error!("Declaration resource {id} has no resolved hash; cannot load ProtoNode");
 				continue;
 			};
@@ -319,7 +311,7 @@ impl<L: Layout> Gdd<L> {
 			};
 			match document_graph_storage::decode_declaration(resource.as_ref()) {
 				Ok(proto) => {
-					declarations.insert(*id, proto);
+					declarations.insert(id, proto);
 				}
 				Err(error) => log::error!("Failed to deserialize ProtoNode for {id}: {error}"),
 			}
