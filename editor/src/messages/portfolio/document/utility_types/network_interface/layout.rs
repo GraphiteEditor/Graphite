@@ -291,6 +291,82 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Places `upstream_node_id` for a connection just made to `input_connector`. Only layers move: one
+	/// that is the sole feed into the bottom of another layer stacks under it, and any other layer is
+	/// pinned where it already sits.
+	///
+	/// Returns whether the node could be placed, which is false only when it has no resolvable position.
+	pub(crate) fn reposition_connected_upstream(&mut self, upstream_node_id: &NodeId, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+		let Some(current_position) = self.position(upstream_node_id, network_path) else {
+			log::error!("Could not get position of node {upstream_node_id} in reposition_connected_upstream");
+			return false;
+		};
+
+		if !self.is_layer(upstream_node_id, network_path) {
+			return true;
+		}
+
+		// Only the bottom input of a layer stacks what feeds it; everything else leaves the layer where it is
+		let InputConnector::Node {
+			node_id: downstream_node_id,
+			input_index,
+		} = input_connector
+		else {
+			self.set_absolute_position(upstream_node_id, current_position, network_path);
+			return true;
+		};
+		if *input_index != 0 || !self.is_layer(downstream_node_id, network_path) {
+			self.set_absolute_position(upstream_node_id, current_position, network_path);
+			return true;
+		}
+
+		let multiple_outward_wires = self
+			.outward_wires(network_path)
+			.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::primary_output(*upstream_node_id)))
+			.is_some_and(|outward_wires| outward_wires.len() > 1);
+
+		if multiple_outward_wires {
+			self.set_absolute_position(upstream_node_id, current_position, network_path);
+		} else {
+			self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
+		}
+
+		true
+	}
+
+	/// Places `node_id` after the connection feeding it was removed. A layer that still feeds the bottom
+	/// of a single layer stacks under it, a node joins a chain where it is eligible, and any other layer
+	/// is pinned at `previous_position`.
+	///
+	/// Returns whether the node could be placed, which is false only when its outward wires are missing.
+	pub(crate) fn reposition_disconnected_upstream(&mut self, node_id: &NodeId, previous_position: IVec2, network_path: &[NodeId]) -> bool {
+		let is_layer = self.is_layer(node_id, network_path);
+
+		let Some(outward_wires) = self
+			.outward_wires(network_path)
+			.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::primary_output(*node_id)))
+		else {
+			log::error!("Could not get outward wires in reposition_disconnected_upstream");
+			return false;
+		};
+
+		if is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == 0 {
+			// A layer left feeding the bottom of a node keeps the position it already resolved to
+			if let Some(downstream_node_id) = outward_wires[0].node_id()
+				&& self.is_layer(&downstream_node_id, network_path)
+			{
+				self.set_stack_position_calculated_offset(node_id, &downstream_node_id, network_path);
+				self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+			}
+		} else if !is_layer {
+			self.try_set_node_to_chain(node_id, network_path);
+		} else {
+			self.set_absolute_position(node_id, previous_position, network_path);
+		}
+
+		true
+	}
+
 	pub fn nodes_sorted_top_to_bottom<'a>(&mut self, node_ids: impl Iterator<Item = &'a NodeId>, network_path: &[NodeId]) -> Option<Vec<NodeId>> {
 		let mut node_ids_with_position = node_ids
 			.filter_map(|&node_id| {

@@ -322,58 +322,13 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		// Update the metadata for the encapsulating network
+		// An export is an output of the encapsulating node, so its wires live in the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
 		self.unload_stack_dependents(&encapsulating_network_path);
 
-		// Node input at the start index is now at the end index
-		let Some(move_to_end_index) = self
-			.outward_wires(&encapsulating_network_path)
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, start_index)))
-			.cloned()
-		else {
-			log::error!("Could not get outward wires in reorder_export");
-			return;
-		};
-		// Node inputs above the start index should be shifted down one
 		let last_output_index = self.number_of_outputs(&parent_id, &encapsulating_network_path) - 1;
-		for shift_output_down in (start_index + 1)..=last_output_index {
-			let Some(outward_wires) = self
-				.outward_wires(&encapsulating_network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_down)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_export");
-				return;
-			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, &encapsulating_network_path);
-				self.create_wire(&OutputConnector::node(parent_id, shift_output_down - 1), downstream_connection, &encapsulating_network_path);
-			}
-		}
-		// Node inputs at or above the end index should be shifted up one
-		for shift_output_up in (end_index..last_output_index).rev() {
-			let Some(outward_wires) = self
-				.outward_wires(&encapsulating_network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_up)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_export");
-				return;
-			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, &encapsulating_network_path);
-				self.create_wire(&OutputConnector::node(parent_id, shift_output_up + 1), downstream_connection, &encapsulating_network_path);
-			}
-		}
+		self.reindex_downstream_wires(&encapsulating_network_path, |index| OutputConnector::node(parent_id, index), last_output_index, start_index, end_index);
 
-		// Move the connections to the moved export after all other ones have been shifted
-		for downstream_connection in &move_to_end_index {
-			self.disconnect_input(downstream_connection, &encapsulating_network_path);
-			self.create_wire(&OutputConnector::node(parent_id, end_index), downstream_connection, &encapsulating_network_path);
-		}
-
-		// Update the metadata for the current network
 		self.unload_outward_wires(network_path);
 		self.invalidate_import_export(network_path);
 		self.unload_stack_dependents(network_path);
@@ -397,61 +352,62 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		// Update the metadata for the outer network
+		// An import is an input of the encapsulating node, so moving it moves that node's ports
 		self.unload_outward_wires(&encapsulating_network_path);
 		self.unload_stack_dependents(&encapsulating_network_path);
 
-		// Node input at the start index is now at the end index
-		let Some(move_to_end_index) = self
-			.outward_wires(network_path)
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(start_index)))
-			.cloned()
-		else {
-			log::error!("Could not get outward wires in reorder_import");
-			return;
-		};
-		// Node inputs above the start index should be shifted down one
+		// The wires an import feeds live in the network the import belongs to
 		let last_import_index = self.number_of_imports(network_path) - 1;
-		for shift_output_down in (start_index + 1)..=last_import_index {
-			let Some(outward_wires) = self
-				.outward_wires(network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_down)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_import");
-				return;
-			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, network_path);
-				self.create_wire(&OutputConnector::Import(shift_output_down - 1), downstream_connection, network_path);
-			}
-		}
-		// Node inputs at or above the end index should be shifted up one
-		for shift_output_up in (end_index..last_import_index).rev() {
-			let Some(outward_wires) = self
-				.outward_wires(network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_up)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_import");
-				return;
-			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, network_path);
-				self.create_wire(&OutputConnector::Import(shift_output_up + 1), downstream_connection, network_path);
-			}
-		}
+		self.reindex_downstream_wires(network_path, OutputConnector::Import, last_import_index, start_index, end_index);
 
-		// Move the connections to the moved export after all other ones have been shifted
-		for downstream_connection in &move_to_end_index {
-			self.disconnect_input(downstream_connection, network_path);
-			self.create_wire(&OutputConnector::Import(end_index), downstream_connection, network_path);
-		}
-
-		// Update the metadata for the current network
 		self.unload_outward_wires(network_path);
 		self.invalidate_import_export(network_path);
 		self.unload_stack_dependents(network_path);
+	}
+
+	/// Rewires every downstream connection so it follows the slot it was pointing at, after the slot at
+	/// `start_index` moved to `end_index` within `0..=last_index`. `output_connector` names one slot's
+	/// output within `network_path`, which is the network holding the wires.
+	fn reindex_downstream_wires(&mut self, network_path: &[NodeId], output_connector: impl Fn(usize) -> OutputConnector, last_index: usize, start_index: usize, end_index: usize) {
+		let Some(moved_connections) = self.downstream_connections(&output_connector(start_index), network_path) else {
+			return;
+		};
+
+		// Slots above the one that moved close the gap it left behind
+		for shifted_index in (start_index + 1)..=last_index {
+			let Some(connections) = self.downstream_connections(&output_connector(shifted_index), network_path) else {
+				return;
+			};
+			self.rewire_downstream(connections, &output_connector(shifted_index - 1), network_path);
+		}
+
+		// Slots at or above the destination open a gap for it
+		for shifted_index in (end_index..last_index).rev() {
+			let Some(connections) = self.downstream_connections(&output_connector(shifted_index), network_path) else {
+				return;
+			};
+			self.rewire_downstream(connections, &output_connector(shifted_index + 1), network_path);
+		}
+
+		// Last, so neither shift above can land on the moved slot's own connections
+		self.rewire_downstream(moved_connections, &output_connector(end_index), network_path);
+	}
+
+	/// The inputs fed by `output_connector`, or `None` if the network's outward wires do not name it.
+	fn downstream_connections(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<Vec<InputConnector>> {
+		let connections = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(output_connector)).cloned();
+		if connections.is_none() {
+			log::error!("Could not get outward wires for {output_connector:?} in network {network_path:?}");
+		}
+		connections
+	}
+
+	/// Moves each given downstream connection onto `output_connector`.
+	fn rewire_downstream(&mut self, downstream_connections: Vec<InputConnector>, output_connector: &OutputConnector, network_path: &[NodeId]) {
+		for downstream_connection in downstream_connections {
+			self.disconnect_input(&downstream_connection, network_path);
+			self.create_wire(output_connector, &downstream_connection, network_path);
+		}
 	}
 
 	/// Replaces the implementation and corresponding metadata.
@@ -556,79 +512,49 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Reject a change that would create a cycle before any side effects run (only Node connections can create cycles).
-		// The new input is swapped in just for this test, then restored so the disconnect and layout logic below sees the unmodified network.
-		if matches!(new_input, NodeInput::Node { .. }) {
-			let Some(network) = self.network_graph_mut(network_path) else {
-				log::error!("Could not get nested network in set_input");
-				return;
-			};
-			fn get_input<'a>(network: &'a mut NodeNetwork, input_connector: &InputConnector) -> Option<&'a mut NodeInput> {
-				match input_connector {
-					InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
-					InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
-				}
-			}
-
-			let Some(input) = get_input(network, input_connector) else {
-				log::error!("Could not get input in set_input");
-				return;
-			};
-			let old_input = std::mem::replace(input, new_input.clone());
-			let is_acyclic = network.is_acyclic();
-			let Some(input) = get_input(network, input_connector) else {
-				log::error!("Could not get input in set_input");
-				return;
-			};
-			*input = old_input;
-
-			if !is_acyclic {
-				return;
-			}
+		// Only a node connection can close a loop, and the check has to run before any side effect does
+		if matches!(new_input, NodeInput::Node { .. }) && self.would_create_cycle(input_connector, &new_input, network_path) {
+			return;
 		}
 
-		// When changing a NodeInput::Node to a NodeInput::Node, the input should first be disconnected to ensure proper side effects
-		if (matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. })) {
+		// Rewiring one node connection to another runs the disconnect side effects first
+		if matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. }) {
 			self.disconnect_input(input_connector, network_path);
 			self.set_input(input_connector, new_input, network_path);
 			return;
 		}
 
-		// If the previous input is connected to a chain node, then set all upstream chain nodes to absolute position
-		if let NodeInput::Node { node_id: previous_upstream_id, .. } = &previous_input
-			&& self.is_chain(previous_upstream_id, network_path)
-		{
-			self.set_upstream_chain_to_absolute(previous_upstream_id, network_path);
-		}
-		if let NodeInput::Node { node_id: new_upstream_id, .. } = &new_input {
-			// If the new input is connected to a chain node, then break its chain
-			if self.is_chain(new_upstream_id, network_path) {
-				self.set_upstream_chain_to_absolute(new_upstream_id, network_path);
+		// A chain positions its nodes relative to the layer they feed, so either end of the rewire
+		// leaving that layer breaks the chain it belonged to
+		for chain_input in [&previous_input, &new_input] {
+			if let NodeInput::Node { node_id: chain_node_id, .. } = chain_input
+				&& self.is_chain(chain_node_id, network_path)
+			{
+				self.set_upstream_chain_to_absolute(chain_node_id, network_path);
 			}
 		}
 
 		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else {
 			return;
 		};
-
 		if old_input == new_input {
 			return;
-		};
+		}
 
-		// It is necessary to ensure the graph is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
-		let previous_metadata = match &previous_input {
+		// Read after the write so a node the write disconnected reports where it comes to rest.
+		// `position` can crash on a cyclic graph (#3227), which the check above has ruled out.
+		let disconnected_upstream = match &previous_input {
 			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
 			_ => None,
 		};
 
 		self.transaction_modified();
 
-		// Ensure layer is toggled to non layer if it is no longer eligible to be a layer
+		// A node that no longer satisfies the layer shape is shown as a node instead
 		let layer_node_path = match input_connector {
 			InputConnector::Node { node_id, .. } => Some((node_id, network_path)),
 			InputConnector::Export(_) => network_path.split_last(),
 		};
-
 		if let Some((layer_id, layer_path)) = layer_node_path
 			&& !self.is_eligible_to_be_layer(layer_id, layer_path)
 			&& self.is_layer(layer_id, layer_path)
@@ -636,95 +562,41 @@ impl NodeNetworkInterface {
 			self.set_to_node_or_layer(layer_id, layer_path, false);
 		}
 
-		// Side effects
-		match (&old_input, &new_input) {
-			// If a node input is exposed or hidden reload the click targets and update the bounding box for all nodes
-			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => {
-				if let InputConnector::Node { node_id, .. } = input_connector {
-					if new_exposed != old_exposed {
-						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-						self.unload_all_nodes_bounding_box(network_path);
+		// A no-op unless one of the two inputs is a wire, which covers every case the match distinguishes
+		self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 
-						// Unload the interior import/export ports if this node has a nested network
-						if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
-							let nested_path = [network_path, &[*node_id]].concat();
-							self.invalidate_import_export(&nested_path);
-						}
+		match (&old_input, &new_input) {
+			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => match input_connector {
+				// Exposing or hiding a value input changes the node's port count
+				InputConnector::Node { node_id, .. } if old_exposed != new_exposed => {
+					self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+					self.unload_all_nodes_bounding_box(network_path);
+
+					// A nested network draws its interior ports from the encapsulating node's inputs
+					if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
+						let nested_path = [network_path, &[*node_id]].concat();
+						self.invalidate_import_export(&nested_path);
 					}
-				} else {
-					self.invalidate_import_export(network_path);
 				}
-			}
+				InputConnector::Node { .. } => {}
+				InputConnector::Export(_) => self.invalidate_import_export(network_path),
+			},
+
 			(_, NodeInput::Node { node_id: upstream_node_id, .. }) => {
-				// If the old input wasn't exposed but the new one is (`Node` inputs are always exposed),
-				// the node's port count changed, so its click targets need to be recomputed
+				// `Node` inputs are always exposed, so connecting to a hidden input adds a port
 				if !old_input.is_exposed()
 					&& let InputConnector::Node { node_id, .. } = input_connector
 				{
 					self.unload_node_click_targets(node_id, network_path);
 				}
 
-				// Load structure if the change is to the document network and to the first or second
-				if network_path.is_empty() {
-					if matches!(input_connector, InputConnector::Export(0)) {
-						self.load_structure();
-					} else if let InputConnector::Node { node_id, input_index } = &input_connector {
-						// If the connection is made to the first or second input of a node connected to the output, then load the structure
-						if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
-							self.load_structure();
-						}
-					}
-				}
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
-				// Layout system
-				let Some(current_node_position) = self.position(upstream_node_id, network_path) else {
-					log::error!("Could not get current node position in set_input for node {upstream_node_id}");
+				self.reload_structure_if_affected(input_connector, network_path);
+
+				if !self.reposition_connected_upstream(upstream_node_id, input_connector, network_path) {
 					return;
-				};
-				let Some(node_metadata) = self.node_metadata(upstream_node_id, network_path) else {
-					log::error!("Could not get node_metadata in set_input");
-					return;
-				};
-				match &node_metadata.persistent_metadata.node_type_metadata {
-					NodeTypePersistentMetadata::Layer(_) => {
-						match &input_connector {
-							InputConnector::Export(_) => {
-								// If a layer is connected to the exports, it should be set to absolute position without being moved.
-								self.set_absolute_position(upstream_node_id, current_node_position, network_path)
-							}
-							InputConnector::Node {
-								node_id: downstream_node_id,
-								input_index,
-							} => {
-								// If a layer has a single connection to the bottom of another layer, it should be set to stack positioning
-								let Some(downstream_node_metadata) = self.node_metadata(downstream_node_id, network_path) else {
-									log::error!("Could not get downstream node_metadata in set_input");
-									return;
-								};
-								match &downstream_node_metadata.persistent_metadata.node_type_metadata {
-									NodeTypePersistentMetadata::Layer(_) => {
-										// If the layer feeds into the bottom input of layer, and has no other outputs, set its position to stack at its previous y position
-										let multiple_outward_wires = self
-											.outward_wires(network_path)
-											.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::primary_output(*upstream_node_id)))
-											.is_some_and(|outward_wires| outward_wires.len() > 1);
-										if *input_index == 0 && !multiple_outward_wires {
-											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
-										} else {
-											self.set_absolute_position(upstream_node_id, current_node_position, network_path);
-										}
-									}
-									NodeTypePersistentMetadata::Node(_) => {
-										// If the layer feeds into a node, set its y offset to 0
-										self.set_absolute_position(upstream_node_id, current_node_position, network_path);
-									}
-								}
-							}
-						}
-					}
-					NodeTypePersistentMetadata::Node(_) => {}
 				}
-				// Altering an export may move the connectors meaning the ports must be refreshed.
+
+				// Altering an export may move the connectors, so the ports have to be refreshed
 				if matches!(input_connector, InputConnector::Export(_)) {
 					self.unload_import_export_ports(network_path);
 				}
@@ -732,62 +604,76 @@ impl NodeNetworkInterface {
 				self.unload_stack_dependents(network_path);
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
-			// If a connection is made to the imports
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. }) => {
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
+
+			// A wire to or from the imports appeared or vanished
+			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. })
+			| (NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_wire(input_connector, network_path);
 			}
-			// If a connection to the imports is disconnected
-			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
-				self.unload_wire(input_connector, network_path);
-			}
-			// If a node is disconnected.
+
+			// A node was disconnected
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 				self.unload_wire(input_connector, network_path);
 
-				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
-					let old_upstream_node_is_layer = self.is_layer(&old_upstream_node_id, network_path);
-					let Some(outward_wires) = self
-						.outward_wires(network_path)
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(old_upstream_node_id)))
-					else {
-						log::error!("Could not get outward wires in set_input");
-						return;
-					};
-					// If it is a layer and is connected to a single layer, set its position to stack at its previous y position
-					if old_upstream_node_is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == 0 {
-						if let Some(downstream_node_id) = outward_wires[0].node_id()
-							&& self.is_layer(&downstream_node_id, network_path)
-						{
-							self.set_stack_position_calculated_offset(&old_upstream_node_id, &downstream_node_id, network_path);
-							self.unload_upstream_node_click_targets(vec![old_upstream_node_id], network_path);
-						}
-					}
-					// If it is a node and is eligible to be in a chain, then set it to chain positioning
-					else if !old_upstream_node_is_layer {
-						self.try_set_node_to_chain(&old_upstream_node_id, network_path);
-					}
-					// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
-					else {
-						self.set_absolute_position(&old_upstream_node_id, previous_position, network_path);
-					}
+				if let Some((old_upstream_node_id, previous_position)) = disconnected_upstream
+					&& !self.reposition_disconnected_upstream(&old_upstream_node_id, previous_position, network_path)
+				{
+					return;
 				}
-				// Load structure if the change is to the document network and to the first or second
-				if network_path.is_empty() {
-					if matches!(input_connector, InputConnector::Export(0)) {
-						self.load_structure();
-					} else if let InputConnector::Node { node_id, input_index } = &input_connector {
-						// If the connection is made to the first or second input of a node connected to the output, then load the structure
-						if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
-							self.load_structure();
-						}
-					}
-				}
+
+				self.reload_structure_if_affected(input_connector, network_path);
 				self.unload_stack_dependents(network_path);
 			}
+
 			_ => {}
+		}
+	}
+
+	/// Whether writing `new_input` at `input_connector` would leave the network cyclic, answered by
+	/// swapping the input in, testing, and swapping it back so the caller still sees the network it had.
+	/// An input that cannot be reached reports `true`, so the caller abandons the write.
+	fn would_create_cycle(&mut self, input_connector: &InputConnector, new_input: &NodeInput, network_path: &[NodeId]) -> bool {
+		fn slot<'a>(network: &'a mut NodeNetwork, input_connector: &InputConnector) -> Option<&'a mut NodeInput> {
+			match input_connector {
+				InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
+				InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+			}
+		}
+
+		let Some(network) = self.network_graph_mut(network_path) else {
+			log::error!("Could not get nested network in would_create_cycle");
+			return true;
+		};
+		let Some(tested_slot) = slot(network, input_connector) else {
+			log::error!("Could not get input in would_create_cycle");
+			return true;
+		};
+
+		let old_input = std::mem::replace(tested_slot, new_input.clone());
+		let is_acyclic = network.is_acyclic();
+
+		let Some(restored_slot) = slot(network, input_connector) else {
+			log::error!("Could not restore input in would_create_cycle");
+			return true;
+		};
+		*restored_slot = old_input;
+
+		!is_acyclic
+	}
+
+	/// Rebuilds the layer tree when a change to the document network could have moved a layer within it:
+	/// its first export, or the first or second input of a node that reaches that export.
+	fn reload_structure_if_affected(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) {
+		if !network_path.is_empty() {
+			return;
+		}
+
+		let affects_structure = match input_connector {
+			InputConnector::Export(export_index) => *export_index == 0,
+			InputConnector::Node { node_id, input_index } => *input_index <= 1 && self.connected_to_output(node_id, network_path),
+		};
+		if affects_structure {
+			self.load_structure();
 		}
 	}
 
