@@ -123,7 +123,7 @@
 
 <style lang="scss">
 	.field-input {
-		min-width: 80px;
+		min-width: 70px;
 		height: auto;
 		position: relative;
 		border-radius: 2px;
