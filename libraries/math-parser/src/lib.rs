@@ -148,11 +148,33 @@ mod tests {
 			"gcd(10000000000000000000, 2)",
 			"mod(5, 0)",
 			"(-1)!",
-			"2.5!",
-			"i!",
-			"inf!",
+			"(-2)!",
+			"(-inf)!",
 		] {
 			assert!(evaluate(input).unwrap().is_err(), "expected `{input}` to be an evaluation error");
+		}
+	}
+
+	#[test]
+	fn factorial_extends_through_the_gamma_function() {
+		// Compared relatively, since the reference values span hundreds of orders of magnitude
+		for (input, expected) in [
+			("10.5!", Complex::from(11_899_423.083962247)),
+			("50.25!", Complex::from(8.112744267987253e64)),
+			("170.5!", Complex::from(9.483367566824801e307)),
+			("(-2.5)!", Complex::from(2.3632718012073544)),
+			("(-10.25)!", Complex::from(6.950338494377042e-6)),
+			("(-100.5)!", Complex::from(3.3704592739067173e-157)),
+			("(-170.25)!", Complex::from(2.8837604712815413e-305)),
+			("(-3.5+4i)!", Complex::new(-2.8327740563089983e-5, 5.018195008922803e-5)),
+			("(-20.5+i)!", Complex::new(-5.085633633020186e-19, 7.443957006169107e-20)),
+			("(300i)!", Complex::new(-2.1461927376275517e-204, -9.332698946010592e-204)),
+			("(-1+227i)!", Complex::new(-1.4098280082608946e-157, -2.309687847859193e-156)),
+			("(-1.5+300i)!", Complex::new(-9.760049091627542e-208, 1.5632983579858933e-207)),
+		] {
+			let Value::Number(actual) = evaluate(input).unwrap().unwrap();
+			let actual = actual.as_complex();
+			assert!((actual - expected).norm() / expected.norm() < 1e-12, "`{input}`: expected {expected}, got {actual}");
 		}
 	}
 
@@ -432,6 +454,13 @@ mod tests {
 		factorial_nested: "(3 + 2)!" => 120.,
 		factorial_zero: "0!" => 1.,
 		factorial_chain: "3!!" => 720., // (3!)! = 6! = 720
+		factorial_half: "0.5!" => std::f64::consts::PI.sqrt() / 2.,
+		factorial_negative_half: "(-0.5)!" => std::f64::consts::PI.sqrt(),
+		factorial_fractional: "2.5!" => 3.323350970447842,
+		factorial_negative_fractional: "(-1.5)!" => -2. * std::f64::consts::PI.sqrt(),
+		factorial_imaginary: "i!" => Complex::new(0.498015668118356, -0.1549498283018107),
+		factorial_complex_left_half_plane: "(-1.5 + 2i)!" => Complex::new(-0.03903884916211552, -0.03516787606268694),
+		factorial_infinity: "inf!" => f64::INFINITY,
 
 		// Operations with negative values
 		negative_nested_parentheses: "-(5 + 3 * (2 - 1))" => -8.,
@@ -627,6 +656,11 @@ mod tests {
 		// Overflow-safe evaluation
 		factorial_overflows_to_infinity: "171!" => f64::INFINITY,
 		factorial_huge_input: "10000000000000000000000!" => f64::INFINITY,
+		factorial_fractional_overflows_to_infinity: "171.5!" => f64::INFINITY,
+		factorial_huge_fractional_input: "4503599627370495.5!" => f64::INFINITY,
+		factorial_complex_overflows_to_infinity: "|(171 + 0.5i)!|" => f64::INFINITY,
+		factorial_complex_underflows_to_zero: "(-190.5 + 0.5i)!" => 0.,
+		factorial_huge_negative_underflows_to_zero: "(-740.5)!" => 0.,
 		lcm_huge_no_overflow: "lcm(1099511627776, 1099511627775)" => 1099511627776. * 1099511627775.,
 		long_literal: "10000000000000000000000" => 1e22,
 		huge_exponent_saturates: "1e4294967296" => f64::INFINITY,
