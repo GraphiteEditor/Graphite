@@ -1,11 +1,9 @@
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::ResourceHash;
 use peer_transport::TransportPeerId;
 
 #[impl_message(Message, PortfolioMessage, Sync)]
-#[derive(derivative::Derivative, serde::Serialize, serde::Deserialize)]
-#[derivative(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SyncMessage {
 	/// Host the active document and hand the frontend a link for others to join.
 	Share,
@@ -27,16 +25,5 @@ pub enum SyncMessage {
 		bytes: Vec<u8>,
 	},
 	/// A resource received from a peer was copied into the byte store.
-	ResourceStored { document_id: DocumentId },
-	/// The interface rebuilt from the registry after remote changes, `None` if the rebuild failed.
-	Rebuilt {
-		document_id: DocumentId,
-		#[serde(skip, default)]
-		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
-		interface: Option<Box<NodeNetworkInterface>>,
-	},
-}
-
-fn clone_to_none<T>(_: &Option<T>) -> Option<T> {
-	None
+	ResourceStored { document_id: DocumentId, hash: ResourceHash, bytes: Vec<u8> },
 }

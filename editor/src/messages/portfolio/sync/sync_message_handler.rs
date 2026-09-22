@@ -1,7 +1,6 @@
 use crate::application::generate_uuid;
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
-use crate::messages::portfolio::document_storage_io::rebuild_interface;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use document_graph_storage::UserId;
@@ -24,7 +23,6 @@ pub struct SyncMessageHandler {
 	polling: bool,
 	/// Documents whose registry changed remotely since their interface was last rebuilt.
 	dirty: HashSet<DocumentId>,
-	rebuilding: HashSet<DocumentId>,
 	/// Received resources still being copied into the app cache, per document.
 	storing: HashMap<DocumentId, usize>,
 	blocked_reason: HashMap<DocumentId, String>,
@@ -133,10 +131,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 				}
 
-				// One rebuild in flight per document, only once every referenced resource is in the app cache,
-				// and never underneath an open transaction, whose un-staged edits the swap would discard.
+				// Rebuild only once every referenced resource is in the app cache, and never underneath an
+				// open transaction, whose un-staged edits the swap would discard.
 				for document_id in self.dirty.clone() {
-					let Some(document) = documents.get(&document_id) else {
+					let Some(document) = documents.get_mut(&document_id) else {
 						self.dirty.remove(&document_id);
 						continue;
 					};
@@ -144,8 +142,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					let storing = self.storing.get(&document_id).copied().unwrap_or(0);
 					let missing = SyncTarget::missing_resources(gdd).len();
 					let transaction = document.network_interface.transaction_status();
-					if self.rebuilding.contains(&document_id) || storing > 0 || missing > 0 || transaction != TransactionStatus::Finished {
-						let reason = format!("rebuilding {} storing {storing} missing {missing} transaction {transaction:?}", self.rebuilding.contains(&document_id));
+					if storing > 0 || missing > 0 || transaction != TransactionStatus::Finished {
+						let reason = format!("storing {storing} missing {missing} transaction {transaction:?}");
 						if self.blocked_reason.get(&document_id) != Some(&reason) {
 							log::debug!("Sync rebuild for {document_id:?} waiting: {reason}");
 							self.blocked_reason.insert(document_id, reason);
@@ -155,16 +153,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					self.blocked_reason.remove(&document_id);
 
 					self.dirty.remove(&document_id);
-					self.rebuilding.insert(document_id);
-					responses.add(rebuild_future(document_id, gdd.clone(), resources.clone()));
+					document.apply_remote_changes(responses);
 				}
-			}
-			SyncMessage::Rebuilt { document_id, interface } => {
-				log::debug!("Sync rebuild for {document_id:?} finished: {}", if interface.is_some() { "applying" } else { "failed" });
-				self.rebuilding.remove(&document_id);
-				let Some(document) = documents.get_mut(&document_id) else { return };
-				let Some(interface) = interface.map(|boxed| *boxed) else { return };
-				document.apply_gdd_cursor_rebuild(interface, false, false, responses);
 			}
 			SyncMessage::ResourceLoaded { document_id, to, hash, bytes } => {
 				log::debug!("Sending resource {hash} ({} bytes)", bytes.len());
@@ -175,9 +165,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					log::warn!("Failed to send resource {hash} to a peer: {error}");
 				}
 			}
-			SyncMessage::ResourceStored { document_id } => {
+			SyncMessage::ResourceStored { document_id, hash, bytes } => {
 				if let Some(count) = self.storing.get_mut(&document_id) {
 					*count = count.saturating_sub(1);
+				}
+				if let Some(document) = documents.get_mut(&document_id) {
+					document.cache_declaration_bytes(hash, &bytes);
 				}
 				self.dirty.insert(document_id);
 			}
@@ -206,14 +199,6 @@ fn driver_future(document_id: DocumentId, driver: peer_transport::MessageLoopFut
 			log::warn!("Session transport for {document_id:?} ended: {error}");
 		}
 		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Disconnected { document_id }))
-	};
-	future.into()
-}
-
-fn rebuild_future(document_id: DocumentId, gdd: document_format::GddV1, resources: ResourcesHandle) -> Message {
-	let future = async move {
-		let interface = rebuild_interface(&gdd, &resources, document_id).await.map(Box::new);
-		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Rebuilt { document_id, interface }))
 	};
 	future.into()
 }
@@ -255,13 +240,17 @@ fn store_resource_future(
 	resources: ResourcesHandle,
 ) -> Message {
 	let future = async move {
-		match proxy.load(hash).await {
+		let bytes = match proxy.load(hash).await {
 			Some(resource) => {
 				resources.store(resource.as_ref());
+				resource.as_ref().to_vec()
 			}
-			None => log::warn!("Received resource {hash} is missing from the working copy"),
-		}
-		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::ResourceStored { document_id }))
+			None => {
+				log::warn!("Received resource {hash} is missing from the working copy");
+				Vec::new()
+			}
+		};
+		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::ResourceStored { document_id, hash, bytes }))
 	};
 	future.into()
 }

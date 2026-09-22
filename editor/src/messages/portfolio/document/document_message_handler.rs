@@ -2103,6 +2103,17 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Swap in an interface rebuilt from the registry a peer's changes left behind.
+	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) {
+		let Some(rebuilt) = self.history.rebuild_interface() else { return };
+		self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+	}
+
+	/// Cache a resource received from a peer as a proto-node declaration, so a rebuild can resolve it.
+	pub(crate) fn cache_declaration_bytes(&mut self, hash: graph_craft::application_io::resource::ResourceHash, bytes: &[u8]) {
+		self.history.cache_declaration_bytes(hash, bytes);
+	}
+
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
 	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);

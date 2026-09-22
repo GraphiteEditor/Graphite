@@ -11,7 +11,6 @@ use graph_craft::document::NodeNetwork;
 
 use super::document::DocumentMessageHandler;
 use super::document::diff_networks;
-use super::document::utility_types::network_interface::NodeNetworkInterface;
 use super::document::utility_types::network_interface::storage_metadata::{apply_network_view_settings, build_interface_from_storage, network_ids_from_entries};
 use super::document_migration::document_migration_string_preprocessing;
 use super::portfolio_message::PortfolioMessage;
@@ -86,24 +85,6 @@ pub(super) async fn open_gdd_document(
 		document_path,
 		document: document.map(Box::new),
 	})
-}
-
-/// Build a runtime interface from the `Gdd` registry, logging and returning `None` on failure.
-pub(crate) async fn rebuild_interface(gdd: &GddV1, store_handle: &ResourcesHandle, document_id: DocumentId) -> Option<NodeNetworkInterface> {
-	let declarations = gdd.declarations(store_handle).await;
-	match gdd.registry().to_runtime_with_full_metadata(&declarations) {
-		Ok((network, node_entries, network_entries)) => match build_interface_from_storage(network, node_entries, network_entries) {
-			Ok(interface) => Some(interface),
-			Err(error) => {
-				log::error!("Gdd rebuild for {document_id:?}: failed to build interface: {error}");
-				None
-			}
-		},
-		Err(error) => {
-			log::error!("Gdd rebuild for {document_id:?}: failed to convert registry to runtime: {error}");
-			None
-		}
-	}
 }
 
 /// Core of the `.gdd` open: archive -> working copy -> `Gdd` -> runtime interface. The registry build is

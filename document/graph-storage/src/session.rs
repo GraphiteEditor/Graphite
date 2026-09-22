@@ -83,7 +83,7 @@ impl Session {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
 		let base = self.runtime_base.as_ref().unwrap_or(&self.document.working_registry);
 		let ops = crate::delta::compute_deltas(base, &conversion.registry);
-		self.runtime_base = Some(conversion.registry);
+		self.runtime_base = Some(conversion.registry.clone());
 		let hot_ops = self.stage_ops(ops)?;
 		Ok((hot_ops, conversion))
 	}
