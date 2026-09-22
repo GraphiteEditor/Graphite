@@ -15,19 +15,43 @@ use math_parser::reducer::classify_reducer;
 use math_parser::value::Value;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
+use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
-/// Parses and evaluates a math expression with the given variable bindings, logging and returning `None` on failure.
-fn evaluate_expression(expression: &str, provider: impl ValueProvider) -> Option<Value> {
-	let node = match ast::Node::try_parse_from_str(expression) {
-		Ok(node) => node,
-		Err(error) => {
-			warn!("Invalid expression: `{expression}`\n{error}");
-			return None;
-		}
-	};
+/// A parsed source and its tree, which an invalid source lacks.
+type ParsedSource = Option<(String, Option<Arc<ast::Node>>)>;
 
-	match node.eval(&EvalContext::new(provider, NothingMap)) {
+/// The last expression a node parsed, reused while its source stays the same, so a list of thousands of items or a run of
+/// frames parses once. An invalid source is remembered too, so it is logged once rather than per item.
+#[derive(Debug, Clone, Default)]
+pub struct ParseCache(Arc<Mutex<ParsedSource>>);
+
+impl ParseCache {
+	/// The parse tree of `source`, or `None` for an invalid expression.
+	fn parse(&self, source: &str) -> Option<Arc<ast::Node>> {
+		// A lock poisoned by a panic elsewhere still guards a usable cache
+		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+		if let Some((cached_source, tree)) = cached.as_ref()
+			&& cached_source == source
+		{
+			return tree.clone();
+		}
+
+		let tree = match ast::Node::try_parse_from_str(source) {
+			Ok(tree) => Some(Arc::new(tree)),
+			Err(error) => {
+				warn!("Invalid expression: `{source}`\n{error}");
+				None
+			}
+		};
+		*cached = Some((source.to_string(), tree.clone()));
+		tree
+	}
+}
+
+/// Evaluates a parsed expression with the given variable bindings, logging and returning `None` on failure.
+fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Option<Value> {
+	match expression.eval(&EvalContext::new(provider, NothingMap)) {
 		Ok(value) => Some(value),
 		Err(error) => {
 			warn!("Expression evaluation error: {error:?}");
@@ -110,11 +134,12 @@ fn math_fx<T: ExpressionValue>(
 	#[name("f(x) =")]
 	#[default("x")]
 	fx: Item<String>,
+	#[data] parsed: ParseCache,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
 
 	let x = value.into_f64();
-	let result = output(evaluate_expression(fx.element(), SingleVariableMathContext { x }));
+	let result = output(parsed.parse(fx.element()).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
 
 	Item::from_parts(result, attributes)
 }
@@ -155,6 +180,7 @@ fn math_f<T: ExpressionValue>(
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
 	f: Item<String>,
+	#[data] parsed: ParseCache,
 ) -> Item<T> {
 	let expression = f.element();
 	let items: Vec<f64> = values.iter_element_values().map(|&value| value.into_f64()).collect();
@@ -169,7 +195,7 @@ fn math_f<T: ExpressionValue>(
 		return Item::new_from_element(output(Some(Value::from_f64(result))));
 	}
 
-	let result = output(evaluate_expression(expression, bindings));
+	let result = output(parsed.parse(expression).and_then(|expression| evaluate_expression(&expression, bindings)));
 	Item::new_from_element(result)
 }
 
@@ -1919,41 +1945,50 @@ mod test {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math_fx((), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()));
+		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()));
 		assert_eq!(result.into_element(), 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math_fx((), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()));
+		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()));
 		assert_eq!(result.into_element(), 20.);
 	}
 
 	#[test]
 	fn test_variable_binding() {
-		let result = math_fx((), Item::new_from_element(7.), Item::new_from_element("x * 2".to_string()));
+		let result = math_fx((), &ParseCache::default(), Item::new_from_element(7.), Item::new_from_element("x * 2".to_string()));
 		assert_eq!(result.into_element(), 14.);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math_fx((), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()));
+		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()));
 		assert_eq!(result.into_element(), 0.);
+	}
+
+	#[test]
+	fn expressions_parse_once_per_source() {
+		let cache = ParseCache::default();
+		let first = cache.parse("x * 2").unwrap();
+		assert!(Arc::ptr_eq(&first, &cache.parse("x * 2").unwrap()));
+		assert!(!Arc::ptr_eq(&first, &cache.parse("x * 3").unwrap()));
+		assert!(cache.parse("invalid(").is_none());
 	}
 
 	#[test]
 	fn test_boolean_items() {
 		// Booleans read as exactly 0 and 1, and logical results convert back
-		assert!(!math_fx((), Item::new_from_element(true), Item::new_from_element("!x".to_string())).into_element());
-		assert!(math_fx((), Item::new_from_element(false), Item::new_from_element("x == 0".to_string())).into_element());
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string())).into_element());
+		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string())).into_element());
 
 		// A result that is not exactly 0 or 1 cannot be a truth value, so it reads as false
-		assert!(!math_fx((), Item::new_from_element(true), Item::new_from_element("x + 1".to_string())).into_element());
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string())).into_element());
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
-		assert!(!math_f((), bools(), Item::new_from_element("&&".to_string())).into_element());
-		assert!(math_f((), bools(), Item::new_from_element("||".to_string())).into_element());
-		assert!(!math_f((), bools(), Item::new_from_element("xor".to_string())).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string())).into_element());
+		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string())).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string())).into_element());
 	}
 
 	#[test]
@@ -1974,9 +2009,9 @@ mod test {
 		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
 
 		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
-		assert_eq!(math_f((), values(), Item::new_from_element("a - b + c".to_string())).into_element(), 10.);
-		assert_eq!(math_f((), values(), Item::new_from_element("min".to_string())).into_element(), 1.);
-		assert_eq!(math_f((), values(), Item::new_from_element("+".to_string())).into_element(), 12.);
+		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string())).into_element(), 10.);
+		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string())).into_element(), 1.);
+		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string())).into_element(), 12.);
 	}
 
 	#[test]

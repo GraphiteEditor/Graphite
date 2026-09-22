@@ -1260,7 +1260,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// The old "Math" node evaluated an expression over "A" and "B". A static expression not reading a wired `B` becomes "Math f(x)"
+	// The old "Math" node evaluated an expression over "A" and "B". A lexable static expression not reading a wired `B` becomes "Math f(x)"
 	// with `A` as `x` and a constant `B` inlined. Anything else becomes "Extend" feeding "Math f(…)", which reads the pair as `a` and `b`.
 	let math_nodes: Vec<(NodeId, Vec<NodeId>, Vec<NodeInput>)> = document
 		.network_interface
