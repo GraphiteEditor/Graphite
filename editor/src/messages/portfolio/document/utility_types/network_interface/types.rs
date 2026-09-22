@@ -445,6 +445,24 @@ impl<T> TransientCache<T> {
 		*self.0.borrow_mut() = None;
 	}
 
+	/// Computes and stores the value with `load` if it is not already loaded.
+	///
+	/// `load` runs with no borrow held, so it is free to read other cache slots.
+	pub(crate) fn ensure_loaded(&self, load: impl FnOnce() -> Option<T>) {
+		let already_loaded = self.0.borrow().is_some();
+		if already_loaded {
+			return;
+		}
+		let Some(value) = load() else { return };
+		self.store(value);
+	}
+
+	/// Runs `read` on the cached value, computing it with `load` first if it is not loaded.
+	pub(crate) fn with_loaded_or<R>(&self, load: impl FnOnce() -> Option<T>, read: impl FnOnce(&T) -> R) -> Option<R> {
+		self.ensure_loaded(load);
+		self.with_loaded(read)
+	}
+
 	/// Runs `read` on the cached value if it is loaded.
 	pub(crate) fn with_loaded<R>(&self, read: impl FnOnce(&T) -> R) -> Option<R> {
 		self.0.borrow().as_ref().map(read)

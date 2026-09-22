@@ -274,7 +274,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
-		self.try_load_import_export_ports(network_path);
+		self.load_import_export_ports(network_path);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
@@ -289,26 +289,27 @@ impl NodeNetworkInterface {
 
 	/// Reads the import/export ports through &self, loading them first if needed.
 	pub(crate) fn with_import_export_ports<R>(&self, network_path: &[NodeId], read: impl FnOnce(&Ports) -> R) -> Option<R> {
-		self.try_load_import_export_ports(network_path);
-		self.network_metadata(network_path)?.transient_metadata.import_export_ports.with_loaded(read)
+		self.network_metadata(network_path)?
+			.transient_metadata
+			.import_export_ports
+			.with_loaded_or(|| self.compute_import_export_ports(network_path), read)
 	}
 
-	fn try_load_import_export_ports(&self, network_path: &[NodeId]) {
+	pub fn load_import_export_ports(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
 			return;
 		};
-		if !network_metadata.transient_metadata.import_export_ports.is_loaded() {
-			self.load_import_export_ports(network_path);
-		}
+		network_metadata.transient_metadata.import_export_ports.ensure_loaded(|| self.compute_import_export_ports(network_path));
 	}
 
-	pub fn load_import_export_ports(&self, network_path: &[NodeId]) {
+	/// A port for each import and export of the network, placed down the left and right edges.
+	fn compute_import_export_ports(&self, network_path: &[NodeId]) -> Option<Ports> {
 		let Some(import_export_position) = self.import_export_position(network_path) else {
 			log::error!("Could not get import_export_position");
-			return;
+			return None;
 		};
-		let Some(network) = self.nested_network(network_path) else { return };
+		let network = self.nested_network(network_path)?;
 		let mut import_export_ports = Ports::new();
 
 		if !network_path.is_empty() {
@@ -323,12 +324,7 @@ impl NodeNetworkInterface {
 			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., export_index as f64 * 24.));
 		}
 
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get current network in load_export_ports");
-			return;
-		};
-
-		network_metadata.transient_metadata.import_export_ports.store(import_export_ports);
+		Some(import_export_ports)
 	}
 
 	pub(crate) fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
@@ -506,7 +502,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
-		self.try_load_outward_wires(network_path);
+		self.load_outward_wires(network_path);
 
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in outward_wires");
@@ -522,25 +518,26 @@ impl NodeNetworkInterface {
 
 	/// Reads the outward wires through &self, loading them first if needed.
 	pub(crate) fn with_outward_wires<R>(&self, network_path: &[NodeId], read: impl FnOnce(&HashMap<OutputConnector, Vec<InputConnector>>) -> R) -> Option<R> {
-		self.try_load_outward_wires(network_path);
-		self.network_metadata(network_path)?.transient_metadata.outward_wires.with_loaded(read)
+		self.network_metadata(network_path)?
+			.transient_metadata
+			.outward_wires
+			.with_loaded_or(|| self.compute_outward_wires(network_path), read)
 	}
 
-	fn try_load_outward_wires(&self, network_path: &[NodeId]) {
+	fn load_outward_wires(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in outward_wires");
 			return;
 		};
-		if !network_metadata.transient_metadata.outward_wires.is_loaded() {
-			self.load_outward_wires(network_path);
-		}
+		network_metadata.transient_metadata.outward_wires.ensure_loaded(|| self.compute_outward_wires(network_path));
 	}
 
-	fn load_outward_wires(&self, network_path: &[NodeId]) {
+	/// Every input fed by each node output and each import of the network.
+	fn compute_outward_wires(&self, network_path: &[NodeId]) -> Option<HashMap<OutputConnector, Vec<InputConnector>>> {
 		let mut outward_wires = HashMap::new();
 		let Some(network) = self.nested_network(network_path) else {
-			log::error!("Could not get nested network in load_outward_wires");
-			return;
+			log::error!("Could not get nested network in compute_outward_wires");
+			return None;
 		};
 		// Initialize all output connectors for nodes
 		for node_id in network.nodes.keys() {
@@ -583,9 +580,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata(network_path) else { return };
-
-		network_metadata.transient_metadata.outward_wires.store(outward_wires);
+		Some(outward_wires)
 	}
 
 	pub(crate) fn unload_outward_wires(&mut self, network_path: &[NodeId]) {
