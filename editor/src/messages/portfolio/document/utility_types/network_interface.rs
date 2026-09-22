@@ -5,8 +5,10 @@ mod deserialization;
 pub mod editor_delta;
 #[cfg(test)]
 mod editor_delta_tests;
+mod frontend;
 mod geometry;
 mod hit_tests;
+mod invalidation;
 mod layout;
 mod memo_network;
 mod mutations;

@@ -72,8 +72,7 @@ impl NodeNetworkInterface {
 		};
 		network.set_navigation_transform(transform);
 
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 	}
 
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
@@ -84,8 +83,7 @@ impl NodeNetworkInterface {
 		};
 		network.set_navigation_width(node_graph_width);
 
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
@@ -125,8 +123,7 @@ impl NodeNetworkInterface {
 		};
 
 		// Update the export ports and outward wires for the current network
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.unload_outward_wires(network_path);
 
 		// Update the outward wires and bounding box for all nodes in the encapsulating network
@@ -182,8 +179,7 @@ impl NodeNetworkInterface {
 
 		// Unload the metadata for the nested network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 	}
 
 	/// Disconnects every wire fed by the given import within the network. Returns false without mutating if the import's wires cannot be resolved.
@@ -223,8 +219,7 @@ impl NodeNetworkInterface {
 
 		// Unload the metadata for the nested network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 	}
 
 	// First disconnects the export, then removes it
@@ -380,8 +375,7 @@ impl NodeNetworkInterface {
 
 		// Update the metadata for the current network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.unload_stack_dependents(network_path);
 	}
 
@@ -456,8 +450,7 @@ impl NodeNetworkInterface {
 
 		// Update the metadata for the current network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.unload_stack_dependents(network_path);
 	}
 
@@ -655,13 +648,11 @@ impl NodeNetworkInterface {
 						// Unload the interior import/export ports if this node has a nested network
 						if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
 							let nested_path = [network_path, &[*node_id]].concat();
-							self.unload_import_export_ports(&nested_path);
-							self.unload_modify_import_export(&nested_path);
+							self.invalidate_import_export(&nested_path);
 						}
 					}
 				} else {
-					self.unload_import_export_ports(network_path);
-					self.unload_modify_import_export(network_path);
+					self.invalidate_import_export(network_path);
 				}
 			}
 			(_, NodeInput::Node { node_id: upstream_node_id, .. }) => {
@@ -1121,8 +1112,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.try_unload_layer_width(node_id, network_path);
-		self.unload_node_click_targets(node_id, network_path);
+		self.invalidate_node_appearance(node_id, network_path);
 	}
 
 	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {
@@ -1207,8 +1197,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
-		self.try_unload_layer_width(node_id, network_path);
-		self.unload_node_click_targets(node_id, network_path);
+		self.invalidate_node_appearance(node_id, network_path);
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
@@ -1304,8 +1293,7 @@ impl NodeNetworkInterface {
 		self.unload_stack_dependents(network_path);
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.load_structure();
 	}
 

@@ -273,4 +273,80 @@ impl NodeNetworkInterface {
 		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + lock_icon_width + icon_overhang_width;
 		((layer_width_pixels / 24.).ceil() as u32).max(8)
 	}
+	pub fn import_export_position(&self, network_path: &[NodeId]) -> Option<(IVec2, IVec2)> {
+		let Some(all_nodes_bounding_box) = self.all_nodes_bounding_box(network_path) else {
+			log::error!("Could not get all nodes bounding box in load_export_ports");
+			return None;
+		};
+		let Some(network) = self.nested_network(network_path) else {
+			log::error!("Could not get current network in load_export_ports");
+			return None;
+		};
+
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in load_export_ports");
+			return None;
+		};
+		let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+		let target_viewport_top_left = DVec2::new(IMPORTS_TO_LEFT_EDGE_PIXEL_GAP as f64, IMPORTS_TO_TOP_EDGE_PIXEL_GAP as f64);
+
+		let node_graph_pixel_offset_top_left = node_graph_to_viewport.inverse().transform_point2(target_viewport_top_left);
+
+		// A 5x5 grid offset from the top left corner
+		let node_graph_grid_space_offset_top_left = node_graph_to_viewport.inverse().transform_point2(DVec2::ZERO) + DVec2::new(5. * GRID_SIZE as f64, 4. * GRID_SIZE as f64);
+
+		// The inner bound of the import is the highest/furthest left of the two offsets
+		let top_left_inner_bound = DVec2::new(
+			node_graph_pixel_offset_top_left.x.min(node_graph_grid_space_offset_top_left.x),
+			node_graph_pixel_offset_top_left.y.min(node_graph_grid_space_offset_top_left.y),
+		);
+
+		let offset_from_top_left = if network
+			.exports
+			.first()
+			.is_some_and(|export| export.as_node().is_some_and(|export_node| self.is_layer(&export_node, network_path)))
+		{
+			DVec2::new(-4. * GRID_SIZE as f64, -2. * GRID_SIZE as f64)
+		} else {
+			DVec2::new(-4. * GRID_SIZE as f64, 0.)
+		};
+
+		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + offset_from_top_left;
+		let import_top_left = DVec2::new(top_left_inner_bound.x.min(bounding_box_top_left.x), top_left_inner_bound.y.min(bounding_box_top_left.y));
+		let rounded_import_top_left = DVec2::new((import_top_left.x / 24.).round() * 24., (import_top_left.y / 24.).round() * 24.);
+
+		let viewport_width = network_metadata.persistent_metadata.navigation_metadata.node_graph_width;
+
+		let target_viewport_top_right = DVec2::new(viewport_width - EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP as f64, EXPORTS_TO_TOP_EDGE_PIXEL_GAP as f64);
+
+		// An offset from the right edge in viewport pixels
+		let node_graph_pixel_offset_top_right = node_graph_to_viewport.inverse().transform_point2(target_viewport_top_right);
+
+		// A 5x5 grid offset from the right corner
+		let node_graph_grid_space_offset_top_right = node_graph_to_viewport.inverse().transform_point2(DVec2::new(viewport_width, 0.)) + DVec2::new(-5. * GRID_SIZE as f64, 4. * GRID_SIZE as f64);
+
+		// The inner bound of the export is the highest/furthest right of the two offsets.
+		// When zoomed out this keeps it a constant grid space away from the edge, but when zoomed in it prevents the exports from getting too far in
+		let top_right_inner_bound = DVec2::new(
+			node_graph_pixel_offset_top_right.x.max(node_graph_grid_space_offset_top_right.x),
+			node_graph_pixel_offset_top_right.y.min(node_graph_grid_space_offset_top_right.y),
+		);
+
+		let offset_from_top_right = if network
+			.exports
+			.first()
+			.is_some_and(|export| export.as_node().is_some_and(|export_node| self.is_layer(&export_node, network_path)))
+		{
+			DVec2::new(2. * GRID_SIZE as f64, -2. * GRID_SIZE as f64)
+		} else {
+			DVec2::new(4. * GRID_SIZE as f64, 0.)
+		};
+
+		let mut bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.);
+		bounding_box_top_right += offset_from_top_right;
+		let export_top_right = DVec2::new(top_right_inner_bound.x.max(bounding_box_top_right.x), top_right_inner_bound.y.min(bounding_box_top_right.y));
+		let rounded_export_top_right = DVec2::new((export_top_right.x / 24.).round() * 24., (export_top_right.y / 24.).round() * 24.);
+
+		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
+	}
 }

@@ -1,25 +1,6 @@
 use super::*;
 
 impl NodeNetworkInterface {
-	/// Unloads everything a node's position feeds: its own geometry, the geometry of every node placed
-	/// relative to it, and the network bounds. A chain node also sets the width of the layer encapsulating
-	/// its chain, so that layer reloads too.
-	///
-	/// Takes the changed nodes as a batch, so a run of moves walks the upstream cone once.
-	pub(crate) fn invalidate_positions(&mut self, node_ids: Vec<NodeId>, network_path: &[NodeId]) {
-		let encapsulating_layers = node_ids
-			.iter()
-			.filter(|node_id| self.is_chain(node_id, network_path))
-			.filter_map(|node_id| self.downstream_layer_for_chain_node(node_id, network_path))
-			.collect::<Vec<_>>();
-		for downstream_layer in encapsulating_layers {
-			self.unload_node_click_targets(&downstream_layer, network_path);
-		}
-
-		self.unload_upstream_node_click_targets(node_ids, network_path);
-		self.unload_all_nodes_bounding_box(network_path);
-	}
-
 	/// The top left corner of a node in node graph grid coordinates.
 	///
 	/// Only absolute positions are stored. A stack layer sits below its downstream sibling and a chain node to the
