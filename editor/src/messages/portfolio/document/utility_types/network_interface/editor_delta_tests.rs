@@ -28,7 +28,8 @@ fn convert(editor: &EditorTestUtils) -> Registry {
 }
 
 fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
-	construct_batch(deltas, working, &editor.active_document().resources.registry, PEER)
+	let document = editor.active_document();
+	construct_batch(deltas, working, &document.resources.registry, &StorageMetadataView::new(&document.network_interface), PEER)
 		.expect("construction should succeed")
 		.ops
 }

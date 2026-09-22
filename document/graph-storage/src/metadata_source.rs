@@ -8,11 +8,15 @@ use std::collections::HashMap;
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 
-/// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`.
+/// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`. One entry per
+/// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeMetadataEntry {
 	pub network_path: Vec<RuntimeNodeId>,
 	pub local_id: RuntimeNodeId,
+	/// The node's storage identity. Restoring it pins the node to this identity, so a later conversion
+	/// keeps it instead of re-deriving one from the node's location.
+	pub storage_id: crate::NodeId,
 	pub position: Option<Position>,
 	pub is_layer: bool,
 	pub display_name: Option<String>,
@@ -22,18 +26,6 @@ pub struct NodeMetadataEntry {
 	/// returns an error if this length does not match the node's input count.
 	pub input_metadata: Vec<InputMetadataEntry>,
 	pub output_names: Vec<String>,
-}
-
-impl NodeMetadataEntry {
-	pub fn is_empty(&self) -> bool {
-		self.position.is_none()
-			&& !self.is_layer
-			&& self.display_name.is_none()
-			&& !self.locked
-			&& !self.pinned
-			&& self.output_names.is_empty()
-			&& self.input_metadata.iter().all(InputMetadataEntry::is_empty)
-	}
 }
 
 /// Per-network metadata (navigation, previewing). Separate from `NodeMetadataEntry` since these are
@@ -65,12 +57,6 @@ pub struct InputMetadataEntry {
 	pub widget_override: Option<String>,
 	/// Reassembled from `ui::input_data::<sub_key>` attributes.
 	pub input_data: HashMap<String, serde_json::Value>,
-}
-
-impl InputMetadataEntry {
-	pub fn is_empty(&self) -> bool {
-		self.input_name.is_none() && self.input_description.is_none() && self.widget_override.is_none() && self.input_data.is_empty()
-	}
 }
 
 /// Editor-side metadata source. Methods default to "no data" so implementors only override what
@@ -110,8 +96,8 @@ pub trait NodeMetadataSource {
 		HashMap::new()
 	}
 
-	/// The identity the document minted for this node, if it has one. Nodes created before identities
-	/// were stored have none, and fall back to a hash of their location.
+	/// The storage identity this node is pinned to, if it has one. A node the source does not name
+	/// falls back to a hash of its location.
 	fn storage_node_id(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<crate::NodeId> {
 		None
 	}

@@ -1,7 +1,7 @@
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
-use document_graph_storage::{AttributeDelta, Attributes, Implementation, NoMetadata, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp};
+use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp};
 use document_graph_storage::{convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::NodeId;
@@ -32,8 +32,18 @@ pub struct ConstructedOps {
 /// resource liveness are computed against the whole batch, since several removals in one gesture
 /// can jointly orphan a resource that each alone would not. Op timestamps are placeholders,
 /// re-stamped by the staging clock.
-pub fn construct_batch(deltas: &[EditorDelta], working: &Registry, resources: &ResourceRegistry, peer: document_graph_storage::PeerId) -> Result<ConstructedOps, ConversionError> {
-	let resolver = PathResolver::new(peer);
+///
+/// `metadata` addresses each delta's node by the identity the interface holds for it, so the ops
+/// land on the same nodes a whole-document conversion of that interface would produce.
+pub fn construct_batch(
+	deltas: &[EditorDelta],
+	working: &Registry,
+	resources: &ResourceRegistry,
+	metadata: &dyn NodeMetadataSource,
+	peer: document_graph_storage::PeerId,
+) -> Result<ConstructedOps, ConversionError> {
+	let identities = IdentitiesOnly(metadata);
+	let resolver = PathResolver::new(Some(&identities), peer);
 	let mut ops = Vec::new();
 	let mut declaration_bytes = DeclarationBytes::new();
 	let mut batch_removed_nodes = Vec::new();
@@ -51,7 +61,17 @@ pub fn construct_batch(deltas: &[EditorDelta], working: &Registry, resources: &R
 	batch_removed_networks.dedup();
 
 	for delta in deltas {
-		delta.construct(working, resources, peer, &resolver, &batch_removed_nodes, &mut batch_added_resources, &mut ops, &mut declaration_bytes)?;
+		delta.construct(
+			working,
+			resources,
+			peer,
+			&identities,
+			&resolver,
+			&batch_removed_nodes,
+			&mut batch_added_resources,
+			&mut ops,
+			&mut declaration_bytes,
+		)?;
 	}
 
 	construct_resource_removals(&batch_removed_nodes, working, &mut ops);
@@ -65,6 +85,7 @@ impl EditorDelta {
 		working: &Registry,
 		resources: &ResourceRegistry,
 		peer: document_graph_storage::PeerId,
+		identities: &dyn NodeMetadataSource,
 		resolver: &PathResolver,
 		batch_removed_nodes: &[document_graph_storage::NodeId],
 		batch_added_resources: &mut HashSet<ResourceId>,
@@ -73,12 +94,12 @@ impl EditorDelta {
 	) -> Result<(), ConversionError> {
 		match self {
 			EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, node }) => {
-				construct_structural_additions(network_path, *node_id, node, working, resources, peer, batch_added_resources, ops, declaration_bytes)?;
+				construct_structural_additions(network_path, *node_id, node, working, resources, identities, peer, batch_added_resources, ops, declaration_bytes)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::ReplaceNode { network_path, node_id, node }) => {
 				construct_removals(resolver.node_id(network_path, *node_id), working, ops);
-				construct_structural_additions(network_path, *node_id, node, working, resources, peer, batch_added_resources, ops, declaration_bytes)?;
+				construct_structural_additions(network_path, *node_id, node, working, resources, identities, peer, batch_added_resources, ops, declaration_bytes)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id }) => {
@@ -126,7 +147,7 @@ impl EditorDelta {
 	}
 }
 
-/// Converts through the same encoders as a whole-document conversion, with `NoMetadata` as the
+/// Converts through the same encoders as a whole-document conversion, with identities only as the
 /// source: ui attributes arrive via the gesture's paired `NodeMetadata` delta.
 #[allow(clippy::too_many_arguments)]
 fn construct_structural_additions(
@@ -135,12 +156,13 @@ fn construct_structural_additions(
 	node: &graph_craft::document::DocumentNode,
 	working: &Registry,
 	resources: &ResourceRegistry,
+	identities: &dyn NodeMetadataSource,
 	peer: document_graph_storage::PeerId,
 	batch_added_resources: &mut HashSet<ResourceId>,
 	ops: &mut Vec<RegistryDelta>,
 	declaration_bytes: &mut DeclarationBytes,
 ) -> Result<(), ConversionError> {
-	let mut scoped = ScopedConversion::new(&NoMetadata, peer);
+	let mut scoped = ScopedConversion::new(identities, peer);
 	let mut scratch = Registry::default();
 	scoped.convert_node_at(&mut scratch, network_path, node_id, node, true)?;
 	declaration_bytes.extend(scoped.finish());
@@ -346,6 +368,17 @@ fn collect_removal_closure(node_id: document_graph_storage::NodeId, working: &Re
 				collect_removal_closure(*child_id, working, nodes, networks);
 			}
 		}
+	}
+}
+
+/// Narrows a metadata source to the node identities alone, so a scoped conversion addresses nodes the
+/// way a whole-document conversion does without also re-encoding ui attributes the gesture's paired
+/// `NodeMetadata` delta already carries.
+struct IdentitiesOnly<'a>(&'a dyn NodeMetadataSource);
+
+impl NodeMetadataSource for IdentitiesOnly<'_> {
+	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
+		self.0.storage_node_id(network_path, local_id)
 	}
 }
 
