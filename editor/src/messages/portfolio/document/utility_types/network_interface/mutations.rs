@@ -571,31 +571,7 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_input_for_import");
-			return;
-		};
-
-		let old_input = match input_connector {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node) = network.nodes.get_mut(node_id) else {
-					log::error!("Could not get node in set_input_for_import");
-					return;
-				};
-				let Some(input) = node.inputs.get_mut(*input_index) else {
-					log::error!("Could not get input in set_input_for_import");
-					return;
-				};
-				std::mem::replace(input, new_input.clone())
-			}
-			InputConnector::Export(export_index) => {
-				let Some(export) = network.exports.get_mut(*export_index) else {
-					log::error!("Could not get export in set_input_for_import");
-					return;
-				};
-				std::mem::replace(export, new_input.clone())
-			}
-		};
+		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else { return };
 
 		self.transaction_modified();
 		self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
@@ -663,31 +639,7 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_input");
-			return;
-		};
-
-		let old_input = match input_connector {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node) = network.nodes.get_mut(node_id) else {
-					log::error!("Could not get node in set_input");
-					return;
-				};
-				let Some(input) = node.inputs.get_mut(*input_index) else {
-					log::error!("Could not get input in set_input");
-					return;
-				};
-				std::mem::replace(input, new_input.clone())
-			}
-			InputConnector::Export(export_index) => {
-				let Some(export) = network.exports.get_mut(*export_index) else {
-					log::error!("Could not get export in set_input");
-					return;
-				};
-				std::mem::replace(export, new_input.clone())
-			}
-		};
+		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else { return };
 
 		if old_input == new_input {
 			return;
@@ -942,24 +894,9 @@ impl NodeNetworkInterface {
 			node_template = self.map_ids(node_template, &old_node_id, &new_ids, network_path);
 			// Insert node into network
 			let node_id = *new_ids.get(&old_node_id).unwrap();
-			let (document_node, persistent_metadata) = node_template.into_parts();
-			let Some(network) = self.network_mut(network_path) else {
-				log::error!("Network not found in insert_node");
-				return;
-			};
+			self.insert_node_entry(NodeLocator::new(node_id, network_path), node_template);
 
-			network.nodes.insert(node_id, document_node);
 			self.transaction_modified();
-
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Network not found in insert_node");
-				return;
-			};
-			let node_metadata = DocumentNodeMetadata {
-				persistent_metadata,
-				transient_metadata: DocumentNodeTransientMetadata::default(),
-			};
-			network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
 		}
 		for new_node_id in new_ids.values() {
 			self.unload_node_click_targets(new_node_id, network_path);
@@ -975,31 +912,14 @@ impl NodeNetworkInterface {
 			.iter()
 			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Import { .. })));
 		assert!(has_node_or_network_input, "Cannot insert node with node or network inputs. Use insert_node_group instead");
-		let (document_node, persistent_metadata) = node_template.into_parts();
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Network not found in insert_node");
-			return None;
-		};
 
-		let previous_node = network.nodes.insert(node_id, document_node);
+		let previous_entry = self.insert_node_entry(NodeLocator::new(node_id, network_path), node_template);
+
 		self.transaction_modified();
-
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Network not found in insert_node");
-			return None;
-		};
-		let node_metadata = DocumentNodeMetadata {
-			persistent_metadata,
-			transient_metadata: DocumentNodeTransientMetadata::default(),
-		};
-		let previous_metadata = network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
-
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path);
 
-		previous_node
-			.zip(previous_metadata)
-			.map(|(document_node, node_metadata)| NodeTemplate::from_parts(document_node, node_metadata.persistent_metadata))
+		previous_entry
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
@@ -1079,19 +999,9 @@ impl NodeNetworkInterface {
 				self.disconnect_input(&InputConnector::node_at_index(*delete_node_id, input_index), network_path);
 			}
 
-			let Some(network) = self.network_mut(network_path) else {
-				log::error!("Could not get nested network in delete_nodes");
-				continue;
-			};
+			self.remove_node_entry(NodeLocator::new(*delete_node_id, network_path));
 
-			network.nodes.remove(delete_node_id);
 			self.transaction_modified();
-
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Could not get nested network_metadata in delete_nodes");
-				continue;
-			};
-			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
 			for previous_chain_node in upstream_chain_nodes {
 				self.set_chain_position(&previous_chain_node, network_path);
 			}

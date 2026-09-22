@@ -134,6 +134,69 @@ impl NodeNetworkInterface {
 		self.insert_export_slot(network_path, to, export, name)
 	}
 
+	/// Writes the input at `connector`, returning the input it replaced.
+	pub(crate) fn set_input_slot(&mut self, connector: &InputConnector, network_path: &[NodeId], input: NodeInput) -> Option<NodeInput> {
+		let Some(network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_input_slot");
+			return None;
+		};
+
+		let slot = match connector {
+			InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
+			InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+		};
+		let Some(slot) = slot else {
+			log::error!("Could not get input {connector:?} in set_input_slot");
+			return None;
+		};
+
+		Some(std::mem::replace(slot, input))
+	}
+
+	/// Inserts a node and its metadata, returning the entry it replaced.
+	pub(crate) fn insert_node_entry(&mut self, locator: NodeLocator, template: NodeTemplate) -> Option<NodeTemplate> {
+		if !self.network_pair_exists(locator.network_path) {
+			log::error!("Could not get network {:?} in insert_node_entry", locator.network_path);
+			return None;
+		}
+
+		let (document_node, persistent_metadata) = template.into_parts();
+		let previous_node = self.network.network_mut().nested_network_mut(locator.network_path)?.nodes.insert(locator.node_id, document_node);
+		let previous_metadata = self.network_metadata.nested_metadata_mut(locator.network_path)?.persistent_metadata.node_metadata.insert(
+			locator.node_id,
+			DocumentNodeMetadata {
+				persistent_metadata,
+				transient_metadata: DocumentNodeTransientMetadata::default(),
+			},
+		);
+
+		previous_node.zip(previous_metadata).map(|(node, metadata)| NodeTemplate::from_parts(node, metadata.persistent_metadata))
+	}
+
+	/// Removes a node and its metadata, returning them joined as a template.
+	pub(crate) fn remove_node_entry(&mut self, locator: NodeLocator) -> Option<NodeTemplate> {
+		if !self.network_pair_exists(locator.network_path) {
+			log::error!("Could not get network {:?} in remove_node_entry", locator.network_path);
+			return None;
+		}
+
+		let node = self.network.network_mut().nested_network_mut(locator.network_path)?.nodes.remove(&locator.node_id);
+		let metadata = self
+			.network_metadata
+			.nested_metadata_mut(locator.network_path)?
+			.persistent_metadata
+			.node_metadata
+			.remove(&locator.node_id);
+
+		node.zip(metadata).map(|(node, metadata)| NodeTemplate::from_parts(node, metadata.persistent_metadata))
+	}
+
+	/// Whether both trees hold the network, checked before a write so a missing one cannot leave the two
+	/// halves out of step.
+	fn network_pair_exists(&self, network_path: &[NodeId]) -> bool {
+		self.network.network().nested_network(network_path).is_some() && self.network_metadata.nested_metadata(network_path).is_some()
+	}
+
 	/// Drops the encapsulating node's link to the definition it was instantiated from, which no longer
 	/// describes it once its signature is edited.
 	pub(crate) fn clear_encapsulating_reference(&mut self, network_path: &[NodeId]) {
