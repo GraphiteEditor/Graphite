@@ -15,9 +15,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, list};
-use graphene_std::extract_xy::XY;
-use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
-use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -661,114 +659,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				..Default::default()
 			},
 			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Split Channels",
-			category: "Raster: Channels",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::node(NodeId(0), 0),
-						NodeInput::node(NodeId(1), 0),
-						NodeInput::node(NodeId(2), 0),
-						NodeInput::node(NodeId(3), 0),
-					],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::type_default(list!(Raster<CPU>), true)],
-				input_metadata: vec![("Image", "TODO").into()],
-				output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Split Vec2",
-			category: "Math: Vec2",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
-				input_metadata: vec![("Vec2", "TODO").into()],
-				output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a vec2.\n\
-				\n\
-				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
-			),
 			properties: None,
 		},
 		DocumentNodeDefinition {

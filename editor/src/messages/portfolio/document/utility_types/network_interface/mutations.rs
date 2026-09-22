@@ -1340,6 +1340,20 @@ impl NodeNetworkInterface {
 		self.unload_node_click_targets(node_id, network_path);
 	}
 
+	/// Replaces the full list of output port names for a node. Used by document migrations that turn a single-output node
+	/// into a multi-output one, since the port labels are otherwise unnamed and fall back to the type name.
+	pub fn set_output_names(&mut self, node_id: &NodeId, output_names: Vec<String>, network_path: &[NodeId]) {
+		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+			log::error!("Could not get node {node_id} in set_output_names");
+			return;
+		};
+		if node_metadata.persistent_metadata.output_names == output_names {
+			return;
+		}
+		node_metadata.persistent_metadata.output_names = output_names;
+		self.transaction_modified();
+	}
+
 	pub fn set_import_export_name(&mut self, mut name: String, index: ImportOrExport, network_path: &[NodeId]) {
 		let Some(encapsulating_node) = self.encapsulating_node_metadata_mut(network_path) else {
 			log::error!("Could not get encapsulating network in set_import_export_name");

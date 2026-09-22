@@ -395,10 +395,32 @@ impl NodeNetworkInterface {
 					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => {
 						self.input_type(&InputConnector::primary_input(*node_id), network_path)
 					}
-					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
-						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
-						None => TypeSource::Unknown,
-					},
+					DocumentNodeImplementation::ProtoNode(identifier) => {
+						// The field outputs of a multi-output proto node have their wire types recorded in the registry. When the
+						// node resolved to its mapped variant it returns the struct's rank-lifted twin, whose fields are all lists.
+						// Without a `#[primary]` field, output 0 is the hidden struct output, which falls through to the compiled types below.
+						if let Some(metadata) = graphene_std::registry::MULTI_OUTPUT_NODES.get(identifier) {
+							let field_index = if metadata.has_primary { Some(*output_index) } else { output_index.checked_sub(1) };
+							if let Some(field_index) = field_index {
+								return match metadata.fields.get(field_index) {
+									Some(field) => {
+										let is_mapped = self
+											.resolved_types
+											.types
+											.get(&[network_path, &[*node_id]].concat())
+											.is_some_and(|resolved_type| *resolved_type.output.nested_type() == metadata.mapped_type);
+										TypeSource::Compiled(if is_mapped { field.mapped_ty.clone() } else { field.ty.clone() })
+									}
+									None => TypeSource::Error("Output index out of range for proto node"),
+								};
+							}
+						}
+
+						match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
+							Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
+							None => TypeSource::Unknown,
+						}
+					}
 					DocumentNodeImplementation::Extract => TypeSource::Compiled(concrete!(())),
 				}
 			}

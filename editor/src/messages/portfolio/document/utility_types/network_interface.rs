@@ -43,6 +43,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graphene_std::Appearance;
 use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
+use graphene_std::registry::MULTI_OUTPUT_NODES;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
 use graphene_std::vector::{Vector, VectorModificationType};

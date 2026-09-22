@@ -42,6 +42,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			description,
 			properties,
 			context_features,
+			output_fields,
 			..
 		} = metadata;
 
@@ -66,6 +67,17 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		};
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
+
+		// A multi-output node (declared `destructure_output`) names each output after a field of its returned struct,
+		// preceded by an unnamed entry for the hidden primary output unless one field is marked `#[primary]`
+		let output_names = output_fields
+			.as_ref()
+			.map(|destructure| {
+				let hidden_primary_name = (!destructure.has_primary).then(String::new);
+				hidden_primary_name.into_iter().chain(destructure.fields.iter().map(|field| field.name.to_string())).collect()
+			})
+			.unwrap_or_default();
+
 		definitions_map.insert(
 			identifier,
 			DocumentNodeDefinition {
@@ -85,6 +97,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 							RegistryWidgetOverride::Custom(str) => InputMetadata::with_name_description_override(f.name, f.description, WidgetOverride::Custom(str.to_string())),
 						})
 						.collect(),
+					output_names,
 					..Default::default()
 				},
 				category,
