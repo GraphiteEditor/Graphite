@@ -28,7 +28,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let network = interface.document_network().clone();
 
 	let conversion = Registry::convert_from_runtime(&network, &source, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
-	let declarations = conversion.declarations().expect("rebuild declarations");
+	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 
 	let (_converted_network, entries) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime_with_metadata failed");
@@ -153,7 +153,7 @@ fn editor_interface_rebuild_round_trip() {
 
 	let network = original.document_network().clone();
 	let conversion = Registry::convert_from_runtime(&network, &original_view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
-	let declarations = conversion.declarations().expect("rebuild declarations");
+	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
 

@@ -1,11 +1,12 @@
 //! Asynchronous `.gdd` working-copy IO, spawned by `PortfolioMessageHandler` as `FutureMessage`s:
-//! building/opening containers, opening `.gdd` archives into documents, and rebuilding the interface
-//! from the undo/redo cursor. The `validate` flag is the `validate_storage_round_trip` preference; when
+//! building/opening containers and opening `.gdd` archives into documents.
+//! The `validate` flag is the `validate_storage_round_trip` preference; when
 //! set, the registry build is compared against the legacy oracle (logged, not fatal) for the soak.
 
 use document_container::AnyContainer;
 use document_format::{Error as DocumentFormatError, GddV1, GddV1Layout};
-use graph_craft::application_io::resource::{LoadResource, ResourceStorage};
+use document_graph_storage::Declarations;
+use graph_craft::application_io::resource::ResourceStorage;
 use graph_craft::document::NodeNetwork;
 
 use super::document::DocumentMessageHandler;
@@ -86,27 +87,6 @@ pub(super) async fn open_gdd_document(
 	})
 }
 
-/// `FutureMessage` that rebuilds a document's interface from a post-move `Gdd` cursor snapshot and
-/// delivers it via [`PortfolioMessage::GddUndoRedoRebuilt`] (`None` interface on failure, logged here).
-pub(crate) async fn rebuild_gdd_cursor(gdd: GddV1, store_handle: ResourcesHandle, document_id: DocumentId, had_oracle: bool) -> Message {
-	let declarations = gdd.declarations(&store_handle).await;
-	let interface = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
-		Ok((network, node_entries, network_entries)) => match build_interface_from_storage(network, node_entries, network_entries) {
-			Ok(interface) => Some(Box::new(interface)),
-			Err(error) => {
-				log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to build interface: {error}");
-				None
-			}
-		},
-		Err(error) => {
-			log::error!("Gdd undo/redo rebuild for {document_id:?}: failed to convert registry to runtime: {error}");
-			None
-		}
-	};
-
-	Message::Portfolio(PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface })
-}
-
 /// Core of the `.gdd` open: archive -> working copy -> `Gdd` -> runtime interface. The registry build is
 /// authoritative; the embedded legacy blob is the soak oracle and the fallback if the build fails.
 /// Returns `None` only if neither the build nor the legacy fallback worked.
@@ -184,7 +164,7 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 				);
 			}
 		}
-		return Some(DocumentMessageHandler::from_storage(interface, gdd, String::new(), None));
+		return Some(DocumentMessageHandler::from_storage(interface, gdd, declarations, String::new(), None));
 	}
 
 	log::warn!("Opening .gdd for {document_id:?}: registry build failed, falling back to embedded legacy document");
@@ -196,9 +176,8 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 
 /// Soak check that the reopened `.gdd`'s stored registry, converted back to a runtime network, matches
 /// the legacy load. Logs divergence only (legacy stays authoritative); runs once per open.
-pub(super) async fn compare_storage_against_runtime(gdd: &GddV1, legacy_network: &NodeNetwork, byte_store: &dyn LoadResource, document_id: DocumentId) {
-	let declarations = gdd.declarations(byte_store).await;
-	let mut candidate = match gdd.registry().to_runtime_with_metadata(&declarations) {
+pub(super) fn compare_storage_against_runtime(gdd: &GddV1, legacy_network: &NodeNetwork, declarations: &Declarations, document_id: DocumentId) {
+	let mut candidate = match gdd.registry().to_runtime_with_metadata(declarations) {
 		Ok((network, _entries)) => network,
 		Err(error) => {
 			log::error!("Compare-on-open for {document_id:?}: .gdd registry failed to convert to runtime: {error}");
