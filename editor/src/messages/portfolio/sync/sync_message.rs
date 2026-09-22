@@ -24,6 +24,4 @@ pub enum SyncMessage {
 		hash: ResourceHash,
 		bytes: Vec<u8>,
 	},
-	/// A resource received from a peer was copied into the byte store.
-	ResourceStored { document_id: DocumentId, hash: ResourceHash, bytes: Vec<u8> },
 }

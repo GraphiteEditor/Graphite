@@ -4,11 +4,13 @@
 //! MessagePack codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
 //! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
 
+use crate::messages::resource_storage::ResourcesHandle;
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NodeMetadataSource, PeerId};
 use graph_craft::application_io::resource::HashMapResourceStorage;
+use std::sync::Arc;
 
 use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
@@ -156,7 +158,7 @@ async fn edit_after_open_commits_cleanly() {
 
 	// Persist the document into a fresh Gdd and reopen it, then build a runtime document from the
 	// reopened registry: the editor's .gdd-open path.
-	let byte_store = HashMapResourceStorage::new();
+	let byte_store = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
 	let source = editor.active_document();
 	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
 		.await
@@ -176,7 +178,7 @@ async fn edit_after_open_commits_cleanly() {
 	{
 		let document = editor.active_document_mut();
 		document.network_interface = rebuilt;
-		document.set_storage(reopened, declarations);
+		document.set_storage(reopened, declarations, byte_store.storage());
 		document.finalize_storage_load();
 	}
 
@@ -674,12 +676,13 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
-async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
+async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> ResourcesHandle {
 	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into())
 		.await
 		.expect("create_in");
-	editor.active_document_mut().set_storage(gdd, Default::default());
-	HashMapResourceStorage::new()
+	let byte_store = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
+	editor.active_document_mut().set_storage(gdd, Default::default(), byte_store.storage());
+	byte_store
 }
 
 /// Open a real demo artwork, mount storage, edit it, and trigger autosave. The autosave runs

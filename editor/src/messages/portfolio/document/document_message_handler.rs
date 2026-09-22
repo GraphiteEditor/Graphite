@@ -34,7 +34,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::resource::{ResourceId, ResourceStorage};
 use graph_craft::application_io::wgpu_available;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
@@ -1814,7 +1814,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 impl DocumentMessageHandler {
 	/// Build a document handler from a `.gdd` working copy.
-	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, declarations: Declarations, name: String, path: Option<std::path::PathBuf>) -> Self {
+	pub fn from_storage(
+		interface: NodeNetworkInterface,
+		storage: document_format::GddV1,
+		declarations: Declarations,
+		byte_store: Arc<dyn ResourceStorage>,
+		name: String,
+		path: Option<std::path::PathBuf>,
+	) -> Self {
 		let mut document = Self {
 			network_interface: interface,
 			name,
@@ -1823,11 +1830,7 @@ impl DocumentMessageHandler {
 		};
 
 		document.apply_stored_document_settings(storage.view_settings());
-		match storage.registry().to_resource_registry() {
-			Ok(resource_registry) => document.resources.registry = resource_registry,
-			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
-		}
-		document.history.set_storage(storage, declarations);
+		document.set_storage(storage, declarations, byte_store);
 
 		document
 	}
@@ -2023,8 +2026,10 @@ impl DocumentMessageHandler {
 	}
 
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
-	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+	pub fn set_storage(&mut self, mut storage: document_format::GddV1, declarations: Declarations, byte_store: Arc<dyn ResourceStorage>) {
+		storage.set_byte_store(byte_store);
 		self.history.set_storage(storage, declarations);
+		self.refresh_resource_registry();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
@@ -2103,6 +2108,18 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Rebuild the runtime resource registry from storage, which holds each resource's id, content hash
+	/// and sources. The preprocessor resolves a node's `Resource` input through it, so an interface
+	/// swapped in from storage needs it refreshed alongside. Keeps the current registry on failure.
+	fn refresh_resource_registry(&mut self) {
+		let Some(storage) = self.history.storage() else { return };
+
+		match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => self.resources.registry = resource_registry,
+			Err(error) => log::error!("Failed to rebuild the resource registry from storage: {error}"),
+		}
+	}
+
 	/// Swap in an interface rebuilt from the registry a peer's changes left behind.
 	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) {
 		let Some(rebuilt) = self.history.rebuild_interface() else { return };
@@ -2129,6 +2146,7 @@ impl DocumentMessageHandler {
 		if let Some(gdd) = self.history.storage_mut() {
 			gdd.mark_runtime_current();
 		}
+		self.refresh_resource_registry();
 
 		if validate {
 			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();

@@ -17,7 +17,7 @@ pub fn report(event: &Event) {
 		Event::PeerLeft { peer } => println!("peer {peer:?} left"),
 		Event::Synced => println!("synced"),
 		Event::Changed => println!("document changed"),
-		Event::ResourceReceived(hash) => println!("received resource {hash}"),
+		Event::ResourceReceived { hash, bytes } => println!("received resource {hash} ({} bytes)", bytes.len()),
 		Event::ResourceRequested { hash, .. } => println!("peer asked for resource {hash}"),
 	}
 }

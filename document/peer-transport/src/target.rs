@@ -18,6 +18,11 @@ pub trait SyncTarget {
 	/// Must be idempotent on structural ops: a buffered op may already be reflected by the sync.
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError>;
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError>;
+	/// Make everything applied since the last flush durable. Called once per [`Replica::poll`](crate::Replica::poll),
+	/// so a target that rewrites whole files can do it once for a batch rather than once per packet.
+	fn flush(&mut self) -> Result<(), TargetError> {
+		Ok(())
+	}
 
 	/// Referenced resources whose bytes are not available locally.
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
@@ -28,7 +33,7 @@ pub trait SyncTarget {
 		let _ = hash;
 		None
 	}
-	fn store_resource(&mut self, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), TargetError> {
+	fn store_resource(&mut self, hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
 		let _ = (hash, bytes);
 		Ok(())
 	}

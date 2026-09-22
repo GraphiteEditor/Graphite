@@ -327,7 +327,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					log::error!("DocumentStorageMounted for {document_id:?} arrived without its payload");
 					return;
 				};
-				document.set_storage(gdd, declarations);
+				document.set_storage(gdd, declarations, resource_storage.resources_mut().storage());
 				if !reopened {
 					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
 					document.retire_storage_interaction();

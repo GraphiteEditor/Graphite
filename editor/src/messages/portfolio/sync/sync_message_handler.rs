@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Tran
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use document_graph_storage::UserId;
-use graph_craft::application_io::resource::{LoadResource, ResourceStorage};
+use graph_craft::application_io::resource::LoadResource;
 use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Room, SessionToken, SyncTarget};
 use std::collections::HashSet;
 
@@ -23,8 +23,6 @@ pub struct SyncMessageHandler {
 	polling: bool,
 	/// Documents whose registry changed remotely since their interface was last rebuilt.
 	dirty: HashSet<DocumentId>,
-	/// Received resources still being copied into the app cache, per document.
-	storing: HashMap<DocumentId, usize>,
 	blocked_reason: HashMap<DocumentId, String>,
 }
 
@@ -110,7 +108,6 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 
 					let events = gdd.poll_peers();
-					let proxy = gdd.resource_proxy();
 					for event in events {
 						match event {
 							Event::Synced | Event::Changed => {
@@ -119,12 +116,13 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 							}
 							Event::ResourceRequested { from, hash } => {
 								log::debug!("Peer asked for resource {hash}");
-								responses.add(load_resource_future(document_id, from, hash, proxy.clone(), resources.clone()));
+								responses.add(load_resource_future(document_id, from, hash, resources.clone()));
 							}
-							Event::ResourceReceived(hash) => {
-								log::debug!("Received resource {hash}");
-								*self.storing.entry(document_id).or_default() += 1;
-								responses.add(store_resource_future(document_id, hash, proxy.clone(), resources.clone()));
+							// The replica already put the bytes in the byte store; only the decoded form is missing.
+							Event::ResourceReceived { hash, bytes } => {
+								log::debug!("Received resource {hash} ({} bytes)", bytes.len());
+								document.cache_declaration_bytes(hash, &bytes);
+								self.dirty.insert(document_id);
 							}
 							Event::PeerJoined { .. } | Event::PeerLeft { .. } => responses.add(PortfolioMessage::UpdateOpenDocumentsList),
 						}
@@ -139,11 +137,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 						continue;
 					};
 					let Some(gdd) = document.storage() else { continue };
-					let storing = self.storing.get(&document_id).copied().unwrap_or(0);
 					let missing = SyncTarget::missing_resources(gdd).len();
 					let transaction = document.network_interface.transaction_status();
-					if storing > 0 || missing > 0 || transaction != TransactionStatus::Finished {
-						let reason = format!("storing {storing} missing {missing} transaction {transaction:?}");
+					if missing > 0 || transaction != TransactionStatus::Finished {
+						let reason = format!("missing {missing} transaction {transaction:?}");
 						if self.blocked_reason.get(&document_id) != Some(&reason) {
 							log::debug!("Sync rebuild for {document_id:?} waiting: {reason}");
 							self.blocked_reason.insert(document_id, reason);
@@ -154,6 +151,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 
 					self.dirty.remove(&document_id);
 					document.apply_remote_changes(responses);
+					// The swapped-in registry names resources this peer may still have to fetch or resolve.
+					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 				}
 			}
 			SyncMessage::ResourceLoaded { document_id, to, hash, bytes } => {
@@ -164,15 +163,6 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if let Err(error) = gdd.send_resource(to, hash, bytes) {
 					log::warn!("Failed to send resource {hash} to a peer: {error}");
 				}
-			}
-			SyncMessage::ResourceStored { document_id, hash, bytes } => {
-				if let Some(count) = self.storing.get_mut(&document_id) {
-					*count = count.saturating_sub(1);
-				}
-				if let Some(document) = documents.get_mut(&document_id) {
-					document.cache_declaration_bytes(hash, &bytes);
-				}
-				self.dirty.insert(document_id);
 			}
 		}
 	}
@@ -203,21 +193,9 @@ fn driver_future(document_id: DocumentId, driver: peer_transport::MessageLoopFut
 	future.into()
 }
 
-/// The working copy is checked before the app cache: it is the document's own store, which another tab
-/// sharing the cache can't garbage-collect from under it.
-fn load_resource_future(
-	document_id: DocumentId,
-	to: peer_transport::TransportPeerId,
-	hash: graph_craft::application_io::resource::ResourceHash,
-	proxy: document_format::ResourceProxy<document_format::GddV1Layout>,
-	resources: ResourcesHandle,
-) -> Message {
+fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPeerId, hash: graph_craft::application_io::resource::ResourceHash, resources: ResourcesHandle) -> Message {
 	let future = async move {
-		let resource = match proxy.load(hash).await {
-			Some(resource) => Some(resource),
-			None => resources.load(hash).await,
-		};
-		match resource {
+		match resources.load(hash).await {
 			Some(resource) => Message::Portfolio(PortfolioMessage::Sync(SyncMessage::ResourceLoaded {
 				document_id,
 				to,
@@ -229,28 +207,6 @@ fn load_resource_future(
 				Message::NoOp
 			}
 		}
-	};
-	future.into()
-}
-
-fn store_resource_future(
-	document_id: DocumentId,
-	hash: graph_craft::application_io::resource::ResourceHash,
-	proxy: document_format::ResourceProxy<document_format::GddV1Layout>,
-	resources: ResourcesHandle,
-) -> Message {
-	let future = async move {
-		let bytes = match proxy.load(hash).await {
-			Some(resource) => {
-				resources.store(resource.as_ref());
-				resource.as_ref().to_vec()
-			}
-			None => {
-				log::warn!("Received resource {hash} is missing from the working copy");
-				Vec::new()
-			}
-		};
-		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::ResourceStored { document_id, hash, bytes }))
 	};
 	future.into()
 }

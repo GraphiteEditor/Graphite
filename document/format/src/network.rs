@@ -5,13 +5,12 @@
 
 use std::collections::HashSet;
 
-use document_container::AsyncContainer;
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
-use crate::Gdd;
 use crate::error::Error;
 use crate::layout::Layout;
+use crate::{Gdd, PendingPersist};
 
 impl<L: Layout> Gdd<L> {
 	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) {
@@ -88,10 +87,11 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
 		self.session.load(registry, history, head)?;
-		self.rewrite_history()?;
-		self.rewrite_hot_log()?;
-		self.persist_registry_snapshot()?;
-		self.persist_session_state()?;
+		self.pending_persist = PendingPersist {
+			history: true,
+			hot_log: true,
+			snapshot: true,
+		};
 		Ok(())
 	}
 
@@ -105,25 +105,34 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
 		self.session.merge_remote(deltas, retires)?;
-		self.rewrite_history()?;
-		if !retires.is_empty() {
+		self.pending_persist.history = true;
+		self.pending_persist.hot_log |= !retires.is_empty();
+		self.pending_persist.snapshot = true;
+		Ok(())
+	}
+
+	fn flush(&mut self) -> Result<(), TargetError> {
+		let pending = std::mem::take(&mut self.pending_persist);
+
+		if pending.history {
+			self.rewrite_history()?;
+		}
+		if pending.hot_log {
 			self.rewrite_hot_log()?;
 		}
-		self.persist_registry_snapshot()?;
-		self.persist_session_state()?;
+		if pending.snapshot {
+			self.persist_registry_snapshot()?;
+			self.persist_session_state()?;
+		}
 		Ok(())
 	}
 
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
-		self.session
-			.all_referenced_resource_hashes()
-			.into_iter()
-			.filter(|hash| !self.working.exists_non_blocking(&self.layout.resource_path(hash)))
-			.collect()
+		self.unstored_resources().into_iter().collect()
 	}
 
-	fn store_resource(&mut self, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), TargetError> {
-		self.working.write_non_blocking(&self.layout.resource_path(&hash), &bytes)?;
+	fn store_resource(&mut self, _hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
+		self.hold_resource(bytes)?;
 		Ok(())
 	}
 }

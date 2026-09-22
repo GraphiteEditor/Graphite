@@ -2,7 +2,7 @@ use crate::packet::{Broadcast, BroadcastBody, PacketError, Role, SyncPacket, Syn
 use crate::target::{SyncTarget, TargetError};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
 use document_graph_storage::{Delta, HotOp, PeerId, ResourceHash, TimeStamp, UserId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 pub enum Event {
 	PeerJoined {
@@ -16,7 +16,10 @@ pub enum Event {
 	Synced,
 	/// Remote ops changed the target.
 	Changed,
-	ResourceReceived(ResourceHash),
+	ResourceReceived {
+		hash: ResourceHash,
+		bytes: Vec<u8>,
+	},
 	/// The target couldn't serve this synchronously; answer with `send_resource`.
 	ResourceRequested {
 		from: TransportPeerId,
@@ -63,6 +66,10 @@ pub struct Replica {
 	seq: u64,
 	delivered: HashMap<PeerId, u64>,
 	held: Vec<(PeerId, Broadcast)>,
+	/// Resources asked for and not yet received, so a standing request is not resent every poll.
+	requested_resources: HashSet<ResourceHash>,
+	/// Whether the target's resource references may have moved since they were last examined.
+	resources_stale: bool,
 }
 
 impl Replica {
@@ -85,6 +92,8 @@ impl Replica {
 			seq: 0,
 			delivered: HashMap::new(),
 			held: Vec::new(),
+			requested_resources: HashSet::new(),
+			resources_stale: false,
 		}
 	}
 
@@ -130,13 +139,6 @@ impl Replica {
 		self.delivered.iter().map(|(&peer, &seq)| (peer, seq)).chain([(self.peer, self.seq)]).collect()
 	}
 
-	pub fn request_resources(&mut self, hashes: Vec<ResourceHash>) -> Result<(), PacketError> {
-		if hashes.is_empty() {
-			return Ok(());
-		}
-		self.transport.broadcast(&SyncPacket::ResourceRequest(hashes))
-	}
-
 	pub fn send_resource(&mut self, to: TransportPeerId, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), PacketError> {
 		self.transport.send(to, &SyncPacket::Resource { hash, bytes })
 	}
@@ -155,6 +157,9 @@ impl Replica {
 					if let Some(remote) = self.peers.remove(&transport_peer) {
 						events.push(Event::PeerLeft { peer: remote.peer });
 					}
+					// A peer that left may have been the one still owing bytes, so let the rest be asked again.
+					self.requested_resources.clear();
+					self.resources_stale = true;
 					Ok(())
 				}
 				TransportEvent::Packet(transport_peer, packet) => self.handle_packet(transport_peer, packet, target, &mut events),
@@ -169,7 +174,32 @@ impl Replica {
 			}
 		}
 
+		if let Err(error) = target.flush() {
+			log::error!("Sync error: {error}");
+		}
+		if let Err(error) = self.request_missing_resources(target) {
+			log::error!("Sync error: {error}");
+		}
+
 		events
+	}
+
+	/// Ask the room for referenced bytes nobody here has yet. Runs after every batch of packets rather
+	/// than once at sync, since an op delivered later can reference a resource this peer has never seen.
+	/// Only the hashes without a standing request go out, so a slow transfer is not re-requested.
+	fn request_missing_resources(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
+		if !self.resources_stale {
+			return Ok(());
+		}
+		self.resources_stale = false;
+
+		let missing: Vec<ResourceHash> = target.missing_resources().into_iter().filter(|hash| !self.requested_resources.contains(hash)).collect();
+		if missing.is_empty() {
+			return Ok(());
+		}
+
+		self.requested_resources.extend(missing.iter().copied());
+		self.transport.broadcast(&SyncPacket::ResourceRequest(missing))
 	}
 
 	fn send_hello(&mut self, transport_peer: TransportPeerId) -> Result<(), ReplicaError> {
@@ -189,6 +219,9 @@ impl Replica {
 				self.peers.insert(from, RemotePeer { peer, user, role });
 				self.observe_delivered(peer, seq);
 				events.push(Event::PeerJoined { peer, user });
+				// A fresh peer may hold bytes nobody else here could serve.
+				self.requested_resources.clear();
+				self.resources_stale = true;
 
 				if role == Role::Host && !self.is_synced() {
 					self.transport.send(from, &SyncPacket::SyncRequest { known_revs: target.known_revs() })?;
@@ -219,6 +252,7 @@ impl Replica {
 					None => target.merge_remote(sync.deltas, &[])?,
 				}
 				target.apply_remote_hot_ops(sync.hot_log)?;
+				self.resources_stale = true;
 
 				// Broadcasts the host had delivered before answering are already reflected in the snapshot.
 				for (peer, seq) in sync.seen {
@@ -235,7 +269,6 @@ impl Replica {
 						retires: Vec::new(),
 					})?;
 				}
-				self.transport.send(from, &SyncPacket::ResourceRequest(target.missing_resources().into_iter().collect()))?;
 
 				events.push(Event::Synced);
 			}
@@ -262,8 +295,9 @@ impl Replica {
 					log::warn!("Resource from {from} does not match its hash; dropping");
 					return Ok(());
 				}
-				target.store_resource(hash, bytes)?;
-				events.push(Event::ResourceReceived(hash));
+				target.store_resource(hash, &bytes)?;
+				self.requested_resources.remove(&hash);
+				events.push(Event::ResourceReceived { hash, bytes });
 			}
 		}
 
@@ -288,6 +322,7 @@ impl Replica {
 				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops)?,
 				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires)?,
 			}
+			self.resources_stale = true;
 			events.push(Event::Changed);
 		}
 		Ok(())

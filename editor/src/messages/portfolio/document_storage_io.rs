@@ -90,7 +90,7 @@ pub(super) async fn open_gdd_document(
 /// Core of the `.gdd` open: archive -> working copy -> `Gdd` -> runtime interface. The registry build is
 /// authoritative; the embedded legacy blob is the soak oracle and the fallback if the build fails.
 /// Returns `None` only if neither the build nor the legacy fallback worked.
-async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8], store_handle: &impl ResourceStorage, document_id: DocumentId, validate: bool) -> Option<DocumentMessageHandler> {
+async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8], store_handle: &ResourcesHandle, document_id: DocumentId, validate: bool) -> Option<DocumentMessageHandler> {
 	let (container, _exists) = match build_per_document_container(path).await {
 		Ok(result) => result,
 		Err(error) => {
@@ -164,7 +164,7 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 				);
 			}
 		}
-		return Some(DocumentMessageHandler::from_storage(interface, gdd, declarations, String::new(), None));
+		return Some(DocumentMessageHandler::from_storage(interface, gdd, declarations, store_handle.storage(), String::new(), None));
 	}
 
 	log::warn!("Opening .gdd for {document_id:?}: registry build failed, falling back to embedded legacy document");

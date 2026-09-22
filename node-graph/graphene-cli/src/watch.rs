@@ -170,7 +170,7 @@ impl ApplicationHandler for Viewer {
 
 	fn new_events(&mut self, event_loop: &dyn ActiveEventLoop, _cause: StartCause) {
 		for event in self.runtime.block_on(self.live.poll()) {
-			if matches!(event, Event::Synced | Event::Changed | Event::ResourceReceived(_)) {
+			if matches!(event, Event::Synced | Event::Changed | Event::ResourceReceived { .. }) {
 				self.dirty = true;
 			}
 		}
