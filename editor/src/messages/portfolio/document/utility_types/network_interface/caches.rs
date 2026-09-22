@@ -360,13 +360,8 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in modify_import_export");
-			return None;
-		};
-		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
-			self.load_modify_import_export(network_path);
-		}
+		self.load_modify_import_export(network_path);
+
 		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in modify_import_export");
 			return None;
@@ -379,6 +374,18 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn load_modify_import_export(&self, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in modify_import_export");
+			return;
+		};
+		network_metadata
+			.transient_metadata
+			.modify_import_export
+			.ensure_loaded(|| self.compute_modify_import_export(network_path));
+	}
+
+	/// The add, remove and reorder handles that sit beside each import and export port.
+	fn compute_modify_import_export(&self, network_path: &[NodeId]) -> Option<ModifyImportExportClickTarget> {
 		let mut reorder_imports_exports = Ports::new();
 		let mut remove_imports_exports = Ports::new();
 
@@ -425,20 +432,15 @@ impl NodeNetworkInterface {
 				}
 			});
 			if ports_built.is_none() {
-				log::error!("Could not get import_export_ports in load_modify_import_export");
-				return;
+				log::error!("Could not get import_export_ports in compute_modify_import_export");
+				return None;
 			}
 		}
 
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get current network in load_modify_import_export");
-			return;
-		};
-
-		network_metadata.transient_metadata.modify_import_export.store(ModifyImportExportClickTarget {
+		Some(ModifyImportExportClickTarget {
 			remove_imports_exports,
 			reorder_imports_exports,
-		});
+		})
 	}
 
 	pub(crate) fn unload_modify_import_export(&mut self, network_path: &[NodeId]) {
@@ -464,32 +466,28 @@ impl NodeNetworkInterface {
 			return None;
 		};
 
-		if !network_metadata.transient_metadata.all_nodes_bounding_box.is_loaded() {
-			self.load_all_nodes_bounding_box(network_path);
-		}
-
-		let bounding_box = self.network_metadata(network_path)?.transient_metadata.all_nodes_bounding_box.with_loaded(|bounds| *bounds);
+		let bounding_box = network_metadata
+			.transient_metadata
+			.all_nodes_bounding_box
+			.with_loaded_or(|| self.compute_all_nodes_bounding_box(network_path), |bounds| *bounds);
 		if bounding_box.is_none() {
 			log::error!("could not load all nodes bounding box");
 		}
 		bounding_box
 	}
 
-	pub fn load_all_nodes_bounding_box(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in load_all_nodes_bounding_box");
-			return;
-		};
+	/// The combined bounds of every node in the network, in node graph space.
+	fn compute_all_nodes_bounding_box(&self, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		let network_metadata = self.network_metadata(network_path)?;
 		let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>();
 
-		let all_nodes_bounding_box = nodes
-			.iter()
-			.filter_map(|node_id| self.node_bounding_box(node_id, network_path))
-			.reduce(Quad::combine_bounds)
-			.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]);
-
-		let Some(network_metadata) = self.network_metadata(network_path) else { return };
-		network_metadata.transient_metadata.all_nodes_bounding_box.store(all_nodes_bounding_box);
+		Some(
+			nodes
+				.iter()
+				.filter_map(|node_id| self.node_bounding_box(node_id, network_path))
+				.reduce(Quad::combine_bounds)
+				.unwrap_or([DVec2::new(0., 0.), DVec2::new(0., 0.)]),
+		)
 	}
 
 	pub fn unload_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
@@ -625,15 +623,15 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		if !node_metadata.transient_metadata.layer_width.is_loaded() {
-			self.load_layer_width(node_id, network_path);
-		}
-
-		let node_metadata = self.node_metadata(node_id, network_path)?;
-		node_metadata.transient_metadata.layer_width.with_loaded(|layer_width| *layer_width)
+		node_metadata
+			.transient_metadata
+			.layer_width
+			.with_loaded_or(|| Some(self.compute_layer_width(node_id, network_path)), |layer_width| *layer_width)
 	}
 
-	pub fn load_layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) {
+	/// The width of a layer in grid units, which covers its thumbnail, its name and its icons. Cached
+	/// because measuring the name's text is slow.
+	fn compute_layer_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
 		const GAP_WIDTH: f64 = 8.;
 		const FONT_SIZE: f64 = 14.;
 		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
@@ -648,19 +646,7 @@ impl NodeNetworkInterface {
 		let icon_overhang_width = GRID_SIZE as f64 / 2.;
 
 		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + lock_icon_width + icon_overhang_width;
-		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
-
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in load_layer_width");
-			return;
-		};
-
-		// Ensure layer width is not loaded for a non layer node
-		if node_metadata.persistent_metadata.is_layer() {
-			node_metadata.transient_metadata.layer_width.store(layer_width);
-		} else {
-			log::warn!("Tried loading layer width for non layer node");
-		}
+		((layer_width_pixels / 24.).ceil() as u32).max(8)
 	}
 
 	/// Unloads layer width if the node is a layer
@@ -898,7 +884,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
-		self.try_load_node_click_targets(node_id, network_path);
+		self.load_node_click_targets(node_id, network_path);
 
 		let node_metadata = self.node_metadata_mut(node_id, network_path)?;
 		let Some(click_targets) = node_metadata.transient_metadata.click_targets.get_loaded_mut() else {
@@ -908,36 +894,28 @@ impl NodeNetworkInterface {
 		Some(click_targets)
 	}
 
-	pub(crate) fn try_load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
+	pub(crate) fn load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in node_click_targets");
 			return;
 		};
-		if !node_metadata.transient_metadata.click_targets.is_loaded() {
-			self.load_node_click_targets(node_id, network_path)
-		};
+		node_metadata.transient_metadata.click_targets.ensure_loaded(|| self.compute_node_click_targets(node_id, network_path));
 	}
 
 	/// Loads the node click targets if needed, then reads them through &self.
 	pub(crate) fn with_node_click_targets<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
-		self.try_load_node_click_targets(node_id, network_path);
-		self.with_node_click_targets_if_loaded(node_id, network_path, read)
+		self.node_metadata(node_id, network_path)?
+			.transient_metadata
+			.click_targets
+			.with_loaded_or(|| self.compute_node_click_targets(node_id, network_path), read)
 	}
 
 	/// Reads the modify import/export click targets through &self, loading them first if needed.
 	pub(crate) fn with_modify_import_export<R>(&self, network_path: &[NodeId], read: impl FnOnce(&ModifyImportExportClickTarget) -> R) -> Option<R> {
-		self.try_load_modify_import_export(network_path);
-		self.network_metadata(network_path)?.transient_metadata.modify_import_export.with_loaded(read)
-	}
-
-	fn try_load_modify_import_export(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in modify_import_export");
-			return;
-		};
-		if !network_metadata.transient_metadata.modify_import_export.is_loaded() {
-			self.load_modify_import_export(network_path);
-		}
+		self.network_metadata(network_path)?
+			.transient_metadata
+			.modify_import_export
+			.with_loaded_or(|| self.compute_modify_import_export(network_path), read)
 	}
 
 	/// Reads the node click targets through &self if they are already loaded.
@@ -950,18 +928,16 @@ impl NodeNetworkInterface {
 		result
 	}
 
-	pub fn load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
+	/// The node body, its ports, and for a layer its visibility, lock, grip and name handles, all in node graph space.
+	fn compute_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<DocumentNodeClickTargets> {
 		let Some(node_position) = self.position(node_id, network_path) else {
-			log::error!("Could not get node position in load_node_click_targets for node {node_id}");
-			return;
+			log::error!("Could not get node position in compute_node_click_targets for node {node_id}");
+			return None;
 		};
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in load_node_click_targets");
-			return;
-		};
+		let node_metadata = self.node_metadata(node_id, network_path)?;
 		let Some(document_node) = self.document_node(node_id, network_path) else {
-			log::error!("Could not get document node in load_node_click_targets");
-			return;
+			log::error!("Could not get document node in compute_node_click_targets");
+			return None;
 		};
 
 		let node_top_left = node_position.as_dvec2() * GRID_SIZE as f64;
@@ -1114,15 +1090,11 @@ impl NodeNetworkInterface {
 			}
 		};
 
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in load_node_click_targets");
-			return;
-		};
-		node_metadata.transient_metadata.click_targets.store(document_node_click_targets);
+		Some(document_node_click_targets)
 	}
 
 	pub fn node_bounding_box(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
-		self.try_load_node_click_targets(node_id, network_path);
+		self.load_node_click_targets(node_id, network_path);
 		self.try_get_node_bounding_box(node_id, network_path)
 	}
 
@@ -1131,13 +1103,13 @@ impl NodeNetworkInterface {
 			.flatten()
 	}
 
-	pub fn try_load_all_node_click_targets(&self, network_path: &[NodeId]) {
+	pub fn load_all_node_click_targets(&self, network_path: &[NodeId]) {
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get network in load_all_node_click_targets");
 			return;
 		};
 		for node_id in network.nodes.keys().cloned().collect::<Vec<_>>() {
-			self.try_load_node_click_targets(&node_id, network_path);
+			self.load_node_click_targets(&node_id, network_path);
 		}
 	}
 

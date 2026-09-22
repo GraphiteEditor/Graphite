@@ -614,7 +614,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub(crate) fn check_collision_with_stack_dependents(&mut self, node_id: &NodeId, shift_sign: i32, network_path: &[NodeId]) -> Vec<(NodeId, LayerOwner)> {
-		self.try_load_all_node_click_targets(network_path);
+		self.load_all_node_click_targets(network_path);
 		self.try_load_stack_dependents(network_path);
 
 		// Check collisions and for all owned nodes and recursively shift them
