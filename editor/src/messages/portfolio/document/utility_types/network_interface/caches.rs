@@ -956,7 +956,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn load_node_click_targets(&self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(node_position) = self.position_from_downstream_node(node_id, network_path) else {
+		let Some(node_position) = self.position(node_id, network_path) else {
 			log::error!("Could not get node position in load_node_click_targets for node {node_id}");
 			return;
 		};
@@ -994,7 +994,7 @@ impl NodeNetworkInterface {
 				port_click_targets.insert_node_output(output_index, node_top_left);
 			}
 
-			let height = input_row_count.max(number_of_outputs).max(1) as u32 * GRID_SIZE;
+			let height = self.displayed_row_count(node_id, network_path) as u32 * GRID_SIZE;
 			let width = 5 * GRID_SIZE;
 			// Offset down by half a grid so the click target sits below the top connector strip.
 			let node_click_target_top_left = node_top_left + DVec2::new(0., HALF_GRID_SIZE as f64);
@@ -1022,7 +1022,7 @@ impl NodeNetworkInterface {
 				0
 			});
 			let width = layer_width_cells * GRID_SIZE;
-			let height = 2 * GRID_SIZE;
+			let height = LAYER_GRID_HEIGHT * GRID_SIZE;
 			let locked = self.is_locked(node_id, network_path);
 
 			// The layer is `2 * GRID_SIZE` tall, so its vertical center sits one grid unit below `node_top_left.y`.
@@ -1143,87 +1143,6 @@ impl NodeNetworkInterface {
 		};
 		for node_id in network.nodes.keys().cloned().collect::<Vec<_>>() {
 			self.try_load_node_click_targets(&node_id, network_path);
-		}
-	}
-
-	/// Get the top left position in node graph coordinates for a node by recursively iterating downstream through cached positions, which means the iteration can be broken once a known position is reached.
-	pub fn position_from_downstream_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
-			log::error!("Could not get nested node_metadata in position_from_downstream_node");
-			return None;
-		};
-		match &node_metadata.persistent_metadata.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer_metadata) => {
-				match layer_metadata.position {
-					LayerPosition::Absolute(position) => Some(position),
-					LayerPosition::Stack(y_offset) => {
-						let Some(downstream_node_connectors) = self
-							.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)).cloned())
-							.flatten()
-						else {
-							log::error!("Could not get downstream node in position_from_downstream_node");
-							return None;
-						};
-						let downstream_connector = downstream_node_connectors
-							.iter()
-							.find_map(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())));
-
-						let Some((downstream_node_id, _)) = downstream_connector else {
-							log::error!("Could not get downstream node input connector for node {node_id}");
-							return None;
-						};
-						// Get the height of the node to ensure nodes do not overlap
-						let Some(downstream_node_height) = self.height_from_click_target(&downstream_node_id, network_path) else {
-							log::error!("Could not get click target height in position_from_downstream_node");
-							return None;
-						};
-						self.position(&downstream_node_id, network_path)
-							.map(|position| position + IVec2::new(0, 1 + downstream_node_height as i32 + y_offset as i32))
-					}
-				}
-			}
-			NodeTypePersistentMetadata::Node(node_metadata) => {
-				match node_metadata.position {
-					NodePosition::Absolute(position) => Some(position),
-					NodePosition::Chain => {
-						// Iterate through primary flow to find the first Layer
-						let mut current_node_id = *node_id;
-						let mut node_distance_from_layer = 1;
-						loop {
-							// TODO: Use root node to restore if previewing
-							let Some(downstream_node_connectors) = self
-								.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(current_node_id)).cloned())
-								.flatten()
-							else {
-								log::error!("Could not get downstream node for node {node_id} with Position::Chain");
-								return None;
-							};
-							let Some(downstream_node_id) = downstream_node_connectors.iter().find_map(|input_connector| {
-								if let InputConnector::Node { node_id, input_index } = input_connector {
-									let downstream_input_index = if self.is_layer(node_id, network_path) { 1 } else { 0 };
-									if *input_index == downstream_input_index { Some(node_id) } else { None }
-								} else {
-									None
-								}
-							}) else {
-								log::error!("Could not get downstream node input connector with input index 1 for node with Position::Chain");
-								return None;
-							};
-							let Some(downstream_node_metadata) = self.network_metadata(network_path)?.persistent_metadata.node_metadata.get(downstream_node_id) else {
-								log::error!("Downstream node metadata not found in node_metadata for node with Position::Chain");
-								return None;
-							};
-							if downstream_node_metadata.persistent_metadata.is_layer() {
-								// Get the position of the layer
-								let layer_position = self.position(downstream_node_id, network_path)?;
-								return Some(layer_position + IVec2::new(-node_distance_from_layer * NODE_CHAIN_WIDTH, 0));
-							}
-							node_distance_from_layer += 1;
-							current_node_id = *downstream_node_id;
-						}
-					}
-				}
-			}
 		}
 	}
 

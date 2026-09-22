@@ -1,6 +1,105 @@
 use super::*;
 
 impl NodeNetworkInterface {
+	/// The top left corner of a node in node graph grid coordinates.
+	///
+	/// Only absolute positions are stored. A stack layer sits below its downstream sibling and a chain node to the
+	/// left of the layer it feeds, so both are resolved by walking downstream to the first stored position.
+	pub fn position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
+		self.position_from_downstream(node_id, network_path, &mut HashSet::new())
+	}
+
+	/// The grid rows a node occupies vertically, which is the spacing the layers stacked above it are offset by.
+	pub fn node_height(&self, node_id: &NodeId, network_path: &[NodeId]) -> u32 {
+		if self.is_layer(node_id, network_path) {
+			LAYER_GRID_HEIGHT
+		} else {
+			// A node body starts half a grid cell down, so it reaches into one more row than it has
+			self.displayed_row_count(node_id, network_path) as u32 + 1
+		}
+	}
+
+	/// Walks downstream to the first stored position, accumulating the relative offsets along the way. `visited`
+	/// stops the walk on a cyclic graph, which concurrent edits can produce, rather than recursing forever.
+	fn position_from_downstream(&self, node_id: &NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>) -> Option<IVec2> {
+		if !visited.insert(*node_id) {
+			log::error!("Cycle reached while resolving the position of node {node_id}");
+			return None;
+		}
+
+		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
+			log::error!("Could not get nested node_metadata in position_from_downstream");
+			return None;
+		};
+
+		match &node_metadata.persistent_metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer_metadata) => match layer_metadata.position {
+				LayerPosition::Absolute(position) => Some(position),
+				LayerPosition::Stack(y_offset) => {
+					let downstream_node_id = self
+						.with_outward_wires(network_path, |outward_wires| {
+							outward_wires
+								.get(&OutputConnector::primary_output(*node_id))
+								.and_then(|connectors| connectors.iter().find_map(|input_connector| input_connector.node_id()))
+						})
+						.flatten();
+
+					let Some(downstream_node_id) = downstream_node_id else {
+						log::error!("Could not get downstream node input connector for node {node_id}");
+						return None;
+					};
+
+					// Offset past the downstream node's own height so the two do not overlap
+					let downstream_node_height = self.node_height(&downstream_node_id, network_path);
+					self.position_from_downstream(&downstream_node_id, network_path, visited)
+						.map(|position| position + IVec2::new(0, 1 + downstream_node_height as i32 + y_offset as i32))
+				}
+			},
+			NodeTypePersistentMetadata::Node(node_metadata) => match node_metadata.position {
+				NodePosition::Absolute(position) => Some(position),
+				NodePosition::Chain => {
+					// A chain node is placed by its distance from the layer it feeds, so walk downstream to that layer
+					let mut current_node_id = *node_id;
+					let mut node_distance_from_layer = 1;
+					loop {
+						// TODO: Use root node to restore if previewing
+						let downstream_node_id = self
+							.with_outward_wires(network_path, |outward_wires| {
+								outward_wires.get(&OutputConnector::primary_output(current_node_id)).and_then(|connectors| {
+									connectors.iter().find_map(|input_connector| match input_connector {
+										InputConnector::Node { node_id, input_index } => {
+											let downstream_input_index = if self.is_layer(node_id, network_path) { 1 } else { 0 };
+											(*input_index == downstream_input_index).then_some(*node_id)
+										}
+										InputConnector::Export(_) => None,
+									})
+								})
+							})
+							.flatten();
+
+						let Some(downstream_node_id) = downstream_node_id else {
+							log::error!("Could not get downstream node of chain node {node_id}");
+							return None;
+						};
+
+						if self.is_layer(&downstream_node_id, network_path) {
+							return self
+								.position_from_downstream(&downstream_node_id, network_path, visited)
+								.map(|layer_position| layer_position + IVec2::new(-node_distance_from_layer * NODE_CHAIN_WIDTH, 0));
+						}
+
+						if !visited.insert(downstream_node_id) {
+							log::error!("Cycle reached while resolving the chain position of node {node_id}");
+							return None;
+						}
+						node_distance_from_layer += 1;
+						current_node_id = downstream_node_id;
+					}
+				}
+			},
+		}
+	}
+
 	/// Sets the position of a node to an absolute position
 	pub(crate) fn set_absolute_position(&mut self, node_id: &NodeId, position: IVec2, network_path: &[NodeId]) {
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {

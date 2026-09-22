@@ -93,6 +93,9 @@ pub enum ImportOrExport {
 pub const PRIMARY_INPUT_INDEX: usize = 0;
 /// The secondary input (index 1) of a layer-shaped node: the horizontal wire from the left, carrying the node chain or child stack that the layer renders.
 pub const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+/// The height in grid cells of a node displayed as a layer, which is fixed regardless of its inputs.
+pub const LAYER_GRID_HEIGHT: u32 = 2;
+
 /// The primary output (index 0) of a node, which most nodes expose as their only output.
 pub const PRIMARY_OUTPUT_INDEX: usize = 0;
 
