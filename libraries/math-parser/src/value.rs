@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, UnaryOp};
+use std::f64::consts::PI;
 
 pub type Complex = num_complex::Complex<f64>;
 
@@ -235,24 +236,88 @@ impl Number {
 				Number::Real(real) => real.abs(),
 				Number::Complex(complex) => complex.norm(),
 			})),
-			UnaryOp::Fac => {
-				// A factorial is defined for whole numbers at or above zero
-				let Number::Real(real) = self else { return None };
-				let whole = real.round();
-				if !real.is_finite() || whole < 0. || (real - whole).abs() > f64::EPSILON {
-					return None;
-				}
-
-				// Infinity above 170!, which overflows f64, also keeps huge inputs from spinning the loop
-				if whole > 170. {
-					return Some(Number::Real(f64::INFINITY));
-				}
-				Some(Number::Real((1..=whole as u64).fold(1., |accumulated, k| accumulated * k as f64)))
-			}
+			UnaryOp::Fac => Some(match self {
+				Number::Real(real) => Number::Real(real_factorial(real)?),
+				Number::Complex(complex) => Number::Complex(complex_gamma(complex + 1.)),
+			}),
 		}
 	}
 
 	pub fn from_f64(x: f64) -> Self {
 		Self::Real(x)
 	}
+}
+
+/// The factorial of a real number: the exact product for a whole number, and `x! = Γ(x + 1)` past the whole numbers, or
+/// `None` at the negative integers (the gamma function's poles, where no signed limit exists) and at -∞.
+fn real_factorial(x: f64) -> Option<f64> {
+	// The factorial overflows f64 from 171! on, and returning early keeps a huge whole number from spinning the product loop
+	if x > 171. {
+		return Some(f64::INFINITY);
+	}
+
+	if x.fract() == 0. {
+		(x >= 0.).then(|| (1..=x as u64).fold(1., |accumulated, k| accumulated * k as f64))
+	} else {
+		x.is_finite().then(|| real_gamma(x + 1.))
+	}
+}
+
+/// The Lanczos approximation's shift, for which [`LANCZOS_COEFFICIENTS`] give 15 significant digits near 1, falling to 13 by the f64 overflow limit.
+const LANCZOS_G: f64 = 7.;
+const LANCZOS_COEFFICIENTS: [f64; 9] = [
+	0.9999999999998099,
+	676.5203681218851,
+	-1259.1392167224028,
+	771.3234287776531,
+	-176.6150291621406,
+	12.507343278686905,
+	-0.13857109526572012,
+	9.984369578019572e-6,
+	1.5056327351493116e-7,
+];
+
+/// The gamma function on the reals by the Lanczos approximation. Below 1/2, where the series loses accuracy, it reflects
+/// through `Γ(x) Γ(1 - x) = π / sin(πx)`.
+fn real_gamma(x: f64) -> f64 {
+	if x < 0.5 {
+		return PI / (PI * x).sin() / real_gamma(1. - x);
+	}
+
+	let x = x - 1.;
+	let series = (1..LANCZOS_COEFFICIENTS.len()).fold(LANCZOS_COEFFICIENTS[0], |sum, k| sum + LANCZOS_COEFFICIENTS[k] / (x + k as f64));
+	let t = x + LANCZOS_G + 0.5;
+
+	// One exponential for the whole `t^(x + 1/2) e^-t` factor, so past f64's range it is ∞ rather than the NaN of ∞ × 0
+	(2. * PI).sqrt() * ((x + 0.5) * t.ln() - t).exp() * series
+}
+
+/// The gamma function over the complex plane, taken as one exponential of its logarithm so a magnitude past f64's range is ∞ or 0.
+fn complex_gamma(z: Complex) -> Complex {
+	complex_log_gamma(z).exp()
+}
+
+/// The natural logarithm of the gamma function over the complex plane, by the same approximation and reflection as [`real_gamma`].
+fn complex_log_gamma(z: Complex) -> Complex {
+	if z.re < 0.5 {
+		// Shifting the real part into `[0, 1)` keeps the sine exact, with a half turn (a sign) for each odd shift
+		let shift = z.re.floor();
+		let log_sin = complex_log_sin(PI * (z - shift)) + Complex::new(0., if shift.rem_euclid(2.) == 0. { 0. } else { PI });
+		return PI.ln() - log_sin - complex_log_gamma(1. - z);
+	}
+
+	let z = z - 1.;
+	let series = (1..LANCZOS_COEFFICIENTS.len()).fold(Complex::from(LANCZOS_COEFFICIENTS[0]), |sum, k| sum + LANCZOS_COEFFICIENTS[k] / (z + k as f64));
+	let t = z + LANCZOS_G + 0.5;
+
+	0.5 * (2. * PI).ln() + (z + 0.5) * t.ln() - t + series.ln()
+}
+
+/// `ln sin(w)` without forming `sin(w)`, which overflows past an imaginary part of about 710: with `s` the sign of that part,
+/// `sin(w) = e^(-siw) (e^(2siw) - 1) / (2si)`, and the growing exponential becomes a plain shift of the logarithm.
+fn complex_log_sin(w: Complex) -> Complex {
+	let s = if w.im < 0. { -1. } else { 1. };
+	let siw = Complex::new(0., s) * w;
+
+	-siw + (((2. * siw).exp() - 1.) / Complex::new(0., 2. * s)).ln()
 }
