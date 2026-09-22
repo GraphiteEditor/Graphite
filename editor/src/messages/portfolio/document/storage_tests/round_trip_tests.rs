@@ -176,7 +176,7 @@ async fn edit_after_open_commits_cleanly() {
 	{
 		let document = editor.active_document_mut();
 		document.network_interface = rebuilt;
-		document.set_storage(Some(reopened));
+		document.set_storage(reopened, declarations);
 		document.finalize_storage_load();
 	}
 
@@ -678,7 +678,7 @@ async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourc
 	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into())
 		.await
 		.expect("create_in");
-	editor.active_document_mut().set_storage(Some(gdd));
+	editor.active_document_mut().set_storage(gdd, Default::default());
 	HashMapResourceStorage::new()
 }
 

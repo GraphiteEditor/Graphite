@@ -2,7 +2,7 @@
 use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
-use crate::{ApplyMode, Delta, Document, History, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -64,8 +64,7 @@ impl Session {
 	/// Diff the current registry against a fresh conversion of `network`, then commit each emitted
 	/// op as its own `Delta` on the local chain. One `clock.tick()` per op (strictly causal within
 	/// a commit). Returns the new `Rev`s in commit order (empty if nothing changed) plus the
-	/// proto-node declaration bytes the conversion extracted, keyed by content hash, for the caller
-	/// to persist into its byte store (`document-graph-storage` itself is byte-unaware).
+	/// conversion, whose extracted declarations the caller persists and caches.
 	///
 	/// Stages the diff as hot ops rather than retired deltas: each op is applied to the registry and
 	/// pushed onto the hot log. The caller persists the returned hot frames and then calls `retire`
@@ -76,11 +75,11 @@ impl Session {
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
-	) -> Result<(Vec<HotOp>, from_runtime::DeclarationBytes), CommitError> {
+	) -> Result<(Vec<HotOp>, from_runtime::RuntimeConversion), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
 		let ops = crate::delta::compute_deltas(&self.document.working_registry, &conversion.registry);
 		let hot_ops = self.stage_ops(ops)?;
-		Ok((hot_ops, conversion.declaration_bytes))
+		Ok((hot_ops, conversion))
 	}
 
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`] for this document's peer, so the
@@ -471,6 +470,40 @@ impl Session {
 		}
 
 		hashes
+	}
+
+	/// Every proto-node declaration resource referenced by the current registry or anywhere in history,
+	/// with its content hash.
+	pub fn all_declaration_resources(&self) -> HashMap<ResourceId, ResourceHash> {
+		let registry = &self.document.working_registry;
+
+		let mut hashes: HashMap<ResourceId, ResourceHash> = registry.resources.iter().filter_map(|(id, entry)| Some((*id, entry.hash?))).collect();
+		for delta in self.document.history.iter() {
+			match &delta.kind {
+				RegistryDelta::AddResource { id, entry } => hashes.extend(entry.hash.map(|hash| (*id, hash))),
+				RegistryDelta::RemoveResource { id, snapshot } => hashes.extend(snapshot.hash.map(|hash| (*id, hash))),
+				RegistryDelta::SetResourceHash { id, hash: Some(hash) } => {
+					hashes.insert(*id, *hash);
+				}
+				_ => {}
+			}
+		}
+
+		let current_nodes = registry.node_instances.values();
+		let historic_nodes = self.document.history.iter().filter_map(|delta| match &delta.kind {
+			RegistryDelta::AddNode { node, .. } => Some(node),
+			RegistryDelta::RemoveNode { snapshot, .. } => Some(snapshot),
+			_ => None,
+		});
+
+		current_nodes
+			.chain(historic_nodes)
+			.filter_map(|node| match node.implementation() {
+				Implementation::ProtoNode(id) => Some(*id),
+				Implementation::Network(_) => None,
+			})
+			.filter_map(|id| Some((id, *hashes.get(&id)?)))
+			.collect()
 	}
 
 	pub fn hot_log(&self) -> &[HotOp] {

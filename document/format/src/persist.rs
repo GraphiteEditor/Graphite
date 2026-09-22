@@ -47,7 +47,7 @@ impl<L: Layout> Gdd<L> {
 	/// declaration bytes. The working registry reflects the edit immediately, but nothing enters durable
 	/// retired history until [`retire_pending_interaction`](Self::retire_pending_interaction). Staging on
 	/// every edit while retiring only at interaction boundaries lets several edits coalesce into one retired
-	/// interaction.
+	/// interaction. Returns the decoded declarations the snapshot references, for the caller's cache.
 	///
 	/// # Errors
 	/// [`Error::Commit`] if the runtime diff is rejected by the session. On an [`Error::Container`] /
@@ -60,8 +60,8 @@ impl<L: Layout> Gdd<L> {
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<(), Error> {
-		let (hot_ops, declaration_bytes) = self.session.stage_from_runtime(network, metadata, resources)?;
+	) -> Result<document_graph_storage::Declarations, Error> {
+		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
 
 		for hot_op in &hot_ops {
 			self.append_hot_frame(hot_op)?;
@@ -70,10 +70,10 @@ impl<L: Layout> Gdd<L> {
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
 		// identical bytes on every commit is an idempotent no-op.
-		for bytes in declaration_bytes.values() {
+		for bytes in conversion.declaration_bytes.values() {
 			byte_store.store(bytes);
 		}
-		Ok(())
+		Ok(conversion.declarations)
 	}
 
 	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last

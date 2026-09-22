@@ -20,12 +20,10 @@ fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
 
 /// Convert a runtime network to a storage `Registry`, returning the declarations alongside it.
 /// Proto-node declaration content is no longer stored in the registry (it lives in a byte store);
-/// these tests have no byte store, so they keep the extracted bytes in hand and rebuild a
-/// `Declarations` map for the back-conversion.
+/// these tests have no byte store, so they keep the extracted `Declarations` in hand for the back-conversion.
 fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations) {
 	let conversion = Registry::convert_from_runtime(network, &crate::NoMetadata, &Default::default(), PeerId(0)).expect("Failed to convert NodeNetwork to Registry");
-	let declarations = conversion.declarations().expect("rebuild declarations");
-	(conversion.registry, declarations)
+	(conversion.registry, conversion.declarations)
 }
 
 /// A one-node network whose single node references `id` via a `TaggedValue::Resource` input, so
@@ -477,7 +475,7 @@ fn test_ui_metadata_round_trip() {
 	);
 
 	let conversion = Registry::convert_from_runtime(&network, &metadata, &Default::default(), PeerId(0)).expect("Failed to convert to Registry with metadata");
-	let declarations = conversion.declarations().expect("rebuild declarations");
+	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 
 	let (converted, entries) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back with metadata");

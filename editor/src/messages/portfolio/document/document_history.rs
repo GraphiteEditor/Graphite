@@ -1,11 +1,11 @@
 use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
-use document_graph_storage::Registry;
+use document_graph_storage::{Declarations, Registry};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
-use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, collect_network_view_settings};
+use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
 
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
 /// becoming the authoritative history. Owns the dual-stack bookkeeping push/pop/clear and the cursor's stage/retire/move/verify
@@ -24,6 +24,10 @@ pub struct DocumentHistory {
 	/// future built by `load_document` resolves.
 	#[derivative(Debug = "ignore")]
 	storage: Option<document_format::GddV1>,
+	/// Decoded proto-node declarations for every registry state the cursor can reach, filled at mount
+	/// and extended on each staging, so a cursor rebuild never touches the byte store.
+	#[derivative(Debug = "ignore")]
+	declarations: Declarations,
 }
 
 impl DocumentHistory {
@@ -79,9 +83,10 @@ impl DocumentHistory {
 		self.storage.as_mut()
 	}
 
-	/// Attach (or clear) the `Gdd` working copy once the mount future resolves.
-	pub fn set_storage(&mut self, storage: Option<document_format::GddV1>) {
-		self.storage = storage;
+	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
+	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+		self.storage = Some(storage);
+		self.declarations = declarations;
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
@@ -119,9 +124,12 @@ impl DocumentHistory {
 
 		// Stage without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
 		// step, so the deltas accumulate as hot ops and coalesce at the next undo-step boundary.
-		if let Err(error) = storage.stage_runtime_snapshot(network, &metadata_view, registry, byte_store) {
-			log::error!("Storage snapshot staging failed: {error}");
-			return;
+		match storage.stage_runtime_snapshot(network, &metadata_view, registry, byte_store) {
+			Ok(declarations) => self.declarations.extend(declarations),
+			Err(error) => {
+				log::error!("Storage snapshot staging failed: {error}");
+				return;
+			}
 		}
 
 		if let Err(error) = storage.set_view_settings(view_settings) {
@@ -142,10 +150,9 @@ impl DocumentHistory {
 	}
 
 	/// Move the `Gdd` undo/redo cursor along the retired interaction chain, flushing any open interaction
-	/// first. Returns a clone of the post-move `Gdd` (`Arc`-shared) so a `'static` rebuild future can read
-	/// the rewound state while the live document keeps its cursor. `None` when there is nothing to move to,
-	/// unmounted, or the move failed.
-	pub fn move_cursor(&mut self, undo: bool) -> Option<document_format::GddV1> {
+	/// first, and rebuild the interface from the rewound registry using the declaration cache. `None` when
+	/// there is nothing to move to, unmounted, or the move failed. A failed rebuild moves the cursor back.
+	pub fn move_cursor(&mut self, undo: bool) -> Option<NodeNetworkInterface> {
 		self.retire_storage_interaction();
 
 		let storage = self.storage.as_mut()?;
@@ -166,7 +173,23 @@ impl DocumentHistory {
 			return None;
 		}
 
-		Some(storage.clone())
+		let rebuilt = storage
+			.registry()
+			.to_runtime_with_full_metadata(&self.declarations)
+			.map_err(|error| error.to_string())
+			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()));
+
+		match rebuilt {
+			Ok(interface) => Some(interface),
+			Err(error) => {
+				log::error!("Storage undo/redo rebuild failed, reverting cursor move: {error}");
+				let reverted = if undo { storage.redo() } else { storage.undo() };
+				if let Err(error) = reverted {
+					log::error!("Storage undo/redo cursor revert failed: {error}");
+				}
+				None
+			}
+		}
 	}
 
 	// Soak round-trip verification (runtime-gated by `validate_storage_round_trip`)
@@ -193,13 +216,7 @@ impl DocumentHistory {
 			}
 		};
 		let target = &conversion.registry;
-		let declarations = match conversion.declarations() {
-			Ok(declarations) => declarations,
-			Err(error) => {
-				log::error!("storage round-trip: declaration rebuild failed: {error}");
-				return;
-			}
-		};
+		let declarations = &conversion.declarations;
 
 		let stored = storage.registry();
 		if !stored.value_equal(target) {
@@ -213,7 +230,7 @@ impl DocumentHistory {
 			panic!("storage round-trip: timestamp order inconsistent between stored and target");
 		}
 
-		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(&declarations) {
+		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(declarations) {
 			Ok(result) => result,
 			Err(error) => {
 				log::error!("storage round-trip: to_runtime failed: {error}");

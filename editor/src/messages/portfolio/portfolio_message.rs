@@ -45,17 +45,18 @@ pub enum PortfolioMessage {
 	DeleteDocument {
 		document_id: DocumentId,
 	},
-	/// Delivers an asynchronously-built `Gdd` working copy into its document, emitted by the mount future
-	/// spawned in `load_document`. The `gdd` payload is non-serializable and a clone carries none
-	/// (`clone_to_none`), so it travels exactly once. `reopened` is true when an existing working copy was
-	/// opened: the persisted cursor is trusted as-is and the mount-time re-commit is skipped, since
-	/// re-committing would stack a spurious interaction on the restored cursor and make the first undo a no-op.
+	/// Delivers an asynchronously-built `Gdd` working copy, with the proto-node declarations its history
+	/// references, into its document. Emitted by the mount future spawned in `load_document`. The `mounted`
+	/// payload is non-serializable and a clone carries none (`clone_to_none`), so it travels exactly once.
+	/// `reopened` is true when an existing working copy was opened: the persisted cursor is trusted as-is
+	/// and the mount-time re-commit is skipped, since re-committing would stack a spurious interaction on
+	/// the restored cursor and make the first undo a no-op.
 	DocumentStorageMounted {
 		document_id: DocumentId,
 		reopened: bool,
 		#[serde(skip, default)]
 		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
-		gdd: Option<document_format::GddV1>,
+		mounted: Option<(document_format::GddV1, document_graph_storage::Declarations)>,
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
@@ -95,17 +96,6 @@ pub enum PortfolioMessage {
 		#[serde(skip, default)]
 		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
 		document: Option<Box<DocumentMessageHandler>>,
-	},
-	/// Delivers the interface rebuilt from the `Gdd` undo/redo cursor so the async rebuild can swap into the
-	/// live document. `interface` is `None` if the rebuild failed (logged at the source). `had_oracle` records
-	/// whether the legacy snapshot applied synchronously, so the swap can debug-compare against it. Travels
-	/// once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).
-	GddUndoRedoRebuilt {
-		document_id: DocumentId,
-		had_oracle: bool,
-		#[serde(skip, default)]
-		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
-		interface: Option<Box<crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface>>,
 	},
 	LoadDocument {
 		document_id: DocumentId,
