@@ -32,6 +32,58 @@ pub(crate) struct NodeMut<'a> {
 }
 
 impl NodeMut<'_> {
+	/// Places the node at an absolute grid position, keeping whether it is displayed as a layer or a node.
+	pub(crate) fn set_absolute_position(&mut self, position: IVec2) -> bool {
+		let node_type = match self.metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(_) => NodeTypePersistentMetadata::layer(position),
+			NodeTypePersistentMetadata::Node(_) => NodeTypePersistentMetadata::node(position),
+		};
+		self.set_node_type(node_type)
+	}
+
+	/// Offsets a node that is absolutely positioned, leaving a stack or chain node where it is.
+	pub(crate) fn shift_absolute_position(&mut self, shift: IVec2) -> bool {
+		match &mut self.metadata.node_type_metadata {
+			NodeTypePersistentMetadata::Layer(layer) => match &mut layer.position {
+				LayerPosition::Absolute(position) => {
+					*position += shift;
+					true
+				}
+				LayerPosition::Stack(_) => false,
+			},
+			NodeTypePersistentMetadata::Node(node) => match &mut node.position {
+				NodePosition::Absolute(position) => {
+					*position += shift;
+					true
+				}
+				NodePosition::Chain => false,
+			},
+		}
+	}
+
+	/// Stacks a layer `y_offset` below the sibling it feeds. Nodes are never stacked.
+	pub(crate) fn set_stack_position(&mut self, y_offset: u32) -> bool {
+		if !self.metadata.is_layer() {
+			return false;
+		}
+		self.set_node_type(NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+			position: LayerPosition::Stack(y_offset),
+		}))
+	}
+
+	/// Chains a node to the left of the layer it feeds. Layers are never chained.
+	pub(crate) fn set_chain_position(&mut self) -> bool {
+		if self.metadata.is_layer() {
+			return false;
+		}
+		self.set_node_type(NodeTypePersistentMetadata::Node(NodePersistentMetadata::new(NodePosition::Chain)))
+	}
+
+	/// Whether the node is displayed as a layer, which decides the kinds of position it can hold.
+	pub(crate) fn is_layer(&self) -> bool {
+		self.metadata.is_layer()
+	}
+
 	/// Whether the node is rendered, which the compiler reads to replace it with a passthrough.
 	pub(crate) fn set_visible(&mut self, visible: bool) -> bool {
 		let changed = self.node.visible != visible;
@@ -133,10 +185,72 @@ impl NodeMut<'_> {
 	}
 }
 
+/// The persistent metadata of one network, resolved once so a run of writes walks the tree a single time.
+///
+/// Metadata only: the graph half of a network is its export slots, which are addressed through
+/// [`NodeNetworkInterface::set_input_slot`] like any other input.
+pub(crate) struct NetworkMut<'a> {
+	metadata: &'a mut NodeNetworkPersistentMetadata,
+}
+
+impl NetworkMut<'_> {
+	/// Which node the network renders instead of its export, and what the export reconnects to when the
+	/// preview ends.
+	pub(crate) fn set_previewing(&mut self, previewing: Previewing) -> bool {
+		let changed = self.metadata.previewing != previewing;
+		self.metadata.previewing = previewing;
+		changed
+	}
+
+	/// The definition this network was instantiated from, dropped once it is edited away from it.
+	pub(crate) fn set_reference(&mut self, reference: Option<String>) -> bool {
+		let changed = self.metadata.reference != reference;
+		self.metadata.reference = reference;
+		changed
+	}
+
+	/// The display order of pinned nodes in the Properties panel.
+	pub(crate) fn set_pinned_order(&mut self, pinned_node_order: Vec<NodeId>) -> bool {
+		let changed = self.metadata.pinned_node_order != pinned_node_order;
+		self.metadata.pinned_node_order = pinned_node_order;
+		changed
+	}
+
+	/// Appends a newly pinned node to the display order, or drops one that is no longer pinned.
+	pub(crate) fn record_pinned(&mut self, node_id: NodeId, pinned: bool) {
+		let order = &mut self.metadata.pinned_node_order;
+		match pinned {
+			true if !order.contains(&node_id) => order.push(node_id),
+			true => {}
+			false => order.retain(|id| *id != node_id),
+		}
+	}
+
+	/// The transform from node graph space to viewport space.
+	pub(crate) fn set_navigation_transform(&mut self, transform: DAffine2) -> bool {
+		let changed = self.metadata.navigation_metadata.node_graph_to_viewport != transform;
+		self.metadata.navigation_metadata.node_graph_to_viewport = transform;
+		changed
+	}
+
+	/// The width of the node graph in viewport space.
+	pub(crate) fn set_navigation_width(&mut self, node_graph_width: f64) -> bool {
+		let changed = self.metadata.navigation_metadata.node_graph_width != node_graph_width;
+		self.metadata.navigation_metadata.node_graph_width = node_graph_width;
+		changed
+	}
+}
+
 // The store: the only writer of the node graph and its parallel metadata tree. Every write keeps the
 // two halves in step by construction, so the invariants checked by `validate_invariants` hold without
 // each caller restating them.
 impl NodeNetworkInterface {
+	/// The persistent metadata of a network, or `None` if the network is missing.
+	pub(crate) fn network_mut(&mut self, network_path: &[NodeId]) -> Option<NetworkMut<'_>> {
+		let metadata = &mut self.network_metadata.nested_metadata_mut(network_path)?.persistent_metadata;
+		Some(NetworkMut { metadata })
+	}
+
 	/// Both halves of a node, or `None` if either is missing.
 	pub(crate) fn node_mut(&mut self, locator: NodeLocator) -> Option<NodeMut<'_>> {
 		let node = self.network.network_mut().nested_network_mut(locator.network_path)?.nodes.get_mut(&locator.node_id)?;
@@ -192,7 +306,7 @@ impl NodeNetworkInterface {
 	/// Inserts an export at `index`, clamped to the end, along with the name the encapsulating node shows
 	/// for it. The document network has no encapsulating node, so it carries no name.
 	pub(crate) fn insert_export_slot(&mut self, network_path: &[NodeId], index: usize, export: NodeInput, output_name: String) -> bool {
-		let Some(network) = self.network_mut(network_path) else {
+		let Some(network) = self.network_graph_mut(network_path) else {
 			log::error!("Could not get nested network in insert_export_slot");
 			return false;
 		};
@@ -209,7 +323,7 @@ impl NodeNetworkInterface {
 
 	/// Removes the export at `index` together with the encapsulating node's name for it.
 	pub(crate) fn remove_export_slot(&mut self, network_path: &[NodeId], index: usize) -> Option<NodeInput> {
-		let Some(network) = self.network_mut(network_path) else {
+		let Some(network) = self.network_graph_mut(network_path) else {
 			log::error!("Could not get nested network in remove_export_slot");
 			return None;
 		};
@@ -241,7 +355,7 @@ impl NodeNetworkInterface {
 
 	/// Writes the input at `connector`, returning the input it replaced.
 	pub(crate) fn set_input_slot(&mut self, connector: &InputConnector, network_path: &[NodeId], input: NodeInput) -> Option<NodeInput> {
-		let Some(network) = self.network_mut(network_path) else {
+		let Some(network) = self.network_graph_mut(network_path) else {
 			log::error!("Could not get nested network in set_input_slot");
 			return None;
 		};
@@ -302,13 +416,11 @@ impl NodeNetworkInterface {
 		self.network.network().nested_network(network_path).is_some() && self.network_metadata.nested_metadata(network_path).is_some()
 	}
 
-	/// Drops the encapsulating node's link to the definition it was instantiated from, which no longer
-	/// describes it once its signature is edited.
+	/// Drops the network's link to the definition it was instantiated from, which no longer describes it
+	/// once its signature is edited.
 	pub(crate) fn clear_encapsulating_reference(&mut self, network_path: &[NodeId]) {
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path)
-			&& let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut()
-		{
-			network_metadata.persistent_metadata.reference = None;
+		if let Some(mut network) = self.network_mut(network_path) {
+			network.set_reference(None);
 		}
 	}
 }

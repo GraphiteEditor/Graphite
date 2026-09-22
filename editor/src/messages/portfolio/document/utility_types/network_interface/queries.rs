@@ -1170,7 +1170,7 @@ impl NodeNetworkInterface {
 
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
-	pub(super) fn network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
+	pub(super) fn network_graph_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
 		self.document_network_mut().nested_network_mut(network_path)
 	}
 

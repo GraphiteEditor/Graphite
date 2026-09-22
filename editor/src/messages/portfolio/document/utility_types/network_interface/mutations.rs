@@ -66,28 +66,30 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(mut network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
 			return;
 		};
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
+		network.set_navigation_transform(transform);
+
 		self.unload_import_export_ports(network_path);
 		self.unload_modify_import_export(network_path);
 	}
 
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
 	pub fn set_node_graph_width(&mut self, node_graph_width: f64, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network in set_transform");
+		let Some(mut network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_node_graph_width");
 			return;
 		};
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_width = node_graph_width;
+		network.set_navigation_width(node_graph_width);
+
 		self.unload_import_export_ports(network_path);
 		self.unload_modify_import_export(network_path);
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
-		let Some(node) = self.network_mut(&[]).and_then(|network| network.nodes.get_mut(node_id)) else {
+		let Some(node) = self.network_graph_mut(&[]).and_then(|network| network.nodes.get_mut(node_id)) else {
 			log::error!("Could not get node in vector_modification");
 			return;
 		};
@@ -558,7 +560,7 @@ impl NodeNetworkInterface {
 		// Reject a change that would create a cycle before any side effects run (only Node connections can create cycles).
 		// The new input is swapped in just for this test, then restored so the disconnect and layout logic below sees the unmodified network.
 		if matches!(new_input, NodeInput::Node { .. }) {
-			let Some(network) = self.network_mut(network_path) else {
+			let Some(network) = self.network_graph_mut(network_path) else {
 				log::error!("Could not get nested network in set_input");
 				return;
 			};
@@ -1074,11 +1076,11 @@ impl NodeNetworkInterface {
 
 	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(mut network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in start_previewing_without_restore");
 			return;
 		};
-		network_metadata.persistent_metadata.previewing = Previewing::Yes { root_node_to_restore: None };
+		network.set_previewing(Previewing::Yes { root_node_to_restore: None });
 	}
 
 	fn stop_previewing(&mut self, network_path: &[NodeId]) {
@@ -1092,11 +1094,12 @@ impl NodeNetworkInterface {
 				network_path,
 			);
 		}
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+
+		let Some(mut network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in stop_previewing");
 			return;
 		};
-		network_metadata.persistent_metadata.previewing = Previewing::No;
+		network.set_previewing(Previewing::No);
 	}
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
@@ -1136,23 +1139,15 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_pinned");
 			return;
 		};
-
-		node_metadata.persistent_metadata.pinned = pinned;
+		node.set_pinned(pinned);
 
 		// Track the node in this network's pinned display order: append when newly pinned, prune when unpinned
-		if let Some(network_metadata) = self.network_metadata_mut(network_path) {
-			let order = &mut network_metadata.persistent_metadata.pinned_node_order;
-			if pinned {
-				if !order.contains(node_id) {
-					order.push(*node_id);
-				}
-			} else {
-				order.retain(|id| id != node_id);
-			}
+		if let Some(mut network) = self.network_mut(network_path) {
+			network.record_pinned(*node_id, pinned);
 		}
 
 		self.transaction_modified();
@@ -1173,11 +1168,11 @@ impl NodeNetworkInterface {
 		let moved = new_order.remove(from);
 		new_order.insert(to, moved);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(mut network) = self.network_mut(network_path) else {
 			log::error!("Could not get network_metadata in reorder_pinned_node");
 			return;
 		};
-		network_metadata.persistent_metadata.pinned_node_order = new_order;
+		network.set_pinned_order(new_order);
 
 		self.transaction_modified();
 	}

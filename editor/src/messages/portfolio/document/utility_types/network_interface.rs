@@ -146,7 +146,7 @@ mod network_interface_tests {
 				content: ClipboardContentRaw::Text(clipboard),
 			})
 			.await;
-		let nodes = &mut editor.active_document_mut().network_interface.network_mut(&[]).unwrap().nodes;
+		let nodes = &mut editor.active_document_mut().network_interface.network_graph_mut(&[]).unwrap().nodes;
 		let orignal = nodes.remove(&rectangle).expect("original node should exist");
 		assert!(
 			nodes.values().any(|other| *other == orignal),
