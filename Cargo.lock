@@ -4991,6 +4991,7 @@ name = "peer-transport"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
+ "core-types",
  "document-graph-storage",
  "env_logger",
  "futures",

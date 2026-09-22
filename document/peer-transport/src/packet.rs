@@ -8,15 +8,26 @@ pub enum Role {
 	Guest,
 }
 
+/// How far one peer's broadcasts had got. `epoch` names the incarnation that produced `seq`: a peer
+/// keeps its `PeerId` across a reconnect but restarts its numbering, so counters carrying different
+/// epochs describe different sequences and must not be compared.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerSeq {
+	pub peer: PeerId,
+	pub epoch: u64,
+	pub seq: u64,
+}
+
 /// MessagePack-encoded on the wire.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SyncPacket {
-	/// Sent first on every new connection. `seq` anchors the receiver's counter for this sender, since
-	/// broadcasts made before the connection were never sent to it.
+	/// Sent first on every new connection. `epoch` and `seq` anchor the receiver's counter for this
+	/// sender, since broadcasts made before the connection were never sent to it.
 	Hello {
 		peer: PeerId,
 		user: UserId,
 		role: Role,
+		epoch: u64,
 		seq: u64,
 	},
 	/// `known_revs` come from `Session::known_revs`, so the host can send only what's missing.
@@ -43,15 +54,17 @@ pub struct SyncPayload {
 	pub head: Option<Rev>,
 	pub hot_log: Vec<HotOp>,
 	pub known_revs: Vec<Rev>,
-	pub seen: Vec<(PeerId, u64)>,
+	pub seen: Vec<PeerSeq>,
 }
 
-/// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1, and `seen` is the
-/// sender's delivery vector; a receiver holds the packet until it has delivered everything in `seen`.
+/// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`
+/// is the sender's delivery vector; a receiver holds the packet until it has delivered everything in
+/// `seen`.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Broadcast {
+	pub epoch: u64,
 	pub seq: u64,
-	pub seen: Vec<(PeerId, u64)>,
+	pub seen: Vec<PeerSeq>,
 	pub body: BroadcastBody,
 }
 
