@@ -4,6 +4,7 @@ pub mod context;
 pub mod executer;
 pub mod lexer;
 pub mod parser;
+pub mod reducer;
 pub mod value;
 
 use context::EvalContext;

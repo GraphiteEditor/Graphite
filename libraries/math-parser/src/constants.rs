@@ -142,50 +142,68 @@ pub fn suffixed_function(name: &str) -> Option<(BuiltinFunction, f64)> {
 	}
 	let base = suffix.parse::<f64>().ok().filter(|base| base.is_finite())?;
 
-	Some((builtin_function(function)?, base))
+	Some((builtin_function(function)?.function, base))
 }
 
-/// Looks up a built-in math function by name, returning a plain function pointer so dispatch avoids hashing and dynamic allocation.
-pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
+/// A built-in math function and whether it's variadic.
+#[derive(Clone, Copy)]
+pub struct Builtin {
+	pub function: BuiltinFunction,
+	/// Takes any count of arguments, like `min(a, b, c)`, which makes its name usable as a lone reducer token.
+	pub variadic: bool,
+}
+
+/// Defines a built-in function taking a particular count of arguments, or a few like `log(x)` and `log(x, base)`.
+fn fixed_arity(function: BuiltinFunction) -> Builtin {
+	Builtin { function, variadic: false }
+}
+
+/// Defines a built-in function taking any count of arguments.
+fn variadic(function: BuiltinFunction) -> Builtin {
+	Builtin { function, variadic: true }
+}
+
+/// Looks up a built-in math function by name, holding a plain function pointer so dispatch avoids hashing and dynamic allocation.
+pub fn builtin_function(name: &str) -> Option<Builtin> {
 	Some(match name {
 		// Trigonometric functions, with the inverses climbing into the complex plane outside the real domain (`asin(2)`)
-		"sin" => |values| climbing(values, f64::sin, Complex::sin),
-		"cos" => |values| climbing(values, f64::cos, Complex::cos),
-		"tan" => |values| climbing(values, f64::tan, Complex::tan),
-		"csc" => |values| climbing(values, |x| x.sin().recip(), |z| z.sin().recip()),
-		"sec" => |values| climbing(values, |x| x.cos().recip(), |z| z.cos().recip()),
-		"cot" => |values| climbing(values, |x| x.tan().recip(), |z| z.tan().recip()),
+		"sin" => fixed_arity(|values| climbing(values, f64::sin, Complex::sin)),
+		"cos" => fixed_arity(|values| climbing(values, f64::cos, Complex::cos)),
+		"tan" => fixed_arity(|values| climbing(values, f64::tan, Complex::tan)),
+		"csc" => fixed_arity(|values| climbing(values, |x| x.sin().recip(), |z| z.sin().recip())),
+		"sec" => fixed_arity(|values| climbing(values, |x| x.cos().recip(), |z| z.cos().recip())),
+		"cot" => fixed_arity(|values| climbing(values, |x| x.tan().recip(), |z| z.tan().recip())),
 
 		// TODO: Offer the `arc-`/`ar-` spellings (`arcsin`, `artanh`) and the legacy `inv-` names as autocomplete aliases in the expression widget, resolving to these canonical names
-		"asin" => |values| climbing(values, f64::asin, Complex::asin),
-		"acos" => |values| climbing(values, f64::acos, Complex::acos),
-		"atan" => |values| climbing(values, f64::atan, Complex::atan),
-		"acsc" => |values| climbing(values, |x| x.recip().asin(), |z| z.recip().asin()),
-		"asec" => |values| climbing(values, |x| x.recip().acos(), |z| z.recip().acos()),
-		"acot" => |values| climbing(values, |x| x.recip().atan(), |z| z.recip().atan()),
+		"asin" => fixed_arity(|values| climbing(values, f64::asin, Complex::asin)),
+		"acos" => fixed_arity(|values| climbing(values, f64::acos, Complex::acos)),
+		"atan" => fixed_arity(|values| climbing(values, f64::atan, Complex::atan)),
+		"acsc" => fixed_arity(|values| climbing(values, |x| x.recip().asin(), |z| z.recip().asin())),
+		"asec" => fixed_arity(|values| climbing(values, |x| x.recip().acos(), |z| z.recip().acos())),
+		"acot" => fixed_arity(|values| climbing(values, |x| x.recip().atan(), |z| z.recip().atan())),
 
 		// Hyperbolic functions, with the inverses likewise climbing outside the real domain (`acosh(0.5)`, `atanh(2)`)
-		"sinh" => |values| climbing(values, f64::sinh, Complex::sinh),
-		"cosh" => |values| climbing(values, f64::cosh, Complex::cosh),
-		"tanh" => |values| climbing(values, f64::tanh, Complex::tanh),
-		"csch" => |values| climbing(values, |x| x.sinh().recip(), |z| z.sinh().recip()),
-		"sech" => |values| climbing(values, |x| x.cosh().recip(), |z| z.cosh().recip()),
-		"coth" => |values| climbing(values, |x| x.tanh().recip(), |z| z.tanh().recip()),
-		"asinh" => |values| climbing(values, f64::asinh, Complex::asinh),
-		"acosh" => |values| climbing(values, f64::acosh, Complex::acosh),
-		"atanh" => |values| climbing(values, f64::atanh, Complex::atanh),
-		"acsch" => |values| climbing(values, |x| x.recip().asinh(), |z| z.recip().asinh()),
-		"asech" => |values| climbing(values, |x| x.recip().acosh(), |z| z.recip().acosh()),
-		"acoth" => |values| climbing(values, |x| x.recip().atanh(), |z| z.recip().atanh()),
+		"sinh" => fixed_arity(|values| climbing(values, f64::sinh, Complex::sinh)),
+		"cosh" => fixed_arity(|values| climbing(values, f64::cosh, Complex::cosh)),
+		"tanh" => fixed_arity(|values| climbing(values, f64::tanh, Complex::tanh)),
+		"csch" => fixed_arity(|values| climbing(values, |x| x.sinh().recip(), |z| z.sinh().recip())),
+		"sech" => fixed_arity(|values| climbing(values, |x| x.cosh().recip(), |z| z.cosh().recip())),
+		"coth" => fixed_arity(|values| climbing(values, |x| x.tanh().recip(), |z| z.tanh().recip())),
+		"asinh" => fixed_arity(|values| climbing(values, f64::asinh, Complex::asinh)),
+		"acosh" => fixed_arity(|values| climbing(values, f64::acosh, Complex::acosh)),
+		"atanh" => fixed_arity(|values| climbing(values, f64::atanh, Complex::atanh)),
+		"acsch" => fixed_arity(|values| climbing(values, |x| x.recip().asinh(), |z| z.recip().asinh())),
+		"asech" => fixed_arity(|values| climbing(values, |x| x.recip().acosh(), |z| z.recip().acosh())),
+		"acoth" => fixed_arity(|values| climbing(values, |x| x.recip().atanh(), |z| z.recip().atanh())),
 
 		// Logarithms, exponentials, and roots, climbing outside the real domain (`ln(-1)`, `sqrt(-4)`)
-		"ln" => |values| climbing(values, f64::ln, Complex::ln),
-		"exp" => |values| climbing(values, f64::exp, Complex::exp),
-		"sqrt" => |values| climbing(values, f64::sqrt, Complex::sqrt),
-		"cbrt" => |values| climbing(values, f64::cbrt, |z| z.powf(1. / 3.)),
-		"log2" => |values| climbing(values, f64::log2, |z| z.ln() / LN_2),
+		"ln" => fixed_arity(|values| climbing(values, f64::ln, Complex::ln)),
+		"exp" => fixed_arity(|values| climbing(values, f64::exp, Complex::exp)),
+		"sqrt" => fixed_arity(|values| climbing(values, f64::sqrt, Complex::sqrt)),
+		"cbrt" => fixed_arity(|values| climbing(values, f64::cbrt, |z| z.powf(1. / 3.))),
+		"log2" => fixed_arity(|values| climbing(values, f64::log2, |z| z.ln() / LN_2)),
 
-		"log" => |values| match values {
+		"log" => fixed_arity(|values| match values {
 			[value] => climbing(std::slice::from_ref(value), f64::log10, |z| z.log10()),
 			// Change of base, staying real when it can and climbing into the complex plane when it cannot
 			[Value::Number(Number::Real(x)), Value::Number(Number::Real(base))] => {
@@ -198,9 +216,9 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			}
 			[Value::Number(x), Value::Number(base)] => Some(Value::from(x.as_complex().ln() / base.as_complex().ln())),
 			_ => None,
-		},
+		}),
 
-		"root" => |values| match values {
+		"root" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(x)), Value::Number(Number::Real(n))] => {
 				// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
 				if *x < 0. && n.rem_euclid(2.) == 1. {
@@ -211,47 +229,47 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			}
 			[Value::Number(Number::Complex(x)), Value::Number(Number::Real(n))] => Some(Value::from(x.powf(1. / *n))),
 			_ => None,
-		},
+		}),
 
 		// Geometry Functions
 		// Folding pairwise hypotenuses gives the root of the sum of squares without ever squaring, avoiding overflow
-		"hypot" => |values| Some(Value::from_f64(real_operands(values)?.into_iter().fold(0., f64::hypot))),
+		"hypot" => variadic(|values| Some(Value::from_f64(real_operands(values)?.into_iter().fold(0., f64::hypot)))),
 
-		"atan2" => |values| match values {
+		"atan2" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(y)), Value::Number(Number::Real(x))] => Some(Value::Number(Number::Real(y.atan2(*x)))),
 			_ => None,
-		},
+		}),
 
 		// Mapping Functions
 		// Each part's absolute value, where `|x|` is instead the one magnitude of the whole value
-		"abs" => |values| match values {
+		"abs" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.abs()))),
 			[Value::Number(Number::Complex(complex))] => Some(Value::from(Complex::new(complex.re.abs(), complex.im.abs()))),
 			_ => None,
-		},
+		}),
 
-		"floor" => |values| match values {
+		"floor" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.floor()))),
 			_ => None,
-		},
+		}),
 
-		"ceil" => |values| match values {
+		"ceil" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.ceil()))),
 			_ => None,
-		},
+		}),
 
-		"round" => |values| match values {
+		"round" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.round()))),
 			_ => None,
-		},
+		}),
 
-		"clamp" => |values| match values {
+		"clamp" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(x)), Value::Number(Number::Real(min)), Value::Number(Number::Real(max))] => Some(Value::Number(Number::Real(x.clamp(*min, *max)))),
 			_ => None,
-		},
+		}),
 
 		// Variadic across one or more real arguments
-		"min" => |values| {
+		"min" => variadic(|values| {
 			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
 			let mut min = *first;
 			for value in rest {
@@ -259,9 +277,9 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				min = min.min(*real);
 			}
 			Some(Value::Number(Number::Real(min)))
-		},
+		}),
 
-		"max" => |values| {
+		"max" => variadic(|values| {
 			let [Value::Number(Number::Real(first)), rest @ ..] = values else { return None };
 			let mut max = *first;
 			for value in rest {
@@ -269,17 +287,17 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				max = max.max(*real);
 			}
 			Some(Value::Number(Number::Real(max)))
-		},
+		}),
 
 		// Statistics across one or more real arguments
 		// TODO: Offer `avg` and `average` as autocomplete aliases in the expression widget, resolving to `mean`
-		"mean" => |values| {
+		"mean" => variadic(|values| {
 			let reals = real_operands(values)?;
 			let scale = power_of_two_scale(&reals);
 			Some(Value::from_f64(reals.iter().map(|real| real / scale).sum::<f64>() / reals.len() as f64 * scale))
-		},
+		}),
 
-		"median" => |values| {
+		"median" => variadic(|values| {
 			let mut reals = real_operands(values)?;
 			reals.sort_by(f64::total_cmp);
 			let middle = reals.len() / 2;
@@ -287,24 +305,24 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			let median = if reals.len() % 2 == 0 { reals[middle - 1].midpoint(reals[middle]) } else { reals[middle] };
 
 			Some(Value::from_f64(median))
-		},
+		}),
 
 		// The bare names are the sample forms and the `pop` suffix marks the population forms
-		"variance" => |values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance * scale * scale)),
-		"variancepop" => |values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance * scale * scale)),
-		"stdev" => |values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale)),
-		"stdevpop" => |values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale)),
+		"variance" => variadic(|values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance * scale * scale))),
+		"variancepop" => variadic(|values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance * scale * scale))),
+		"stdev" => variadic(|values| scaled_variance(values, 1).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale))),
+		"stdevpop" => variadic(|values| scaled_variance(values, 0).map(|(variance, scale)| Value::from_f64(variance.sqrt() * scale))),
 
-		"geomean" => |values| {
+		"geomean" => variadic(|values| {
 			let reals = real_operands(values)?;
 			// A negative operand has no real geometric mean, and averaging the logarithms keeps the product from overflowing
 			if reals.iter().any(|real| *real < 0.) {
 				return None;
 			}
 			Some(Value::from_f64((reals.iter().map(|real| real.ln()).sum::<f64>() / reals.len() as f64).exp()))
-		},
+		}),
 
-		"harmmean" => |values| {
+		"harmmean" => variadic(|values| {
 			let reals = real_operands(values)?;
 
 			// Like the geometric mean, a negative operand has no meaningful harmonic mean, while a zero one makes it zero
@@ -319,16 +337,16 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 			// Dividing the smallest operand by each keeps every reciprocal term within 1, so their sum can't overflow
 			let scaled_reciprocal_sum = reals.iter().map(|real| smallest / real).sum::<f64>();
 			Some(Value::from_f64(reals.len() as f64 / scaled_reciprocal_sum * smallest))
-		},
+		}),
 
-		"rms" => |values| {
+		"rms" => variadic(|values| {
 			let reals = real_operands(values)?;
 			let scale = power_of_two_scale(&reals);
 			let mean_square = reals.iter().map(|real| (real / scale).powi(2)).sum::<f64>() / reals.len() as f64;
 			Some(Value::from_f64(mean_square.sqrt() * scale))
-		},
+		}),
 
-		"mode" => |values| {
+		"mode" => variadic(|values| {
 			let mut reals = real_operands(values)?;
 			reals.sort_by(f64::total_cmp);
 
@@ -342,12 +360,12 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				}
 			}
 			mode.map(Value::from_f64)
-		},
+		}),
 
-		"count" => |values| Some(Value::from_f64(values.len() as f64)),
+		"count" => variadic(|values| Some(Value::from_f64(values.len() as f64))),
 
 		// Variadic parity across logical operands, which must each be exactly 0 or 1
-		"xor" => |values| {
+		"xor" => variadic(|values| {
 			let mut parity = false;
 			for value in values {
 				let Value::Number(Number::Real(real)) = value else { return None };
@@ -358,14 +376,14 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				}
 			}
 			Some(Value::from_f64(parity as u8 as f64))
-		},
+		}),
 
-		"lerp" => |values| match values {
+		"lerp" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(a)), Value::Number(Number::Real(b)), Value::Number(Number::Real(t))] => Some(Value::from_f64(lerp(*a, *b, *t))),
 			_ => None,
-		},
+		}),
 
-		"remap" => |values| match values {
+		"remap" => fixed_arity(|values| match values {
 			[
 				Value::Number(Number::Real(value)),
 				Value::Number(Number::Real(in_a)),
@@ -374,19 +392,19 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				Value::Number(Number::Real(out_b)),
 			] => Some(Value::from_f64(lerp(*out_a, *out_b, inverse_lerp(*value, *in_a, *in_b)))),
 			_ => None,
-		},
+		}),
 
-		"trunc" => |values| match values {
+		"trunc" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.trunc()))),
 			_ => None,
-		},
+		}),
 
-		"fract" => |values| match values {
+		"fract" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(real.fract()))),
 			_ => None,
-		},
+		}),
 
-		"sign" => |values| match values {
+		"sign" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(real))] => {
 				let s = if *real > 0. {
 					1.
@@ -398,33 +416,33 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				Some(Value::Number(Number::Real(s)))
 			}
 			_ => None,
-		},
+		}),
 
-		"mod" => |values| match values {
+		"mod" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(x)), Value::Number(Number::Real(modulus))] => {
 				// Floored, so a truncated remainder with the opposite sign from the modulus moves over by one modulus
 				let remainder = x % modulus;
 				Some(Value::from_f64(if remainder != 0. && (remainder < 0.) != (*modulus < 0.) { remainder + modulus } else { remainder }))
 			}
 			_ => None,
-		},
+		}),
 
-		"gcd" => |values| {
+		"gcd" => variadic(|values| {
 			let reduced = real_operands(values)?
 				.into_iter()
 				.try_fold(0_u128, |accumulated, real| Some(gcd(accumulated, integer_operand(real)?)))?;
 			Some(Value::from_f64(reduced as f64))
-		},
+		}),
 
-		"lcm" => |values| {
+		"lcm" => variadic(|values| {
 			let reduced = real_operands(values)?
 				.into_iter()
 				.try_fold(1_u128, |accumulated, real| checked_lcm(accumulated, integer_operand(real)?))?;
 			Some(Value::from_f64(reduced as f64))
-		},
+		}),
 
 		// Combinatorics over whole numbers: `choose(n, r)` is the binomial coefficient and `pick(n, r)` the falling factorial
-		"choose" => |values| match values {
+		"choose" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(n)), Value::Number(Number::Real(r))] => {
 				let (n, r) = (whole_operand(*n)?, whole_operand(*r)?);
 				if r > n {
@@ -437,9 +455,9 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				Some(Value::from_f64(binomial))
 			}
 			_ => None,
-		},
+		}),
 
-		"pick" => |values| match values {
+		"pick" => fixed_arity(|values| match values {
 			[Value::Number(Number::Real(n)), Value::Number(Number::Real(r))] => {
 				let (n, r) = (whole_operand(*n)?, whole_operand(*r)?);
 				if r > n {
@@ -450,14 +468,14 @@ pub fn builtin_function(name: &str) -> Option<BuiltinFunction> {
 				Some(Value::from_f64(falling_factorial))
 			}
 			_ => None,
-		},
+		}),
 
 		// The conjugate negates the imaginary part
-		"conj" => |values| match values {
+		"conj" => fixed_arity(|values| match values {
 			[Value::Number(Number::Complex(complex))] => Some(Value::Number(Number::Complex(complex.conj()))),
 			[Value::Number(Number::Real(real))] => Some(Value::Number(Number::Real(*real))),
 			_ => None,
-		},
+		}),
 
 		_ => return None,
 	})
