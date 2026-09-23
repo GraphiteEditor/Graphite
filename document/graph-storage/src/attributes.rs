@@ -1,4 +1,4 @@
-use crate::TimeStamp;
+use crate::{TimeStamp, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -10,27 +10,27 @@ pub mod attr;
 
 /// A type-erased attribute value paired with the timestamp at which it was last set.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Value {
-	pub value: serde_json::Value,
+pub struct AttributeValue {
+	pub value: Value,
 	pub timestamp: TimeStamp,
 }
 
-impl Value {
-	pub fn new(value: serde_json::Value, timestamp: TimeStamp) -> Self {
+impl AttributeValue {
+	pub fn new(value: Value, timestamp: TimeStamp) -> Self {
 		Self { value, timestamp }
 	}
 }
 
-pub type Attributes = BTreeMap<String, Value>;
+pub type Attributes = BTreeMap<String, AttributeValue>;
 
 /// Write helpers for `Attributes`.
 pub trait AttributesWrite {
-	/// Inserts a JSON value under `key`.
-	fn set(&mut self, key: &str, value: serde_json::Value, timestamp: TimeStamp);
+	/// Inserts `value` under `key`.
+	fn set(&mut self, key: &str, value: Value, timestamp: TimeStamp);
 
 	/// Serializes `value` and inserts it under `key`.
 	fn set_serialized<T: serde::Serialize>(&mut self, key: &str, value: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error> {
-		self.set(key, serde_json::to_value(value)?, timestamp);
+		self.set(key, serde_json::to_value(value)?.into(), timestamp);
 		Ok(())
 	}
 	/// Inserts only when `value != default`, so the read side falls back to the same default.
@@ -43,8 +43,8 @@ pub trait AttributesWrite {
 }
 
 impl AttributesWrite for Attributes {
-	fn set(&mut self, key: &str, value: serde_json::Value, timestamp: TimeStamp) {
-		self.insert(key.to_string(), Value { value, timestamp });
+	fn set(&mut self, key: &str, value: Value, timestamp: TimeStamp) {
+		self.insert(key.to_string(), AttributeValue { value, timestamp });
 	}
 }
 
@@ -66,6 +66,6 @@ pub trait AttributesRead {
 
 impl AttributesRead for Attributes {
 	fn get_typed<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-		self.get(key).and_then(|v| serde_json::from_value(v.value.clone()).ok())
+		self.get(key).and_then(|v| serde_json::from_value(v.value.clone().into()).ok())
 	}
 }

@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HotOp, Rev, TimeStamp};
+use document_graph_storage::{HotOp, Rev, TimeStamp, Value};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -173,7 +173,7 @@ impl<L: Layout> Gdd<L> {
 	/// Unlike the per-interaction marker written inline at retire, this targets an already-written delta, so
 	/// the whole history file is rewritten in topological order. O(history) — fine for occasional user
 	/// labeling, not for per-interaction marking (which uses the inline path). No-op if `rev` is unknown.
-	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> Result<(), Error> {
+	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
 		}

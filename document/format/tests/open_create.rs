@@ -219,7 +219,7 @@ fn export_folder_round_trips_through_open() {
 			.await
 			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
 
-		// Payloads keep the working-copy codecs: registry is MessagePack (`.bin`), manifest is JSON.
+		// Payloads keep the working-copy codecs: registry is postcard (`.bin`), manifest is JSON.
 		assert!(dest.join("registry.bin").exists());
 		assert!(dest.join("manifest.json").exists());
 		assert!(dest.join("session.json").exists());
@@ -392,7 +392,7 @@ fn export_carries_resources() {
 #[test]
 fn embed_all_resources_materializes_link_only_resource() {
 	use document_format::{ExportFormat, ExportOptions};
-	use document_graph_storage::NoMetadata;
+	use document_graph_storage::{NoMetadata, Value};
 	use graph_craft::application_io::resource::ResourceStorage;
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
@@ -444,8 +444,8 @@ fn embed_all_resources_materializes_link_only_resource() {
 
 		let entry = reopened.registry().resources.get(&id).expect("resource entry survived export");
 		assert_eq!(entry.hash, Some(hash));
-		let embedded = serde_json::to_value(DataSource::Embedded).unwrap();
-		let url = serde_json::to_value(DataSource::Url("https://example.com/r.bin".parse().unwrap())).unwrap();
+		let embedded = Value::from(serde_json::to_value(DataSource::Embedded).unwrap());
+		let url = Value::from(serde_json::to_value(DataSource::Url("https://example.com/r.bin".parse().unwrap())).unwrap());
 		let chain: Vec<_> = entry.sources.iter().map(|(_, value)| value.source.clone()).collect();
 		assert_eq!(chain, vec![embedded, url], "Embedded leads the chain, URL kept as fallback");
 	});
@@ -559,9 +559,9 @@ fn create_in_records_default_codecs_in_manifest() {
 		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
 		let codecs = gdd.manifest().codecs;
-		assert_eq!(codecs.registry, Codec::MessagePack);
-		assert_eq!(codecs.history, Codec::MessagePackFrames);
-		assert_eq!(codecs.hot_log, Codec::MessagePackFrames);
+		assert_eq!(codecs.registry, Codec::Postcard);
+		assert_eq!(codecs.history, Codec::PostcardFrames);
+		assert_eq!(codecs.hot_log, Codec::PostcardFrames);
 		assert_eq!(codecs.session, Codec::Json);
 	});
 }
@@ -623,8 +623,8 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 
 		let (working, layout) = gdd.into_storage();
-		// Defaults: hot log is MessagePackFrames (.frames), manifest is always JSON.
-		assert!(working.exists(&io::path_for(layout.hot_log_basename(), Codec::MessagePackFrames)).await);
+		// Defaults: hot log is PostcardFrames (.frames), manifest is always JSON.
+		assert!(working.exists(&io::path_for(layout.hot_log_basename(), Codec::PostcardFrames)).await);
 		assert!(working.exists(&io::path_for(layout.manifest_basename(), Codec::Json)).await);
 
 		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));

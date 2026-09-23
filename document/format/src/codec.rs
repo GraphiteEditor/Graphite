@@ -8,18 +8,16 @@ pub enum Codec {
 	Json,
 	/// Newline-delimited compact JSON, one value per line.
 	JsonLines,
-	/// A single MessagePack blob. `append` to a non-empty buffer errors.
-	MessagePack,
-	/// Length-prefixed MessagePack frames: `[u32 big-endian length][MessagePack bytes]` per value.
-	MessagePackFrames,
+	/// A single postcard blob. `append` to a non-empty buffer errors.
+	Postcard,
+	/// Length-prefixed postcard frames: `[u32 big-endian length][postcard bytes]` per value.
+	PostcardFrames,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum CodecError {
-	#[error("MessagePack encode error: {0}")]
-	MessagePackEncode(#[from] rmp_serde::encode::Error),
-	#[error("MessagePack decode error: {0}")]
-	MessagePackDecode(#[from] rmp_serde::decode::Error),
+	#[error("postcard error: {0}")]
+	Postcard(#[from] postcard::Error),
 	#[error("JSON error: {0}")]
 	Json(#[from] serde_json::Error),
 	#[error("frame length {0} exceeds u32")]
@@ -41,8 +39,8 @@ impl Codec {
 		match self {
 			Codec::Json => "json",
 			Codec::JsonLines => "jsonl",
-			Codec::MessagePack => "bin",
-			Codec::MessagePackFrames => "frames",
+			Codec::Postcard => "bin",
+			Codec::PostcardFrames => "frames",
 		}
 	}
 
@@ -62,15 +60,15 @@ impl Codec {
 				output.push(b'\n');
 				Ok(())
 			}
-			Codec::MessagePack => {
+			Codec::Postcard => {
 				if !output.is_empty() {
 					return Err(CodecError::SingleValueAlreadyWritten);
 				}
-				rmp_serde::encode::write(output, value)?;
+				postcard::to_io(value, &mut *output)?;
 				Ok(())
 			}
-			Codec::MessagePackFrames => {
-				let payload = rmp_serde::to_vec(value)?;
+			Codec::PostcardFrames => {
+				let payload = postcard::to_stdvec(value)?;
 				let length = u32::try_from(payload.len()).map_err(|_| CodecError::FrameTooLarge(payload.len()))?;
 				output.extend_from_slice(&length.to_be_bytes());
 				output.extend_from_slice(&payload);
@@ -91,11 +89,11 @@ impl Codec {
 				remaining: bytes,
 				_marker: std::marker::PhantomData,
 			}),
-			Codec::MessagePack => {
-				let single = rmp_serde::from_slice::<T>(bytes).map_err(CodecError::from);
+			Codec::Postcard => {
+				let single = postcard::from_bytes::<T>(bytes).map_err(CodecError::from);
 				Box::new(std::iter::once(single))
 			}
-			Codec::MessagePackFrames => Box::new(MessagePackFrameIter {
+			Codec::PostcardFrames => Box::new(PostcardFrameIter {
 				remaining: bytes,
 				_marker: std::marker::PhantomData,
 			}),
@@ -153,12 +151,12 @@ impl<T: DeserializeOwned> Iterator for JsonLineIter<'_, T> {
 	}
 }
 
-struct MessagePackFrameIter<'a, T> {
+struct PostcardFrameIter<'a, T> {
 	remaining: &'a [u8],
 	_marker: std::marker::PhantomData<fn() -> T>,
 }
 
-impl<T: DeserializeOwned> Iterator for MessagePackFrameIter<'_, T> {
+impl<T: DeserializeOwned> Iterator for PostcardFrameIter<'_, T> {
 	type Item = Result<T, CodecError>;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -183,7 +181,7 @@ impl<T: DeserializeOwned> Iterator for MessagePackFrameIter<'_, T> {
 		let (frame, after) = tail.split_at(length);
 		self.remaining = after;
 
-		Some(rmp_serde::from_slice(frame).map_err(CodecError::from))
+		Some(postcard::from_bytes(frame).map_err(CodecError::from))
 	}
 }
 
@@ -224,29 +222,18 @@ mod tests {
 	}
 
 	#[test]
-	fn message_pack_round_trip_single() {
+	fn postcard_round_trip_single() {
 		let frame = Frame { id: 99, label: "blob".into() };
-		let bytes = Codec::MessagePack.write_single(&frame).unwrap();
-		let decoded: Frame = Codec::MessagePack.read_single(&bytes).unwrap();
+		let bytes = Codec::Postcard.write_single(&frame).unwrap();
+		let decoded: Frame = Codec::Postcard.read_single(&bytes).unwrap();
 		assert_eq!(decoded, frame);
 	}
 
 	#[test]
-	fn message_pack_append_to_non_empty_errors() {
+	fn postcard_append_to_non_empty_errors() {
 		let mut buffer = vec![0xAB];
-		let result = Codec::MessagePack.append(&mut buffer, &Frame { id: 1, label: "x".into() });
+		let result = Codec::Postcard.append(&mut buffer, &Frame { id: 1, label: "x".into() });
 		assert!(matches!(result, Err(CodecError::SingleValueAlreadyWritten)), "got {result:?}");
-	}
-
-	/// A type-erased `serde_json::Value` round-trips through the binary codec: the property postcard
-	/// could not satisfy (it raises `WontImplement` on self-describing values), which is why the
-	/// resource/attribute deltas that carry `serde_json::Value` bodies need a self-describing codec.
-	#[test]
-	fn message_pack_round_trips_serde_json_value() {
-		let value = serde_json::json!({ "kind": "embedded", "priority": 1.5, "tags": ["a", "b"] });
-		let bytes = Codec::MessagePack.write_single(&value).unwrap();
-		let decoded: serde_json::Value = Codec::MessagePack.read_single(&bytes).unwrap();
-		assert_eq!(decoded, value);
 	}
 
 	#[test]
@@ -263,13 +250,13 @@ mod tests {
 	}
 
 	#[test]
-	fn message_pack_frames_round_trip() {
+	fn postcard_frames_round_trip() {
 		let frames = frames();
 		let mut buffer = Vec::new();
 		for frame in &frames {
-			Codec::MessagePackFrames.append(&mut buffer, frame).unwrap();
+			Codec::PostcardFrames.append(&mut buffer, frame).unwrap();
 		}
-		let decoded: Vec<Frame> = Codec::MessagePackFrames.iter(&buffer).collect::<Result<_, _>>().unwrap();
+		let decoded: Vec<Frame> = Codec::PostcardFrames.iter(&buffer).collect::<Result<_, _>>().unwrap();
 		assert_eq!(decoded, frames);
 	}
 
@@ -277,27 +264,27 @@ mod tests {
 	/// deterministically (declared length exceeds the bytes that actually made it to disk) rather
 	/// than decoding a partial value into a plausible-but-wrong one.
 	#[test]
-	fn message_pack_frames_detect_truncation() {
+	fn postcard_frames_detect_truncation() {
 		let mut buffer = Vec::new();
-		Codec::MessagePackFrames.append(&mut buffer, &Frame { id: 7, label: "ok".into() }).unwrap();
+		Codec::PostcardFrames.append(&mut buffer, &Frame { id: 7, label: "ok".into() }).unwrap();
 		buffer.truncate(buffer.len() - 1);
-		let last = Codec::MessagePackFrames.iter::<Frame>(&buffer).last().unwrap();
+		let last = Codec::PostcardFrames.iter::<Frame>(&buffer).last().unwrap();
 		assert!(matches!(last, Err(CodecError::TruncatedFrame { .. })), "got {last:?}");
 	}
 
 	/// A buffer whose first record's length prefix itself is incomplete (fewer than 4 bytes) is
 	/// reported as a truncated prefix rather than mis-read as a zero-length frame.
 	#[test]
-	fn message_pack_frames_detect_truncated_length_prefix() {
+	fn postcard_frames_detect_truncated_length_prefix() {
 		let buffer = vec![0x00, 0x00];
-		let last = Codec::MessagePackFrames.iter::<Frame>(&buffer).last().unwrap();
+		let last = Codec::PostcardFrames.iter::<Frame>(&buffer).last().unwrap();
 		assert!(matches!(last, Err(CodecError::TruncatedLengthPrefix(2))), "got {last:?}");
 	}
 
 	#[test]
 	fn write_single_then_read_with_iter_yields_one() {
 		let frame = Frame { id: 5, label: "one".into() };
-		for codec in [Codec::Json, Codec::JsonLines, Codec::MessagePack, Codec::MessagePackFrames] {
+		for codec in [Codec::Json, Codec::JsonLines, Codec::Postcard, Codec::PostcardFrames] {
 			let bytes = codec.write_single(&frame).unwrap();
 			let collected: Vec<Frame> = codec.iter(&bytes).collect::<Result<_, _>>().unwrap();
 			assert_eq!(collected, vec![Frame { id: 5, label: "one".into() }], "codec {codec:?}");
@@ -315,12 +302,7 @@ mod tests {
 
 	#[test]
 	fn extensions_are_distinct() {
-		let exts = [
-			Codec::Json.extension(),
-			Codec::JsonLines.extension(),
-			Codec::MessagePack.extension(),
-			Codec::MessagePackFrames.extension(),
-		];
+		let exts = [Codec::Json.extension(), Codec::JsonLines.extension(), Codec::Postcard.extension(), Codec::PostcardFrames.extension()];
 		let unique: std::collections::HashSet<_> = exts.iter().collect();
 		assert_eq!(unique.len(), exts.len(), "extensions collide: {exts:?}");
 	}

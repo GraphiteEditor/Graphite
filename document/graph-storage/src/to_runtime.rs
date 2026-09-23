@@ -75,7 +75,7 @@ impl Registry {
 
 	/// Rebuild the runtime [`ResourceRegistry`](graphene_resource::ResourceRegistry) from the stored
 	/// `resources`. Each entry's source chain is restored in priority order (the chain is kept
-	/// sorted by key) with bodies decoded from their type-erased `serde_json::Value` form back to
+	/// sorted by key) with bodies decoded from their type-erased `Value` form back to
 	/// `DataSource`; the resolved hash, if any, is restored last. Inverse of `convert_resources` in
 	/// `from_runtime`.
 	pub fn to_resource_registry(&self) -> Result<graphene_resource::ResourceRegistry, ConversionError> {
@@ -83,7 +83,7 @@ impl Registry {
 
 		for (id, entry) in &self.resources {
 			for (_, source) in &entry.sources {
-				let decoded: graphene_resource::DataSource = serde_json::from_value(source.source.clone()).map_err(|error| ConversionError::DeserializationError(error.to_string()))?;
+				let decoded: graphene_resource::DataSource = serde_json::from_value(source.source.clone().into()).map_err(|error| ConversionError::DeserializationError(error.to_string()))?;
 				registry.push_source_back(id, decoded);
 			}
 			if let Some(hash) = entry.hash {
@@ -174,7 +174,7 @@ fn convert_network(
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
-		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id.0);
+		let local_id = node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0);
 		let runtime_id = RuntimeNodeId(local_id);
 
 		if let Some(collector) = node_collector.as_mut() {
@@ -232,7 +232,7 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 				});
 			};
 
-			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(storage_id.0);
+			let local_id = referenced.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(storage_id.0);
 			Ok((key, (RuntimeNodeId(local_id), ty)))
 		})
 		.collect()
@@ -271,7 +271,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
 	let to_runtime_id = |storage_id: NodeId| {
 		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
-		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|value| value.value.as_u64()).unwrap_or(storage_id.0);
+		let local_id = node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(storage_id.0);
 		Some(RuntimeNodeId(local_id))
 	};
 
@@ -294,7 +294,7 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
 	let input_data: HashMap<String, serde_json::Value> = attributes
 		.iter()
-		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
+		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone().into())))
 		.collect();
 
 	InputMetadataEntry {
@@ -346,14 +346,14 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 				});
 			}
 
-			let local_id = referenced.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(node_id.0);
+			let local_id = referenced.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(node_id.0);
 			GraphCraftNodeInput::Node {
 				node_id: RuntimeNodeId(local_id),
 				output_index: *output_index as usize,
 			}
 		}
 		NodeInput::Value { value, exposed } => {
-			let tagged_value: TaggedValue = serde_json::from_value(value.clone()).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
+			let tagged_value: TaggedValue = serde_json::from_value(value.clone().into()).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
 			GraphCraftNodeInput::Value {
 				tagged_value: MemoHash::new(tagged_value),
 				exposed: *exposed,

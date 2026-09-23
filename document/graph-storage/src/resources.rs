@@ -1,4 +1,4 @@
-use crate::{PeerId, TimeStamp};
+use crate::{PeerId, TimeStamp, Value};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -11,12 +11,12 @@ pub struct SourceKey {
 	pub peer: PeerId,
 }
 
-/// One entry in a resource's source chain. The `source` body is type-erased (`serde_json::Value`)
+/// One entry in a resource's source chain. The `source` body is type-erased (`Value`)
 /// so the on-disk `DataSource` shape can evolve through migrations without the storage layer
 /// committing to a Rust enum; `timestamp` drives LWW on re-setting this same entry.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SourceValue {
-	pub source: serde_json::Value,
+	pub source: Value,
 	pub timestamp: TimeStamp,
 }
 
@@ -66,7 +66,7 @@ impl ResourceEntry {
 	/// source entry and the resolved hash carry `timestamp` so later LWW writes order against it.
 	/// The bytes themselves are persisted separately by the caller's byte store.
 	pub fn embedded(hash: ResourceHash, peer: PeerId, timestamp: TimeStamp) -> Self {
-		let embedded = serde_json::to_value(graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
+		let embedded = Value::from(serde_json::to_value(graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes"));
 		let priority = Priority::new(0.).expect("0. is finite");
 		let sources = vec![(SourceKey { priority, peer }, SourceValue { source: embedded, timestamp })];
 
@@ -132,7 +132,7 @@ impl ResourceEntry {
 	pub fn has_embedded_source(&self) -> bool {
 		self.sources.iter().any(|(_, value)| {
 			matches!(
-				serde_json::from_value::<graphene_resource::DataSource>(value.source.clone()),
+				serde_json::from_value::<graphene_resource::DataSource>(value.source.clone().into()),
 				Ok(graphene_resource::DataSource::Embedded)
 			)
 		})
@@ -225,15 +225,15 @@ mod tests {
 	}
 
 	/// Deserialization routes through `Priority::new`, so a non-finite value on disk is rejected rather
-	/// than silently producing an unsound map key. MessagePack (the storage format) can carry a
+	/// than silently producing an unsound map key. Postcard (the storage format) can carry a
 	/// non-finite `f64`, unlike JSON, so this guards the real round-trip path.
 	#[test]
 	fn priority_deserialize_validates_finiteness() {
-		let finite = rmp_serde::to_vec(&3.5_f64).unwrap();
-		assert!(rmp_serde::from_slice::<Priority>(&finite).is_ok());
+		let finite = postcard::to_stdvec(&3.5_f64).unwrap();
+		assert!(postcard::from_bytes::<Priority>(&finite).is_ok());
 
-		let non_finite = rmp_serde::to_vec(&f64::INFINITY).unwrap();
-		assert!(rmp_serde::from_slice::<Priority>(&non_finite).is_err(), "a non-finite priority on disk must be rejected");
+		let non_finite = postcard::to_stdvec(&f64::INFINITY).unwrap();
+		assert!(postcard::from_bytes::<Priority>(&non_finite).is_err(), "a non-finite priority on disk must be rejected");
 	}
 
 	/// `ResourceEntry`'s accessors rely on `sources` being sorted by `SourceKey`. Deserializing an
@@ -248,7 +248,7 @@ mod tests {
 					peer: PeerId(1),
 				},
 				SourceValue {
-					source: serde_json::json!(priority),
+					source: Value::Float(priority),
 					timestamp: TimeStamp::ORIGIN,
 				},
 			)
@@ -278,7 +278,7 @@ mod tests {
 			(
 				key,
 				SourceValue {
-					source: serde_json::json!(body),
+					source: Value::Str(body.into()),
 					timestamp: TimeStamp { counter, peer: PeerId(1) },
 				},
 			)
@@ -292,6 +292,6 @@ mod tests {
 
 		let resource: ResourceEntry = serde_json::from_value(with_duplicates).expect("deserialize");
 		assert_eq!(resource.sources.len(), 1, "duplicate keys must collapse to one entry");
-		assert_eq!(resource.sources[0].1.source, serde_json::json!("newer"), "the higher-timestamp value must win");
+		assert_eq!(resource.sources[0].1.source, Value::Str("newer".into()), "the higher-timestamp value must win");
 	}
 }

@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use crate::{AttributesWrite, CrdtError, Delta, Rev, TimeStamp};
+use crate::{AttributesWrite, CrdtError, Delta, Rev, TimeStamp, Value};
 
 #[derive(Clone, Debug, Default)]
 pub struct History {
@@ -142,7 +142,7 @@ impl History {
 
 	/// Set a local annotation attribute (e.g. a commit message) on a retired delta in place. Excluded
 	/// from the delta's `Rev`, so identity and the index are unchanged. Returns whether the delta was found.
-	pub fn annotate(&mut self, rev: Rev, key: &str, value: serde_json::Value, timestamp: TimeStamp) -> bool {
+	pub fn annotate(&mut self, rev: Rev, key: &str, value: Value, timestamp: TimeStamp) -> bool {
 		match self.index.get(&rev) {
 			Some(&position) => {
 				self.deltas[position].attributes.set(key, value, timestamp);

@@ -1,5 +1,5 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
+	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp, Value,
 	apply_attribute_delta, reverse_attribute_delta,
 };
 
@@ -43,7 +43,7 @@ impl Document {
 	/// truncated; the counter is shared across peers and persisted with the document.
 	pub fn next_node_id(&mut self) -> NodeId {
 		self.next_node_counter += 1;
-		let bytes = rmp_serde::to_vec(&(self.peer, self.next_node_counter)).expect("(PeerId, counter) must serialize");
+		let bytes = postcard::to_stdvec(&(self.peer, self.next_node_counter)).expect("(PeerId, counter) must serialize");
 		let digest = blake3::hash(&bytes);
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
@@ -469,7 +469,7 @@ impl Document {
 				RegistryDelta::AddResource { id, entry: snapshot }
 			}
 			RegistryDelta::Merge { extra_parents } => RegistryDelta::Merge { extra_parents: extra_parents.clone() },
-			&RegistryDelta::Other(_) => RegistryDelta::Other(serde_json::Value::Null),
+			&RegistryDelta::Other(_) => RegistryDelta::Other(Value::None),
 		})
 	}
 }

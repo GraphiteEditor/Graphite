@@ -27,7 +27,7 @@ graphene-resource = { workspace = true }
 core-types = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-rmp-serde = { workspace = true }
+postcard = { workspace = true }
 futures = { workspace = true }
 thiserror = "2.0"
 log = { workspace = true }

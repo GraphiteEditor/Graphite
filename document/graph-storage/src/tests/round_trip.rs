@@ -530,7 +530,11 @@ fn resources_round_trip_through_from_runtime() {
 	assert_eq!(entry.sources.len(), 2, "both sources carried through");
 
 	// The chain iterates in priority order; decode bodies back to DataSource to compare.
-	let decoded: Vec<DataSource> = entry.sources.iter().map(|(_, v)| serde_json::from_value(v.source.clone()).expect("source body decodes")).collect();
+	let decoded: Vec<DataSource> = entry
+		.sources
+		.iter()
+		.map(|(_, v)| serde_json::from_value(v.source.clone().into()).expect("source body decodes"))
+		.collect();
 	assert_eq!(decoded, vec![DataSource::Embedded, DataSource::Url("https://example.com/img.png".parse().unwrap())]);
 
 	// All source keys carry the document peer.
@@ -609,10 +613,9 @@ fn unreferenced_runtime_resource_is_not_snapshotted() {
 	assert!(!registry.resources.contains_key(&orphan), "the unreferenced (orphan) resource must not be snapshotted");
 }
 
-/// A node-input `TaggedValue::Number` must survive the storage round-trip bit-exact. Inputs are stored as a
-/// self-describing `serde_json::Value` (encoded with the registry's MessagePack codec), so this guards
-/// against any precision loss in the f64 -> serde_json::Number -> f64 path for a value with a full
-/// 17-significant-digit mantissa.
+/// A node-input `TaggedValue::Number` must survive the storage round-trip bit-exact. Inputs are stored
+/// type-erased as a `Value`, so this guards against any precision loss in the f64 -> serde_json::Number
+/// -> Value -> f64 path for a value with a full 17-significant-digit mantissa.
 #[test]
 fn node_input_f64_round_trips_bit_exact() {
 	use graph_craft::document::value::TaggedValue;
@@ -659,7 +662,7 @@ fn duplicate_runtime_node_id_is_rejected() {
 
 	// Force both root-network nodes onto the same runtime ID.
 	for node in registry.node_instances.values_mut() {
-		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
+		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, crate::Value::Int(7), TimeStamp::ORIGIN);
 	}
 
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");

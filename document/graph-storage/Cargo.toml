@@ -22,7 +22,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 blake3 = { workspace = true }
 rustc-hash = { workspace = true }
-rmp-serde = { workspace = true }
+postcard = { workspace = true }
 
 [dev-dependencies]
 graph-craft = { workspace = true, features = ["loading"] }

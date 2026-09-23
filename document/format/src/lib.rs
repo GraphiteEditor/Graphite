@@ -48,15 +48,13 @@ pub type GddV1 = Gdd<GddV1Layout>;
 pub const MANIFEST_CODEC: Codec = Codec::Json;
 
 /// Working-copy codecs. The working copy lives in appdata, not under VCS — these defaults
-/// optimize for size and write cost. MessagePack is self-describing, so it round-trips the
-/// type-erased `serde_json::Value` bodies that resource and attribute deltas carry (a non-self-
-/// describing format like postcard cannot). JSON/JSONL is opt-in via `ExportFormat::Folder` for
-/// users who want a diffable on-disk representation. Recorded in the manifest at create time and
-/// read back on open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
+/// optimize for size and write cost. JSON/JSONL is opt-in via `ExportFormat::Folder` for users who
+/// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
+/// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
-pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::MessagePack;
-pub const DEFAULT_HISTORY_CODEC: Codec = Codec::MessagePackFrames;
-pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
+pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
+pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
+pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 
 /// Editor-facing handle. Owns the `Session` and the working-copy container; mutations are mirrored
 /// to disk continuously (every retirement appends to the history file and re-snapshots the registry).
