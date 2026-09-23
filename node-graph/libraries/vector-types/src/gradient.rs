@@ -463,6 +463,16 @@ fn color_from_space_channels<CS: color::ColorSpace>(channels: [f64; 4]) -> Color
 	Color::from_rgbaf32_unchecked(red, green, blue, channels[3] as f32)
 }
 
+/// A color's channels in the selected gradient color space, alongside its straight alpha.
+pub(crate) fn gradient_space_channels(color: Color, space: GradientSpace) -> [f32; 4] {
+	with_space!(space, space_channels, color).map(|channel| channel as f32)
+}
+
+/// Converts selected gradient color-space channels and straight alpha back into `Color`.
+pub(crate) fn color_from_gradient_space_channels(channels: [f32; 4], space: GradientSpace) -> Color {
+	with_space!(space, color_from_space_channels, channels.map(|channel| channel as f64))
+}
+
 /// The channel carrying hue in a polar space, or `None` for a rectangular one.
 fn space_hue_index<CS: color::ColorSpace>() -> Option<usize> {
 	match CS::LAYOUT {
