@@ -40,6 +40,7 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 	let hot_op = HotOp {
 		op: remove_node_op(NodeId(99)),
 		timestamp: observed,
+		sequence: 1,
 	};
 
 	document.apply_hot_op(hot_op).expect("RemoveNode on absent node is a no-op, not an error");
@@ -182,15 +183,39 @@ fn merge_converges_to_identical_history() {
 	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
 	let deltas_a = session_a.cloned_deltas();
 	let deltas_b = session_b.cloned_deltas();
-	let merge_a = session_a.merge(deltas_b).expect("merge into A failed").expect("A produced a merge");
-	let merge_b = session_b.merge(deltas_a).expect("merge into B failed").expect("B produced a merge");
+	let merge_a = session_a.merge(deltas_b).expect("merge into A failed");
+	let merge_b = session_b.merge(deltas_a).expect("merge into B failed");
 
+	assert!(matches!(merge_a, crate::MergeOutcome::Merged(_)), "divergent branches must produce a merge delta");
 	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
 
 	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
 	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
 	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
 	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
+}
+
+/// A peer whose history is a prefix of the incoming one moves its head forward without minting a
+/// merge delta, and the negotiated transfer sends only the deltas past the sampled known revs.
+#[test]
+fn merge_fast_forwards_a_prefix_history() {
+	let mut session_a = Session::with_peer(PeerId(1));
+	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
+	let mut session_b = session_a.clone();
+
+	for value in 1..=5 {
+		session_b.commit_op_for_test(set_document_attribute("compute::b", value)).expect("B edit");
+	}
+
+	let known = session_a.known_revs();
+	let missing: Vec<_> = session_b.deltas_unknown_to(known).into_iter().cloned().collect();
+	assert_eq!(missing.len(), 5, "only B's new commits are unknown to A");
+
+	let outcome = session_a.merge(missing).expect("merge failed");
+	assert_eq!(outcome, crate::MergeOutcome::FastForward(session_b.head_rev().unwrap()));
+	assert_eq!(session_a.history().count(), session_b.history().count(), "no merge delta was added");
+
+	assert_eq!(session_b.merge(session_a.cloned_deltas()).expect("merge failed"), crate::MergeOutcome::NoOp);
 }
 
 /// Resurrection must reach into a merged-in branch: a network added then removed on the other peer's
@@ -879,4 +904,191 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	);
 
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
+}
+
+/// Commit a retired delta and mirror it onto the working registry, which sits at
+/// `retired_snapshot + hot tail`. `commit_op_for_test` alone only advances the snapshot zone.
+fn commit_retired(session: &mut Session, op: RegistryDelta) {
+	let before = session.history().count();
+	session.commit_op_for_test(op).expect("commit failed");
+
+	for delta in session.cloned_deltas().into_iter().skip(before) {
+		session.document.apply_op_idempotent(delta.kind, delta.timestamp).expect("mirroring onto the working registry");
+	}
+}
+
+/// Merge `deltas` into a copy of `base` in the given order and report whether node 7 survived,
+/// with the stamp on its `tint` attribute.
+fn merge_order_outcome(base: &Session, deltas: &[Delta], order: [usize; 2]) -> Option<(serde_json::Value, TimeStamp)> {
+	let mut session = base.clone();
+	let ordered: Vec<Delta> = order.iter().map(|&index| deltas[index].clone()).collect();
+	session.merge(ordered).expect("merge failed");
+
+	session
+		.retired_registry()
+		.node_instances
+		.get(&NodeId(7))
+		.and_then(|node| node.attributes.get("tint"))
+		.map(|value| (value.value.clone(), value.timestamp))
+}
+
+/// Retired deltas reach the registries in arrival order while only `history` is canonically sorted,
+/// so concurrent deltas must commute. A remove concurrent with an attribute change does not: taken
+/// change-first the node is gone, taken remove-first it is resurrected from the removal's snapshot.
+#[test]
+fn a_concurrent_remove_and_attribute_change_commute() {
+	let network_id = NetworkId(5);
+	let node = Node::new(network_id, crate::Implementation::Network(network_id), 0);
+
+	// Shared base holding node 7, then the two peers diverge.
+	let mut base = Session::with_peer(PeerId(1));
+	commit_retired(
+		&mut base,
+		RegistryDelta::AddNetwork {
+			id: network_id,
+			network: Network::default(),
+		},
+	);
+	commit_retired(&mut base, RegistryDelta::AddNode { id: NodeId(7), node: node.clone() });
+
+	let mut remover = base.clone();
+	commit_retired(&mut remover, RegistryDelta::RemoveNode { id: NodeId(7), snapshot: node });
+
+	let mut changer = Session::with_peer(PeerId(2));
+	changer.merge(base.cloned_deltas()).expect("changer adopts the base");
+	commit_retired(
+		&mut changer,
+		RegistryDelta::ChangeNodeAttribute {
+			id: NodeId(7),
+			delta: crate::AttributeDelta {
+				key: "tint".to_string(),
+				value: Some(serde_json::json!(75)),
+			},
+		},
+	);
+
+	// One delta from each branch, neither an ancestor of the other.
+	let removal = remover.cloned_deltas().into_iter().last().expect("removal delta");
+	let change = changer.cloned_deltas().into_iter().last().expect("change delta");
+	let deltas = [removal, change];
+
+	let removal_first = merge_order_outcome(&base, &deltas, [0, 1]);
+	let change_first = merge_order_outcome(&base, &deltas, [1, 0]);
+
+	assert_eq!(removal_first, change_first, "the retired registry must not depend on delta arrival order");
+}
+
+/// A hot op can retire before an earlier one from the same author has arrived, so the marks cover it
+/// out of order. The prefix absorbs it once the gap fills, which is what bounds the exception set.
+#[test]
+fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
+	let author = PeerId(1);
+	let id = |sequence| crate::HotOpId { peer: author, sequence };
+
+	let mut marks = crate::RetiredMarks::default();
+	marks.extend([id(1), id(2)]);
+	assert_eq!(marks.through.get(&author), Some(&2), "a contiguous run folds straight into the prefix");
+	assert!(marks.above.is_empty());
+
+	// Sequence 3 never arrived, so 4 retires above the prefix rather than extending it.
+	marks.extend([id(4)]);
+	assert_eq!(marks.through.get(&author), Some(&2));
+	assert!(marks.covers(id(4)), "an op past the gap is still recognized as retired");
+	assert!(!marks.covers(id(3)), "the missing op is not claimed");
+
+	// The gap fills, so the prefix swallows both it and the exception behind it.
+	marks.extend([id(3)]);
+	assert_eq!(marks.through.get(&author), Some(&4));
+	assert!(marks.above.is_empty(), "the exception set empties once the prefix reaches it");
+}
+
+/// Marks merge by union, and a peer adopting another's wholesale must not lose its own coverage.
+#[test]
+fn absorbing_marks_keeps_both_sides_coverage() {
+	let author = PeerId(1);
+	let id = |sequence| crate::HotOpId { peer: author, sequence };
+
+	let mut local = crate::RetiredMarks::default();
+	local.extend([id(1), id(4)]);
+
+	let mut remote = crate::RetiredMarks::default();
+	remote.extend([id(1), id(2), id(3), id(5)]);
+
+	local.absorb(&remote);
+
+	// The union is 1..=5 contiguous, so it all collapses into the prefix.
+	assert_eq!(local.through.get(&author), Some(&5));
+	assert!(local.above.is_empty());
+	for sequence in 1..=5 {
+		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
+	}
+}
+
+/// Undo rewinds retired history, so it must leave the hot tail alone: the retired snapshot is the
+/// state history alone produces, and copying the working registry onto it promotes live work nobody
+/// has retired. Hot ops exist between staging and retirement even with no peers.
+#[test]
+fn undo_does_not_promote_hot_ops_into_the_retired_snapshot() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	// Two retired interactions, so the second is undoable.
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	// Unretired live work sitting on top, on a key no retired delta touches.
+	session.stage_ops([set_document_attribute("hot", 3)]).expect("stage");
+	assert!(session.registry().attributes.contains_key("hot"), "the hot op must be in the working registry");
+	assert!(!session.retired_registry().attributes.contains_key("hot"), "and must not be in the snapshot");
+
+	session.undo().expect("undo");
+
+	assert!(!session.retired_registry().attributes.contains_key("second"), "undo must rewind the retired snapshot");
+	assert!(
+		!session.retired_registry().attributes.contains_key("hot"),
+		"undo promoted an unretired hot op into the retired snapshot"
+	);
+}
+
+/// Redo puts the interaction back on both zones, so the pair stays `snapshot + hot tail` rather than
+/// drifting apart in the other direction.
+#[test]
+fn redo_restores_the_retired_snapshot_without_the_hot_tail() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	session.stage_ops([set_document_attribute("hot", 3)]).expect("stage");
+	session.undo().expect("undo");
+	session.redo().expect("redo");
+
+	assert!(session.retired_registry().attributes.contains_key("second"), "redo must restore the retired delta");
+	assert!(
+		!session.retired_registry().attributes.contains_key("hot"),
+		"redo promoted an unretired hot op into the retired snapshot"
+	);
+	assert!(session.registry().attributes.contains_key("hot"), "the hot op must survive an undo/redo round trip");
+}
+
+/// Silent undo rewrites the local registries without emitting anything, so it is only legal while a
+/// commit is still unpublished. Once peers hold it, a rewind would diverge from them for good.
+#[test]
+fn publishing_a_commit_disables_silent_undo() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	let head = session.head_rev().expect("a head");
+	assert!(session.can_undo(), "an unpublished interaction is undoable");
+
+	session.publish_up_to(head);
+
+	assert!(!session.can_undo(), "a published interaction must not be silently rewound");
 }

@@ -47,6 +47,27 @@ impl Node {
 		attributes_value_equal(&self.attributes, &other.attributes)
 	}
 
+	/// A node in `network` whose `inputs` slots are unset, for a caller that fills them in with
+	/// `ChangeNodeInput`. The slot count is fixed at creation, since changing an input addresses a
+	/// slot by position.
+	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
+		let slot = InputSlot {
+			input: NodeInput::Value {
+				value: serde_json::Value::Null,
+				exposed: false,
+			},
+			timestamp: TimeStamp::ORIGIN,
+			attributes: Attributes::new(),
+		};
+
+		Self {
+			implementation,
+			inputs: vec![slot; inputs],
+			attributes: Attributes::new(),
+			network,
+		}
+	}
+
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
 		Self {

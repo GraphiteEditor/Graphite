@@ -128,6 +128,7 @@ fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: 1,
 		};
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 
@@ -154,6 +155,7 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: 1,
 		};
 		let late = HotOp {
 			op: RegistryDelta::AddNetwork {
@@ -161,6 +163,7 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 10, peer: PeerId(5) },
+			sequence: 2,
 		};
 		gdd.apply_hot_op(early).unwrap();
 		gdd.apply_hot_op(late).unwrap();
@@ -200,6 +203,7 @@ fn last_broadcast_rev_persists_across_reopen() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: 1,
 		};
 		gdd.apply_hot_op(op).unwrap();
 		let retired = gdd.retire(TimeStamp { counter: 1, peer: PeerId(5) }).unwrap_or_else(|error| panic!("retire failed: {error:?}"));
@@ -655,6 +659,7 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: 1,
 		};
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 
