@@ -72,24 +72,16 @@ impl Document {
 		self.revert_delta(target, delta)
 	}
 
-	/// Search every delta reachable from `head` or any history tip (following all parents, including a
-	/// merge's `extra_parents`) for the first matching `predicate`, breadth-first. Tips cover deltas
+	/// The last delta in canonical history order matching `predicate`, among those reachable from `head`
+	/// or any history tip (following all parents, including a merge's `extra_parents`). Tips cover deltas
 	/// absorbed mid-merge that `head` doesn't reach yet.
+	///
+	/// Resurrection reads the removed entity out of the match, so every peer has to pick the same one.
+	/// Canonical order is agreed; a walk from `head` is not, since peers sit on different merge revs.
 	fn find_in_ancestry(&self, predicate: impl Fn(&Delta) -> bool) -> Option<Delta> {
-		let mut queue: std::collections::VecDeque<Rev> = self.head.into_iter().chain(self.history.tips()).collect();
-		let mut seen: std::collections::HashSet<Rev> = queue.iter().copied().collect();
-		while let Some(rev) = queue.pop_front() {
-			let Some(delta) = self.history.get(rev) else { continue };
-			if predicate(delta) {
-				return Some(delta.clone());
-			}
-			for parent in delta.all_parents() {
-				if seen.insert(parent) {
-					queue.push_back(parent);
-				}
-			}
-		}
-		None
+		let reachable = self.history.ancestors(self.head.into_iter().chain(self.history.tips()));
+
+		self.history.iter().filter(|delta| reachable.contains(&delta.id) && predicate(delta)).last().cloned()
 	}
 
 	/// Apply a delta's `reverse` as the new forward op (silent-zone undo). Force-applied: structural
@@ -369,8 +361,6 @@ impl Document {
 		}
 	}
 
-	/// A concurrent edit to a removed network revives it. The removal is searched for in the hot log
-	/// first, where a broadcast removal sits until the host retires it, then in retired history.
 	/// The most recent hot removal of a network, for reviving it in the working zone. Returns `None`
 	/// for the snapshot, which must stay a function of history alone.
 	fn hot_log_removal(&self, target: RegistryTarget, network_id: NetworkId) -> Option<(RegistryDelta, TimeStamp)> {
