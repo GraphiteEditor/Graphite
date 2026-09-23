@@ -97,6 +97,7 @@ macro_rules! tagged_value {
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			GradientRamp(GradientRamp),
 			Strokes(Vec<Stroke>),
+			#[serde(alias = "NodeCache", alias = "FootprintCache")]
 			BrushCache(BrushCache),
 			// =======================
 			// AUTO-GENERATED VARIANTS

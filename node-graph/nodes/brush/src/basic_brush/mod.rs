@@ -6,13 +6,14 @@ mod region;
 mod render;
 mod stroke;
 
-use brush_types::BrushCache;
 use core_types::list::{ATTR_COLOR, ATTR_DIAMETER, ATTR_FLOW, ATTR_HARDNESS, Item, List};
 use core_types::{ATTR_TRANSFORM, Ctx, ExtractFootprint};
 use graphic_types::Graphic;
 use pipeline::{BasicBrushPipeline, BasicBrushPipelineArgs};
 use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
+
+use crate::BrushCache;
 
 #[node_macro::node(category("Raster: Brush"))]
 pub async fn basic_brush<'a: 'n>(

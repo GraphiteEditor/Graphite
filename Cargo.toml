@@ -108,6 +108,7 @@ graphite-proc-macros = { path = "proc-macros" }
 graphite-editor = { path = "editor" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
 ipsum = { path = "libraries/ipsum" }
+graphene-cache = { path = "node-graph/libraries/graphene-cache" }
 
 # Workspace dependencies
 rustc-hash = "2.0"
