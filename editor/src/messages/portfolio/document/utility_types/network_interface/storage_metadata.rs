@@ -285,25 +285,24 @@ pub fn apply_network_view_settings(
 ) {
 	for (network_path, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
-		let Some(network_metadata) = interface.network_metadata_mut(network_path) else {
+		let Some(navigation) = interface.navigation_mut(network_path) else {
 			continue;
 		};
-		let persistent = &mut network_metadata.persistent_metadata;
 
 		if let Some(value) = settings.get(session::network::NAV_PTZ)
 			&& let Ok(ptz) = serde_json::from_value::<PTZ>(value.clone())
 		{
-			persistent.navigation_metadata.node_graph_ptz = ptz;
+			navigation.node_graph_ptz = ptz;
 		}
 		if let Some(value) = settings.get(session::network::NAV_TRANSFORM)
 			&& let Ok(transform) = serde_json::from_value(value.clone())
 		{
-			persistent.navigation_metadata.node_graph_to_viewport = transform;
+			navigation.node_graph_to_viewport = transform;
 		}
 		if let Some(value) = settings.get(session::network::NAV_WIDTH)
 			&& let Ok(width) = serde_json::from_value(value.clone())
 		{
-			persistent.navigation_metadata.node_graph_width = width;
+			navigation.node_graph_width = width;
 		}
 	}
 }

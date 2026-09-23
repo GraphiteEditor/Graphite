@@ -659,13 +659,27 @@ impl NodeNetwork {
 
 	/// Check there are no cycles in the graph (this should never happen).
 	pub fn is_acyclic(&self) -> bool {
+		self.is_acyclic_with(None)
+	}
+
+	/// Whether the network is acyclic, optionally answering for one input replaced by a proposed value
+	/// rather than for the inputs as they stand, so a write can be tested without being performed.
+	///
+	/// `replaced` names the node, the input index, and what would be written there.
+	pub fn is_acyclic_with(&self, replaced: Option<(NodeId, usize, &NodeInput)>) -> bool {
+		let dependency = |input: &NodeInput| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None };
+
 		let mut dependencies: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
 		for (node_id, node) in &self.nodes {
 			dependencies.insert(
 				*node_id,
 				node.inputs
 					.iter()
-					.filter_map(|input| if let NodeInput::Node { node_id, .. } = input { Some(*node_id) } else { None })
+					.enumerate()
+					.filter_map(|(index, input)| match replaced {
+						Some((replaced_node, replaced_index, proposed)) if replaced_node == *node_id && replaced_index == index => dependency(proposed),
+						_ => dependency(input),
+					})
 					.collect(),
 			);
 		}

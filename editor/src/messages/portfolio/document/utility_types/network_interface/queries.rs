@@ -908,10 +908,6 @@ impl NodeNetworkInterface {
 
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
-	pub(super) fn network_graph_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
-		self.document_network_mut().nested_network_mut(network_path)
-	}
-
 	/// Mutably get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
 	pub(super) fn encapsulating_network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
 		let mut encapsulating_path = network_path.to_vec();

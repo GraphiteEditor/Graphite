@@ -562,6 +562,20 @@ impl NodeNetworkInterface {
 		})
 	}
 
+	/// The graph of the network at `network_path`. Private: every write to it is one of the primitives
+	/// below, which is what keeps a change from going unrecorded.
+	fn network_graph_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
+		self.document_network_mut().nested_network_mut(network_path)
+	}
+
+	/// Rewrites the whole graph in place, for a document arriving in an older shape than the current one.
+	///
+	/// Nothing is recorded: a migration produces the document the peer should have had rather than
+	/// changing the one they have. Not a route for editing, which goes through the writes below.
+	pub(super) fn migrate_graph(&mut self, migrate: impl FnOnce(&mut NodeNetwork)) {
+		migrate(self.document_network_mut());
+	}
+
 	/// Where the node graph is panned and zoomed to.
 	///
 	/// Per-peer view state like the selection: it rides in the persistent tree but is persisted to
@@ -572,7 +586,7 @@ impl NodeNetworkInterface {
 
 	/// The root of the graph tree. The only `&mut` to it in the codebase, since `Guarded` withholds one
 	/// everywhere else.
-	pub(super) fn document_network_mut(&mut self) -> &mut NodeNetwork {
+	fn document_network_mut(&mut self) -> &mut NodeNetwork {
 		self.network.get_mut().network_mut()
 	}
 

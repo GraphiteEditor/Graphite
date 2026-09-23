@@ -114,12 +114,12 @@ impl PartialEq for NodeNetworkInterface {
 impl NodeNetworkInterface {
 	/// Normalizes the stored types of every node at every nesting level, for an older document whose stored types predate the current form.
 	pub fn normalize_stored_types(&mut self) {
-		self.document_network_mut().normalize_stored_types();
+		self.migrate_graph(NodeNetwork::normalize_stored_types);
 	}
 
 	/// Add DocumentNodePath input to the PathModifyNode protonode
 	pub fn migrate_path_modify_node(&mut self) {
-		fix_network(self.document_network_mut());
+		self.migrate_graph(fix_network);
 		fn fix_network(network: &mut NodeNetwork) {
 			for node in network.nodes.values_mut() {
 				if let Some(network) = node.implementation.get_network_mut() {
@@ -161,11 +161,11 @@ mod network_interface_tests {
 				content: ClipboardContentRaw::Text(clipboard),
 			})
 			.await;
-		let nodes = &mut editor.active_document_mut().network_interface.network_graph_mut(&[]).unwrap().nodes;
-		let orignal = nodes.remove(&rectangle).expect("original node should exist");
+		let nodes = &editor.active_document().network_interface.document_network().nodes;
+		let original = nodes.get(&rectangle).expect("original node should exist");
 		assert!(
-			nodes.values().any(|other| *other == orignal),
-			"duplicated node should exist\nother nodes: {nodes:#?}\norignal {orignal:#?}"
+			nodes.iter().any(|(node_id, other)| *node_id != rectangle && other == original),
+			"duplicated node should exist\nother nodes: {nodes:#?}\noriginal {original:#?}"
 		);
 	}
 }

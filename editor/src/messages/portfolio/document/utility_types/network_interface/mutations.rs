@@ -628,36 +628,27 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Whether writing `new_input` at `input_connector` would leave the network cyclic, answered by
-	/// swapping the input in, testing, and swapping it back so the caller still sees the network it had.
-	/// An input that cannot be reached reports `true`, so the caller abandons the write.
-	fn would_create_cycle(&mut self, input_connector: &InputConnector, new_input: &NodeInput, network_path: &[NodeId]) -> bool {
-		fn slot<'a>(network: &'a mut NodeNetwork, input_connector: &InputConnector) -> Option<&'a mut NodeInput> {
-			match input_connector {
-				InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
-				InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
-			}
-		}
+	/// Whether writing `new_input` at `input_connector` would leave the network cyclic.
+	///
+	/// Asked of the network as it stands, with the proposed input substituted only while the question is
+	/// answered, so nothing is written and nothing is recorded. An input that is not there reports
+	/// `true`, so the caller abandons a write that would fail anyway.
+	///
+	/// Writing an export can never close a cycle: the dependency graph is built from what nodes take as
+	/// input, and an export is not something a node can take.
+	fn would_create_cycle(&self, input_connector: &InputConnector, new_input: &NodeInput, network_path: &[NodeId]) -> bool {
+		let InputConnector::Node { node_id, input_index } = input_connector else { return false };
 
-		let Some(network) = self.network_graph_mut(network_path) else {
+		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in would_create_cycle");
 			return true;
 		};
-		let Some(tested_slot) = slot(network, input_connector) else {
+		if self.input_from_connector(input_connector, network_path).is_none() {
 			log::error!("Could not get input in would_create_cycle");
 			return true;
-		};
+		}
 
-		let old_input = std::mem::replace(tested_slot, new_input.clone());
-		let is_acyclic = network.is_acyclic();
-
-		let Some(restored_slot) = slot(network, input_connector) else {
-			log::error!("Could not restore input in would_create_cycle");
-			return true;
-		};
-		*restored_slot = old_input;
-
-		!is_acyclic
+		!network.is_acyclic_with(Some((*node_id, *input_index, new_input)))
 	}
 
 	/// Rebuilds the layer tree when a change to the document network could have moved a layer within it:
