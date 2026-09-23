@@ -2027,13 +2027,29 @@ impl DocumentMessageHandler {
 		self.history.retire_storage_interaction();
 	}
 
-	/// Stages the runtime network into the `Gdd` working copy.
+	/// Stages what the store recorded since the last commit into the `Gdd` working copy.
+	///
+	/// The batch boundary: everything the interface recorded since the last one is this commit's batch.
+	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
+	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
-
+		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;
 		}
+
+		let (view_settings, legacy_document) = self.storage_side_channels();
+		self.history
+			.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
+
+		if validate {
+			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// The per-peer view settings and legacy bytes that ride along with either kind of staging.
+	fn storage_side_channels(&self) -> (std::collections::BTreeMap<String, serde_json::Value>, String) {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
 		let view_settings = DocumentSettings {
 			document_ptz: &self.document_ptz,
@@ -2045,14 +2061,7 @@ impl DocumentMessageHandler {
 		}
 		.to_view_map();
 
-		let legacy_document = self.serialize_document();
-
-		self.history
-			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
-
-		if validate {
-			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
-		}
+		(view_settings, self.serialize_document())
 	}
 
 	/// Restore `view_settings` map into the document.
@@ -4106,10 +4115,11 @@ mod document_message_handler_tests {
 		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
 			let document = editor.active_document();
 			for layer in document.metadata().all_layers() {
-				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
-						return Some(layer);
-					}
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer)
+					&& (bbox[0].x - min_x).abs() < 1.
+					&& (bbox[0].y - min_y).abs() < 1.
+				{
+					return Some(layer);
 				}
 			}
 			None
@@ -4166,7 +4176,6 @@ mod document_message_handler_tests {
 		// The operation completed without crashing
 		// Verifying application still functions by performing another operation
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		assert!(true, "Application didn't crash after folder move operation");
 	}
 
 	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.

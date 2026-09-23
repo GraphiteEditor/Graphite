@@ -44,10 +44,10 @@ impl<'a> DesktopWrapperMessageDispatcher<'a> {
 
 	pub(super) fn poll_node_graph_evaluation(&mut self) {
 		let mut responses = VecDeque::new();
-		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut responses) {
-			if e != "No active document" {
-				tracing::error!("Error poling node graph: {}", e);
-			}
+		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut responses)
+			&& e != "No active document"
+		{
+			tracing::error!("Error poling node graph: {}", e);
 		}
 		while let Some(message) = responses.pop_front() {
 			self.queue_editor_message(message);

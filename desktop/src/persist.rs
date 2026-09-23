@@ -71,10 +71,11 @@ fn garbage_collect_document_files(state: &PersistedState) {
 
 	for entry in entries.flatten() {
 		let path = entry.path();
-		if path.is_file() && !valid_paths.contains(&path) {
-			if let Err(e) = std::fs::remove_file(&path) {
-				tracing::error!("Failed to remove orphaned document file {path:?}: {e}");
-			}
+		if path.is_file()
+			&& !valid_paths.contains(&path)
+			&& let Err(e) = std::fs::remove_file(&path)
+		{
+			tracing::error!("Failed to remove orphaned document file {path:?}: {e}");
 		}
 	}
 }

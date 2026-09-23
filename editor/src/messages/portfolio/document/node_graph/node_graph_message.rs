@@ -60,7 +60,6 @@ pub enum NodeGraphMessage {
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
-	DisconnectRootNode,
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {

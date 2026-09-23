@@ -13,10 +13,9 @@ use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
-use super::memo_network::MemoNetwork;
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
+	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ,
 };
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
@@ -65,16 +64,7 @@ impl StorageMetadataView<'_> {
 
 impl NodeMetadataSource for StorageMetadataView<'_> {
 	fn position(&self, network_path: &[NodeId], local_id: NodeId) -> Option<Position> {
-		match &self.persistent(network_path, local_id)?.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer) => match layer.position {
-				LayerPosition::Absolute(v) => Some(Position::Absolute([v.x, v.y])),
-				LayerPosition::Stack(offset) => Some(Position::Stack(offset)),
-			},
-			NodeTypePersistentMetadata::Node(node) => match *node.position() {
-				NodePosition::Absolute(v) => Some(Position::Absolute([v.x, v.y])),
-				NodePosition::Chain => Some(Position::Chain),
-			},
-		}
+		Some(position_from_runtime(&self.persistent(network_path, local_id)?.node_type_metadata))
 	}
 
 	fn is_layer(&self, network_path: &[NodeId], local_id: NodeId) -> bool {
@@ -114,9 +104,20 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.persistent(network_path, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
 	}
 
+	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
+		self.persistent(network_path, local_id)?.storage_id.map(document_graph_storage::NodeId)
+	}
 	fn reference(&self, network_path: &[NodeId]) -> Option<&str> {
 		let network_metadata = self.interface.network_metadata.nested_metadata(network_path)?;
 		network_metadata.persistent_metadata.reference.as_deref()
+	}
+
+	fn pinned_order(&self, network_path: &[NodeId]) -> Vec<NodeId> {
+		self.interface
+			.network_metadata
+			.nested_metadata(network_path)
+			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
+			.unwrap_or_default()
 	}
 }
 
@@ -146,6 +147,20 @@ impl DocumentSettings<'_> {
 	}
 }
 
+/// The stored position of a node, which pairs with `is_layer` to reconstruct the runtime node type.
+pub fn position_from_runtime(node_type: &NodeTypePersistentMetadata) -> Position {
+	match node_type {
+		NodeTypePersistentMetadata::Layer(layer) => match layer.position {
+			LayerPosition::Absolute(v) => Position::Absolute([v.x, v.y]),
+			LayerPosition::Stack(offset) => Position::Stack(offset),
+		},
+		NodeTypePersistentMetadata::Node(node) => match *node.position() {
+			NodePosition::Absolute(v) => Position::Absolute([v.x, v.y]),
+			NodePosition::Chain => Position::Chain,
+		},
+	}
+}
+
 /// Inverse of the position extraction in `NodeMetadataSource::position`.
 /// `(Stack, !is_layer)` and `(Chain, is_layer)` shouldn't arise from a faithful round-trip; they fall back to a default of the matching variant.
 pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersistentMetadata {
@@ -164,21 +179,13 @@ pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersis
 }
 
 /// Builds a `NodeNetworkInterface` from a `NodeNetwork` plus the metadata vecs `Registry::to_runtime_with_full_metadata` emits.
-///
-/// Sets private fields directly (rather than via public setters) because we're constructing a fresh self-consistent snapshot;
-/// the setters' transient-cache invalidation isn't needed.
 pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<NodeMetadataEntry>, network_entries: Vec<NetworkMetadataEntry>) -> Result<NodeNetworkInterface, InterfaceRebuildError> {
 	let mut network_metadata = NodeNetworkMetadata::default();
 	seed_metadata_tree(&network, &mut network_metadata);
 	apply_entries_into_tree(&network, &mut network_metadata, node_entries)?;
 	apply_network_entries_into_tree(&mut network_metadata, network_entries);
 
-	let interface = NodeNetworkInterface {
-		network: MemoNetwork::new(network),
-		network_metadata,
-		..Default::default()
-	};
-	Ok(interface)
+	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
 
 /// Build the runtime-`network_path` -> stable-`NetworkId` map from the `NetworkMetadataEntry`s that
@@ -223,13 +230,6 @@ pub fn collect_network_view_settings(
 			settings.insert(session::network::NAV_WIDTH.to_string(), value);
 		}
 
-		// Skip the inert `Previewing::No` default so a network that has never been previewed stays empty.
-		if !matches!(network_metadata.persistent_metadata.previewing, Previewing::No)
-			&& let Ok(value) = serde_json::to_value(network_metadata.persistent_metadata.previewing)
-		{
-			settings.insert(session::network::PREVIEWING.to_string(), value);
-		}
-
 		if !settings.is_empty() {
 			out.insert(network_id, settings);
 		}
@@ -249,30 +249,24 @@ pub fn apply_network_view_settings(
 ) {
 	for (network_path, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
-		let Some(network_metadata) = interface.network_metadata.nested_metadata_mut(network_path) else {
+		let Some(navigation) = interface.navigation_mut(network_path) else {
 			continue;
 		};
-		let persistent = &mut network_metadata.persistent_metadata;
 
 		if let Some(value) = settings.get(session::network::NAV_PTZ)
 			&& let Ok(ptz) = serde_json::from_value::<PTZ>(value.clone())
 		{
-			persistent.navigation_metadata.node_graph_ptz = ptz;
+			navigation.node_graph_ptz = ptz;
 		}
 		if let Some(value) = settings.get(session::network::NAV_TRANSFORM)
 			&& let Ok(transform) = serde_json::from_value(value.clone())
 		{
-			persistent.navigation_metadata.node_graph_to_viewport = transform;
+			navigation.node_graph_to_viewport = transform;
 		}
 		if let Some(value) = settings.get(session::network::NAV_WIDTH)
 			&& let Ok(width) = serde_json::from_value(value.clone())
 		{
-			persistent.navigation_metadata.node_graph_width = width;
-		}
-		if let Some(value) = settings.get(session::network::PREVIEWING)
-			&& let Ok(previewing) = serde_json::from_value::<Previewing>(value.clone())
-		{
-			persistent.previewing = previewing;
+			navigation.node_graph_width = width;
 		}
 	}
 }
@@ -288,6 +282,7 @@ fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: 
 		if let Some(reference) = entry.reference {
 			network_metadata.persistent_metadata.reference = Some(reference);
 		}
+		network_metadata.persistent_metadata.pinned_node_order = entry.pinned_order;
 	}
 }
 
@@ -328,6 +323,10 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			};
 
 			let persistent = &mut document_node_metadata.persistent_metadata;
+
+			// Pins the node to the identity storage holds for it, so the next conversion reuses it rather
+			// than re-deriving one from the node's location.
+			persistent.storage_id = Some(entry.storage_id.0);
 
 			if let Some(position) = entry.position {
 				persistent.node_type_metadata = position_to_runtime(position, entry.is_layer);

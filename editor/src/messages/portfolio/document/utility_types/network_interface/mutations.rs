@@ -2,63 +2,33 @@ use super::*;
 
 // Public mutable methods
 impl NodeNetworkInterface {
-	/// Walk every network at every nesting level, invoking `visit` with each network's path and a mutable
-	/// reference to its metadata. Only nodes that contain a nested network are recursed into.
-	fn for_each_network_metadata_mut(&mut self, mut visit: impl FnMut(&[NodeId], &mut NodeNetworkMetadata)) {
-		let mut stack = vec![vec![]];
-		while let Some(path) = stack.pop() {
-			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
-				continue;
-			};
-
-			visit(&path, self_network_metadata);
-
-			// Only nodes that contain a nested network have metadata to recurse into, so skip leaf nodes.
-			stack.extend(
-				self_network_metadata
-					.persistent_metadata
-					.node_metadata
-					.iter()
-					.filter(|(_, node_metadata)| node_metadata.persistent_metadata.network_metadata.is_some())
-					.map(|(node_id, _)| {
-						let mut current_path: Vec<NodeId> = path.clone();
-						current_path.push(*node_id);
-						current_path
-					}),
-			);
-		}
-	}
-
 	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
-		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+		self.for_each_network_view_state_mut(|path, view| {
 			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
-				self_network_metadata.persistent_metadata.navigation_metadata = other_network_metadata.persistent_metadata.navigation_metadata.clone();
+				*view.navigation = other_network_metadata.persistent_metadata.navigation_metadata.clone();
 			}
 		});
 	}
 
 	/// Copy all transient view and selection state from `other_interface` onto `self` at every nesting level:
 	/// navigation metadata (pan/zoom), selection undo/redo history, and the document-to-viewport camera. Lets
-	/// an interface rebuilt from storage keep the user's current view rather than reset it. `resolved_types`
-	/// is a separate runtime cache the caller handles.
+	/// an interface rebuilt from storage keep the user's current view rather than reset it.
 	pub fn copy_all_transient_view_state(&mut self, other_interface: &NodeNetworkInterface) {
-		self.for_each_network_metadata_mut(|path, self_network_metadata| {
+		self.for_each_network_view_state_mut(|path, view| {
 			if let Some(other_network_metadata) = other_interface.network_metadata(path) {
-				let self_persistent = &mut self_network_metadata.persistent_metadata;
 				let other_persistent = &other_network_metadata.persistent_metadata;
-				self_persistent.navigation_metadata = other_persistent.navigation_metadata.clone();
+				*view.navigation = other_persistent.navigation_metadata.clone();
 
-				// The live preview root may name a node that the rebuilt-from-storage network no longer contains
-				// (e.g. after a storage undo), so only carry it over when the root still exists; otherwise drop it.
-				self_persistent.previewing = match other_persistent.previewing {
-					Previewing::Yes {
-						root_node_to_restore: Some(root_node),
-					} if !self_persistent.node_metadata.contains_key(&root_node.node_id) => Previewing::No,
+				// The preview is this peer's and survives a rebuild, unless it names a node the rebuilt
+				// network no longer contains (e.g. after a storage undo), in which case there is nothing
+				// left to look at.
+				*view.previewing = match other_persistent.previewing {
+					Previewing::Yes { previewed } if !view.nodes.contains_key(&previewed.node_id) => Previewing::No,
 					previewing => previewing,
 				};
 
-				self_persistent.selection_undo_history = other_persistent.selection_undo_history.clone();
-				self_persistent.selection_redo_history = other_persistent.selection_redo_history.clone();
+				*view.selection.undo = other_persistent.selection_undo_history.clone();
+				*view.selection.redo = other_persistent.selection_redo_history.clone();
 			}
 		});
 
@@ -66,57 +36,49 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(mut network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
 			return;
 		};
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport = transform;
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		network.set_navigation_transform(transform);
+
+		self.invalidate_import_export(network_path);
 	}
 
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
 	pub fn set_node_graph_width(&mut self, node_graph_width: f64, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network in set_transform");
+		let Some(mut network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network in set_node_graph_width");
 			return;
 		};
-		network_metadata.persistent_metadata.navigation_metadata.node_graph_width = node_graph_width;
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		network.set_navigation_width(node_graph_width);
+
+		self.invalidate_import_export(network_path);
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
-		let Some(node) = self.network_mut(&[]).and_then(|network| network.nodes.get_mut(node_id)) else {
-			log::error!("Could not get node in vector_modification");
-			return;
-		};
-		{
-			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
-			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
+		let mut modified = false;
+		self.edit_input_value(&InputConnector::node_at_index(*node_id, 1), &[], |value| {
+			let TaggedValue::VectorModification(modification) = value else {
 				log::error!("Path node {node_id} does not have a modification input");
 				return;
 			};
-
 			modification.modify(&modification_type);
+			modified = true;
+		});
+
+		if modified {
+			self.transaction_modified();
 		}
-		self.transaction_modified();
 	}
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in add_export");
+		let inserted_index = if insert_index == -1 { self.number_of_exports(network_path) } else { insert_index as usize };
+		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string()) {
 			return;
-		};
-
-		let input = NodeInput::value(default_value, true);
-		let inserted_index = if insert_index == -1 { network.exports.len() } else { insert_index as usize };
-		if insert_index == -1 {
-			network.exports.push(input);
-		} else {
-			network.exports.insert(insert_index as usize, input);
 		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
@@ -129,28 +91,14 @@ impl NodeNetworkInterface {
 			self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
 		};
 
-		// There will not be an encapsulating node if the network is the document network
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			if insert_index == -1 {
-				encapsulating_node_metadata.persistent_metadata.output_names.push(output_name.to_string());
-			} else {
-				encapsulating_node_metadata.persistent_metadata.output_names.insert(insert_index as usize, output_name.to_string());
-			}
-			// Clear the reference to the nodes definition
-			if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-				network_metadata.persistent_metadata.reference = None
-			}
-		};
-
 		// Update the export ports and outward wires for the current network
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.unload_outward_wires(network_path);
 
 		// Update the outward wires and bounding box for all nodes in the encapsulating network
-		if let Some(encapsulating_network_metadata) = self.encapsulating_network_metadata_mut(network_path) {
-			encapsulating_network_metadata.transient_metadata.outward_wires.unload();
-			encapsulating_network_metadata.transient_metadata.all_nodes_bounding_box.unload();
+		if let Some(encapsulating_transient) = self.encapsulating_network_transient_mut(network_path) {
+			encapsulating_transient.outward_wires.unload();
+			encapsulating_transient.all_nodes_bounding_box.unload();
 		}
 
 		// Update the click targets for the encapsulating node, if it exists. There is no encapsulating node if the network is the document network
@@ -165,7 +113,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
+	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The input_name is used by the encapsulating node.
 	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, input_description: &str, network_path: &[NodeId]) {
 		let mut encapsulating_network_path = network_path.to_vec();
 		let Some(node_id) = encapsulating_network_path.pop() else {
@@ -173,44 +121,22 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(network) = self.network_mut(&encapsulating_network_path) else {
-			log::error!("Could not get nested network in insert_input");
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(&node_id) else {
-			log::error!("Could not get node in insert_input");
-			return;
-		};
-
-		let input = NodeInput::value(default_value, exposed);
-		let inserted_index = if insert_index == -1 { node.inputs.len() } else { insert_index as usize };
-		if insert_index == -1 {
-			node.inputs.push(input);
+		let locator = NodeLocator::new(node_id, &encapsulating_network_path);
+		let inserted_index = if insert_index == -1 {
+			self.number_of_inputs(&node_id, &encapsulating_network_path)
 		} else {
-			node.inputs.insert(insert_index as usize, input);
+			insert_index as usize
+		};
+		if !self.insert_input_slot(locator, inserted_index, NodeInput::value(default_value, exposed), (input_name, input_description).into()) {
+			return;
 		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
 		// Set the node to be a non layer if it is no longer eligible to be a layer
 		if !self.is_eligible_to_be_layer(&node_id, &encapsulating_network_path) && self.is_layer(&node_id, &encapsulating_network_path) {
 			self.set_to_node_or_layer(&node_id, &encapsulating_network_path, false);
-		}
-
-		let Some(node_metadata) = self.node_metadata_mut(&node_id, &encapsulating_network_path) else {
-			log::error!("Could not get node_metadata in insert_input");
-			return;
-		};
-		let new_input = (input_name, input_description).into();
-		if insert_index == -1 {
-			node_metadata.persistent_metadata.input_metadata.push(new_input);
-		} else {
-			node_metadata.persistent_metadata.input_metadata.insert(insert_index as usize, new_input);
-		}
-
-		// Clear the reference to the nodes definition
-		if let Some(network_metadata) = node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None
 		}
 
 		// Update the metadata for the encapsulating node
@@ -222,8 +148,7 @@ impl NodeNetworkInterface {
 
 		// Unload the metadata for the nested network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 	}
 
 	/// Disconnects every wire fed by the given import within the network. Returns false without mutating if the import's wires cannot be resolved.
@@ -263,8 +188,7 @@ impl NodeNetworkInterface {
 
 		// Unload the metadata for the nested network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 	}
 
 	// First disconnects the export, then removes it
@@ -295,22 +219,12 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in add_export");
+		if self.remove_export_slot(network_path, export_index).is_none() {
 			return;
-		};
-		network.exports.remove(export_index);
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
-
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
-			log::error!("Could not get encapsulating node metadata in remove_export");
-			return;
-		};
-		encapsulating_node_metadata.persistent_metadata.output_names.remove(export_index);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
 
 		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
 	}
@@ -347,30 +261,16 @@ impl NodeNetworkInterface {
 			self.create_wire(&output_connector, &input_wire, network_path);
 		}
 
-		let Some(network) = self.network_mut(encapsulating_network_path) else {
-			log::error!("Could not get parent node in remove_import");
+		let parent_id = *parent_id;
+		let encapsulating_network_path = encapsulating_network_path.to_vec();
+		if self.remove_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), import_index).is_none() {
 			return;
-		};
-		let Some(node) = network.nodes.get_mut(parent_id) else {
-			log::error!("Could not get node in remove_import");
-			return;
-		};
-
-		node.inputs.remove(import_index);
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		// There will not be an encapsulating node if the network is the document network
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(parent_id, encapsulating_network_path) else {
-			log::error!("Could not get encapsulating node metadata in remove_export");
-			return;
-		};
-		encapsulating_node_metadata.persistent_metadata.input_metadata.remove(import_index);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
-
-		self.finish_signature_edit(*parent_id, encapsulating_network_path, network_path);
+		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
 	}
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
@@ -381,84 +281,25 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in reorder_export");
-			return;
-		};
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		let export = network.exports.remove(start_index);
-		network.exports.insert(end_index, export);
+		if !self.move_export_slot(network_path, start_index, end_index) {
+			return;
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
-			log::error!("Could not get encapsulating network_metadata in reorder_export");
-			return;
-		};
-
-		let name = encapsulating_node_metadata.persistent_metadata.output_names.remove(start_index);
-		encapsulating_node_metadata.persistent_metadata.output_names.insert(end_index, name);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
-
-		// Update the metadata for the encapsulating network
+		// An export is an output of the encapsulating node, so its wires live in the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
 		self.unload_stack_dependents(&encapsulating_network_path);
 
-		// Node input at the start index is now at the end index
-		let Some(move_to_end_index) = self
-			.outward_wires(&encapsulating_network_path)
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, start_index)))
-			.cloned()
-		else {
-			log::error!("Could not get outward wires in reorder_export");
-			return;
-		};
-		// Node inputs above the start index should be shifted down one
 		let last_output_index = self.number_of_outputs(&parent_id, &encapsulating_network_path) - 1;
-		for shift_output_down in (start_index + 1)..=last_output_index {
-			let Some(outward_wires) = self
-				.outward_wires(&encapsulating_network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_down)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_export");
-				return;
-			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, &encapsulating_network_path);
-				self.create_wire(&OutputConnector::node(parent_id, shift_output_down - 1), downstream_connection, &encapsulating_network_path);
-			}
-		}
-		// Node inputs at or above the end index should be shifted up one
-		for shift_output_up in (end_index..last_output_index).rev() {
-			let Some(outward_wires) = self
-				.outward_wires(&encapsulating_network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(parent_id, shift_output_up)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_export");
-				return;
-			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, &encapsulating_network_path);
-				self.create_wire(&OutputConnector::node(parent_id, shift_output_up + 1), downstream_connection, &encapsulating_network_path);
-			}
-		}
+		self.reindex_downstream_wires(&encapsulating_network_path, |index| OutputConnector::node(parent_id, index), last_output_index, start_index, end_index);
 
-		// Move the connections to the moved export after all other ones have been shifted
-		for downstream_connection in &move_to_end_index {
-			self.disconnect_input(downstream_connection, &encapsulating_network_path);
-			self.create_wire(&OutputConnector::node(parent_id, end_index), downstream_connection, &encapsulating_network_path);
-		}
-
-		// Update the metadata for the current network
 		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.unload_stack_dependents(network_path);
 	}
 
@@ -470,196 +311,145 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(encapsulating_network) = self.network_mut(&encapsulating_network_path) else {
-			log::error!("Could not get nested network in reorder_import");
-			return;
-		};
-		let Some(encapsulating_node) = encapsulating_network.nodes.get_mut(&parent_id) else {
-			log::error!("Could not get encapsulating node in reorder_import");
-			return;
-		};
-
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		let import = encapsulating_node.inputs.remove(start_index);
-		encapsulating_node.inputs.insert(end_index, import);
+		if !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
+			return;
+		}
+		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		let Some(encapsulating_node_metadata) = self.node_metadata_mut(&parent_id, &encapsulating_network_path) else {
-			log::error!("Could not get encapsulating network_metadata in reorder_import");
-			return;
-		};
-
-		let properties_row = encapsulating_node_metadata.persistent_metadata.input_metadata.remove(start_index);
-		encapsulating_node_metadata.persistent_metadata.input_metadata.insert(end_index, properties_row);
-		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
-			network_metadata.persistent_metadata.reference = None;
-		}
-
-		// Update the metadata for the outer network
+		// An import is an input of the encapsulating node, so moving it moves that node's ports
 		self.unload_outward_wires(&encapsulating_network_path);
 		self.unload_stack_dependents(&encapsulating_network_path);
 
-		// Node input at the start index is now at the end index
-		let Some(move_to_end_index) = self
-			.outward_wires(network_path)
-			.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(start_index)))
-			.cloned()
-		else {
-			log::error!("Could not get outward wires in reorder_import");
+		// The wires an import feeds live in the network the import belongs to
+		let last_import_index = self.number_of_imports(network_path) - 1;
+		self.reindex_downstream_wires(network_path, OutputConnector::Import, last_import_index, start_index, end_index);
+
+		self.unload_outward_wires(network_path);
+		self.invalidate_import_export(network_path);
+		self.unload_stack_dependents(network_path);
+	}
+
+	/// Rewires every downstream connection so it follows the slot it was pointing at, after the slot at
+	/// `start_index` moved to `end_index` within `0..=last_index`. `output_connector` names one slot's
+	/// output within `network_path`, which is the network holding the wires.
+	fn reindex_downstream_wires(&mut self, network_path: &[NodeId], output_connector: impl Fn(usize) -> OutputConnector, last_index: usize, start_index: usize, end_index: usize) {
+		let Some(moved_connections) = self.downstream_connections(&output_connector(start_index), network_path) else {
 			return;
 		};
-		// Node inputs above the start index should be shifted down one
-		let last_import_index = self.number_of_imports(network_path) - 1;
-		for shift_output_down in (start_index + 1)..=last_import_index {
-			let Some(outward_wires) = self
-				.outward_wires(network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_down)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_import");
+
+		// Slots above the one that moved close the gap it left behind
+		for shifted_index in (start_index + 1)..=last_index {
+			let Some(connections) = self.downstream_connections(&output_connector(shifted_index), network_path) else {
 				return;
 			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, network_path);
-				self.create_wire(&OutputConnector::Import(shift_output_down - 1), downstream_connection, network_path);
-			}
+			self.rewire_downstream(connections, &output_connector(shifted_index - 1), network_path);
 		}
-		// Node inputs at or above the end index should be shifted up one
-		for shift_output_up in (end_index..last_import_index).rev() {
-			let Some(outward_wires) = self
-				.outward_wires(network_path)
-				.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(shift_output_up)))
-				.cloned()
-			else {
-				log::error!("Could not get outward wires in reorder_import");
+
+		// Slots at or above the destination open a gap for it
+		for shifted_index in (end_index..last_index).rev() {
+			let Some(connections) = self.downstream_connections(&output_connector(shifted_index), network_path) else {
 				return;
 			};
-			for downstream_connection in &outward_wires {
-				self.disconnect_input(downstream_connection, network_path);
-				self.create_wire(&OutputConnector::Import(shift_output_up + 1), downstream_connection, network_path);
-			}
+			self.rewire_downstream(connections, &output_connector(shifted_index + 1), network_path);
 		}
 
-		// Move the connections to the moved export after all other ones have been shifted
-		for downstream_connection in &move_to_end_index {
-			self.disconnect_input(downstream_connection, network_path);
-			self.create_wire(&OutputConnector::Import(end_index), downstream_connection, network_path);
-		}
+		// Last, so neither shift above can land on the moved slot's own connections
+		self.rewire_downstream(moved_connections, &output_connector(end_index), network_path);
+	}
 
-		// Update the metadata for the current network
-		self.unload_outward_wires(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
-		self.unload_stack_dependents(network_path);
+	/// The inputs fed by `output_connector`, or `None` if the network's outward wires do not name it.
+	fn downstream_connections(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<Vec<InputConnector>> {
+		let connections = self.outward_wires(network_path).and_then(|outward_wires| outward_wires.get(output_connector)).cloned();
+		if connections.is_none() {
+			log::error!("Could not get outward wires for {output_connector:?} in network {network_path:?}");
+		}
+		connections
+	}
+
+	/// Moves each given downstream connection onto `output_connector`.
+	pub(super) fn rewire_downstream(&mut self, downstream_connections: Vec<InputConnector>, output_connector: &OutputConnector, network_path: &[NodeId]) {
+		for downstream_connection in downstream_connections {
+			self.disconnect_input(&downstream_connection, network_path);
+			self.create_wire(output_connector, &downstream_connection, network_path);
+		}
 	}
 
 	/// Replaces the implementation and corresponding metadata.
 	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
-			return;
-		};
 		let (new_implementation, new_network_metadata) = std::mem::take(&mut new_template.implementation).into_parts();
-		node.implementation = new_implementation;
-		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get metadata in set_implementation");
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in replace_implementation");
 			return;
 		};
-		metadata.persistent_metadata.network_metadata = new_network_metadata;
+		node.replace_implementation(new_implementation, new_network_metadata);
 	}
 
 	/// Replaces the inputs and corresponding metadata.
 	pub fn replace_inputs(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) -> Option<Vec<NodeInput>> {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
-			return None;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
-			return None;
-		};
 		let new_inputs = std::mem::take(&mut new_template.inputs);
-		let old_inputs = std::mem::replace(&mut node.inputs, new_inputs);
-		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get metadata in set_implementation");
+		let new_input_metadata = std::mem::take(&mut new_template.input_metadata);
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;
 		};
-		let new_metadata = std::mem::take(&mut new_template.input_metadata);
-		let _ = std::mem::replace(&mut metadata.persistent_metadata.input_metadata, new_metadata);
-		Some(old_inputs)
+		Some(node.replace_inputs(new_inputs, new_input_metadata))
 	}
 
-	/// Used when opening an old document to add the persistent metadata for each input if it doesnt exist, which is where the name/description are saved.
+	/// Used when opening an old document to add the persistent metadata for each input if it doesn't exist, which is where the name/description are saved.
 	pub fn validate_input_metadata(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let number_of_inputs = node.inputs.len();
-		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-		for added_input_index in metadata.persistent_metadata.input_metadata.len()..number_of_inputs {
-			let input_metadata = self
-				.reference(node_id, network_path)
-				.as_ref()
-				.and_then(resolve_document_node_type)
-				.and_then(|definition| definition.node_template.input_metadata.get(added_input_index))
-				.cloned();
-			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
-			metadata.persistent_metadata.input_metadata.push(input_metadata.unwrap_or_default());
-		}
+		let definition = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type);
+
+		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		node_entry.pad_input_metadata(number_of_inputs, |input_index| {
+			definition.and_then(|definition| definition.node_template.input_metadata.get(input_index).cloned())
+		});
 	}
 
 	// When opening an old document to ensure the output names match the number of exports
 	pub fn validate_output_names(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
-		if let DocumentNodeImplementation::Network(network) = &node.implementation {
-			let number_of_exports = network.exports.len();
-			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else {
-				log::error!("Could not get metadata for node: {node_id:?}");
-				return;
-			};
-			metadata.persistent_metadata.output_names.resize(number_of_exports, "".to_string());
-		}
+		let DocumentNodeImplementation::Network(network) = &node.implementation else { return };
+		let number_of_exports = network.exports.len();
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in validate_output_names");
+			return;
+		};
+		node.resize_output_names(number_of_exports);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
 	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {
-		let Some(node_network_metadata) = self
-			.node_metadata_mut(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.as_mut())
-		else {
-			log::error!("Could not get network metadata in replace_reference_name");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_reference");
 			return;
 		};
-		node_network_metadata.persistent_metadata.reference = reference_name;
+		node.set_reference(reference_name);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
 	pub fn set_call_argument(&mut self, node_id: &NodeId, network_path: &[NodeId], call_argument: Type) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_implementation");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_call_argument");
 			return;
 		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_implementation");
-			return;
-		};
-		node.call_argument = call_argument;
+		node.set_call_argument(call_argument);
 	}
 
 	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_context_features");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_context_features");
 			return;
 		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node in set_context_features");
-			return;
-		};
-		node.context_features = context_features;
+		node.set_context_features(context_features);
 	}
 
 	/// Lightweight version of `set_input` for bulk import operations.
@@ -672,30 +462,8 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_input_for_import");
+		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else {
 			return;
-		};
-
-		let old_input = match input_connector {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node) = network.nodes.get_mut(node_id) else {
-					log::error!("Could not get node in set_input_for_import");
-					return;
-				};
-				let Some(input) = node.inputs.get_mut(*input_index) else {
-					log::error!("Could not get input in set_input_for_import");
-					return;
-				};
-				std::mem::replace(input, new_input.clone())
-			}
-			InputConnector::Export(export_index) => {
-				let Some(export) = network.exports.get_mut(*export_index) else {
-					log::error!("Could not get export in set_input_for_import");
-					return;
-				};
-				std::mem::replace(export, new_input.clone())
-			}
 		};
 
 		self.transaction_modified();
@@ -713,101 +481,49 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// Reject a change that would create a cycle before any side effects run (only Node connections can create cycles).
-		// The new input is swapped in just for this test, then restored so the disconnect and layout logic below sees the unmodified network.
-		if matches!(new_input, NodeInput::Node { .. }) {
-			let Some(network) = self.network_mut(network_path) else {
-				log::error!("Could not get nested network in set_input");
-				return;
-			};
-			fn get_input<'a>(network: &'a mut NodeNetwork, input_connector: &InputConnector) -> Option<&'a mut NodeInput> {
-				match input_connector {
-					InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
-					InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
-				}
-			}
-
-			let Some(input) = get_input(network, input_connector) else {
-				log::error!("Could not get input in set_input");
-				return;
-			};
-			let old_input = std::mem::replace(input, new_input.clone());
-			let is_acyclic = network.is_acyclic();
-			let Some(input) = get_input(network, input_connector) else {
-				log::error!("Could not get input in set_input");
-				return;
-			};
-			*input = old_input;
-
-			if !is_acyclic {
-				return;
-			}
+		// Only a node connection can close a loop, and the check has to run before any side effect does
+		if matches!(new_input, NodeInput::Node { .. }) && self.would_create_cycle(input_connector, &new_input, network_path) {
+			return;
 		}
 
-		// When changing a NodeInput::Node to a NodeInput::Node, the input should first be disconnected to ensure proper side effects
-		if (matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. })) {
+		// Rewiring one node connection to another runs the disconnect side effects first
+		if matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. }) {
 			self.disconnect_input(input_connector, network_path);
 			self.set_input(input_connector, new_input, network_path);
 			return;
 		}
 
-		// If the previous input is connected to a chain node, then set all upstream chain nodes to absolute position
-		if let NodeInput::Node { node_id: previous_upstream_id, .. } = &previous_input
-			&& self.is_chain(previous_upstream_id, network_path)
-		{
-			self.set_upstream_chain_to_absolute(previous_upstream_id, network_path);
-		}
-		if let NodeInput::Node { node_id: new_upstream_id, .. } = &new_input {
-			// If the new input is connected to a chain node, then break its chain
-			if self.is_chain(new_upstream_id, network_path) {
-				self.set_upstream_chain_to_absolute(new_upstream_id, network_path);
+		// A chain positions its nodes relative to the layer they feed, so either end of the rewire
+		// leaving that layer breaks the chain it belonged to
+		for chain_input in [&previous_input, &new_input] {
+			if let NodeInput::Node { node_id: chain_node_id, .. } = chain_input
+				&& self.is_chain(chain_node_id, network_path)
+			{
+				self.set_upstream_chain_to_absolute(chain_node_id, network_path);
 			}
 		}
 
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network in set_input");
+		let Some(old_input) = self.set_input_slot(input_connector, network_path, new_input.clone()) else {
 			return;
 		};
-
-		let old_input = match input_connector {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(node) = network.nodes.get_mut(node_id) else {
-					log::error!("Could not get node in set_input");
-					return;
-				};
-				let Some(input) = node.inputs.get_mut(*input_index) else {
-					log::error!("Could not get input in set_input");
-					return;
-				};
-				std::mem::replace(input, new_input.clone())
-			}
-			InputConnector::Export(export_index) => {
-				let Some(export) = network.exports.get_mut(*export_index) else {
-					log::error!("Could not get export in set_input");
-					return;
-				};
-				std::mem::replace(export, new_input.clone())
-			}
-		};
-
 		if old_input == new_input {
 			return;
-		};
+		}
 
-		// It is necessary to ensure the graph is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
-		let previous_metadata = match &previous_input {
+		// Read after the write so a node the write disconnected reports where it comes to rest.
+		// `position` can crash on a cyclic graph (#3227), which the check above has ruled out.
+		let disconnected_upstream = match &previous_input {
 			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
 			_ => None,
 		};
 
 		self.transaction_modified();
 
-		// Ensure layer is toggled to non layer if it is no longer eligible to be a layer
+		// A node that no longer satisfies the layer shape is shown as a node instead
 		let layer_node_path = match input_connector {
 			InputConnector::Node { node_id, .. } => Some((node_id, network_path)),
 			InputConnector::Export(_) => network_path.split_last(),
 		};
-
 		if let Some((layer_id, layer_path)) = layer_node_path
 			&& !self.is_eligible_to_be_layer(layer_id, layer_path)
 			&& self.is_layer(layer_id, layer_path)
@@ -815,97 +531,41 @@ impl NodeNetworkInterface {
 			self.set_to_node_or_layer(layer_id, layer_path, false);
 		}
 
-		// Side effects
-		match (&old_input, &new_input) {
-			// If a node input is exposed or hidden reload the click targets and update the bounding box for all nodes
-			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => {
-				if let InputConnector::Node { node_id, .. } = input_connector {
-					if new_exposed != old_exposed {
-						self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-						self.unload_all_nodes_bounding_box(network_path);
+		// A no-op unless one of the two inputs is a wire
+		self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 
-						// Unload the interior import/export ports if this node has a nested network
-						if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
-							let nested_path = [network_path, &[*node_id]].concat();
-							self.unload_import_export_ports(&nested_path);
-							self.unload_modify_import_export(&nested_path);
-						}
+		match (&old_input, &new_input) {
+			(NodeInput::Value { exposed: old_exposed, .. }, NodeInput::Value { exposed: new_exposed, .. }) => match input_connector {
+				// Exposing or hiding a value input changes the node's port count
+				InputConnector::Node { node_id, .. } if old_exposed != new_exposed => {
+					self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+					self.unload_all_nodes_bounding_box(network_path);
+
+					// A nested network draws its interior ports from the encapsulating node's inputs
+					if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
+						let nested_path = [network_path, &[*node_id]].concat();
+						self.invalidate_import_export(&nested_path);
 					}
-				} else {
-					self.unload_import_export_ports(network_path);
-					self.unload_modify_import_export(network_path);
 				}
-			}
+				InputConnector::Node { .. } => {}
+				InputConnector::Export(_) => self.invalidate_import_export(network_path),
+			},
+
 			(_, NodeInput::Node { node_id: upstream_node_id, .. }) => {
-				// If the old input wasn't exposed but the new one is (`Node` inputs are always exposed),
-				// the node's port count changed, so its click targets need to be recomputed
+				// `Node` inputs are always exposed, so connecting to a hidden input adds a port
 				if !old_input.is_exposed()
 					&& let InputConnector::Node { node_id, .. } = input_connector
 				{
 					self.unload_node_click_targets(node_id, network_path);
 				}
 
-				// Load structure if the change is to the document network and to the first or second
-				if network_path.is_empty() {
-					if matches!(input_connector, InputConnector::Export(0)) {
-						self.load_structure();
-					} else if let InputConnector::Node { node_id, input_index } = &input_connector {
-						// If the connection is made to the first or second input of a node connected to the output, then load the structure
-						if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
-							self.load_structure();
-						}
-					}
-				}
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
-				// Layout system
-				let Some(current_node_position) = self.position(upstream_node_id, network_path) else {
-					log::error!("Could not get current node position in set_input for node {upstream_node_id}");
+				self.reload_structure_if_affected(input_connector, network_path);
+
+				if !self.reposition_connected_upstream(upstream_node_id, input_connector, network_path) {
 					return;
-				};
-				let Some(node_metadata) = self.node_metadata(upstream_node_id, network_path) else {
-					log::error!("Could not get node_metadata in set_input");
-					return;
-				};
-				match &node_metadata.persistent_metadata.node_type_metadata {
-					NodeTypePersistentMetadata::Layer(_) => {
-						match &input_connector {
-							InputConnector::Export(_) => {
-								// If a layer is connected to the exports, it should be set to absolute position without being moved.
-								self.set_absolute_position(upstream_node_id, current_node_position, network_path)
-							}
-							InputConnector::Node {
-								node_id: downstream_node_id,
-								input_index,
-							} => {
-								// If a layer has a single connection to the bottom of another layer, it should be set to stack positioning
-								let Some(downstream_node_metadata) = self.node_metadata(downstream_node_id, network_path) else {
-									log::error!("Could not get downstream node_metadata in set_input");
-									return;
-								};
-								match &downstream_node_metadata.persistent_metadata.node_type_metadata {
-									NodeTypePersistentMetadata::Layer(_) => {
-										// If the layer feeds into the bottom input of layer, and has no other outputs, set its position to stack at its previous y position
-										let multiple_outward_wires = self
-											.outward_wires(network_path)
-											.and_then(|all_outward_wires| all_outward_wires.get(&OutputConnector::primary_output(*upstream_node_id)))
-											.is_some_and(|outward_wires| outward_wires.len() > 1);
-										if *input_index == 0 && !multiple_outward_wires {
-											self.set_stack_position_calculated_offset(upstream_node_id, downstream_node_id, network_path);
-										} else {
-											self.set_absolute_position(upstream_node_id, current_node_position, network_path);
-										}
-									}
-									NodeTypePersistentMetadata::Node(_) => {
-										// If the layer feeds into a node, set its y offset to 0
-										self.set_absolute_position(upstream_node_id, current_node_position, network_path);
-									}
-								}
-							}
-						}
-					}
-					NodeTypePersistentMetadata::Node(_) => {}
 				}
-				// Altering an export may move the connectors meaning the ports must be refreshed.
+
+				// Altering an export may move the connectors, so the ports have to be refreshed
 				if matches!(input_connector, InputConnector::Export(_)) {
 					self.unload_import_export_ports(network_path);
 				}
@@ -913,62 +573,66 @@ impl NodeNetworkInterface {
 				self.unload_stack_dependents(network_path);
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
-			// If a connection is made to the imports
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. }) => {
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
+
+			// A wire to or from the imports appeared or vanished
+			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. })
+			| (NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_wire(input_connector, network_path);
 			}
-			// If a connection to the imports is disconnected
-			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
-				self.unload_wire(input_connector, network_path);
-			}
-			// If a node is disconnected.
+
+			// A node was disconnected
 			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
-				self.update_outward_wires(network_path, input_connector, &old_input, &new_input);
 				self.unload_wire(input_connector, network_path);
 
-				if let Some((old_upstream_node_id, previous_position)) = previous_metadata {
-					let old_upstream_node_is_layer = self.is_layer(&old_upstream_node_id, network_path);
-					let Some(outward_wires) = self
-						.outward_wires(network_path)
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(old_upstream_node_id)))
-					else {
-						log::error!("Could not get outward wires in set_input");
-						return;
-					};
-					// If it is a layer and is connected to a single layer, set its position to stack at its previous y position
-					if old_upstream_node_is_layer && outward_wires.len() == 1 && outward_wires[0].input_index() == 0 {
-						if let Some(downstream_node_id) = outward_wires[0].node_id()
-							&& self.is_layer(&downstream_node_id, network_path)
-						{
-							self.set_stack_position_calculated_offset(&old_upstream_node_id, &downstream_node_id, network_path);
-							self.unload_upstream_node_click_targets(vec![old_upstream_node_id], network_path);
-						}
-					}
-					// If it is a node and is eligible to be in a chain, then set it to chain positioning
-					else if !old_upstream_node_is_layer {
-						self.try_set_node_to_chain(&old_upstream_node_id, network_path);
-					}
-					// If a node was previously connected, and it is no longer connected to any nodes, then set its position to absolute at its previous position
-					else {
-						self.set_absolute_position(&old_upstream_node_id, previous_position, network_path);
-					}
+				if let Some((old_upstream_node_id, previous_position)) = disconnected_upstream
+					&& !self.reposition_disconnected_upstream(&old_upstream_node_id, previous_position, network_path)
+				{
+					return;
 				}
-				// Load structure if the change is to the document network and to the first or second
-				if network_path.is_empty() {
-					if matches!(input_connector, InputConnector::Export(0)) {
-						self.load_structure();
-					} else if let InputConnector::Node { node_id, input_index } = &input_connector {
-						// If the connection is made to the first or second input of a node connected to the output, then load the structure
-						if self.connected_to_output(node_id, network_path) && (*input_index == 0 || *input_index == 1) {
-							self.load_structure();
-						}
-					}
-				}
+
+				self.reload_structure_if_affected(input_connector, network_path);
 				self.unload_stack_dependents(network_path);
 			}
+
 			_ => {}
+		}
+	}
+
+	/// Whether writing `new_input` at `input_connector` would leave the network cyclic.
+	///
+	/// Asked of the network as it stands, with the proposed input substituted only while the question is
+	/// answered, so nothing is written. An input that is not there reports `true`, so the caller abandons
+	/// a write that would fail anyway.
+	///
+	/// Writing an export can never close a cycle, since nothing takes an export as its input.
+	fn would_create_cycle(&self, input_connector: &InputConnector, new_input: &NodeInput, network_path: &[NodeId]) -> bool {
+		let InputConnector::Node { node_id, input_index } = input_connector else { return false };
+
+		let Some(network) = self.nested_network(network_path) else {
+			log::error!("Could not get nested network in would_create_cycle");
+			return true;
+		};
+		if self.input_from_connector(input_connector, network_path).is_none() {
+			log::error!("Could not get input in would_create_cycle");
+			return true;
+		}
+
+		!network.is_acyclic_with(Some((*node_id, *input_index, new_input)))
+	}
+
+	/// Rebuilds the layer tree when a change to the document network could have moved a layer within it:
+	/// its first export, or the first or second input of a node that reaches that export.
+	fn reload_structure_if_affected(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) {
+		if !network_path.is_empty() {
+			return;
+		}
+
+		let affects_structure = match input_connector {
+			InputConnector::Export(export_index) => *export_index == 0,
+			InputConnector::Node { node_id, input_index } => *input_index <= 1 && self.connected_to_output(node_id, network_path),
+		};
+		if affects_structure {
+			self.load_structure();
 		}
 	}
 
@@ -1039,28 +703,11 @@ impl NodeNetworkInterface {
 	/// Used to insert a group of nodes into the network
 	pub fn insert_node_group(&mut self, nodes: Vec<(NodeId, NodeTemplate)>, new_ids: HashMap<NodeId, NodeId>, network_path: &[NodeId]) {
 		for (old_node_id, mut node_template) in nodes {
-			// Get the new node template
 			node_template = self.map_ids(node_template, &old_node_id, &new_ids, network_path);
-			// Insert node into network
 			let node_id = *new_ids.get(&old_node_id).unwrap();
-			let (document_node, persistent_metadata) = node_template.into_parts();
-			let Some(network) = self.network_mut(network_path) else {
-				log::error!("Network not found in insert_node");
-				return;
-			};
+			self.insert_node_entry(NodeLocator::new(node_id, network_path), node_template);
 
-			network.nodes.insert(node_id, document_node);
 			self.transaction_modified();
-
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Network not found in insert_node");
-				return;
-			};
-			let node_metadata = DocumentNodeMetadata {
-				persistent_metadata,
-				transient_metadata: DocumentNodeTransientMetadata::default(),
-			};
-			network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
 		}
 		for new_node_id in new_ids.values() {
 			self.unload_node_click_targets(new_node_id, network_path);
@@ -1076,31 +723,14 @@ impl NodeNetworkInterface {
 			.iter()
 			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Import { .. })));
 		assert!(has_node_or_network_input, "Cannot insert node with node or network inputs. Use insert_node_group instead");
-		let (document_node, persistent_metadata) = node_template.into_parts();
-		let Some(network) = self.network_mut(network_path) else {
-			log::error!("Network not found in insert_node");
-			return None;
-		};
 
-		let previous_node = network.nodes.insert(node_id, document_node);
+		let previous_entry = self.insert_node_entry(NodeLocator::new(node_id, network_path), node_template);
+
 		self.transaction_modified();
-
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Network not found in insert_node");
-			return None;
-		};
-		let node_metadata = DocumentNodeMetadata {
-			persistent_metadata,
-			transient_metadata: DocumentNodeTransientMetadata::default(),
-		};
-		let previous_metadata = network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
-
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path);
 
-		previous_node
-			.zip(previous_metadata)
-			.map(|(document_node, node_metadata)| NodeTemplate::from_parts(document_node, node_metadata.persistent_metadata))
+		previous_entry
 	}
 
 	/// Deletes all nodes in `node_ids` and any sole dependents in the horizontal chain if the node to delete is a layer node.
@@ -1180,33 +810,23 @@ impl NodeNetworkInterface {
 				self.disconnect_input(&InputConnector::node_at_index(*delete_node_id, input_index), network_path);
 			}
 
-			let Some(network) = self.network_mut(network_path) else {
-				log::error!("Could not get nested network in delete_nodes");
-				continue;
-			};
+			self.remove_node_entry(NodeLocator::new(*delete_node_id, network_path));
 
-			network.nodes.remove(delete_node_id);
 			self.transaction_modified();
-
-			let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-				log::error!("Could not get nested network_metadata in delete_nodes");
-				continue;
-			};
-			network_metadata.persistent_metadata.node_metadata.remove(delete_node_id);
 			for previous_chain_node in upstream_chain_nodes {
 				self.set_chain_position(&previous_chain_node, network_path);
 			}
 		}
 
-		// Prune this network's pinned display order down to the nodes that still exist, dropping any that were actually removed
+		// Prune this network's pinned display order down to the nodes that still exist
 		let surviving_nodes = self.nested_network(network_path).map(|network| network.nodes.keys().copied().collect::<HashSet<_>>());
 		if let Some(surviving_nodes) = surviving_nodes
-			&& let Some(network_metadata) = self.network_metadata_mut(network_path)
+			&& let Some(mut network) = self.network_mut(network_path)
 		{
-			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| surviving_nodes.contains(node_id));
+			network.retain_pinned(|node_id| surviving_nodes.contains(node_id));
 		}
 
-		// Purge the deleted nodes' cached wire paths, since the per-node unload can no longer reach them once the nodes are gone
+		// Purge the deleted nodes' cached wire paths, which the per-node unload can no longer reach
 		if let Some(network_metadata) = self.network_metadata(network_path) {
 			network_metadata
 				.transient_metadata
@@ -1216,7 +836,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.unload_all_nodes_bounding_box(network_path);
-		// Instead of unloaded all node click targets, just unload the nodes upstream from the deleted nodes. unload_upstream_node_click_targets will not work since the nodes have been deleted.
+		// The per-node unload cannot reach nodes that no longer exist
 		self.unload_all_nodes_click_targets(network_path);
 		let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
 			log::error!("Could not get selected nodes in NodeGraphMessage::DeleteNodes");
@@ -1227,10 +847,15 @@ impl NodeNetworkInterface {
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
 	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		// TODO: Add more logic to support retaining preview when removing references. Since there are so many edge cases/possible crashes, for now the preview is ended.
-		self.stop_previewing(network_path);
+		// A preview of the node being removed cannot outlive it. A preview of any other node is untouched:
+		// previewing does not rewire anything, so the reconnection below cannot invalidate it.
+		if matches!(self.previewing(network_path), Previewing::Yes { previewed } if previewed.node_id == *node_id)
+			&& let Some(mut network) = self.network_mut(network_path)
+		{
+			network.set_previewing(Previewing::No);
+		}
 
-		// Check whether the being-deleted node's first (primary) input is a node
+		// The wire the downstream inputs reconnect to, which is the first exposed input of the node being removed
 		let reconnect_to_input = self.document_node(node_id, network_path).and_then(|node| {
 			node.inputs
 				.iter()
@@ -1238,7 +863,6 @@ impl NodeNetworkInterface {
 				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. }))
 				.cloned()
 		});
-		// Get all upstream references
 		let number_of_outputs = self.number_of_outputs(node_id, network_path);
 		let Some(all_outward_wires) = self.outward_wires(network_path) else {
 			log::error!("Could not get outward wires in remove_references_from_network");
@@ -1259,7 +883,7 @@ impl NodeNetworkInterface {
 			if !(matches!(reconnect_to_input, Some(NodeInput::Import { .. })) && matches!(downstream_input, InputConnector::Export(_)))
 				&& let Some(reconnect_input) = &reconnect_to_input
 			{
-				reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
+				reconnect_node = reconnect_input.as_node().filter(|&node_id| self.is_stack(&node_id, network_path));
 				self.disconnect_input(&InputConnector::primary_input(*node_id), network_path);
 				self.set_input(downstream_input, reconnect_input.clone(), network_path);
 			}
@@ -1296,98 +920,50 @@ impl NodeNetworkInterface {
 		true
 	}
 
-	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
-		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in start_previewing_without_restore");
-			return;
-		};
-		network_metadata.persistent_metadata.previewing = Previewing::Yes { root_node_to_restore: None };
-	}
-
-	fn stop_previewing(&mut self, network_path: &[NodeId]) {
-		if let Previewing::Yes {
-			root_node_to_restore: Some(root_node_to_restore),
-		} = self.previewing(network_path)
-		{
-			self.set_input(
-				&InputConnector::Export(0),
-				NodeInput::node(root_node_to_restore.node_id, root_node_to_restore.output_index),
-				network_path,
-			);
-		}
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in stop_previewing");
-			return;
-		};
-		network_metadata.persistent_metadata.previewing = Previewing::No;
-	}
-
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in set_visibility");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_display_name");
 			return;
 		};
 
-		if node_metadata.persistent_metadata.display_name == display_name {
+		if !node.set_display_name(display_name) {
 			return;
 		}
-
-		node_metadata.persistent_metadata.display_name = display_name;
 
 		self.transaction_modified();
-		self.try_unload_layer_width(node_id, network_path);
-		self.unload_node_click_targets(node_id, network_path);
+		self.invalidate_node_appearance(node_id, network_path);
 	}
 
-	pub fn set_import_export_name(&mut self, mut name: String, index: ImportOrExport, network_path: &[NodeId]) {
-		let Some(encapsulating_node) = self.encapsulating_node_metadata_mut(network_path) else {
+	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {
+		let Some((encapsulating_node_id, encapsulating_network_path)) = network_path.split_last() else {
 			log::error!("Could not get encapsulating network in set_import_export_name");
 			return;
 		};
 
-		let name_changed = match index {
-			ImportOrExport::Import(import_index) => {
-				let Some(input_properties) = encapsulating_node.persistent_metadata.input_metadata.get_mut(import_index) else {
-					log::error!("Could not get input properties in set_import_export_name");
-					return;
-				};
-				// Only return false if the previous value is the same as the current value
-				std::mem::swap(&mut input_properties.persistent_metadata.input_name, &mut name);
-				input_properties.persistent_metadata.input_name != name
-			}
-			ImportOrExport::Export(export_index) => {
-				let Some(export_name) = encapsulating_node.persistent_metadata.output_names.get_mut(export_index) else {
-					log::error!("Could not get export_name in set_import_export_name");
-					return;
-				};
-				std::mem::swap(export_name, &mut name);
-				*export_name != name
-			}
+		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+			log::error!("Could not get encapsulating node in set_import_export_name");
+			return;
 		};
+
+		let name_changed = match index {
+			ImportOrExport::Import(import_index) => node.set_input_name(import_index, name),
+			ImportOrExport::Export(export_index) => node.set_output_name(export_index, name),
+		};
+
 		if name_changed {
 			self.transaction_modified();
 		}
 	}
 
 	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_pinned");
 			return;
 		};
+		node.set_pinned(pinned);
 
-		node_metadata.persistent_metadata.pinned = pinned;
-
-		// Track the node in this network's pinned display order: append when newly pinned, prune when unpinned
-		if let Some(network_metadata) = self.network_metadata_mut(network_path) {
-			let order = &mut network_metadata.persistent_metadata.pinned_node_order;
-			if pinned {
-				if !order.contains(node_id) {
-					order.push(*node_id);
-				}
-			} else {
-				order.retain(|id| id != node_id);
-			}
+		if let Some(mut network) = self.network_mut(network_path) {
+			network.record_pinned(*node_id, pinned);
 		}
 
 		self.transaction_modified();
@@ -1408,38 +984,38 @@ impl NodeNetworkInterface {
 		let moved = new_order.remove(from);
 		new_order.insert(to, moved);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(mut network) = self.network_mut(network_path) else {
 			log::error!("Could not get network_metadata in reorder_pinned_node");
 			return;
 		};
-		network_metadata.persistent_metadata.pinned_node_order = new_order;
+		network.set_pinned_order(new_order);
 
 		self.transaction_modified();
 	}
 
 	pub fn set_visibility(&mut self, node_id: &NodeId, network_path: &[NodeId], is_visible: bool) {
-		let Some(network) = self.network_mut(network_path) else {
-			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_visibility");
 			return;
 		};
 
-		node.visible = is_visible;
-		self.transaction_modified();
+		if node.set_visible(is_visible) {
+			self.transaction_modified();
+		}
 	}
 
 	pub fn set_locked(&mut self, node_id: &NodeId, network_path: &[NodeId], locked: bool) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
-			log::error!("Could not get node {node_id} in set_visibility");
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_locked");
 			return;
 		};
 
-		node_metadata.persistent_metadata.locked = locked;
+		if !node.set_locked(locked) {
+			return;
+		}
+
 		self.transaction_modified();
-		self.try_unload_layer_width(node_id, network_path);
-		self.unload_node_click_targets(node_id, network_path);
+		self.invalidate_node_appearance(node_id, network_path);
 	}
 
 	pub fn set_to_node_or_layer(&mut self, node_id: &NodeId, network_path: &[NodeId], is_layer: bool) {
@@ -1494,21 +1070,16 @@ impl NodeNetworkInterface {
 			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
 			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		// First set the position to absolute
+		let absolute = match is_layer {
+			true => NodeTypePersistentMetadata::layer(position),
+			false => NodeTypePersistentMetadata::node(position),
+		};
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-
-		// First set the position to absolute
-		node_metadata.persistent_metadata.node_type_metadata = if is_layer {
-			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::Absolute(position),
-			})
-		} else {
-			NodeTypePersistentMetadata::Node(NodePersistentMetadata {
-				position: NodePosition::Absolute(position),
-			})
-		};
+		node.set_node_type(absolute);
 
 		// Try build the chain
 		if is_layer {
@@ -1517,112 +1088,44 @@ impl NodeNetworkInterface {
 			self.try_set_node_to_chain(node_id, network_path);
 		}
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		// Set the position to stack if necessary
+		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
+			let offset = (position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32;
+			let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+				log::error!("Could not get node_metadata for node {node_id}");
+				return;
+			};
+			node.set_stack_position(offset);
+		}
+
+		let Some(transient) = self.node_transient_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		// Set the position to stack if necessary
-		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
-			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::Stack((position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32),
-			})
-		}
-
-		node_metadata.transient_metadata.layer_width.unload();
-		node_metadata.transient_metadata.owned_nodes.unload();
+		transient.layer_width.unload();
+		transient.owned_nodes.unload();
 
 		self.transaction_modified();
 		self.unload_stack_dependents(network_path);
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
 		self.unload_all_nodes_bounding_box(network_path);
-		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
+		self.invalidate_import_export(network_path);
 		self.load_structure();
 	}
 
+	/// Renders `toggle_id` instead of the network's export, or stops doing so if it already is.
+	///
+	/// Per-peer and not a change to the document: the export keeps whatever it is wired to, and the
+	/// compile path substitutes the previewed node into the graph it evaluates, so no other peer sees it.
 	pub fn toggle_preview(&mut self, toggle_id: NodeId, network_path: &[NodeId]) {
-		let Some(network) = self.nested_network(network_path) else {
-			return;
+		let previewing = match self.previewing(network_path) {
+			Previewing::Yes { previewed } if previewed.node_id == toggle_id => Previewing::No,
+			_ => Previewing::Yes {
+				previewed: RootNode { node_id: toggle_id, output_index: 0 },
+			},
 		};
-		// If new_export is None then disconnect
-		let mut new_export = None;
-		let mut new_previewing_state = Previewing::No;
-		if let Some(export) = network.exports.first() {
-			// If there currently an export
-			if let NodeInput::Node { node_id, output_index, .. } = export {
-				let previous_export_id = *node_id;
-				let previous_output_index = *output_index;
 
-				// The export is clicked
-				if *node_id == toggle_id {
-					// If the current export is clicked and is being previewed end the preview and set either export back to root node or disconnect
-					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
-						new_export = root_node_to_restore.map(|root_node| root_node.to_connector());
-						new_previewing_state = Previewing::No;
-					}
-					// The export is clicked and there is no preview
-					else {
-						new_previewing_state = Previewing::Yes {
-							root_node_to_restore: Some(RootNode {
-								node_id: previous_export_id,
-								output_index: previous_output_index,
-							}),
-						};
-					}
-				}
-				// The export is not clicked
-				else {
-					new_export = Some(OutputConnector::primary_output(toggle_id));
-
-					// There is currently a dashed line being drawn
-					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
-						// There is also a solid line being drawn
-						if let Some(root_node_to_restore) = root_node_to_restore {
-							// If the node with the solid line is clicked, then start previewing that node without restore
-							if root_node_to_restore.node_id == toggle_id {
-								new_export = Some(OutputConnector::primary_output(toggle_id));
-								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
-							} else {
-								// Root node to restore does not change
-								new_previewing_state = Previewing::Yes {
-									root_node_to_restore: Some(root_node_to_restore),
-								};
-							}
-						}
-						// There is a dashed line without a solid line.
-						else {
-							new_previewing_state = Previewing::Yes { root_node_to_restore: None };
-						}
-					}
-					// Not previewing, there is no dashed line being drawn
-					else {
-						new_export = Some(OutputConnector::primary_output(toggle_id));
-						new_previewing_state = Previewing::Yes {
-							root_node_to_restore: Some(RootNode {
-								node_id: previous_export_id,
-								output_index: previous_output_index,
-							}),
-						};
-					}
-				}
-			}
-			// The primary export is disconnected, so preview the node with nothing to restore, which disconnects the export again when the preview ends
-			else {
-				new_export = Some(OutputConnector::primary_output(toggle_id));
-				new_previewing_state = Previewing::Yes { root_node_to_restore: None };
-			}
-		}
-		match new_export {
-			Some(new_export) => {
-				self.create_wire(&new_export, &InputConnector::Export(0), network_path);
-			}
-			None => {
-				self.disconnect_input(&InputConnector::Export(0), network_path);
-			}
-		}
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			return;
-		};
-		network_metadata.persistent_metadata.previewing = new_previewing_state;
+		let Some(mut network) = self.network_mut(network_path) else { return };
+		network.set_previewing(previewing);
 	}
 }
