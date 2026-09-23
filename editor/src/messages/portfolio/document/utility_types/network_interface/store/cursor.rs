@@ -96,6 +96,16 @@ impl NodeDeltas<'_> {
 		});
 	}
 
+	/// Records a snapshot for a node inside the network this one owns, for metadata that arrived with a
+	/// new nested network rather than describing this node.
+	fn snapshot_owned(&mut self, node_id: NodeId, metadata: Box<DocumentNodePersistentMetadata>) {
+		self.deltas.push(EditorDelta::NodeMetadataSnapshot {
+			network_path: self.locator.owned_network_path(),
+			node_id,
+			metadata,
+		});
+	}
+
 	fn network_path(&self) -> Vec<NodeId> {
 		self.locator.network_path.to_vec()
 	}
@@ -347,8 +357,19 @@ impl NodeMut<'_> {
 			node: Box::new(self.node.clone()),
 		};
 		self.deltas.graph(delta);
-		let metadata = Box::new(self.metadata.clone());
-		self.deltas.snapshot(metadata);
+
+		// Only what the new implementation brought with it. A swap leaves the node's own metadata alone,
+		// and restating it would assert values this peer did not write, clobbering a concurrent rename.
+		let owned: Vec<_> = self
+			.metadata
+			.network_metadata
+			.iter()
+			.flat_map(|network_metadata| &network_metadata.persistent_metadata.node_metadata)
+			.map(|(child_id, child)| (*child_id, Box::new(child.persistent_metadata.clone())))
+			.collect();
+		for (child_id, metadata) in owned {
+			self.deltas.snapshot_owned(child_id, metadata);
+		}
 	}
 
 	/// Replaces the node's whole persistent metadata, including that of everything nested under it,

@@ -196,10 +196,15 @@ impl Document {
 			}
 			RegistryDelta::SetNodeInputs { id, inputs } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
-				// The slots arrive carrying the placeholder timestamp they were built with, so they take this
-				// op's instead. Leaving the placeholder would reset every slot to the origin and make each
-				// later per-slot gate vacuously true, letting a stale write win.
-				node.inputs = inputs.into_iter().map(|slot| crate::InputSlot { timestamp, ..slot }).collect();
+				// The list is one value rather than independently mergeable slots, so the newest slot stands in
+				// for a timestamp the list itself does not carry, and an older write is dropped whole.
+				let newest = node.inputs.iter().map(|slot| slot.timestamp).max().unwrap_or(TimeStamp::ORIGIN);
+				if force || timestamp > newest {
+					// The slots arrive carrying the placeholder timestamp they were built with, so they take this
+					// op's instead. Leaving the placeholder would reset every slot to the origin and make each
+					// later per-slot gate vacuously true, letting a stale write win.
+					node.inputs = inputs.into_iter().map(|slot| crate::InputSlot { timestamp, ..slot }).collect();
+				}
 			}
 			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
@@ -208,6 +213,10 @@ impl Document {
 					input.input = new_input;
 					input.timestamp = timestamp;
 				}
+			}
+			RegistryDelta::SetNodeImplementation { id, implementation } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				node.implementation = implementation;
 			}
 			RegistryDelta::ChangeNodeAttribute { id, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
@@ -320,6 +329,12 @@ impl Document {
 				}
 				self.ensure_node_exists(target, *id)?;
 			}
+			RegistryDelta::SetNodeImplementation { id, implementation } => {
+				if let crate::Implementation::Network(network) = implementation {
+					self.ensure_network_exists(target, *network)?;
+				}
+				self.ensure_node_exists(target, *id)?;
+			}
 			RegistryDelta::ChangeNodeAttribute { id, .. } | RegistryDelta::ChangeNodeInputAttribute { id, .. } => self.ensure_node_exists(target, *id)?,
 			RegistryDelta::SetNetworkExport {
 				id: network, export: export_target, ..
@@ -360,6 +375,13 @@ impl Document {
 			&RegistryDelta::SetNodeInputs { id, .. } => {
 				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				RegistryDelta::SetNodeInputs { id, inputs: node.inputs.clone() }
+			}
+			&RegistryDelta::SetNodeImplementation { id, .. } => {
+				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				RegistryDelta::SetNodeImplementation {
+					id,
+					implementation: node.implementation.clone(),
+				}
 			}
 			&RegistryDelta::ChangeNodeInput { id, index: input_idx, .. } => {
 				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;

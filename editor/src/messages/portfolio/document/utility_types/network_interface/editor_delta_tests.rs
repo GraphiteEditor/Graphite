@@ -576,3 +576,39 @@ async fn a_group_added_and_removed_in_one_batch_leaves_nothing_behind() {
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "group added then removed in one batch");
 }
+
+/// Swapping a node's implementation must not restate the node's own metadata: the swap did not write it,
+/// and asserting it would overwrite whatever a concurrent peer set for the node's name, lock or pin.
+#[tokio::test]
+async fn swapping_an_implementation_leaves_the_node_in_place() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+
+	let working = convert(&editor);
+
+	let deltas = {
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.discard_deltas();
+		let Some(mut cursor) = interface.node_mut(super::NodeLocator::new(node, &[])) else {
+			panic!("the node should resolve")
+		};
+		cursor.replace_implementation(graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER), None);
+		interface.take_deltas()
+	};
+
+	let ops = construct(&editor, &deltas, &working);
+
+	assert!(
+		ops.iter().any(|op| matches!(op, RegistryDelta::SetNodeImplementation { .. })),
+		"the swap should update the implementation in place"
+	);
+	assert!(
+		!ops.iter().any(|op| matches!(op, RegistryDelta::RemoveNode { .. })),
+		"the node itself should not be rebuilt, since that would clear the attributes it carries"
+	);
+	assert!(
+		!deltas.iter().any(|delta| matches!(delta, EditorDelta::NodeMetadataSnapshot { node_id, .. } if *node_id == node)),
+		"the node's own metadata should not be restated by a swap that did not write it"
+	);
+}

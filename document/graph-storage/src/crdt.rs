@@ -1,4 +1,6 @@
-use crate::{Attributes, AttributesWrite, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
+use crate::{
+	Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev,
+};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -118,6 +120,15 @@ pub enum RegistryDelta {
 	SetNodeInputs {
 		id: NodeId,
 		inputs: Vec<InputSlot>,
+	},
+	/// A node's implementation, for swapping what it computes without rebuilding the node.
+	///
+	/// Removing and re-adding the node would express the same change, but would also clear every
+	/// attribute it carries, so restating them would clobber whatever a concurrent peer wrote to the
+	/// node's name, lock or pin.
+	SetNodeImplementation {
+		id: NodeId,
+		implementation: Implementation,
 	},
 	ChangeNodeAttribute {
 		id: NodeId,

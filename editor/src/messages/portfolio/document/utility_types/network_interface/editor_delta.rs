@@ -153,7 +153,9 @@ impl EditorDelta {
 			}
 
 			EditorDelta::Graph(RuntimeDelta::ReplaceNode { network_path, node_id, node }) => {
-				construct_removals(context.resolver.node_id(network_path, *node_id), batch, batch_removed_nodes, ops);
+				// Only what the previous implementation owned goes; the node stays so the addition below
+				// updates it in place and its `ui::*` attributes survive the swap.
+				construct_removals_below(context.resolver.node_id(network_path, *node_id), batch, batch_removed_nodes, ops);
 				construct_structural_additions(network_path, *node_id, node, batch, context, ops, declarations)?;
 			}
 
@@ -376,7 +378,19 @@ fn construct_structural_additions(
 	nodes.sort_by_key(|(id, _)| **id);
 	let added: Vec<_> = nodes.into_iter().map(|(id, node)| (*id, node.clone())).collect();
 	for (id, node) in added {
-		ops.push(RegistryDelta::AddNode { id, node: node.clone() });
+		// A node the registry already holds is updated rather than rebuilt: rebuilding would clear the
+		// `ui::*` attributes it carries, and restating those would clobber whatever a concurrent peer
+		// wrote to its name, lock or pin.
+		match batch.node(id).is_some() {
+			true => {
+				ops.push(RegistryDelta::SetNodeImplementation {
+					id,
+					implementation: node.implementation().clone(),
+				});
+				ops.push(RegistryDelta::SetNodeInputs { id, inputs: node.inputs().to_vec() });
+			}
+			false => ops.push(RegistryDelta::AddNode { id, node: node.clone() }),
+		}
 		batch.record_addition(id, node);
 	}
 
@@ -556,11 +570,35 @@ fn construct_removals(
 	batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
 	ops: &mut Vec<RegistryDelta>,
 ) {
+	construct_removals_with(node_id, true, batch, batch_removed_nodes, ops)
+}
+
+/// Removes everything the node's implementation owns while leaving the node itself, for a swap that
+/// keeps the node in place.
+fn construct_removals_below(
+	node_id: document_graph_storage::NodeId,
+	batch: &mut BatchRegistry,
+	batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
+	ops: &mut Vec<RegistryDelta>,
+) {
+	construct_removals_with(node_id, false, batch, batch_removed_nodes, ops)
+}
+
+fn construct_removals_with(
+	node_id: document_graph_storage::NodeId,
+	include_node: bool,
+	batch: &mut BatchRegistry,
+	batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
+	ops: &mut Vec<RegistryDelta>,
+) {
 	let (mut removed_nodes, mut removed_networks) = removal_closure(node_id, batch);
 
 	removed_nodes.sort();
 	removed_networks.sort();
 	for id in &removed_nodes {
+		if !include_node && *id == node_id {
+			continue;
+		}
 		let Some(snapshot) = batch.node(*id).cloned() else { continue };
 		ops.push(RegistryDelta::RemoveNode { id: *id, snapshot: snapshot.clone() });
 		// Kept by value: a replacement later in this batch re-adds the same ID with different content, so
