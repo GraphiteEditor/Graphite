@@ -1111,6 +1111,11 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
+		// A type-witness input, whose stored value's type selects the node's row: the dropdown lists the types the rows accept there
+		"type_choice".to_string(),
+		Box::new(|node_id, index, context| Ok(vec![node_properties::type_choice_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context))])),
+	);
+	map.insert(
 		"vec2".to_string(),
 		Box::new(|node_id, index, context| {
 			let x = context

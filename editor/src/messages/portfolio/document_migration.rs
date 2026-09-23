@@ -1637,6 +1637,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	let mut inputs_count = node.inputs.len();
 
+	// The expression nodes gained an output-type input, a type witness the Properties panel edits. A node from before it
+	// takes the definition's default choice, Number, which is the output type every such node had.
+	let expression_node_identifiers = [graphene_std::math_nodes::math_fx::IDENTIFIER, graphene_std::math_nodes::math_f::IDENTIFIER];
+	if expression_node_identifiers.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && inputs_count == 2 {
+		let definition = resolve_document_node_type(&reference)?;
+		let mut template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+		for (index, input) in old_inputs.into_iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+		inputs_count = 3;
+	}
+
 	// Split the legacy combined "Blending" node into a chain of separate Blend Mode, Opacity (now also covers fill), and Clip nodes.
 	// `NODE_REPLACEMENTS` rewrites the old `Blending` proto identifier (and its older aliases) to `blend_mode::IDENTIFIER`, so a leftover
 	// 5-input shape on a Blend Mode node identifies an old Blending node that still needs structural splitting. Sub-nodes whose values
@@ -3342,6 +3356,33 @@ mod tests {
 		}
 	}
 
+	// An expression node saved before the output-type witness input had only its value and expression inputs
+	#[test]
+	fn expression_nodes_gain_the_output_type_witness() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(
+			node_id,
+			NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::math_fx::IDENTIFIER),
+				inputs: vec![NodeInput::value(TaggedValue::Number(4.), false), NodeInput::value(TaggedValue::String("x^2".into()), false)],
+				..Default::default()
+			},
+			&[],
+		);
+		document_migration_upgrades(&mut document, false);
+
+		// The old inputs stay in place and the witness defaults to Number, the output type every such node had
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		let value_at = |index: usize| node.inputs.get(index).and_then(|input| input.as_value()).cloned();
+		assert_eq!(node.inputs.len(), 3);
+		assert_eq!(value_at(0), Some(TaggedValue::Number(4.)));
+		assert_eq!(value_at(1), Some(TaggedValue::String("x^2".into())));
+		assert_eq!(value_at(2), Some(TaggedValue::Number(0.)));
+	}
+
 	// The old Math node's expression decides its replacement: a static string that never reads `B` becomes "Math f(x)",
 	// while a wired `B` or an uninspectable expression becomes "Extend" feeding "Math f(…)"
 	#[test]
@@ -3406,9 +3447,14 @@ mod tests {
 
 			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
 			let node = &document.network_interface.document_network().nodes[&math_id];
-			assert_eq!(node.inputs.len(), 2, "the old `B` input should be dropped");
+			assert_eq!(
+				node.inputs.len(),
+				3,
+				"the old `B` input should be dropped, leaving the value, the expression, and the output-type witness"
+			);
 			assert_eq!(node.inputs.first(), Some(&NodeInput::node(source_a_id, 0)));
 			assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::String("2 - 0.2x".into())));
+			assert_eq!(node.inputs.get(2).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(0.)));
 		}
 
 		// A constant `B` inlines into the rewritten string as a parenthesized literal; an alias spelling of the old identifier also matches
