@@ -222,6 +222,57 @@ async fn clearing_a_metadata_field_removes_the_attribute() {
 	assert_same_stored_effect(&working, constructed, diffed, "cleared metadata fields");
 }
 
+/// The gate emission exists for: what the store says it wrote has to be what a whole-document
+/// conversion of the result would show. Hand-written deltas cannot catch a setter that forgets to
+/// emit, or emits the wrong field; taking them from the interface after a real edit can.
+#[tokio::test]
+async fn emitted_deltas_reproduce_the_diff() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let node = editor.create_node_by_name(rectangle_definition()).await;
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.take_deltas();
+
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.set_display_name(&node, "Renamed".to_string(), &[]);
+		network_interface.set_locked(&node, &[], true);
+		network_interface.set_pinned(&node, &[], true);
+		network_interface.set_visibility(&node, &[], false);
+		network_interface.shift_node(&node, glam::IVec2::new(3, 5), &[]);
+	}
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	assert!(!emitted.is_empty(), "the edits should have emitted deltas");
+
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "emitted deltas");
+}
+
+/// A write that changes nothing is not a write, so it must not emit. Otherwise a redundant setter call
+/// would stamp a fresh timestamp and win against a concurrent peer that did change the field.
+#[tokio::test]
+async fn unchanged_writes_emit_nothing() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let node = editor.create_node_by_name(rectangle_definition()).await;
+
+	editor.active_document_mut().network_interface.set_display_name(&node, "Named".to_string(), &[]);
+	editor.active_document_mut().network_interface.take_deltas();
+
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.set_display_name(&node, "Named".to_string(), &[]);
+		network_interface.set_locked(&node, &[], false);
+		network_interface.shift_node(&node, glam::IVec2::ZERO, &[]);
+	}
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	assert!(emitted.is_empty(), "re-writing the same values should emit nothing, got {emitted:#?}");
+}
+
 #[tokio::test]
 async fn removing_a_nested_network_node_matches_the_diff() {
 	let mut editor = EditorTestUtils::create();

@@ -911,6 +911,7 @@ impl NodeNetworkInterface {
 			network_metadata,
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
+			deltas: Vec::new(),
 			transaction_status: TransactionStatus::Finished,
 		}
 	}

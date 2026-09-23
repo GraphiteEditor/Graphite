@@ -2030,6 +2030,11 @@ impl DocumentMessageHandler {
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
+		// The batch boundary for the store's emitted deltas. Staging still converts the whole document and
+		// diffs it, so the deltas are dropped here rather than consumed; draining unconditionally keeps the
+		// buffer from growing across a session that never mounts storage.
+		let _emitted = self.network_interface.take_deltas();
+
 		if self.history.storage().is_none() {
 			return;
 		}
