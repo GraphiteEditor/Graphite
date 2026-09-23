@@ -289,6 +289,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let number_step: Vec<_> = regular_fields.iter().map(|field| field.number_step.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
 
 	let unit_suffix: Vec<_> = regular_fields.iter().map(|field| field.unit.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
+	let multiline: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let multiline = field.multiline;
+			quote!(#multiline)
+		})
+		.collect();
+	let progression: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let progression = field.progression;
+			quote!(#progression)
+		})
+		.collect();
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
@@ -914,6 +928,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								number_display_decimal_places: #number_display_decimal_places,
 								number_step: #number_step,
 								unit: #unit_suffix,
+								multiline: #multiline,
+								progression: #progression,
 							},
 						)*
 					],

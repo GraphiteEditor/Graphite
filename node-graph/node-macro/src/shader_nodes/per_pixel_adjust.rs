@@ -270,6 +270,8 @@ impl PerPixelAdjustCodegen<'_> {
 			number_display_decimal_places: None,
 			number_step: None,
 			unit: None,
+			multiline: false,
+			progression: false,
 			is_data_field: false,
 		});
 
