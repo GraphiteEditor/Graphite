@@ -679,16 +679,20 @@ impl MeshGridLineAxis {
 	}
 }
 
-/// The serialized exchange form of a mesh gradient: its patches, with whole-mesh settings as sibling fields serialized only when non-default.
+/// The serialized exchange form of a mesh gradient: its patches, with whole-mesh settings as sibling fields.
 #[derive(Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MeshGradientSurface {
 	pub mesh: MeshGradient,
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientSpace::is_default"))]
 	pub gradient_space: GradientSpace,
-	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
+	#[cfg_attr(feature = "serde", serde(default = "mesh_gradient_default_interpolation"))]
 	pub gradient_interpolation: GradientInterpolation,
 	pub svg_method: MeshGradientSvgMethod,
+}
+
+fn mesh_gradient_default_interpolation() -> GradientInterpolation {
+	GradientInterpolation::Smooth
 }
 
 impl Default for MeshGradientSurface {
@@ -696,7 +700,7 @@ impl Default for MeshGradientSurface {
 		Self {
 			mesh: MeshGradient::default(),
 			gradient_space: GradientSpace::default(),
-			gradient_interpolation: GradientInterpolation::Smooth,
+			gradient_interpolation: mesh_gradient_default_interpolation(),
 			svg_method: MeshGradientSvgMethod::default(),
 		}
 	}
