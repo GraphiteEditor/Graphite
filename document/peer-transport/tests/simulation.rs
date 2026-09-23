@@ -4,8 +4,8 @@
 //! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
 use document_graph_storage::{
-	AttributeDelta, Delta, HotOp, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, RetiredMarks, Rev, Session,
-	TimeStamp, UserId,
+	AttributeDelta, Delta, HotOp, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId, RetiredMarks, Rev,
+	Session, SourceKey, TimeStamp, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
@@ -16,6 +16,7 @@ static TOTAL_NODES: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_WIRED: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_EXPORTS: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_INPUT_ATTRIBUTES: AtomicUsize = AtomicUsize::new(0);
+static TOTAL_SOURCES: AtomicUsize = AtomicUsize::new(0);
 
 /// A peer's document plus the byte store the editor keeps application-wide. Bare `Session` takes the
 /// trait's no-op resource defaults, which would leave the whole request path unexercised.
@@ -286,17 +287,65 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 	}
 }
 
+/// Resource-lifecycle ops past creation. `AddResource` already rides the staged-resource path, so
+/// these cover the rest of the chain: the resolved hash, the source fallback list, and removal.
+/// `None` when the registry holds no resource to target.
+fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<RegistryDelta> {
+	let session = &target.session;
+	let registry = session.registry();
+	let live: Vec<ResourceId> = registry.resources.keys().copied().collect();
+	let id = *pick(network, &live)?;
+
+	// A small pool of priorities, so concurrent adds sometimes collide on a key and sometimes stack up
+	// as distinct entries in the same chain.
+	let key = SourceKey {
+		priority: Priority::new(network.random_below(3) as f64).expect("a whole number is finite"),
+		peer: session.peer(),
+	};
+
+	Some(match network.random_below(5) {
+		// Only a hash this peer holds the bytes for: a resolved hash is content derived, so in the editor
+		// the peer that resolves a resource is the one that fetched it.
+		0 => {
+			let held: Vec<ResourceHash> = target.resources.keys().copied().collect();
+			RegistryDelta::SetResourceHash {
+				id,
+				hash: Some(*pick(network, &held)?),
+			}
+		}
+		1 => RegistryDelta::SetResourceHash { id, hash: None },
+		2 => RegistryDelta::AddSource {
+			id,
+			key,
+			source: serde_json::json!("Embedded"),
+		},
+		3 => RegistryDelta::RemoveSource { id, key },
+		_ => RegistryDelta::RemoveResource {
+			id,
+			snapshot: registry.resources.get(&id)?.clone(),
+		},
+	})
+}
+
 /// One element at random, or `None` when there is nothing to choose from.
 fn pick<'a, T>(network: &mut MockNetwork, options: &'a [T]) -> Option<&'a T> {
 	(!options.is_empty()).then(|| &options[network.random_below(options.len())])
 }
 
-fn random_op(network: &mut MockNetwork, session: &Session) -> RegistryDelta {
+fn random_op(network: &mut MockNetwork, target: &SimTarget) -> RegistryDelta {
+	let session = &target.session;
 	let network_id = NetworkId(1 + network.random_below(3) as u64);
 
 	// Half the ops are node-level, falling through to the network-level ones when nothing fits.
 	if network.random_below(2) == 0
 		&& let Some(op) = random_node_op(network, session)
+	{
+		return op;
+	}
+
+	// Resources exist only once a peer has staged one, so this yields nothing early in a run.
+	if network.random_below(5) == 0
+		&& let Some(op) = random_resource_op(network, target)
 	{
 		return op;
 	}
@@ -381,7 +430,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 		match network.random_below(16) {
 			// A guest edits only once synced; anything staged earlier would be invisible to its peers.
 			0..=2 if peers[index].replica.is_synced() => {
-				let op = random_op(&mut network, peers[index].session());
+				let op = random_op(&mut network, &peers[index].target);
 				peers[index].stage(op);
 			}
 			// A small pool of distinct payloads, so peers sometimes introduce the same resource
@@ -560,6 +609,11 @@ fn peers_converge_under_random_interleavings() {
 
 			let input_attributes = registry.node_instances.values().flat_map(|node| node.inputs()).filter(|slot| !slot.attributes.is_empty()).count();
 			TOTAL_INPUT_ATTRIBUTES.fetch_add(input_attributes, Ordering::Relaxed);
+
+			// More than one source on a resource can only come from `AddSource`, which the staging path
+			// never emits, so this is what proves the resource-chain ops reach the registry.
+			let stacked_sources = registry.resources.values().filter(|entry| entry.sources.len() > 1).count();
+			TOTAL_SOURCES.fetch_add(stacked_sources, Ordering::Relaxed);
 		}
 		assert_converged(seed, &peers);
 	}
@@ -569,6 +623,7 @@ fn peers_converge_under_random_interleavings() {
 	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
 	assert!(TOTAL_EXPORTS.load(Ordering::Relaxed) > 0, "the corpus set no network exports");
 	assert!(TOTAL_INPUT_ATTRIBUTES.load(Ordering::Relaxed) > 0, "the corpus wrote no input-slot attributes");
+	assert!(TOTAL_SOURCES.load(Ordering::Relaxed) > 0, "the corpus never stacked a second source on a resource");
 }
 
 /// A guest that drops and comes back keeps its `PeerId` but gets a fresh `Replica`, so its broadcast

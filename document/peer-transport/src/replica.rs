@@ -144,6 +144,11 @@ impl Replica {
 		if ops.is_empty() {
 			return Ok(());
 		}
+
+		// A local edit can name a resource whose bytes are not here, a pasted node referencing a font for
+		// instance, so the references are worth re-examining even though nothing arrived from the wire.
+		self.resources_stale = true;
+
 		self.broadcast(BroadcastBody::HotOps(ops.to_vec()))
 	}
 
@@ -153,6 +158,11 @@ impl Replica {
 		if deltas.is_empty() {
 			return Ok(());
 		}
+
+		// Retirement moves ops into history, which referenced resources are read from as well as from the
+		// registry, so a hash the registry has since overwritten becomes referenced again from here.
+		self.resources_stale = true;
+
 		self.broadcast(BroadcastBody::Deltas {
 			deltas: deltas.to_vec(),
 			retires: retires.to_vec(),
@@ -241,7 +251,7 @@ impl Replica {
 			}
 		}
 
-		self.retry_deferred(target);
+		self.retry_deferred(target, &mut events);
 
 		if let Err(error) = target.flush() {
 			log::error!("Sync error: {error}");
@@ -256,9 +266,6 @@ impl Replica {
 		events
 	}
 
-	/// Re-announce hot ops authored here that are not in history yet. A broadcast can be lost with the
-	/// link that carried it, and nothing else would resend it. Runs on membership changes, where loss
-	/// is plausible; the watermark ends it as soon as the host retires them.
 	/// Re-announce every hot op held here that history does not yet cover, whoever wrote it. A peer can
 	/// hold the only copy of another's op, so replaying only our own would leave that one to die with the
 	/// connection it arrived on. Ops the watermark covers replay as no-ops on every receiver.
@@ -271,14 +278,23 @@ impl Replica {
 
 	/// Retry ops held back for a missing referent. A later op can supply the entity an earlier one
 	/// named, so this runs once per poll rather than only where the op arrived.
-	fn retry_deferred(&mut self, target: &mut dyn SyncTarget) {
+	fn retry_deferred(&mut self, target: &mut dyn SyncTarget, events: &mut Vec<Event>) {
 		if self.deferred.is_empty() {
 			return;
 		}
 
 		let pending = std::mem::take(&mut self.deferred);
+		let waiting = pending.len();
 		match target.apply_remote_hot_ops(pending) {
-			Ok(deferred) => self.deferred = deferred,
+			Ok(deferred) => {
+				// One that finally applied can name a resource nobody here has seen, and leaves the target
+				// changed, neither of which anything else in the poll would notice.
+				if deferred.len() < waiting {
+					self.resources_stale = true;
+					events.push(Event::Changed);
+				}
+				self.deferred = deferred;
+			}
 			Err(error) => log::error!("Retrying deferred hot ops: {error}"),
 		}
 	}
