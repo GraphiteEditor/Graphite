@@ -989,7 +989,7 @@ fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 	let mut marks = crate::RetiredHotOps::default();
 	marks.extend([id(1), id(2)]);
 	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(2)), "a contiguous run folds straight into the prefix");
-	assert!(marks.unretired.is_empty());
+	assert!(marks.retired_beyond.is_empty());
 
 	// Sequence 3 never arrived, so 4 retires above the prefix rather than extending it.
 	marks.extend([id(4)]);
@@ -1000,7 +1000,7 @@ fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 	// The gap fills, so the prefix swallows both it and the exception behind it.
 	marks.extend([id(3)]);
 	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(4)));
-	assert!(marks.unretired.is_empty(), "the exception set empties once the prefix reaches it");
+	assert!(marks.retired_beyond.is_empty(), "the exception set empties once the prefix reaches it");
 }
 
 /// Marks merge by union, so adopting a peer's wholesale must not lose local coverage.
@@ -1022,7 +1022,7 @@ fn absorbing_marks_keeps_both_sides_coverage() {
 
 	// The union is 1..=5 contiguous, so it all collapses into the prefix.
 	assert_eq!(local.retired_up_to.get(&author), Some(&crate::HotSequence(5)));
-	assert!(local.unretired.is_empty());
+	assert!(local.retired_beyond.is_empty());
 	for sequence in 1..=5 {
 		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
 	}
@@ -1166,13 +1166,12 @@ fn retiring_over_a_gap_lands_beyond_the_prefix() {
 	let retired = host.retired_marks();
 	let prefix = retired.retired_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
 	assert_eq!(prefix, crate::HotSequence::NONE, "sequence 1 never arrived, so the prefix cannot move");
-	assert!(retired.unretired.contains(&second.id()), "the retired op has to be recorded past the gap");
+	assert!(retired.retired_beyond.contains_key(&author), "the retired op has to be recorded past the gap");
 	assert!(retired.covers(second.id()), "and still count as retired");
 }
 
-/// A gap that never fills pins the prefix, so every later op from that author stays in the set for the
-/// document's life. Documents the current limit; bounding it needs retirement to advance past a gap whose
-/// author can no longer supply the missing op.
+/// A gap that never fills pins the prefix, so every later op from that author lands past it. Stored as
+/// runs, that stays one entry however many ops follow.
 #[test]
 fn a_permanent_gap_accumulates_every_later_op() {
 	let author = PeerId(2);
@@ -1188,6 +1187,10 @@ fn a_permanent_gap_accumulates_every_later_op() {
 		marks.extend([id(sequence)]);
 	}
 
-	eprintln!("prefix {:?}, exception set holds {}", marks.retired_up_to.get(&author), marks.unretired.len());
-	assert_eq!(marks.unretired.len(), 19, "every op after the gap stayed in the set");
+	let runs = marks.retired_beyond.get(&author).map(Vec::len).unwrap_or_default();
+	assert_eq!(runs, 1, "the ops after the gap coalesce into a single run");
+	for sequence in 2..=20 {
+		assert!(marks.covers(id(sequence)), "sequence {sequence} must stay covered");
+	}
+	assert!(!marks.covers(id(1)), "the lost op is not claimed");
 }

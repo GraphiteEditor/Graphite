@@ -797,13 +797,37 @@ pub struct HotOpId {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetiredHotOps {
 	pub retired_up_to: HashMap<PeerId, HotSequence>,
-	pub unretired: HashSet<HotOpId>,
+	/// Retired ops sitting past their author's prefix, as inclusive runs. A gap that never fills pins the
+	/// prefix and everything later from that author lands here, so runs keep this proportional to the
+	/// number of gaps instead of the number of ops.
+	pub retired_beyond: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
+}
+
+/// Sort and coalesce runs, joining any that touch or abut.
+fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
+	runs.sort_unstable();
+
+	let mut merged: Vec<(HotSequence, HotSequence)> = Vec::with_capacity(runs.len());
+	for &(start, end) in runs.iter() {
+		match merged.last_mut() {
+			Some((_, last_end)) if start <= last_end.next() => *last_end = (*last_end).max(end),
+			_ => merged.push((start, end)),
+		}
+	}
+
+	*runs = merged;
 }
 
 impl RetiredHotOps {
 	/// Whether history already holds this hot op.
 	pub fn covers(&self, id: HotOpId) -> bool {
-		self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through) || self.unretired.contains(&id)
+		if self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through) {
+			return true;
+		}
+
+		self.retired_beyond
+			.get(&id.peer)
+			.is_some_and(|runs| runs.iter().any(|&(start, end)| id.sequence >= start && id.sequence <= end))
 	}
 
 	/// Take on `remote`'s coverage as well as this one's.
@@ -812,42 +836,39 @@ impl RetiredHotOps {
 			let through = self.retired_up_to.entry(peer).or_default();
 			*through = (*through).max(remote_through);
 		}
-		self.unretired.extend(remote.unretired.iter().copied());
+		for (&peer, runs) in &remote.retired_beyond {
+			self.retired_beyond.entry(peer).or_default().extend(runs.iter().copied());
+		}
 
 		self.compact();
 	}
 
 	/// Record newly retired ops.
 	pub fn extend(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
-		self.unretired.extend(retired);
+		for id in retired {
+			self.retired_beyond.entry(id.peer).or_default().push((id.sequence, id.sequence));
+		}
 
 		self.compact();
 	}
 
-	/// Fold ops that continue their author's prefix into `retired_up_to`, leaving only those past a gap.
-	///
-	/// A gap that never fills holds the prefix still, so every later op from that author stays here for
-	/// the document's life. Advancing past a gap whose author can no longer supply it is what would
-	/// bound this, and needs connectivity the storage layer does not have.
+	/// Fold runs that continue their author's prefix into `retired_up_to`, leaving only those past a gap.
 	fn compact(&mut self) {
-		let mut by_author: HashMap<PeerId, Vec<HotSequence>> = HashMap::new();
-		for id in &self.unretired {
-			by_author.entry(id.peer).or_default().push(id.sequence);
-		}
+		for (&peer, runs) in &mut self.retired_beyond {
+			coalesce(runs);
 
-		for (peer, mut sequences) in by_author {
-			sequences.sort_unstable();
-			let through = self.retired_up_to.entry(peer).or_default();
-			for sequence in sequences {
-				if sequence == through.next() {
-					*through = sequence;
-				}
+			let mut through = self.retired_up_to.get(&peer).copied().unwrap_or(HotSequence::NONE);
+			while runs.first().is_some_and(|&(start, _)| start <= through.next()) {
+				let (_, end) = runs.remove(0);
+				through = through.max(end);
+			}
+
+			if through != HotSequence::NONE {
+				self.retired_up_to.insert(peer, through);
 			}
 		}
 
-		let through = std::mem::take(&mut self.retired_up_to);
-		self.unretired.retain(|id| through.get(&id.peer).is_none_or(|&covered| id.sequence > covered));
-		self.retired_up_to = through;
+		self.retired_beyond.retain(|_, runs| !runs.is_empty());
 	}
 }
 
