@@ -575,7 +575,6 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	/// The attribute name (key) to write or replace.
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	#[implementations(Context -> Item<AttributeValueDyn>)]
 	value: impl Node<'n, Context<'static>, Output = Item<AttributeValueDyn>>,
 ) -> List<T> {
 	let name = name.into_element();
