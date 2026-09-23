@@ -1,6 +1,6 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, RetiredMarks, Rev,
-	SourceValue, TimeStamp, apply_attribute_delta, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, RetiredMarks,
+	Rev, SourceValue, TimeStamp, apply_attribute_delta, reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -41,7 +41,7 @@ pub struct Document {
 	/// reading the same counter still produce distinct IDs.
 	pub(crate) next_node_counter: u64,
 	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
-	pub(crate) next_hot_sequence: u64,
+	pub(crate) next_hot_sequence: HotSequence,
 	/// Set while the registries are still folded from an older history. A failed refold is retried; the
 	/// derived state does not stay behind the history it comes from.
 	pub(crate) refold_owed: bool,

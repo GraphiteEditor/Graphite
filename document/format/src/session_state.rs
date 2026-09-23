@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{NetworkId, PeerId, Rev};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -43,5 +43,5 @@ pub struct SessionState {
 	/// reopen continues the run instead of reusing a spent sequence. Appended last: a positional codec
 	/// decodes these fields in declaration order.
 	#[serde(default)]
-	pub next_hot_sequence: u64,
+	pub next_hot_sequence: HotSequence,
 }

@@ -40,7 +40,7 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 	let hot_op = HotOp {
 		op: remove_node_op(NodeId(99)),
 		timestamp: observed,
-		sequence: 1,
+		sequence: crate::HotSequence(1),
 	};
 
 	document.apply_hot_op(hot_op).expect("RemoveNode on absent node is a no-op, not an error");
@@ -981,22 +981,25 @@ fn a_concurrent_remove_and_attribute_change_commute() {
 #[test]
 fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 	let author = PeerId(1);
-	let id = |sequence| crate::HotOpId { peer: author, sequence };
+	let id = |sequence: u64| crate::HotOpId {
+		peer: author,
+		sequence: crate::HotSequence(sequence),
+	};
 
 	let mut marks = crate::RetiredMarks::default();
 	marks.extend([id(1), id(2)]);
-	assert_eq!(marks.through.get(&author), Some(&2), "a contiguous run folds straight into the prefix");
+	assert_eq!(marks.through.get(&author), Some(&crate::HotSequence(2)), "a contiguous run folds straight into the prefix");
 	assert!(marks.above.is_empty());
 
 	// Sequence 3 never arrived, so 4 retires above the prefix rather than extending it.
 	marks.extend([id(4)]);
-	assert_eq!(marks.through.get(&author), Some(&2));
+	assert_eq!(marks.through.get(&author), Some(&crate::HotSequence(2)));
 	assert!(marks.covers(id(4)), "an op past the gap is still recognized as retired");
 	assert!(!marks.covers(id(3)), "the missing op is not claimed");
 
 	// The gap fills, so the prefix swallows both it and the exception behind it.
 	marks.extend([id(3)]);
-	assert_eq!(marks.through.get(&author), Some(&4));
+	assert_eq!(marks.through.get(&author), Some(&crate::HotSequence(4)));
 	assert!(marks.above.is_empty(), "the exception set empties once the prefix reaches it");
 }
 
@@ -1004,7 +1007,10 @@ fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 #[test]
 fn absorbing_marks_keeps_both_sides_coverage() {
 	let author = PeerId(1);
-	let id = |sequence| crate::HotOpId { peer: author, sequence };
+	let id = |sequence: u64| crate::HotOpId {
+		peer: author,
+		sequence: crate::HotSequence(sequence),
+	};
 
 	let mut local = crate::RetiredMarks::default();
 	local.extend([id(1), id(4)]);
@@ -1015,7 +1021,7 @@ fn absorbing_marks_keeps_both_sides_coverage() {
 	local.absorb(&remote);
 
 	// The union is 1..=5 contiguous, so it all collapses into the prefix.
-	assert_eq!(local.through.get(&author), Some(&5));
+	assert_eq!(local.through.get(&author), Some(&crate::HotSequence(5)));
 	assert!(local.above.is_empty());
 	for sequence in 1..=5 {
 		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
@@ -1128,4 +1134,14 @@ fn an_owed_refold_is_retried_by_a_merge_that_absorbs_nothing() {
 		session.retired_registry().attributes.contains_key("first"),
 		"the retried refold must bring the snapshot back to its history"
 	);
+}
+
+/// The newtype is `#[serde(transparent)]`, so persisted state and the wire carry a bare number and the
+/// field's encoding is unchanged.
+#[test]
+fn hot_sequence_serializes_as_a_bare_number() {
+	let encoded = serde_json::to_string(&crate::HotSequence(7)).expect("serialize");
+
+	assert_eq!(encoded, "7");
+	assert_eq!(serde_json::from_str::<crate::HotSequence>("7").expect("deserialize"), crate::HotSequence(7));
 }

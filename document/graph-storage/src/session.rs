@@ -46,7 +46,7 @@ impl Session {
 				peer,
 				last_broadcast_rev: None,
 				next_node_counter: 0,
-				next_hot_sequence: 0,
+				next_hot_sequence: HotSequence::NONE,
 				refold_owed: false,
 			},
 			remote_tips: HashMap::new(),
@@ -172,7 +172,7 @@ impl Session {
 		let mut staged = Vec::with_capacity(pending.len());
 		for op in pending {
 			// The counter advances only once the op is in the log, so a failure leaves no gap in the run.
-			let sequence = self.document.next_hot_sequence + 1;
+			let sequence = self.document.next_hot_sequence.next();
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
@@ -258,7 +258,7 @@ impl Session {
 				peer,
 				last_broadcast_rev: None,
 				next_node_counter,
-				next_hot_sequence: 0,
+				next_hot_sequence: HotSequence::NONE,
 				refold_owed: false,
 			},
 			remote_tips: HashMap::new(),
@@ -701,13 +701,13 @@ impl Session {
 	}
 
 	/// How many hot ops this peer has authored. Carried across a reload; no sequence is spent twice.
-	pub fn next_hot_sequence(&self) -> u64 {
+	pub fn next_hot_sequence(&self) -> HotSequence {
 		self.document.next_hot_sequence
 	}
 
 	/// Restore the authored-op count after a load, keeping a fresh op off a spent sequence. Raises only:
 	/// replaying a persisted hot log afterwards cannot lower it.
-	pub fn restore_hot_sequence(&mut self, sequence: u64) {
+	pub fn restore_hot_sequence(&mut self, sequence: HotSequence) {
 		self.document.next_hot_sequence = self.document.next_hot_sequence.max(sequence);
 	}
 }
@@ -754,7 +754,7 @@ pub struct HotOp {
 	pub timestamp: TimeStamp,
 	/// Position in its author's run, from 1 with no gaps. A watermark over it therefore means a contiguous
 	/// prefix; one over the Lamport counter cannot, since that skips on observing a higher remote stamp.
-	pub sequence: u64,
+	pub sequence: HotSequence,
 }
 
 impl HotOp {
@@ -767,12 +767,28 @@ impl HotOp {
 	}
 }
 
+/// Position in one author's run of hot ops, counting from 1 with no gaps. Kept apart from the Lamport
+/// counter, which skips on observing a higher remote timestamp and so cannot bound a contiguous prefix.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HotSequence(pub u64);
+
+impl HotSequence {
+	/// Before this author has written anything, covering no op.
+	pub const NONE: Self = Self(0);
+
+	/// The next position in the run.
+	pub fn next(self) -> Self {
+		Self(self.0 + 1)
+	}
+}
+
 /// One hot op's author and position in its run. Retirement names promoted ops by these, which tells a
 /// receiver which prefix history covers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct HotOpId {
 	pub peer: PeerId,
-	pub sequence: u64,
+	pub sequence: HotSequence,
 }
 
 /// Which hot ops history already covers: `through` is each author's gap-free retired prefix, `above` the
@@ -780,7 +796,7 @@ pub struct HotOpId {
 /// still owed to it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetiredMarks {
-	pub through: HashMap<PeerId, u64>,
+	pub through: HashMap<PeerId, HotSequence>,
 	pub above: HashSet<HotOpId>,
 }
 
@@ -810,7 +826,7 @@ impl RetiredMarks {
 
 	/// Fold exceptions that continue their author's prefix into `through`, leaving only those past a gap.
 	fn compact(&mut self) {
-		let mut by_author: HashMap<PeerId, Vec<u64>> = HashMap::new();
+		let mut by_author: HashMap<PeerId, Vec<HotSequence>> = HashMap::new();
 		for id in &self.above {
 			by_author.entry(id.peer).or_default().push(id.sequence);
 		}
@@ -819,7 +835,7 @@ impl RetiredMarks {
 			sequences.sort_unstable();
 			let through = self.through.entry(peer).or_default();
 			for sequence in sequences {
-				if sequence == *through + 1 {
+				if sequence == through.next() {
 					*through = sequence;
 				}
 			}
