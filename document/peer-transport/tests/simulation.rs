@@ -3,10 +3,16 @@
 //!
 //! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
-use document_graph_storage::{AttributeDelta, Delta, HotOp, Network, NetworkId, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId};
+use document_graph_storage::{
+	AttributeDelta, Delta, HotOp, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId,
+};
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static TOTAL_NODES: AtomicUsize = AtomicUsize::new(0);
+static TOTAL_WIRED: AtomicUsize = AtomicUsize::new(0);
 
 /// A peer's document plus the byte store the editor keeps application-wide. Bare `Session` takes the
 /// trait's no-op resource defaults, which would leave the whole request path unexercised.
@@ -188,8 +194,65 @@ impl Peer {
 	}
 }
 
+/// Node-level ops, which reach the input-slot LWW arms and the resurrection path a concurrent remove
+/// triggers. `None` when the registry holds nothing the drawn op could target.
+fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<RegistryDelta> {
+	let registry = session.registry();
+	let node_id = NodeId(1 + network.random_below(4) as u64);
+	let live_nodes: Vec<NodeId> = registry.node_instances.keys().copied().collect();
+	let live_networks: Vec<NetworkId> = registry.networks.keys().copied().collect();
+
+	match network.random_below(6) {
+		// A node needs a live network to sit in, and `AddNode` errors on one that already exists.
+		0 | 1 if !registry.node_instances.contains_key(&node_id) => {
+			let network_id = *pick(network, &live_networks)?;
+			Some(RegistryDelta::AddNode {
+				id: node_id,
+				node: Node::new(network_id, Implementation::ProtoNode(ResourceId::from(7)), 2),
+			})
+		}
+		2 => registry.node_instances.get(&node_id).map(|node| RegistryDelta::RemoveNode { id: node_id, snapshot: node.clone() }),
+		3 | 4 => {
+			let node = registry.node_instances.get(&node_id)?;
+			let index = network.random_below(node.inputs().len().max(1)) as u32;
+
+			// Wiring to a node that is live here can still land on a peer that concurrently removed it,
+			// which is what drives the resurrection path.
+			let wire_to = pick(network, &live_nodes).copied();
+			let new_input = match wire_to {
+				Some(target) if network.random_below(3) > 0 => NodeInput::Node { id: target, index: 0 },
+				_ => NodeInput::Value {
+					value: serde_json::json!(network.random_below(100)),
+					exposed: false,
+				},
+			};
+			Some(RegistryDelta::ChangeNodeInput { id: node_id, index, new_input })
+		}
+		_ => pick(network, &live_nodes).copied().map(|node_id| RegistryDelta::ChangeNodeAttribute {
+			id: node_id,
+			delta: AttributeDelta {
+				key: "name".into(),
+				value: Some(serde_json::json!(network.random_below(100))),
+			},
+		}),
+	}
+}
+
+/// One element at random, or `None` when there is nothing to choose from.
+fn pick<'a, T>(network: &mut MockNetwork, options: &'a [T]) -> Option<&'a T> {
+	(!options.is_empty()).then(|| &options[network.random_below(options.len())])
+}
+
 fn random_op(network: &mut MockNetwork, session: &Session) -> RegistryDelta {
 	let network_id = NetworkId(1 + network.random_below(3) as u64);
+
+	// Half the ops are node-level, falling through to the network-level ones when nothing fits.
+	if network.random_below(2) == 0
+		&& let Some(op) = random_node_op(network, session)
+	{
+		return op;
+	}
+
 	match network.random_below(4) {
 		0 | 1 => RegistryDelta::ChangeDocumentAttribute {
 			delta: AttributeDelta {
@@ -324,8 +387,23 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 fn peers_converge_under_random_interleavings() {
 	for seed in 0..1000 {
 		let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
+		{
+			let registry = peers[0].session().retired_registry();
+			TOTAL_NODES.fetch_add(registry.node_instances.len(), Ordering::Relaxed);
+			let wired = registry
+				.node_instances
+				.values()
+				.flat_map(|node| node.inputs())
+				.filter(|slot| matches!(slot.input, NodeInput::Node { .. }))
+				.count();
+			TOTAL_WIRED.fetch_add(wired, Ordering::Relaxed);
+		}
 		assert_converged(seed, &peers);
 	}
+	// The node ops are guarded on what the registry holds, so a generator change can quietly stop
+	// producing them. Without nodes wired to other nodes nothing reaches the resurrection path.
+	assert!(TOTAL_NODES.load(Ordering::Relaxed) > 0, "the corpus produced no nodes");
+	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
 }
 
 /// A guest that drops and comes back keeps its `PeerId` but gets a fresh `Replica`, so its broadcast
