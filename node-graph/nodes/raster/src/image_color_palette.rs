@@ -9,7 +9,7 @@ async fn image_color_palette(
 	image: Item<Raster<CPU>>,
 	#[default(4)]
 	#[hard(1..)]
-	count: Item<u32>,
+	count: Item<i64>,
 ) -> List<Color> {
 	const GRID: f32 = 3.;
 

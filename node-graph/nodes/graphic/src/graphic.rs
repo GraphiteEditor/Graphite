@@ -1,7 +1,7 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::registry::types::{Angle, SeedValue, SignedInteger};
+use core_types::registry::types::{Angle, SignedInteger};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
@@ -23,8 +23,7 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -58,8 +57,7 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -96,8 +94,7 @@ fn filter<T: Send + Sync + 'static>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -130,8 +127,7 @@ fn reverse<T: Send + Sync + 'static>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -156,8 +152,7 @@ fn shift<T: Send + Sync + 'static>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -202,8 +197,7 @@ fn shuffle<T: Send + Sync + 'static>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -216,12 +210,13 @@ fn shuffle<T: Send + Sync + 'static>(
 	)]
 	list: List<T>,
 	/// Seed to determine the unique variation of the random shuffle ordering. The same seed always produces the same ordering.
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 ) -> List<T> {
 	let seed = seed.into_element();
 	let mut items: Vec<Item<T>> = list.into_iter().collect();
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 	items.shuffle(&mut rng);
 
 	items.into_iter().collect()
@@ -239,7 +234,8 @@ fn number_sequence(
 	step: Item<f64>,
 	/// How many numbers to generate.
 	#[default(10)]
-	count: Item<u32>,
+	#[hard(0..)]
+	count: Item<i64>,
 ) -> List<f64> {
 	let (start, step, count) = (*start.element(), *step.element(), count.into_element());
 
@@ -271,8 +267,7 @@ fn list_slice<T: Send + Sync + 'static>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -332,12 +327,7 @@ impl ElementOrder for f64 {
 		self.total_cmp(other)
 	}
 }
-impl ElementOrder for u32 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
-	}
-}
-impl ElementOrder for u64 {
+impl ElementOrder for i64 {
 	fn element_order(&self, other: &Self) -> Ordering {
 		self.cmp(other)
 	}
@@ -358,17 +348,17 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	_: impl Ctx,
 	/// The list of data to reorder.
 	#[implementations(
-		List<String>, List<bool>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
 	)]
 	list: List<T>,
 	/// The optional list of orderable values, corresponding item-to-item with the input list, to sort by instead of the items' own values.
 	#[expose]
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
-		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
-		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
 	)]
 	sort_order: List<U>,
 	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
@@ -406,8 +396,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -423,8 +412,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<String>,
 		Context -> List<bool>,
 		Context -> List<f64>,
-		Context -> List<u32>,
-		Context -> List<u64>,
+		Context -> List<i64>,
 		Context -> List<DVec2>,
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
@@ -541,8 +529,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -591,7 +578,7 @@ fn read_attribute_vector(
 	result
 }
 
-/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
+/// Reads a named numeric attribute (`f64` or `i64`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_number(
 	_: impl Ctx,
@@ -602,11 +589,7 @@ fn read_attribute_number(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let value = content
-			.attribute::<f64>(&name, index)
-			.copied()
-			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
-			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
+		let value = content.attribute::<f64>(&name, index).copied().or_else(|| content.attribute::<i64>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
 		result.push(Item::new_from_element(value));
 	}
@@ -843,8 +826,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -863,8 +845,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 		List<String>,
 		List<bool>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -1135,8 +1116,8 @@ mod test {
 	#[test]
 	fn shuffle_is_deterministic_and_preserves_elements() {
 		let original = [1., 2., 3., 4., 5., 6., 7., 8.];
-		let first = shuffle((), list_of(original), Item::new_from_element(42_u32));
-		let second = shuffle((), list_of(original), Item::new_from_element(42_u32));
+		let first = shuffle((), list_of(original), Item::new_from_element(42_i64));
+		let second = shuffle((), list_of(original), Item::new_from_element(42_i64));
 		assert_eq!(elements(&first), elements(&second), "the same seed should always produce the same ordering");
 
 		let mut recovered = elements(&first);
@@ -1146,7 +1127,7 @@ mod test {
 
 	#[test]
 	fn number_sequence_generates_evenly_spaced_numbers() {
-		let sequence = number_sequence((), (), Item::new_from_element(0.), Item::new_from_element(2.), Item::new_from_element(4_u32));
+		let sequence = number_sequence((), (), Item::new_from_element(0.), Item::new_from_element(2.), Item::new_from_element(4_i64));
 		assert_eq!(elements(&sequence), [0., 2., 4., 6.]);
 	}
 

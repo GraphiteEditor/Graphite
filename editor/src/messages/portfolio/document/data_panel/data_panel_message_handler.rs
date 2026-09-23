@@ -215,8 +215,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Gradient>,
 		List<String>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
 		List<i32>,
 		List<i64>,
 		List<bool>,
@@ -274,8 +272,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<Gradient>,
 		Item<String>,
 		Item<f64>,
-		Item<u32>,
-		Item<u64>,
 		Item<i32>,
 		Item<i64>,
 		Item<bool>,
@@ -858,9 +854,7 @@ macro_rules! impl_table_item_layout_for_number {
 	}
 }
 impl_table_item_layout_for_number!(
-	u32 => "Number (u32)",
 	i32 => "Number (i32)",
-	u64 => "Number (u64)",
 	i64 => "Number (i64)",
 );
 
@@ -1274,8 +1268,6 @@ macro_rules! known_item_types {
 			f64,
 			f32,
 			u8,
-			u32,
-			u64,
 			i32,
 			i64,
 			bool,

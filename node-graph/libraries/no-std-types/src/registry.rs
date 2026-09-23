@@ -17,8 +17,6 @@ pub mod types {
 	pub type Progression = f64;
 	/// Signed integer that's actually a float because we don't handle type conversions very well yet
 	pub type SignedInteger = f64;
-	/// Unsigned integer to be used for random seeds
-	pub type SeedValue = u32;
 	/// DVec2 with px unit
 	pub type PixelSize = glam::DVec2;
 	/// String with one or more than one line

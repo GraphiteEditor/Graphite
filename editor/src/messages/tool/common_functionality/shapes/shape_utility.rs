@@ -214,11 +214,8 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let sign_num = if end[1] > start[1] { 1. } else { -1. };
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
-	if new_layer
-		.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
-		.unwrap_or(&TaggedValue::U32(0))
-		.to_u32()
-		% 2 == 1
+	if let Some(&TaggedValue::I64(sides)) = new_layer.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
+		&& sides % 2 != 0
 	{
 		let Some(polygon_node_id) = new_layer.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::regular_polygon::IDENTIFIER)) else {
 			return;
@@ -231,11 +228,8 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		return;
 	}
 
-	if new_layer
-		.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
-		.unwrap_or(&TaggedValue::U32(0))
-		.to_u32()
-		% 2 == 1
+	if let Some(&TaggedValue::I64(sides)) = new_layer.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
+		&& sides % 2 != 0
 	{
 		let Some(star_node_id) = new_layer.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::star::IDENTIFIER)) else {
 			return;
@@ -310,13 +304,13 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64, f64)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(sides)), Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) =
+	let (Some(&TaggedValue::I64(sides)), Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) =
 		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
 	else {
 		return None;
 	};
 
-	Some((sides, radius_1, radius_2))
+	Some((sides.max(0) as u32, radius_1, radius_2))
 }
 
 /// Extract the node input values of Polygon.
@@ -325,11 +319,11 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	let node_inputs =
 		NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
+	let (Some(&TaggedValue::I64(n)), Some(&TaggedValue::F64(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
 		return None;
 	};
 
-	Some((n, radius))
+	Some((n.max(0) as u32, radius))
 }
 
 /// Extract the node input values of an arc.
@@ -603,7 +597,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 
 	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
-	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
+	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::I64(columns)), Some(&TaggedValue::I64(rows)), Some(&TaggedValue::DVec2(angles))) = (
 		parameters.value(GridTypeInput),
 		parameters.value(SpacingInput),
 		parameters.value(ColumnsInput),
@@ -613,7 +607,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 		return None;
 	};
 
-	Some((grid_type, spacing, columns, rows, angles))
+	Some((grid_type, spacing, columns.max(0) as u32, rows.max(0) as u32, angles))
 }
 
 #[cfg(test)]

@@ -105,6 +105,8 @@ async fn blur(
 
 	let (image, attributes) = image_frame.into_parts();
 
+	// TODO: Scale the radius through the footprint so it acts as the document-space length its Pixels unit promises, with a
+	// window that varies continuously rather than snapping to whole source pixels
 	let blurred_image = if radius < 0.1 {
 		// Minimum blur radius
 		image
@@ -133,6 +135,8 @@ async fn median_filter(
 
 	let (image, attributes) = image_frame.into_parts();
 
+	// TODO: Scale the radius through the footprint so it acts as the document-space length its Pixels unit promises, with a
+	// window that varies continuously rather than snapping to whole source pixels
 	let filtered_image = if radius < 0.5 {
 		// Minimum filter radius
 		image

@@ -1712,7 +1712,7 @@ fn posterize<T: Adjust<Color>>(
 	input: Item<T>,
 	#[default(4)]
 	#[hard(2..)]
-	levels: Item<u32>,
+	levels: Item<i64>,
 ) -> Item<T> {
 	let mut input = input;
 	let levels = levels.into_element() as f32;
@@ -2529,7 +2529,7 @@ mod tests {
 	}
 
 	/// Runs Posterize on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.
-	fn run_posterize(value: f32, levels: u32) -> f32 {
+	fn run_posterize(value: f32, levels: i64) -> f32 {
 		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
 		posterize((), Item::new_from_element(pixel), levels.into()).into_element().to_gamma_srgb_channels()[0] * 255.
 	}

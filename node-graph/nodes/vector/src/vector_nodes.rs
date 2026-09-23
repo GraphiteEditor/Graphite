@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
-use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
+use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
@@ -234,13 +234,14 @@ async fn assign_colors<T>(
 	reverse: Item<bool>,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: Item<bool>,
-	/// The seed used for randomization.
 	/// Seed to determine unique variations on the randomized color selection.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
-	repeat_every: Item<u32>,
+	#[hard(0..)]
+	repeat_every: Item<i64>,
 ) -> T
 where
 	T: VectorListIterMut + 'n + Send,
@@ -259,7 +260,7 @@ where
 	let gradient = if reverse { element.reversed(settings.cyclic) } else { element };
 	let evaluator = gradient.evaluator(settings);
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
 	let mut i: usize = 0;
 	content.for_each_vector_list_mut(|vector_list| {
@@ -494,13 +495,15 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	#[soft(-50..50)]
 	random_scale_bias: Item<f64>,
 	/// Seed to determine unique variations on all the randomized copy sizes.
-	random_scale_seed: Item<SeedValue>,
+	#[hard(0..)]
+	random_scale_seed: Item<i64>,
 	/// Range of randomized angles given to each placed copy, in degrees ranging from furthest clockwise to counterclockwise.
 	#[range]
 	#[soft(0..360)]
 	random_rotation: Item<Angle>,
 	/// Seed to determine unique variations on all the randomized copy angles.
-	random_rotation_seed: Item<SeedValue>,
+	#[hard(0..)]
+	random_rotation_seed: Item<i64>,
 ) -> List<I> {
 	let (random_scale_min, random_scale_max, random_scale_bias) = (random_scale_min.into_element(), random_scale_max.into_element(), random_scale_bias.into_element());
 	let (random_scale_seed, random_rotation, random_rotation_seed) = (random_scale_seed.into_element(), random_rotation.into_element(), random_rotation_seed.into_element());
@@ -510,8 +513,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	let random_scale_difference = random_scale_max - random_scale_min;
 
 	for row in points.into_iter() {
-		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed as u64);
+		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed as u64);
 
 		let do_scale = random_scale_difference.abs() > 1e-6;
 		let do_rotation = random_rotation.abs() > 1e-6;
@@ -1810,7 +1813,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 	separation: Item<f64>,
 	#[default(100)]
 	#[hard(2..)]
-	quantity: Item<u32>,
+	quantity: Item<i64>,
 	#[hard(0..)]
 	#[unit(" px")]
 	start_offset: Item<f64>,
@@ -2249,13 +2252,13 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 	#[hard(0.01..)]
 	#[soft(1..100)]
 	separation: Item<f64>,
-	seed: Item<SeedValue>,
+	#[hard(0..)] seed: Item<i64>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		let (separation, seed) = (*separation.element(), *seed.element());
 
-		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
 		let mut result = Vector::default();
 
@@ -2392,7 +2395,8 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 	#[unit(" px")]
 	max_distance: Item<f64>,
 	/// Seed used to determine unique variations on all randomized offsets.
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// Whether to offset anchor points along their normal direction (perpendicular to the path) or in a random direction. Free-floating and branching points have no normal direction, so they receive a random-angled offset regardless of this setting.
 	#[default(true)]
 	along_normals: Item<bool>,
@@ -2401,7 +2405,7 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 		let mut content = content;
 		let (max_distance, seed, along_normals) = (*max_distance.element(), *seed.element(), *along_normals.element());
 
-		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
@@ -4163,8 +4167,8 @@ mod test {
 			Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])),
 			Item::new_from_element(false),
 			Item::new_from_element(false),
-			Item::new_from_element(SeedValue::default()),
-			Item::new_from_element(0_u32),
+			Item::new_from_element(0),
+			Item::new_from_element(0_i64),
 		)
 		.await;
 

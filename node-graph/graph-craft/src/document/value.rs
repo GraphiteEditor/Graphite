@@ -704,8 +704,6 @@ impl TaggedValue {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,
 					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
 					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					() if ty == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
-					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<i64>() => FromStr::from_str(string).map(TaggedValue::I64).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
@@ -724,13 +722,6 @@ impl TaggedValue {
 			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
 			Type::Item(element) => TaggedValue::from_primitive_string(string, element),
 			Type::List(element) => TaggedValue::from_primitive_string(string, element),
-		}
-	}
-
-	pub fn to_u32(&self) -> u32 {
-		match self {
-			TaggedValue::U32(x) => *x,
-			_ => panic!("Passed value is not of type u32"),
 		}
 	}
 

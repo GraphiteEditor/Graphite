@@ -376,7 +376,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// 6: Read Index (current repetition index)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(context::read_index::IDENTIFIER),
-							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::U32(0), false)],
+							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::I64(0), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 7)),
 							..Default::default()
 						},

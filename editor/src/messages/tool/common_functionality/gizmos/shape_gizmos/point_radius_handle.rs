@@ -349,7 +349,7 @@ impl PointRadiusHandle {
 
 		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 
-		let Some(&TaggedValue::U32(sides)) = parameters.value(star::SidesInput) else {
+		let Some(&TaggedValue::I64(sides)) = parameters.value(star::SidesInput) else {
 			return snap_radii;
 		};
 

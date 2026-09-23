@@ -11,7 +11,7 @@ use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
 use core_types::misc::{format_f64, parse_f64};
-use core_types::registry::types::{SeedValue, SignedInteger, TextArea};
+use core_types::registry::types::{SignedInteger, TextArea};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -224,22 +224,25 @@ fn lorem_ipsum(
 	_primary: (),
 	/// Total length of generated text in the chosen denomination (characters, words, sentences, or paragraphs), including the classic "Lorem ipsum dolor sit amet…" intro. A length in characters is never exceeded but may fall a few characters short, since words are never cut.
 	#[default(50)]
-	length: Item<u32>,
+	#[hard(0..)]
+	length: Item<i64>,
 	/// How the desired quantity of generated text is counted.
 	length_in: Item<TextDenomination>,
 	/// Length of the classic "Lorem ipsum dolor sit amet…" intro to include at the start of the generated text. Disable by setting this to 0.
 	#[default(8)]
+	#[hard(0..)]
 	#[name("\"Lorem…\" Intro")]
-	lorem_intro: Item<u32>,
+	lorem_intro: Item<i64>,
 	/// How the desired quantity of classic intro text is counted for inclusion at the start.
 	///
 	/// If one paragraph is chosen, the full intro is included and the randomized continuation begins on the next paragraph; otherwise the continuation may follow in the same paragraph.
 	#[name("\"Lorem…\" Intro In")]
 	lorem_intro_in: Item<TextDenomination>,
 	/// Seed to determine unique variations on the randomized text generated after the optional classic intro.
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 ) -> Item<String> {
-	let mut rng = rand::rngs::StdRng::seed_from_u64((*seed.element()).into());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(*seed.element() as u64);
 	let rng = |n| rng.random_range(0..n);
 
 	let text = ipsum::generate(
@@ -316,7 +319,8 @@ fn string_truncate(
 	string: Item<String>,
 	/// The maximum number of characters allowed, including the suffix if one is appended.
 	#[default(80)]
-	length: Item<u32>,
+	#[hard(0..)]
+	length: Item<i64>,
 	/// A suffix appended to indicate truncation occurred, unless empty. Its length counts towards the character budget.
 	#[default("…")]
 	suffix: Item<String>,
@@ -347,7 +351,8 @@ fn format_number(
 	number: Item<f64>,
 	/// The amount of digits after the decimal point. The value is rounded to fit. Set to 0 to show only whole numbers.
 	#[default(2)]
-	decimal_places: Item<u32>,
+	#[hard(0..)]
+	decimal_places: Item<i64>,
 	/// The character(s) used as the decimal point.
 	#[default(".")]
 	decimal_separator: Item<String>,
@@ -559,7 +564,7 @@ fn string_repeat(
 	/// The number of times the string should appear in the output.
 	#[default(2)]
 	#[hard(1..)]
-	count: Item<u32>,
+	count: Item<i64>,
 	/// The string placed between each repetition.
 	#[default("\\n")]
 	separator: Item<String>,
@@ -574,7 +579,7 @@ fn string_repeat(
 
 	let count = *count.element() as usize;
 
-	let mut result = String::with_capacity((string.element().len() + separator.len()) * count);
+	let mut result = String::with_capacity((string.element().len() + separator.len()).saturating_mul(count));
 	for i in 0..count {
 		if i > 0 {
 			result.push_str(&separator);
@@ -594,7 +599,8 @@ fn string_pad(
 	string: Item<String>,
 	/// The target character length after padding. When "Up To" is set, this length concerns only the portion before (or after) that substring.
 	#[default(10)]
-	length: Item<u32>,
+	#[hard(0..)]
+	length: Item<i64>,
 	/// The repeated substring used to fill the remaining space. A multi-charcter substring may end partway through its final repetition.
 	#[default("#")]
 	padding: Item<String>,
@@ -977,7 +983,7 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
 
 /// Converts a value to a JSON string representation.
 #[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, DAffine2)] value: Item<T>) -> Item<String> {
+fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, i64, DVec2, DAffine2)] value: Item<T>) -> Item<String> {
 	let (value, attributes) = value.into_parts();
 
 	let result = serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string());

@@ -416,12 +416,17 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node", "math_nodes::ToF64Node", "math_nodes::AsF64Node"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::as_u_32::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node", "math_nodes::ToU32Node"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::as_u_64::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node", "math_nodes::ToU64Node"],
+		node: graphene_std::math_nodes::as_integer::IDENTIFIER,
+		aliases: &[
+			"graphene_math_nodes::ToU32Node",
+			"graphene_core::ops::ToU32Node",
+			"math_nodes::ToU32Node",
+			"math_nodes::AsU32Node",
+			"graphene_math_nodes::ToU64Node",
+			"graphene_core::ops::ToU64Node",
+			"math_nodes::ToU64Node",
+			"math_nodes::AsU64Node",
+		],
 	},
 	// The old 'Vec2 Value' node took separate X and Y inputs, a role now filled by 'Combine Vec2', while the new 'Vec2 Value' node takes a single vec2 input.
 	// Old references (including these older aliases) are remapped here to `vec_2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Combine Vec2' node.
@@ -1528,6 +1533,34 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			.network_interface
 			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::F64(value), exposed), &network_path);
 	}
+
+	// With the catalog's integers standardized on i64, any unsigned values stored by older documents upgrade to their I64 form.
+	// This runs last so the passes above that detect legacy node shapes by their U32 values still see them unconverted.
+	let unsigned_value_inputs: Vec<(NodeId, Vec<NodeId>, usize, i64, bool)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.flat_map(|(node_id, node, path)| {
+			node.inputs
+				.iter()
+				.enumerate()
+				.filter_map(|(index, input)| {
+					let NodeInput::Value { tagged_value, exposed } = input else { return None };
+					let integer = match &**tagged_value {
+						TaggedValue::U32(value) => *value as i64,
+						TaggedValue::U64(value) => i64::try_from(*value).unwrap_or(i64::MAX),
+						_ => return None,
+					};
+					Some((*node_id, path.clone(), index, integer, *exposed))
+				})
+				.collect::<Vec<_>>()
+		})
+		.collect();
+	for (node_id, network_path, index, integer, exposed) in unsigned_value_inputs {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::I64(integer), exposed), &network_path);
+	}
 }
 
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
@@ -2525,7 +2558,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
-		let new_quantity_value = NodeInput::value(TaggedValue::U32(100), false);
+		let new_quantity_value = NodeInput::value(TaggedValue::I64(100), false);
 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), new_spacing_value, network_path);
@@ -2546,7 +2579,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		if let NodeInput::Value { tagged_value, exposed } = quantity_value
 			&& let TaggedValue::F64(value) = **tagged_value
 		{
-			let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
+			let new_quantity_value = NodeInput::value(TaggedValue::I64(value as i64), *exposed);
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
 		}
 	}
@@ -2594,7 +2627,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		node_path.push(*node_id);
 
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
-		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
+		document.network_interface.add_import(TaggedValue::I64(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
 	// Drop the placeholder primary input the "Read Vector" node used to carry, since it reads its value from the context
@@ -2655,7 +2688,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::U32(0), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::I64(0), false), network_path);
 	}
 
 	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.
@@ -3425,6 +3458,30 @@ mod tests {
 			assert_eq!(network.nodes[&extend_id].inputs.first(), Some(&NodeInput::value(TaggedValue::F64Array(vec![2.]), true)));
 			assert_eq!(network.nodes[&extend_id].inputs.get(1), Some(&NodeInput::value(TaggedValue::F64Array(vec![5.]), false)));
 		}
+	}
+
+	// Old documents store unsigned integer values, which upgrade to the standard I64 form after the passes that detect legacy shapes by them
+	#[test]
+	fn unsigned_values_upgrade_to_i64() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(
+			node_id,
+			NodeTemplate {
+				inputs: vec![NodeInput::value(TaggedValue::U32(7), false), NodeInput::value(TaggedValue::U64(9), true)],
+				..Default::default()
+			},
+			&[],
+		);
+
+		document_migration_upgrades(&mut document, false);
+
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		assert_eq!(node.inputs.first().and_then(|input| input.as_value()).cloned(), Some(TaggedValue::I64(7)));
+		assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::I64(9)));
+		assert!(matches!(node.inputs.get(1), Some(NodeInput::Value { exposed: true, .. })), "exposure should survive the upgrade");
 	}
 
 	// A shader node's parameters ride the graph as f64, so an F32 a document stored where the node's definition now

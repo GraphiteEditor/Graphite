@@ -68,8 +68,7 @@ async fn quantize_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> Item<bool>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<f64>,
 		Context -> Item<String>,
 		Context -> Item<DAffine2>,
@@ -115,8 +114,7 @@ async fn quantize_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> Item<bool>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<f64>,
 		Context -> Item<String>,
 		Context -> Item<DAffine2>,

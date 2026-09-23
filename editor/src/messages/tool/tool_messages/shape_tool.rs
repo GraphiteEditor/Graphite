@@ -343,17 +343,16 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 	// The rest (Ellipse, Rectangle, Line) just keep `shape_type` in step and rely on the shared Stroke/Fill controls.
 	match shape_type {
 		ShapeType::Polygon | ShapeType::Star => {
-			// Both `regular_polygon` and `star` are generic over `T: AsU64`, but the control bar widget always writes `u32`,
-			// and existing call sites (e.g. `polygon_shape.rs`) read it back as `TaggedValue::U32`.
+			// Both `regular_polygon` and `star` take their side count as an `i64`, which the control bar tracks as a `u32`, so a negative count clamps to zero
 			let sides_parameter = if shape_type == ShapeType::Polygon {
 				ParameterRef::from(regular_polygon::SidesInput)
 			} else {
 				ParameterRef::from(star::SidesInput)
 			};
-			if let Some(&TaggedValue::U32(sides)) = layer_view.parameter_value(sides_parameter)
-				&& options.vertices != sides
+			if let Some(&TaggedValue::I64(sides)) = layer_view.parameter_value(sides_parameter)
+				&& options.vertices != sides.max(0) as u32
 			{
-				options.vertices = sides;
+				options.vertices = sides.max(0) as u32;
 				changed = true;
 			}
 		}
@@ -623,7 +622,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 					ShapeType::Star => ParameterRef::from(star::SidesInput),
 					_ => return,
 				};
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, sides_parameter, TaggedValue::U32(vertices), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, sides_parameter, TaggedValue::I64(vertices as i64), responses);
 			}
 			ShapeOptionsUpdate::ArcType(arc_type) => {
 				self.options.arc_type = arc_type;
