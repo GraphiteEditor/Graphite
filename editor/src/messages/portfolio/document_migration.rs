@@ -1543,6 +1543,11 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			.network_interface
 			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::I64(integer), exposed), &network_path);
 	}
+
+	// Bringing an old document up to date is not a set of edits on it, it is how the document arrives.
+	// The upgrades run through the ordinary mutators, so the store records them; dropping what they
+	// recorded leaves the opened document as the baseline rather than as a pile of changes to itself.
+	document.network_interface.discard_deltas();
 }
 
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.

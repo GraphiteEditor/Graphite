@@ -168,7 +168,7 @@ fn convert_network(
 	let network = context.registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	if let Some(collector) = network_collector.as_mut() {
-		collector.push(extract_network_metadata(&network.attributes, metadata_path, network_id));
+		collector.push(extract_network_metadata(context.registry, &network.attributes, metadata_path, network_id));
 	}
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
@@ -176,10 +176,8 @@ fn convert_network(
 		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|v| v.value.as_u64()).unwrap_or(global_id.0);
 		let runtime_id = RuntimeNodeId(local_id);
 
-		if let Some(collector) = node_collector.as_mut()
-			&& let Some(entry) = extract_ui_metadata(node, metadata_path, runtime_id)
-		{
-			collector.push(entry);
+		if let Some(collector) = node_collector.as_mut() {
+			collector.push(extract_ui_metadata(node, global_id, metadata_path, runtime_id));
 		}
 
 		let doc_node = convert_node(context, node, metadata_path, runtime_id, node_collector, network_collector)?;
@@ -239,10 +237,10 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 		.collect()
 }
 
-/// Returns `None` when the node has no `ui::*` attributes at all so callers don't end up with
-/// empty entries for unconverted-from-runtime nodes. `input_metadata` is always sized to match
-/// `node.inputs.len()` for a strict slot-by-slot rebuild; empty slots use `InputMetadataEntry::default()`.
-fn extract_ui_metadata(node: &crate::Node, network_path: &[RuntimeNodeId], local_id: RuntimeNodeId) -> Option<NodeMetadataEntry> {
+/// Emitted for every node, since `storage_id` is worth restoring even where no `ui::*` attribute is.
+/// `input_metadata` is always sized to match `node.inputs.len()` for a strict slot-by-slot rebuild;
+/// empty slots use `InputMetadataEntry::default()`.
+fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[RuntimeNodeId], local_id: RuntimeNodeId) -> NodeMetadataEntry {
 	let position: Option<Position> = node.attributes.get_typed(node::ui::POSITION);
 	let is_layer = node.attributes.get_or(node::ui::IS_LAYER, false);
 	let display_name: Option<String> = node.attributes.get_typed(node::ui::DISPLAY_NAME);
@@ -252,9 +250,10 @@ fn extract_ui_metadata(node: &crate::Node, network_path: &[RuntimeNodeId], local
 
 	let input_metadata: Vec<InputMetadataEntry> = node.inputs.iter().map(|slot| &slot.attributes).map(extract_input_metadata).collect();
 
-	let entry = NodeMetadataEntry {
+	NodeMetadataEntry {
 		network_path: network_path.to_vec(),
 		local_id,
+		storage_id,
 		position,
 		is_layer,
 		display_name,
@@ -262,15 +261,31 @@ fn extract_ui_metadata(node: &crate::Node, network_path: &[RuntimeNodeId], local
 		pinned,
 		input_metadata,
 		output_names,
-	};
-	(!entry.is_empty()).then_some(entry)
+	}
 }
 
-fn extract_network_metadata(attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
+/// Node references stored here are storage IDs, resolved back to runtime-local IDs the way
+/// `read_scope_injections` does. A reference to a node that is no longer in this network is dropped
+/// rather than failing the conversion: a pinned node can have been deleted.
+fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
+	let to_runtime_id = |storage_id: NodeId| {
+		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
+		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|value| value.value.as_u64()).unwrap_or(storage_id.0);
+		Some(RuntimeNodeId(local_id))
+	};
+
+	let pinned_order = attributes
+		.get_typed::<Vec<NodeId>>(network::PINNED_ORDER)
+		.unwrap_or_default()
+		.into_iter()
+		.filter_map(to_runtime_id)
+		.collect();
+
 	NetworkMetadataEntry {
 		network_path: network_path.to_vec(),
 		network_id,
 		reference: attributes.get_typed(node::ui::REFERENCE),
+		pinned_order,
 	}
 }
 

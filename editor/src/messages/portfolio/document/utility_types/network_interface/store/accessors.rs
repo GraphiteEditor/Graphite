@@ -47,7 +47,7 @@ impl NodeNetworkInterface {
 	/// The persistent metadata of a network, or `None` if the network is missing.
 	pub(crate) fn network_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
 		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(network_path)?.persistent_metadata;
-		Some(NetworkMut::new(metadata))
+		Some(NetworkMut::new(metadata, &mut self.deltas, network_path))
 	}
 
 	/// Both halves of a node, or `None` if either is missing.
@@ -61,7 +61,7 @@ impl NodeNetworkInterface {
 			.node_metadata
 			.get_mut(&locator.node_id)?;
 
-		Some(NodeMut::new(node, &mut metadata.persistent_metadata))
+		Some(NodeMut::new(node, &mut metadata.persistent_metadata, &mut self.deltas, locator))
 	}
 
 	// ===== Unrecorded state, reachable from the whole network interface =====

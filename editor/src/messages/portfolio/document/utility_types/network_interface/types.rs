@@ -676,6 +676,11 @@ impl InputPersistentMetadata {
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentNodePersistentMetadata {
+	/// The identity storage holds for this node, pinned when the interface is built from a document so
+	/// a conversion back reuses it instead of re-deriving one. Absent for a node storage has not named,
+	/// which falls back to a hash of its location.
+	#[serde(default)]
+	pub storage_id: Option<u64>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,

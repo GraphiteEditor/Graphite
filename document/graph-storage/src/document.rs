@@ -194,6 +194,10 @@ impl Document {
 			RegistryDelta::RemoveNode { id, .. } => {
 				registry.node_instances.remove(&id);
 			}
+			RegistryDelta::SetNodeInputs { id, inputs } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				node.inputs = inputs;
+			}
 			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
@@ -305,6 +309,14 @@ impl Document {
 				}
 				self.ensure_node_exists(target, *id)?;
 			}
+			RegistryDelta::SetNodeInputs { id, inputs } => {
+				for slot in inputs {
+					if let NodeInput::Node { id: referenced, .. } = slot.input {
+						self.ensure_node_exists(target, referenced)?;
+					}
+				}
+				self.ensure_node_exists(target, *id)?;
+			}
 			RegistryDelta::ChangeNodeAttribute { id, .. } | RegistryDelta::ChangeNodeInputAttribute { id, .. } => self.ensure_node_exists(target, *id)?,
 			RegistryDelta::SetNetworkExport {
 				id: network, export: export_target, ..
@@ -342,6 +354,10 @@ impl Document {
 		Ok(match delta {
 			RegistryDelta::AddNode { id, node } => RegistryDelta::RemoveNode { id: *id, snapshot: node.clone() },
 			RegistryDelta::RemoveNode { id, snapshot } => RegistryDelta::AddNode { id: *id, node: snapshot.clone() },
+			&RegistryDelta::SetNodeInputs { id, .. } => {
+				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				RegistryDelta::SetNodeInputs { id, inputs: node.inputs.clone() }
+			}
 			&RegistryDelta::ChangeNodeInput { id, index: input_idx, .. } => {
 				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let slot = node.inputs().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;

@@ -5,6 +5,7 @@ use document_graph_storage::{Declarations, Registry};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
+use super::utility_types::network_interface::editor_delta::{EditorDelta, construct_batch};
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
 
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
@@ -108,13 +109,13 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Stage the runtime snapshot into the `Gdd` working copy at each `CommitTransaction`. No-op while
-	/// unmounted. Proto-node declaration bytes go into `byte_store` (the app-global resource cache). The
-	/// staged hot ops are retired by [`retire_storage_interaction`](Self::retire_storage_interaction) at
-	/// undo-step boundaries. `validate` (the `validate_storage_round_trip` preference) gates the per-commit
-	/// round-trip check, off by default for its perf cost.
+	/// Stage a `CommitTransaction` into the `Gdd` working copy: the first commit writes the whole document,
+	/// every later one stages the `deltas` the store recorded. No-op while unmounted. Proto-node declaration
+	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
+	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
 	pub fn stage_snapshot(
 		&mut self,
+		deltas: &[EditorDelta],
 		interface: &NodeNetworkInterface,
 		registry: &ResourceRegistry,
 		view_settings: BTreeMap<String, serde_json::Value>,
@@ -123,23 +124,75 @@ impl DocumentHistory {
 	) {
 		let Some(storage) = self.storage.as_mut() else { return };
 
-		let network = interface.document_network();
-		let metadata_view = StorageMetadataView::new(interface);
-
-		let network_view_settings = storage
-			.network_ids(network, &metadata_view)
-			.ok()
-			.map(|network_ids| collect_network_view_settings(interface, &network_ids));
-
-		// Stage without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
-		// step, so the deltas accumulate as hot ops and coalesce at the next undo-step boundary.
-		match storage.stage_runtime_snapshot(network, &metadata_view, registry, byte_store) {
+		// A working copy that does not hold the document yet has no baseline for a batch of changes to apply
+		// to. Reading that from the working copy rather than from the caller means a path that mounts storage
+		// and then commits does not have to know which of the two cases it is in.
+		let staged = match storage.registry().node_instances.is_empty() {
+			true => Self::stage_whole_document(storage, interface, registry, byte_store),
+			// An autosave with nothing edited since the last commit still persists the view state below.
+			false if deltas.is_empty() => Ok(Declarations::new()),
+			// The batch is drained by the time it reaches here, so a failed staging would leave the working copy
+			// permanently behind. Converting the whole document restages the same edit from whatever the working
+			// copy holds, including a batch that failed partway through.
+			false => Self::stage_recorded(storage, deltas, interface, registry, byte_store).or_else(|error| {
+				log::error!("Staging recorded deltas failed, falling back to a whole document snapshot: {error}");
+				Self::stage_whole_document(storage, interface, registry, byte_store)
+			}),
+		};
+		match staged {
 			Ok(declarations) => self.declarations.extend(declarations),
 			Err(error) => {
 				log::error!("Storage snapshot staging failed: {error}");
 				return;
 			}
 		}
+
+		self.persist_view_state(interface, view_settings, legacy_document);
+	}
+
+	/// Converts the whole document and stages the difference from what the working copy holds.
+	///
+	/// Stages without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
+	/// step, so the ops accumulate in the hot log and coalesce at the next undo-step boundary.
+	fn stage_whole_document(storage: &mut document_format::GddV1, interface: &NodeNetworkInterface, registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> Result<Declarations, String> {
+		let metadata_view = StorageMetadataView::new(interface);
+		storage
+			.stage_runtime_snapshot(interface.document_network(), &metadata_view, registry, byte_store)
+			.map_err(|error| error.to_string())
+	}
+
+	/// Stages what the store recorded since the last drain.
+	///
+	/// This and the whole-document conversion produce the same registry for the same edit, which
+	/// `verify_round_trip` checks when the `validate_storage_round_trip` preference is on. They differ in
+	/// what they cost and in what they can miss: a conversion sees every change however it was made,
+	/// while this sees only what went through the store, so a write that bypasses it is not persisted.
+	fn stage_recorded(
+		storage: &mut document_format::GddV1,
+		deltas: &[EditorDelta],
+		interface: &NodeNetworkInterface,
+		registry: &ResourceRegistry,
+		byte_store: &dyn ResourceStorage,
+	) -> Result<Declarations, String> {
+		let peer = storage.session().peer();
+		let metadata_view = StorageMetadataView::new(interface);
+		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer).map_err(|error| error.to_string())?;
+
+		storage
+			.stage_constructed_ops(constructed.ops, &constructed.declarations.bytes, byte_store)
+			.map_err(|error| error.to_string())?;
+		Ok(constructed.declarations.decoded)
+	}
+
+	/// The parts of a commit that are not the graph: the per-peer view settings, and the legacy bytes the
+	/// dual-write soak validates the new format against.
+	fn persist_view_state(&mut self, interface: &NodeNetworkInterface, view_settings: BTreeMap<String, serde_json::Value>, legacy_document: &str) {
+		let Some(storage) = self.storage.as_mut() else { return };
+
+		let network_view_settings = storage
+			.network_ids(interface.document_network(), &StorageMetadataView::new(interface))
+			.ok()
+			.map(|network_ids| collect_network_view_settings(interface, &network_ids));
 
 		if let Err(error) = storage.set_view_settings(view_settings) {
 			log::error!("Persisting view settings failed: {error}");
@@ -151,8 +204,6 @@ impl DocumentHistory {
 			log::error!("Persisting per-network view settings failed: {error}");
 		}
 
-		// Dual-write soak: embed the legacy `.graphite` bytes so the new format
-		// can be validated against (and recovered from) the old one on open.
 		if let Err(error) = storage.store_legacy_document(legacy_document.as_bytes()) {
 			log::error!("Embedding legacy document into working copy failed: {error}");
 		}

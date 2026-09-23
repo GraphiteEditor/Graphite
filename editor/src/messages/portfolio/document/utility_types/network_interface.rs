@@ -1,7 +1,11 @@
+mod apply;
 mod caches;
 #[cfg(test)]
 mod characterization_tests;
 mod deserialization;
+pub mod editor_delta;
+#[cfg(test)]
+mod editor_delta_tests;
 mod frontend;
 mod geometry;
 mod hit_tests;
@@ -20,6 +24,7 @@ mod types;
 mod validation;
 mod view;
 
+pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
 use store::Guarded;
 pub use store::NodeLocator;
 pub use template::*;
@@ -77,6 +82,14 @@ pub struct NodeNetworkInterface {
 	pub resolved_types: ResolvedDocumentNodeTypes,
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
+	/// What the writes since the last drain changed, in write order, appended by `store.rs` alone.
+	///
+	/// Emitting here rather than in the mutators makes it impossible to write without saying what was
+	/// written, the same way writing through the store makes it impossible to update one tree without
+	/// the other. Transient: a snapshot clone starts empty, since the snapshot is a state rather than
+	/// a set of changes.
+	#[serde(skip)]
+	deltas: Vec<EditorDelta>,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -87,6 +100,7 @@ impl Clone for NodeNetworkInterface {
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
+			deltas: Vec::new(),
 		}
 	}
 }

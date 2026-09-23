@@ -104,9 +104,20 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.persistent(network_path, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
 	}
 
+	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
+		self.persistent(network_path, local_id)?.storage_id.map(document_graph_storage::NodeId)
+	}
 	fn reference(&self, network_path: &[NodeId]) -> Option<&str> {
 		let network_metadata = self.interface.network_metadata.nested_metadata(network_path)?;
 		network_metadata.persistent_metadata.reference.as_deref()
+	}
+
+	fn pinned_order(&self, network_path: &[NodeId]) -> Vec<NodeId> {
+		self.interface
+			.network_metadata
+			.nested_metadata(network_path)
+			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
+			.unwrap_or_default()
 	}
 }
 
@@ -285,6 +296,7 @@ fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: 
 		if let Some(reference) = entry.reference {
 			network_metadata.persistent_metadata.reference = Some(reference);
 		}
+		network_metadata.persistent_metadata.pinned_node_order = entry.pinned_order;
 	}
 }
 
@@ -325,6 +337,10 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			};
 
 			let persistent = &mut document_node_metadata.persistent_metadata;
+
+			// Pins the node to the identity storage holds for it, so the next conversion reuses it rather
+			// than re-deriving one from the node's location.
+			persistent.storage_id = Some(entry.storage_id.0);
 
 			if let Some(position) = entry.position {
 				persistent.node_type_metadata = position_to_runtime(position, entry.is_layer);
