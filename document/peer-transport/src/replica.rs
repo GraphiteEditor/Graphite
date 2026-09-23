@@ -382,12 +382,17 @@ impl Replica {
 				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
 					return Ok(());
 				};
+				// A full registry replaces the session, hot log included, so the unretired ops held here are
+				// kept and replayed back on top. They are the only copy of whatever never reached the host.
+				let held = matches!(sync.registry, Some(_)).then(|| target.hot_log()).unwrap_or_default();
+
 				match sync.registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
 					None => target.merge_remote(sync.deltas, &[])?,
 				}
 				target.absorb_retired_marks(&sync.retired)?;
 
+				self.deferred.extend(target.apply_remote_hot_ops(held)?);
 				self.deferred.extend(target.apply_remote_hot_ops(sync.hot_log)?);
 				self.resources_stale = true;
 
