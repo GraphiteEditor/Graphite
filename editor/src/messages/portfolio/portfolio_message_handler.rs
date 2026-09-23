@@ -53,6 +53,7 @@ pub struct PortfolioMessageHandler {
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
 	ingest: IngestMessageHandler,
+	sync: SyncMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -117,6 +118,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_open: self.active_document().is_some(),
 				};
 				self.ingest.process_message(message, responses, context);
+			}
+			PortfolioMessage::Sync(message) => {
+				let context = SyncMessageContext {
+					documents: &mut self.documents,
+					active_document_id: self.active_document_id,
+					resource_storage,
+				};
+				self.sync.process_message(message, responses, context);
 			}
 			PortfolioMessage::Workspace(message) => {
 				let context = WorkspaceMessageContext {
@@ -319,11 +328,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 				let (gdd, declarations) = *mounted;
-				document.set_storage(gdd, declarations);
+				document.set_storage(gdd, declarations, resource_storage.resources_mut().storage());
 				if !reopened {
 					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
 					document.retire_storage_interaction();
 				}
+				responses.add(SyncMessage::StorageMounted { document_id });
 			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data

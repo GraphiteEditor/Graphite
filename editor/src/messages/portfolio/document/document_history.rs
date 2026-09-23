@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
 use document_graph_storage::{Declarations, Registry};
-use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
+use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::editor_delta::{EditorDelta, construct_batch};
@@ -246,15 +246,48 @@ impl DocumentHistory {
 			return Err(CursorMoveError::NotMoved);
 		}
 
-		storage
+		self.rebuild_interface().ok_or(CursorMoveError::RebuildFailed)
+	}
+
+	/// Build a fresh interface from the working registry, using the declaration cache so no resource load
+	/// is needed. `None` (logged) when the registry does not convert.
+	pub fn rebuild_interface(&self) -> Option<NodeNetworkInterface> {
+		let storage = self.storage.as_ref()?;
+
+		let rebuilt = storage
 			.registry()
 			.to_runtime_with_full_metadata(&self.declarations)
 			.map_err(|error| error.to_string())
-			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
-			.map_err(|error| {
-				log::error!("Storage undo/redo rebuild failed: {error}");
-				CursorMoveError::RebuildFailed
-			})
+			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()));
+
+		match rebuilt {
+			Ok(interface) => Some(interface),
+			Err(error) => {
+				log::error!("Storage interface rebuild failed: {error}");
+				None
+			}
+		}
+	}
+
+	/// Cache a resource that arrived from a peer as a proto-node declaration, under every declaration
+	/// resource referencing its hash. Ignores resources no declaration refers to (images, fonts).
+	pub fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) {
+		let Some(storage) = self.storage.as_ref() else { return };
+
+		let referencing: Vec<ResourceId> = storage
+			.session()
+			.all_declaration_resources()
+			.into_iter()
+			.filter_map(|(id, declaration_hash)| (declaration_hash == Some(hash)).then_some(id))
+			.collect();
+		if referencing.is_empty() {
+			return;
+		}
+
+		match document_graph_storage::decode_declaration(bytes) {
+			Ok(declaration) => self.declarations.extend(referencing.into_iter().map(|id| (id, declaration.clone()))),
+			Err(error) => log::error!("Failed to deserialize a received ProtoNode declaration: {error}"),
+		}
 	}
 
 	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`

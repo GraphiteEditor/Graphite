@@ -34,7 +34,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::resource::{ResourceId, ResourceStorage};
 use graph_craft::application_io::wgpu_available;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
@@ -149,6 +149,10 @@ pub struct DocumentMessageHandler {
 	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
 	history: DocumentHistory,
+	/// Peers changed the registry and the interface hasn't been rebuilt from it yet, so a staged diff
+	/// would read as reverting their edits.
+	#[serde(skip)]
+	pub(crate) runtime_stale: bool,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -200,6 +204,7 @@ impl Default for DocumentMessageHandler {
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
+			runtime_stale: false,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -407,8 +412,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, preferences.validate_storage_round_trip, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, resource_storage, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, resource_storage, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -1809,7 +1814,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 impl DocumentMessageHandler {
 	/// Build a document handler from a `.gdd` working copy.
-	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, declarations: Declarations, name: String, path: Option<std::path::PathBuf>) -> Self {
+	pub fn from_storage(
+		interface: NodeNetworkInterface,
+		storage: document_format::GddV1,
+		declarations: Declarations,
+		byte_store: Arc<dyn ResourceStorage>,
+		name: String,
+		path: Option<std::path::PathBuf>,
+	) -> Self {
 		let mut document = Self {
 			network_interface: interface,
 			name,
@@ -1818,11 +1830,7 @@ impl DocumentMessageHandler {
 		};
 
 		document.apply_stored_document_settings(storage.view_settings());
-		match storage.registry().to_resource_registry() {
-			Ok(resource_registry) => document.resources.registry = resource_registry,
-			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
-		}
-		document.history.set_storage(storage, declarations);
+		document.set_storage(storage, declarations, byte_store);
 
 		document
 	}
@@ -2024,8 +2032,10 @@ impl DocumentMessageHandler {
 	}
 
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
-	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+	pub fn set_storage(&mut self, mut storage: document_format::GddV1, declarations: Declarations, byte_store: Arc<dyn ResourceStorage>) {
+		storage.set_byte_store(byte_store);
 		self.history.set_storage(storage, declarations);
+		self.refresh_resource_registry();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
@@ -2046,7 +2056,7 @@ impl DocumentMessageHandler {
 	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
 		let deltas = self.network_interface.take_deltas();
-		if self.history.storage().is_none() {
+		if self.history.storage().is_none() || self.runtime_stale {
 			return;
 		}
 
@@ -2119,6 +2129,29 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Rebuild the runtime resource registry from storage, which holds each resource's id, content hash
+	/// and sources. The preprocessor resolves a node's `Resource` input through it, so an interface
+	/// swapped in from storage needs it refreshed alongside. Keeps the current registry on failure.
+	fn refresh_resource_registry(&mut self) {
+		let Some(storage) = self.history.storage() else { return };
+
+		match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => self.resources.registry = resource_registry,
+			Err(error) => log::error!("Failed to rebuild the resource registry from storage: {error}"),
+		}
+	}
+
+	/// Swap in an interface rebuilt from the registry a peer's changes left behind.
+	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) {
+		let Some(rebuilt) = self.history.rebuild_interface() else { return };
+		self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+	}
+
+	/// Cache a resource received from a peer as a proto-node declaration, so a rebuild can resolve it.
+	pub(crate) fn cache_declaration_bytes(&mut self, hash: graph_craft::application_io::resource::ResourceHash, bytes: &[u8]) {
+		self.history.cache_declaration_bytes(hash, bytes);
+	}
+
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
 	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
@@ -2130,6 +2163,11 @@ impl DocumentMessageHandler {
 		}
 
 		self.network_interface = rebuilt;
+		self.runtime_stale = false;
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
+		self.refresh_resource_registry();
 
 		if validate {
 			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
@@ -2431,7 +2469,7 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
 			true
@@ -2439,7 +2477,21 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		if self.is_in_session() {
+			self.stage_session_undo(resource_storage);
+			return;
+		}
 		self.drive_storage_undo_redo(legacy_applied, true, validate, responses);
+	}
+
+	fn is_in_session(&self) -> bool {
+		self.storage().is_some_and(|gdd| gdd.role().is_some())
+	}
+
+	/// In a session every op is already public, so an undo is a new forward edit: the restored snapshot
+	/// diffs against the last staged state into the inverse ops, broadcast like any other change.
+	fn stage_session_undo(&mut self, resource_storage: &ResourceStorageMessageHandler) {
+		self.commit_storage_snapshot(&resource_storage.resources_mut(), false);
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2473,7 +2525,7 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
 			true
@@ -2481,6 +2533,10 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		if self.is_in_session() {
+			self.stage_session_undo(resource_storage);
+			return;
+		}
 		self.drive_storage_undo_redo(legacy_applied, false, validate, responses);
 	}
 

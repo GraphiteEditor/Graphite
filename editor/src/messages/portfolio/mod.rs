@@ -8,6 +8,7 @@ pub mod failed_documents;
 pub mod fonts;
 pub mod ingest;
 pub mod persistent_state;
+pub mod sync;
 pub mod utility_types;
 pub mod workspace;
 

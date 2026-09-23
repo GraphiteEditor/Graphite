@@ -47,4 +47,8 @@ pub enum Error {
 	/// An export marked a resource for embedding but its bytes were absent from the byte store.
 	#[error("embedded resource {0} missing from the byte store")]
 	MissingResource(ResourceHash),
+	/// A packet for the collaboration session failed to encode.
+	#[cfg(feature = "network")]
+	#[error("network error: {0}")]
+	Network(#[from] peer_transport::PacketError),
 }

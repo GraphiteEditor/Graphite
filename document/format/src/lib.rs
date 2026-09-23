@@ -20,7 +20,7 @@ use document_graph_storage::{CommitError, NodeMetadataSource};
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
-use graphene_resource::ResourceHash;
+use graphene_resource::{ResourceHash, ResourceStorage};
 
 pub mod codec;
 pub mod error;
@@ -28,6 +28,8 @@ pub mod export;
 pub mod io;
 pub mod layout;
 pub mod manifest;
+#[cfg(feature = "network")]
+pub mod network;
 pub mod persist;
 pub mod resource;
 pub mod session_state;
@@ -68,8 +70,8 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
 /// read.
 /// `Clone` shares the working-copy container (`Arc<AnyContainer>`) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
-/// `Session` is cloned (a snapshot copy); the container is shared.
-#[derive(Clone)]
+/// `Session` is cloned (a snapshot copy); the container is shared. A live collaboration session is
+/// not carried over, so a clone is a read-only copy for asynchronous writes.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: Arc<AnyContainer>,
@@ -84,6 +86,42 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	/// Where this document's resource bytes live. `None` means the working copy's own content-addressed
+	/// store, which is what a standalone handle uses. The editor points this at its application-wide
+	/// cache, the single store resources are kept in there.
+	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	#[cfg(feature = "network")]
+	pub(crate) network: Option<peer_transport::Replica>,
+	#[cfg(feature = "network")]
+	pub(crate) pending_persist: PendingPersist,
+}
+
+/// Whole-file rewrites the sync path defers to the end of a poll, so one batch of remote packets costs
+/// one rewrite of each file rather than one per packet.
+#[cfg(feature = "network")]
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PendingPersist {
+	pub(crate) history: bool,
+	pub(crate) hot_log: bool,
+	pub(crate) snapshot: bool,
+}
+
+impl<L: Layout + Clone> Clone for Gdd<L> {
+	fn clone(&self) -> Self {
+		Self {
+			session: self.session.clone(),
+			working: self.working.clone(),
+			layout: self.layout.clone(),
+			manifest: self.manifest.clone(),
+			view_settings: self.view_settings.clone(),
+			network_view_settings: self.network_view_settings.clone(),
+			byte_store: self.byte_store.clone(),
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+		}
+	}
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -170,6 +208,11 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
+			byte_store: None,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
 		})
 	}
 
@@ -192,6 +235,11 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
 			network_view_settings: std::collections::BTreeMap::new(),
+			byte_store: None,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
 		})
 	}
 }

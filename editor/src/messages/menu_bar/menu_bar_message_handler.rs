@@ -173,6 +173,17 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| DialogMessage::RequestExportDialog.into())
 							.disabled(no_active_document),
 					],
+					vec![
+						MenuListEntry::new("Share Live Session")
+							.label("Share Live Session")
+							.icon("Link")
+							.on_commit(|_| SyncMessage::Share.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Leave Live Session")
+							.label("Leave Live Session")
+							.on_commit(|_| SyncMessage::Leave.into())
+							.disabled(no_active_document),
+					],
 					#[cfg(not(target_os = "macos"))]
 					vec![preferences],
 				])

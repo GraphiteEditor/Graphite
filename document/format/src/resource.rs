@@ -91,6 +91,36 @@ impl<L: Layout> Gdd<L> {
 	{
 		ResourceProxy(self.working.clone(), self.layout.clone())
 	}
+
+	/// Point resource lookups at an external store instead of the working copy, for an embedder that
+	/// already keeps one cache for every open document.
+	pub fn set_byte_store(&mut self, byte_store: Arc<dyn ResourceStorage>) {
+		self.byte_store = Some(byte_store);
+	}
+
+	/// Whether this document's resource bytes are on hand, in whichever store backs it.
+	pub fn holds_resource(&self, hash: &ResourceHash) -> bool {
+		match &self.byte_store {
+			Some(byte_store) => byte_store.contains(hash),
+			None => self.working.exists_non_blocking(&self.layout.resource_path(hash)),
+		}
+	}
+
+	/// Put resource bytes into whichever store backs this document.
+	pub fn hold_resource(&self, bytes: &[u8]) -> Result<(), ContainerError> {
+		match &self.byte_store {
+			Some(byte_store) => {
+				byte_store.store(bytes);
+				Ok(())
+			}
+			None => self.working.write_non_blocking(&self.layout.resource_path(&ResourceHash::from(bytes)), bytes),
+		}
+	}
+
+	/// Resources the registry or its history names whose bytes are not on hand.
+	pub fn unstored_resources(&self) -> Vec<ResourceHash> {
+		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
+	}
 }
 
 impl<L: Layout + Send + Sync> LoadResource for Gdd<L> {
@@ -103,6 +133,12 @@ impl<L: Layout + Send + Sync> LoadResource for Gdd<L> {
 }
 
 pub struct ResourceProxy<T: Layout>(Arc<AnyContainer>, T);
+
+impl<T: Layout + Clone> Clone for ResourceProxy<T> {
+	fn clone(&self) -> Self {
+		Self(self.0.clone(), self.1.clone())
+	}
+}
 
 impl<L: Layout + Send + Sync> LoadResource for ResourceProxy<L> {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {

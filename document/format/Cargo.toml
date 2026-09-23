@@ -17,11 +17,14 @@ conversion = ["document-graph-storage/conversion", "dep:graph-craft", "dep:core-
 # gates that format's `ExportFormat` arm and sink. The folder/memory codec-free core needs neither.
 zip = ["document-container/zip"]
 xz = ["document-container/xz"]
-default = ["conversion", "zip", "xz"]
+# Live collaboration: `Gdd` hosts or joins a `peer_transport` session and mirrors hot ops and retired history to peers.
+network = ["dep:peer-transport"]
+default = ["conversion", "zip", "xz", "network"]
 
 [dependencies]
 document-container = { workspace = true }
 document-graph-storage = { workspace = true, default-features = false }
+peer-transport = { workspace = true, optional = true }
 graph-craft = { workspace = true, optional = true }
 graphene-resource = { workspace = true }
 core-types = { workspace = true, optional = true }

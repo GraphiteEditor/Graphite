@@ -1,6 +1,6 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
-use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
+use graphene_std::application_io::{ExportFormat, RenderConfig, Texture, TimingInformation};
 use graphene_std::core_types::ops::Convert;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -56,39 +56,52 @@ pub async fn export_document(
 		render_config.viewport.resolution = UVec2::new(w, h);
 	}
 
-	// Execute the graph
-	let result = executor.execute(render_config.into_context()).await?;
-
-	// Handle the result based on output type
-	match result {
-		TaggedValue::RenderOutput(output) => match output.data {
-			RenderOutputType::Svg { svg, .. } => {
-				// Write SVG directly to file
-				std::fs::write(&output_path, svg)?;
-				log::info!("Exported SVG to: {}", output_path.display());
-			}
-			RenderOutputType::Texture(texture) => {
-				// Convert GPU texture to CPU buffer
-				let gpu_raster = Raster::<GPU>::new_gpu(texture);
-				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
-				let (data, width, height) = cpu_raster.to_flat_u8();
-
-				// Encode and write raster image
-				write_raster_image(output_path, file_type, data, width, height, transparent)?;
-			}
-			RenderOutputType::Buffer { data, width, height } => {
-				// Encode and write raster image when buffer is already provided
-				write_raster_image(output_path, file_type, data, width, height, transparent)?;
-			}
-			#[cfg(target_family = "wasm")]
-			other => {
-				return Err(format!("Unexpected render output type: {:?}. Expected Texture, Buffer for raster export or Svg for SVG export.", other).into());
-			}
-		},
-		other => return Err(format!("Expected RenderOutput, got: {:?}", other).into()),
+	if file_type == FileType::Svg {
+		let svg = render_svg(executor, render_config).await?;
+		std::fs::write(&output_path, svg)?;
+		log::info!("Exported SVG to: {}", output_path.display());
+		return Ok(());
 	}
 
-	Ok(())
+	let (data, width, height) = render_rgba(executor, wgpu_executor, render_config).await?;
+	write_raster_image(output_path, file_type, data, width, height, transparent)
+}
+
+async fn render_svg(executor: &DynamicExecutor, render_config: RenderConfig) -> Result<String, Box<dyn Error>> {
+	match executor.execute(render_config.into_context()).await? {
+		TaggedValue::RenderOutput(output) => match output.data {
+			RenderOutputType::Svg { svg, .. } => Ok(svg),
+			other => Err(format!("Expected an SVG render output, got: {other:?}").into()),
+		},
+		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
+	}
+}
+
+/// Execute the graph for one frame, keeping the result on the GPU.
+pub async fn render_texture(executor: &DynamicExecutor, render_config: RenderConfig) -> Result<Texture, Box<dyn Error>> {
+	match executor.execute(render_config.into_context()).await? {
+		TaggedValue::RenderOutput(output) => match output.data {
+			RenderOutputType::Texture(texture) => Ok(texture),
+			other => Err(format!("Expected a GPU render output, got: {other:?}").into()),
+		},
+		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
+	}
+}
+
+/// Execute the graph for one frame and read it back as RGBA8 bytes with its dimensions.
+pub async fn render_rgba(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor::WgpuExecutor, render_config: RenderConfig) -> Result<(Vec<u8>, u32, u32), Box<dyn Error>> {
+	match executor.execute(render_config.into_context()).await? {
+		TaggedValue::RenderOutput(output) => match output.data {
+			RenderOutputType::Texture(texture) => {
+				let gpu_raster = Raster::<GPU>::new_gpu(texture);
+				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+				Ok(cpu_raster.to_flat_u8())
+			}
+			RenderOutputType::Buffer { data, width, height } => Ok((data, width, height)),
+			other => Err(format!("Expected a raster render output, got: {other:?}").into()),
+		},
+		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
+	}
 }
 
 fn write_raster_image(output_path: PathBuf, file_type: FileType, data: Vec<u8>, width: u32, height: u32, transparent: bool) -> Result<(), Box<dyn Error>> {
