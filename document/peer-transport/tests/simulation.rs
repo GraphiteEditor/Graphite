@@ -160,6 +160,7 @@ impl Peer {
 
 	fn stage(&mut self, op: RegistryDelta) {
 		let hot_ops = self.target.session.stage_ops([op]).expect("stage");
+
 		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
 	}
 
@@ -181,6 +182,7 @@ impl Peer {
 			return;
 		};
 		let retired_hot_ops = self.target.session.hot_ops_up_to(up_to);
+
 		let revs = self.target.session.retire(up_to).expect("retire");
 		let deltas: Vec<_> = revs.iter().filter_map(|&rev| self.target.session.delta(rev).cloned()).collect();
 		self.replica.broadcast_retired(&deltas, &retired_hot_ops).expect("broadcast retired");
@@ -355,8 +357,45 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 	(network, peers)
 }
 
+/// Dump every peer's state for one seed: `SIM_DUMP=<seed> cargo test ... -- --nocapture`.
+fn dump_if_requested(seed: u64, peers: &[Peer]) {
+	if std::env::var("SIM_DUMP").ok().and_then(|value| value.parse::<u64>().ok()) != Some(seed) {
+		return;
+	}
+	for (index, peer) in peers.iter().enumerate() {
+		eprintln!(
+			"DUMP {index} {:?} departed {} synced {} held {} pending_resources {} history {} hot {:?} watermark {:?}",
+			peer.peer,
+			peer.departed,
+			peer.replica.is_synced(),
+			peer.replica.held_broadcasts(),
+			peer.replica.pending_resource_requests().count(),
+			peer.session().history().count(),
+			peer.session().hot_log().iter().map(|h| format!("{}:{}", h.timestamp.peer.0, h.timestamp.counter)).collect::<Vec<_>>(),
+			{
+				let mut marks: Vec<_> = peer.session().retired_through().iter().map(|(p, c)| (p.0, *c)).collect();
+				marks.sort();
+				marks
+			}
+		);
+	}
+}
+
 fn assert_converged(seed: u64, peers: &[Peer]) {
+	dump_if_requested(seed, peers);
+
 	let present = || peers.iter().enumerate().filter(|(_, peer)| !peer.departed);
+
+	// A sparse `known_revs` sample only describes a peer's state if history is parent-complete, so a
+	// hole makes the host under-send on the next resync.
+	for (index, peer) in present() {
+		let present_revs: HashSet<Rev> = peer.session().history().map(|delta| delta.id).collect();
+		for delta in peer.session().history() {
+			for parent in delta.all_parents() {
+				assert!(present_revs.contains(&parent), "seed {seed}: peer {index} has {:?} without its parent {parent:?}", delta.id);
+			}
+		}
+	}
 
 	let host = &peers[0];
 	let host_history: Vec<_> = host.session().history().map(|delta| delta.id).collect();

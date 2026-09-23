@@ -133,12 +133,19 @@ impl Document {
 		self.retired_through.get(&timestamp.peer).is_some_and(|&counter| timestamp.counter <= counter)
 	}
 
-	/// Raise the watermark to cover these newly retired hot ops.
+	/// Raise the watermark to cover these newly retired hot ops, dropping any the hot log still holds.
+	/// Keeping the two in step is what makes the watermark authoritative: a retired op must not sit in
+	/// the hot log whatever path put it there.
 	pub(crate) fn mark_retired(&mut self, retired: impl IntoIterator<Item = TimeStamp>) {
 		for timestamp in retired {
 			let counter = self.retired_through.entry(timestamp.peer).or_default();
 			*counter = (*counter).max(timestamp.counter);
 		}
+
+		let retired_through = std::mem::take(&mut self.retired_through);
+		self.hot_log
+			.retain(|hot_op| retired_through.get(&hot_op.timestamp.peer).is_none_or(|&counter| hot_op.timestamp.counter > counter));
+		self.retired_through = retired_through;
 	}
 
 	/// Apply a retired commit. Idempotent on structural ops (AddNode/AddNetwork on existing

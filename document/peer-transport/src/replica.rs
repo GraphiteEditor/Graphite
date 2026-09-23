@@ -33,8 +33,6 @@ pub enum ReplicaError {
 	Packet(#[from] PacketError),
 	#[error(transparent)]
 	Target(#[from] TargetError),
-	#[error("packet from {0} before its hello")]
-	UnknownPeer(TransportPeerId),
 }
 
 struct RemotePeer {
@@ -75,6 +73,9 @@ pub struct Replica {
 	seq: u64,
 	delivered: HashMap<PeerId, PeerProgress>,
 	held: Vec<(PeerId, Broadcast)>,
+	/// Broadcasts that arrived before their sender's hello, parked rather than dropped so a reordering
+	/// on a fresh link cannot lose ops.
+	ungreeted: HashMap<TransportPeerId, Vec<Broadcast>>,
 	/// Resources asked for and not yet received, so a standing request is not resent every poll.
 	requested_resources: HashSet<ResourceHash>,
 	/// Requests that arrived before the bytes did, answered once they turn up here.
@@ -104,6 +105,7 @@ impl Replica {
 			seq: 0,
 			delivered: HashMap::new(),
 			held: Vec::new(),
+			ungreeted: HashMap::new(),
 			requested_resources: HashSet::new(),
 			owed_resources: HashMap::new(),
 			resources_stale: false,
@@ -184,10 +186,23 @@ impl Replica {
 
 	pub fn poll(&mut self, target: &mut dyn SyncTarget) -> Vec<Event> {
 		let mut events = Vec::new();
+		let transport_events = self.transport.poll();
 
-		for transport_event in self.transport.poll() {
+		// Greet every new peer before handling anything else in the batch. A transport adds them to its
+		// send set for the whole batch up front, so a broadcast made while handling an earlier event
+		// would reach a peer that has not been greeted; the hello that followed would then carry a
+		// sequence number covering it, and the receiver would rightly treat those ops as unneeded.
+		for transport_event in &transport_events {
+			if let TransportEvent::PeerConnected(transport_peer) = transport_event
+				&& let Err(error) = self.send_hello(*transport_peer)
+			{
+				log::error!("Sync error: {error}");
+			}
+		}
+
+		for transport_event in transport_events {
 			let result = match transport_event {
-				TransportEvent::PeerConnected(transport_peer) => self.send_hello(transport_peer),
+				TransportEvent::PeerConnected(_) => Ok(()),
 				TransportEvent::PeerDisconnected(transport_peer) => {
 					let departed = self.peers.remove(&transport_peer);
 					if let Some(remote) = &departed {
@@ -196,6 +211,8 @@ impl Replica {
 					// A peer that left may have been the one still owing bytes, so let the rest be asked again.
 					self.requested_resources.clear();
 					self.resources_stale = true;
+					// The hello those were waiting on is never coming now.
+					self.ungreeted.remove(&transport_peer);
 
 					match departed {
 						Some(remote) => self.close_epoch(remote.peer, target, &mut events),
@@ -297,6 +314,11 @@ impl Replica {
 			SyncPacket::Hello { peer, user, role, epoch, seq } => {
 				self.peers.insert(from, RemotePeer { peer, user, role });
 				self.anchor_delivered(peer, epoch, seq);
+				// Now that the sender is known, whatever arrived ahead of its hello can be handled.
+				for broadcast in self.ungreeted.remove(&from).unwrap_or_default() {
+					self.handle_packet(from, SyncPacket::Broadcast(broadcast), target, events)?;
+				}
+
 				// The anchor can unblock broadcasts held against the counter an earlier link reached.
 				self.deliver_held(target, events)?;
 				self.reannounce_own_hot_ops(&*target)?;
@@ -329,7 +351,6 @@ impl Replica {
 				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
 					return Ok(());
 				};
-
 				match sync.registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
 					None => target.merge_remote(sync.deltas, &[])?,
@@ -377,7 +398,12 @@ impl Replica {
 				events.push(Event::Synced);
 			}
 			SyncPacket::Broadcast(broadcast) => {
-				let sender = self.peers.get(&from).ok_or(ReplicaError::UnknownPeer(from))?.peer;
+				// Its sender is only known from a hello, so park it rather than drop it.
+				let Some(remote) = self.peers.get(&from) else {
+					self.ungreeted.entry(from).or_default().push(broadcast);
+					return Ok(());
+				};
+				let sender = remote.peer;
 				match &mut self.sync {
 					SyncState::AwaitingSync { pending } => pending.push((sender, broadcast)),
 					SyncState::Synced => {
