@@ -85,8 +85,11 @@ impl Session {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
 		let base = self.runtime_base.as_ref().unwrap_or(&self.document.working_registry);
 		let ops = crate::delta::compute_deltas(base, &conversion.registry);
-		self.runtime_base = Some(conversion.registry.clone());
+
+		// The base moves only once the ops are staged, so a failure leaves the next diff covering them.
 		let hot_ops = self.stage_ops(ops)?;
+		self.runtime_base = Some(conversion.registry.clone());
+
 		Ok((hot_ops, conversion))
 	}
 
@@ -167,13 +170,16 @@ impl Session {
 
 		let mut staged = Vec::with_capacity(pending.len());
 		for op in pending {
-			self.document.next_hot_sequence += 1;
+			// The counter advances only once the op is in the log, so a failure leaves no gap in the run.
+			let sequence = self.document.next_hot_sequence + 1;
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
-				sequence: self.document.next_hot_sequence,
+				sequence,
 			};
 			self.document.apply_hot_op(hot_op.clone())?;
+
+			self.document.next_hot_sequence = sequence;
 			staged.push(hot_op);
 		}
 		Ok(staged)
@@ -230,7 +236,7 @@ impl Session {
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
 	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in on-disk
 	/// (topological) order.
-	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64, next_hot_sequence: u64) -> Self {
+	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
 		for delta in &history {
 			clock.observe(delta.timestamp);
@@ -251,7 +257,7 @@ impl Session {
 				peer,
 				last_broadcast_rev: None,
 				next_node_counter,
-				next_hot_sequence,
+				next_hot_sequence: 0,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -276,9 +282,10 @@ impl Session {
 		Ok(session)
 	}
 
-	/// Apply a hot op received from another peer.
+	/// Apply a hot op received from another peer. Idempotent, and a no-op for one history already
+	/// covers, since a late delivery must not put a retired op back in the hot log.
 	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.document.apply_hot_op(hot_op)
+		self.document.replay_hot_op(hot_op)
 	}
 
 	/// The hot ops a `retire(up_to)` call would drain. Sent with the deltas so peers drop exactly these;
@@ -312,11 +319,22 @@ impl Session {
 
 	/// The retired snapshot as canonical history alone produces it, independent of arrival order and the
 	/// hot log. Folded on a clone, so it observes rather than changes this session.
+	///
+	/// Only `head`'s ancestry: an undone delta stays in the DAG for redo to find, so folding all of
+	/// history would restore work the user undid.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
+		let reachable = self.document.history.ancestors(self.document.head);
+
 		let mut folded = self.clone();
 		folded.document.retired_snapshot = Registry::default();
 
-		let replay: Vec<(RegistryDelta, TimeStamp)> = folded.document.history.iter().map(|delta| (delta.kind.clone(), delta.timestamp)).collect();
+		let replay: Vec<(RegistryDelta, TimeStamp)> = folded
+			.document
+			.history
+			.iter()
+			.filter(|delta| reachable.contains(&delta.id))
+			.map(|delta| (delta.kind.clone(), delta.timestamp))
+			.collect();
 		for (kind, timestamp) in replay {
 			folded.document.apply_op_with(RegistryTarget::Snapshot, kind, timestamp, ApplyMode::Idempotent)?;
 		}
@@ -374,9 +392,6 @@ impl Session {
 		// The loop folds in arrival order, and concurrent ops do not all commute: a remove and a change to
 		// the same target resolve by whichever lands second.
 		let folded_in_canonical_order = self.document.history.iter().skip(length_before).map(|delta| delta.id).eq(arrival_order.iter().copied());
-		if !folded_in_canonical_order {
-			self.refold_registries()?;
-		}
 
 		let history = &self.document.history;
 		let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();
@@ -396,6 +411,11 @@ impl Session {
 			}
 		};
 		self.document.head = outcome.head();
+
+		// After `head`, since the fold is over its ancestry.
+		if !folded_in_canonical_order {
+			self.refold_registries()?;
+		}
 
 		Ok(outcome)
 	}
@@ -673,6 +693,12 @@ impl Session {
 	/// How many hot ops this peer has authored, carried across a reload so no sequence is spent twice.
 	pub fn next_hot_sequence(&self) -> u64 {
 		self.document.next_hot_sequence
+	}
+
+	/// Restore the authored-op count after a load, so a fresh op cannot reuse a spent sequence. Raises
+	/// only, so replaying a persisted hot log afterwards cannot lower it.
+	pub fn restore_hot_sequence(&mut self, sequence: u64) {
+		self.document.next_hot_sequence = self.document.next_hot_sequence.max(sequence);
 	}
 }
 

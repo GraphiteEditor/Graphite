@@ -931,8 +931,8 @@ fn merge_order_outcome(base: &Session, deltas: &[Delta], order: [usize; 2]) -> O
 		.map(|value| (value.value.clone(), value.timestamp))
 }
 
-/// The registries are folded in arrival order while only `history` is sorted, so concurrent deltas must
-/// commute. Change-first leaves the node gone; remove-first resurrects it from the removal's snapshot.
+/// The raw ops are arrival-order dependent: change-first leaves the node gone, remove-first resurrects
+/// it from the removal's snapshot. Merge has to fold both orders onto the same retired registry.
 #[test]
 fn a_concurrent_remove_and_attribute_change_commute() {
 	let network_id = NetworkId(5);
@@ -1087,4 +1087,24 @@ fn publishing_a_commit_disables_silent_undo() {
 	session.publish_up_to(head);
 
 	assert!(!session.can_undo(), "a published interaction must not be silently rewound");
+}
+
+/// An undone delta stays in the DAG so redo can find it, but it is no longer in `head`'s ancestry.
+/// Folding history must respect that or a refold restores work the user undid.
+#[test]
+fn snapshot_from_history_ignores_undone_deltas() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	session.undo().expect("undo");
+	assert!(!session.retired_registry().attributes.contains_key("second"), "undo rewound the snapshot");
+
+	let folded = session.snapshot_from_history().expect("fold");
+
+	assert!(folded.attributes.contains_key("first"), "history still holds the kept interaction");
+	assert!(!folded.attributes.contains_key("second"), "a fold restored an undone delta");
 }

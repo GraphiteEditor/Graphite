@@ -31,10 +31,6 @@ pub struct SessionState {
 	/// collide on minted IDs.
 	#[serde(default)]
 	pub next_node_counter: u64,
-	/// How many hot ops this peer has authored, feeding `HotOp::sequence`. Persisted so a reopen
-	/// continues the run: a reused sequence would look like one already retired and be dropped.
-	#[serde(default)]
-	pub next_hot_sequence: u64,
 	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
 	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -43,4 +39,9 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, serde_json::Value>>,
+	/// How many hot ops this peer has authored, feeding [`document_graph_storage::HotOp::sequence`].
+	/// Persisted so a reopen continues the run rather than reusing a spent sequence. Appended last:
+	/// a positional codec decodes these fields in declaration order.
+	#[serde(default)]
+	pub next_hot_sequence: u64,
 }

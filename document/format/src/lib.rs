@@ -144,15 +144,7 @@ impl<L: Layout> Gdd<L> {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(
-					peer,
-					registry,
-					history,
-					session_state.head_rev,
-					session_state.redo_stack,
-					session_state.next_node_counter,
-					session_state.next_hot_sequence,
-				)
+				Session::load(peer, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
@@ -166,6 +158,8 @@ impl<L: Layout> Gdd<L> {
 		if let Some(rev) = session_state.last_broadcast_rev {
 			session.publish_up_to(rev);
 		}
+		// Likewise the authored-op count, so a reopen through any arm continues this peer's run.
+		session.restore_hot_sequence(session_state.next_hot_sequence);
 
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 

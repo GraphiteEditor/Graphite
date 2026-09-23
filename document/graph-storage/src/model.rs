@@ -51,9 +51,11 @@ impl Node {
 	/// `ChangeNodeInput`. The slot count is fixed at creation, since changing an input addresses a
 	/// slot by position.
 	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
+		// `to_runtime` deserializes this as a `TaggedValue`, whose unit `None` variant encodes as this
+		// string. `unset_input_slot_deserializes_as_tagged_value_none` pins the pairing.
 		let slot = InputSlot {
 			input: NodeInput::Value {
-				value: serde_json::Value::Null,
+				value: serde_json::Value::String("None".to_string()),
 				exposed: false,
 			},
 			timestamp: TimeStamp::ORIGIN,
@@ -178,6 +180,19 @@ mod tests {
 			target: None,
 			timestamp: TimeStamp { counter: 5, peer: crate::PeerId(1) },
 		}
+	}
+
+	/// `Node::new` writes an unset slot value that `to_runtime` has to be able to read back, so the
+	/// literal it stores must stay in step with how `TaggedValue::None` serializes.
+	#[test]
+	fn unset_input_slot_deserializes_as_tagged_value_none() {
+		let node = Node::new(crate::ROOT_NETWORK, Implementation::Network(crate::ROOT_NETWORK), 1);
+		let NodeInput::Value { value, .. } = &node.inputs()[0].input else {
+			panic!("a fresh slot holds a value input");
+		};
+
+		let tagged: graph_craft::document::value::TaggedValue = serde_json::from_value(value.clone()).expect("the unset slot value must deserialize");
+		assert_eq!(tagged, graph_craft::document::value::TaggedValue::None);
 	}
 
 	/// A `SetExport(None)` truncation leaves a trailing empty slot. Such a network is value-equal to
