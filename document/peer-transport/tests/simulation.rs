@@ -494,7 +494,7 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 				let retired = peer.session().retired_marks();
 				let mut through: Vec<_> = retired.retired_up_to.iter().map(|(peer, sequence)| (peer.0, sequence.0)).collect();
 				through.sort();
-				let mut above: Vec<_> = retired.unretired.iter().map(|id| (id.peer.0, id.sequence.0)).collect();
+				let mut above: Vec<_> = retired.retired_beyond.iter().map(|(peer, runs)| (peer.0, runs.len())).collect();
 				above.sort();
 				format!("{through:?} above {above:?}")
 			}
