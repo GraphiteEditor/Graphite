@@ -541,33 +541,6 @@ impl MeshPatch {
 		boundary.close_path();
 		boundary
 	}
-
-	/// Checks for foldovers by sampling the position Jacobian over the patch.
-	pub fn sampled_no_foldover(&self) -> bool {
-		const SUBDIVISIONS: usize = 64;
-		const RELATIVE_EPSILON: f64 = 1e-6;
-		const FOLDOVER_SAFETY_ANGLE_DEGREES: f64 = 5.;
-		let minimum_normalized_jacobian = FOLDOVER_SAFETY_ANGLE_DEGREES.to_radians().sin();
-		let position_bezier_net = coons_to_position_bezier_net(&self.corners, &self.edges);
-
-		for row in 0..=SUBDIVISIONS {
-			let v = row as f64 / SUBDIVISIONS as f64;
-			for column in 0..=SUBDIVISIONS {
-				let u = column as f64 / SUBDIVISIONS as f64;
-				let jacobian = position_jacobian(&position_bezier_net, u, v);
-				let derivative_u = jacobian.x_axis;
-				let derivative_v = jacobian.y_axis;
-				let scale = derivative_u.length() * derivative_v.length();
-				let determinant = derivative_u.perp_dot(derivative_v);
-
-				if !scale.is_finite() || !determinant.is_finite() || determinant <= (RELATIVE_EPSILON + minimum_normalized_jacobian) * scale {
-					return false;
-				}
-			}
-		}
-
-		true
-	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
