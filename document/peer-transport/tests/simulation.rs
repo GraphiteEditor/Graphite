@@ -14,6 +14,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 static TOTAL_NODES: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_WIRED: AtomicUsize = AtomicUsize::new(0);
+static TOTAL_EXPORTS: AtomicUsize = AtomicUsize::new(0);
+static TOTAL_INPUT_ATTRIBUTES: AtomicUsize = AtomicUsize::new(0);
 
 /// A peer's document plus the byte store the editor keeps application-wide. Bare `Session` takes the
 /// trait's no-op resource defaults, which would leave the whole request path unexercised.
@@ -23,15 +25,20 @@ struct SimTarget {
 	/// History as of the last `flush`, to check the sync path never leaves applied state undurable.
 	durable_history: Vec<Rev>,
 	flushes: usize,
+	/// Every rev this peer has ever held, to check none is later dropped. See [`SimTarget::flush`].
+	seen_revs: HashSet<Rev>,
+	seed: u64,
 }
 
 impl SimTarget {
-	fn new(peer: PeerId) -> Self {
+	fn new(peer: PeerId, seed: u64) -> Self {
 		Self {
 			session: Session::with_peer(peer),
 			resources: HashMap::new(),
 			durable_history: Vec::new(),
 			flushes: 0,
+			seen_revs: HashSet::new(),
+			seed,
 		}
 	}
 
@@ -90,6 +97,14 @@ impl SyncTarget for SimTarget {
 	}
 
 	fn flush(&mut self) -> Result<(), TargetError> {
+		// History is append-only. Hot ops are explicitly transient and a rejoin may drop the lot, but a
+		// retired delta is the durable record, so losing one is data loss no convergence check would see.
+		let current: HashSet<Rev> = self.history_revs().into_iter().collect();
+		if let Some(dropped) = self.seen_revs.iter().find(|rev| !current.contains(rev)) {
+			panic!("seed {}: peer {:?} dropped retired delta {dropped:?} from history", self.seed, self.session.peer());
+		}
+		self.seen_revs.extend(current);
+
 		self.durable_history = self.history_revs();
 		self.flushes += 1;
 		Ok(())
@@ -120,7 +135,7 @@ struct Peer {
 }
 
 impl Peer {
-	fn new(endpoint: MockEndpoint, role: Role, index: u64) -> Self {
+	fn new(endpoint: MockEndpoint, role: Role, index: u64, seed: u64) -> Self {
 		let (peer, user) = (PeerId(index), UserId(index));
 		let transport = endpoint.id();
 		let replica = match role {
@@ -128,7 +143,7 @@ impl Peer {
 			Role::Guest => Replica::guest(endpoint, peer, user),
 		};
 		Self {
-			target: SimTarget::new(peer),
+			target: SimTarget::new(peer, seed),
 			replica,
 			peer,
 			user,
@@ -221,7 +236,21 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 	let live_nodes: Vec<NodeId> = registry.node_instances.keys().copied().collect();
 	let live_networks: Vec<NetworkId> = registry.networks.keys().copied().collect();
 
-	match network.random_below(6) {
+	match network.random_below(8) {
+		// Per-slot attributes, the one place `InputSlot.attributes` is written.
+		6 => {
+			let node = registry.node_instances.get(&node_id)?;
+			let index = network.random_below(node.inputs().len().max(1)) as u32;
+
+			Some(RegistryDelta::ChangeNodeInputAttribute {
+				id: node_id,
+				index,
+				delta: AttributeDelta {
+					key: "label".into(),
+					value: Some(serde_json::json!(network.random_below(100))),
+				},
+			})
+		}
 		// A node needs a live network to sit in, and `AddNode` errors on one that already exists.
 		0 | 1 if !registry.node_instances.contains_key(&node_id) => {
 			let network_id = *pick(network, &live_networks)?;
@@ -272,7 +301,22 @@ fn random_op(network: &mut MockNetwork, session: &Session) -> RegistryDelta {
 		return op;
 	}
 
-	match network.random_below(4) {
+	match network.random_below(6) {
+		// Export slots resize on demand and LWW per slot, and clearing one leaves a tombstone that must
+		// still compare equal to the slot being absent.
+		4 | 5 if session.registry().networks.contains_key(&network_id) => {
+			let live_nodes: Vec<NodeId> = session.registry().node_instances.keys().copied().collect();
+			let export = match pick(network, &live_nodes).copied() {
+				Some(id) if network.random_below(4) > 0 => Some(NodeInput::Node { id, index: 0 }),
+				_ => None,
+			};
+
+			RegistryDelta::SetNetworkExport {
+				id: network_id,
+				index: network.random_below(3) as u32,
+				export,
+			}
+		}
 		0 | 1 => RegistryDelta::ChangeDocumentAttribute {
 			delta: AttributeDelta {
 				key: format!("key{}", network.random_below(3)),
@@ -322,7 +366,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			let endpoint = network.endpoint();
 			let id = endpoint.id();
 			let role = if index == 0 { Role::Host } else { Role::Guest };
-			let peer = Peer::new(endpoint, role, index as u64 + 1);
+			let peer = Peer::new(endpoint, role, index as u64 + 1, seed);
 			network.connect(id);
 			peer
 		})
@@ -360,7 +404,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			9 => {
 				let endpoint = network.endpoint();
 				let id = endpoint.id();
-				peers.push(Peer::new(endpoint, Role::Guest, peers.len() as u64 + 1));
+				peers.push(Peer::new(endpoint, Role::Guest, peers.len() as u64 + 1, seed));
 				network.connect(id);
 			}
 			// Keep one guest around, so the room stays a room.
@@ -510,6 +554,12 @@ fn peers_converge_under_random_interleavings() {
 				.filter(|slot| matches!(slot.input, NodeInput::Node { .. }))
 				.count();
 			TOTAL_WIRED.fetch_add(wired, Ordering::Relaxed);
+
+			let exports = registry.networks.values().flat_map(|net| &net.exports).filter(|slot| slot.target.is_some()).count();
+			TOTAL_EXPORTS.fetch_add(exports, Ordering::Relaxed);
+
+			let input_attributes = registry.node_instances.values().flat_map(|node| node.inputs()).filter(|slot| !slot.attributes.is_empty()).count();
+			TOTAL_INPUT_ATTRIBUTES.fetch_add(input_attributes, Ordering::Relaxed);
 		}
 		assert_converged(seed, &peers);
 	}
@@ -517,6 +567,8 @@ fn peers_converge_under_random_interleavings() {
 	// producing them. Without nodes wired to other nodes nothing reaches the resurrection path.
 	assert!(TOTAL_NODES.load(Ordering::Relaxed) > 0, "the corpus produced no nodes");
 	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
+	assert!(TOTAL_EXPORTS.load(Ordering::Relaxed) > 0, "the corpus set no network exports");
+	assert!(TOTAL_INPUT_ATTRIBUTES.load(Ordering::Relaxed) > 0, "the corpus wrote no input-slot attributes");
 }
 
 /// A guest that drops and comes back keeps its `PeerId` but gets a fresh `Replica`, so its broadcast
@@ -531,7 +583,7 @@ fn a_rejoining_guest_is_still_heard() {
 			let endpoint = network.endpoint();
 			let id = endpoint.id();
 			let role = if index == 0 { Role::Host } else { Role::Guest };
-			let peer = Peer::new(endpoint, role, index as u64 + 1);
+			let peer = Peer::new(endpoint, role, index as u64 + 1, 0);
 			network.connect(id);
 			peer
 		})
