@@ -1,5 +1,6 @@
 use super::storage_metadata::position_from_runtime;
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
+use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
 use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp};
@@ -30,6 +31,13 @@ pub enum EditorDelta {
 		network_path: Vec<NodeId>,
 		node_id: NodeId,
 		change: NodeMetadataChange,
+	},
+	/// A node's whole input metadata array, paired with the `SetInputs` that changed the slots it
+	/// indexes. Whole-array for the same reason: an insert shifts every later entry.
+	NodeInputMetadata {
+		network_path: Vec<NodeId>,
+		node_id: NodeId,
+		input_metadata: Vec<InputMetadata>,
 	},
 	/// One field of an existing network's metadata.
 	NetworkMetadata {
@@ -204,8 +212,56 @@ impl EditorDelta {
 				construct_metadata_snapshot(network_path, *node_id, metadata, working, resolver, ops)?;
 			}
 
+			EditorDelta::Graph(RuntimeDelta::SetInputs { network_path, node_id, inputs }) => {
+				let global_id = resolver.node_id(network_path, *node_id);
+				let Some(existing) = working.node_instances.get(&global_id) else {
+					log::error!("Could not find node {global_id:?} to set the inputs of");
+					return Ok(());
+				};
+
+				let inputs = inputs.iter().map(|input| resolver.convert_input_at(input, network_path)).collect::<Result<Vec<_>, _>>()?;
+
+				// `AddNode` refuses an ID that is already present, so the record is removed and re-added.
+				// Only this node's record: its nested network and everything under it keep their own
+				// entries, which is what separates this from `ReplaceNode`.
+				ops.push(RegistryDelta::RemoveNode {
+					id: global_id,
+					snapshot: existing.clone(),
+				});
+				ops.push(RegistryDelta::AddNode {
+					id: global_id,
+					node: existing.with_inputs(inputs, TimeStamp::ORIGIN),
+				});
+			}
+
 			EditorDelta::NodeMetadata { network_path, node_id, change } => {
 				ops.extend(node_metadata_ops(resolver.node_id(network_path, *node_id), change)?);
+			}
+
+			EditorDelta::NodeInputMetadata {
+				network_path,
+				node_id,
+				input_metadata,
+			} => {
+				let global_id = resolver.node_id(network_path, *node_id);
+				let source = InputMetadataSource(input_metadata);
+				let working_node = working.node_instances.get(&global_id);
+
+				// An insert shifts every later slot, so the array is asserted whole: a `ui::` key the slot
+				// no longer carries is cleared rather than left behind at its old index.
+				for input_index in 0..input_metadata.len() {
+					let mut encoded = Attributes::new();
+					encode_input_ui_attributes(&mut encoded, &source, network_path, *node_id, input_index, TimeStamp::ORIGIN)?;
+					let current = working_node.and_then(|node| node.inputs().get(input_index)).map(|slot| &slot.attributes);
+
+					for delta in ui_attribute_writes(current, &encoded) {
+						ops.push(RegistryDelta::ChangeNodeInputAttribute {
+							id: global_id,
+							index: input_index.try_into().map_err(|_| ConversionError::IndexOverflow(input_index))?,
+							delta,
+						});
+					}
+				}
 			}
 
 			EditorDelta::NetworkMetadata { network_path, change } => {
@@ -399,6 +455,20 @@ fn construct_metadata_snapshot(
 /// Minimal ops transforming the `ui::`-prefixed subset of `current` into `encoded`, comparing
 /// values only, since timestamps are re-stamped at staging.
 fn ui_attribute_deltas(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
+	ui_attribute_ops(current, encoded, true)
+}
+
+/// Every `ui::` attribute of `encoded` plus a clear for each the slot no longer carries, restating
+/// even the values that already match.
+///
+/// For a write that follows a wholesale replacement of the same slot in this batch: `current` is the
+/// registry as it stood before the batch, so a value it agrees with may already have been cleared by
+/// the earlier op, and skipping it would leave the slot empty.
+fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
+	ui_attribute_ops(current, encoded, false)
+}
+
+fn ui_attribute_ops(current: Option<&Attributes>, encoded: &Attributes, skip_unchanged: bool) -> Vec<AttributeDelta> {
 	let owned = |key: &str| key.starts_with("ui::");
 	let mut deltas = Vec::new();
 
@@ -411,7 +481,7 @@ fn ui_attribute_deltas(current: Option<&Attributes>, encoded: &Attributes) -> Ve
 	}
 	for (key, value) in encoded {
 		let unchanged = current.and_then(|current| current.get(key)).is_some_and(|existing| existing.value == value.value);
-		if !unchanged {
+		if !(skip_unchanged && unchanged) {
 			deltas.push(AttributeDelta {
 				key: key.clone(),
 				value: Some(value.value.clone()),
@@ -542,6 +612,35 @@ struct IdentitiesOnly<'a>(&'a dyn NodeMetadataSource);
 impl NodeMetadataSource for IdentitiesOnly<'_> {
 	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
 		self.0.storage_node_id(network_path, local_id)
+	}
+}
+
+/// Serves one node's input metadata for encoding a [`EditorDelta::NodeInputMetadata`] delta. Only the
+/// per-input accessors answer, since the node-level ones are never reached: the delta encodes through
+/// `encode_input_ui_attributes` alone.
+struct InputMetadataSource<'a>(&'a [InputMetadata]);
+
+impl InputMetadataSource<'_> {
+	fn persistent(&self, input_index: usize) -> Option<&InputPersistentMetadata> {
+		self.0.get(input_index).map(|metadata| &metadata.persistent_metadata)
+	}
+}
+
+impl NodeMetadataSource for InputMetadataSource<'_> {
+	fn input_name(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> Option<&str> {
+		Some(self.persistent(input_index)?.input_name.as_str())
+	}
+
+	fn input_description(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> Option<&str> {
+		Some(self.persistent(input_index)?.input_description.as_str())
+	}
+
+	fn widget_override(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> Option<&str> {
+		self.persistent(input_index)?.widget_override.as_deref()
+	}
+
+	fn input_data(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> HashMap<String, serde_json::Value> {
+		self.persistent(input_index).map(|metadata| metadata.input_data.clone()).unwrap_or_default()
 	}
 }
 

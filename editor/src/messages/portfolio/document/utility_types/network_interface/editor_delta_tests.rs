@@ -273,6 +273,76 @@ async fn unchanged_writes_emit_nothing() {
 	assert!(emitted.is_empty(), "re-writing the same values should emit nothing, got {emitted:#?}");
 }
 
+/// Structural writes go through the store too, so inserting and deleting a node must be recorded
+/// without the caller saying anything about it.
+#[tokio::test]
+async fn emitted_deltas_reproduce_the_diff_for_structural_edits() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.take_deltas();
+
+	let template = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
+		.expect("rectangle definition")
+		.default_node_template();
+	let node_id = NodeId(0xDE17A);
+	editor.active_document_mut().network_interface.insert_node(node_id, template, &[]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "emitted node insertion");
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.delete_nodes(vec![node_id], true, &[]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "emitted node deletion");
+}
+
+/// Adding an import shifts every later input slot, which no index-addressed op can express. The store
+/// restates the whole list instead, so this checks that restatement lands the same as the diff.
+#[tokio::test]
+async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor
+		.handle_message(DocumentMessage::GroupSelectedLayers {
+			group_folder_type: crate::messages::portfolio::document::utility_types::misc::GroupFolderType::Layer,
+		})
+		.await;
+
+	let group = editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.map(|(id, _)| *id)
+		.expect("the group should be a network node");
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.take_deltas();
+
+	editor
+		.active_document_mut()
+		.network_interface
+		.add_import(TaggedValue::F64(7.), true, -1, "Added", "An added import", &[group]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	assert!(!emitted.is_empty(), "adding an import should have emitted deltas");
+
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "emitted import addition");
+}
+
 #[tokio::test]
 async fn removing_a_nested_network_node_matches_the_diff() {
 	let mut editor = EditorTestUtils::create();

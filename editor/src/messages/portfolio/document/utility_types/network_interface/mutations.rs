@@ -1138,21 +1138,16 @@ impl NodeNetworkInterface {
 			.filter(|downstream_node_id| self.is_layer(downstream_node_id, network_path))
 			.and_then(|downstream_layer| self.position(&downstream_layer, network_path));
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		// First set the position to absolute
+		let absolute = match is_layer {
+			true => NodeTypePersistentMetadata::layer(position),
+			false => NodeTypePersistentMetadata::node(position),
+		};
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-
-		// First set the position to absolute
-		node_metadata.persistent_metadata.node_type_metadata = if is_layer {
-			NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::Absolute(position),
-			})
-		} else {
-			NodeTypePersistentMetadata::Node(NodePersistentMetadata {
-				position: NodePosition::Absolute(position),
-			})
-		};
+		node.set_node_type(absolute);
 
 		// Try build the chain
 		if is_layer {
@@ -1161,17 +1156,20 @@ impl NodeNetworkInterface {
 			self.try_set_node_to_chain(node_id, network_path);
 		}
 
+		// Set the position to stack if necessary
+		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
+			let offset = (position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32;
+			let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+				log::error!("Could not get node_metadata for node {node_id}");
+				return;
+			};
+			node.set_stack_position(offset);
+		}
+
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		// Set the position to stack if necessary
-		if let Some(downstream_position) = is_layer.then_some(single_downstream_layer_position).flatten() {
-			node_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
-				position: LayerPosition::Stack((position.y - downstream_position.y - STACK_VERTICAL_GAP).max(0) as u32),
-			})
-		}
-
 		node_metadata.transient_metadata.layer_width.unload();
 		node_metadata.transient_metadata.owned_nodes.unload();
 

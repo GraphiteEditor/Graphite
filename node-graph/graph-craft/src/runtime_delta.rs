@@ -35,6 +35,14 @@ pub enum RuntimeDelta {
 		input_index: usize,
 		input: NodeInput,
 	},
+	/// A node's whole input list, which is how a change to the number or order of its slots is
+	/// expressed, since `SetInput` addresses one index and cannot move the others. Everything nested
+	/// under the node is left alone, unlike `ReplaceNode`.
+	SetInputs {
+		network_path: Vec<NodeId>,
+		node_id: NodeId,
+		inputs: Vec<NodeInput>,
+	},
 	/// `None` removes the slot, matching the storage op this converts to.
 	SetExport {
 		network_path: Vec<NodeId>,

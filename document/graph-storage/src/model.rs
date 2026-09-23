@@ -24,6 +24,27 @@ impl Node {
 		self.network
 	}
 
+	/// The same node with its input slots replaced, for a write that changes how many slots it has or
+	/// what order they are in, which `ChangeNodeInput` cannot express.
+	///
+	/// The new slots carry no attributes: an insert shifts every later slot, so which attributes belong
+	/// where is the caller's to say, through a paired write of the whole input metadata array.
+	pub fn with_inputs(&self, inputs: impl IntoIterator<Item = NodeInput>, timestamp: TimeStamp) -> Self {
+		Self {
+			implementation: self.implementation.clone(),
+			inputs: inputs
+				.into_iter()
+				.map(|input| InputSlot {
+					input,
+					timestamp,
+					attributes: Attributes::new(),
+				})
+				.collect(),
+			attributes: self.attributes.clone(),
+			network: self.network,
+		}
+	}
+
 	/// True if both nodes agree on every value-bearing field, ignoring slot/attribute timestamps.
 	pub fn value_equal(&self, other: &Self) -> bool {
 		if self.implementation != other.implementation || self.network != other.network {
