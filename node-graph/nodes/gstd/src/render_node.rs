@@ -1,4 +1,5 @@
 use core_types::list::{Item, List};
+use core_types::ops::Convert;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
@@ -25,6 +26,7 @@ pub struct RenderIntermediate {
 #[node_macro::node(category(""))]
 async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
 	#[implementations(
 		Context -> List<Artboard>,
 		Context -> List<Graphic>,
@@ -64,6 +66,15 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			let mut render = SvgRender::new();
 
 			data.render_svg(&mut render, render_params);
+
+			let deferred_texture = std::mem::take(&mut render.deferred_textures);
+			if let Some(executor) = executor.into_element() {
+				for (texture, placeholder) in deferred_texture {
+					let gpu_raster = Raster::new_gpu(texture);
+					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, executor).await;
+					render.resolve_deferred_texture(placeholder, cpu_raster);
+				}
+			}
 
 			RenderIntermediate {
 				ty: RenderIntermediateType::Svg(Arc::new(render.into())),

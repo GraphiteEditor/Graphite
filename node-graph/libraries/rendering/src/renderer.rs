@@ -194,6 +194,7 @@ pub struct SvgRender {
 	pub svg_defs: String,
 	pub transform: DAffine2,
 	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
+	pub deferred_textures: Vec<(Texture, String)>,
 	indent: usize,
 }
 
@@ -204,6 +205,7 @@ impl SvgRender {
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
 			image_data: HashMap::new(),
+			deferred_textures: Vec::new(),
 			indent: 0,
 		}
 	}
@@ -282,6 +284,31 @@ impl SvgRender {
 			self.svg.push("/>".into());
 		}
 	}
+
+	// TODO: Consider supporting `data-canvas-placeholder` where applicable.
+	// Note that SVG 2 permits `<foreignObject>` inside `<pattern>`, but browsers do not render it correctly.
+	// See https://bugzilla.mozilla.org/show_bug.cgi?id=1348768.
+	pub fn resolve_deferred_texture(&mut self, placeholder: String, image: Raster<CPU>) {
+		use base64::Engine;
+
+		if image.data.is_empty() {
+			return;
+		}
+
+		let output = image.to_png();
+		let preamble = "data:image/png;base64,";
+		let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
+		base64_string.push_str(preamble);
+		base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
+
+		self.svg_defs = self.svg_defs.replace(&placeholder, &base64_string);
+
+		self.svg.iter_mut().for_each(|segment| {
+			if let SvgSegment::String(string) = segment {
+				*string = string.replace(&placeholder, &base64_string);
+			}
+		});
+	}
 }
 
 pub struct SvgRenderOutput {
@@ -297,6 +324,7 @@ impl From<&SvgRenderOutput> for SvgRender {
 			svg_defs: value.svg_defs.clone(),
 			transform: DAffine2::IDENTITY,
 			image_data: value.image_data.clone(),
+			deferred_textures: Vec::new(),
 			indent: 0,
 		}
 	}
@@ -490,9 +518,9 @@ fn emit_svg_fill_path(
 		if !matrix.is_empty() {
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
-		let defs = &mut attributes.0.svg_defs;
+		let render = &mut attributes.0;
 		let fill_attribute = fill_paint
-			.map(|paint| paint.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
+			.map(|paint| paint.render(render, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params, PaintTarget::Fill))
 			.unwrap_or_else(|| r#" fill="none""#.to_string());
 		attributes.push_val(fill_attribute);
 	});
@@ -1539,7 +1567,8 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 			attributes.push(ATTR_TRANSFORM, matrix);
 		}
 
-		let defs = &mut attributes.0.svg_defs;
+		let render = &mut *attributes.0;
+		let defs = &mut render.svg_defs;
 		if let Some((ref id, mask_type, ref vector_item)) = push_id {
 			let mut svg = SvgRender::new();
 			vector_item.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
@@ -1573,7 +1602,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 			.as_ref()
 			.map(|stroke| {
 				if stroke_paint.is_some() {
-					stroke.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
+					stroke.render(render, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Stroke)
 				} else {
 					String::new()
 				}
@@ -1591,7 +1620,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 						Graphic::Color(_) | Graphic::Gradient(_) | Graphic::ColorList(_) | Graphic::GradientList(_) => bounds_matrix,
 						_ => stroke_bounds_matrix,
 					};
-					paint.render(defs, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
+					paint.render(render, item_transform, element_transform, applied_stroke_transform, paint_bounds, &render_params, PaintTarget::Stroke)
 				})
 				.unwrap_or_else(|| r#" stroke="none""#.to_string())
 		} else {
@@ -1602,7 +1631,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 			r#" fill="none""#.to_string()
 		} else {
 			fill_paint
-				.map(|paint| paint.render(defs, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
+				.map(|paint| paint.render(render, item_transform, element_transform, applied_stroke_transform, bounds_matrix, &render_params, PaintTarget::Fill))
 				.unwrap_or_else(|| r#" fill="none""#.to_string())
 		};
 

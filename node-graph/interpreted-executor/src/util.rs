@@ -28,7 +28,10 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 			nodes: [
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::import(core_types::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0)],
+					inputs: vec![
+						NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER),
+						NodeInput::import(core_types::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),
+					],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,

@@ -43,7 +43,7 @@ pub trait RenderExt {
 	#[allow(clippy::too_many_arguments)]
 	fn render(
 		&self,
-		svg_defs: &mut String,
+		render: &mut SvgRender,
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		stroke_transform: DAffine2,
@@ -70,7 +70,7 @@ impl RenderExt for List<Color> {
 
 	fn render(
 		&self,
-		_svg_defs: &mut String,
+		_render: &mut SvgRender,
 		_item_transform: DAffine2,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
@@ -177,7 +177,7 @@ impl RenderExt for List<Gradient> {
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID, or `None` when the list is empty.
 	fn render(
 		&self,
-		svg_defs: &mut String,
+		render: &mut SvgRender,
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
@@ -187,7 +187,7 @@ impl RenderExt for List<Gradient> {
 	) -> Self::Output {
 		render_gradient_paint(
 			(!self.is_empty()).then_some(ItemRef::ListItem(self, 0)),
-			svg_defs,
+			&mut render.svg_defs,
 			item_transform,
 			element_transform,
 			render_params.for_mask,
@@ -201,7 +201,7 @@ impl RenderExt for Stroke {
 	/// Provide the shape-related SVG attributes for the stroke. The paint-related attributes for the stroke are generated from `Graphic::render` with `PaintTarget::Stroke`.
 	fn render(
 		&self,
-		_svg_defs: &mut String,
+		_render: &mut SvgRender,
 		_item_transform: DAffine2,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
@@ -260,7 +260,7 @@ impl RenderExt for Graphic {
 
 	fn render(
 		&self,
-		svg_defs: &mut String,
+		render: &mut SvgRender,
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		stroke_transform: DAffine2,
@@ -272,13 +272,13 @@ impl RenderExt for Graphic {
 
 		match self {
 			Graphic::Color(item) => render_color_paint(faded_paint_color(ItemRef::Item(item), render_params.for_mask), target),
-			Graphic::ColorList(color_list) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
-			Graphic::Gradient(item) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform, render_params.for_mask)
+			Graphic::ColorList(color_list) => color_list.render(render, item_transform, element_transform, stroke_transform, bounds, render_params, target),
+			Graphic::Gradient(item) => render_gradient_paint(Some(ItemRef::Item(item)), &mut render.svg_defs, item_transform, element_transform, render_params.for_mask)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			// One gradient resolves to a paint server; stacking several needs them composited, which only the pattern below can do
 			Graphic::GradientList(gradient_list) if gradient_list.len() <= 1 => gradient_list
-				.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target)
+				.render(render, item_transform, element_transform, stroke_transform, bounds, render_params, target)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			Graphic::None(_) | Graphic::NoneList(_) => format!(r#" {paint_attr}="none""#),
@@ -287,12 +287,14 @@ impl RenderExt for Graphic {
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
 			| Graphic::Text(_)
+			| Graphic::MeshGradient(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::GradientList(_)
 			| Graphic::TextList(_)
+			| Graphic::MeshGradientList(_)
 			| Graphic::StrokeList(_) => {
 				let bounds = if target == PaintTarget::Stroke {
 					// To prevent a wraparound artefact occurring when the tile boundary and the stroke region are perfectly aligned, the local coordinate is expanded slightly.
@@ -304,7 +306,7 @@ impl RenderExt for Graphic {
 				} else {
 					bounds
 				};
-				render_svg_pattern(svg_defs, self, stroke_transform, bounds, render_params)
+				render_svg_pattern(render, self, stroke_transform, bounds, render_params)
 					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
 					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
@@ -313,8 +315,8 @@ impl RenderExt for Graphic {
 }
 
 /// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic as the paint content, and returns the pattern ID.
-/// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
-fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+/// Currently, this function is only used for clipping-based filling and stroking, and for mesh gradients, not considering tiling yet.
+fn render_svg_pattern(render: &mut SvgRender, paint: &Graphic, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
 	let size = max - min;
@@ -322,14 +324,21 @@ fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: 
 		return None;
 	}
 
+	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
+
 	// Render the pattern content recursively
-	let mut content = SvgRender::new();
-	paint.render_svg(&mut content, &render_params.for_pattern());
+	let mut child_render = SvgRender::new();
+	child_render.transform = pattern_transform;
+	paint.render_svg(&mut child_render, &render_params.for_pattern());
 
 	// Unwrap the inner def element
-	write!(svg_defs, "{}", content.svg_defs).unwrap();
+	write!(render.svg_defs, "{}", child_render.svg_defs).unwrap();
 
-	let pattern_transform = stroke_transform * DAffine2::from_translation(min);
+	// Collect the data for inner placeholders
+	render.deferred_textures.extend(child_render.deferred_textures);
+	render.image_data.extend(child_render.image_data);
+
+	let svg_defs = &mut render.svg_defs;
 	let transform_str = format_transform_matrix(pattern_transform);
 	let transform_attr = if transform_str.is_empty() {
 		String::new()
@@ -346,7 +355,7 @@ fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: 
 	.unwrap();
 
 	let content_shift = format_transform_matrix(DAffine2::from_translation(-min));
-	write!(svg_defs, r##"<g transform="{content_shift}">{}</g></pattern>"##, content.svg.to_svg_string()).unwrap();
+	write!(svg_defs, r##"<g transform="{content_shift}">{}</g></pattern>"##, child_render.svg.to_svg_string()).unwrap();
 
 	Some(pattern_id)
 }
