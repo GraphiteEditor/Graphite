@@ -403,8 +403,7 @@ struct PenToolData {
 	auto_panning: AutoPanning,
 	modifiers: ModifierState,
 
-	buffering_merged_vector: bool,
-
+	// buffering_merged_vector: bool,
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
 	toggle_colinear_debounce: bool,
@@ -1914,26 +1913,41 @@ impl Fsm for PenToolFsmState {
 
 				self
 			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::RecalculateLatestPointsPosition) => {
+				tool_data.recalculate_latest_points_position(document);
+
+				// If we were placing anchors then it would be a good idea to update the anchor if possible
+				if let Some(layer) = layer {
+					tool_data.handle_mode = HandleMode::ColinearLocked;
+					tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
+					tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+					PenToolFsmState::DraggingHandle(tool_data.handle_mode)
+				} else {
+					PenToolFsmState::Ready
+				}
+			}
 			(state, PenToolMessage::RecalculateLatestPointsPosition) => {
 				tool_data.recalculate_latest_points_position(document);
 				state
 			}
-			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { .. }) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 				// Early return if the buffer was started and this message is being run again after the buffer (so that place_anchor updates the state with the newly merged vector)
-				if tool_data.buffering_merged_vector {
-					if let Some(layer) = layer {
-						tool_data.buffering_merged_vector = false;
-						tool_data.handle_mode = HandleMode::ColinearLocked;
-						tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
-						tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
-					}
-					tool_data.buffering_merged_vector = false;
-					PenToolFsmState::DraggingHandle(tool_data.handle_mode)
-				} else {
+				// if tool_data.buffering_merged_vector {
+				// 	if let Some(layer) = layer {
+				// 		tool_data.buffering_merged_vector = false;
+				// 		tool_data.handle_mode = HandleMode::ColinearLocked;
+				// 		tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
+				// 		tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+				// 	}
+				// 	tool_data.buffering_merged_vector = false;
+				// 	PenToolFsmState::DraggingHandle(tool_data.handle_mode)
+				// } else {
+				let mut is_merging = false;
+				{
 					// Each segment placement is its own history step, spanning from this click through the release that finalizes it
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -1953,12 +1967,14 @@ impl Fsm for PenToolFsmState {
 							.or(tool_data.current_layer.filter(|layer| *layer != other_layer))
 						{
 							merge_layers(document, current_layer, other_layer, responses);
+							is_merging = true;
 						}
 					}
 
-					// Even if no buffer was started, the message still has to be run again in order to call bend_from_previous_point
-					tool_data.buffering_merged_vector = true;
-					responses.add(PenToolMessage::DragStart { append_to_selected });
+					if !is_merging {
+						responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+					}
+
 					PenToolFsmState::PlacingAnchor
 				}
 			}

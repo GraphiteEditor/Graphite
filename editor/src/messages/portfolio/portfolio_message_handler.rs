@@ -207,7 +207,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 
-				responses.add(PortfolioMessage::GarbageCollectResources);
+				// responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
 				let validate = preferences.validate_storage_round_trip;
