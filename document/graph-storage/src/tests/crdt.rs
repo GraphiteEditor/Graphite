@@ -1108,3 +1108,25 @@ fn snapshot_from_history_ignores_undone_deltas() {
 	assert!(folded.attributes.contains_key("first"), "history still holds the kept interaction");
 	assert!(!folded.attributes.contains_key("second"), "a fold restored an undone delta");
 }
+
+/// A refold that fails leaves the registries derived from an older history, and the deltas are already
+/// in history so re-merging them absorbs nothing. The owed refold has to be retried on the next merge
+/// or the registries never catch up.
+#[test]
+fn an_owed_refold_is_retried_by_a_merge_that_absorbs_nothing() {
+	let mut session = Session::with_peer(PeerId(1));
+	commit_retired(&mut session, set_document_attribute("first", 1));
+
+	// Stand in for a refold that failed partway: history moved on, the snapshot did not.
+	session.document.retired_snapshot = crate::Registry::default();
+	session.document.refold_owed = true;
+
+	let outcome = session.merge(Vec::new()).expect("a merge absorbing nothing still settles the refold");
+
+	assert_eq!(outcome, crate::MergeOutcome::NoOp);
+	assert!(!session.document.refold_owed, "the refold must not stay owed");
+	assert!(
+		session.retired_registry().attributes.contains_key("first"),
+		"the retried refold must bring the snapshot back to its history"
+	);
+}

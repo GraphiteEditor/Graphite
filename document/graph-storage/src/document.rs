@@ -42,6 +42,9 @@ pub struct Document {
 	pub(crate) next_node_counter: u64,
 	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
 	pub(crate) next_hot_sequence: u64,
+	/// Set while the registries are still folded from an older history, so a failed refold is retried
+	/// rather than leaving derived state behind the history it comes from.
+	pub(crate) refold_owed: bool,
 }
 
 impl Document {
@@ -93,9 +96,11 @@ impl Document {
 		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
-	/// Apply a live broadcast op. Updates the registry via LWW and appends to the hot log.
-	/// Doesn't touch history or `head`, since hot ops are transient.
-	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
+	/// Apply a locally staged op. Updates the registry via LWW and appends to the hot log; doesn't touch
+	/// history or `head`, since hot ops are transient. Crate-private: it skips the retirement check that
+	/// an op off the wire needs, so outside callers go through [`Session::apply_hot_op`], while local
+	/// staging must not have a covered sequence silently drop its own work.
+	pub(crate) fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
 		self.apply_op(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())

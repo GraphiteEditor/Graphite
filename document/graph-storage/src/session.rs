@@ -47,6 +47,7 @@ impl Session {
 				last_broadcast_rev: None,
 				next_node_counter: 0,
 				next_hot_sequence: 0,
+				refold_owed: false,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -258,6 +259,7 @@ impl Session {
 				last_broadcast_rev: None,
 				next_node_counter,
 				next_hot_sequence: 0,
+				refold_owed: false,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -345,6 +347,9 @@ impl Session {
 	/// Rebuild both registries from canonical history, then re-layer the hot tail. A full replay, so
 	/// callers check it is needed first.
 	fn refold_registries(&mut self) -> Result<(), CrdtError> {
+		// Cleared only on the way out: the deltas are in history either way, so a failure here has to be
+		// retried rather than leaving the registries derived from an older history for good.
+		self.document.refold_owed = true;
 		self.document.retired_snapshot = self.snapshot_from_history()?;
 
 		// One left unapplicable is kept, not dropped: a later delta or hot op can still supply its referent.
@@ -357,10 +362,12 @@ impl Session {
 			}
 		}
 
-		match failure {
-			Some(error) => Err(error),
-			None => Ok(()),
+		if let Some(error) = failure {
+			return Err(error);
 		}
+
+		self.document.refold_owed = false;
+		Ok(())
 	}
 
 	/// Integrate `incoming` retired deltas (in causal order) from another peer. Moves `head` forward
@@ -385,6 +392,12 @@ impl Session {
 			self.document.history.push(delta);
 		}
 		if absorbed_ids.is_empty() {
+			// Nothing new, but a refold left owed by an earlier failure is still the only way the registries
+			// catch up with the history they are derived from.
+			if self.document.refold_owed {
+				self.refold_registries()?;
+			}
+
 			return Ok(MergeOutcome::NoOp);
 		}
 		self.document.history.canonical_sort();
@@ -413,7 +426,7 @@ impl Session {
 		self.document.head = outcome.head();
 
 		// After `head`, since the fold is over its ancestry.
-		if !folded_in_canonical_order {
+		if !folded_in_canonical_order || self.document.refold_owed {
 			self.refold_registries()?;
 		}
 
