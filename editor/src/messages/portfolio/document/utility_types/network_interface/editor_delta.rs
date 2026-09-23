@@ -1,10 +1,11 @@
-use super::storage_metadata::position_from_runtime;
+use super::storage_metadata::{position_from_runtime, previewing_from_runtime};
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
-use super::{InputMetadata, InputPersistentMetadata};
+use super::{InputMetadata, InputPersistentMetadata, Previewing};
+use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
 use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp};
-use document_graph_storage::{convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
+use document_graph_storage::{convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::NodeId;
 use graph_craft::runtime_delta::RuntimeDelta;
@@ -75,6 +76,11 @@ pub enum NodeMetadataChange {
 pub enum NetworkMetadataChange {
 	/// The definition the network was instantiated from, dropped once it is edited away from it.
 	Reference(Option<String>),
+	/// Which node the network renders instead of its export, with what the export reconnects to when
+	/// the preview ends.
+	Previewing(Previewing),
+	/// The whole order, since the encoding is one array-valued attribute rather than a slot each.
+	PinnedOrder(Vec<NodeId>),
 }
 
 pub struct ConstructedOps {
@@ -213,24 +219,23 @@ impl EditorDelta {
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetInputs { network_path, node_id, inputs }) => {
-				let global_id = resolver.node_id(network_path, *node_id);
-				let Some(existing) = working.node_instances.get(&global_id) else {
-					log::error!("Could not find node {global_id:?} to set the inputs of");
-					return Ok(());
-				};
+				// Only the slots are written, so the node's attributes and everything nested under it are
+				// left as they are: an edit made earlier in this batch is not reverted by the rebuild.
+				// The slots' `ui::*` attributes arrive with the paired input metadata delta.
+				let inputs = inputs
+					.iter()
+					.map(|input| {
+						Ok(document_graph_storage::InputSlot {
+							input: resolver.convert_input_at(input, network_path)?,
+							timestamp: TimeStamp::ORIGIN,
+							attributes: convert_input_attributes(input)?,
+						})
+					})
+					.collect::<Result<Vec<_>, ConversionError>>()?;
 
-				let inputs = inputs.iter().map(|input| resolver.convert_input_at(input, network_path)).collect::<Result<Vec<_>, _>>()?;
-
-				// `AddNode` refuses an ID that is already present, so the record is removed and re-added.
-				// Only this node's record: its nested network and everything under it keep their own
-				// entries, which is what separates this from `ReplaceNode`.
-				ops.push(RegistryDelta::RemoveNode {
-					id: global_id,
-					snapshot: existing.clone(),
-				});
-				ops.push(RegistryDelta::AddNode {
-					id: global_id,
-					node: existing.with_inputs(inputs, TimeStamp::ORIGIN),
+				ops.push(RegistryDelta::SetNodeInputs {
+					id: resolver.node_id(network_path, *node_id),
+					inputs,
 				});
 			}
 
@@ -265,13 +270,32 @@ impl EditorDelta {
 			}
 
 			EditorDelta::NetworkMetadata { network_path, change } => {
-				let NetworkMetadataChange::Reference(reference) = change;
-				ops.push(RegistryDelta::ChangeNetworkAttribute {
-					id: resolver.network_id(network_path),
-					delta: AttributeDelta {
+				let delta = match change {
+					NetworkMetadataChange::Reference(reference) => AttributeDelta {
 						key: node_attr::ui::REFERENCE.to_string(),
 						value: reference.clone().map(serde_json::Value::String),
 					},
+					// The restore target is named by a runtime ID, which only the resolver can turn into
+					// the stable one a whole-document conversion would write.
+					NetworkMetadataChange::Previewing(previewing) => {
+						let stored = previewing_from_runtime(*previewing).map_id(|node_id| resolver.node_id(network_path, node_id));
+						AttributeDelta {
+							key: network_attr::PREVIEWING.to_string(),
+							value: stored.is_previewing().then(|| serialize_attribute(network_attr::PREVIEWING, &stored)).transpose()?,
+						}
+					}
+					NetworkMetadataChange::PinnedOrder(order) => {
+						let stored: Vec<_> = order.iter().map(|node_id| resolver.node_id(network_path, *node_id)).collect();
+						AttributeDelta {
+							key: network_attr::PINNED_ORDER.to_string(),
+							value: (!stored.is_empty()).then(|| serialize_attribute(network_attr::PINNED_ORDER, &stored)).transpose()?,
+						}
+					}
+				};
+
+				ops.push(RegistryDelta::ChangeNetworkAttribute {
+					id: resolver.network_id(network_path),
+					delta,
 				});
 			}
 		}
@@ -405,7 +429,7 @@ fn construct_metadata_snapshot(
 
 		let mut encoded = Attributes::new();
 		encode_node_ui_attributes(&mut encoded, &source, &path, id, TimeStamp::ORIGIN)?;
-		for delta in ui_attribute_deltas(working_node.map(|node| node.attributes()), &encoded) {
+		for delta in ui_attribute_writes(working_node.map(|node| node.attributes()), &encoded) {
 			ops.push(RegistryDelta::ChangeNodeAttribute { id: global_id, delta });
 		}
 
@@ -413,7 +437,7 @@ fn construct_metadata_snapshot(
 			let mut encoded = Attributes::new();
 			encode_input_ui_attributes(&mut encoded, &source, &path, id, input_index, TimeStamp::ORIGIN)?;
 			let current = working_node.and_then(|node| node.inputs().get(input_index)).map(|slot| &slot.attributes);
-			for delta in ui_attribute_deltas(current, &encoded) {
+			for delta in ui_attribute_writes(current, &encoded) {
 				ops.push(RegistryDelta::ChangeNodeInputAttribute {
 					id: global_id,
 					index: input_index.try_into().map_err(|_| ConversionError::IndexOverflow(input_index))?,
@@ -452,23 +476,14 @@ fn construct_metadata_snapshot(
 	Ok(())
 }
 
-/// Minimal ops transforming the `ui::`-prefixed subset of `current` into `encoded`, comparing
-/// values only, since timestamps are re-stamped at staging.
-fn ui_attribute_deltas(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
-	ui_attribute_ops(current, encoded, true)
-}
-
-/// Every `ui::` attribute of `encoded` plus a clear for each the slot no longer carries, restating
-/// even the values that already match.
+/// Every `ui::` attribute of `encoded`, plus a clear for each `ui::` key of `current` that `encoded`
+/// does not carry. Values are compared only to decide what to clear, never to skip a write.
 ///
-/// For a write that follows a wholesale replacement of the same slot in this batch: `current` is the
-/// registry as it stood before the batch, so a value it agrees with may already have been cleared by
-/// the earlier op, and skipping it would leave the slot empty.
+/// Restating a value that already matches looks redundant but is load-bearing: `current` is the
+/// registry as it stood before the batch, and these writes follow an op in the same batch that
+/// rebuilt what they describe. A value the pre-batch state agrees with may already have been cleared
+/// by that op, so skipping it would leave the attribute missing.
 fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
-	ui_attribute_ops(current, encoded, false)
-}
-
-fn ui_attribute_ops(current: Option<&Attributes>, encoded: &Attributes, skip_unchanged: bool) -> Vec<AttributeDelta> {
 	let owned = |key: &str| key.starts_with("ui::");
 	let mut deltas = Vec::new();
 
@@ -480,13 +495,10 @@ fn ui_attribute_ops(current: Option<&Attributes>, encoded: &Attributes, skip_unc
 		}
 	}
 	for (key, value) in encoded {
-		let unchanged = current.and_then(|current| current.get(key)).is_some_and(|existing| existing.value == value.value);
-		if !(skip_unchanged && unchanged) {
-			deltas.push(AttributeDelta {
-				key: key.clone(),
-				value: Some(value.value.clone()),
-			});
-		}
+		deltas.push(AttributeDelta {
+			key: key.clone(),
+			value: Some(value.value.clone()),
+		});
 	}
 
 	deltas.sort_by(|a, b| a.key.cmp(&b.key));

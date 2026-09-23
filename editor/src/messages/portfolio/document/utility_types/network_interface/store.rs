@@ -357,6 +357,9 @@ impl NetworkMut<'_> {
 	pub(crate) fn set_previewing(&mut self, previewing: Previewing) -> bool {
 		let changed = self.metadata.previewing != previewing;
 		self.metadata.previewing = previewing;
+		if changed {
+			self.emit(NetworkMetadataChange::Previewing(previewing));
+		}
 		changed
 	}
 
@@ -365,10 +368,8 @@ impl NetworkMut<'_> {
 		let changed = self.metadata.reference != reference;
 		self.metadata.reference = reference;
 		if changed {
-			self.deltas.push(EditorDelta::NetworkMetadata {
-				network_path: self.network_path.to_vec(),
-				change: NetworkMetadataChange::Reference(self.metadata.reference.clone()),
-			});
+			let change = NetworkMetadataChange::Reference(self.metadata.reference.clone());
+			self.emit(change);
 		}
 		changed
 	}
@@ -377,17 +378,54 @@ impl NetworkMut<'_> {
 	pub(crate) fn set_pinned_order(&mut self, pinned_node_order: Vec<NodeId>) -> bool {
 		let changed = self.metadata.pinned_node_order != pinned_node_order;
 		self.metadata.pinned_node_order = pinned_node_order;
+		if changed {
+			let change = NetworkMetadataChange::PinnedOrder(self.metadata.pinned_node_order.clone());
+			self.emit(change);
+		}
 		changed
 	}
 
 	/// Appends a newly pinned node to the display order, or drops one that is no longer pinned.
-	pub(crate) fn record_pinned(&mut self, node_id: NodeId, pinned: bool) {
+	pub(crate) fn record_pinned(&mut self, node_id: NodeId, pinned: bool) -> bool {
 		let order = &mut self.metadata.pinned_node_order;
-		match pinned {
-			true if !order.contains(&node_id) => order.push(node_id),
-			true => {}
-			false => order.retain(|id| *id != node_id),
+		let changed = match pinned {
+			true if !order.contains(&node_id) => {
+				order.push(node_id);
+				true
+			}
+			true => false,
+			false => {
+				let before = order.len();
+				order.retain(|id| *id != node_id);
+				order.len() != before
+			}
+		};
+
+		if changed {
+			let change = NetworkMetadataChange::PinnedOrder(self.metadata.pinned_node_order.clone());
+			self.emit(change);
 		}
+		changed
+	}
+
+	/// Drops every node the order names that is no longer in the network.
+	pub(crate) fn retain_pinned(&mut self, surviving: impl Fn(&NodeId) -> bool) -> bool {
+		let before = self.metadata.pinned_node_order.len();
+		self.metadata.pinned_node_order.retain(&surviving);
+
+		let changed = self.metadata.pinned_node_order.len() != before;
+		if changed {
+			let change = NetworkMetadataChange::PinnedOrder(self.metadata.pinned_node_order.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	fn emit(&mut self, change: NetworkMetadataChange) {
+		self.deltas.push(EditorDelta::NetworkMetadata {
+			network_path: self.network_path.to_vec(),
+			change,
+		});
 	}
 
 	/// The transform from node graph space to viewport space.

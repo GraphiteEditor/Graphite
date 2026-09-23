@@ -31,8 +31,6 @@ pub mod node {
 
 pub mod session {
 	pub mod network {
-		pub const PREVIEWING: &str = "ui::previewing";
-
 		// TODO: Remove these graph ui nav-specific attributes
 		pub const NAV_PTZ: &str = "ui::nav::ptz";
 		pub const NAV_TRANSFORM: &str = "ui::nav::transform";
@@ -60,6 +58,19 @@ pub mod network {
 	/// serialized blob so its shape can evolve (e.g. dropping the `Type`) without a model change. The
 	/// node references use stable storage IDs, resolved back to runtime-local IDs on conversion.
 	pub const SCOPE_INJECTIONS: &str = "scope_injections";
+
+	/// Whole-value LWW of which node the network renders instead of its export, together with what the
+	/// export reconnects to when the preview ends. Absent means the network is not previewing.
+	///
+	/// Document state, not per-peer view state: previewing rewires the export, which is already shared,
+	/// so the note saying how to restore it has to be shared too. The node reference uses a stable
+	/// storage ID.
+	pub const PREVIEWING: &str = "ui::previewing";
+
+	/// Whole-vec LWW of the display order of the network's pinned nodes, as stable storage IDs.
+	/// Concurrent reorders do not merge, but the pinned set is already shared, and a shared set with
+	/// per-peer ordering would diverge with no way to reconcile.
+	pub const PINNED_ORDER: &str = "ui::pinned_order";
 }
 
 pub mod delta {

@@ -864,9 +864,9 @@ impl NodeNetworkInterface {
 		// Prune this network's pinned display order down to the nodes that still exist, dropping any that were actually removed
 		let surviving_nodes = self.nested_network(network_path).map(|network| network.nodes.keys().copied().collect::<HashSet<_>>());
 		if let Some(surviving_nodes) = surviving_nodes
-			&& let Some(network_metadata) = self.network_metadata_mut(network_path)
+			&& let Some(mut network) = self.network_mut(network_path)
 		{
-			network_metadata.persistent_metadata.pinned_node_order.retain(|node_id| surviving_nodes.contains(node_id));
+			network.retain_pinned(|node_id| surviving_nodes.contains(node_id));
 		}
 
 		// Purge the deleted nodes' cached wire paths, since the per-node unload can no longer reach them once the nodes are gone
@@ -1261,9 +1261,7 @@ impl NodeNetworkInterface {
 				self.disconnect_input(&InputConnector::Export(0), network_path);
 			}
 		}
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			return;
-		};
-		network_metadata.persistent_metadata.previewing = new_previewing_state;
+		let Some(mut network) = self.network_mut(network_path) else { return };
+		network.set_previewing(new_previewing_state);
 	}
 }

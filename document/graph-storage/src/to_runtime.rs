@@ -9,7 +9,7 @@ use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
-use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
+use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, Previewing, RootNode};
 use crate::{AttributesRead, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId};
 
 #[derive(Debug, thiserror::Error)]
@@ -168,7 +168,7 @@ fn convert_network(
 	let network = context.registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	if let Some(collector) = network_collector.as_mut() {
-		collector.push(extract_network_metadata(&network.attributes, metadata_path, network_id));
+		collector.push(extract_network_metadata(context.registry, &network.attributes, metadata_path, network_id));
 	}
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
@@ -264,11 +264,44 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 	}
 }
 
-fn extract_network_metadata(attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
+/// Node references stored here are storage IDs, resolved back to runtime-local IDs the way
+/// `read_scope_injections` does. A reference to a node that is no longer in this network is dropped
+/// rather than failing the conversion: the preview target or a pinned node can have been deleted.
+fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
+	let to_runtime_id = |storage_id: NodeId| {
+		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
+		let local_id = node.attributes.get(node::ORIGINAL_NODE_ID).and_then(|value| value.value.as_u64()).unwrap_or(storage_id.0);
+		Some(RuntimeNodeId(local_id))
+	};
+
+	let previewing = attributes
+		.get_typed::<Previewing<NodeId>>(network::PREVIEWING)
+		.map(|stored| match stored {
+			Previewing::No => Previewing::No,
+			Previewing::Yes { root_node_to_restore } => Previewing::Yes {
+				root_node_to_restore: root_node_to_restore.and_then(|root| {
+					Some(RootNode {
+						node_id: to_runtime_id(root.node_id)?,
+						output_index: root.output_index,
+					})
+				}),
+			},
+		})
+		.unwrap_or_default();
+
+	let pinned_order = attributes
+		.get_typed::<Vec<NodeId>>(network::PINNED_ORDER)
+		.unwrap_or_default()
+		.into_iter()
+		.filter_map(to_runtime_id)
+		.collect();
+
 	NetworkMetadataEntry {
 		network_path: network_path.to_vec(),
 		network_id,
 		reference: attributes.get_typed(node::ui::REFERENCE),
+		previewing,
+		pinned_order,
 	}
 }
 

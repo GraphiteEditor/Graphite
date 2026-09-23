@@ -11,6 +11,7 @@ use document_graph_storage::{NodeMetadataSource, PeerId, Registry};
 use super::test_support::{load_demo, node_paths};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
+use crate::messages::portfolio::document::utility_types::network_interface::{Previewing, RootNode};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use graph_craft::document::NodeId;
 use graphene_std::vector::style::RenderMode;
@@ -270,6 +271,49 @@ fn rebuilt_interface_keeps_storage_identities() {
 
 	assert!(!stored_ids.is_empty(), "demo artwork produced no nodes: fixture is wrong");
 	assert_eq!(reconverted_ids, stored_ids, "re-converting the rebuilt interface under a different peer changed the node identities");
+}
+
+/// Previewing and the pinned display order are document state, so they survive a registry round trip
+/// rather than living in `session.json`. Both name nodes, and the stored form uses storage IDs, so
+/// this also checks the reference resolves back to the right runtime node.
+#[test]
+fn previewing_and_pinned_order_round_trip_through_the_registry() {
+	let mut document = load_demo("changing-seasons.graphite");
+
+	let previewed = *document.network_interface.document_network().nodes.keys().next().expect("demo artwork should have nodes");
+	let pinned: Vec<_> = document.network_interface.document_network().nodes.keys().copied().take(3).collect();
+	assert_eq!(pinned.len(), 3, "demo artwork should have at least three nodes: fixture is wrong");
+
+	{
+		let interface = &mut document.network_interface;
+		let Some(mut network) = interface.network_mut(&[]) else {
+			panic!("the document network should resolve")
+		};
+		network.set_previewing(Previewing::Yes {
+			root_node_to_restore: Some(RootNode { node_id: previewed, output_index: 0 }),
+		});
+		network.set_pinned_order(pinned.clone());
+	}
+
+	let network = document.network_interface.document_network().clone();
+	let view = StorageMetadataView::new(&document.network_interface);
+	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
+	let declarations = conversion.declarations().expect("rebuild declarations");
+	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime failed");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+
+	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");
+	assert_eq!(
+		rebuilt.previewing(&[]),
+		Previewing::Yes {
+			root_node_to_restore: Some(RootNode { node_id: previewed, output_index: 0 }),
+		},
+		"previewing did not survive the registry round trip"
+	);
+	assert_eq!(
+		rebuilt_metadata.persistent_metadata.pinned_node_order, pinned,
+		"the pinned display order did not survive the registry round trip"
+	);
 }
 
 /// Per-peer view settings (`ui::doc::*`) survive the `session.json` round-trip: serialize them into

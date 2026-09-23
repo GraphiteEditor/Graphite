@@ -345,7 +345,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 		.collect::<Result<Vec<_>, ConversionError>>()?;
 
 	let mut attributes = crate::Attributes::new();
-	write_ui_network_attributes(&mut attributes, ctx.metadata, metadata_path, TimeStamp::ORIGIN)?;
+	write_ui_network_attributes(&mut attributes, ctx.metadata, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 
 	registry.networks.insert(network_id, Network { exports, attributes });
@@ -550,9 +550,38 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	Ok(())
 }
 
-fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(attributes: &mut crate::Attributes, metadata: &M, network_path: &[RuntimeNodeId], timestamp: TimeStamp) -> Result<(), ConversionError> {
+/// Node references here are remapped to stable storage IDs for the same reason `write_scope_injections`
+/// does it: a runtime ID is not stable across a round trip.
+fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
+	attributes: &mut crate::Attributes,
+	metadata: &M,
+	network_path: &[RuntimeNodeId],
+	parent_path: Option<&NodePath>,
+	network_id: NetworkId,
+	ids: NodeIds<'_, M>,
+	timestamp: TimeStamp,
+) -> Result<(), ConversionError> {
 	if let Some(reference) = metadata.reference(network_path) {
 		attributes.set(node::ui::REFERENCE, serde_json::Value::String(reference.to_string()), timestamp);
+	}
+
+	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(&child_path(parent_path, network_id, runtime_id), runtime_id);
+
+	// Absent means not previewing, so the inert default stays out of the registry.
+	let previewing = metadata.previewing(network_path);
+	if previewing.is_previewing() {
+		let stored = previewing.map_id(to_storage_id);
+		attributes
+			.set_serialized(network::PREVIEWING, &stored, timestamp)
+			.map_err(map_serialization_error(network::PREVIEWING))?;
+	}
+
+	let pinned_order = metadata.pinned_order(network_path);
+	if !pinned_order.is_empty() {
+		let stored: Vec<NodeId> = pinned_order.into_iter().map(to_storage_id).collect();
+		attributes
+			.set_serialized(network::PINNED_ORDER, &stored, timestamp)
+			.map_err(map_serialization_error(network::PINNED_ORDER))?;
 	}
 
 	Ok(())
@@ -605,7 +634,9 @@ fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, pa
 	})
 }
 
-fn convert_input_attributes(input: &GraphCraftNodeInput) -> Result<crate::Attributes, ConversionError> {
+/// The non-ui attributes a slot carries, derived from the input itself: the declared type of an
+/// import, and a reflection node.s metadata. Public for staging paths that rebuild a node.s slots.
+pub fn convert_input_attributes(input: &GraphCraftNodeInput) -> Result<crate::Attributes, ConversionError> {
 	let mut attributes = crate::Attributes::new();
 	let timestamp = TimeStamp::ORIGIN;
 
@@ -792,7 +823,15 @@ impl<'m> ScopedConversion<'m> {
 			.collect::<Result<Vec<_>, ConversionError>>()?;
 
 		let mut attributes = crate::Attributes::new();
-		write_ui_network_attributes(&mut attributes, self.ctx.metadata, local_path, TimeStamp::ORIGIN)?;
+		write_ui_network_attributes(
+			&mut attributes,
+			self.ctx.metadata,
+			local_path,
+			owner_path.as_ref(),
+			network_id,
+			self.ctx.ids(local_path),
+			TimeStamp::ORIGIN,
+		)?;
 		write_scope_injections(&mut attributes, node_network, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 
 		registry.networks.insert(network_id, Network { exports, attributes });

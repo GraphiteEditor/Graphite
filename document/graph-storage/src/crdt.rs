@@ -1,4 +1,4 @@
-use crate::{Attributes, AttributesWrite, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
+use crate::{Attributes, AttributesWrite, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +108,16 @@ pub enum RegistryDelta {
 		id: NodeId,
 		index: u32,
 		new_input: NodeInput,
+	},
+	/// A node's whole input list, for a change to the number or order of its slots that the
+	/// index-addressed `ChangeNodeInput` cannot express. Assigns rather than merging: concurrent
+	/// per-slot edits are lost, which is inherent to the indices themselves moving.
+	///
+	/// Touches only the inputs, leaving the node's attributes and implementation alone, so it composes
+	/// with attribute ops on the same node instead of reverting them.
+	SetNodeInputs {
+		id: NodeId,
+		inputs: Vec<InputSlot>,
 	},
 	ChangeNodeAttribute {
 		id: NodeId,

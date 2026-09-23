@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
-use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position};
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, StoredPreviewing, StoredRootNode};
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
@@ -16,7 +16,7 @@ use graphene_std::vector::style::RenderMode;
 use super::memo_network::MemoNetwork;
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
+	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing, RootNode,
 };
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
@@ -111,6 +111,47 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 	fn reference(&self, network_path: &[NodeId]) -> Option<&str> {
 		let network_metadata = self.interface.network_metadata.nested_metadata(network_path)?;
 		network_metadata.persistent_metadata.reference.as_deref()
+	}
+
+	fn previewing(&self, network_path: &[NodeId]) -> StoredPreviewing<NodeId> {
+		let Some(network_metadata) = self.interface.network_metadata.nested_metadata(network_path) else {
+			return StoredPreviewing::No;
+		};
+		previewing_from_runtime(network_metadata.persistent_metadata.previewing)
+	}
+
+	fn pinned_order(&self, network_path: &[NodeId]) -> Vec<NodeId> {
+		self.interface
+			.network_metadata
+			.nested_metadata(network_path)
+			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
+			.unwrap_or_default()
+	}
+}
+
+/// The runtime preview state in the shape storage stores, still holding runtime node IDs: the
+/// conversion resolves those to storage IDs, since it is the only place that can.
+pub fn previewing_from_runtime(previewing: Previewing) -> StoredPreviewing<NodeId> {
+	match previewing {
+		Previewing::No => StoredPreviewing::No,
+		Previewing::Yes { root_node_to_restore } => StoredPreviewing::Yes {
+			root_node_to_restore: root_node_to_restore.map(|root| StoredRootNode {
+				node_id: root.node_id,
+				output_index: root.output_index as u32,
+			}),
+		},
+	}
+}
+
+pub fn previewing_to_runtime(previewing: StoredPreviewing<NodeId>) -> Previewing {
+	match previewing {
+		StoredPreviewing::No => Previewing::No,
+		StoredPreviewing::Yes { root_node_to_restore } => Previewing::Yes {
+			root_node_to_restore: root_node_to_restore.map(|root| RootNode {
+				node_id: root.node_id,
+				output_index: root.output_index as usize,
+			}),
+		},
 	}
 }
 
@@ -231,13 +272,6 @@ pub fn collect_network_view_settings(
 			settings.insert(session::network::NAV_WIDTH.to_string(), value);
 		}
 
-		// Skip the inert `Previewing::No` default so a network that has never been previewed stays empty.
-		if !matches!(network_metadata.persistent_metadata.previewing, Previewing::No)
-			&& let Ok(value) = serde_json::to_value(network_metadata.persistent_metadata.previewing)
-		{
-			settings.insert(session::network::PREVIEWING.to_string(), value);
-		}
-
 		if !settings.is_empty() {
 			out.insert(network_id, settings);
 		}
@@ -277,11 +311,6 @@ pub fn apply_network_view_settings(
 		{
 			persistent.navigation_metadata.node_graph_width = width;
 		}
-		if let Some(value) = settings.get(session::network::PREVIEWING)
-			&& let Ok(previewing) = serde_json::from_value::<Previewing>(value.clone())
-		{
-			persistent.previewing = previewing;
-		}
 	}
 }
 
@@ -296,6 +325,8 @@ fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: 
 		if let Some(reference) = entry.reference {
 			network_metadata.persistent_metadata.reference = Some(reference);
 		}
+		network_metadata.persistent_metadata.previewing = previewing_to_runtime(entry.previewing);
+		network_metadata.persistent_metadata.pinned_node_order = entry.pinned_order;
 	}
 }
 

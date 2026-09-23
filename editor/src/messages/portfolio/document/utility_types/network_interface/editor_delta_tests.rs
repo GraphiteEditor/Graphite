@@ -1,6 +1,6 @@
 use super::DocumentNodePersistentMetadata;
 use super::InputConnector;
-use super::editor_delta::{EditorDelta, NodeMetadataChange, construct_batch};
+use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange, construct_batch};
 use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
@@ -184,6 +184,11 @@ async fn per_field_metadata_edits_match_the_diff() {
 			node_id: node,
 			visible: false,
 		}),
+		// Pinning a node also appends it to the network's display order, which is network state.
+		EditorDelta::NetworkMetadata {
+			network_path: Vec::new(),
+			change: NetworkMetadataChange::PinnedOrder(vec![node]),
+		},
 	];
 	let constructed = construct(&editor, &deltas, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
@@ -341,6 +346,45 @@ async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "emitted import addition");
+}
+
+/// An arity change rebuilds the node's whole record, so anything written to that node earlier in the
+/// same batch has to survive it. Renaming first and adding the import second is the order that catches
+/// a rebuild sourced from the pre-batch registry rather than from what the batch has done so far.
+#[tokio::test]
+async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor
+		.handle_message(DocumentMessage::GroupSelectedLayers {
+			group_folder_type: crate::messages::portfolio::document::utility_types::misc::GroupFolderType::Layer,
+		})
+		.await;
+
+	let group = editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.map(|(id, _)| *id)
+		.expect("the group should be a network node");
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.take_deltas();
+
+	editor.active_document_mut().network_interface.set_display_name(&group, "Renamed".to_string(), &[]);
+	editor
+		.active_document_mut()
+		.network_interface
+		.add_import(TaggedValue::F64(7.), true, -1, "Added", "An added import", &[group]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "rename then arity change");
 }
 
 #[tokio::test]
