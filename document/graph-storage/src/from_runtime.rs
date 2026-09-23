@@ -567,15 +567,6 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 
 	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(&child_path(parent_path, network_id, runtime_id), runtime_id);
 
-	// Absent means not previewing, so the inert default stays out of the registry.
-	let previewing = metadata.previewing(network_path);
-	if previewing.is_previewing() {
-		let stored = previewing.map_id(to_storage_id);
-		attributes
-			.set_serialized(network::PREVIEWING, &stored, timestamp)
-			.map_err(map_serialization_error(network::PREVIEWING))?;
-	}
-
 	let pinned_order = metadata.pinned_order(network_path);
 	if !pinned_order.is_empty() {
 		let stored: Vec<NodeId> = pinned_order.into_iter().map(to_storage_id).collect();

@@ -427,14 +427,13 @@ pub(crate) struct NetworkMut<'a> {
 }
 
 impl NetworkMut<'_> {
-	/// Which node the network renders instead of its export, and what the export reconnects to when the
-	/// preview ends.
+	/// Which node the network renders instead of its export.
+	///
+	/// Per-peer view state, so this is not recorded: the document is untouched, and the compile path
+	/// substitutes the previewed node into the graph it evaluates.
 	pub(crate) fn set_previewing(&mut self, previewing: Previewing) -> bool {
 		let changed = self.metadata.previewing != previewing;
 		self.metadata.previewing = previewing;
-		if changed {
-			self.emit(NetworkMetadataChange::Previewing(previewing));
-		}
 		changed
 	}
 

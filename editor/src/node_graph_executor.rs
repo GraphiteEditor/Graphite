@@ -138,7 +138,7 @@ impl NodeGraphExecutor {
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
 		self.node_graph_hash = crate::application::generate_uuid();
-		let mut network = document.network_interface.document_network().clone();
+		let mut network = document.network_interface.network_to_evaluate();
 		let instrumented = Instrumented::new(&mut network);
 
 		let resources = document.resources.registry.clone();
@@ -158,7 +158,7 @@ impl NodeGraphExecutor {
 		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
-			let network = document.network_interface.document_network().clone();
+			let network = document.network_interface.network_to_evaluate();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 
@@ -286,7 +286,7 @@ impl NodeGraphExecutor {
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
-		let network = document.network_interface.document_network().clone();
+		let network = document.network_interface.network_to_evaluate();
 		let resources = document.resources.registry.clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
@@ -522,7 +522,7 @@ impl NodeGraphExecutor {
 		scale: f64,
 		responses: &mut VecDeque<Message>,
 	) {
-		let mut network = document.network_interface.document_network().clone();
+		let mut network = document.network_interface.network_to_evaluate();
 
 		// On this throwaway clone, redirect each level's export down to the Fill, un-hiding the Fill and its enclosing subnetworks so it's measured as a real Fill rather than a passthrough.
 		// But upstream generators keep their visibility, so a hidden one intentionally contributes no geometry.

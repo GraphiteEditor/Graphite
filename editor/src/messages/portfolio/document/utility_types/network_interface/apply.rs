@@ -122,7 +122,6 @@ impl NodeNetworkInterface {
 				let Some(mut network) = self.network_mut(network_path) else { return };
 				match change {
 					NetworkMetadataChange::Reference(reference) => network.set_reference(reference.clone()),
-					NetworkMetadataChange::Previewing(previewing) => network.set_previewing(*previewing),
 					NetworkMetadataChange::PinnedOrder(order) => network.set_pinned_order(order.clone()),
 				};
 			}

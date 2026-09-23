@@ -1,6 +1,6 @@
-use super::storage_metadata::{position_from_runtime, previewing_from_runtime};
+use super::storage_metadata::position_from_runtime;
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
-use super::{InputMetadata, InputPersistentMetadata, Previewing};
+use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
@@ -76,9 +76,6 @@ pub enum NodeMetadataChange {
 pub enum NetworkMetadataChange {
 	/// The definition the network was instantiated from, dropped once it is edited away from it.
 	Reference(Option<String>),
-	/// Which node the network renders instead of its export, with what the export reconnects to when
-	/// the preview ends.
-	Previewing(Previewing),
 	/// The whole order, since the encoding is one array-valued attribute rather than a slot each.
 	PinnedOrder(Vec<NodeId>),
 }
@@ -258,15 +255,6 @@ impl EditorDelta {
 						key: node_attr::ui::REFERENCE.to_string(),
 						value: reference.clone().map(serde_json::Value::String),
 					},
-					// The restore target is named by a runtime ID, which only the resolver can turn into
-					// the stable one a whole-document conversion would write.
-					NetworkMetadataChange::Previewing(previewing) => {
-						let stored = previewing_from_runtime(*previewing).map_id(|node_id| resolver.node_id(network_path, node_id));
-						AttributeDelta {
-							key: network_attr::PREVIEWING.to_string(),
-							value: stored.is_previewing().then(|| serialize_attribute(network_attr::PREVIEWING, &stored)).transpose()?,
-						}
-					}
 					NetworkMetadataChange::PinnedOrder(order) => {
 						let stored: Vec<_> = order.iter().map(|node_id| resolver.node_id(network_path, *node_id)).collect();
 						AttributeDelta {

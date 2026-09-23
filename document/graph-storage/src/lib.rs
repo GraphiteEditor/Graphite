@@ -34,7 +34,7 @@ pub use from_runtime::{
 	node_value_resource_refs, value_resource_ref,
 };
 #[cfg(any(feature = "conversion", test))]
-pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position, Previewing as StoredPreviewing, RootNode as StoredRootNode};
+pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
 #[cfg(any(feature = "conversion", test))]
 pub use to_runtime::Declarations;
 

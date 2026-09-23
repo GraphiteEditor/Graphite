@@ -8,14 +8,14 @@
 use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
-use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, StoredPreviewing, StoredRootNode};
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position};
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing, RootNode,
+	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ,
 };
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
@@ -112,45 +112,12 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		network_metadata.persistent_metadata.reference.as_deref()
 	}
 
-	fn previewing(&self, network_path: &[NodeId]) -> StoredPreviewing<NodeId> {
-		let Some(network_metadata) = self.interface.network_metadata.nested_metadata(network_path) else {
-			return StoredPreviewing::No;
-		};
-		previewing_from_runtime(network_metadata.persistent_metadata.previewing)
-	}
-
 	fn pinned_order(&self, network_path: &[NodeId]) -> Vec<NodeId> {
 		self.interface
 			.network_metadata
 			.nested_metadata(network_path)
 			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
 			.unwrap_or_default()
-	}
-}
-
-/// The runtime preview state in the shape storage stores, still holding runtime node IDs: the
-/// conversion resolves those to storage IDs, since it is the only place that can.
-pub fn previewing_from_runtime(previewing: Previewing) -> StoredPreviewing<NodeId> {
-	match previewing {
-		Previewing::No => StoredPreviewing::No,
-		Previewing::Yes { root_node_to_restore } => StoredPreviewing::Yes {
-			root_node_to_restore: root_node_to_restore.map(|root| StoredRootNode {
-				node_id: root.node_id,
-				output_index: root.output_index as u32,
-			}),
-		},
-	}
-}
-
-pub fn previewing_to_runtime(previewing: StoredPreviewing<NodeId>) -> Previewing {
-	match previewing {
-		StoredPreviewing::No => Previewing::No,
-		StoredPreviewing::Yes { root_node_to_restore } => Previewing::Yes {
-			root_node_to_restore: root_node_to_restore.map(|root| RootNode {
-				node_id: root.node_id,
-				output_index: root.output_index as usize,
-			}),
-		},
 	}
 }
 
@@ -318,7 +285,6 @@ fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: 
 		if let Some(reference) = entry.reference {
 			network_metadata.persistent_metadata.reference = Some(reference);
 		}
-		network_metadata.persistent_metadata.previewing = previewing_to_runtime(entry.previewing);
 		network_metadata.persistent_metadata.pinned_node_order = entry.pinned_order;
 	}
 }

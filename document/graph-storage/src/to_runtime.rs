@@ -9,7 +9,7 @@ use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
-use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, Previewing, RootNode};
+use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
 use crate::{AttributesRead, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId};
 
 #[derive(Debug, thiserror::Error)]
@@ -274,21 +274,6 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 		Some(RuntimeNodeId(local_id))
 	};
 
-	let previewing = attributes
-		.get_typed::<Previewing<NodeId>>(network::PREVIEWING)
-		.map(|stored| match stored {
-			Previewing::No => Previewing::No,
-			Previewing::Yes { root_node_to_restore } => Previewing::Yes {
-				root_node_to_restore: root_node_to_restore.and_then(|root| {
-					Some(RootNode {
-						node_id: to_runtime_id(root.node_id)?,
-						output_index: root.output_index,
-					})
-				}),
-			},
-		})
-		.unwrap_or_default();
-
 	let pinned_order = attributes
 		.get_typed::<Vec<NodeId>>(network::PINNED_ORDER)
 		.unwrap_or_default()
@@ -300,7 +285,6 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 		network_path: network_path.to_vec(),
 		network_id,
 		reference: attributes.get_typed(node::ui::REFERENCE),
-		previewing,
 		pinned_order,
 	}
 }

@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 
 use core_types::uuid::NodeId as RuntimeNodeId;
-use serde::{Deserialize, Serialize};
 
 /// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`. One entry per
 /// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
@@ -29,7 +28,7 @@ pub struct NodeMetadataEntry {
 	pub output_names: Vec<String>,
 }
 
-/// Per-network metadata (navigation, previewing). Separate from `NodeMetadataEntry` since these are
+/// Per-network metadata. Separate from `NodeMetadataEntry` since these are
 /// properties of a network, not of any node.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NetworkMetadataEntry {
@@ -41,51 +40,9 @@ pub struct NetworkMetadataEntry {
 	pub network_id: crate::NetworkId,
 	/// Matches the runtime's `NodeNetworkPersistentMetadata::reference` — definition lineage tag.
 	pub reference: Option<String>,
-	/// Which node the network renders instead of its export. Document state rather than view state:
-	/// previewing rewires the export, so the note saying how to put it back has to travel with it.
-	pub previewing: Previewing<RuntimeNodeId>,
 	/// The display order of the network's pinned nodes. Shared for the same reason the pinned flag is:
 	/// a shared set with per-peer ordering could never reconcile.
 	pub pinned_order: Vec<RuntimeNodeId>,
-}
-
-/// Which node a network renders instead of its export, and what the export reconnects to when the
-/// preview ends.
-///
-/// Generic over the ID space: runtime-local as a metadata source reports it, stable storage IDs once
-/// written, so the reference survives a round trip even if runtime IDs are later reshuffled.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub enum Previewing<Id> {
-	#[default]
-	No,
-	Yes {
-		root_node_to_restore: Option<RootNode<Id>>,
-	},
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RootNode<Id> {
-	pub node_id: Id,
-	pub output_index: u32,
-}
-
-impl<Id> Previewing<Id> {
-	/// The previewed network's restore target, mapped through `map` into the other ID space.
-	pub fn map_id<Other>(self, map: impl FnOnce(Id) -> Other) -> Previewing<Other> {
-		match self {
-			Previewing::No => Previewing::No,
-			Previewing::Yes { root_node_to_restore } => Previewing::Yes {
-				root_node_to_restore: root_node_to_restore.map(|root| RootNode {
-					node_id: map(root.node_id),
-					output_index: root.output_index,
-				}),
-			},
-		}
-	}
-
-	pub fn is_previewing(&self) -> bool {
-		matches!(self, Previewing::Yes { .. })
-	}
 }
 
 /// Per-input editor metadata. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
@@ -143,11 +100,6 @@ pub trait NodeMetadataSource {
 	}
 	fn reference(&self, _network_path: &[RuntimeNodeId]) -> Option<&str> {
 		None
-	}
-	/// Which node the network renders instead of its export, with what the export reconnects to when
-	/// the preview ends. Node references are runtime-local, resolved on conversion.
-	fn previewing(&self, _network_path: &[RuntimeNodeId]) -> Previewing<RuntimeNodeId> {
-		Previewing::No
 	}
 	/// The display order of the network's pinned nodes.
 	fn pinned_order(&self, _network_path: &[RuntimeNodeId]) -> Vec<RuntimeNodeId> {

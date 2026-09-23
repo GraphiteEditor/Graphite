@@ -11,7 +11,6 @@ use document_graph_storage::{NodeMetadataSource, PeerId, Registry};
 use super::test_support::{load_demo, node_paths};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
-use crate::messages::portfolio::document::utility_types::network_interface::{Previewing, RootNode};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use graph_craft::document::NodeId;
 use graphene_std::vector::style::RenderMode;
@@ -288,14 +287,13 @@ fn migrating_a_document_records_no_changes() {
 	assert!(recorded.is_empty(), "migration left {} recorded changes behind", recorded.len());
 }
 
-/// Previewing and the pinned display order are document state, so they survive a registry round trip
-/// rather than living in `session.json`. Both name nodes, and the stored form uses storage IDs, so
-/// this also checks the reference resolves back to the right runtime node.
+/// The pinned display order is document state, so it survives a registry round trip. It names nodes and
+/// the stored form uses storage IDs, so this also checks the references resolve back to the right
+/// runtime nodes.
 #[test]
-fn previewing_and_pinned_order_round_trip_through_the_registry() {
+fn pinned_order_round_trips_through_the_registry() {
 	let mut document = load_demo("changing-seasons.graphite");
 
-	let previewed = *document.network_interface.document_network().nodes.keys().next().expect("demo artwork should have nodes");
 	let pinned: Vec<_> = document.network_interface.document_network().nodes.keys().copied().take(3).collect();
 	assert_eq!(pinned.len(), 3, "demo artwork should have at least three nodes: fixture is wrong");
 
@@ -304,9 +302,6 @@ fn previewing_and_pinned_order_round_trip_through_the_registry() {
 		let Some(mut network) = interface.network_mut(&[]) else {
 			panic!("the document network should resolve")
 		};
-		network.set_previewing(Previewing::Yes {
-			root_node_to_restore: Some(RootNode { node_id: previewed, output_index: 0 }),
-		});
 		network.set_pinned_order(pinned.clone());
 	}
 
@@ -318,13 +313,6 @@ fn previewing_and_pinned_order_round_trip_through_the_registry() {
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 
 	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");
-	assert_eq!(
-		rebuilt.previewing(&[]),
-		Previewing::Yes {
-			root_node_to_restore: Some(RootNode { node_id: previewed, output_index: 0 }),
-		},
-		"previewing did not survive the registry round trip"
-	);
 	assert_eq!(
 		rebuilt_metadata.persistent_metadata.pinned_node_order, pinned,
 		"the pinned display order did not survive the registry round trip"

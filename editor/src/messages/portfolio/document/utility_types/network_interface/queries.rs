@@ -22,6 +22,24 @@ impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network.network()
 	}
+
+	/// The document network as it should be evaluated, which is the document itself with the previewed
+	/// node substituted for the export.
+	///
+	/// Previewing is this peer's alone, so it is applied to the copy being compiled rather than written
+	/// into the document. Every path that compiles the graph goes through here, so none of them can
+	/// render the export while the user is previewing something else.
+	pub fn network_to_evaluate(&self) -> NodeNetwork {
+		let mut network = self.document_network().clone();
+
+		if let Previewing::Yes { previewed } = self.previewing(&[])
+			&& let Some(export) = network.exports.first_mut()
+		{
+			*export = NodeInput::node(previewed.node_id, previewed.output_index);
+		}
+
+		network
+	}
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.document_network().nested_network(network_path) else {
