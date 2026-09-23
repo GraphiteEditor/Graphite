@@ -261,6 +261,17 @@ impl<L: Layout> Gdd<L> {
 			self.session.mark_interaction_end(last);
 		}
 
+		// In a session these deltas are about to reach peers, so the published frontier moves with them.
+		// Rewinding a commit peers already hold would diverge from them for good, with nothing on the wire
+		// to tell them, so undo past this point has to go through forward inverse ops instead. Set before
+		// the persists below so the frontier survives a reopen.
+		#[cfg(feature = "network")]
+		if self.network.is_some()
+			&& let Some(&last) = new_revs.last()
+		{
+			self.session.publish_up_to(last);
+		}
+
 		if !new_revs.is_empty() {
 			self.append_history_deltas(&new_revs)?;
 		}

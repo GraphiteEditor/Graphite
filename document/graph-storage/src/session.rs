@@ -483,7 +483,11 @@ impl Session {
 			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
 			let parent = delta.parent;
 
-			self.document.revert_delta(RegistryTarget::Working, delta)?;
+			self.document.revert_delta(RegistryTarget::Working, delta.clone())?;
+			// The working registry is the snapshot plus the hot tail, so rewind both rather than copying
+			// one over the other, which would promote unretired hot ops into retired state.
+			self.document.revert_delta(RegistryTarget::Snapshot, delta)?;
+
 			self.document.head = parent;
 
 			match parent {
@@ -493,9 +497,6 @@ impl Session {
 			}
 		}
 
-		// Undo runs with an empty hot log, so keep the retired snapshot in lockstep with the rewound
-		// working registry (the next interaction's reverses are computed against it).
-		self.document.retired_snapshot = self.document.working_registry.clone();
 		self.document.redo_stack.push(checkpoint);
 		Ok(checkpoint)
 	}
@@ -520,11 +521,11 @@ impl Session {
 		// at the same timestamp. Symmetric with `revert_delta`.
 		for delta in forward.into_iter().rev() {
 			self.document.force_apply_op(delta.kind.clone(), delta.timestamp)?;
+			// Both zones move together, for the same reason `undo` rewinds both.
+			self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Force)?;
 		}
 		self.document.head = Some(checkpoint);
 
-		// Redo runs with an empty hot log; keep the retired snapshot in lockstep with the working registry.
-		self.document.retired_snapshot = self.document.working_registry.clone();
 		Ok(checkpoint)
 	}
 

@@ -1024,3 +1024,72 @@ fn absorbing_marks_keeps_both_sides_coverage() {
 		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
 	}
 }
+
+/// Undo rewinds retired history, so it must leave the hot tail alone. The retired snapshot is the
+/// state history alone produces; copying the working registry onto it promotes live work nobody has
+/// retired, which is the same mistake `Session::merge` used to make.
+#[test]
+fn undo_does_not_promote_hot_ops_into_the_retired_snapshot() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	// Two retired interactions, so the second is undoable.
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	// Unretired live work sitting on top, on a key no retired delta touches.
+	session.stage_ops([set_document_attribute("hot", 3)]).expect("stage");
+	assert!(session.registry().attributes.contains_key("hot"), "the hot op must be in the working registry");
+	assert!(!session.retired_registry().attributes.contains_key("hot"), "and must not be in the snapshot");
+
+	session.undo().expect("undo");
+
+	assert!(!session.retired_registry().attributes.contains_key("second"), "undo must rewind the retired snapshot");
+	assert!(
+		!session.retired_registry().attributes.contains_key("hot"),
+		"undo promoted an unretired hot op into the retired snapshot"
+	);
+}
+
+/// Redo puts the interaction back on both zones, so the pair stays `snapshot + hot tail` rather than
+/// drifting apart in the other direction.
+#[test]
+fn redo_restores_the_retired_snapshot_without_the_hot_tail() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	session.stage_ops([set_document_attribute("hot", 3)]).expect("stage");
+	session.undo().expect("undo");
+	session.redo().expect("redo");
+
+	assert!(session.retired_registry().attributes.contains_key("second"), "redo must restore the retired delta");
+	assert!(
+		!session.retired_registry().attributes.contains_key("hot"),
+		"redo promoted an unretired hot op into the retired snapshot"
+	);
+	assert!(session.registry().attributes.contains_key("hot"), "the hot op must survive an undo/redo round trip");
+}
+
+/// Silent undo rewrites the local registries without emitting anything, so it is only legal while a
+/// commit is still unpublished. Once peers hold it, a rewind would diverge from them for good.
+#[test]
+fn publishing_a_commit_disables_silent_undo() {
+	let mut session = Session::with_peer(PeerId(1));
+
+	commit_retired(&mut session, set_document_attribute("first", 1));
+	let boundary = session.history().last().expect("a committed delta").id;
+	session.mark_interaction_end(boundary);
+	commit_retired(&mut session, set_document_attribute("second", 2));
+
+	let head = session.head_rev().expect("a head");
+	assert!(session.can_undo(), "an unpublished interaction is undoable");
+
+	session.publish_up_to(head);
+
+	assert!(!session.can_undo(), "a published interaction must not be silently rewound");
+}

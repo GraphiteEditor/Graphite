@@ -112,6 +112,13 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
 		self.session.merge_remote(deltas, retires)?;
+
+		// Whatever a peer sent is shared by definition, so it sits behind the published frontier too: a
+		// guest must no more silently rewind the host's history than the host may rewind its own.
+		if let Some(head) = self.session.head_rev() {
+			self.session.publish_up_to(head);
+		}
+
 		self.pending_persist.history = true;
 		self.pending_persist.hot_log |= !retires.is_empty();
 		self.pending_persist.snapshot = true;
