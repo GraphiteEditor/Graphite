@@ -371,7 +371,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ActivateToolEyedropper,
 			ActivateToolFill,
 			ActivateToolGradient,
-			ActivateToolMeshGradient,
 
 			ActivateToolPath,
 			ActivateToolPen,
@@ -404,6 +403,12 @@ impl ToolMessageHandler {
 			list.extend(actions!(ToolMessageDiscriminant;
 				ActivateToolBrush,
 			));
+		}
+
+		if preferences.mesh_gradient_tool {
+			list.extend(actions!(ToolMessageDiscriminant;
+				ActivateToolMeshGradient,
+			))
 		}
 
 		list
