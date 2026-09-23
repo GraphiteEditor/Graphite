@@ -7,6 +7,7 @@ use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
+use vector_types::mesh_gradient::MeshGradient;
 
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
@@ -21,6 +22,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<MeshGradient>,
 		Context -> Item<DAffine2>, // TODO: Remove this
 	)]
 	content: impl Node<Context<'static>, Output = T>,
