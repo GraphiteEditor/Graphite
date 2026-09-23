@@ -136,6 +136,11 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 				Ok(mut interface) => {
 					// Per-network view state lives in `session.json`, not the registry, so restore it here.
 					apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
+					// This path does not run the document upgrades, so the one preview state they would have
+					// converted is converted here. Without it a preview written by the version that rewired the
+					// export stays unrecognized, leaving the document rendering it with nothing saying why.
+					interface.migrate_rewired_previews();
+					interface.discard_deltas();
 					Some(interface)
 				}
 				Err(error) => {

@@ -690,8 +690,10 @@ impl NodeNetworkInterface {
 
 		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
 
-		// The export already reaches it, so a second wire would land on top of the solid one
-		if self.upstream_output_connector(&input, network_path).and_then(|export| export.node_id()) == Some(previewed.node_id) {
+		// The export already reaches it, so a second wire would land on top of the solid one. Compared by
+		// the whole connector: two outputs of the same node leave from different ports, so those wires do
+		// not overlap.
+		if self.upstream_output_connector(&input, network_path) == Some(previewed.to_connector()) {
 			return None;
 		}
 		let Some(input_position) = self.get_input_center(&input, network_path) else {

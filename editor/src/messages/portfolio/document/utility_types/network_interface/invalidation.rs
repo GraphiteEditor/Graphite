@@ -17,9 +17,10 @@ impl NodeNetworkInterface {
 		}
 
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+		// This unloads the import and export ports too, since they are placed from the bounds it clears.
 		self.unload_all_nodes_bounding_box(network_path);
-		// The import and export strip is placed from those bounds, so its ports and handles move with them.
-		self.invalidate_import_export(network_path);
+		// The handles beside those ports are placed the same way, and nothing else unloads them.
+		self.unload_modify_import_export(network_path);
 	}
 
 	/// Unloads the network's import and export strip: the ports themselves and the handles beside them
@@ -35,6 +36,6 @@ impl NodeNetworkInterface {
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
 		self.unload_all_nodes_bounding_box(network_path);
-		self.invalidate_import_export(network_path);
+		self.unload_modify_import_export(network_path);
 	}
 }

@@ -37,6 +37,12 @@ impl NodeNetworkInterface {
 		// working inside a node, so every network's preview is applied rather than only the document's.
 		for (network_path, previewed) in self.previewed_nodes() {
 			let Some(nested) = network.nested_network_mut(&network_path) else { continue };
+			// A preview naming a node the network no longer holds is dropped rather than substituted:
+			// exporting a reference to a node that is not there would fail the whole graph, not just the
+			// preview.
+			if !nested.nodes.contains_key(&previewed.node_id) {
+				continue;
+			}
 			let Some(export) = nested.exports.first_mut() else { continue };
 			*export = NodeInput::node(previewed.node_id, previewed.output_index);
 		}
@@ -48,21 +54,31 @@ impl NodeNetworkInterface {
 	/// result is stable across runs rather than following the metadata map's iteration order.
 	pub fn previewed_nodes(&self) -> Vec<(Vec<NodeId>, RootNode)> {
 		let mut previewed = Vec::new();
-		let mut pending = vec![(Vec::new(), &*self.network_metadata)];
-
-		while let Some((network_path, network_metadata)) = pending.pop() {
-			if let Previewing::Yes { previewed: root_node } = network_metadata.persistent_metadata.previewing {
-				previewed.push((network_path.clone(), root_node));
-			}
-
-			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
-				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
-				pending.push(([network_path.as_slice(), &[*node_id]].concat(), nested));
-			}
-		}
+		self.for_each_preview(|network_path, root_node| previewed.push((network_path.to_vec(), root_node)));
 
 		previewed.sort_by(|(left, _), (right, _)| left.cmp(right));
 		previewed
+	}
+
+	/// Visits the node each network is previewing, with that network's path.
+	///
+	/// Carries one reusable path buffer rather than building a path per level, since the change check
+	/// before every graph refresh walks this and would otherwise allocate on each one.
+	fn for_each_preview(&self, mut visit: impl FnMut(&[NodeId], RootNode)) {
+		fn walk(metadata: &NodeNetworkMetadata, network_path: &mut Vec<NodeId>, visit: &mut impl FnMut(&[NodeId], RootNode)) {
+			if let Previewing::Yes { previewed } = metadata.persistent_metadata.previewing {
+				visit(network_path, previewed);
+			}
+
+			for (node_id, node_metadata) in &metadata.persistent_metadata.node_metadata {
+				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
+				network_path.push(*node_id);
+				walk(nested, network_path, visit);
+				network_path.pop();
+			}
+		}
+
+		walk(&self.network_metadata, &mut Vec::new(), &mut visit);
 	}
 
 	/// Every network whose preview was written by a version that rewired the export, paired with what
@@ -99,9 +115,19 @@ impl NodeNetworkInterface {
 	/// Previewing is mixed in because it redirects an export on the way to the compiler without touching
 	/// the graph itself, so the graph's own hash does not move when a preview is toggled.
 	pub fn network_hash(&self) -> u64 {
+		// Combined by XOR so the result does not depend on the order the walk meets each network in, which
+		// follows a hash map. One preview per network, so no two entries can cancel each other out.
+		let mut previews = 0_u64;
+		self.for_each_preview(|network_path, previewed| {
+			let mut hasher = std::hash::DefaultHasher::new();
+			network_path.hash(&mut hasher);
+			previewed.hash(&mut hasher);
+			previews ^= hasher.finish();
+		});
+
 		let mut hasher = std::hash::DefaultHasher::new();
 		self.network.current_hash().hash(&mut hasher);
-		self.previewed_nodes().hash(&mut hasher);
+		previews.hash(&mut hasher);
 		hasher.finish()
 	}
 

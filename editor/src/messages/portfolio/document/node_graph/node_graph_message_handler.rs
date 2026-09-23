@@ -2378,13 +2378,11 @@ impl NodeGraphMessageHandler {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
-		let previewing = if matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. }) {
-			network.exports.iter().find_map(|export| {
-				let NodeInput::Node { node_id, .. } = export else { return None };
-				Some(*node_id)
-			})
-		} else {
-			None
+		// Taken from the preview rather than the export, which previewing no longer rewires: reading the
+		// export would name the document root and start a preview on it instead of ending this one.
+		let previewing = match network_interface.previewing(breadcrumb_network_path) {
+			Previewing::Yes { previewed } => Some(previewed.node_id),
+			_ => None,
 		};
 
 		// If only one node is selected then show the preview or stop previewing button
