@@ -273,6 +273,21 @@ fn rebuilt_interface_keeps_storage_identities() {
 	assert_eq!(reconverted_ids, stored_ids, "re-converting the rebuilt interface under a different peer changed the node identities");
 }
 
+/// Opening an old document runs its upgrades through the ordinary mutators, so the store records them.
+/// Those recordings are the document arriving rather than edits to it, so the migration has to leave
+/// the buffer empty instead of handing the first commit a pile of changes to the document's own
+/// starting state.
+#[test]
+fn migrating_a_document_records_no_changes() {
+	let mut document = load_demo("painted-dreams.graphite");
+	document.network_interface.discard_deltas();
+
+	crate::messages::portfolio::document_migration::document_migration_upgrades(&mut document, false);
+
+	let recorded = document.network_interface.take_deltas();
+	assert!(recorded.is_empty(), "migration left {} recorded changes behind", recorded.len());
+}
+
 /// Previewing and the pinned display order are document state, so they survive a registry round trip
 /// rather than living in `session.json`. Both name nodes, and the stored form uses storage IDs, so
 /// this also checks the reference resolves back to the right runtime node.

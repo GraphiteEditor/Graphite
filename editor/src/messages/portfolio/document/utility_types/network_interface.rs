@@ -1,3 +1,4 @@
+mod apply;
 mod caches;
 #[cfg(test)]
 mod characterization_tests;

@@ -273,6 +273,25 @@ impl NodeMut<'_> {
 		changed
 	}
 
+	/// The encapsulating node's names for every one of the network's exports, replaced together since
+	/// they are stored as one array.
+	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
+	pub(crate) fn set_output_names(&mut self, output_names: Vec<String>) -> bool {
+		let changed = self.metadata.output_names != output_names;
+		self.metadata.output_names = output_names;
+		if changed {
+			let change = NodeMetadataChange::OutputNames(self.metadata.output_names.clone());
+			self.deltas.metadata(change);
+		}
+		changed
+	}
+
+	/// The metadata array the node's inputs index, one entry per input.
+	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
+	pub(crate) fn input_metadata(&self) -> &[InputMetadata] {
+		&self.metadata.input_metadata
+	}
+
 	/// Grows `output_names` to one entry per export, which an older document may be missing.
 	pub(crate) fn resize_output_names(&mut self, number_of_exports: usize) {
 		if self.metadata.output_names.len() == number_of_exports {
@@ -312,6 +331,23 @@ impl NodeMut<'_> {
 		self.deltas.graph(delta);
 		let metadata = Box::new(self.metadata.clone());
 		self.deltas.snapshot(metadata);
+	}
+
+	/// Replaces the node's whole persistent metadata, including that of everything nested under it,
+	/// which is the write a metadata snapshot describes.
+	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
+	pub(crate) fn replace_metadata(&mut self, metadata: DocumentNodePersistentMetadata) {
+		*self.metadata = metadata;
+
+		let snapshot = Box::new(self.metadata.clone());
+		self.deltas.snapshot(snapshot);
+	}
+
+	/// Replaces the metadata array the node's inputs index, leaving the inputs themselves alone.
+	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
+	pub(crate) fn set_input_metadata(&mut self, input_metadata: Vec<InputMetadata>) {
+		self.metadata.input_metadata = input_metadata;
+		self.emit_input_metadata();
 	}
 
 	/// Swaps in new inputs together with their metadata, returning the inputs replaced.
@@ -718,6 +754,13 @@ impl NodeNetworkInterface {
 	/// Takes what the writes since the last drain changed, in write order, leaving the buffer empty.
 	pub(crate) fn take_deltas(&mut self) -> Vec<EditorDelta> {
 		std::mem::take(&mut self.deltas)
+	}
+
+	/// Drops what the writes since the last drain changed, for writes that are not edits to the
+	/// document. Bringing an old document up to date produces the document rather than changing it, so
+	/// there is nothing to report.
+	pub(crate) fn discard_deltas(&mut self) {
+		self.deltas.clear();
 	}
 
 	/// Drops the network's link to the definition it was instantiated from, which no longer describes it

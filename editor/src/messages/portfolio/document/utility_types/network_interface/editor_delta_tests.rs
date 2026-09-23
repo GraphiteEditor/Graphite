@@ -237,7 +237,7 @@ async fn emitted_deltas_reproduce_the_diff() {
 	let node = editor.create_node_by_name(rectangle_definition()).await;
 
 	let working = convert(&editor);
-	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.discard_deltas();
 
 	{
 		let network_interface = &mut editor.active_document_mut().network_interface;
@@ -265,7 +265,7 @@ async fn unchanged_writes_emit_nothing() {
 	let node = editor.create_node_by_name(rectangle_definition()).await;
 
 	editor.active_document_mut().network_interface.set_display_name(&node, "Named".to_string(), &[]);
-	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.discard_deltas();
 
 	{
 		let network_interface = &mut editor.active_document_mut().network_interface;
@@ -286,7 +286,7 @@ async fn emitted_deltas_reproduce_the_diff_for_structural_edits() {
 	editor.new_document().await;
 
 	let working = convert(&editor);
-	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.discard_deltas();
 
 	let template = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
 		.expect("rectangle definition")
@@ -300,7 +300,7 @@ async fn emitted_deltas_reproduce_the_diff_for_structural_edits() {
 	assert_same_stored_effect(&working, constructed, diffed, "emitted node insertion");
 
 	let working = convert(&editor);
-	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.discard_deltas();
 	editor.active_document_mut().network_interface.delete_nodes(vec![node_id], true, &[]);
 
 	let emitted = editor.active_document_mut().network_interface.take_deltas();
@@ -333,7 +333,7 @@ async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
 		.expect("the group should be a network node");
 
 	let working = convert(&editor);
-	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.discard_deltas();
 
 	editor
 		.active_document_mut()
@@ -373,7 +373,7 @@ async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
 		.expect("the group should be a network node");
 
 	let working = convert(&editor);
-	editor.active_document_mut().network_interface.take_deltas();
+	editor.active_document_mut().network_interface.discard_deltas();
 
 	editor.active_document_mut().network_interface.set_display_name(&group, "Renamed".to_string(), &[]);
 	editor
@@ -385,6 +385,89 @@ async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "rename then arity change");
+}
+
+/// The gate replay exists for: what the store recorded has to be enough to reproduce the write that
+/// produced it. Clone the interface before an edit, apply what the edit recorded onto the clone, and
+/// the two should agree. Something the store failed to record, or recorded wrongly, surfaces here
+/// rather than as drift on another peer.
+async fn assert_replay_reproduces(edit: impl FnOnce(&mut EditorTestUtils)) {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor
+		.handle_message(DocumentMessage::GroupSelectedLayers {
+			group_folder_type: crate::messages::portfolio::document::utility_types::misc::GroupFolderType::Layer,
+		})
+		.await;
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	let before = editor.active_document().network_interface.clone();
+	edit(&mut editor);
+
+	let recorded = editor.active_document_mut().network_interface.take_deltas();
+	assert!(!recorded.is_empty(), "the edit should have recorded something to replay");
+
+	let mut replayed = before;
+	for delta in &recorded {
+		replayed.apply(delta);
+	}
+
+	assert_eq!(
+		replayed,
+		editor.active_document().network_interface,
+		"replaying {} recorded deltas did not reproduce the edited interface",
+		recorded.len()
+	);
+}
+
+fn only_group(editor: &EditorTestUtils) -> NodeId {
+	editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.map(|(id, _)| *id)
+		.expect("the group should be a network node")
+}
+
+#[tokio::test]
+async fn replaying_metadata_edits_reproduces_the_interface() {
+	assert_replay_reproduces(|editor| {
+		let group = only_group(editor);
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.set_display_name(&group, "Renamed".to_string(), &[]);
+		network_interface.set_locked(&group, &[], true);
+		network_interface.set_pinned(&group, &[], true);
+		network_interface.set_visibility(&group, &[], false);
+		network_interface.shift_node(&group, glam::IVec2::new(3, 5), &[]);
+	})
+	.await;
+}
+
+#[tokio::test]
+async fn replaying_an_arity_change_reproduces_the_interface() {
+	assert_replay_reproduces(|editor| {
+		let group = only_group(editor);
+		editor
+			.active_document_mut()
+			.network_interface
+			.add_import(TaggedValue::F64(7.), true, -1, "Added", "An added import", &[group]);
+	})
+	.await;
+}
+
+#[tokio::test]
+async fn replaying_a_node_insertion_reproduces_the_interface() {
+	assert_replay_reproduces(|editor| {
+		let template = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
+			.expect("rectangle definition")
+			.default_node_template();
+		editor.active_document_mut().network_interface.insert_node(NodeId(0xDE17A), template, &[]);
+	})
+	.await;
 }
 
 #[tokio::test]
