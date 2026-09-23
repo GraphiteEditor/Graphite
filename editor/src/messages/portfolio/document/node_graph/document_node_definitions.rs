@@ -950,6 +950,10 @@ fn static_input_properties() -> InputProperties {
 	let mut map: InputProperties = HashMap::new();
 	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
 	map.insert(
+		"mesh_gradient_surface".to_string(),
+		Box::new(|node_id, index, context| node_properties::mesh_gradient_surface_properties(node_id, index, context)),
+	);
+	map.insert(
 		"string".to_string(),
 		Box::new(|node_id, index, context| {
 			let Some(value) = context.network_interface.input_data(&node_id, index, "string_properties", context.selection_network_path) else {

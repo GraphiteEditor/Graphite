@@ -10,7 +10,7 @@ use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use choice::enum_choice;
+use choice::{WidgetFactory, enum_choice};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceId};
@@ -34,8 +34,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
-	build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, MeshGradientSvgMethod, StrokeAlign,
+	StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{NodeParameter, ParameterRef};
@@ -2909,6 +2909,91 @@ pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesCo
 	string_properties(text)
 }
 
+pub(crate) fn mesh_gradient_surface_properties(node_id: NodeId, input_index: usize, context: &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> {
+	let parameter_info = ParameterWidgetsInfo::at_index(node_id, input_index, false, context);
+	let Some(input) = parameter_info.input() else {
+		return Err(format!("Could not get mesh gradient input for node {node_id}"));
+	};
+
+	let mut rows = vec![LayoutGroup::row(start_widgets(&parameter_info))];
+	let Some(TaggedValue::MeshGradient(surface)) = input.as_non_exposed_value() else {
+		return Ok(rows);
+	};
+
+	let choice_row = |name: &'static str, widget: WidgetInstance| {
+		let mut widgets = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance(), TextLabel::new(name).widget_instance()];
+		add_blank_assist(&mut widgets);
+		widgets.extend([Separator::new(SeparatorStyle::Unrelated).widget_instance(), widget]);
+		LayoutGroup::row(widgets)
+	};
+
+	let space_entries = graph_modification_utils::mesh_gradient_space_sections()
+		.into_iter()
+		.map(|section| {
+			section
+				.into_iter()
+				.map(|(space, metadata)| {
+					let mut updated_surface = surface.clone();
+					updated_surface.gradient_space = space;
+					MenuListEntry::new(metadata.name)
+						.label(metadata.label)
+						.tooltip_label(metadata.label)
+						.tooltip_description(metadata.description.unwrap_or_default())
+						.on_update(move |_| {
+							NodeGraphMessage::SetInputValue {
+								node_id,
+								input_index,
+								value: TaggedValue::MeshGradient(updated_surface.clone()).into(),
+							}
+							.into()
+						})
+						.on_commit(commit_value)
+				})
+				.collect()
+		})
+		.collect();
+	let space = DropdownInput::new(space_entries)
+		.selected_index(graph_modification_utils::mesh_gradient_space_index(surface.gradient_space))
+		.widget_instance();
+
+	let interpolation = enum_choice::<GradientInterpolation>().build(
+		surface.gradient_interpolation,
+		|| {
+			let surface = surface.clone();
+			update_value_at_index(
+				move |interpolation: &GradientInterpolation| {
+					let mut surface = surface.clone();
+					surface.gradient_interpolation = *interpolation;
+					TaggedValue::MeshGradient(surface)
+				},
+				node_id,
+				input_index,
+			)
+		},
+		|| commit_value,
+	);
+
+	let svg_method = enum_choice::<MeshGradientSvgMethod>().build(
+		surface.svg_method,
+		|| {
+			let surface = surface.clone();
+			update_value_at_index(
+				move |svg_method: &MeshGradientSvgMethod| {
+					let mut surface = surface.clone();
+					surface.svg_method = *svg_method;
+					TaggedValue::MeshGradient(surface)
+				},
+				node_id,
+				input_index,
+			)
+		},
+		|| commit_value,
+	);
+
+	rows.extend([choice_row("Color Space", space), choice_row("Interpolation", interpolation), choice_row("SVG Method", svg_method)]);
+	Ok(rows)
+}
+
 pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
@@ -3221,12 +3306,14 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				.on_update(update_value(move |_| TaggedValue::GradientRamp(backup_gradient.clone()), node_id, PaintInput))
 				.on_commit(commit_value),
 		];
+		let selected_index = match fill {
+			ResolvedFill::Gradient { .. } => 1,
+			_ => 0,
+		};
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(entries)
-				.selected_index(Some(if matches!(fill, ResolvedFill::Gradient { .. }) { 1 } else { 0 }))
-				.widget_instance(),
+			RadioInput::new(entries).selected_index(Some(selected_index)).widget_instance(),
 		]);
 
 		LayoutGroup::row(row)

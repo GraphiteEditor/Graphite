@@ -20,7 +20,7 @@ use graphene_std::raster::{
 	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
 	SelectiveColorChoice, TonalRange,
 };
-use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::raster_types::{CPU, GPU, Raster, Texture};
 use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
@@ -30,7 +30,8 @@ use graphene_std::vector::misc::{
 	SpiralType,
 };
 use graphene_std::vector::style::{
-	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
+	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, MeshGradient, MeshGradientSvgMethod,
+	StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
 use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
@@ -213,6 +214,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<MeshGradient>,
 		List<String>,
 		List<f64>,
 		List<i32>,
@@ -270,6 +272,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<Raster<GPU>>,
 		Item<Color>,
 		Item<Gradient>,
+		Item<MeshGradient>,
 		Item<String>,
 		Item<f64>,
 		Item<i32>,
@@ -634,6 +637,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(item) => item.identifier(),
 			Self::Color(item) => item.identifier(),
 			Self::Gradient(item) => item.identifier(),
+			Self::MeshGradient(item) => item.identifier(),
 			Self::Text(item) => item.identifier(),
 			Self::NoneList(list) => list.identifier(),
 			Self::GraphicList(list) => list.identifier(),
@@ -642,6 +646,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPUList(list) => list.identifier(),
 			Self::ColorList(list) => list.identifier(),
 			Self::GradientList(list) => list.identifier(),
+			Self::MeshGradientList(list) => list.identifier(),
 			Self::TextList(list) => list.identifier(),
 			Self::StrokeList(list) => list.identifier(),
 		}
@@ -659,6 +664,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(item) => item.layout_with_breadcrumb(data),
 			Self::Color(item) => item.layout_with_breadcrumb(data),
 			Self::Gradient(item) => item.layout_with_breadcrumb(data),
+			Self::MeshGradient(item) => item.layout_with_breadcrumb(data),
 			Self::Text(item) => item.layout_with_breadcrumb(data),
 			Self::NoneList(list) => list.layout_with_breadcrumb(data),
 			Self::GraphicList(list) => list.layout_with_breadcrumb(data),
@@ -667,6 +673,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPUList(list) => list.layout_with_breadcrumb(data),
 			Self::ColorList(list) => list.layout_with_breadcrumb(data),
 			Self::GradientList(list) => list.layout_with_breadcrumb(data),
+			Self::MeshGradientList(list) => list.layout_with_breadcrumb(data),
 			Self::TextList(list) => list.layout_with_breadcrumb(data),
 			Self::StrokeList(list) => list.layout_with_breadcrumb(data),
 		}
@@ -784,6 +791,48 @@ impl TableItemLayout for Raster<GPU> {
 	}
 }
 
+impl TableItemLayout for Texture {
+	fn type_name() -> &'static str {
+		"Texture"
+	}
+	fn identifier(&self) -> String {
+		format!("Texture ({} x {})", self.width(), self.height())
+	}
+	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let widgets = vec![TextLabel::new("This texture is stored on the GPU. It currently cannot be displayed here.").widget_instance()];
+		vec![LayoutGroup::row(widgets)]
+	}
+}
+
+impl TableItemLayout for Option<Item<Texture>> {
+	fn type_name() -> &'static str {
+		"Option<Item<Texture>>"
+	}
+	fn identifier(&self) -> String {
+		match self {
+			Some(texture) => format!("Some({})", texture.identifier()),
+			None => "None".to_string(),
+		}
+	}
+	fn value_widgets(&self, target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		match self {
+			Some(_) => vec![
+				TextButton::new(self.identifier())
+					.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
+					.narrow(true)
+					.widget_instance(),
+			],
+			None => vec![TextLabel::new("None").narrow(true).widget_instance()],
+		}
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		match self {
+			Some(texture) => texture.layout_with_breadcrumb(data),
+			None => label("None"),
+		}
+	}
+}
+
 impl TableItemLayout for Color {
 	fn type_name() -> &'static str {
 		"Color"
@@ -833,6 +882,33 @@ impl TableItemLayout for Gradient {
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		self.as_color_list().layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for MeshGradient {
+	fn type_name() -> &'static str {
+		"MeshGradient"
+	}
+	fn identifier(&self) -> String {
+		format!("MeshGradient ({} corners)", self.size())
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		let mut rows = vec![column_headings(&["corner", "point ID", "position", "color"])];
+		rows.extend(self.corners().map(|corner| {
+			vec![
+				TextLabel::new(format!("{}", corner.index)).narrow(true).widget_instance(),
+				TextLabel::new(format!("{}", corner.point_id.inner())).narrow(true).widget_instance(),
+				TextLabel::new(format!("{}", corner.position)).narrow(true).widget_instance(),
+				corner
+					.color
+					.value_widgets(PathStep::Element(corner.index), data)
+					.into_iter()
+					.next()
+					.expect("Color always provides one value widget"),
+			]
+		}));
+
+		vec![LayoutGroup::table(rows, false)]
 	}
 }
 
@@ -1069,6 +1145,7 @@ impl_table_item_layout_for_choice_enum!(
 	GradientSpace,
 	GradientHueDirection,
 	GradientInterpolation,
+	MeshGradientSvgMethod,
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
@@ -1255,6 +1332,7 @@ macro_rules! known_item_types {
 			List<Raster<GPU>>,
 			List<Color>,
 			List<Gradient>,
+			List<MeshGradient>,
 			List<String>,
 			List<f64>,
 			Gradient,
@@ -1275,6 +1353,7 @@ macro_rules! known_item_types {
 			Vector,
 			Raster<CPU>,
 			Raster<GPU>,
+			Option<Item<Texture>>,
 			Graphic,
 			Artboard,
 			Appearance,
@@ -1289,6 +1368,7 @@ macro_rules! known_item_types {
 			GradientSpace,
 			GradientHueDirection,
 			GradientInterpolation,
+			MeshGradientSvgMethod,
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,

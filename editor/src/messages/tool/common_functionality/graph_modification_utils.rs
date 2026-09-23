@@ -8,10 +8,13 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
+use graphene_std::choice_type::{ChoiceTypeStatic, VariantMetadata};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
+use graphene_std::vector::style::{
+	FillChoice, GradientSpace, MeshGradientSurface, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box, mesh_gradient_to_bounds_transform,
+};
 use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
@@ -267,7 +270,7 @@ pub fn get_fill_node_id_with_direct_fill_input(layer: LayerNodeIdentifier, netwo
 
 /// Determine the input connector where the gradient chain enters the layer.
 /// Returns Fill's fill input if the layer has a "Fill" node, otherwise returns the layer's content input.
-pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
+pub fn paint_chain_target_input(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> InputConnector {
 	if let Some(fill_node_id) = NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER)) {
 		InputConnector::node(fill_node_id, graphene_std::vector::fill::PaintInput)
 	} else {
@@ -277,7 +280,7 @@ pub fn gradient_chain_target_input(layer: LayerNodeIdentifier, network_interface
 
 /// Try to find the paint value node feeding a 'Fill' node, or a layer directly.
 fn get_upstream_paint_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, identifier: ProtoNodeIdentifier) -> Option<NodeId> {
-	let target_input = gradient_chain_target_input(layer, network_interface);
+	let target_input = paint_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
 	let reference = DefinitionIdentifier::ProtoNode(identifier);
 
@@ -310,7 +313,11 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 	}
 
 	// A generator discards its primary input, so the chain ends at whichever one is reached
-	let generators = [graphene_std::math_nodes::color_value::IDENTIFIER, graphene_std::math_nodes::gradient_value::IDENTIFIER];
+	let generators = [
+		graphene_std::math_nodes::color_value::IDENTIFIER,
+		graphene_std::math_nodes::gradient_value::IDENTIFIER,
+		graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::IDENTIFIER,
+	];
 	let setters = [
 		graphene_std::math_nodes::gradient_form::IDENTIFIER,
 		graphene_std::math_nodes::gradient_spread::IDENTIFIER,
@@ -413,7 +420,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 
 	// The chain's stop placement comes from the closest-to-layer 'Gradient Positions'/'Gradient Midpoints' nodes,
 	// matching the runtime where each later node overwrites the whole attribute
-	let target_input = gradient_chain_target_input(layer, network_interface);
+	let target_input = paint_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[])?.node_id()?;
 	let positions_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_positions::IDENTIFIER);
 	let midpoints_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_midpoints::IDENTIFIER);
@@ -467,6 +474,26 @@ pub fn gradient_to_viewport_transform(layer: LayerNodeIdentifier, network_interf
 	metadata.transform_to_viewport(layer)
 }
 
+/// The color spaces a mesh gradient offers, keeping the choice type's section groupings.
+/// Polar spaces are not supported for a mesh gradient, since a mesh offers neither
+/// a stop order to wind it along nor any guarantee that its corner loops do not wind a full turn.
+pub fn mesh_gradient_space_sections() -> Vec<Vec<(GradientSpace, &'static VariantMetadata)>> {
+	GradientSpace::list()
+		.iter()
+		.map(|section| section.iter().filter(|(space, _)| !space.is_polar()).map(|(space, metadata)| (*space, metadata)).collect::<Vec<_>>())
+		.filter(|section| !section.is_empty())
+		.collect()
+}
+
+/// The position of a space among the ones a mesh offers, which is what its dropdown selects by.
+pub fn mesh_gradient_space_index(space: GradientSpace) -> Option<u32> {
+	mesh_gradient_space_sections()
+		.into_iter()
+		.flatten()
+		.position(|(candidate, _)| candidate == space)
+		.map(|index| index as u32)
+}
+
 /// Tooltip description for a "Reverse Direction" gradient button, phrased for the given Gradient Form.
 pub fn reverse_direction_tooltip_description(gradient_form: GradientForm) -> &'static str {
 	match gradient_form {
@@ -485,6 +512,33 @@ pub fn gradient_orientation_rightward(transform: glam::DAffine2) -> bool {
 	} else {
 		(viewport_start.x + viewport_start.y) < (viewport_end.x + viewport_end.y)
 	}
+}
+
+/// Try to find a "Mesh Gradient Value" node that is connected to a "Fill" node, or to a layer directly.
+pub fn get_upstream_mesh_gradient_value_node_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	get_upstream_paint_value_node_id(layer, network_interface, graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::IDENTIFIER)
+}
+
+/// A mesh gradient read back out of the graph.
+pub struct MeshGradientPaint {
+	pub surface: MeshGradientSurface,
+	pub transform: DAffine2,
+}
+
+/// Read the mesh gradient a layer paints with straight out of the graph.
+pub fn get_mesh_gradient_paint(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, bounding_box: impl FnOnce() -> [DVec2; 2]) -> Option<MeshGradientPaint> {
+	let value_node = network_interface.document_network().nodes.get(&get_upstream_mesh_gradient_value_node_id(layer, network_interface)?)?;
+	let TaggedValue::MeshGradient(surface) = value_node.input(graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::MeshGradientInput)?.as_value()? else {
+		return None;
+	};
+
+	let transform = if paint_chain_target_input(layer, network_interface) == InputConnector::layer_secondary_input(layer.to_node()) {
+		DAffine2::IDENTITY
+	} else {
+		mesh_gradient_to_bounds_transform(bounding_box())
+	};
+
+	Some(MeshGradientPaint { surface: surface.clone(), transform })
 }
 
 /// Get the current fill of a layer from the closest "Fill" node.

@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
+	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, paint_chain_target_input,
 	replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
@@ -382,7 +382,7 @@ struct GradientAppearance {
 
 /// Resolve the gradient transform, form, and spread by walking the chain feeding the layer.
 fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> GradientAppearance {
-	let target_input = gradient_chain_target_input(layer, network_interface);
+	let target_input = paint_chain_target_input(layer, network_interface);
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);

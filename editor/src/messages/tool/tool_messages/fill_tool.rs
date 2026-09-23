@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, replaceable_paint_chain};
+use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, paint_chain_target_input, replaceable_paint_chain};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::misc::dvec2_to_point;
@@ -243,7 +243,7 @@ fn fill_target_layer(document: &DocumentMessageHandler, input: &InputPreprocesso
 /// Whether the color is the layer's whole content rather than paint applied to its geometry, meaning there is no
 /// outline to pattern and the preview covers the layer's whole expanse instead.
 fn paints_whole_expanse(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> bool {
-	gradient_chain_target_input(layer, network_interface) == InputConnector::layer_secondary_input(layer.to_node()) && routes_to_color_chain(layer, network_interface)
+	paint_chain_target_input(layer, network_interface) == InputConnector::layer_secondary_input(layer.to_node()) && routes_to_color_chain(layer, network_interface)
 }
 
 /// The viewport-space area a whole-expanse color paints: the artboard containing the layer, since the color fills it,
