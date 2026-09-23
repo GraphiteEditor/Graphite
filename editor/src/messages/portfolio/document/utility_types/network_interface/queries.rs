@@ -1,4 +1,5 @@
 use super::*;
+use std::hash::{Hash, Hasher};
 
 /// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
 pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
@@ -22,6 +23,67 @@ impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network.network()
 	}
+
+	/// The document network as it should be evaluated, which is the document itself with the previewed
+	/// node substituted for the export.
+	///
+	/// Previewing is this peer's alone, so it is applied to the copy being compiled rather than written
+	/// into the document. Every path that compiles the graph goes through here, so none of them can
+	/// render the export while the user is previewing something else.
+	pub fn network_to_evaluate(&self) -> NodeNetwork {
+		let mut network = self.document_network().clone();
+
+		// A preview is set on whichever network the user is looking at, which is nested whenever they are
+		// working inside a node, so every network's preview is applied rather than only the document's.
+		for (network_path, previewed) in self.previewed_nodes() {
+			let Some(nested) = network.nested_network_mut(&network_path) else { continue };
+			let Some(export) = nested.exports.first_mut() else { continue };
+			*export = NodeInput::node(previewed.node_id, previewed.output_index);
+		}
+
+		network
+	}
+
+	/// The node each network is previewing, paired with that network's path, ordered by path so the
+	/// result is stable across runs rather than following the metadata map's iteration order.
+	pub fn previewed_nodes(&self) -> Vec<(Vec<NodeId>, RootNode)> {
+		let mut previewed = Vec::new();
+		let mut pending = vec![(Vec::new(), &*self.network_metadata)];
+
+		while let Some((network_path, network_metadata)) = pending.pop() {
+			if let Previewing::Yes { previewed: root_node } = network_metadata.persistent_metadata.previewing {
+				previewed.push((network_path.clone(), root_node));
+			}
+
+			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
+				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
+				pending.push(([network_path.as_slice(), &[*node_id]].concat(), nested));
+			}
+		}
+
+		previewed.sort_by(|(left, _), (right, _)| left.cmp(right));
+		previewed
+	}
+
+	/// Every network whose preview was written by a version that rewired the export, paired with what
+	/// that version would have restored.
+	pub(crate) fn legacy_rewired_previews(&self) -> Vec<(Vec<NodeId>, Option<RootNode>)> {
+		let mut legacy = Vec::new();
+		let mut pending = vec![(Vec::new(), &*self.network_metadata)];
+
+		while let Some((network_path, network_metadata)) = pending.pop() {
+			if let Previewing::LegacyRewired { root_node_to_restore } = network_metadata.persistent_metadata.previewing {
+				legacy.push((network_path.clone(), root_node_to_restore));
+			}
+
+			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
+				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
+				pending.push(([network_path.as_slice(), &[*node_id]].concat(), nested));
+			}
+		}
+
+		legacy
+	}
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.document_network().nested_network(network_path) else {
@@ -31,8 +93,16 @@ impl NodeNetworkInterface {
 		Some(network)
 	}
 
+	/// Identifies the graph that would be evaluated, so a caller can skip recompiling when nothing the
+	/// compiler sees has changed.
+	///
+	/// Previewing is mixed in because it redirects an export on the way to the compiler without touching
+	/// the graph itself, so the graph's own hash does not move when a preview is toggled.
 	pub fn network_hash(&self) -> u64 {
-		self.network.current_hash()
+		let mut hasher = std::hash::DefaultHasher::new();
+		self.network.current_hash().hash(&mut hasher);
+		self.previewed_nodes().hash(&mut hasher);
+		hasher.finish()
 	}
 
 	/// Get the specified document node in the nested network based on node_id and network_path

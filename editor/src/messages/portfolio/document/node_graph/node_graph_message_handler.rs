@@ -406,9 +406,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);
 			}
-			NodeGraphMessage::DisconnectRootNode => {
-				network_interface.start_previewing_without_restore(selection_network_path);
-			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 
@@ -1099,18 +1096,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.wire_in_progress_to_connector = Some(point);
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
-							let mut disconnect_root_node = false;
-							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
-								&& root_node_to_restore.is_some()
-								&& *disconnecting == InputConnector::Export(0)
-							{
-								disconnect_root_node = true;
-							}
-							if disconnect_root_node {
-								responses.add(NodeGraphMessage::DisconnectRootNode);
-							} else {
-								responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
-							}
+							// Previewing leaves the export alone, so dragging its wire off is an ordinary disconnect
+							responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
 							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
 							responses.add(NodeGraphMessage::SendGraph);
@@ -2691,8 +2678,8 @@ impl NodeGraphMessageHandler {
 			wire_path_update: None,
 		}));
 
-		if let Some(wire_to_root) = network_interface.wire_to_root(graph_wire_style, breadcrumb_network_path) {
-			added_wires.push(wire_to_root);
+		if let Some(wire_to_preview) = network_interface.wire_to_preview(graph_wire_style, breadcrumb_network_path) {
+			added_wires.push(wire_to_preview);
 		} else {
 			added_wires.push(WirePathUpdate {
 				id: NodeId(u64::MAX),
@@ -2743,11 +2730,8 @@ impl NodeGraphMessageHandler {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
-			let is_export = network_interface
-				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
-				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
-			let previewed = is_export && !is_root_node;
+			// Asked of the preview itself rather than inferred from the export, which previewing no longer rewires
+			let previewed = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { previewed } if previewed.node_id == node_id);
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 

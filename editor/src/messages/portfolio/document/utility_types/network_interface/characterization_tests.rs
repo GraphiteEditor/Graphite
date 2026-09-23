@@ -173,31 +173,6 @@ async fn connecting_an_export_is_never_cyclic() {
 }
 
 #[tokio::test]
-async fn toggling_preview_on_a_disconnected_export() {
-	let mut editor = EditorTestUtils::create();
-	editor.new_document().await;
-
-	let node = editor.create_node_by_name(rectangle_definition()).await;
-
-	let network_interface = &mut editor.active_document_mut().network_interface;
-	network_interface.disconnect_input(&InputConnector::Export(0), &[]);
-
-	// Previewing a node while the export is disconnected is a preview with nothing to restore
-	network_interface.toggle_preview(node, &[]);
-	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
-	let export = network_interface.input_from_connector(&InputConnector::Export(0), &[]);
-	assert_eq!(export.and_then(|input| input.as_node()), Some(node), "The previewed node should be wired to the export");
-
-	// Ending the preview restores the disconnected export
-	network_interface.toggle_preview(node, &[]);
-	assert_eq!(network_interface.previewing(&[]), Previewing::No);
-	let export = network_interface.input_from_connector(&InputConnector::Export(0), &[]);
-	assert!(export.is_some_and(|input| input.as_node().is_none()), "Ending the preview should disconnect the export again");
-
-	assert_invariants(&editor, "after toggling preview twice");
-}
-
-#[tokio::test]
 async fn artboard_identity_is_independent_of_scene_connectivity() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -406,8 +381,10 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 	assert_invariants(&editor, "after removing the added export");
 }
 
+/// Previewing renders a different node without rewiring anything: the export keeps whatever it is
+/// connected to, so ending a preview has nothing to restore and cannot disconnect anything.
 #[tokio::test]
-async fn toggle_preview_transitions_with_a_connected_export() {
+async fn previewing_leaves_the_export_alone() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
@@ -419,31 +396,172 @@ async fn toggle_preview_transitions_with_a_connected_export() {
 	let export_node = |network_interface: &super::NodeNetworkInterface| network_interface.input_from_connector(&InputConnector::Export(0), &[]).and_then(|input| input.as_node());
 	assert_eq!(export_node(network_interface), Some(artboard));
 
-	// Previewing a node remembers the artboard as the connection to restore
+	// Previewing a node names it without touching the export
 	network_interface.toggle_preview(node, &[]);
-	assert_eq!(export_node(network_interface), Some(node));
 	assert_eq!(
 		network_interface.previewing(&[]),
 		Previewing::Yes {
-			root_node_to_restore: Some(RootNode { node_id: artboard, output_index: 0 })
+			previewed: RootNode { node_id: node, output_index: 0 }
 		}
 	);
+	assert_eq!(export_node(network_interface), Some(artboard), "Previewing must not rewire the export");
 
-	// Toggling the previewed node again restores the artboard connection
-	network_interface.toggle_preview(node, &[]);
-	assert_eq!(export_node(network_interface), Some(artboard));
-	assert_eq!(network_interface.previewing(&[]), Previewing::No);
-
-	// Toggling the restore node while previewing promotes it to the export with nothing left to restore
-	network_interface.toggle_preview(node, &[]);
+	// Previewing a different node moves the preview, still without touching the export
 	network_interface.toggle_preview(artboard, &[]);
+	assert_eq!(
+		network_interface.previewing(&[]),
+		Previewing::Yes {
+			previewed: RootNode { node_id: artboard, output_index: 0 }
+		}
+	);
 	assert_eq!(export_node(network_interface), Some(artboard));
-	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
 
-	// Toggling it once more ends the preview by disconnecting the export entirely
+	// Toggling the previewed node again ends the preview, leaving the export as it always was
 	network_interface.toggle_preview(artboard, &[]);
-	assert_eq!(export_node(network_interface), None);
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+	assert_eq!(export_node(network_interface), Some(artboard));
 
 	assert_invariants(&editor, "after cycling through the preview states");
+}
+
+/// The graph handed to the compiler renders the previewed node, which is the whole point of a preview
+/// that does not rewire the document.
+#[tokio::test]
+async fn the_evaluated_network_renders_the_previewed_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.toggle_preview(node, &[]);
+
+	let evaluated = network_interface.network_to_evaluate();
+	assert_eq!(
+		evaluated.exports.first().and_then(|export| export.as_node()),
+		Some(node),
+		"The network being evaluated should export the previewed node"
+	);
+	assert_eq!(
+		network_interface.document_network().exports.first().and_then(|export| export.as_node()),
+		Some(artboard),
+		"The document itself should be unchanged"
+	);
+}
+
+/// A document saved by a version that previewed by rewiring the export still opens: the shape it wrote
+/// is accepted rather than failing the whole document's deserialization.
+#[test]
+fn a_preview_written_by_the_rewiring_version_still_deserializes() {
+	let stored = r#"{"Yes":{"root_node_to_restore":{"node_id":7,"output_index":1}}}"#;
+
+	let previewing: Previewing = serde_json::from_str(stored).expect("a preview written by the rewiring version should deserialize");
+
+	assert_eq!(
+		previewing,
+		Previewing::LegacyRewired {
+			root_node_to_restore: Some(RootNode { node_id: NodeId(7), output_index: 1 })
+		},
+		"The stored preview should be read as one needing migration"
+	);
+}
+
+/// The shape this version writes round trips, so accepting the older one has not displaced it.
+#[test]
+fn the_current_preview_shape_round_trips() {
+	let previewing = Previewing::Yes {
+		previewed: RootNode { node_id: NodeId(7), output_index: 1 },
+	};
+
+	let stored = serde_json::to_string(&previewing).expect("previewing should serialize");
+
+	assert_eq!(serde_json::from_str::<Previewing>(&stored).expect("previewing should deserialize"), previewing);
+}
+
+/// Migrating a preview written by the rewiring version puts the export back and keeps the node the user
+/// was looking at as the preview, so the document is no longer rewired but looks the same.
+#[tokio::test]
+async fn migrating_a_rewired_preview_restores_the_export() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	// Stand in for what the rewiring version left on disk: the export moved to the previewed node, and
+	// the metadata naming the artboard as what to restore.
+	network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::Export(0), &[]);
+	let Some(mut network) = network_interface.network_mut(&[]) else {
+		panic!("the document network should resolve")
+	};
+	network.set_previewing(Previewing::LegacyRewired {
+		root_node_to_restore: Some(RootNode { node_id: artboard, output_index: 0 }),
+	});
+
+	network_interface.migrate_rewired_previews();
+
+	assert_eq!(
+		network_interface.document_network().exports.first().and_then(|export| export.as_node()),
+		Some(artboard),
+		"The export should be back to what the document recorded to restore"
+	);
+	assert_eq!(
+		network_interface.previewing(&[]),
+		Previewing::Yes {
+			previewed: RootNode { node_id: node, output_index: 0 }
+		},
+		"The node the export had been moved to should become the preview"
+	);
+	assert_eq!(
+		network_interface.network_to_evaluate().exports.first().and_then(|export| export.as_node()),
+		Some(node),
+		"What is evaluated should still be the previewed node, so the user sees what they saved"
+	);
+}
+
+/// Toggling a preview has to move the hash the executor caches against, or the graph it already sent is
+/// reused and the canvas keeps rendering the old export.
+#[tokio::test]
+async fn toggling_a_preview_changes_the_network_hash() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let before = network_interface.network_hash();
+
+	network_interface.toggle_preview(node, &[]);
+	let previewing = network_interface.network_hash();
+	assert_ne!(before, previewing, "Starting a preview should change the hash, since it changes what is evaluated");
+
+	network_interface.toggle_preview(node, &[]);
+	assert_eq!(before, network_interface.network_hash(), "Ending the preview should return the hash to what it was");
+}
+
+/// The hash has to be stable for an unchanged document, or every frame looks like a change and the graph
+/// is recompiled continuously.
+#[tokio::test]
+async fn the_network_hash_is_stable_while_previewing() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.toggle_preview(node, &[]);
+
+	let hash = network_interface.network_hash();
+	for _ in 0..8 {
+		assert_eq!(hash, network_interface.network_hash(), "Re-reading the hash of an unchanged document should give the same value");
+	}
 }

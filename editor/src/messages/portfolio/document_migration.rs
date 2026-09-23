@@ -1144,6 +1144,7 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
+	document.network_interface.migrate_rewired_previews();
 	document.network_interface.normalize_stored_types();
 
 	let network = document.network_interface.document_network().clone();
