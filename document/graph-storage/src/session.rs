@@ -306,17 +306,49 @@ impl Session {
 		self.document.replay_hot_op(hot_op)
 	}
 
+	/// Rebuild both registries by refolding canonically sorted history, then re-layering the hot tail.
+	/// Every peer sorts history the same way, so the result no longer depends on the order deltas
+	/// happened to arrive in. Costs a full replay, so callers check that it is needed first.
+	fn refold_registries(&mut self) -> Result<(), CrdtError> {
+		let replay: Vec<(RegistryDelta, TimeStamp)> = self.document.history.iter().map(|delta| (delta.kind.clone(), delta.timestamp)).collect();
+
+		self.document.retired_snapshot = Registry::default();
+		for (kind, timestamp) in replay {
+			self.document.apply_op_with(RegistryTarget::Snapshot, kind, timestamp, ApplyMode::Idempotent)?;
+		}
+
+		// A hot op the refold left unapplicable is kept rather than dropped, since a later delta or hot
+		// op can still supply the referent it names.
+		self.document.working_registry = self.document.retired_snapshot.clone();
+		let mut failure = None;
+		for hot_op in std::mem::take(&mut self.document.hot_log) {
+			if let Err(error) = self.document.replay_hot_op(hot_op.clone()) {
+				self.document.hot_log.push(hot_op);
+				failure = failure.or(Some(error));
+			}
+		}
+
+		match failure {
+			Some(error) => Err(error),
+			None => Ok(()),
+		}
+	}
+
 	/// Integrate `incoming` retired deltas (in causal order) from another peer. Moves `head` forward
 	/// without a new delta when the incoming history extends it, otherwise joins `head` and the
 	/// incoming tips with a [`RegistryDelta::Merge`].
 	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<MergeOutcome, CrdtError> {
+		let length_before = self.document.history.len();
+
 		// Each delta enters history before the next is applied, so a later delta in the batch that
 		// targets something an earlier one removed can resurrect it.
 		let mut absorbed_ids = HashSet::new();
+		let mut arrival_order = Vec::new();
 		for delta in incoming {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
+			arrival_order.push(delta.id);
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
 			// The working registry is the snapshot plus the hot tail, so a retired delta lands on both
 			// rather than cloning one over the other, which would promote unretired hot ops.
@@ -328,6 +360,14 @@ impl Session {
 			return Ok(MergeOutcome::NoOp);
 		}
 		self.document.history.canonical_sort();
+
+		// The registries were folded in arrival order, and concurrent ops do not all commute: a remove
+		// and a change to the same target resolve by whichever lands second. Refold unless the sort
+		// happened to leave the batch appended in the order it was applied.
+		let folded_in_canonical_order = self.document.history.iter().skip(length_before).map(|delta| delta.id).eq(arrival_order.iter().copied());
+		if !folded_in_canonical_order {
+			self.refold_registries()?;
+		}
 
 		let history = &self.document.history;
 		let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();

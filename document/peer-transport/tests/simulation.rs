@@ -467,7 +467,10 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 
 #[test]
 fn peers_converge_under_random_interleavings() {
-	for seed in 0..1000 {
+	// The committed corpus is the first 1000 seeds; `SIM_SEEDS` pushes the frontier further by hand.
+	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(1000);
+
+	for seed in 0..seeds {
 		let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
 		{
 			let registry = peers[0].session().retired_registry();

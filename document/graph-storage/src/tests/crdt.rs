@@ -903,3 +903,76 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
 }
+
+/// Commit a retired delta and mirror it onto the working registry, which sits at
+/// `retired_snapshot + hot tail`. `commit_op_for_test` alone only advances the snapshot zone.
+fn commit_retired(session: &mut Session, op: RegistryDelta) {
+	let before = session.history().count();
+	session.commit_op_for_test(op).expect("commit failed");
+
+	for delta in session.cloned_deltas().into_iter().skip(before) {
+		session.document.apply_op_idempotent(delta.kind, delta.timestamp).expect("mirroring onto the working registry");
+	}
+}
+
+/// Merge `deltas` into a copy of `base` in the given order and report whether node 7 survived,
+/// with the stamp on its `tint` attribute.
+fn merge_order_outcome(base: &Session, deltas: &[Delta], order: [usize; 2]) -> Option<(serde_json::Value, TimeStamp)> {
+	let mut session = base.clone();
+	let ordered: Vec<Delta> = order.iter().map(|&index| deltas[index].clone()).collect();
+	session.merge(ordered).expect("merge failed");
+
+	session
+		.retired_registry()
+		.node_instances
+		.get(&NodeId(7))
+		.and_then(|node| node.attributes.get("tint"))
+		.map(|value| (value.value.clone(), value.timestamp))
+}
+
+/// Retired deltas reach the registries in arrival order while only `history` is canonically sorted,
+/// so concurrent deltas must commute. A remove concurrent with an attribute change does not: applied
+/// change-then-remove the node is gone, while remove-then-change resurrects it from the removal's
+/// embedded snapshot and reapplies the change on top.
+#[test]
+fn a_concurrent_remove_and_attribute_change_commute() {
+	let network_id = NetworkId(5);
+	let node = Node::new(network_id, crate::Implementation::Network(network_id), 0);
+
+	// Shared base holding node 7, then the two peers diverge.
+	let mut base = Session::with_peer(PeerId(1));
+	commit_retired(
+		&mut base,
+		RegistryDelta::AddNetwork {
+			id: network_id,
+			network: Network::default(),
+		},
+	);
+	commit_retired(&mut base, RegistryDelta::AddNode { id: NodeId(7), node: node.clone() });
+
+	let mut remover = base.clone();
+	commit_retired(&mut remover, RegistryDelta::RemoveNode { id: NodeId(7), snapshot: node });
+
+	let mut changer = Session::with_peer(PeerId(2));
+	changer.merge(base.cloned_deltas()).expect("changer adopts the base");
+	commit_retired(
+		&mut changer,
+		RegistryDelta::ChangeNodeAttribute {
+			id: NodeId(7),
+			delta: crate::AttributeDelta {
+				key: "tint".to_string(),
+				value: Some(serde_json::json!(75)),
+			},
+		},
+	);
+
+	// One delta from each branch, neither an ancestor of the other.
+	let removal = remover.cloned_deltas().into_iter().last().expect("removal delta");
+	let change = changer.cloned_deltas().into_iter().last().expect("change delta");
+	let deltas = [removal, change];
+
+	let removal_first = merge_order_outcome(&base, &deltas, [0, 1]);
+	let change_first = merge_order_outcome(&base, &deltas, [1, 0]);
+
+	assert_eq!(removal_first, change_first, "the retired registry must not depend on delta arrival order");
+}
