@@ -39,7 +39,7 @@ impl Session {
 				retired_snapshot: Registry::default(),
 				history: History::new(),
 				hot_log: Vec::new(),
-				retired: RetiredMarks::default(),
+				retired: RetiredHotOps::default(),
 				head: None,
 				redo_stack: Vec::new(),
 				clock: LamportClock::new(peer),
@@ -251,7 +251,7 @@ impl Session {
 				working_registry: registry,
 				history: History::from_ordered(history),
 				hot_log: Vec::new(),
-				retired: RetiredMarks::default(),
+				retired: RetiredHotOps::default(),
 				head,
 				redo_stack,
 				clock,
@@ -303,13 +303,13 @@ impl Session {
 		self.document.mark_retired(retired.iter().copied());
 	}
 
-	/// Which hot ops history already covers, for a peer catching up. See [`RetiredMarks`].
-	pub fn retired_marks(&self) -> &RetiredMarks {
+	/// Which hot ops history already covers, for a peer catching up. See [`RetiredHotOps`].
+	pub fn retired_marks(&self) -> &RetiredHotOps {
 		&self.document.retired
 	}
 
-	/// See [`RetiredMarks::absorb`].
-	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) {
+	/// See [`RetiredHotOps::absorb`].
+	pub fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) {
 		self.document.absorb_retired(remote);
 	}
 
@@ -791,49 +791,53 @@ pub struct HotOpId {
 	pub sequence: HotSequence,
 }
 
-/// Which hot ops history already covers: `through` is each author's gap-free retired prefix, `above` the
-/// retired ops past it. Replicated, letting a peer catching up separate an op already in history from one
-/// still owed to it.
+/// Which hot ops history already covers: `retired_up_to` is each author's gap-free retired prefix, and
+/// `unretired` the retired ops past it. Replicated, letting a peer catching up separate an op already in
+/// history from one still owed to it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RetiredMarks {
-	pub through: HashMap<PeerId, HotSequence>,
-	pub above: HashSet<HotOpId>,
+pub struct RetiredHotOps {
+	pub retired_up_to: HashMap<PeerId, HotSequence>,
+	pub unretired: HashSet<HotOpId>,
 }
 
-impl RetiredMarks {
+impl RetiredHotOps {
 	/// Whether history already holds this hot op.
 	pub fn covers(&self, id: HotOpId) -> bool {
-		self.through.get(&id.peer).is_some_and(|&through| id.sequence <= through) || self.above.contains(&id)
+		self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through) || self.unretired.contains(&id)
 	}
 
 	/// Take on `remote`'s coverage as well as this one's.
 	pub fn absorb(&mut self, remote: &Self) {
-		for (&peer, &remote_through) in &remote.through {
-			let through = self.through.entry(peer).or_default();
+		for (&peer, &remote_through) in &remote.retired_up_to {
+			let through = self.retired_up_to.entry(peer).or_default();
 			*through = (*through).max(remote_through);
 		}
-		self.above.extend(remote.above.iter().copied());
+		self.unretired.extend(remote.unretired.iter().copied());
 
 		self.compact();
 	}
 
 	/// Record newly retired ops.
 	pub fn extend(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
-		self.above.extend(retired);
+		self.unretired.extend(retired);
 
 		self.compact();
 	}
 
-	/// Fold exceptions that continue their author's prefix into `through`, leaving only those past a gap.
+	/// Fold ops that continue their author's prefix into `retired_up_to`, leaving only those past a gap.
+	///
+	/// A gap that never fills holds the prefix still, so every later op from that author stays here for
+	/// the document's life. Advancing past a gap whose author can no longer supply it is what would
+	/// bound this, and needs connectivity the storage layer does not have.
 	fn compact(&mut self) {
 		let mut by_author: HashMap<PeerId, Vec<HotSequence>> = HashMap::new();
-		for id in &self.above {
+		for id in &self.unretired {
 			by_author.entry(id.peer).or_default().push(id.sequence);
 		}
 
 		for (peer, mut sequences) in by_author {
 			sequences.sort_unstable();
-			let through = self.through.entry(peer).or_default();
+			let through = self.retired_up_to.entry(peer).or_default();
 			for sequence in sequences {
 				if sequence == through.next() {
 					*through = sequence;
@@ -841,9 +845,9 @@ impl RetiredMarks {
 			}
 		}
 
-		let through = std::mem::take(&mut self.through);
-		self.above.retain(|id| through.get(&id.peer).is_none_or(|&covered| id.sequence > covered));
-		self.through = through;
+		let through = std::mem::take(&mut self.retired_up_to);
+		self.unretired.retain(|id| through.get(&id.peer).is_none_or(|&covered| id.sequence > covered));
+		self.retired_up_to = through;
 	}
 }
 

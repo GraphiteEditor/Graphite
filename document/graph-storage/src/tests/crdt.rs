@@ -986,21 +986,21 @@ fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 		sequence: crate::HotSequence(sequence),
 	};
 
-	let mut marks = crate::RetiredMarks::default();
+	let mut marks = crate::RetiredHotOps::default();
 	marks.extend([id(1), id(2)]);
-	assert_eq!(marks.through.get(&author), Some(&crate::HotSequence(2)), "a contiguous run folds straight into the prefix");
-	assert!(marks.above.is_empty());
+	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(2)), "a contiguous run folds straight into the prefix");
+	assert!(marks.unretired.is_empty());
 
 	// Sequence 3 never arrived, so 4 retires above the prefix rather than extending it.
 	marks.extend([id(4)]);
-	assert_eq!(marks.through.get(&author), Some(&crate::HotSequence(2)));
+	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(2)));
 	assert!(marks.covers(id(4)), "an op past the gap is still recognized as retired");
 	assert!(!marks.covers(id(3)), "the missing op is not claimed");
 
 	// The gap fills, so the prefix swallows both it and the exception behind it.
 	marks.extend([id(3)]);
-	assert_eq!(marks.through.get(&author), Some(&crate::HotSequence(4)));
-	assert!(marks.above.is_empty(), "the exception set empties once the prefix reaches it");
+	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(4)));
+	assert!(marks.unretired.is_empty(), "the exception set empties once the prefix reaches it");
 }
 
 /// Marks merge by union, so adopting a peer's wholesale must not lose local coverage.
@@ -1012,17 +1012,17 @@ fn absorbing_marks_keeps_both_sides_coverage() {
 		sequence: crate::HotSequence(sequence),
 	};
 
-	let mut local = crate::RetiredMarks::default();
+	let mut local = crate::RetiredHotOps::default();
 	local.extend([id(1), id(4)]);
 
-	let mut remote = crate::RetiredMarks::default();
+	let mut remote = crate::RetiredHotOps::default();
 	remote.extend([id(1), id(2), id(3), id(5)]);
 
 	local.absorb(&remote);
 
 	// The union is 1..=5 contiguous, so it all collapses into the prefix.
-	assert_eq!(local.through.get(&author), Some(&crate::HotSequence(5)));
-	assert!(local.above.is_empty());
+	assert_eq!(local.retired_up_to.get(&author), Some(&crate::HotSequence(5)));
+	assert!(local.unretired.is_empty());
 	for sequence in 1..=5 {
 		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
 	}
@@ -1144,4 +1144,50 @@ fn hot_sequence_serializes_as_a_bare_number() {
 
 	assert_eq!(encoded, "7");
 	assert_eq!(serde_json::from_str::<crate::HotSequence>("7").expect("deserialize"), crate::HotSequence(7));
+}
+
+/// Retirement drains the hot log, so a retirer that never received an author's earlier op cannot
+/// retire it. The later op still retires, landing beyond the author's prefix instead of extending it.
+#[test]
+fn retiring_over_a_gap_lands_beyond_the_prefix() {
+	let author = PeerId(2);
+	let mut host = Session::with_peer(PeerId(1));
+
+	// Only the author's second op reaches this peer; the first was lost with the link that carried it.
+	let second = HotOp {
+		op: set_document_attribute("late", 1),
+		timestamp: TimeStamp { counter: 9, peer: author },
+		sequence: crate::HotSequence(2),
+	};
+	host.apply_hot_op(second.clone()).expect("apply");
+
+	host.retire(second.timestamp).expect("retire");
+
+	let retired = host.retired_marks();
+	let prefix = retired.retired_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
+	assert_eq!(prefix, crate::HotSequence::NONE, "sequence 1 never arrived, so the prefix cannot move");
+	assert!(retired.unretired.contains(&second.id()), "the retired op has to be recorded past the gap");
+	assert!(retired.covers(second.id()), "and still count as retired");
+}
+
+/// A gap that never fills pins the prefix, so every later op from that author stays in the set for the
+/// document's life. Documents the current limit; bounding it needs retirement to advance past a gap whose
+/// author can no longer supply the missing op.
+#[test]
+fn a_permanent_gap_accumulates_every_later_op() {
+	let author = PeerId(2);
+	let id = |sequence: u64| crate::HotOpId {
+		peer: author,
+		sequence: crate::HotSequence(sequence),
+	};
+
+	let mut marks = crate::RetiredHotOps::default();
+
+	// Sequence 1 is lost for good; everything this author writes afterwards still retires.
+	for sequence in 2..=20 {
+		marks.extend([id(sequence)]);
+	}
+
+	eprintln!("prefix {:?}, exception set holds {}", marks.retired_up_to.get(&author), marks.unretired.len());
+	assert_eq!(marks.unretired.len(), 19, "every op after the gap stayed in the set");
 }

@@ -1,5 +1,5 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, RetiredMarks,
+	CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, RetiredHotOps,
 	Rev, SourceValue, TimeStamp, apply_attribute_delta, reverse_attribute_delta,
 };
 
@@ -13,8 +13,8 @@ pub struct Document {
 	pub(crate) hot_log: Vec<HotOp>,
 	/// Which hot ops history already covers, so one arriving after its own retirement is dropped instead
 	/// of re-entering the log. Retirement discards the delta's link back to its hot op, leaving this the
-	/// only record. See [`RetiredMarks`].
-	pub(crate) retired: RetiredMarks,
+	/// only record. See [`RetiredHotOps`].
+	pub(crate) retired: RetiredHotOps,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it, stamping fields at the fresh `T_retire`. Kept equal
@@ -142,7 +142,7 @@ impl Document {
 	}
 
 	/// Take on a peer's retirement marks as well as this peer's.
-	pub(crate) fn absorb_retired(&mut self, remote: &RetiredMarks) {
+	pub(crate) fn absorb_retired(&mut self, remote: &RetiredHotOps) {
 		self.retired.absorb(remote);
 
 		self.drop_retired_hot_ops();
