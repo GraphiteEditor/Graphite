@@ -63,7 +63,7 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
 ///
 /// The per-edit persist path (`commit_from_runtime`, `apply_hot_op`, `retire`) is synchronous and
 /// read-free: the manifest is cached in memory (so payload codecs need no disk read), and writes go
-/// through the container's sync write surface. Only `open` / `create` / `export` are async, since they
+/// through the container's sync write surface. Only `open` / `export` are async, since they
 /// read.
 /// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The

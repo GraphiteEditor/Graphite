@@ -328,7 +328,7 @@ async fn live_undo_shadows_storage_cursor() {
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	// Capture the loaded state as the base interaction, then make a real edit (fires CommitTransaction).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let before_edit = editor.active_document().network_interface.document_network().clone();
@@ -469,7 +469,7 @@ async fn live_undo_new_document_draw_rect() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	// Mount-time snapshot: capture the new-document graph as the base interaction.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
@@ -559,7 +559,7 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
 	editor.handle_message(paste_named_image()).await;
@@ -591,7 +591,7 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let base = editor.active_document().network_interface.document_network().clone();
 
@@ -664,7 +664,7 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
-async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
+fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
 	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into()).expect("create_in");
 	editor.active_document_mut().set_storage(gdd, Default::default());
 	HashMapResourceStorage::new()
@@ -689,7 +689,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 		})
 		.await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 
 	// First autosave: captures the loaded document. `verify_storage_round_trip` panics on drift.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);

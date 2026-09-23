@@ -54,26 +54,38 @@ fn migrate_documents() -> std::io::Result<()> {
 		Err(error) => return Err(error),
 	};
 	for entry in entries {
-		let entry = entry?;
-		let path = entry.path();
-		if !entry.file_type()?.is_file() || path.extension().and_then(|s| s.to_str()) != Some(graphite_desktop_wrapper::FILE_EXTENSION) {
-			continue;
-		}
-		let Some(id) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| u64::from_str_radix(s, 16).ok()) else {
-			continue;
+		let entry = match entry {
+			Ok(entry) => entry,
+			Err(error) => {
+				tracing::error!("Skipping an unreadable autosave entry: {error}");
+				continue;
+			}
 		};
-		let destination = root.join(format!("{id:016x}"));
-		if !destination.join("legacy.graphite").exists() && !destination.join("manifest.json").exists() {
-			std::fs::create_dir_all(&destination)?;
-			let staging = destination.join("legacy.graphite.migrating");
-			std::fs::copy(&path, &staging)?;
-			std::fs::rename(staging, destination.join("legacy.graphite"))?;
+		if let Err(error) = migrate_document(&root, &entry) {
+			tracing::error!("Autosave migration of {} failed: {error}", entry.path().display());
 		}
-		let backup = path.with_extension(format!("{}.migrated", graphite_desktop_wrapper::FILE_EXTENSION));
-		if backup.exists() {
-			return Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, format!("Migration backup already exists: {}", backup.display())));
-		}
-		std::fs::rename(path, backup)?;
 	}
 	Ok(())
+}
+
+fn migrate_document(root: &std::path::Path, entry: &std::fs::DirEntry) -> std::io::Result<()> {
+	let path = entry.path();
+	if !entry.file_type()?.is_file() || path.extension().and_then(|s| s.to_str()) != Some(graphite_desktop_wrapper::FILE_EXTENSION) {
+		return Ok(());
+	}
+	let Some(id) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| u64::from_str_radix(s, 16).ok()) else {
+		return Ok(());
+	};
+	let destination = root.join(format!("{id:016x}"));
+	if !destination.join("legacy.graphite").exists() && !destination.join("manifest.json").exists() {
+		std::fs::create_dir_all(&destination)?;
+		let staging = destination.join("legacy.graphite.migrating");
+		std::fs::copy(&path, &staging)?;
+		std::fs::rename(staging, destination.join("legacy.graphite"))?;
+	}
+	let backup = path.with_extension(format!("{}.migrated", graphite_desktop_wrapper::FILE_EXTENSION));
+	if backup.exists() {
+		return Ok(());
+	}
+	std::fs::rename(path, backup)
 }

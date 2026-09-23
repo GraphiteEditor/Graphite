@@ -110,7 +110,14 @@ pub struct OpfsStore {
 #[cfg(target_family = "wasm")]
 impl OpfsStore {
 	pub fn new(root: impl Into<String>) -> Self {
-		Self { root: root.into() }
+		Self {
+			root: root.into().trim_matches('/').to_string(),
+		}
+	}
+
+	fn document_path(&self, key: DocumentKey) -> String {
+		let name = directory_name(key);
+		if self.root.is_empty() { name } else { format!("{}/{name}", self.root) }
 	}
 }
 
@@ -127,12 +134,12 @@ impl DocumentStore for OpfsStore {
 
 	fn open(&self, key: DocumentKey) -> StoreFuture<'_, AnyContainer> {
 		Box::pin(async move {
-			let backend = crate::backends::opfs::OpfsBackend::open(&format!("{}/{}", self.root, directory_name(key))).await?;
+			let backend = crate::backends::opfs::OpfsBackend::open(&self.document_path(key)).await?;
 			Ok(AnyContainer::Opfs(backend))
 		})
 	}
 
 	fn remove(&self, key: DocumentKey) -> StoreFuture<'_, ()> {
-		Box::pin(async move { crate::backends::opfs::remove_directory(&format!("{}/{}", self.root, directory_name(key))).await })
+		Box::pin(async move { crate::backends::opfs::remove_directory(&self.document_path(key)).await })
 	}
 }

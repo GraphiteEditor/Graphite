@@ -46,6 +46,10 @@ thread_local! {
 }
 
 fn report_write_error(operation: &str, path: &str, error: &JsValue) {
+	if is_not_found(error) {
+		log::warn!("OPFS {operation} on {path} dropped: the container no longer exists");
+		return;
+	}
 	log::error!("OPFS {operation} failure on {path}:\n{error:?}");
 	let now = js_sys::Date::now();
 	// Debounce alerts to avoid spamming the user
