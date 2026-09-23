@@ -33,6 +33,13 @@ impl<T> Guarded<T> {
 	}
 }
 
+/// A network's selection undo and redo stacks, borrowed together since every operation on one is
+/// paired with one on the other.
+pub(crate) struct SelectionHistoryMut<'a> {
+	pub(crate) undo: &'a mut VecDeque<SelectedNodes>,
+	pub(crate) redo: &'a mut VecDeque<SelectedNodes>,
+}
+
 /// Addresses one node: the network it lives in, and its ID within that network.
 ///
 /// The store is the only place node identity is used for addressing, so this is the one type that
@@ -526,6 +533,41 @@ impl NodeNetworkInterface {
 			network_metadata: Guarded::new(network_metadata),
 			..Default::default()
 		}
+	}
+
+	/// The transient caches of a network.
+	///
+	/// Deliberately separate from the document write API: unloading a cache is not a change to the
+	/// document, so there is nothing to record. Handing these out through their own accessor is what
+	/// lets the document-writing ones stay closed.
+	pub(super) fn network_transient_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkTransientMetadata> {
+		Some(&mut self.network_metadata_mut(network_path)?.transient_metadata)
+	}
+
+	/// The transient caches of one node, for the same reason.
+	pub(super) fn node_transient_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeTransientMetadata> {
+		let network_metadata = self.network_metadata_mut(network_path)?;
+		Some(&mut network_metadata.persistent_metadata.node_metadata.get_mut(node_id)?.transient_metadata)
+	}
+
+	/// What the selection was, for the undo and redo of selection alone.
+	///
+	/// Stored in the persistent tree but not part of the document: which nodes a peer has selected is
+	/// that peer's, so these writes are not recorded and do not reach storage.
+	pub(super) fn selection_history_mut(&mut self, network_path: &[NodeId]) -> Option<SelectionHistoryMut<'_>> {
+		let persistent = &mut self.network_metadata_mut(network_path)?.persistent_metadata;
+		Some(SelectionHistoryMut {
+			undo: &mut persistent.selection_undo_history,
+			redo: &mut persistent.selection_redo_history,
+		})
+	}
+
+	/// Where the node graph is panned and zoomed to.
+	///
+	/// Per-peer view state like the selection: it rides in the persistent tree but is persisted to
+	/// `session.json` rather than the registry, so these writes are deliberately not recorded.
+	pub(super) fn navigation_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NavigationMetadata> {
+		Some(&mut self.network_metadata_mut(network_path)?.persistent_metadata.navigation_metadata)
 	}
 
 	/// The root of the graph tree. The only `&mut` to it in the codebase, since `Guarded` withholds one

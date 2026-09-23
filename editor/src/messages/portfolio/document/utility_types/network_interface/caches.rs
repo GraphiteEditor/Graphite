@@ -29,48 +29,48 @@ impl NodeNetworkInterface {
 		};
 		self.unload_stack_dependents(network_path);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(history) = self.selection_history_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selected_nodes");
 			return None;
 		};
 
 		// Initialize default value if selection_undo_history is empty
-		if network_metadata.persistent_metadata.selection_undo_history.is_empty() {
-			network_metadata.persistent_metadata.selection_undo_history.push_back(SelectedNodes::default());
+		if history.undo.is_empty() {
+			history.undo.push_back(SelectedNodes::default());
 		}
 
 		// Update history only if selection is non-empty/does not contain only artboards
 		if !is_selection_empty && prev_state.as_ref() != Some(&last_selection_state) {
-			network_metadata.persistent_metadata.selection_undo_history.push_back(last_selection_state);
-			network_metadata.persistent_metadata.selection_redo_history.clear();
+			history.undo.push_back(last_selection_state);
+			history.redo.clear();
 
-			if network_metadata.persistent_metadata.selection_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-				network_metadata.persistent_metadata.selection_undo_history.pop_front();
+			if history.undo.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+				history.undo.pop_front();
 			}
 		}
 
-		network_metadata.persistent_metadata.selection_undo_history.back_mut()
+		history.undo.back_mut()
 	}
 
 	pub fn selection_step_back(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(history) = self.selection_history_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selection_step_back");
 			return;
 		};
 
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_undo_history.pop_back() {
-			network_metadata.persistent_metadata.selection_redo_history.push_front(selection_state);
+		if let Some(selection_state) = history.undo.pop_back() {
+			history.redo.push_front(selection_state);
 		}
 	}
 
 	pub fn selection_step_forward(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(history) = self.selection_history_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in selection_step_forward");
 			return;
 		};
 
-		if let Some(selection_state) = network_metadata.persistent_metadata.selection_redo_history.pop_front() {
-			network_metadata.persistent_metadata.selection_undo_history.push_back(selection_state);
+		if let Some(selection_state) = history.redo.pop_front() {
+			history.undo.push_back(selection_state);
 		}
 	}
 
@@ -96,11 +96,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub(crate) fn try_get_stack_dependents(&mut self, network_path: &[NodeId]) -> Option<&HashMap<NodeId, LayerOwner>> {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in try_get_stack_dependents");
 			return None;
 		};
-		let Some(stack_dependents) = network_metadata.transient_metadata.stack_dependents.get_loaded_mut() else {
+		let Some(stack_dependents) = transient.stack_dependents.get_loaded_mut() else {
 			log::error!("could not load stack_dependents");
 			return None;
 		};
@@ -240,14 +240,14 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn unload_stack_dependents(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_stack_dependents");
 			return;
 		};
-		network_metadata.transient_metadata.stack_dependents.unload();
+		transient.stack_dependents.unload();
 
 		// Drag offsets are only meaningful relative to the stack dependents snapshot they were accumulated against, so they must not outlive it
-		network_metadata.transient_metadata.drag_offsets.borrow_mut().clear();
+		transient.drag_offsets.borrow_mut().clear();
 	}
 
 	/// The vertical distance the node has been pushed from its resting position during the current drag.
@@ -276,11 +276,11 @@ impl NodeNetworkInterface {
 	pub fn import_export_ports(&mut self, network_path: &[NodeId]) -> Option<&Ports> {
 		self.load_import_export_ports(network_path);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in export_ports");
 			return None;
 		};
-		let Some(ports) = network_metadata.transient_metadata.import_export_ports.get_loaded_mut() else {
+		let Some(ports) = transient.import_export_ports.get_loaded_mut() else {
 			log::error!("could not load import ports");
 			return None;
 		};
@@ -304,11 +304,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub(crate) fn unload_import_export_ports(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_export_ports");
 			return;
 		};
-		network_metadata.transient_metadata.import_export_ports.unload();
+		transient.import_export_ports.unload();
 
 		// Always unload all wires connected to them as well
 		let number_of_imports = self.number_of_imports(network_path);
@@ -338,11 +338,11 @@ impl NodeNetworkInterface {
 	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
 		self.load_modify_import_export(network_path);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in modify_import_export");
 			return None;
 		};
-		let Some(click_targets) = network_metadata.transient_metadata.modify_import_export.get_loaded_mut() else {
+		let Some(click_targets) = transient.modify_import_export.get_loaded_mut() else {
 			log::error!("could not load modify import export ports");
 			return None;
 		};
@@ -361,11 +361,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub(crate) fn unload_modify_import_export(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_export_ports");
 			return;
 		};
-		network_metadata.transient_metadata.modify_import_export.unload();
+		transient.modify_import_export.unload();
 	}
 
 	/// Reads the owned nodes of a layer through &self if they are loaded.
@@ -408,22 +408,22 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn unload_all_nodes_bounding_box(&mut self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in unload_all_nodes_bounding_box");
 			return;
 		};
-		network_metadata.transient_metadata.all_nodes_bounding_box.unload();
+		transient.all_nodes_bounding_box.unload();
 		self.unload_import_export_ports(network_path);
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
 		self.load_outward_wires(network_path);
 
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in outward_wires");
 			return None;
 		};
-		let Some(outward_wires) = network_metadata.transient_metadata.outward_wires.get_loaded_mut() else {
+		let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else {
 			log::error!("could not load outward wires");
 			return None;
 		};
@@ -510,10 +510,10 @@ impl NodeNetworkInterface {
 	/// avoiding a full rebuild. If the cache is not loaded, this is a no-op (it will be fully
 	/// rebuilt on the next read via `outward_wires()`).
 	pub(crate) fn update_outward_wires(&mut self, network_path: &[NodeId], input_connector: &InputConnector, old_input: &NodeInput, new_input: &NodeInput) {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(transient) = self.network_transient_mut(network_path) else {
 			return;
 		};
-		let Some(outward_wires) = network_metadata.transient_metadata.outward_wires.get_loaded_mut() else {
+		let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else {
 			return;
 		};
 
@@ -550,13 +550,13 @@ impl NodeNetworkInterface {
 	pub fn try_unload_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		let is_layer = self.is_layer(node_id, network_path);
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(transient) = self.node_transient_mut(node_id, network_path) else {
 			return;
 		};
 
 		// If the node is a layer, then the width and click targets need to be recalculated
 		if is_layer {
-			node_metadata.transient_metadata.layer_width.unload();
+			transient.layer_width.unload();
 		}
 	}
 
@@ -783,8 +783,8 @@ impl NodeNetworkInterface {
 	pub fn node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeClickTargets> {
 		self.load_node_click_targets(node_id, network_path);
 
-		let node_metadata = self.node_metadata_mut(node_id, network_path)?;
-		let Some(click_targets) = node_metadata.transient_metadata.click_targets.get_loaded_mut() else {
+		let transient = self.node_transient_mut(node_id, network_path)?;
+		let Some(click_targets) = transient.click_targets.get_loaded_mut() else {
 			log::error!("Could not load node type metadata when getting click targets");
 			return None;
 		};
@@ -846,11 +846,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn unload_node_click_targets(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(transient) = self.node_transient_mut(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in unload_node_click_target");
 			return;
 		};
-		node_metadata.transient_metadata.click_targets.unload();
+		transient.click_targets.unload();
 		self.unload_wires_for_node(node_id, network_path);
 	}
 

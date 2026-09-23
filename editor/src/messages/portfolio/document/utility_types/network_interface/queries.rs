@@ -912,18 +912,6 @@ impl NodeNetworkInterface {
 		self.document_network_mut().nested_network_mut(network_path)
 	}
 
-	pub(super) fn node_metadata_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
-			log::error!("Could not get nested network_metadata");
-			return None;
-		};
-		let Some(node_metadata) = network_metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
-			log::error!("Could not get nested node_metadata for node {node_id} in network {network_path:?}");
-			return None;
-		};
-		Some(node_metadata)
-	}
-
 	/// Mutably get the network which the encapsulating node of the currently viewed network is part of. Will always be None in the document network.
 	pub(super) fn encapsulating_network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
 		let mut encapsulating_path = network_path.to_vec();

@@ -1165,12 +1165,12 @@ impl NodeNetworkInterface {
 			node.set_stack_position(offset);
 		}
 
-		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
+		let Some(transient) = self.node_transient_mut(node_id, network_path) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
 		};
-		node_metadata.transient_metadata.layer_width.unload();
-		node_metadata.transient_metadata.owned_nodes.unload();
+		transient.layer_width.unload();
+		transient.owned_nodes.unload();
 
 		self.transaction_modified();
 		self.unload_stack_dependents(network_path);
