@@ -7,6 +7,7 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::MeshGradientSurface;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, VectorModificationType};
 use std::sync::Arc;
@@ -74,6 +75,10 @@ pub enum GraphOperationMessage {
 	GradientInterpolationSet {
 		layer: LayerNodeIdentifier,
 		gradient_interpolation: GradientInterpolation,
+	},
+	MeshGradientSet {
+		layer: LayerNodeIdentifier,
+		mesh_gradient: MeshGradientSurface,
 	},
 	OpacitySet {
 		layer: LayerNodeIdentifier,

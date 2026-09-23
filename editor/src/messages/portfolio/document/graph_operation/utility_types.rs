@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
+	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, get_upstream_mesh_gradient_value_node_id, paint_chain_target_input, replaceable_paint_chain,
 };
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -15,6 +15,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::vector::MeshGradientSurface;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -564,7 +565,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn color_value_set(&mut self, color: Color) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let target_input = paint_chain_target_input(output_layer, self.network_interface);
 		if let Some(node_id) = self.existing_proto_node_id_at(&target_input, graphene_std::math_nodes::color_value::IDENTIFIER, false) {
 			let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::color_value::ColorInput);
 			self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
@@ -583,6 +584,77 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Color(color), false), false);
 	}
 
+	/// Creates or updates the Mesh Gradient Value node feeding the layer.
+	pub fn mesh_gradient_set(&mut self, mesh_gradient: MeshGradientSurface) {
+		let Some(output_layer) = self.get_output_layer() else { return };
+
+		let value_node_id = match get_upstream_mesh_gradient_value_node_id(output_layer, self.network_interface) {
+			Some(id) => id,
+			None => {
+				// Create a new value node and connect to the appropriate target
+				let Some(value_node_definition) = resolve_proto_node_type(graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::IDENTIFIER) else {
+					return;
+				};
+
+				enum Target {
+					Layer(ReplaceablePaintChain),
+					Fill(InputConnector),
+				}
+
+				let connection_target = {
+					let target = paint_chain_target_input(output_layer, self.network_interface);
+					if target == InputConnector::layer_secondary_input(output_layer.to_node()) {
+						// The 'Mesh Gradient Value' node discards its primary input, so only a blank 'Merge' layer may start a chain
+						// with one, which any whole-expanse paint the other tool left behind is cleared off to become
+						match replaceable_paint_chain(output_layer, self.network_interface) {
+							Some(paint_chain) => Target::Layer(paint_chain),
+							None => {
+								let Some(new_fill_id) = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true) else {
+									return;
+								};
+								self.restore_default_stroke_order();
+								let fill_input_connector = InputConnector::node(new_fill_id, graphene_std::vector::fill::PaintInput);
+								Target::Fill(fill_input_connector)
+							}
+						}
+					} else {
+						Target::Fill(target)
+					}
+				};
+
+				let value_node_id = NodeId::new();
+				self.network_interface.insert_node(value_node_id, value_node_definition.default_node_template(), &[]);
+
+				match connection_target {
+					Target::Layer(paint_chain) => {
+						self.clear_paint_chain(&paint_chain);
+						self.start_paint_chain(&value_node_id, output_layer, paint_chain.attachment_input);
+					}
+					Target::Fill(target) => {
+						if let Some(target_node_id) = target.node_id() {
+							self.connect_and_position_node_upstream(value_node_id, target_node_id, target);
+						}
+					}
+				};
+
+				value_node_id
+			}
+		};
+
+		let input_connector = InputConnector::node(value_node_id, graphene_std::gradient_nodes::mesh_gradient::mesh_gradient_value::MeshGradientInput);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::MeshGradient(mesh_gradient), false), false);
+	}
+
+	fn connect_and_position_node_upstream(&mut self, node_id: NodeId, target_node_id: NodeId, input_connector: InputConnector) {
+		self.network_interface.set_input(&input_connector, NodeInput::node(node_id, 0), &[]);
+
+		if let Some(target_position) = self.network_interface.position(&target_node_id, &[]) {
+			let node_position = self.network_interface.position(&node_id, &[]).unwrap_or_default();
+			let desired_position = target_position + IVec2::new(-crate::consts::NODE_CHAIN_WIDTH, 2);
+			self.network_interface.shift_absolute_node_position(&node_id, desired_position - node_position, &[]);
+		}
+	}
+
 	/// Write the gradient stops to the 'Gradient Value' node feeding the layer.
 	pub fn gradient_stops_set(&mut self, stops: Gradient) {
 		let Some(output_layer) = self.get_output_layer() else { return };
@@ -590,7 +662,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let gradient_value_id = match get_upstream_gradient_value_node_id(output_layer, self.network_interface) {
 			Some(id) => id,
 			None => {
-				let target = gradient_chain_target_input(output_layer, self.network_interface);
+				let target = paint_chain_target_input(output_layer, self.network_interface);
 				let starts_layer_chain = target == InputConnector::layer_secondary_input(output_layer.to_node());
 
 				// The 'Gradient Value' node discards its primary input, so only a blank 'Merge' layer may start a chain
@@ -649,7 +721,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn gradient_positions_set(&mut self, positions: Vec<f64>) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let target_input = paint_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::gradient_positions::IDENTIFIER;
 		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, false) else {
 			return;
@@ -673,7 +745,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn gradient_midpoints_set(&mut self, midpoints: Vec<f64>) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let target_input = paint_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::gradient_midpoints::IDENTIFIER;
 		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, false) else {
 			return;
@@ -736,7 +808,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 		let last_transform_value = transform * prior_combined.inverse();
 
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let target_input = paint_chain_target_input(output_layer, self.network_interface);
 		let transform_node_id = if let Some(id) = last_transform_node_id {
 			id
 		} else {
@@ -760,7 +832,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn gradient_form_set(&mut self, gradient_form: GradientForm) {
 		let Some(output_layer) = self.get_output_layer() else { return };
 
-		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
+		let target_input = paint_chain_target_input(output_layer, self.network_interface);
 		let identifier = graphene_std::math_nodes::gradient_form::IDENTIFIER;
 		let create_if_nonexistent = gradient_form != GradientForm::default();
 		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
