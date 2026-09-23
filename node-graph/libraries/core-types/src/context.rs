@@ -58,7 +58,7 @@ pub trait ExtractPaintRenderParams {
 	#[track_caller]
 	fn paint_render_params(&self) -> &PaintRenderParams {
 		self.try_paint_render_params().unwrap_or_else(|| {
-			log::error!("Context did not have paint render params, called from: {}", Location::caller());
+			log::warn!("Context did not have paint render params, called from: {}", Location::caller());
 			&PaintRenderParams::DEFAULT
 		})
 	}
