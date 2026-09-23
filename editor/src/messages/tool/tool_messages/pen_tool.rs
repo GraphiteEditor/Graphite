@@ -1935,48 +1935,35 @@ impl Fsm for PenToolFsmState {
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
-				// Early return if the buffer was started and this message is being run again after the buffer (so that place_anchor updates the state with the newly merged vector)
-				// if tool_data.buffering_merged_vector {
-				// 	if let Some(layer) = layer {
-				// 		tool_data.buffering_merged_vector = false;
-				// 		tool_data.handle_mode = HandleMode::ColinearLocked;
-				// 		tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
-				// 		tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
-				// 	}
-				// 	tool_data.buffering_merged_vector = false;
-				// 	PenToolFsmState::DraggingHandle(tool_data.handle_mode)
-				// } else {
 				let mut is_merging = false;
-				{
-					// Each segment placement is its own history step, spanning from this click through the release that finalizes it
-					responses.add(DocumentMessage::StartTransaction);
+				// Each segment placement is its own history step, spanning from this click through the release that finalizes it
+				responses.add(DocumentMessage::StartTransaction);
 
-					// Merge two layers if the point is connected to the end point of another path
+				// Merge two layers if the point is connected to the end point of another path
 
-					// This might not be the correct solution to artboards being included as the other layer,
-					// which occurs due to the `compute_modified_vector` call in `should_extend` using the click targets for a layer instead of vector.
-					let layers = LayerNodeIdentifier::ROOT_PARENT
-						.descendants(document.metadata())
-						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
-					if let Some((other_layer, _, _)) = should_extend(document, viewport_vec, crate::consts::SNAP_POINT_TOLERANCE, layers) {
-						let selected_nodes = document.network_interface.selected_nodes();
-						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-						if let Some(current_layer) = selected_layers
-							.next()
-							.filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer)
-							.or(tool_data.current_layer.filter(|layer| *layer != other_layer))
-						{
-							merge_layers(document, current_layer, other_layer, responses);
-							is_merging = true;
-						}
+				// This might not be the correct solution to artboards being included as the other layer,
+				// which occurs due to the `compute_modified_vector` call in `should_extend` using the click targets for a layer instead of vector.
+				let layers = LayerNodeIdentifier::ROOT_PARENT
+					.descendants(document.metadata())
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+				if let Some((other_layer, _, _)) = should_extend(document, viewport_vec, crate::consts::SNAP_POINT_TOLERANCE, layers) {
+					let selected_nodes = document.network_interface.selected_nodes();
+					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+					if let Some(current_layer) = selected_layers
+						.next()
+						.filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer)
+						.or(tool_data.current_layer.filter(|layer| *layer != other_layer))
+					{
+						merge_layers(document, current_layer, other_layer, responses);
+						is_merging = true;
 					}
-
-					if !is_merging {
-						responses.add(PenToolMessage::RecalculateLatestPointsPosition);
-					}
-
-					PenToolFsmState::PlacingAnchor
 				}
+
+				if !is_merging {
+					responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+				}
+
+				PenToolFsmState::PlacingAnchor
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::RemovePreviousHandle) => {
 				if let Some(last_point) = tool_data.latest_point_mut() {
