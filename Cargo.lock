@@ -6610,7 +6610,6 @@ dependencies = [
  "dyn-any",
  "fixedbitset",
  "glam",
- "graphene-cache",
  "graphene-hash",
  "kurbo",
  "log",

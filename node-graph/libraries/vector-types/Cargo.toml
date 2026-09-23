@@ -17,7 +17,6 @@ wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 # Local dependencies
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
-graphene-cache = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies
