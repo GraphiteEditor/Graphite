@@ -362,10 +362,7 @@ impl Document {
 		if self.registry_ref(target).node_instances.contains_key(&node_id) {
 			return Ok(());
 		}
-		let removal = self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
-			RegistryDelta::RemoveNode { id, snapshot } if *id == node_id => Some((RegistryDelta::AddNode { id: *id, node: snapshot.clone() }, hot_op.timestamp)),
-			_ => None,
-		});
+		let removal = self.hot_log_node_removal(target, node_id);
 		match removal {
 			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
 			None => self.restore_node_from_history(target, node_id),
@@ -374,14 +371,36 @@ impl Document {
 
 	/// A concurrent edit to a removed network revives it. The removal is searched for in the hot log
 	/// first, where a broadcast removal sits until the host retires it, then in retired history.
+	/// The most recent hot removal of a network, for reviving it in the working zone. Returns `None`
+	/// for the snapshot, which must stay a function of history alone.
+	fn hot_log_removal(&self, target: RegistryTarget, network_id: NetworkId) -> Option<(RegistryDelta, TimeStamp)> {
+		if target != RegistryTarget::Working {
+			return None;
+		}
+		self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
+			RegistryDelta::RemoveNetwork { id, snapshot } if *id == network_id => Some((RegistryDelta::AddNetwork { id: *id, network: snapshot.clone() }, hot_op.timestamp)),
+			_ => None,
+		})
+	}
+
+	/// The node equivalent of [`hot_log_removal`](Self::hot_log_removal).
+	fn hot_log_node_removal(&self, target: RegistryTarget, node_id: NodeId) -> Option<(RegistryDelta, TimeStamp)> {
+		if target != RegistryTarget::Working {
+			return None;
+		}
+		self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
+			RegistryDelta::RemoveNode { id, snapshot } if *id == node_id => Some((RegistryDelta::AddNode { id: *id, node: snapshot.clone() }, hot_op.timestamp)),
+			_ => None,
+		})
+	}
+
 	fn ensure_network_exists(&mut self, target: RegistryTarget, network_id: NetworkId) -> Result<(), CrdtError> {
 		if self.registry_ref(target).networks.contains_key(&network_id) {
 			return Ok(());
 		}
-		let removal = self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
-			RegistryDelta::RemoveNetwork { id, snapshot } if *id == network_id => Some((RegistryDelta::AddNetwork { id: *id, network: snapshot.clone() }, hot_op.timestamp)),
-			_ => None,
-		});
+		// The hot log is this peer's own, so reviving the snapshot zone from it would make the retired
+		// state depend on which hot ops happened to be here. Only history is shared.
+		let removal = self.hot_log_removal(target, network_id);
 		match removal {
 			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
 			None => self.restore_network_from_history(target, network_id),
