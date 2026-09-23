@@ -565,3 +565,39 @@ async fn the_network_hash_is_stable_while_previewing() {
 		assert_eq!(hash, network_interface.network_hash(), "Re-reading the hash of an unchanged document should give the same value");
 	}
 }
+
+/// A preview restored from the session must name a node the document still has, since the session
+/// outlives the document it describes and a preview of a removed node would redirect the export to
+/// nothing.
+#[tokio::test]
+async fn a_session_preview_of_a_removed_node_is_dropped() {
+	use super::storage_metadata::{apply_network_view_settings, collect_network_view_settings};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.toggle_preview(node, &[]);
+
+	let network_ids = HashMap::from([(Vec::new(), document_graph_storage::NetworkId(0))]);
+	let stored = collect_network_view_settings(network_interface, &network_ids);
+
+	// The document moves on without the previewed node, as it would if another peer had removed it
+	network_interface.delete_nodes(vec![node], false, &[]);
+	apply_network_view_settings(network_interface, &network_ids, &stored);
+
+	assert_eq!(
+		network_interface.previewing(&[]),
+		Previewing::No,
+		"A preview naming a node the document no longer has should be dropped rather than restored"
+	);
+	assert_eq!(
+		network_interface.network_to_evaluate().exports.first().and_then(|export| export.as_node()),
+		Some(artboard),
+		"The evaluated network should fall back to the document's own export"
+	);
+}
