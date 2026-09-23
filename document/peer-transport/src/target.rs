@@ -21,7 +21,9 @@ pub trait SyncTarget {
 	/// Replace all state with the given retired state.
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;
 	/// Must be idempotent on structural ops: a buffered op may already be reflected by the sync.
-	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError>;
+	/// Returns the ops it could not apply, whose referents have not arrived yet; the caller retries
+	/// them as later ops fill the gaps.
+	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError>;
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError>;
 	/// Make everything applied since the last flush durable. Called once per [`Replica::poll`](crate::Replica::poll),
 	/// so a target that rewrites whole files can do it once for a batch rather than once per packet.
@@ -78,19 +80,18 @@ impl SyncTarget for Session {
 		Ok(())
 	}
 
-	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
-		// Every op gets its turn even if one fails. The broadcast that carried them is consumed by the
-		// time this runs, so stopping at the first failure would lose the rest of the batch outright.
-		let mut first_error = None;
+	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError> {
+		// Every op gets its turn even if one fails, since the broadcast that carried them is consumed by
+		// the time this runs. A failure usually means the entity the op names has not arrived here yet,
+		// so it is handed back to be retried rather than dropped.
+		let mut deferred = Vec::new();
 		for hot_op in ops {
-			if let Err(error) = self.replay_hot_op(hot_op)
-				&& first_error.is_none()
-			{
-				first_error = Some(error);
+			if self.replay_hot_op(hot_op.clone()).is_err() {
+				deferred.push(hot_op);
 			}
 		}
 
-		first_error.map_or(Ok(()), |error| Err(error.into()))
+		Ok(deferred)
 	}
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {

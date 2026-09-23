@@ -95,12 +95,19 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
-	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
+	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError> {
+		// An op naming an entity that has not arrived here yet is handed back for a later retry, so only
+		// what actually applied reaches the hot frame log.
+		let mut deferred = Vec::new();
 		for hot_op in ops {
-			self.session.replay_hot_op(hot_op.clone())?;
+			if self.session.replay_hot_op(hot_op.clone()).is_err() {
+				deferred.push(hot_op);
+				continue;
+			}
 			self.append_hot_frame(&hot_op)?;
 		}
-		Ok(())
+
+		Ok(deferred)
 	}
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {

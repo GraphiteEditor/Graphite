@@ -72,7 +72,7 @@ impl SyncTarget for SimTarget {
 		SyncTarget::load(&mut self.session, registry, history, head)
 	}
 
-	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
+	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError> {
 		SyncTarget::apply_remote_hot_ops(&mut self.session, ops)
 	}
 
@@ -457,6 +457,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 	// a broadcast held forever behind a dependency that will never arrive changes nothing observable.
 	for (index, peer) in present() {
 		assert_eq!(peer.replica.held_broadcasts(), 0, "seed {seed}: peer {index} still holds undelivered broadcasts");
+		assert_eq!(peer.replica.deferred_ops(), 0, "seed {seed}: peer {index} still holds ops waiting on a referent");
 		assert_eq!(peer.target.durable_history, peer.target.history_revs(), "seed {seed}: peer {index} has unflushed history");
 
 		let unserved: Vec<_> = SyncTarget::missing_resources(&peer.target).into_iter().filter(|hash| servable.contains(hash)).collect();

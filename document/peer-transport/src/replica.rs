@@ -73,6 +73,10 @@ pub struct Replica {
 	seq: u64,
 	delivered: HashMap<PeerId, PeerProgress>,
 	held: Vec<(PeerId, Broadcast)>,
+	/// Hot ops whose referents had not arrived when they did, retried as later ops fill the gaps.
+	/// A missing entity is not distinguishable from one that was concurrently removed, so the op is
+	/// kept rather than applied against state it does not fit.
+	deferred: Vec<HotOp>,
 	/// Broadcasts that arrived before their sender's hello, parked rather than dropped so a reordering
 	/// on a fresh link cannot lose ops.
 	ungreeted: HashMap<TransportPeerId, Vec<Broadcast>>,
@@ -105,6 +109,7 @@ impl Replica {
 			seq: 0,
 			delivered: HashMap::new(),
 			held: Vec::new(),
+			deferred: Vec::new(),
 			ungreeted: HashMap::new(),
 			requested_resources: HashSet::new(),
 			owed_resources: HashMap::new(),
@@ -123,6 +128,11 @@ impl Replica {
 	/// Broadcasts waiting on causal dependencies. Non-zero in an idle room means a stuck delivery.
 	pub fn held_broadcasts(&self) -> usize {
 		self.held.len()
+	}
+
+	/// Ops held back for a referent that had not arrived. Non-zero in an idle room means one never did.
+	pub fn deferred_ops(&self) -> usize {
+		self.deferred.len()
 	}
 
 	/// Resources asked for whose bytes have not come back yet.
@@ -231,6 +241,8 @@ impl Replica {
 			}
 		}
 
+		self.retry_deferred(target);
+
 		if let Err(error) = target.flush() {
 			log::error!("Sync error: {error}");
 		}
@@ -256,6 +268,20 @@ impl Replica {
 			.collect();
 
 		self.broadcast_hot_ops(&unretired)
+	}
+
+	/// Retry ops held back for a missing referent. A later op can supply the entity an earlier one
+	/// named, so this runs once per poll rather than only where the op arrived.
+	fn retry_deferred(&mut self, target: &mut dyn SyncTarget) {
+		if self.deferred.is_empty() {
+			return;
+		}
+
+		let pending = std::mem::take(&mut self.deferred);
+		match target.apply_remote_hot_ops(pending) {
+			Ok(deferred) => self.deferred = deferred,
+			Err(error) => log::error!("Retrying deferred hot ops: {error}"),
+		}
 	}
 
 	/// Ask the room for referenced bytes nobody here has yet. Runs after every batch of packets rather
@@ -370,7 +396,7 @@ impl Replica {
 					target.merge_remote(Vec::new(), &stale)?;
 				}
 
-				target.apply_remote_hot_ops(sync.hot_log)?;
+				self.deferred.extend(target.apply_remote_hot_ops(sync.hot_log)?);
 				self.resources_stale = true;
 
 				// Broadcasts the host had delivered before answering are already reflected in the snapshot.
@@ -477,6 +503,11 @@ impl Replica {
 			pending.retain(|(sender, _)| *sender != peer);
 		}
 		self.held.retain(|(sender, _)| *sender != peer);
+
+		// Its ops waiting on a referent have nobody left to supply one, so they stop being held open.
+		// Retirement drains the rest: an op the watermark covers replays as a no-op and leaves the queue.
+		self.deferred.retain(|hot_op| hot_op.timestamp.peer != peer);
+
 		self.deliver_held(target, events)?;
 		self.reannounce_own_hot_ops(&*target)?;
 
@@ -509,7 +540,7 @@ impl Replica {
 			// Applying is best effort: the ops that did land still have to be accounted for, so a failure
 			// is reported rather than abandoning the bookkeeping and the rest of the queue.
 			let applied = match broadcast.body {
-				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops),
+				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops).map(|deferred| self.deferred.extend(deferred)),
 				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires),
 			};
 			if let Err(error) = applied {
