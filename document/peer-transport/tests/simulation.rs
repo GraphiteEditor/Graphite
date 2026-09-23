@@ -823,3 +823,43 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	assert!(retired.retired_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
 	assert_converged(0, &peers);
 }
+
+/// A seed has to fix the run. Hashed collections hand out a different iteration order per instance, so
+/// anything that lets that order pick an edit target or reach the wire makes a seed unreproducible, and
+/// then every seed named in a bug report means nothing. Running the same seeds twice in one process is
+/// enough to catch it, since the two runs' maps are keyed differently.
+#[test]
+fn a_seed_fixes_the_run() {
+	let run = |seeds: u64| {
+		(0..seeds)
+			.map(|seed| {
+				let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
+				peers
+			})
+			.collect::<Vec<_>>()
+	};
+
+	let (first, second) = (run(100), run(100));
+
+	for (seed, (before, after)) in first.iter().zip(&second).enumerate() {
+		assert_eq!(before.len(), after.len(), "seed {seed}: peer count differs between runs");
+
+		for (index, (before, after)) in before.iter().zip(after).enumerate() {
+			assert_eq!(before.departed, after.departed, "seed {seed}: peer {index} departed in only one run");
+			if before.departed {
+				continue;
+			}
+
+			let revs = |peer: &Peer| peer.session().history().map(|delta| delta.id).collect::<Vec<_>>();
+			assert_eq!(revs(before), revs(after), "seed {seed}: peer {index} built a different history");
+			assert!(
+				before.session().retired_registry().value_equal(after.session().retired_registry()),
+				"seed {seed}: peer {index} reached a different snapshot"
+			);
+			assert!(
+				before.session().registry().value_equal(after.session().registry()),
+				"seed {seed}: peer {index} reached a different working registry"
+			);
+		}
+	}
+}
