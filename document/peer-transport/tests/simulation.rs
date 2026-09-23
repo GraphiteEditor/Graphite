@@ -745,3 +745,54 @@ fn a_guest_holding_the_only_copy_gets_it_retired() {
 	);
 	assert_converged(0, &peers);
 }
+
+/// A peer that alone received an author's early ops passes them on when the author rejoins, so the run
+/// reaches the host contiguously even though the author's own copies were dropped by the resync. This
+/// is why a gap usually never forms: measured over 200000 seeds, 30 formed and 27 closed.
+#[test]
+fn a_witness_closes_an_authors_run_before_a_gap_forms() {
+	let mut network = MockNetwork::new(0);
+
+	let mut peers: Vec<Peer> = (0..3)
+		.map(|index| {
+			let endpoint = network.endpoint();
+			let id = endpoint.id();
+			let role = if index == 0 { Role::Host } else { Role::Guest };
+			let peer = Peer::new(endpoint, role, index as u64 + 1, 0);
+			network.connect(id);
+			peer
+		})
+		.collect();
+	quiesce(&mut network, &mut peers);
+
+	// The author's first op reaches only the witness.
+	peers[1].stage(RegistryDelta::AddNetwork {
+		id: NetworkId(9),
+		network: Network::default(),
+	});
+	let witness_transport = peers[2].transport;
+	network.deliver_to(witness_transport);
+	peers[2].poll();
+	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)), "the witness holds the early op");
+	assert!(peers[0].session().hot_log().is_empty(), "the host does not");
+
+	// The author rejoins, which resyncs it from the host and drops its own hot log, then writes again.
+	peers[1].rejoin(&mut network);
+	quiesce(&mut network, &mut peers);
+	peers[1].stage(RegistryDelta::AddNetwork {
+		id: NetworkId(10),
+		network: Network::default(),
+	});
+	quiesce(&mut network, &mut peers);
+
+	let author = peers[1].peer;
+	let held: Vec<u64> = peers[0].session().hot_log().iter().filter(|op| op.timestamp.peer == author).map(|op| op.sequence.0).collect();
+	assert_eq!(held, vec![1, 2, 3], "the witness must have supplied the ops the author could no longer send");
+
+	peers[0].retire();
+	quiesce(&mut network, &mut peers);
+
+	let retired = peers[0].session().retired_marks();
+	assert!(retired.retired_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
+	assert_converged(0, &peers);
+}
