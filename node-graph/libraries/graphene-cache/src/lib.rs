@@ -8,35 +8,35 @@ use std::sync::{Arc, Mutex};
 
 /// A small keyed cache backed by a linear `Vec`.
 /// It is not intended for many entries, so its `CachePolicy` must evict entries to keep the cache bounded.
-pub struct Cache<K, M: CachePolicy<K>> {
-	inner: Arc<Mutex<CacheInner<K, M>>>,
+pub struct Cache<Key, Policy: CachePolicy<Key>> {
+	inner: Arc<Mutex<CacheInner<Key, Policy>>>,
 	nonce: u64, // Avoid deduplication of cache entries across different brush nodes.
 }
 
-impl<K: Copy + PartialEq, M: CachePolicy<K>> Cache<K, M> {
+impl<K: Copy + PartialEq, Policy: CachePolicy<K>> Cache<K, Policy> {
 	/// Removes and returns the value stored for `key`.
 	/// Returns `None` if the key is absent or the stored value has a different type.
 	/// A type mismatch leaves the original value cached.
-	pub fn take<S: std::any::Any + Send + Sync>(&self, key: &K) -> Option<S> {
+	pub fn take<V: std::any::Any + Send + Sync>(&self, key: &K) -> Option<V> {
 		let mut guard = self.inner.lock().unwrap();
-		guard.take::<S>(key)
+		guard.take::<V>(key)
 	}
 
 	/// Clones the value stored for `key` without removing it.
 	/// Returns `None` if the key is absent or the stored value has a different type.
 	/// Cloning occurs while the cache lock is held.
-	pub fn get_cloned<S: std::any::Any + Send + Sync + Clone>(&self, key: &K) -> Option<S> {
+	pub fn get_cloned<V: std::any::Any + Send + Sync + Clone>(&self, key: &K) -> Option<V> {
 		let mut guard = self.inner.lock().unwrap();
 		guard.get_cloned(key)
 	}
 
 	/// Stores a value for `key`, replacing any existing value with the same key, regardless of its concrete type.
-	pub fn store<S: std::any::Any + Send + Sync>(&self, key: &K, value: S) {
+	pub fn store<V: std::any::Any + Send + Sync>(&self, key: &K, value: V) {
 		self.inner.lock().unwrap().store(key, Box::new(value));
 	}
 }
 
-impl<K, M: CachePolicy<K>> Default for Cache<K, M> {
+impl<K, Policy: CachePolicy<K>> Default for Cache<K, Policy> {
 	fn default() -> Self {
 		Self {
 			inner: Default::default(),
@@ -45,7 +45,7 @@ impl<K, M: CachePolicy<K>> Default for Cache<K, M> {
 	}
 }
 
-impl<K, M: CachePolicy<K>> Clone for Cache<K, M> {
+impl<K, Policy: CachePolicy<K>> Clone for Cache<K, Policy> {
 	fn clone(&self) -> Self {
 		Self {
 			inner: self.inner.clone(),
@@ -54,37 +54,37 @@ impl<K, M: CachePolicy<K>> Clone for Cache<K, M> {
 	}
 }
 
-impl<K, M: CachePolicy<K>> PartialEq for Cache<K, M> {
+impl<K, Policy: CachePolicy<K>> PartialEq for Cache<K, Policy> {
 	fn eq(&self, _: &Self) -> bool {
 		true
 	}
 }
 
-impl<K, M: CachePolicy<K>> std::fmt::Debug for Cache<K, M> {
+impl<K, Policy: CachePolicy<K>> std::fmt::Debug for Cache<K, Policy> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Cache").field("entries", &self.inner.lock().unwrap().entries.len()).finish()
 	}
 }
 
-impl<K, M: CachePolicy<K>> core_types::CacheHash for Cache<K, M> {
+impl<K, Policy: CachePolicy<K>> core_types::CacheHash for Cache<K, Policy> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		state.write_u64(self.nonce);
 	}
 }
 
-unsafe impl<K: 'static, M: CachePolicy<K> + 'static> dyn_any::StaticType for Cache<K, M> {
-	type Static = Cache<K, M>;
+unsafe impl<K: 'static, Policy: CachePolicy<K> + 'static> dyn_any::StaticType for Cache<K, Policy> {
+	type Static = Cache<K, Policy>;
 }
 
 #[cfg(feature = "serde")]
-impl<K, M: CachePolicy<K>> serde::Serialize for Cache<K, M> {
+impl<K, Policy: CachePolicy<K>> serde::Serialize for Cache<K, Policy> {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		serializer.serialize_unit()
 	}
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, M: CachePolicy<K>> serde::Deserialize<'de> for Cache<K, M> {
+impl<'de, K, Policy: CachePolicy<K>> serde::Deserialize<'de> for Cache<K, Policy> {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		serde::de::IgnoredAny::deserialize(deserializer)?;
 		Ok(Self::default())
@@ -112,8 +112,8 @@ pub trait CachePolicy<K>: Sized {
 	fn on_store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState);
 }
 
-pub struct Entry<K, M: CachePolicy<K>> {
-	entry_state: M::EntryState,
+pub struct Entry<K, Policy: CachePolicy<K>> {
+	entry_state: Policy::EntryState,
 	key: K,
 	value: BoxedValue,
 }
@@ -220,12 +220,12 @@ impl<K, const CAPACITY: usize> CachePolicy<K> for Lru<CAPACITY> {
 
 type BoxedValue = Box<dyn std::any::Any + Send + Sync>;
 
-struct CacheInner<K, E: CachePolicy<K>> {
-	policy_state: E::PolicyState,
-	entries: Vec<Entry<K, E>>,
+struct CacheInner<K, Policy: CachePolicy<K>> {
+	policy_state: Policy::PolicyState,
+	entries: Vec<Entry<K, Policy>>,
 }
 
-impl<K, M: CachePolicy<K>> Default for CacheInner<K, M> {
+impl<K, Policy: CachePolicy<K>> Default for CacheInner<K, Policy> {
 	fn default() -> Self {
 		Self {
 			policy_state: Default::default(),
@@ -234,54 +234,54 @@ impl<K, M: CachePolicy<K>> Default for CacheInner<K, M> {
 	}
 }
 
-impl<K: Copy + PartialEq, M: CachePolicy<K>> CacheInner<K, M> {
-	fn take<S: 'static>(&mut self, key: &K) -> Option<S> {
-		M::touch(key, &mut self.entries, &mut self.policy_state);
+impl<K: Copy + PartialEq, Policy: CachePolicy<K>> CacheInner<K, Policy> {
+	fn take<V: 'static>(&mut self, key: &K) -> Option<V> {
+		Policy::touch(key, &mut self.entries, &mut self.policy_state);
 
 		let index = self.entries.iter().position(|entry| entry.key == *key);
 		let hit = index.map(|index| {
 			let entry = self.entries.get(index).unwrap();
-			<dyn std::any::Any>::downcast_ref::<S>(entry.value.as_ref())?;
+			<dyn std::any::Any>::downcast_ref::<V>(entry.value.as_ref())?;
 
 			let mut entry = self.entries.remove(index);
 			entry.value.downcast().ok().map(|value| {
-				M::on_hit(&mut entry.entry_state, &mut self.policy_state);
+				Policy::on_hit(&mut entry.entry_state, &mut self.policy_state);
 				*value
 			})
 		});
 
-		M::retire(&mut self.entries, &mut self.policy_state);
+		Policy::retire(&mut self.entries, &mut self.policy_state);
 		hit.flatten()
 	}
 
-	fn get_cloned<S: Clone + 'static>(&mut self, key: &K) -> Option<S> {
-		M::touch(key, &mut self.entries, &mut self.policy_state);
+	fn get_cloned<V: Clone + 'static>(&mut self, key: &K) -> Option<V> {
+		Policy::touch(key, &mut self.entries, &mut self.policy_state);
 
 		let index = self.entries.iter().position(|entry| entry.key == *key);
 		let hit = index.map(|index| {
 			let entry = self.entries.get_mut(index).unwrap();
-			let value = <dyn std::any::Any>::downcast_ref::<S>(entry.value.as_ref())?;
-			M::on_hit(&mut entry.entry_state, &mut self.policy_state);
+			let value = <dyn std::any::Any>::downcast_ref::<V>(entry.value.as_ref())?;
+			Policy::on_hit(&mut entry.entry_state, &mut self.policy_state);
 			Some(value.clone())
 		});
 
-		M::retire(&mut self.entries, &mut self.policy_state);
+		Policy::retire(&mut self.entries, &mut self.policy_state);
 		hit.flatten()
 	}
 
 	fn store(&mut self, key: &K, value: BoxedValue) {
-		M::touch(key, &mut self.entries, &mut self.policy_state);
+		Policy::touch(key, &mut self.entries, &mut self.policy_state);
 
 		self.entries.retain(|entry| entry.key != *key);
 		let mut entry = Entry {
 			key: *key,
 			value,
-			entry_state: M::EntryState::default(),
+			entry_state: Policy::EntryState::default(),
 		};
 
-		M::on_store(&mut entry.entry_state, &mut self.policy_state);
+		Policy::on_store(&mut entry.entry_state, &mut self.policy_state);
 		self.entries.push(entry);
-		M::retire(&mut self.entries, &mut self.policy_state);
+		Policy::retire(&mut self.entries, &mut self.policy_state);
 	}
 }
 
@@ -323,7 +323,7 @@ mod tests {
 		}
 	}
 
-	fn live<K, M: CachePolicy<K>>(cache: &Cache<K, M>) -> usize {
+	fn live<K, Policy: CachePolicy<K>>(cache: &Cache<K, Policy>) -> usize {
 		cache.inner.lock().unwrap().entries.len()
 	}
 
