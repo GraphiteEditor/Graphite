@@ -177,37 +177,31 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let value_sources: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField { value_source, .. }) => match value_source {
-				ParsedValueSource::Default(data) => {
-					// Check if the data is a string literal by parsing the token stream
-					let data_str = data.to_string();
-					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
-						quote!(RegistryValueSource::Default(#data))
-					} else {
-						quote!(RegistryValueSource::Default(stringify!(#data)))
-					}
+		.map(|field| match field.ty.value_source() {
+			ParsedValueSource::Default(data) => {
+				// Check if the data is a string literal by parsing the token stream
+				let data_str = data.to_string();
+				if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+					quote!(RegistryValueSource::Default(#data))
+				} else {
+					quote!(RegistryValueSource::Default(stringify!(#data)))
 				}
-				ParsedValueSource::Scope(data) => {
-					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
-						quote!(RegistryValueSource::Scope(#data))
-					} else {
-						quote!(RegistryValueSource::Scope(#data.as_static_str()))
-					}
+			}
+			ParsedValueSource::Scope(data) => {
+				if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
+					quote!(RegistryValueSource::Scope(#data))
+				} else {
+					quote!(RegistryValueSource::Scope(#data.as_static_str()))
 				}
-				_ => quote!(RegistryValueSource::None),
-			},
-			None => quote!(RegistryValueSource::None),
+			}
+			_ => quote!(RegistryValueSource::None),
 		})
 		.collect();
 
 	let default_colors: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField {
-				value_source: ParsedValueSource::Default(data),
-				..
-			}) => match color_constant_paths(data) {
+		.map(|field| match field.ty.value_source() {
+			ParsedValueSource::Default(data) => match color_constant_paths(data) {
 				Some(paths) => quote!(Some(&[#(#paths),*])),
 				None => quote!(None),
 			},
@@ -292,9 +286,19 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField { exposed, .. }) => quote!(#exposed),
-			None => quote!(true),
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => {
+				let exposed = field.exposed;
+				quote!(#exposed)
+			}
+			ParsedFieldType::Node(field) => {
+				let exposed = field.exposed;
+				match &field.value_source {
+					ParsedValueSource::None => quote!(true),
+					ParsedValueSource::Default(_) => quote!(#exposed),
+					ParsedValueSource::Scope(_) => unreachable!("No scope for `impl Node` allowed"),
+				}
+			}
 		})
 		.collect();
 

@@ -1,4 +1,5 @@
 use core_types::list::{Item, List};
+use core_types::paint::PaintRenderParams;
 use core_types::transform::TransformMut;
 use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -35,19 +36,22 @@ pub async fn create_artboard<T: IntoGraphicList>(
 ) -> Item<Artboard> {
 	let (location, dimensions, clip) = (location.into_element(), dimensions.into_element(), clip.into_element());
 
+	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
+	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
+	// dimensions before clamping, otherwise negative inputs collapse to the original corner instead of inverting.
+	let normalized_location = location.min(location + dimensions);
+	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
+
 	let footprint = ctx.try_footprint().copied();
 	let mut new_ctx = OwnedContextImpl::from(ctx);
 	if let Some(mut footprint) = footprint {
 		footprint.translate(location);
 		new_ctx = new_ctx.with_footprint(footprint);
 	}
+	new_ctx = new_ctx.with_paint_render_params(PaintRenderParams {
+		paint_target_bounds: [DVec2::ZERO, normalized_dimensions],
+	});
 	let content = content.eval(new_ctx.into_context()).await.into_graphic_list();
-
-	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
-	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
-	// dimensions before clamping, otherwise negative inputs collapse to the original corner instead of inverting.
-	let normalized_location = location.min(location + dimensions);
-	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
 	let background = background.into_element();
 

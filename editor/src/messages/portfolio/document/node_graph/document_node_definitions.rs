@@ -1550,15 +1550,43 @@ impl InputTypeConstraint {
 
 	/// Check if a type reaches the constraint through an `input_adapter`, the per-connector node which the preprocessor places ahead of
 	/// every ranked connector to convert or embed a convertible element, such as a color literal feeding a `Graphic` paint wire.
+	/// This also verifies whether the promoted type satisfies the constraint, either directly or through an `input_adapter`.
 	#[must_use]
 	fn satisfies_through_input_adapter(&self, ty: &Type) -> bool {
 		let provided = Self::type_name(ty);
+		let registry = &interpreted_executor::node_registry::NODE_REGISTRY;
 
-		interpreted_executor::node_registry::NODE_REGISTRY
+		let satisfies_without_promotion = registry
 			.iter()
 			.filter(|(identifier, _)| identifier.as_str().starts_with("input_adapter<"))
 			.flat_map(|(_, implementations)| implementations.keys())
-			.any(|node_io| node_io.inputs.first().is_some_and(|from| Self::type_name(from) == provided) && self.satisfies(&node_io.return_value))
+			.any(|node_io| node_io.inputs.first().is_some_and(|from| Self::type_name(from) == provided) && self.satisfies(&node_io.return_value));
+
+		if satisfies_without_promotion {
+			return true;
+		}
+
+		let promoted_type = registry
+			.iter()
+			.filter(|(identifier, _)| identifier.as_str().starts_with("graphene_core::ops::ItemToListNode<"))
+			.flat_map(|(_, implementations)| implementations.keys())
+			.find(|node_io| node_io.inputs.first().is_some_and(|from| Self::type_name(from) == provided))
+			.map(|node_io| &node_io.return_value);
+
+		match promoted_type {
+			Some(promoted_type) => {
+				if self.satisfies(promoted_type) {
+					return true;
+				}
+				let promoted = Self::type_name(promoted_type);
+				registry
+					.iter()
+					.filter(|(identifier, _)| identifier.as_str().starts_with("input_adapter<"))
+					.flat_map(|(_, implementations)| implementations.keys())
+					.any(|node_io| node_io.inputs.first().is_some_and(|from| Self::type_name(from) == promoted) && self.satisfies(&node_io.return_value))
+			}
+			None => false,
+		}
 	}
 
 	/// Check if a default value of this type is valid for the constraint.

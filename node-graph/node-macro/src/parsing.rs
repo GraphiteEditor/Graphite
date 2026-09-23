@@ -212,6 +212,13 @@ impl ParsedFieldType {
 			_ => None,
 		}
 	}
+
+	pub fn value_source(&self) -> &ParsedValueSource {
+		match self {
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => &field.value_source,
+			ParsedFieldType::Node(field) => &field.value_source,
+		}
+	}
 }
 
 /// A single numeric endpoint within a `#[soft(..)]` or `#[hard(..)]` bounds range.
@@ -349,6 +356,8 @@ pub struct NodeParsedField {
 	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
 	pub output_element: Option<Type>,
 	pub implementations: Punctuated<Implementation, Comma>,
+	pub exposed: bool,
+	pub value_source: ParsedValueSource,
 }
 
 #[derive(Clone, Debug)]
@@ -721,13 +730,15 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						| "ExtractPosition"
 						| "ExtractIndex"
 						| "ExtractVarArgs"
+						| "ExtractPaintRenderParams"
 						| "InjectFootprint"
 						| "InjectRealTime"
 						| "InjectAnimationTime"
 						| "InjectPointerPosition"
 						| "InjectPosition"
 						| "InjectIndex"
-						| "InjectVarArgs" => {
+						| "InjectVarArgs"
+						| "InjectPaintRenderParams" => {
 							features.push(segment.ident.clone());
 						}
 						// Skip Modify* traits as they don't affect usage tracking
@@ -913,8 +924,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
-		if !matches!(&value_source, ParsedValueSource::None) {
-			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
+		if matches!(&value_source, ParsedValueSource::Scope(_)) {
+			return Err(Error::new_spanned(&ty, "No scope for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
 			.map(|attr| parse_node_implementations(attr, ident))
@@ -930,6 +941,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				output_type,
 				output_element,
 				implementations,
+				exposed,
+				value_source,
 			}),
 			name,
 			description,
@@ -1225,6 +1238,8 @@ mod tests {
 						ty: ParsedFieldType::Node(NodeParsedField {
 							input_type: p_input,
 							output_type: p_output,
+							exposed: p_exp,
+							value_source: p_default,
 							..
 						}),
 						..
@@ -1234,14 +1249,27 @@ mod tests {
 						ty: ParsedFieldType::Node(NodeParsedField {
 							input_type: e_input,
 							output_type: e_output,
+							exposed: e_exp,
+							value_source: e_default,
 							..
 						}),
 						..
 					},
 				) => {
 					assert_eq!(p_name, e_name);
+					assert_eq!(p_exp, e_exp);
 					assert_eq!(format!("{p_input:?}"), format!("{:?}", e_input));
 					assert_eq!(format!("{p_output:?}"), format!("{:?}", e_output));
+					match (p_default, e_default) {
+						(ParsedValueSource::None, ParsedValueSource::None) => {}
+						(ParsedValueSource::Default(p), ParsedValueSource::Default(e)) => {
+							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
+						}
+						(ParsedValueSource::Scope(p), ParsedValueSource::Scope(e)) => {
+							assert_eq!(p.to_token_stream().to_string(), e.to_token_stream().to_string());
+						}
+						_ => panic!("Mismatched default values"),
+					}
 				}
 				_ => panic!("Mismatched field types"),
 			}
@@ -1371,6 +1399,8 @@ mod tests {
 						output_type: parse_quote!(T),
 						output_element: None,
 						implementations: Punctuated::new(),
+						exposed: false,
+						value_source: ParsedValueSource::None,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
@@ -1472,6 +1502,73 @@ mod tests {
 			}],
 			body: TokenStream2::new(),
 			description: "Test\n".into(),
+		};
+
+		assert_parsed_node_fn(&parsed, &expected);
+	}
+
+	#[test]
+	fn test_impl_node_with_default_values() {
+		let attr = quote!(category("Vector: Measure"));
+		let input = quote!(
+			/**
+				Hello
+				World
+			*/
+			fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, #[default(0.)] content: impl Node<Context<'static>, Output = Item<f64>>) -> f64 {
+				// Implementation details...
+			}
+		);
+
+		let parsed = parse_node_fn(attr, input).unwrap();
+		let expected = ParsedNodeFn {
+			vis: Visibility::Inherited,
+			attributes: NodeFnAttributes {
+				category: Some(parse_quote!("Vector: Measure")),
+				display_name: None,
+				path: None,
+				skip_impl: false,
+				properties_string: None,
+				cfg: None,
+				shader_node: None,
+				serialize: None,
+				memoize: false,
+				inject_scope: false,
+			},
+			fn_name: Ident::new("area", Span::call_site()),
+			struct_name: Ident::new("Area", Span::call_site()),
+			mod_name: Ident::new("area", Span::call_site()),
+			fn_generics: vec![],
+			where_clause: None,
+			input: Input {
+				pat_ident: pat_ident("ctx"),
+				ty: parse_quote!(impl Ctx + CloneVarArgs + ExtractAll),
+				implementations: Punctuated::new(),
+				context_features: vec![],
+			},
+			output_type: parse_quote!(f64),
+			output_element: None,
+			is_async: false,
+			fields: vec![ParsedField {
+				pat_ident: pat_ident("content"),
+				name: None,
+				description: String::new(),
+				widget_override: ParsedWidgetOverride::None,
+				ty: ParsedFieldType::Node(NodeParsedField {
+					input_type: parse_quote!(Context<'static>),
+					output_type: parse_quote!(Item<f64>),
+					output_element: Some(parse_quote!(f64)),
+					implementations: Punctuated::new(),
+					exposed: false,
+					value_source: ParsedValueSource::Default(quote!(0.)),
+				}),
+				number_display_decimal_places: None,
+				number_step: None,
+				unit: None,
+				is_data_field: false,
+			}],
+			body: TokenStream2::new(),
+			description: String::from("Hello\n\t\t\t\tWorld\n"),
 		};
 
 		assert_parsed_node_fn(&parsed, &expected);
@@ -1779,11 +1876,11 @@ mod tests {
 	}
 
 	#[test]
-	#[should_panic(expected = "No default values for `impl Node` allowed")]
-	fn test_default_value_for_impl_node() {
+	#[should_panic(expected = "No scope for `impl Node` allowed")]
+	fn test_scope_for_impl_node() {
 		let attr = quote!(category("Invalid"));
 		let input = quote!(
-			fn invalid_node(_: (), #[default(())] node: impl Node<(), Output = i32>) -> i32 {
+			fn invalid_node(_: (), #[scope(())] node: impl Node<(), Output = i32>) -> i32 {
 				node.eval(())
 			}
 		);
