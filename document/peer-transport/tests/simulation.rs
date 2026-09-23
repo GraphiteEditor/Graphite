@@ -533,7 +533,10 @@ fn assert_zones_agree(seed: u64, peers: &[Peer]) {
 /// this: every peer can agree on a snapshot that none of their histories accounts for.
 fn assert_snapshot_matches_history(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
-		let replayed = peer.session().snapshot_from_history().expect("replaying history onto a fresh registry");
+		let replayed = peer
+			.session()
+			.snapshot_from_history()
+			.unwrap_or_else(|error| panic!("seed {seed}: peer {index} cannot replay its history: {error:?}"));
 
 		assert_eq!(peer.session().retired_registry(), &replayed, "seed {seed}: peer {index} snapshot does not match its history");
 	}
