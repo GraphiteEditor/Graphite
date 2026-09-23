@@ -1089,8 +1089,8 @@ fn publishing_a_commit_disables_silent_undo() {
 	assert!(!session.can_undo(), "a published interaction must not be silently rewound");
 }
 
-/// An undone delta stays in the DAG so redo can find it, but it is no longer in `head`'s ancestry.
-/// Folding history must respect that or a refold restores work the user undid.
+/// An undone delta stays in the DAG for redo, outside `head`'s ancestry. A fold that ignores that
+/// restores work the user undid.
 #[test]
 fn snapshot_from_history_ignores_undone_deltas() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1109,9 +1109,8 @@ fn snapshot_from_history_ignores_undone_deltas() {
 	assert!(!folded.attributes.contains_key("second"), "a fold restored an undone delta");
 }
 
-/// A refold that fails leaves the registries derived from an older history, and the deltas are already
-/// in history so re-merging them absorbs nothing. The owed refold has to be retried on the next merge
-/// or the registries never catch up.
+/// A failed refold leaves the registries on an older history, and the deltas are already absorbed, so
+/// re-merging them is a no-op. Without a retry the registries never catch up.
 #[test]
 fn an_owed_refold_is_retried_by_a_merge_that_absorbs_nothing() {
 	let mut session = Session::with_peer(PeerId(1));

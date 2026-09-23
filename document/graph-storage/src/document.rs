@@ -11,8 +11,8 @@ pub struct Document {
 	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
 	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
 	pub(crate) hot_log: Vec<HotOp>,
-	/// Which hot ops history already covers, so one arriving after its own retirement is dropped rather
-	/// than re-entering the hot log. Retirement drops the delta's link back to its hot op, so this is the
+	/// Which hot ops history already covers, so one arriving after its own retirement is dropped instead
+	/// of re-entering the log. Retirement discards the delta's link back to its hot op, leaving this the
 	/// only record. See [`RetiredMarks`].
 	pub(crate) retired: RetiredMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
@@ -42,8 +42,8 @@ pub struct Document {
 	pub(crate) next_node_counter: u64,
 	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
 	pub(crate) next_hot_sequence: u64,
-	/// Set while the registries are still folded from an older history, so a failed refold is retried
-	/// rather than leaving derived state behind the history it comes from.
+	/// Set while the registries are still folded from an older history. A failed refold is retried; the
+	/// derived state does not stay behind the history it comes from.
 	pub(crate) refold_owed: bool,
 }
 
@@ -96,10 +96,9 @@ impl Document {
 		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
-	/// Apply a locally staged op. Updates the registry via LWW and appends to the hot log; doesn't touch
-	/// history or `head`, since hot ops are transient. Crate-private: it skips the retirement check that
-	/// an op off the wire needs, so outside callers go through [`Session::apply_hot_op`], while local
-	/// staging must not have a covered sequence silently drop its own work.
+	/// Apply a locally staged op: LWW into the registry, append to the hot log, leave history and `head`
+	/// alone. Crate-private because it skips the retirement check an op off the wire needs; staging must
+	/// not have a covered sequence silently drop local work. Outside callers use [`Session::apply_hot_op`].
 	pub(crate) fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
 		self.apply_op(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);

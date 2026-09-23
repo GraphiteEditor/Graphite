@@ -67,8 +67,8 @@ impl History {
 	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
 	/// children, and among deltas whose parents are all emitted the lowest `Rev` goes first. O(V + E).
 	///
-	/// Deterministic, so two peers that absorb the same delta set end up with byte-identical history
-	/// rather than two different valid orderings. Arrival order is erased.
+	/// Deterministic: two peers that absorb the same delta set end up with byte-identical history, not two
+	/// different valid orderings. Arrival order is erased.
 	pub fn canonical_sort(&mut self) {
 		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
 		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());

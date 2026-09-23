@@ -51,8 +51,8 @@ impl Node {
 	/// `ChangeNodeInput`. The slot count is fixed at creation, since changing an input addresses a
 	/// slot by position.
 	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
-		// `to_runtime` deserializes this as a `TaggedValue`, whose unit `None` variant encodes as this
-		// string. `unset_input_slot_deserializes_as_tagged_value_none` pins the pairing.
+		// `to_runtime` reads this back as a `TaggedValue`, whose unit `None` variant encodes as this string.
+		// Pinned by `unset_input_slot_deserializes_as_tagged_value_none`.
 		let slot = InputSlot {
 			input: NodeInput::Value {
 				value: serde_json::Value::String("None".to_string()),
@@ -182,8 +182,8 @@ mod tests {
 		}
 	}
 
-	/// `Node::new` writes an unset slot value that `to_runtime` has to be able to read back, so the
-	/// literal it stores must stay in step with how `TaggedValue::None` serializes.
+	/// `to_runtime` has to read back what `Node::new` writes into an unset slot, so its literal must stay
+	/// in step with how `TaggedValue::None` serializes.
 	#[test]
 	fn unset_input_slot_deserializes_as_tagged_value_none() {
 		let node = Node::new(crate::ROOT_NETWORK, Implementation::Network(crate::ROOT_NETWORK), 1);
