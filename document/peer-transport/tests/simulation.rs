@@ -381,8 +381,50 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 	}
 }
 
+/// Whether every `AddNode` in history names a network that history itself creates. Retirement promotes
+/// whatever the host managed to apply, so a referent that only ever existed as an unretired hot op
+/// could in principle leave a durable hole here.
+fn assert_history_self_contained(seed: u64, peers: &[Peer]) {
+	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
+		let created: HashSet<NetworkId> = peer
+			.session()
+			.history()
+			.filter_map(|delta| match delta.kind {
+				RegistryDelta::AddNetwork { id, .. } => Some(id),
+				_ => None,
+			})
+			.chain(peer.session().history().filter_map(|delta| match delta.reverse {
+				RegistryDelta::AddNetwork { id, .. } => Some(id),
+				_ => None,
+			}))
+			.collect();
+		for delta in peer.session().history() {
+			if let RegistryDelta::AddNode { node, .. } = &delta.kind {
+				assert!(
+					created.contains(&node.network()),
+					"seed {seed}: peer {index} history has AddNode into {:?} that nothing in history creates",
+					node.network()
+				);
+			}
+		}
+	}
+}
+
+/// A hot op is identified by its timestamp, so holding one twice means some path appended a copy of
+/// something already there, which then replays and re-broadcasts as if it were new work.
+fn assert_no_duplicate_hot_ops(seed: u64, peers: &[Peer]) {
+	for (index, peer) in peers.iter().enumerate() {
+		let mut seen = HashSet::new();
+		for hot_op in peer.session().hot_log() {
+			assert!(seen.insert(hot_op.timestamp), "seed {seed}: peer {index} holds {:?} twice", hot_op.timestamp);
+		}
+	}
+}
+
 fn assert_converged(seed: u64, peers: &[Peer]) {
 	dump_if_requested(seed, peers);
+	assert_no_duplicate_hot_ops(seed, peers);
+	assert_history_self_contained(seed, peers);
 
 	let present = || peers.iter().enumerate().filter(|(_, peer)| !peer.departed);
 

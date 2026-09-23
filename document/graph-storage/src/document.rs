@@ -123,6 +123,12 @@ impl Document {
 			return Ok(());
 		}
 
+		// A hot op is identified by its timestamp, so a re-announcement of one already held is a no-op
+		// rather than a second copy that replays and re-broadcasts as though it were new work.
+		if self.hot_log.iter().any(|held| held.timestamp == hot_op.timestamp) {
+			return Ok(());
+		}
+
 		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())
