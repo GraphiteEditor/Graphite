@@ -64,6 +64,7 @@ impl Node {
 
 		Self {
 			implementation,
+			implementation_timestamp: TimeStamp::ORIGIN,
 			inputs: vec![slot; inputs],
 			attributes: Attributes::new(),
 			network,
