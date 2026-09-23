@@ -13,52 +13,37 @@ pub struct DocumentNode {
 	pub inputs: Vec<NodeInput>,
 	pub call_argument: Type,
 	pub implementation: DocumentNodeImplementation,
-	pub skip_deduplication: bool,
 	pub visible: bool,
+	pub skip_deduplication: bool,
+	pub context_features: ContextDependencies,
 	pub original_location: OriginalLocation,
 }
 ```
 (Explanatory comments omitted; the actual definition is currently found in [`node-graph/graph-craft/src/document.rs`](https://github.com/GraphiteEditor/Graphite/blob/master/node-graph/graph-craft/src/document.rs))
 
-Each `DocumentNode` is of a particular type, for example the "Opacity" node type. You can define your own type of document node in `editor/src/messages/portfolio/document/node_graph/node_graph_message_handler/document_node_types.rs`. A sample document node type definition for the opacity node is shown:
+Each `DocumentNode` is of a particular type, for example the "Opacity" node type. The blueprint for a type is a `DocumentNodeDefinition`, found in `editor/src/messages/portfolio/document/node_graph/document_node_definitions.rs`:
 
 ```rs
-DocumentNodeDefinition {
-	name: "Opacity",
-	category: "Image Adjustments",
-	implementation: DocumentNodeImplementation::proto("graphene_core::raster::OpacityNode"),
-	inputs: vec![
-		DocumentInputType::value("Image", TaggedValue::ImageFrame(ImageFrame::empty()), true),
-		DocumentInputType::value("Factor", TaggedValue::F32(100.), false),
-	],
-	outputs: vec![DocumentOutputType::new("Image", FrontendGraphDataType::Raster)],
-	properties: node_properties::multiply_opacity,
-	..Default::default()
-},
-```
-
-The identifier here must be the same as that of the proto-node which will be discussed soon (usually the path to the node implementation).
-
-> [!NOTE]
-> Nodes defined in `graphene_core` are re-exported by `graphene_std`. However if the strings for the type names do not match exactly then you will encounter an error.
-
-## Properties panel
-
-The input names are shown in the graph when an input is exposed (with a dot in the properties panel). The default input is used when a node is first created or when a link is disconnected. An input is comprised from a `TaggedValue` (allowing serialization of a dynamic type with serde) in addition to an exposed boolean, which defines if the input is shown as a dot in the node graph UI by default. In the opacity node, the "Color" input is shown but the "Factor" input is hidden from the graph by default, allowing for a less cluttered graph.
-
-The properties field is a function that defines a number input, which can be seen by selecting the opacity node in the graph. The code for this property is shown below:
-
-```rs
-pub fn multiply_opacity(document_node: &DocumentNode, node_id: NodeId, _context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	let factor = number_widget(document_node, node_id, 1, "Factor", NumberInput::default().min(0.).max(100.).unit("%"), true);
-
-	vec![LayoutGroup::Row { widgets: factor }]
+pub struct DocumentNodeDefinition {
+	pub identifier: &'static str,
+	pub node_template: NodeTemplate,
+	pub category: &'static str,
+	pub description: Cow<'static, str>,
+	pub properties: Option<&'static str>,
 }
 ```
 
+Only the definitions of nodes built from a nested network, such as the empty "Custom Node", are written by hand in that file. A node implemented as a single proto-node has its definition generated from the metadata the `node` macro records about its function signature (see [Creating a new node](#creating-a-new-node)), keyed by the proto-node identifier, which for the Opacity node is `graphene_std::blending_nodes::opacity::IDENTIFIER`.
+
+## Properties panel
+
+Each input of a node is a `NodeInput`: either a wire from another node or a constant `TaggedValue` (a dynamically typed value that serializes with serde) paired with an exposed flag, which is whether the input is shown as a connector in the node graph by default. Both come from the function signature. A parameter's type picks the `TaggedValue` variant, `#[default(...)]` sets the value a new node starts with and the value an input falls back to when its wire is disconnected, and `#[expose]` shows a secondary input's connector, while the primary input always has one. In the Opacity node, `content` is the primary input while `opacity` and `fill` appear only in the Properties panel by default, keeping the graph uncluttered.
+
+The Properties panel is generated from the same signature, which can be seen by selecting the Opacity node in the graph. A number parameter becomes a number input whose bounds and slider come from `#[soft]`, `#[hard]`, and `#[range]` (see [Additional Macro Options](#additional-macro-options)), or from a typedef such as `Percentage`, which stands for a 0 to 100 `%` slider. A `bool` becomes a checkbox and a `ChoiceType` enum becomes a dropdown. When the generated widget isn't right, `#[widget(ParsedWidgetOverride::Hidden)]` hides it and `#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]` names a hand-written widget function in `node_properties.rs`, which is how the Opacity node pairs each percentage with the checkbox that enables it.
+
 ## Graphene (proto node executor)
 
-The graphene crate (found in `gcore/`) and the graphene standard library (found in `gstd/`) is where actual implementation for nodes are located. 
+The node crates under `node-graph/nodes/`, such as the Graphene core crate (`gcore/`) and the Graphene standard library (`gstd/`), are where the implementations of nodes are located.
 
 Implementing a node is done by defining a `struct` implementing the `Node` trait. The `Node` trait has a required function named `eval` that takes one generic input. A sample implementation for an opacity node acting on a color is seen below:
 
@@ -94,17 +79,44 @@ fn test_opacity_node() {
 }
 ```
 
-The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `10_f32` and returns it.
+The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `10_f64` and returns it.
 
 ## Creating a new node
 
-Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which can be applied to a function like `opacity`. This will generate the struct, implementation, node_registry entry, document node definition and properties panel entries:
+Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which is applied to a function like `opacity`. This generates the struct, its `Node` implementation, the node registry entries, the document node definition, and the Properties panel entries. The first parameter is the evaluation context and the second is the primary input, and each parameter rides its wire as an `Item<T>` (one value with its attributes) or a `List<T>` (a whole list). Doc comments on the function and its parameters become the tooltips shown in the editor (omitted here). This is the Opacity node as it exists in `node-graph/nodes/blending/src/lib.rs`:
 
 ```rs
-#[node_macro::node(category("Raster: Adjustments"))]
-fn opacity(_input: (), #[default(424242)] color: Color, #[range] #[soft(0..100)] opacity_multiplier: f64) -> Color {
-	let opacity_multiplier = opacity_multiplier as f32 / 100.;
-	Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), color.a() * opacity_multiplier)
+#[node_macro::node(category("Blending"))]
+fn opacity<T>(
+	_: impl Ctx,
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
+	#[widget(ParsedWidgetOverride::Hidden)]
+	#[default(true)]
+	has_opacity: Item<bool>,
+	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
+	#[default(100.)]
+	opacity: Item<Percentage>,
+	#[widget(ParsedWidgetOverride::Hidden)]
+	has_fill: Item<bool>,
+	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
+	#[default(100.)]
+	fill: Item<Percentage>,
+) -> Item<T> {
+	let mut content = content;
+	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());
+
+	if has_opacity {
+		let multiplied = content.attribute_cloned_or(ATTR_OPACITY, 1.) * (opacity / 100.);
+		content.set_attribute(ATTR_OPACITY, multiplied);
+	}
+
+	if has_fill {
+		let multiplied = content.attribute_cloned_or(ATTR_OPACITY_FILL, 1.) * (fill / 100.);
+		content.set_attribute(ATTR_OPACITY_FILL, multiplied);
+	}
+
+	content
 }
 ```
 
@@ -121,44 +133,7 @@ When the document graph is executed, the following steps occur:
 - The constructor functions are run with the `ConstructionArgs` enum. Constructors generally evaluate the result of these inputs, e.g. if you have a `Pi` node that is used as the second input to an `Add` node, the `Add` node's constructor will evaluate the `Pi` node. This is visible if you place a log statement in the `Pi` node's implementation.
 - The resolved functions are stored in a `BorrowTree`, which allows previous proto-nodes to be referenced as inputs by later nodes. The `BorrowTree` ensures nodes can't be removed while being referenced by other nodes.
 
-The definition for the constructor of a node that applies the opacity transformation to each pixel of an image:
-```rs
-(
-	// Matches against the string defined in the document node.
-	ProtoNodeIdentifier::new("graphene_core::raster::OpacityNode"),
-	// This function is run when converting the `ProtoNode` struct into the desired struct.
-	|args| {
-		Box::pin(async move {
-			// Creates an instance of the struct that defines the node.
-			let node = construct_node!(args, graphene_core::raster::OpacityNode<_>, [f64]).await;
-			// Create a new map image node, that calls the `node` for each pixel.
-			let map_node = graphene_std::raster::MapImageNode::new(graphene_core::value::ValueNode::new(node));
-			// Wraps this in a type erased future `Box<Pin<dyn core::future::Future<Output = T> + 'n>>` - this allows it to work with async.
-			let map_node = graphene_std::any::FutureWrapperNode::new(map_node);
-			// The `DynAnyNode` downcasts its input from a `Box<dyn DynAny>` i.e. dynamically typed, to the desired statically typed input value. It then runs the wrapped node and converts the result back into a dynamically typed `Box<dyn DynAny>`.
-			let any: DynAnyNode<Image<Color>, _, _> = graphene_std::any::DynAnyNode::new(graphene_core::value::ValueNode::new(map_node));
-			// Nodes are stored as type erased, which means they are `Box<dyn NodeIo + Node>`. This allows us to create dynamic graphs, using dynamic dispatch so we do not have to know all node combinations at compile time.
-			any.into_type_erased()
-		})
-	},
-	// Defines the call argument, return value, and inputs.
-	NodeIOTypes::new(concrete!(Image<Color>), concrete!(Image<Color>), vec![fn_type!((), f64)]),
-),
-```
-
-Nodes in the borrow stack take a `Box<dyn DynAny>` as input and output another `Box<dyn DynAny>`, to allow for any type. To use a specific type, we must downcast the values that have been passed in.
-However the `OpacityNode` only works on one pixel at a time, so we first insert a `MapImageNode` to call the `OpacityNode` for every pixel in the image.
-Finally we call `.into_type_erased()` on the result and that is inserted into the borrow stack.
-
-We also need to add an implementation so that the user can change the opacity of just a single color. To simplify this process for raster nodes, a `raster_node!` macro is available which can simplify the definition of the opacity node to:
-```rs
-raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
-```
-
-There is also the more general `register_node!` for nodes that do not need to run per pixel.
-```rs
-register_node!(graphene_core::transform_nodes::SetTransformNode<_>, input: Vector, params: [DAffine2]),
-```
+The registry rows for a node declared with the `node` macro are generated by it, one per `#[implementations(...)]` pairing. The rows written by hand in `node_registry.rs` are for the adapters that convert between wire types and for executor-internal nodes such as the memoize and monitor nodes.
 
 ## Debugging
 

@@ -57,10 +57,6 @@ fn read_number(ctx: impl Ctx + ExtractVarArgs) -> Item<f64> {
 	}
 
 	// Numeric lists carry several possible element types, so probe each and widen to f64, keeping the item's attributes
-	if let Some(item) = var_arg.downcast_ref::<Item<f32>>() {
-		let (element, attributes) = item.clone().into_parts();
-		return Item::from_parts(element as f64, attributes);
-	}
 	if let Some(item) = var_arg.downcast_ref::<Item<u32>>() {
 		let (element, attributes) = item.clone().into_parts();
 		return Item::from_parts(element as f64, attributes);

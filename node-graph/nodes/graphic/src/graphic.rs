@@ -22,7 +22,6 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -58,7 +57,6 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -97,7 +95,6 @@ fn filter<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -132,7 +129,6 @@ fn reverse<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -159,7 +155,6 @@ fn shift<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -206,7 +201,6 @@ fn shuffle<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -276,7 +270,6 @@ fn list_slice<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -334,11 +327,6 @@ impl ElementOrder for bool {
 		self.cmp(other)
 	}
 }
-impl ElementOrder for f32 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.total_cmp(other)
-	}
-}
 impl ElementOrder for f64 {
 	fn element_order(&self, other: &Self) -> Ordering {
 		self.total_cmp(other)
@@ -370,17 +358,17 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	_: impl Ctx,
 	/// The list of data to reorder.
 	#[implementations(
-		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
 	)]
 	list: List<T>,
 	/// The optional list of orderable values, corresponding item-to-item with the input list, to sort by instead of the items' own values.
 	#[expose]
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
-		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
-		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
 	)]
 	sort_order: List<U>,
 	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
@@ -417,7 +405,6 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -435,7 +422,6 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
-		Context -> List<f32>,
 		Context -> List<f64>,
 		Context -> List<u32>,
 		Context -> List<u64>,
@@ -554,7 +540,6 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -857,7 +842,6 @@ pub async fn extend<T: 'n + Send + Clone>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,
@@ -878,7 +862,6 @@ pub async fn extend<T: 'n + Send + Clone>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
 		List<u32>,
 		List<u64>,

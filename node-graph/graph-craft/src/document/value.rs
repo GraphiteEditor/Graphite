@@ -704,7 +704,6 @@ impl TaggedValue {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,
 					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
 					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					() if ty == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
 					() if ty == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
 					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<i64>() => FromStr::from_str(string).map(TaggedValue::I64).ok()?,

@@ -18,7 +18,6 @@ async fn context_modification<T>(
 		Context -> Item<bool>,
 		Context -> Item<u32>,
 		Context -> Item<u64>,
-		Context -> Item<f32>,
 		Context -> Item<f64>,
 		Context -> Item<String>,
 		Context -> Item<DAffine2>,

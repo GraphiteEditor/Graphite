@@ -207,7 +207,6 @@ fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> O
 
 	match input.as_value()? {
 		TaggedValue::F64(value) => Some(*value),
-		TaggedValue::F32(value) => Some(*value as f64),
 		_ => None,
 	}
 }
@@ -300,9 +299,9 @@ pub(crate) fn property_from_type(
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") | Some("PercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), 0., 100.), true),
-				Some("SignedPercentage") | Some("SignedPercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), -100., 100.), true),
-				Some("Angle") | Some("AngleF32") => number_or_slider(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°")), false),
+				Some("Percentage") => number_or_slider(default_info, bounded(number_input.percentage(), 0., 100.), true),
+				Some("SignedPercentage") => number_or_slider(default_info, bounded(number_input.percentage(), -100., 100.), true),
+				Some("Angle") => number_or_slider(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°")), false),
 				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
 				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
@@ -326,7 +325,7 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
+						Some(x) if id_is::<f64>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
 						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
 						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
 						Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
@@ -1126,14 +1125,6 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			number_props
 				.value(Some(x))
 				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap())))
-				.on_commit(commit_value)
-				.widget_instance(),
-		]),
-		Some(&TaggedValue::F32(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32)))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -2127,7 +2118,6 @@ fn slider_row(
 	// An exposed input shows only its label and source
 	let (current, tagged_value): (f64, fn(f64) -> TaggedValue) = match input.as_non_exposed_value() {
 		Some(&TaggedValue::F64(value)) => (value, TaggedValue::F64),
-		Some(&TaggedValue::F32(value)) => (value as f64, |value| TaggedValue::F32(value as f32)),
 		_ => return widgets,
 	};
 	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
