@@ -11,7 +11,6 @@ use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
 use core_types::misc::{format_f64, parse_f64};
-use core_types::registry::types::TextArea;
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -187,7 +186,7 @@ pub enum StringCapitalization {
 
 /// Constructs a string value which may be set to any plain text.
 #[node_macro::node(category("Value"))]
-fn string_value(_: impl Ctx, _primary: (), string: Item<TextArea>) -> Item<String> {
+fn string_value(_: impl Ctx, _primary: (), #[multiline] string: Item<String>) -> Item<String> {
 	string
 }
 
@@ -264,7 +263,7 @@ fn as_string(_: impl Ctx, value: Item<String>) -> Item<String> {
 
 /// Joins two strings together.
 #[node_macro::node(category("Text"))]
-fn string_concatenate(_: impl Ctx, #[implementations(String)] first: Item<String>, second: Item<TextArea>) -> Item<String> {
+fn string_concatenate(_: impl Ctx, #[implementations(String)] first: Item<String>, #[multiline] second: Item<String>) -> Item<String> {
 	let mut first = first;
 	first.element_mut().push_str(second.element());
 	first
@@ -272,7 +271,7 @@ fn string_concatenate(_: impl Ctx, #[implementations(String)] first: Item<String
 
 /// Replaces all occurrences of "From" with "To" in the input string.
 #[node_macro::node(category("Text"))]
-fn string_replace(_: impl Ctx, string: Item<String>, from: Item<TextArea>, to: Item<TextArea>) -> Item<String> {
+fn string_replace(_: impl Ctx, string: Item<String>, #[multiline] from: Item<String>, #[multiline] to: Item<String>) -> Item<String> {
 	let mut string = string;
 	let result = string.element().replace(from.element().as_str(), to.element());
 

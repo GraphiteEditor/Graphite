@@ -1,7 +1,6 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::registry::types::Angle;
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
@@ -447,9 +446,10 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 	content: Item<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: Item<ReferencePoint>,
 	#[unit(" px")] offset: Item<f64>,
+	#[unit("°")]
 	#[range]
 	#[soft(-90..90)]
-	angle: Item<Angle>,
+	angle: Item<f64>,
 	#[default(true)] keep_original: Item<bool>,
 ) -> List<T> {
 	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());

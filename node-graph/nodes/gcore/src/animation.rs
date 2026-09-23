@@ -94,7 +94,7 @@ async fn quantize_real_time<T>(
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
-	#[unit("sec")]
+	#[unit(" sec")]
 	quantum: Item<f64>,
 ) -> T {
 	let time = ctx.try_real_time().unwrap_or_default();
@@ -140,7 +140,7 @@ async fn quantize_animation_time<T>(
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
-	#[unit("sec")]
+	#[unit(" sec")]
 	quantum: Item<f64>,
 ) -> T {
 	let time = ctx.try_animation_time().unwrap_or_default();

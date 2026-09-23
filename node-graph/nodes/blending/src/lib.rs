@@ -1,5 +1,4 @@
 use core_types::list::Item;
-use core_types::registry::types::Percentage;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -39,16 +38,22 @@ fn opacity<T>(
 	/// How visible the content should be, including any content clipped to it.
 	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	opacity: Item<Percentage>,
+	opacity: Item<f64>,
 	/// Whether the *Fill* property is enabled, multiplying the existing fill by the chosen percentage.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_fill: Item<bool>,
 	/// How visible the content should be, independent of any content clipped to it.
 	/// Ranges from 0% (fully transparent) to the default of 100% (fully opaque).
 	#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	fill: Item<Percentage>,
+	fill: Item<f64>,
 ) -> Item<T> {
 	let mut content = content;
 	let (has_opacity, opacity, has_fill, fill) = (*has_opacity.element(), *opacity.element(), *has_fill.element(), *fill.element());

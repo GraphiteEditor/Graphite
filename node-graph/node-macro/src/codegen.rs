@@ -233,14 +233,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					if let Some(element) = peel_list(implementation_ty) {
 						quote!(Some(#core_types::list!(#element)))
 					} else if let Some(element) = peel_item(implementation_ty) {
-						quote!(Some(#core_types::item!(#element, #element)))
+						quote!(Some(#core_types::item!(#element)))
 					} else {
 						quote!(Some(concrete!(#implementation_ty)))
 					}
 				}
-				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution); without one it keeps
-				// the structural `Type::Item` wire type, and `node_inputs` peels to `T` if no `Item` type default exists. Either way the element's alias stays
-				// on its descriptor so the rank-0 Properties widget still dispatches, e.g. `Progression`.
+				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
+				// without one it keeps the structural `Type::Item` wire type, and `node_inputs` peels to `T` if no `Item` type default exists
 				None => match &field.ty {
 					ParsedFieldType::Item {
 						field: RegularParsedField { value_source, .. },
@@ -252,8 +251,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						// The fn's lifetimes are elided since the metadata registration fn declares none of them
 						let element = substitute_lifetimes(element.clone(), "_");
 						match value_source {
-							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element, #element))),
-							_ => quote!(Some(#core_types::item!(#element, #element))),
+							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element))),
+							_ => quote!(Some(#core_types::item!(#element))),
 						}
 					}
 					_ => quote!(None),
@@ -1222,7 +1221,7 @@ fn generate_register_node_impl(
 					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
 				}
 				temp_constructors.push(downcast_node);
-				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type, alias: #signature_type)));
+				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type)));
 				panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
 			}
 			let input_type = match parsed.input.implementations.is_empty() {

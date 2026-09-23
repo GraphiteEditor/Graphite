@@ -4,7 +4,6 @@ use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
-use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
@@ -404,6 +403,7 @@ async fn stroke<V>(
 	paint: Item<Graphic>,
 	/// The stroke thickness.
 	#[unit(" px")]
+	#[hard(0..)]
 	#[default(2.)]
 	weight: Item<f64>,
 	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
@@ -413,6 +413,7 @@ async fn stroke<V>(
 	/// The curvature of the bent stroke at sharp corners.
 	join: Item<StrokeJoin>,
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
+	#[hard(0..)]
 	#[default(4.)]
 	miter_limit: Item<f64>,
 	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
@@ -483,13 +484,13 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	#[range]
 	#[soft(0..2)]
 	#[unit("x")]
-	random_scale_min: Item<Multiplier>,
+	random_scale_min: Item<f64>,
 	/// Maximum range of randomized sizes given to each placed copy.
 	#[default(1)]
 	#[range]
 	#[soft(0..2)]
 	#[unit("x")]
-	random_scale_max: Item<Multiplier>,
+	random_scale_max: Item<f64>,
 	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
 	#[range]
 	#[soft(-50..50)]
@@ -498,9 +499,10 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	#[hard(0..)]
 	random_scale_seed: Item<i64>,
 	/// Range of randomized angles given to each placed copy, in degrees ranging from furthest clockwise to counterclockwise.
+	#[unit("°")]
 	#[range]
 	#[soft(0..360)]
-	random_rotation: Item<Angle>,
+	random_rotation: Item<f64>,
 	/// Seed to determine unique variations on all the randomized copy angles.
 	#[hard(0..)]
 	random_rotation_seed: Item<i64>,
@@ -563,18 +565,24 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 async fn round_corners<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
+	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10.)]
-	radius: Item<PixelLength>,
+	radius: Item<f64>,
 	#[range]
 	#[hard(0..1)]
 	#[default(0.5)]
 	roundness: Item<f64>,
-	#[default(100.)] edge_length_limit: Item<Percentage>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	edge_length_limit: Item<f64>,
+	#[unit("°")]
 	#[range]
 	#[hard(0..180)]
 	#[default(5.)]
-	min_angle_threshold: Item<Angle>,
+	min_angle_threshold: Item<f64>,
 ) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let (radius, roundness, edge_length_limit, min_angle_threshold) = (*radius.element(), *roundness.element(), *edge_length_limit.element(), *min_angle_threshold.element());
@@ -670,9 +678,10 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
+	#[unit(" px")]
 	#[default(0.1)]
 	#[hard(0.0001..)]
-	distance: Item<PixelLength>,
+	distance: Item<f64>,
 	algorithm: Item<MergeByDistanceAlgorithm>,
 ) -> Item<V> {
 	let (distance, algorithm) = (*distance.element(), *algorithm.element());
@@ -1491,7 +1500,9 @@ async fn offset_path<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	distance: Item<f64>,
 	join: Item<StrokeJoin>,
-	#[default(4.)] miter_limit: Item<f64>,
+	#[hard(0..)]
+	#[default(4.)]
+	miter_limit: Item<f64>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -1889,9 +1900,10 @@ async fn simplify<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum distance the simplified path may deviate from the original.
-	#[default(5.)]
 	#[unit(" px")]
-	tolerance: Item<Length>,
+	#[hard(0..)]
+	#[default(5.)]
+	tolerance: Item<f64>,
 ) -> Item<V> {
 	let tolerance = *tolerance.element();
 
@@ -1930,9 +1942,10 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
-	#[default(5.)]
 	#[unit(" px")]
-	tolerance: Item<Length>,
+	#[hard(0..)]
+	#[default(5.)]
+	tolerance: Item<f64>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -2056,7 +2069,8 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the path.
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -2167,7 +2181,8 @@ async fn position_on_path(
 	/// The path to traverse.
 	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the path.
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -2204,7 +2219,8 @@ async fn tangent_on_path(
 	/// The path to traverse.
 	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the path.
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -2392,8 +2408,8 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum extent of the random distance each point can be offset.
-	#[default(5.)]
 	#[unit(" px")]
+	#[default(5.)]
 	max_distance: Item<f64>,
 	/// Seed used to determine unique variations on all randomized offsets.
 	#[hard(0..)]
@@ -2489,7 +2505,8 @@ async fn morph(
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	content: List<Graphic>,
 	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the progression between objects or along the control path.
 	reverse: Item<bool>,
 	/// The parameter of change that influences the interpolation speed between each object. Equal slices in this parameter correspond to the rate of progression through the morph. This must be set to a parameter that changes.
@@ -3424,7 +3441,14 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn bevel<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, #[default(10.)] distance: Item<Length>) -> Item<V> {
+fn bevel<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	#[implementations(Graphic, Vector)] source: Item<V>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(10.)]
+	distance: Item<f64>,
+) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let distance = *distance.element();
 

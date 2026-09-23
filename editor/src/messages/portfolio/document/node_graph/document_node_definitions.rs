@@ -40,17 +40,30 @@ pub struct NodePropertiesContext<'a> {
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
 		let input_properties_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
-		if let Some(widget_override) = &input_properties_row.widget_override {
-			let Some(widget_override_lambda) = INPUT_OVERRIDES.get(widget_override) else {
-				log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
+
+		// The stored override wins, falling back to the definition's own so documents saved before it gained one still
+		// pick it up. Only `Custom` is recovered, since the other kinds also need input data stored at insertion time.
+		let widget_override = input_properties_row.widget_override.clone().or_else(|| {
+			let implementation = self.network_interface.implementation(node_id, self.selection_network_path)?;
+			let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation else {
 				return None;
 			};
-			widget_override_lambda(*node_id, index, self)
-				.map_err(|error| log::error!("Error in widget override lambda: {error}"))
-				.ok()
-		} else {
-			None
-		}
+
+			let metadata = registry::NODE_METADATA.lock().unwrap();
+			let field = metadata.get(proto_node_identifier)?.fields.get(index)?;
+			match field.widget_override {
+				registry::RegistryWidgetOverride::Custom(name) => Some(name.to_string()),
+				_ => None,
+			}
+		})?;
+
+		let Some(widget_override_lambda) = INPUT_OVERRIDES.get(&widget_override) else {
+			log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
+			return None;
+		};
+		widget_override_lambda(*node_id, index, self)
+			.map_err(|error| log::error!("Error in widget override lambda: {error}"))
+			.ok()
 	}
 }
 

@@ -1043,16 +1043,14 @@ fn narrow_shader_fields(fields: &mut [ParsedField]) -> syn::Result<()> {
 		}
 
 		let element = peel_item(&declared).unwrap_or_else(|| declared.clone());
-		if ["f32", "i32", "PercentageF32", "SignedPercentageF32", "AngleF32"].iter().any(|name| is_primitive_type(&element, name)) {
+		if is_primitive_type(&element, "f32") || is_primitive_type(&element, "i32") {
 			return Err(Error::new_spanned(
 				&declared,
 				"A shader node's parameters are declared as `f64` or `i64`, the graph's Number and Integer types; the macro narrows them to the `f32` or `i32` the shader computes with",
 			));
 		}
 
-		// The registry's f64 typedefs, like `Percentage` and `Angle`, spell the graph's Number by its widget meaning and narrow the same way
-		let spells_f64 = ["f64", "Percentage", "SignedPercentage", "Angle", "Multiplier", "PixelLength", "Length", "Fraction", "Progression"];
-		let counterpart: Type = if spells_f64.iter().any(|name| is_primitive_type(&element, name)) {
+		let counterpart: Type = if is_primitive_type(&element, "f64") {
 			parse_quote!(f32)
 		} else if is_primitive_type(&element, "i64") {
 			parse_quote!(i32)

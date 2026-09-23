@@ -1,7 +1,6 @@
 use core_types::Context;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
-use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
 use glam::{DAffine2, DVec2};
@@ -594,13 +593,15 @@ fn tangent<T: Componentwise>(
 fn sine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
+	#[range]
+	#[hard(-1..1)]
 	value: Item<f64>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(-1., 1.).asin();
+	let angle = value.asin();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -610,13 +611,15 @@ fn sine_inverse(
 fn cosine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
+	#[range]
+	#[hard(-1..1)]
 	value: Item<f64>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(-1., 1.).acos();
+	let angle = value.acos();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -1311,7 +1314,14 @@ fn number_value(_: impl Ctx, _primary: (), number: Item<f64>) -> Item<f64> {
 
 /// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
 #[node_macro::node(category("Value"))]
-fn percentage_value(_: impl Ctx, _primary: (), percentage: Item<Percentage>) -> Item<f64> {
+fn percentage_value(
+	_: impl Ctx,
+	_primary: (),
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	percentage: Item<f64>,
+) -> Item<f64> {
 	percentage
 }
 
@@ -1329,11 +1339,27 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Item<C
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Item<Fraction>, green: Item<Fraction>, blue: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
-	let red = (*red.element() as f32).clamp(0., 1.);
-	let green = (*green.element() as f32).clamp(0., 1.);
-	let blue = (*blue.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+fn rgba_to_color(
+	_: impl Ctx,
+	_primary: (),
+	#[range]
+	#[hard(0..1)]
+	red: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	green: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	blue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
+) -> Item<Color> {
+	let red = *red.element() as f32;
+	let green = *green.element() as f32;
+	let blue = *blue.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
 	Item::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
@@ -1341,11 +1367,30 @@ fn rgba_to_color(_: impl Ctx, _primary: (), red: Item<Fraction>, green: Item<Fra
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] saturation: Item<Fraction>, #[default(1.)] value: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+fn hsva_to_color(
+	_: impl Ctx,
+	_primary: (),
+	// Hue is periodic, so a value past either end wraps around instead of clamping
+	#[range]
+	#[soft(0..1)]
+	hue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	saturation: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	value: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
+) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
-	let saturation = (*saturation.element() as f32).clamp(0., 1.);
-	let value = (*value.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+	let saturation = *saturation.element() as f32;
+	let value = *value.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	Item::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
 }
@@ -1355,15 +1400,26 @@ fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] 
 fn hsla_to_color(
 	_: impl Ctx,
 	_primary: (),
-	hue: Item<Fraction>,
-	#[default(1.)] saturation: Item<Fraction>,
-	#[default(0.5)] lightness: Item<Fraction>,
-	#[default(1.)] alpha: Item<Fraction>,
+	#[range]
+	#[soft(0..1)]
+	hue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	saturation: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(0.5)]
+	lightness: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
 ) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
-	let saturation = (*saturation.element() as f32).clamp(0., 1.);
-	let lightness = (*lightness.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+	let saturation = *saturation.element() as f32;
+	let lightness = *lightness.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	Item::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
@@ -1520,10 +1576,18 @@ fn evaluate_gradient(
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
 #[node_macro::node(category("Value"))]
-fn footprint_value(_: impl Ctx, _primary: (), transform: Item<DAffine2>, #[default(100., 100.)] resolution: Item<PixelSize>) -> Item<Footprint> {
+fn footprint_value(
+	_: impl Ctx,
+	_primary: (),
+	transform: Item<DAffine2>,
+	#[unit(" px")]
+	#[hard(1..)]
+	#[default(100., 100.)]
+	resolution: Item<DVec2>,
+) -> Item<Footprint> {
 	Item::new_from_element(Footprint {
 		transform: *transform.element(),
-		resolution: resolution.element().max(DVec2::ONE).as_uvec2(),
+		resolution: resolution.element().as_uvec2(),
 		..Default::default()
 	})
 }
