@@ -1,0 +1,40 @@
+[package]
+name = "gradient-nodes"
+description = "Gradient rendering nodes for Graphene"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = ["serde"]
+serde = ["dep:serde", "core-types/serde", "raster-types/serde"]
+
+[dependencies]
+# Local dependencies
+dyn-any = { workspace = true }
+brush-types = { workspace = true }
+core-types = { workspace = true }
+graphene-hash = { workspace = true }
+graphene-cache = { workspace = true }
+graphic-types = { workspace = true }
+vector-types = { workspace = true }
+raster-types = { workspace = true, features = ["wgpu"] }
+wgpu-executor = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+log = { workspace = true }
+glam = { workspace = true }
+half = { workspace = true }
+bytemuck = { workspace = true }
+wgpu = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true, features = ["derive"] }
+
+[dev-dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
