@@ -196,7 +196,10 @@ impl Document {
 			}
 			RegistryDelta::SetNodeInputs { id, inputs } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
-				node.inputs = inputs;
+				// The slots arrive carrying the placeholder timestamp they were built with, so they take this
+				// op's instead. Leaving the placeholder would reset every slot to the origin and make each
+				// later per-slot gate vacuously true, letting a stale write win.
+				node.inputs = inputs.into_iter().map(|slot| crate::InputSlot { timestamp, ..slot }).collect();
 			}
 			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;

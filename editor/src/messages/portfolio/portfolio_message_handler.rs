@@ -642,6 +642,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.network_interface.validate_input_metadata(node_id, node, &path);
 					document.network_interface.validate_output_names(node_id, node, &path);
 				}
+				// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what
+				// the fix-ups recorded must not ride along in the first real commit.
+				document.network_interface.discard_deltas();
 
 				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 				document.network_interface.load_structure();

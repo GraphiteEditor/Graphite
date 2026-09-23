@@ -216,6 +216,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get input {connector:?} in edit_input_value");
 			return false;
 		};
+		let previous = slot.clone();
 		let Some(mut value) = slot.as_value_mut() else {
 			log::error!("Input {connector:?} is not a value in edit_input_value");
 			return false;
@@ -223,6 +224,12 @@ impl NodeNetworkInterface {
 
 		edit(&mut value);
 		drop(value);
+
+		// An edit that changes nothing still carries a timestamp, which would let it supersede a concurrent
+		// peer's real edit to the same input.
+		if *slot == previous {
+			return true;
+		}
 
 		let input = slot.clone();
 		self.deltas.push(input_write_delta(connector, network_path, input));

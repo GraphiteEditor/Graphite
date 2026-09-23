@@ -29,6 +29,12 @@ pub struct DocumentHistory {
 	/// and extended on each staging, so a cursor rebuild never touches the byte store.
 	#[derivative(Debug = "ignore")]
 	declarations: Declarations,
+	/// Whether the next commit must convert the whole document rather than stage what the store recorded.
+	///
+	/// True when the working copy holds no baseline for a batch to apply to, and whenever the runtime has
+	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
+	/// part of the distance between the two.
+	needs_whole_document_stage: bool,
 }
 
 /// Why [`DocumentHistory::move_cursor`] produced no interface.
@@ -95,8 +101,15 @@ impl DocumentHistory {
 
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
 	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+		self.needs_whole_document_stage |= storage.registry().node_instances.is_empty();
 		self.storage = Some(storage);
 		self.declarations = declarations;
+	}
+
+	/// Marks the working copy as needing a whole-document stage on its next commit, for a change to the
+	/// runtime that went unrecorded and so cannot be described by the recorded batch.
+	pub fn require_whole_document_stage(&mut self) {
+		self.needs_whole_document_stage = true;
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
@@ -122,12 +135,10 @@ impl DocumentHistory {
 		legacy_document: &str,
 		byte_store: &dyn ResourceStorage,
 	) {
+		let needs_whole_document_stage = self.needs_whole_document_stage;
 		let Some(storage) = self.storage.as_mut() else { return };
 
-		// A working copy that does not hold the document yet has no baseline for a batch of changes to apply
-		// to. Reading that from the working copy rather than from the caller means a path that mounts storage
-		// and then commits does not have to know which of the two cases it is in.
-		let staged = match storage.registry().node_instances.is_empty() {
+		let staged = match needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
 			// An autosave with nothing edited since the last commit still persists the view state below.
 			false if deltas.is_empty() => Ok(Declarations::new()),
@@ -140,7 +151,10 @@ impl DocumentHistory {
 			}),
 		};
 		match staged {
-			Ok(declarations) => self.declarations.extend(declarations),
+			Ok(declarations) => {
+				self.declarations.extend(declarations);
+				self.needs_whole_document_stage = false;
+			}
 			Err(error) => {
 				log::error!("Storage snapshot staging failed: {error}");
 				return;

@@ -1834,6 +1834,10 @@ impl DocumentMessageHandler {
 			self.network_interface.validate_output_names(node_id, node, &path);
 		}
 
+		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what
+		// the fix-ups recorded must not ride along in the first real commit.
+		self.network_interface.discard_deltas();
+
 		self.network_interface.load_structure();
 	}
 
@@ -2025,6 +2029,12 @@ impl DocumentMessageHandler {
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
 	pub(crate) fn retire_storage_interaction(&mut self) {
 		self.history.retire_storage_interaction();
+	}
+
+	/// Marks the working copy as needing a whole-document stage on its next commit, for a change to the
+	/// runtime that went unrecorded.
+	pub(crate) fn require_whole_document_stage(&mut self) {
+		self.history.require_whole_document_stage();
 	}
 
 	/// Stages what the store recorded since the last commit into the `Gdd` working copy.
