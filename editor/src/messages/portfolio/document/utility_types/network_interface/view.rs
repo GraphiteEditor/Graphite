@@ -225,6 +225,22 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(self.node(node_id)?.inputs.iter().filter(|input| input.is_exposed()).count())
 	}
 
+	/// Input rows the node displays: every exposed input, plus the primary input, whose row is shown even when it is not exposed.
+	pub fn input_row_count(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
+		Ok(self
+			.node(node_id)?
+			.inputs
+			.iter()
+			.enumerate()
+			.filter(|(input_index, input)| *input_index == 0 || input.is_exposed())
+			.count())
+	}
+
+	/// Grid rows the node body spans, which is the greater of its input rows and its output count.
+	pub fn displayed_row_count(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
+		Ok(self.input_row_count(node_id)?.max(self.number_of_outputs(node_id)?).max(1))
+	}
+
 	pub fn number_of_outputs(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
@@ -266,19 +282,15 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	/// The root node (the node that the solid line is connected to), or None if no nodes are connected to the output.
+	///
+	/// Simply what the export is wired to: previewing renders a different node but does not rewire it.
 	pub fn root_node(&self) -> Option<RootNode> {
-		match &self.metadata.persistent_metadata.previewing {
-			Previewing::Yes { root_node_to_restore } => *root_node_to_restore,
-			Previewing::No => self.network.exports.first().and_then(|export| {
-				if let NodeInput::Node { node_id, output_index, .. } = export {
-					Some(RootNode {
-						node_id: *node_id,
-						output_index: *output_index,
-					})
-				} else {
-					None
-				}
+		match self.network.exports.first() {
+			Some(NodeInput::Node { node_id, output_index, .. }) => Some(RootNode {
+				node_id: *node_id,
+				output_index: *output_index,
 			}),
+			_ => None,
 		}
 	}
 

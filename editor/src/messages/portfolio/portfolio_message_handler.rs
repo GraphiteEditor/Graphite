@@ -314,10 +314,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Document was closed before its working copy finished mounting.
 					return;
 				};
-				let Some((gdd, declarations)) = mounted else {
+				let Some(mounted) = mounted else {
 					log::error!("DocumentStorageMounted for {document_id:?} arrived without its payload");
 					return;
 				};
+				let (gdd, declarations) = *mounted;
 				document.set_storage(gdd, declarations);
 				if !reopened {
 					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
@@ -1319,7 +1320,7 @@ impl PortfolioMessageHandler {
 			Message::Portfolio(PortfolioMessage::DocumentStorageMounted {
 				document_id,
 				reopened,
-				mounted: Some((gdd, declarations)),
+				mounted: Some(Box::new((gdd, declarations))),
 			})
 		};
 		future.into()

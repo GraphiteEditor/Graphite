@@ -68,6 +68,7 @@ impl SpiralTurns {
 		self.handle_state == SpiralTurnsState::Dragging
 	}
 
+	#[expect(clippy::too_many_arguments, reason = "the gizmo records one value per spiral parameter, so grouping them would only move the argument list")]
 	pub fn store_initial_parameters(
 		&mut self,
 		layer: LayerNodeIdentifier,

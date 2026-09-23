@@ -93,6 +93,9 @@ pub enum ImportOrExport {
 pub const PRIMARY_INPUT_INDEX: usize = 0;
 /// The secondary input (index 1) of a layer-shaped node: the horizontal wire from the left, carrying the node chain or child stack that the layer renders.
 pub const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+/// The height in grid cells of a node displayed as a layer, which is fixed regardless of its inputs.
+pub const LAYER_GRID_HEIGHT: u32 = 2;
+
 /// The primary output (index 0) of a node, which most nodes expose as their only output.
 pub const PRIMARY_OUTPUT_INDEX: usize = 0;
 
@@ -335,11 +338,16 @@ impl RootNode {
 	}
 }
 
+/// Which node the node graph renders instead of the network's export.
+///
+/// Per-peer view state, not part of the document: the export keeps whatever it is wired to, and the
+/// compile path substitutes the previewed node into the graph it evaluates. So previewing a node
+/// changes nothing another peer would see.
 #[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
+	Yes {
+		previewed: RootNode,
+	},
 	#[default]
 	No,
 }
@@ -440,6 +448,24 @@ impl<T> TransientCache<T> {
 
 	pub(crate) fn unload(&self) {
 		*self.0.borrow_mut() = None;
+	}
+
+	/// Computes and stores the value with `load` if it is not already loaded.
+	///
+	/// `load` runs with no borrow held, so it is free to read other cache slots.
+	pub(crate) fn ensure_loaded(&self, load: impl FnOnce() -> Option<T>) {
+		let already_loaded = self.0.borrow().is_some();
+		if already_loaded {
+			return;
+		}
+		let Some(value) = load() else { return };
+		self.store(value);
+	}
+
+	/// Runs `read` on the cached value, computing it with `load` first if it is not loaded.
+	pub(crate) fn with_loaded_or<R>(&self, load: impl FnOnce() -> Option<T>, read: impl FnOnce(&T) -> R) -> Option<R> {
+		self.ensure_loaded(load);
+		self.with_loaded(read)
 	}
 
 	/// Runs `read` on the cached value if it is loaded.

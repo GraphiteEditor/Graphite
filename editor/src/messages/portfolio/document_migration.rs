@@ -1144,7 +1144,7 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
-	document.network_interface.document_network_mut().normalize_stored_types();
+	document.network_interface.normalize_stored_types();
 
 	let network = document.network_interface.document_network().clone();
 
@@ -1217,7 +1217,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 						let mut multiply_template = multiply_node.default_node_template();
 						multiply_template.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
 						let multiply_node_id = NodeId::new();
-						if let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) {
+						if let Some(transform_position) = document.network_interface.position(node_id, network_path) {
 							let multiply_position = transform_position + IVec2::new(-7, 1);
 							document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
 							document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
@@ -1355,7 +1355,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 			// Wire inputs cannot ride along on an inserted template, so the Extend node's operands are set after insertion
 			let extend_node_id = NodeId::new();
-			let math_position = document.network_interface.position_from_downstream_node(node_id, network_path);
+			let math_position = document.network_interface.position(node_id, network_path);
 			document.network_interface.insert_node(extend_node_id, extend_template, network_path);
 			if let Some(math_position) = math_position {
 				document
@@ -2723,7 +2723,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let merge_node_id = NodeId::new();
 
 		// Decide on the placement position of the new Merge node
-		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+		let Some(morph_position) = document.network_interface.position(node_id, network_path) else {
 			log::error!("Could not get position for morph node {node_id}");
 			return None;
 		};
@@ -2764,7 +2764,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// Reconnect content (input 0) and leave path (input 4) as default
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 
-		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+		let Some(morph_position) = document.network_interface.position(node_id, network_path) else {
 			log::error!("Could not get position for morph node {node_id}");
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;

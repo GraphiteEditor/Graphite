@@ -56,7 +56,7 @@ pub enum PortfolioMessage {
 		reopened: bool,
 		#[serde(skip, default)]
 		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
-		mounted: Option<(document_format::GddV1, document_graph_storage::Declarations)>,
+		mounted: Option<Box<(document_format::GddV1, document_graph_storage::Declarations)>>,
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
