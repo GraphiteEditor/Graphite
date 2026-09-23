@@ -296,7 +296,30 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool]);
+			let checkbox_id = CheckboxId::new();
+			let mesh_gradient_tool_description = "
+				Enable the Mesh Gradient tool.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let mesh_gradient_tool = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.mesh_gradient_tool)
+					.tooltip_label("Mesh Gradient Tool")
+					.tooltip_description(mesh_gradient_tool_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::MeshGradientTool { enabled: checkbox_input.checked }.into())
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Mesh Gradient Tool")
+					.tooltip_label("Mesh Gradient Tool")
+					.tooltip_description(mesh_gradient_tool_description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool, mesh_gradient_tool]);
 		}
 
 		// =========

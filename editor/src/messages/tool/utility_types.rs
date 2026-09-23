@@ -210,6 +210,11 @@ pub trait ToolTransition {
 	}
 }
 
+pub struct ExperimentalTools {
+	pub brush: bool,
+	pub mesh_gradient: bool,
+}
+
 pub trait ToolMetadata {
 	fn icon_name(&self) -> String;
 	fn tooltip_label(&self) -> String;
@@ -243,14 +248,14 @@ impl ToolData {
 }
 
 impl ToolData {
-	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, brush_tool: bool) {
+	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, experimental: ExperimentalTools) {
 		responses.add(LayoutMessage::SendLayout {
-			layout: self.layout(brush_tool),
+			layout: self.layout(experimental),
 			layout_target,
 		});
 	}
 
-	fn layout(&self, brush_tool: bool) -> Layout {
+	fn layout(&self, experimental: ExperimentalTools) -> Layout {
 		let active_tool = self.active_shape_type.unwrap_or(self.active_tool_type);
 
 		let tool_groups_layout = list_tools_in_groups()
@@ -259,8 +264,11 @@ impl ToolData {
 				tool_group
 					.iter()
 					.filter_map(|tool_availability| {
-						if !brush_tool && let ToolRole::Normal(tool) = tool_availability && tool.tool_type() == ToolType::Brush {
-							return None;
+						if let ToolRole::Normal(tool) = tool_availability {
+							let tool_type = tool.tool_type();
+							if (!experimental.brush && tool_type == ToolType::Brush) || (!experimental.mesh_gradient && tool_type == ToolType::MeshGradient) {
+								return None;
+							}
 						}
 
 						Some(match tool_availability {
@@ -372,6 +380,7 @@ pub enum ToolType {
 	Eyedropper,
 	Fill,
 	Gradient,
+	MeshGradient,
 
 	// Vector tool group
 	Path,
@@ -422,6 +431,7 @@ fn list_tools_in_groups() -> Vec<Vec<ToolRole>> {
 			ToolRole::Normal(Box::<eyedropper_tool::EyedropperTool>::default()),
 			ToolRole::Normal(Box::<fill_tool::FillTool>::default()),
 			ToolRole::Normal(Box::<gradient_tool::GradientTool>::default()),
+			ToolRole::Normal(Box::<mesh_gradient_tool::MeshGradientTool>::default()),
 		],
 		vec![
 			// Vector tool group
@@ -474,6 +484,7 @@ pub fn tool_message_to_tool_type(tool_message: &ToolMessage) -> ToolType {
 		ToolMessage::Eyedropper(_) => ToolType::Eyedropper,
 		ToolMessage::Fill(_) => ToolType::Fill,
 		ToolMessage::Gradient(_) => ToolType::Gradient,
+		ToolMessage::MeshGradient(_) => ToolType::MeshGradient,
 
 		// Vector tool group
 		ToolMessage::Path(_) => ToolType::Path,
@@ -503,6 +514,7 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 		ToolType::Eyedropper => ToolMessageDiscriminant::ActivateToolEyedropper,
 		ToolType::Fill => ToolMessageDiscriminant::ActivateToolFill,
 		ToolType::Gradient => ToolMessageDiscriminant::ActivateToolGradient,
+		ToolType::MeshGradient => ToolMessageDiscriminant::ActivateToolMeshGradient,
 
 		// Vector tool group
 		ToolType::Path => ToolMessageDiscriminant::ActivateToolPath,

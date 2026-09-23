@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
-use crate::messages::tool::utility_types::{HintData, ToolType};
+use crate::messages::tool::utility_types::{ExperimentalTools, HintData, ToolType};
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
@@ -66,6 +66,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::ActivateToolText => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text }),
 			ToolMessage::ActivateToolFill => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Fill }),
 			ToolMessage::ActivateToolGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Gradient }),
+			ToolMessage::ActivateToolMeshGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::MeshGradient }),
 
 			ToolMessage::ActivateToolPath => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }),
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
@@ -220,7 +221,14 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(active_tool).unwrap().refresh_options(responses);
 
 				// Notify the frontend about the initial active tool
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
+				tool_data.send_layout(
+					responses,
+					LayoutTarget::ToolShelf,
+					ExperimentalTools {
+						brush: preferences.brush_tool,
+						mesh_gradient: preferences.mesh_gradient_tool,
+					},
+				);
 
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
@@ -250,7 +258,14 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			}
 			ToolMessage::RefreshToolShelf => {
 				let tool_data = &mut self.tool_state.tool_data;
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
+				tool_data.send_layout(
+					responses,
+					LayoutTarget::ToolShelf,
+					ExperimentalTools {
+						brush: preferences.brush_tool,
+						mesh_gradient: preferences.mesh_gradient_tool,
+					},
+				);
 			}
 			ToolMessage::ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -356,6 +371,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ActivateToolEyedropper,
 			ActivateToolFill,
 			ActivateToolGradient,
+			ActivateToolMeshGradient,
 
 			ActivateToolPath,
 			ActivateToolPen,

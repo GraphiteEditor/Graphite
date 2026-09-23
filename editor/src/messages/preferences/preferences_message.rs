@@ -47,4 +47,7 @@ pub enum PreferencesMessage {
 	VSync {
 		vsync: bool,
 	},
+	MeshGradientTool {
+		enabled: bool,
+	},
 }

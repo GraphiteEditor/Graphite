@@ -28,6 +28,7 @@ pub struct PreferencesMessageHandler {
 	pub show_storage_preferences: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
+	pub mesh_gradient_tool: bool,
 }
 
 impl PreferencesMessageHandler {
@@ -74,6 +75,7 @@ impl Default for PreferencesMessageHandler {
 			show_storage_preferences: false,
 			#[cfg(target_os = "macos")]
 			vsync: false,
+			mesh_gradient_tool: false,
 		}
 	}
 }
@@ -152,6 +154,15 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {
 				self.vsync = vsync;
+			}
+			PreferencesMessage::MeshGradientTool { enabled } => {
+				self.mesh_gradient_tool = enabled;
+
+				if !enabled && tool_message_handler.tool_state.tool_data.active_tool_type == ToolType::MeshGradient {
+					responses.add(ToolMessage::ActivateToolSelect);
+				}
+
+				responses.add(ToolMessage::RefreshToolShelf);
 			}
 		}
 
