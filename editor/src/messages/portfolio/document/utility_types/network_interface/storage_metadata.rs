@@ -65,16 +65,7 @@ impl StorageMetadataView<'_> {
 
 impl NodeMetadataSource for StorageMetadataView<'_> {
 	fn position(&self, network_path: &[NodeId], local_id: NodeId) -> Option<Position> {
-		match &self.persistent(network_path, local_id)?.node_type_metadata {
-			NodeTypePersistentMetadata::Layer(layer) => match layer.position {
-				LayerPosition::Absolute(v) => Some(Position::Absolute([v.x, v.y])),
-				LayerPosition::Stack(offset) => Some(Position::Stack(offset)),
-			},
-			NodeTypePersistentMetadata::Node(node) => match *node.position() {
-				NodePosition::Absolute(v) => Some(Position::Absolute([v.x, v.y])),
-				NodePosition::Chain => Some(Position::Chain),
-			},
-		}
+		Some(position_from_runtime(&self.persistent(network_path, local_id)?.node_type_metadata))
 	}
 
 	fn is_layer(&self, network_path: &[NodeId], local_id: NodeId) -> bool {
@@ -151,6 +142,20 @@ impl DocumentSettings<'_> {
 
 /// Inverse of the position extraction in `NodeMetadataSource::position`.
 /// `(Stack, !is_layer)` and `(Chain, is_layer)` shouldn't arise from a faithful round-trip; they fall back to a default of the matching variant.
+/// The stored position of a node, which pairs with `is_layer` to reconstruct the runtime node type.
+pub fn position_from_runtime(node_type: &NodeTypePersistentMetadata) -> Position {
+	match node_type {
+		NodeTypePersistentMetadata::Layer(layer) => match layer.position {
+			LayerPosition::Absolute(v) => Position::Absolute([v.x, v.y]),
+			LayerPosition::Stack(offset) => Position::Stack(offset),
+		},
+		NodeTypePersistentMetadata::Node(node) => match *node.position() {
+			NodePosition::Absolute(v) => Position::Absolute([v.x, v.y]),
+			NodePosition::Chain => Position::Chain,
+		},
+	}
+}
+
 pub fn position_to_runtime(position: Position, is_layer: bool) -> NodeTypePersistentMetadata {
 	match (position, is_layer) {
 		(Position::Absolute([x, y]), true) => NodeTypePersistentMetadata::layer(IVec2::new(x, y)),

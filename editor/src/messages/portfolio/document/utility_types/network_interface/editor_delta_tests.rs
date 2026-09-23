@@ -1,5 +1,6 @@
+use super::DocumentNodePersistentMetadata;
 use super::InputConnector;
-use super::editor_delta::{EditorDelta, construct_batch};
+use super::editor_delta::{EditorDelta, NodeMetadataChange, construct_batch};
 use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
@@ -34,18 +35,21 @@ fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registr
 		.ops
 }
 
-fn node_metadata_delta(editor: &EditorTestUtils, node_id: NodeId) -> EditorDelta {
-	let metadata = editor
+fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersistentMetadata {
+	editor
 		.active_document()
 		.network_interface
 		.node_metadata(&node_id, &[])
 		.expect("node metadata should exist")
 		.persistent_metadata
-		.clone();
+		.clone()
+}
+
+fn metadata_change(node_id: NodeId, change: NodeMetadataChange) -> EditorDelta {
 	EditorDelta::NodeMetadata {
 		network_path: Vec::new(),
 		node_id,
-		metadata: Box::new(metadata),
+		change,
 	}
 }
 
@@ -115,7 +119,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let delta = EditorDelta::Graph(RuntimeDelta::SetExport {
 		network_path: Vec::new(),
 		export_index: 0,
-		input: export,
+		input: Some(export),
 	});
 	let constructed = construct(&editor, std::slice::from_ref(&delta), &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
@@ -141,7 +145,7 @@ async fn adding_a_node_as_structure_plus_metadata_matches_the_diff() {
 			node_id,
 			node: Box::new(document_node),
 		}),
-		EditorDelta::NodeMetadata {
+		EditorDelta::NodeMetadataSnapshot {
 			network_path: Vec::new(),
 			node_id,
 			metadata: Box::new(metadata),
@@ -154,7 +158,7 @@ async fn adding_a_node_as_structure_plus_metadata_matches_the_diff() {
 }
 
 #[tokio::test]
-async fn metadata_edits_construct_the_exact_diff_ops() {
+async fn per_field_metadata_edits_match_the_diff() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let node = editor.create_node_by_name(rectangle_definition()).await;
@@ -169,8 +173,12 @@ async fn metadata_edits_construct_the_exact_diff_ops() {
 		network_interface.shift_node(&node, glam::IVec2::new(3, 5), &[]);
 	}
 
+	let metadata = node_metadata(&editor, node);
 	let deltas = [
-		node_metadata_delta(&editor, node),
+		metadata_change(node, NodeMetadataChange::DisplayName(metadata.display_name.clone())),
+		metadata_change(node, NodeMetadataChange::Locked(metadata.locked)),
+		metadata_change(node, NodeMetadataChange::Pinned(metadata.pinned)),
+		metadata_change(node, NodeMetadataChange::NodeType(metadata.node_type_metadata.clone())),
 		EditorDelta::Graph(RuntimeDelta::SetVisibility {
 			network_path: Vec::new(),
 			node_id: node,
@@ -179,7 +187,39 @@ async fn metadata_edits_construct_the_exact_diff_ops() {
 	];
 	let constructed = construct(&editor, &deltas, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
-	assert_eq!(constructed, diffed, "Metadata edits should construct exactly the diff's attribute ops");
+	assert_same_stored_effect(&working, constructed, diffed, "per-field metadata edits");
+}
+
+/// The encoding spells "unset" as an absent attribute, so a field set back to its unset value has to
+/// clear the key rather than write a sentinel. The wholesale copy got this by omitting the key; a
+/// per-field delta has to say it, and saying it wrong leaves the old value stored.
+#[tokio::test]
+async fn clearing_a_metadata_field_removes_the_attribute() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let node = editor.create_node_by_name(rectangle_definition()).await;
+
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.set_display_name(&node, "Renamed".to_string(), &[]);
+		network_interface.set_locked(&node, &[], true);
+	}
+
+	let working = convert(&editor);
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.set_display_name(&node, String::new(), &[]);
+		network_interface.set_locked(&node, &[], false);
+	}
+
+	let metadata = node_metadata(&editor, node);
+	let deltas = [
+		metadata_change(node, NodeMetadataChange::DisplayName(metadata.display_name.clone())),
+		metadata_change(node, NodeMetadataChange::Locked(metadata.locked)),
+	];
+	let constructed = construct(&editor, &deltas, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "cleared metadata fields");
 }
 
 #[tokio::test]
@@ -222,7 +262,7 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 		deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
 			network_path: Vec::new(),
 			export_index: index,
-			input: export.clone(),
+			input: Some(export.clone()),
 		}));
 	}
 	for (node_id, node) in &network.nodes {

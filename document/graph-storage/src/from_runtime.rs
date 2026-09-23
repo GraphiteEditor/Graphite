@@ -465,6 +465,27 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	})
 }
 
+/// The `call_argument` attribute write for a node, cleared when the value is the default that
+/// `to_runtime` rehydrates an absent key from. For staging paths that encode this field alone.
+pub fn encode_call_argument(call_argument: &core_types::Type) -> Result<crate::AttributeDelta, ConversionError> {
+	encode_if_not_default(node::CALL_ARGUMENT, call_argument, &concrete!(Context))
+}
+
+/// The `context_features` attribute write, cleared at its default like [`encode_call_argument`].
+pub fn encode_context_features(context_features: &ContextDependencies) -> Result<crate::AttributeDelta, ConversionError> {
+	encode_if_not_default(node::CONTEXT_FEATURES, context_features, &ContextDependencies::default())
+}
+
+fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default: &T) -> Result<crate::AttributeDelta, ConversionError> {
+	let value = if value == default {
+		None
+	} else {
+		Some(serde_json::to_value(value).map_err(map_serialization_error(key))?)
+	};
+
+	Ok(crate::AttributeDelta { key: key.to_string(), value })
+}
+
 /// Public form of the node ui-attribute encoding, for staging paths that encode single nodes.
 pub fn encode_node_ui_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,

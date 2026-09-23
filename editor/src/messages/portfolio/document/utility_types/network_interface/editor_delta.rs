@@ -1,3 +1,4 @@
+use super::storage_metadata::position_from_runtime;
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
@@ -8,19 +9,64 @@ use graph_craft::document::NodeId;
 use graph_craft::runtime_delta::RuntimeDelta;
 use std::collections::{HashMap, HashSet};
 
-/// A [`RuntimeDelta`] extended with the editor-only change kind: a wholesale copy of a node's
-/// persistent metadata, which storage diffs against the working registry so minimal attribute ops
-/// fall out. The compiler consumes only the `Graph` variant.
+/// A [`RuntimeDelta`] extended with the editor-only change kinds, which carry the `ui::*` metadata
+/// the compiler has no use for. The compiler consumes only the `Graph` variant.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EditorDelta {
 	Graph(RuntimeDelta),
-	/// The copy includes the metadata of everything nested under the node, so one delta covers a
-	/// group and its contents.
-	NodeMetadata {
+	/// Every `ui::*` attribute of a node that has just been added, including everything nested under
+	/// it, so one delta covers a group and its contents.
+	///
+	/// Asserting the whole set is sound here precisely because the node is new: every field was just
+	/// written, so there is no concurrent peer holding state for it to clobber. An edit to an existing
+	/// node must use [`EditorDelta::NodeMetadata`] instead.
+	NodeMetadataSnapshot {
 		network_path: Vec<NodeId>,
 		node_id: NodeId,
 		metadata: Box<DocumentNodePersistentMetadata>,
 	},
+	/// One field of an existing node's metadata.
+	NodeMetadata {
+		network_path: Vec<NodeId>,
+		node_id: NodeId,
+		change: NodeMetadataChange,
+	},
+	/// One field of an existing network's metadata.
+	NetworkMetadata {
+		network_path: Vec<NodeId>,
+		change: NetworkMetadataChange,
+	},
+}
+
+/// One field of a node's persistent metadata, named the way the store writes it so each write has
+/// exactly one delta. Every variant carries the post-change value, never a difference.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NodeMetadataChange {
+	/// Whether the node is displayed as a layer and where it sits, which are one choice: a layer and a
+	/// node do not have the same kinds of position. Encodes to `ui::position` and `ui::is_layer`, which
+	/// merge independently, so a concurrent move and a concurrent layer toggle both survive.
+	NodeType(NodeTypePersistentMetadata),
+	DisplayName(String),
+	Locked(bool),
+	Pinned(bool),
+	/// The whole vec, since the encoding is one array-valued attribute rather than a slot each.
+	OutputNames(Vec<String>),
+	InputName {
+		index: usize,
+		name: String,
+	},
+	WidgetOverride {
+		index: usize,
+		widget_override: Option<String>,
+	},
+}
+
+/// One field of a network's persistent metadata. The navigation transform and width are absent
+/// deliberately: they are per-peer view state, persisted to `session.json` rather than the registry.
+#[derive(Debug, Clone, PartialEq)]
+pub enum NetworkMetadataChange {
+	/// The definition the network was instantiated from, dropped once it is edited away from it.
+	Reference(Option<String>),
 }
 
 pub struct ConstructedOps {
@@ -132,17 +178,98 @@ impl EditorDelta {
 				ops.push(RegistryDelta::SetNetworkExport {
 					id: resolver.network_id(network_path),
 					index: (*export_index).try_into().map_err(|_| ConversionError::IndexOverflow(*export_index))?,
-					export: Some(resolver.convert_input_at(input, network_path)?),
+					export: input.as_ref().map(|input| resolver.convert_input_at(input, network_path)).transpose()?,
 				});
 			}
 
-			EditorDelta::NodeMetadata { network_path, node_id, metadata } => {
-				construct_metadata_changes(network_path, *node_id, metadata, working, resolver, ops)?;
+			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network_path, node_id, call_argument }) => {
+				ops.push(RegistryDelta::ChangeNodeAttribute {
+					id: resolver.node_id(network_path, *node_id),
+					delta: document_graph_storage::from_runtime::encode_call_argument(call_argument)?,
+				});
+			}
+
+			EditorDelta::Graph(RuntimeDelta::SetContextFeatures {
+				network_path,
+				node_id,
+				context_features,
+			}) => {
+				ops.push(RegistryDelta::ChangeNodeAttribute {
+					id: resolver.node_id(network_path, *node_id),
+					delta: document_graph_storage::from_runtime::encode_context_features(context_features)?,
+				});
+			}
+
+			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
+				construct_metadata_snapshot(network_path, *node_id, metadata, working, resolver, ops)?;
+			}
+
+			EditorDelta::NodeMetadata { network_path, node_id, change } => {
+				ops.extend(node_metadata_ops(resolver.node_id(network_path, *node_id), change)?);
+			}
+
+			EditorDelta::NetworkMetadata { network_path, change } => {
+				let NetworkMetadataChange::Reference(reference) = change;
+				ops.push(RegistryDelta::ChangeNetworkAttribute {
+					id: resolver.network_id(network_path),
+					delta: AttributeDelta {
+						key: node_attr::ui::REFERENCE.to_string(),
+						value: reference.clone().map(serde_json::Value::String),
+					},
+				});
 			}
 		}
 
 		Ok(())
 	}
+}
+
+fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<serde_json::Value, ConversionError> {
+	serde_json::to_value(value).map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
+}
+
+/// The attribute writes one metadata field makes, as the whole-document encoder would write them.
+///
+/// A field set back to its unset value clears the attribute, since absence is how that encoder spells
+/// unset. Clearing rather than writing a sentinel keeps the two paths producing the same registry.
+fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMetadataChange) -> Result<Vec<RegistryDelta>, ConversionError> {
+	let node_attribute = |key: &str, value: Option<serde_json::Value>| RegistryDelta::ChangeNodeAttribute {
+		id: global_id,
+		delta: AttributeDelta { key: key.to_string(), value },
+	};
+	let input_attribute = |key: &str, index: usize, value: Option<serde_json::Value>| {
+		Ok::<_, ConversionError>(RegistryDelta::ChangeNodeInputAttribute {
+			id: global_id,
+			index: index.try_into().map_err(|_| ConversionError::IndexOverflow(index))?,
+			delta: AttributeDelta { key: key.to_string(), value },
+		})
+	};
+
+	// Absence is how the encoder spells an unset flag, and the empty string is the runtime's own
+	// sentinel for an unset name.
+	let flag = |value: bool| value.then_some(serde_json::Value::Bool(true));
+	let non_empty = |value: &str| (!value.is_empty()).then(|| serde_json::Value::String(value.to_string()));
+	Ok(match change {
+		NodeMetadataChange::NodeType(node_type) => {
+			let position = position_from_runtime(node_type);
+			vec![
+				node_attribute(node_attr::ui::POSITION, Some(serialize_attribute(node_attr::ui::POSITION, &position)?)),
+				node_attribute(node_attr::ui::IS_LAYER, flag(matches!(node_type, NodeTypePersistentMetadata::Layer(_)))),
+			]
+		}
+		NodeMetadataChange::DisplayName(display_name) => vec![node_attribute(node_attr::ui::DISPLAY_NAME, non_empty(display_name))],
+		NodeMetadataChange::Locked(locked) => vec![node_attribute(node_attr::ui::LOCKED, flag(*locked))],
+		NodeMetadataChange::Pinned(pinned) => vec![node_attribute(node_attr::ui::PINNED, flag(*pinned))],
+		NodeMetadataChange::OutputNames(output_names) => {
+			let value = (!output_names.is_empty()).then(|| serialize_attribute(node_attr::ui::OUTPUT_NAMES, output_names)).transpose()?;
+			vec![node_attribute(node_attr::ui::OUTPUT_NAMES, value)]
+		}
+		NodeMetadataChange::InputName { index, name } => vec![input_attribute(node_attr::input::ui::NAME, *index, non_empty(name))?],
+		NodeMetadataChange::WidgetOverride { index, widget_override } => {
+			let value = widget_override.as_deref().and_then(non_empty);
+			vec![input_attribute(node_attr::input::ui::WIDGET_OVERRIDE, *index, value)?]
+		}
+	})
 }
 
 /// Converts through the same encoders as a whole-document conversion, with identities only as the
@@ -201,7 +328,7 @@ fn construct_structural_additions(
 	Ok(())
 }
 
-fn construct_metadata_changes(
+fn construct_metadata_snapshot(
 	network_path: &[NodeId],
 	node_id: NodeId,
 	metadata: &DocumentNodePersistentMetadata,
