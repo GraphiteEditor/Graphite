@@ -1,5 +1,5 @@
 use crate::crate_ident::CrateIdent;
-use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, ParsedValueSource, RegularParsedField};
+use crate::parsing::{Input, NodeFnAttributes, ParsedField, ParsedFieldType, ParsedNodeFn, ParsedValueSource, RegularParsedField, peel_item};
 use crate::shader_nodes::{SHADER_NODES_FEATURE_GATE, ShaderCodegen, ShaderNodeType, ShaderTokens};
 use convert_case::{Case, Casing};
 use proc_macro2::{Ident, Span, TokenStream};
@@ -42,13 +42,17 @@ impl ShaderCodegen for PerPixelAdjust {
 							ident: Cow::Owned(format_ident!("image_{}", &ident.ident)),
 							ty: quote!(Image2d),
 							item_wrapped: element_ty.is_some(),
+							narrowed: false,
 							param_type: ParamType::Image { binding: 0 },
 						})
 					} else {
+						// The uniform holds the 32-bit types the shader computes with, so a parameter declared f64 or i64 takes its counterpart here
+						let body_ty = regular.body_ty();
 						Ok(Param {
 							ident: Cow::Borrowed(&ident.ident),
 							item_wrapped: element_ty.is_some(),
-							ty: element_ty.map(|element_ty| element_ty.to_token_stream()).unwrap_or_else(|| regular.ty.to_token_stream()),
+							narrowed: regular.narrowed_body_ty.is_some(),
+							ty: peel_item(body_ty).unwrap_or_else(|| body_ty.clone()).to_token_stream(),
 							param_type: ParamType::Uniform,
 						})
 					}
@@ -143,13 +147,22 @@ impl PerPixelAdjustCodegen<'_> {
 				ParamType::Uniform => None,
 			})
 			.collect::<Vec<_>>();
-		// Ranked connectors compile against the no_std `Item` stand-in on the GPU, so wrapping and unwrapping here is free
+		// Ranked connectors compile against the no_std `Item` stand-in on the GPU, so wrapping and unwrapping here is free.
+		// A narrowed uniform casts to whichever width the fn variant being compiled takes: f32 for the shader, f64 on the CPU.
 		let call_args = self
 			.params
 			.iter()
-			.map(|Param { ident, param_type, item_wrapped, .. }| {
+			.map(|param| {
+				let Param {
+					ident,
+					param_type,
+					item_wrapped,
+					narrowed,
+					..
+				} = param;
 				let bare_value = match param_type {
 					ParamType::Image { .. } => quote!(Color::from_vec4(#ident.fetch_with(texel_coord, lod(0)))),
+					ParamType::Uniform if *narrowed => quote!(uniform.#ident as _),
 					ParamType::Uniform => quote!(uniform.#ident),
 				};
 				if *item_wrapped { quote!(Item::new_from_element(#bare_value)) } else { bare_value }
@@ -219,7 +232,10 @@ impl PerPixelAdjustCodegen<'_> {
 						..regular.clone()
 					})
 				} else {
-					f.ty.clone()
+					ParsedFieldType::classify(RegularParsedField {
+						narrowed_body_ty: None,
+						..regular.clone()
+					})
 				};
 				Ok(ParsedField { pat_ident, ty, ..f.clone() })
 			})
@@ -249,6 +265,7 @@ impl PerPixelAdjustCodegen<'_> {
 				number_mode_range: false,
 				implementations: Default::default(),
 				gpu_image: false,
+				narrowed_body_ty: None,
 			}),
 			number_display_decimal_places: None,
 			number_step: None,
@@ -278,7 +295,15 @@ impl PerPixelAdjustCodegen<'_> {
 					ParamType::Image { .. } => None,
 					ParamType::Uniform => {
 						let ident = p.ident.as_ref();
-						Some(if p.item_wrapped { quote!(#ident: #ident.into_element()) } else { quote!(#ident) })
+						let value = if p.item_wrapped { quote!(#ident.into_element()) } else { quote!(#ident) };
+						// A parameter declared f64 or i64 narrows to the shader's 32-bit counterpart as it enters the uniform; an
+						// integer saturates rather than wrapping, matching how the float overflows to infinity instead of flipping
+						let ty = &p.ty;
+						Some(match (p.narrowed, ty.to_string().as_str()) {
+							(true, "i32") => quote!(#ident: (#value).clamp(i32::MIN as _, i32::MAX as _) as i32),
+							(true, _) => quote!(#ident: #value as #ty),
+							(false, _) => quote!(#ident: #value),
+						})
 					}
 				})
 				.collect::<Vec<_>>();
@@ -352,6 +377,8 @@ struct Param<'a> {
 	ident: Cow<'a, Ident>,
 	ty: TokenStream,
 	item_wrapped: bool,
+	/// Whether the parameter is declared `f64` or `i64` and narrows to the shader's 32-bit counterpart as it enters the uniform.
+	narrowed: bool,
 	param_type: ParamType,
 }
 

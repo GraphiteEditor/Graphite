@@ -6,6 +6,8 @@ use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
 #[cfg(not(feature = "std"))]
 use no_std_types::list::ShaderItem as Item;
+#[cfg(feature = "std")]
+use no_std_types::registry::types::Percentage;
 use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
@@ -106,7 +108,7 @@ fn color_overlay<T: Adjust<Color>>(
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
 	blend_mode: Item<BlendMode>,
-	#[default(100.)] opacity: Item<PercentageF32>,
+	#[default(100.)] opacity: Item<Percentage>,
 ) -> Item<T> {
 	let mut image = image;
 	let color = color.into_element();
@@ -117,7 +119,7 @@ fn color_overlay<T: Adjust<Color>>(
 
 	image.element_mut().adjust(|pixel| {
 		let overlay = apply_blend_mode(color, *pixel, blend_mode);
-		let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity;
+		let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity as f32;
 
 		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
 	});

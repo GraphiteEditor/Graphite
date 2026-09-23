@@ -1494,6 +1494,40 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			document.network_interface.shift_absolute_node_position(&converter_id, text_position + IVec2::new(7, 0), network_path);
 		}
 	}
+
+	// Shader nodes compute in f32 but their parameters ride the graph as f64, so an F32 stored in a slot whose definition now
+	// defaults to F64 widens to match. Keying on the definition covers any parameter that leaves f32 behind, and running last
+	// covers the F32 values the migrations above still write.
+	let widened_float_inputs: Vec<(NodeId, Vec<NodeId>, usize, f64, bool)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.flat_map(|(node_id, node, path)| {
+			let Some(reference) = document.network_interface.reference(node_id, &path) else {
+				return Vec::new();
+			};
+			let Some(definition) = resolve_document_node_type(&reference) else { return Vec::new() };
+			let default_inputs = definition.default_node_template().inputs;
+
+			node.inputs
+				.iter()
+				.enumerate()
+				.filter_map(|(index, input)| {
+					let NodeInput::Value { tagged_value, exposed } = input else { return None };
+					let TaggedValue::F32(value) = &**tagged_value else { return None };
+					let NodeInput::Value { tagged_value: default_value, .. } = default_inputs.get(index)? else {
+						return None;
+					};
+					matches!(&**default_value, TaggedValue::F64(_)).then(|| (*node_id, path.clone(), index, *value as f64, *exposed))
+				})
+				.collect::<Vec<_>>()
+		})
+		.collect();
+	for (node_id, network_path, index, value, exposed) in widened_float_inputs {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::F64(value), exposed), &network_path);
+	}
 }
 
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
@@ -3391,6 +3425,30 @@ mod tests {
 			assert_eq!(network.nodes[&extend_id].inputs.first(), Some(&NodeInput::value(TaggedValue::F64Array(vec![2.]), true)));
 			assert_eq!(network.nodes[&extend_id].inputs.get(1), Some(&NodeInput::value(TaggedValue::F64Array(vec![5.]), false)));
 		}
+	}
+
+	// A shader node's parameters ride the graph as f64, so an F32 a document stored where the node's definition now
+	// defaults to F64 widens, while an F32 sitting in a slot with some other default type is left alone
+	#[test]
+	fn stored_f32_values_widen_where_the_definition_defaults_to_f64() {
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let gamma_correction = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::adjustments::gamma_correction::IDENTIFIER);
+		let mut node_template = resolve_document_node_type(&gamma_correction).expect("Gamma Correction should exist").default_node_template();
+		node_template.inputs[0] = NodeInput::value(TaggedValue::F32(1.), false);
+		node_template.inputs[1] = NodeInput::value(TaggedValue::F32(2.2), true);
+		document.network_interface.insert_node(node_id, node_template, &[]);
+
+		document_migration_upgrades(&mut document, false);
+
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		assert_eq!(
+			node.inputs.first().and_then(|input| input.as_value()).cloned(),
+			Some(TaggedValue::F32(1.)),
+			"a slot whose default is not a number keeps its value"
+		);
+		assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::F64(2.2_f32 as f64)));
+		assert!(matches!(node.inputs.get(1), Some(NodeInput::Value { exposed: true, .. })), "exposure should survive the upgrade");
 	}
 
 	#[test]
