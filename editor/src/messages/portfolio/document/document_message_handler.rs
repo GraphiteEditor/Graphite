@@ -2026,18 +2026,29 @@ impl DocumentMessageHandler {
 		self.history.retire_storage_interaction();
 	}
 
-	/// Stages the runtime network into the `Gdd` working copy.
+	/// Stages what the store recorded since the last commit into the `Gdd` working copy.
+	///
+	/// The batch boundary: everything the interface recorded since the last one is this commit's batch.
+	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
+	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
-
-		// The batch boundary for the store's emitted deltas. Staging still converts the whole document and
-		// diffs it, so the deltas are dropped here rather than consumed; draining unconditionally keeps the
-		// buffer from growing across a session that never mounts storage.
-		let _emitted = self.network_interface.take_deltas();
-
+		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;
 		}
+
+		let (view_settings, legacy_document) = self.storage_side_channels();
+		self.history
+			.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
+
+		if validate {
+			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// The per-peer view settings and legacy bytes that ride along with either kind of staging.
+	fn storage_side_channels(&self) -> (std::collections::BTreeMap<String, serde_json::Value>, String) {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
 		let view_settings = DocumentSettings {
 			document_ptz: &self.document_ptz,
@@ -2049,14 +2060,7 @@ impl DocumentMessageHandler {
 		}
 		.to_view_map();
 
-		let legacy_document = self.serialize_document();
-
-		self.history
-			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
-
-		if validate {
-			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
-		}
+		(view_settings, self.serialize_document())
 	}
 
 	/// Restore `view_settings` map into the document.

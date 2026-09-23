@@ -470,6 +470,30 @@ async fn replaying_a_node_insertion_reproduces_the_interface() {
 	.await;
 }
 
+/// A node added and removed inside one batch is never in the registry the batch started from, so the
+/// removal has nothing to look up there. The pair has to cancel out rather than leaving the addition
+/// staged on its own.
+#[tokio::test]
+async fn a_node_added_and_removed_in_one_batch_leaves_nothing_behind() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	let template = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
+		.expect("rectangle definition")
+		.default_node_template();
+	let node_id = NodeId(0xDE17A);
+	editor.active_document_mut().network_interface.insert_node(node_id, template, &[]);
+	editor.active_document_mut().network_interface.delete_nodes(vec![node_id], true, &[]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "add then remove in one batch");
+}
+
 #[tokio::test]
 async fn removing_a_nested_network_node_matches_the_diff() {
 	let mut editor = EditorTestUtils::create();

@@ -677,6 +677,50 @@ impl NodeNetworkInterface {
 		Some(previous)
 	}
 
+	/// Edits the value at `connector` in place, recording the value the edit leaves behind.
+	///
+	/// For a change expressed as an operation on the existing value rather than as a replacement of it.
+	/// Reading the value out, editing it, and writing it back would copy it twice; the recorded delta
+	/// still carries the whole result, since the storage op is a whole-value write.
+	pub(crate) fn edit_input_value(&mut self, connector: &InputConnector, network_path: &[NodeId], edit: impl FnOnce(&mut TaggedValue)) -> bool {
+		let Some(network) = self.network_graph_mut(network_path) else {
+			log::error!("Could not get nested network in edit_input_value");
+			return false;
+		};
+
+		let slot = match connector {
+			InputConnector::Node { node_id, input_index } => network.nodes.get_mut(node_id).and_then(|node| node.inputs.get_mut(*input_index)),
+			InputConnector::Export(export_index) => network.exports.get_mut(*export_index),
+		};
+		let Some(slot) = slot else {
+			log::error!("Could not get input {connector:?} in edit_input_value");
+			return false;
+		};
+		let Some(mut value) = slot.as_value_mut() else {
+			log::error!("Input {connector:?} is not a value in edit_input_value");
+			return false;
+		};
+
+		edit(&mut value);
+		drop(value);
+
+		let input = slot.clone();
+		self.deltas.push(EditorDelta::Graph(match connector {
+			InputConnector::Node { node_id, input_index } => RuntimeDelta::SetInput {
+				network_path: network_path.to_vec(),
+				node_id: *node_id,
+				input_index: *input_index,
+				input,
+			},
+			InputConnector::Export(export_index) => RuntimeDelta::SetExport {
+				network_path: network_path.to_vec(),
+				export_index: *export_index,
+				input: Some(input),
+			},
+		}));
+		true
+	}
+
 	/// Inserts a node and its metadata, returning the entry it replaced.
 	pub(crate) fn insert_node_entry(&mut self, locator: NodeLocator, template: NodeTemplate) -> Option<NodeTemplate> {
 		if !self.network_pair_exists(locator.network_path) {

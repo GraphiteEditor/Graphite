@@ -76,6 +76,29 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Stage ops the caller built from what the editor recorded, rather than deriving them by converting
+	/// the whole document and diffing it against the working registry.
+	///
+	/// Otherwise identical to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot): each op becomes a
+	/// hot frame, and the proto-node declaration bytes go to the byte store.
+	#[cfg(feature = "conversion")]
+	pub fn stage_constructed_ops(
+		&mut self,
+		ops: Vec<document_graph_storage::RegistryDelta>,
+		declaration_bytes: &document_graph_storage::from_runtime::DeclarationBytes,
+		byte_store: &dyn ResourceStorage,
+	) -> Result<(), Error> {
+		let hot_ops = self.session.stage_computed_ops(ops)?;
+
+		for hot_op in &hot_ops {
+			self.append_hot_frame(hot_op)?;
+		}
+		for bytes in declaration_bytes.values() {
+			byte_store.store(bytes);
+		}
+		Ok(())
+	}
+
 	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last
 	/// delta as the interaction boundary), then re-snapshot the registry. One interaction is one undo unit,
 	/// so the caller invokes this at each undo-step boundary and before any undo/redo. A no-op when there

@@ -104,36 +104,20 @@ pub fn construct_batch(
 ) -> Result<ConstructedOps, ConversionError> {
 	let identities = IdentitiesOnly(metadata);
 	let resolver = PathResolver::new(Some(&identities), peer);
-	let nodes_by_network = NodesByNetwork::new(working);
+	let mut batch = BatchRegistry::new(working);
 	let mut ops = Vec::new();
 	let mut declaration_bytes = DeclarationBytes::new();
 	let mut batch_removed_nodes = Vec::new();
-	let mut batch_added_resources = HashSet::new();
 
+	// In delta order, so each delta reads what the ones before it did. Removals accumulate as they are
+	// met rather than being gathered up front, since a removal can name a node an earlier delta added.
 	for delta in deltas {
-		if let EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id } | RuntimeDelta::ReplaceNode { network_path, node_id, .. }) = delta {
-			let (removed_nodes, _) = removal_closure(resolver.node_id(network_path, *node_id), working, &nodes_by_network);
-			batch_removed_nodes.extend(removed_nodes);
-		}
+		delta.construct(resources, peer, &identities, &resolver, &mut batch, &mut batch_removed_nodes, &mut ops, &mut declaration_bytes)?;
 	}
+
 	batch_removed_nodes.sort();
 	batch_removed_nodes.dedup();
-
-	for delta in deltas {
-		delta.construct(
-			working,
-			resources,
-			peer,
-			&identities,
-			&resolver,
-			&nodes_by_network,
-			&mut batch_added_resources,
-			&mut ops,
-			&mut declaration_bytes,
-		)?;
-	}
-
-	construct_resource_removals(&batch_removed_nodes, working, &mut ops);
+	construct_resource_removals(&batch_removed_nodes, &batch, &mut ops);
 	Ok(ConstructedOps { ops, declaration_bytes })
 }
 
@@ -141,28 +125,27 @@ impl EditorDelta {
 	#[allow(clippy::too_many_arguments)]
 	fn construct(
 		&self,
-		working: &Registry,
 		resources: &ResourceRegistry,
 		peer: document_graph_storage::PeerId,
 		identities: &dyn NodeMetadataSource,
 		resolver: &PathResolver,
-		nodes_by_network: &NodesByNetwork,
-		batch_added_resources: &mut HashSet<ResourceId>,
+		batch: &mut BatchRegistry,
+		batch_removed_nodes: &mut Vec<document_graph_storage::NodeId>,
 		ops: &mut Vec<RegistryDelta>,
 		declaration_bytes: &mut DeclarationBytes,
 	) -> Result<(), ConversionError> {
 		match self {
 			EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, node }) => {
-				construct_structural_additions(network_path, *node_id, node, working, resources, identities, peer, batch_added_resources, ops, declaration_bytes)?;
+				construct_structural_additions(network_path, *node_id, node, batch, resources, identities, peer, ops, declaration_bytes)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::ReplaceNode { network_path, node_id, node }) => {
-				construct_removals(resolver.node_id(network_path, *node_id), working, nodes_by_network, ops);
-				construct_structural_additions(network_path, *node_id, node, working, resources, identities, peer, batch_added_resources, ops, declaration_bytes)?;
+				construct_removals(resolver.node_id(network_path, *node_id), batch, batch_removed_nodes, ops);
+				construct_structural_additions(network_path, *node_id, node, batch, resources, identities, peer, ops, declaration_bytes)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id }) => {
-				construct_removals(resolver.node_id(network_path, *node_id), working, nodes_by_network, ops);
+				construct_removals(resolver.node_id(network_path, *node_id), batch, batch_removed_nodes, ops);
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetVisibility { network_path, node_id, visible }) => {
@@ -215,7 +198,7 @@ impl EditorDelta {
 			}
 
 			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
-				construct_metadata_snapshot(network_path, *node_id, metadata, working, resolver, ops)?;
+				construct_metadata_snapshot(network_path, *node_id, metadata, batch, resolver, ops)?;
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetInputs { network_path, node_id, inputs }) => {
@@ -250,7 +233,7 @@ impl EditorDelta {
 			} => {
 				let global_id = resolver.node_id(network_path, *node_id);
 				let source = InputMetadataSource(input_metadata);
-				let working_node = working.node_instances.get(&global_id);
+				let working_node = batch.node(global_id);
 
 				// An insert shifts every later slot, so the array is asserted whole: a `ui::` key the slot
 				// no longer carries is cleared rather than left behind at its old index.
@@ -359,11 +342,10 @@ fn construct_structural_additions(
 	network_path: &[NodeId],
 	node_id: NodeId,
 	node: &graph_craft::document::DocumentNode,
-	working: &Registry,
+	batch: &mut BatchRegistry,
 	resources: &ResourceRegistry,
 	identities: &dyn NodeMetadataSource,
 	peer: document_graph_storage::PeerId,
-	batch_added_resources: &mut HashSet<ResourceId>,
 	ops: &mut Vec<RegistryDelta>,
 	declaration_bytes: &mut DeclarationBytes,
 ) -> Result<(), ConversionError> {
@@ -378,29 +360,37 @@ fn construct_structural_additions(
 		ops.push(RegistryDelta::AddNetwork { id: *id, network: network.clone() });
 	}
 
+	// Recorded as well as emitted, so a later delta in this batch that reads one of these nodes back
+	// finds it rather than looking only at the registry the batch started from.
 	let mut nodes: Vec<_> = scratch.node_instances.iter().collect();
 	nodes.sort_by_key(|(id, _)| **id);
-	for (id, node) in nodes {
-		ops.push(RegistryDelta::AddNode { id: *id, node: node.clone() });
+	let added: Vec<_> = nodes.into_iter().map(|(id, node)| (*id, node.clone())).collect();
+	for (id, node) in added {
+		ops.push(RegistryDelta::AddNode { id, node: node.clone() });
+		batch.record_addition(id, node);
 	}
 
-	let mut new_resources: Vec<_> = scratch.resources.iter().filter(|(id, _)| !working.resources.contains_key(id)).collect();
-	new_resources.sort_by_key(|(id, _)| **id);
+	let mut new_resources: Vec<_> = scratch
+		.resources
+		.iter()
+		.filter(|(id, _)| !batch.working.resources.contains_key(id))
+		.map(|(id, entry)| (*id, entry.clone()))
+		.collect();
+	new_resources.sort_by_key(|(id, _)| *id);
 	for (id, entry) in new_resources {
-		if batch_added_resources.insert(*id) {
-			ops.push(RegistryDelta::AddResource { id: *id, entry: entry.clone() });
+		if batch.record_resource(id, entry.clone()) {
+			ops.push(RegistryDelta::AddResource { id, entry });
 		}
 	}
 	let mut tagged: Vec<ResourceId> = scratch.node_instances.values().flat_map(node_value_resource_refs).collect();
 	tagged.sort();
 	tagged.dedup();
 	for id in tagged {
-		if !working.resources.contains_key(&id)
+		if batch.resource(id).is_none()
 			&& !scratch.resources.contains_key(&id)
-			&& !batch_added_resources.contains(&id)
 			&& let Some(entry) = convert_resource_entry(resources, id, peer)?
 		{
-			batch_added_resources.insert(id);
+			batch.record_resource(id, entry.clone());
 			ops.push(RegistryDelta::AddResource { id, entry });
 		}
 	}
@@ -412,7 +402,7 @@ fn construct_metadata_snapshot(
 	network_path: &[NodeId],
 	node_id: NodeId,
 	metadata: &DocumentNodePersistentMetadata,
-	working: &Registry,
+	batch: &BatchRegistry,
 	resolver: &PathResolver,
 	ops: &mut Vec<RegistryDelta>,
 ) -> Result<(), ConversionError> {
@@ -425,7 +415,7 @@ fn construct_metadata_snapshot(
 	let mut pending = vec![(network_path.to_vec(), node_id, metadata)];
 	while let Some((path, id, node_metadata)) = pending.pop() {
 		let global_id = resolver.node_id(&path, id);
-		let working_node = working.node_instances.get(&global_id);
+		let working_node = batch.node(global_id);
 
 		let mut encoded = Attributes::new();
 		encode_node_ui_attributes(&mut encoded, &source, &path, id, TimeStamp::ORIGIN)?;
@@ -452,7 +442,8 @@ fn construct_metadata_snapshot(
 			let network_id = resolver.network_id(&nested_path);
 
 			let target = network_metadata.persistent_metadata.reference.clone().map(serde_json::Value::String);
-			let current = working
+			let current = batch
+				.working
 				.networks
 				.get(&network_id)
 				.and_then(|network| network.attributes.get(node_attr::ui::REFERENCE))
@@ -505,33 +496,33 @@ fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Ve
 	deltas
 }
 
-fn construct_removals(node_id: document_graph_storage::NodeId, working: &Registry, nodes_by_network: &NodesByNetwork, ops: &mut Vec<RegistryDelta>) {
-	let (mut removed_nodes, mut removed_networks) = removal_closure(node_id, working, nodes_by_network);
+/// Emits the removal of a node and everything nested under it, recording what was removed so the
+/// batch's resource liveness accounts for all of it at the end.
+fn construct_removals(node_id: document_graph_storage::NodeId, batch: &BatchRegistry, batch_removed_nodes: &mut Vec<document_graph_storage::NodeId>, ops: &mut Vec<RegistryDelta>) {
+	let (mut removed_nodes, mut removed_networks) = removal_closure(node_id, batch);
 
 	removed_nodes.sort();
 	removed_networks.sort();
 	for id in &removed_nodes {
-		ops.push(RegistryDelta::RemoveNode {
-			id: *id,
-			snapshot: working.node_instances[id].clone(),
-		});
+		let Some(snapshot) = batch.node(*id) else { continue };
+		ops.push(RegistryDelta::RemoveNode { id: *id, snapshot: snapshot.clone() });
 	}
 	for id in &removed_networks {
-		ops.push(RegistryDelta::RemoveNetwork {
-			id: *id,
-			snapshot: working.networks[id].clone(),
-		});
+		let Some(snapshot) = batch.working.networks.get(id) else { continue };
+		ops.push(RegistryDelta::RemoveNetwork { id: *id, snapshot: snapshot.clone() });
 	}
+
+	batch_removed_nodes.extend(removed_nodes);
 }
 
 /// Emits removals for resources referenced only by the batch's removed nodes, checked after every
 /// removal is known.
-fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::NodeId], working: &Registry, ops: &mut Vec<RegistryDelta>) {
+fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::NodeId], batch: &BatchRegistry, ops: &mut Vec<RegistryDelta>) {
 	let removed_node_set: HashSet<_> = batch_removed_nodes.iter().copied().collect();
 	let mut candidates: Vec<ResourceId> = batch_removed_nodes
 		.iter()
-		.flat_map(|id| {
-			let node = &working.node_instances[id];
+		.filter_map(|id| batch.node(*id))
+		.flat_map(|node| {
 			let declaration = match node.implementation() {
 				Implementation::ProtoNode(declaration) => Some(*declaration),
 				Implementation::Network(_) => None,
@@ -547,7 +538,7 @@ fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::No
 
 	// Gathered in one pass so each candidate is a lookup rather than another scan of the whole registry
 	let mut still_referenced: HashSet<ResourceId> = HashSet::new();
-	for (id, node) in &working.node_instances {
+	for (id, node) in batch.working.node_instances.iter().chain(&batch.added) {
 		if removed_node_set.contains(id) {
 			continue;
 		}
@@ -556,13 +547,13 @@ fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::No
 		}
 		still_referenced.extend(node_value_resource_refs(node));
 	}
-	for network in working.networks.values() {
+	for network in batch.working.networks.values() {
 		still_referenced.extend(network.exports.iter().filter_map(|slot| slot.target.as_ref().and_then(value_resource_ref)));
 	}
 
 	for candidate in candidates {
 		if !still_referenced.contains(&candidate)
-			&& let Some(entry) = working.resources.get(&candidate)
+			&& let Some(entry) = batch.resource(candidate)
 		{
 			ops.push(RegistryDelta::RemoveResource {
 				id: candidate,
@@ -572,46 +563,78 @@ fn construct_resource_removals(batch_removed_nodes: &[document_graph_storage::No
 	}
 }
 
-/// The nodes of each network, grouped once. A removal closure then walks only the subtree it removes,
-/// instead of rescanning every node in the document for each nested network it meets.
-struct NodesByNetwork(HashMap<document_graph_storage::NetworkId, Vec<document_graph_storage::NodeId>>);
+/// The registry a delta is constructed against: what the batch started from, plus the nodes deltas
+/// earlier in the same batch have added.
+///
+/// A delta that reads a node back cannot read only the starting registry. A node added and removed
+/// within one batch is not in it, and a later delta that rebuilds a node would rebuild the version
+/// that predates the batch. Additions are tracked rather than the whole registry copied, so the cost
+/// is the size of the batch rather than of the document.
+///
+/// Nodes are also indexed by network, so a removal closure walks only the subtree it removes instead
+/// of rescanning every node for each nested network it meets.
+struct BatchRegistry<'a> {
+	working: &'a Registry,
+	added: HashMap<document_graph_storage::NodeId, document_graph_storage::Node>,
+	added_resources: HashMap<ResourceId, document_graph_storage::ResourceEntry>,
+	by_network: HashMap<document_graph_storage::NetworkId, Vec<document_graph_storage::NodeId>>,
+}
 
-impl NodesByNetwork {
-	fn new(working: &Registry) -> Self {
+impl<'a> BatchRegistry<'a> {
+	fn new(working: &'a Registry) -> Self {
 		let mut by_network: HashMap<_, Vec<_>> = HashMap::new();
 		for (id, node) in &working.node_instances {
 			by_network.entry(node.network()).or_default().push(*id);
 		}
-		Self(by_network)
+		Self {
+			working,
+			added: HashMap::new(),
+			added_resources: HashMap::new(),
+			by_network,
+		}
+	}
+
+	/// Records a node an earlier delta in this batch added, so a later one can read it back.
+	fn record_addition(&mut self, id: document_graph_storage::NodeId, node: document_graph_storage::Node) {
+		self.by_network.entry(node.network()).or_default().push(id);
+		self.added.insert(id, node);
+	}
+
+	/// Records a resource this batch added. Returns whether it is new to the batch, so the caller emits
+	/// one addition for a resource several nodes reference.
+	fn record_resource(&mut self, id: ResourceId, entry: document_graph_storage::ResourceEntry) -> bool {
+		self.added_resources.insert(id, entry).is_none()
+	}
+
+	fn node(&self, id: document_graph_storage::NodeId) -> Option<&document_graph_storage::Node> {
+		self.added.get(&id).or_else(|| self.working.node_instances.get(&id))
+	}
+
+	fn resource(&self, id: ResourceId) -> Option<&document_graph_storage::ResourceEntry> {
+		self.added_resources.get(&id).or_else(|| self.working.resources.get(&id))
 	}
 
 	fn children(&self, network_id: document_graph_storage::NetworkId) -> &[document_graph_storage::NodeId] {
-		self.0.get(&network_id).map_or(&[], Vec::as_slice)
+		self.by_network.get(&network_id).map_or(&[], Vec::as_slice)
 	}
 }
 
 /// The node together with everything nested under it, and the networks that nesting owns.
-fn removal_closure(node_id: document_graph_storage::NodeId, working: &Registry, nodes_by_network: &NodesByNetwork) -> (Vec<document_graph_storage::NodeId>, Vec<document_graph_storage::NetworkId>) {
+fn removal_closure(node_id: document_graph_storage::NodeId, batch: &BatchRegistry) -> (Vec<document_graph_storage::NodeId>, Vec<document_graph_storage::NetworkId>) {
 	let mut nodes = Vec::new();
 	let mut networks = Vec::new();
-	collect_removal_closure(node_id, working, nodes_by_network, &mut nodes, &mut networks);
+	collect_removal_closure(node_id, batch, &mut nodes, &mut networks);
 	(nodes, networks)
 }
 
-fn collect_removal_closure(
-	node_id: document_graph_storage::NodeId,
-	working: &Registry,
-	nodes_by_network: &NodesByNetwork,
-	nodes: &mut Vec<document_graph_storage::NodeId>,
-	networks: &mut Vec<document_graph_storage::NetworkId>,
-) {
-	let Some(node) = working.node_instances.get(&node_id) else { return };
+fn collect_removal_closure(node_id: document_graph_storage::NodeId, batch: &BatchRegistry, nodes: &mut Vec<document_graph_storage::NodeId>, networks: &mut Vec<document_graph_storage::NetworkId>) {
+	let Some(node) = batch.node(node_id) else { return };
 	nodes.push(node_id);
 
 	if let &Implementation::Network(network_id) = node.implementation() {
 		networks.push(network_id);
-		for &child_id in nodes_by_network.children(network_id) {
-			collect_removal_closure(child_id, working, nodes_by_network, nodes, networks);
+		for &child_id in batch.children(network_id) {
+			collect_removal_closure(child_id, batch, nodes, networks);
 		}
 	}
 }

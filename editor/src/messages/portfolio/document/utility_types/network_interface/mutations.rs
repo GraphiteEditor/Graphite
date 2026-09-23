@@ -87,20 +87,19 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn vector_modify(&mut self, node_id: &NodeId, modification_type: VectorModificationType) {
-		let Some(node) = self.network_graph_mut(&[]).and_then(|network| network.nodes.get_mut(node_id)) else {
-			log::error!("Could not get node in vector_modification");
-			return;
-		};
-		{
-			let mut value = node.inputs.get_mut(1).and_then(|input| input.as_value_mut());
-			let Some(TaggedValue::VectorModification(modification)) = value.as_deref_mut() else {
+		let mut modified = false;
+		self.edit_input_value(&InputConnector::node_at_index(*node_id, 1), &[], |value| {
+			let TaggedValue::VectorModification(modification) = value else {
 				log::error!("Path node {node_id} does not have a modification input");
 				return;
 			};
-
 			modification.modify(&modification_type);
+			modified = true;
+		});
+
+		if modified {
+			self.transaction_modified();
 		}
-		self.transaction_modified();
 	}
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
