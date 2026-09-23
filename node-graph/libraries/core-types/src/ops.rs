@@ -75,30 +75,37 @@ pub trait FromAnchorPosition {
 	fn from_anchor_position(position: DVec2) -> Self;
 }
 
-/// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
+/// Implements the [`Convert`] trait between Rust's primitive numeric types. A float narrowing to an integer rounds to the
+/// nearest whole number (half away from zero), the graph's one Number to Integer rule, so float noise like 5.999999 reaches
+/// an integer connector as 6 rather than truncating to 5. Every other pair is a plain `as` cast.
 macro_rules! impl_convert {
-	($from:ty, $to:ty) => {
+	($from:ty => $to:ty) => {
 		impl Convert<$to, ()> for $from {
 			async fn convert(self, _: Footprint, _: ()) -> $to {
 				self as $to
 			}
 		}
 	};
-	($to:ty) => {
-		impl_convert!(f32, $to);
-		impl_convert!(f64, $to);
-		impl_convert!(i8, $to);
-		impl_convert!(u8, $to);
-		impl_convert!(u16, $to);
-		impl_convert!(i16, $to);
-		impl_convert!(i32, $to);
-		impl_convert!(u32, $to);
-		impl_convert!(i64, $to);
-		impl_convert!(u64, $to);
-		impl_convert!(i128, $to);
-		impl_convert!(u128, $to);
-		impl_convert!(isize, $to);
-		impl_convert!(usize, $to);
+	($from:ty => round $to:ty) => {
+		impl Convert<$to, ()> for $from {
+			async fn convert(self, _: Footprint, _: ()) -> $to {
+				self.round() as $to
+			}
+		}
+	};
+	(from_integers $to:ty) => {
+		impl_convert!(i8 => $to);
+		impl_convert!(u8 => $to);
+		impl_convert!(u16 => $to);
+		impl_convert!(i16 => $to);
+		impl_convert!(i32 => $to);
+		impl_convert!(u32 => $to);
+		impl_convert!(i64 => $to);
+		impl_convert!(u64 => $to);
+		impl_convert!(i128 => $to);
+		impl_convert!(u128 => $to);
+		impl_convert!(isize => $to);
+		impl_convert!(usize => $to);
 
 		impl Convert<DVec2, ()> for $to {
 			async fn convert(self, _: Footprint, _: ()) -> DVec2 {
@@ -106,21 +113,31 @@ macro_rules! impl_convert {
 			}
 		}
 	};
+	(float $to:ty) => {
+		impl_convert!(f32 => $to);
+		impl_convert!(f64 => $to);
+		impl_convert!(from_integers $to);
+	};
+	(integer $to:ty) => {
+		impl_convert!(f32 => round $to);
+		impl_convert!(f64 => round $to);
+		impl_convert!(from_integers $to);
+	};
 }
-impl_convert!(f32);
-impl_convert!(f64);
-impl_convert!(i8);
-impl_convert!(u8);
-impl_convert!(u16);
-impl_convert!(i16);
-impl_convert!(i32);
-impl_convert!(u32);
-impl_convert!(i64);
-impl_convert!(u64);
-impl_convert!(i128);
-impl_convert!(u128);
-impl_convert!(isize);
-impl_convert!(usize);
+impl_convert!(float f32);
+impl_convert!(float f64);
+impl_convert!(integer i8);
+impl_convert!(integer u8);
+impl_convert!(integer u16);
+impl_convert!(integer i16);
+impl_convert!(integer i32);
+impl_convert!(integer u32);
+impl_convert!(integer i64);
+impl_convert!(integer u64);
+impl_convert!(integer i128);
+impl_convert!(integer u128);
+impl_convert!(integer isize);
+impl_convert!(integer usize);
 
 /// Implements the [`Convert`] trait from `bool` into each numeric type, embedding `false` and `true` as exactly 0 and 1.
 /// The reverse direction is deliberately absent: a number only becomes a truth value through an explicit comparison.
@@ -136,3 +153,17 @@ macro_rules! impl_convert_from_bool {
 	};
 }
 impl_convert_from_bool!(f32, f64, i8, u8, u16, i16, i32, u32, i64, u64, i128, u128, isize, usize);
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[tokio::test]
+	async fn a_float_narrows_to_the_nearest_integer() {
+		let footprint = Footprint::default();
+		assert_eq!(Convert::<i64, ()>::convert(5.999_999_f64, footprint, ()).await, 6, "float noise rounds up to the whole number it meant");
+		assert_eq!(Convert::<i64, ()>::convert(2.5_f64, footprint, ()).await, 3, "ties round away from zero");
+		assert_eq!(Convert::<i64, ()>::convert(-1.5_f64, footprint, ()).await, -2);
+		assert_eq!(Convert::<f64, ()>::convert(7_i64, footprint, ()).await, 7., "an integer widens exactly");
+	}
+}
