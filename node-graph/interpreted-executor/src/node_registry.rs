@@ -539,13 +539,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		}};
 	}
 	// Numeric wires cast between numeric element types, splat to fill both axes of a `DVec2` connector, and format into a `String` connector
-	node_types.extend(convert_adapter_wildcard!(from: f64, to: [u32, u64, i32, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: u32, to: [f64, u64, i32, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: u64, to: [f64, u32, i32, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: i32, to: [f64, u32, u64, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, u32, u64, i32, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: f64, to: [i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, DVec2, String]));
 	// A bool embeds in number types as exactly 0 or 1 and formats as text as true or false, but deliberately has no `DVec2` row, which would silently turn a stray bool wire into (1., 1.)
-	node_types.extend(convert_adapter_wildcard!(from: bool, to: [f64, u32, u64, i32, i64, String]));
+	node_types.extend(convert_adapter_wildcard!(from: bool, to: [f64, i64, String]));
 	// Position and transform wires may feed a ranked `String` connector by formatting each element as text
 	node_types.extend(convert_adapter_node!(from_element: DVec2, element: String));
 	node_types.extend(convert_adapter_node!(from_element: DAffine2, element: String));

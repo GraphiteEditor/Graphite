@@ -59,7 +59,7 @@ macro_rules! impl_convert_to_string {
 		)*
 	};
 }
-impl_convert_to_string!(f32, u32, u64, i32, i64, bool, DVec2, DAffine2);
+impl_convert_to_string!(i64, bool, DVec2, DAffine2);
 
 // Denoised so 0.1 + 0.2 reaches the string as "0.3" rather than "0.30000000000000004"
 impl Convert<String, ()> for f64 {
@@ -94,18 +94,7 @@ macro_rules! impl_convert {
 		}
 	};
 	(from_integers $to:ty) => {
-		impl_convert!(i8 => $to);
-		impl_convert!(u8 => $to);
-		impl_convert!(u16 => $to);
-		impl_convert!(i16 => $to);
-		impl_convert!(i32 => $to);
-		impl_convert!(u32 => $to);
 		impl_convert!(i64 => $to);
-		impl_convert!(u64 => $to);
-		impl_convert!(i128 => $to);
-		impl_convert!(u128 => $to);
-		impl_convert!(isize => $to);
-		impl_convert!(usize => $to);
 
 		impl Convert<DVec2, ()> for $to {
 			async fn convert(self, _: Footprint, _: ()) -> DVec2 {
@@ -114,30 +103,16 @@ macro_rules! impl_convert {
 		}
 	};
 	(float $to:ty) => {
-		impl_convert!(f32 => $to);
 		impl_convert!(f64 => $to);
 		impl_convert!(from_integers $to);
 	};
 	(integer $to:ty) => {
-		impl_convert!(f32 => round $to);
 		impl_convert!(f64 => round $to);
 		impl_convert!(from_integers $to);
 	};
 }
-impl_convert!(float f32);
 impl_convert!(float f64);
-impl_convert!(integer i8);
-impl_convert!(integer u8);
-impl_convert!(integer u16);
-impl_convert!(integer i16);
-impl_convert!(integer i32);
-impl_convert!(integer u32);
 impl_convert!(integer i64);
-impl_convert!(integer u64);
-impl_convert!(integer i128);
-impl_convert!(integer u128);
-impl_convert!(integer isize);
-impl_convert!(integer usize);
 
 /// Implements the [`Convert`] trait from `bool` into each numeric type, embedding `false` and `true` as exactly 0 and 1.
 /// The reverse direction is deliberately absent: a number only becomes a truth value through an explicit comparison.
@@ -152,7 +127,7 @@ macro_rules! impl_convert_from_bool {
 		)*
 	};
 }
-impl_convert_from_bool!(f32, f64, i8, u8, u16, i16, i32, u32, i64, u64, i128, u128, isize, usize);
+impl_convert_from_bool!(f64, i64,);
 
 #[cfg(test)]
 mod tests {
