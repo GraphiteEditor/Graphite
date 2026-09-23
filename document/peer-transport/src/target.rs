@@ -101,7 +101,7 @@ impl SyncTarget for Session {
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
 		// Hot ops stay until after the merge: a delta may target something a still-hot removal took away.
 		self.merge(deltas)?;
-		self.discard_hot_ops(retires);
+		self.discard_hot_ops(retires)?;
 		Ok(())
 	}
 
@@ -110,7 +110,7 @@ impl SyncTarget for Session {
 	}
 
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		Session::absorb_retired_marks(self, remote);
+		Session::absorb_retired_marks(self, remote)?;
 		Ok(())
 	}
 }
