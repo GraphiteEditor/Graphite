@@ -170,14 +170,19 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 	widgets
 }
 
-/// The numeric bounds and widget mode of a number parameter, sourced from the node's field metadata.
+/// The presentation of a parameter's widget, sourced from the node's field metadata: numeric bounds, widget modes, and unit of measure.
 #[derive(Clone, Copy, Default)]
-pub(crate) struct NumberOptions {
+pub(crate) struct ParameterOptions {
 	pub soft_min: Option<f64>,
 	pub soft_max: Option<f64>,
 	pub hard_min: Option<f64>,
 	pub hard_max: Option<f64>,
 	pub slider: bool,
+	pub multiline: bool,
+	pub progression: bool,
+	pub unit: Option<&'static str>,
+	pub display_decimal_places: Option<u32>,
+	pub step: Option<f64>,
 }
 
 /// The values a range slider's two ends map to linearly and the one its double-click restores, if known.
@@ -211,23 +216,20 @@ fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> O
 	}
 }
 
-pub(crate) fn property_from_type(
-	node_id: NodeId,
-	index: usize,
-	ty: &Type,
-	number_options: NumberOptions,
-	unit: Option<&str>,
-	display_decimal_places: Option<u32>,
-	step: Option<f64>,
-	context: &mut NodePropertiesContext,
-) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
-	let NumberOptions {
+pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, options: ParameterOptions, context: &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
+	let ParameterOptions {
 		soft_min,
 		soft_max,
 		hard_min,
 		hard_max,
 		slider,
-	} = number_options;
+		multiline,
+		progression,
+		unit,
+		display_decimal_places,
+		step,
+	} = options;
+
 	let mut number_input = NumberInput::default();
 	if slider {
 		number_input = number_input.mode_range();
@@ -323,11 +325,17 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if id_is::<f64>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
+						Some(x) if id_is::<f64>(x) => match progression {
+							true => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+							false => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
+						},
 						Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
-						Some(x) if id_is::<String>(x) => text_widget(default_info).into(),
-						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", "", None, false),
+						Some(x) if id_is::<String>(x) => match multiline {
+							true => text_area_widget(default_info).into(),
+							false => text_widget(default_info).into(),
+						},
+						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false),
 						Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 						Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
@@ -392,14 +400,14 @@ pub(crate) fn property_from_type(
 				}
 			}
 		}
-		Type::Item(element) => return property_from_type(node_id, index, element, number_options, unit, display_decimal_places, step, context),
+		Type::Item(element) => return property_from_type(node_id, index, element, options, context),
 		Type::List(element) => match element.as_ref() {
 			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
 			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
-		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, options, context),
+		Type::Future(out) => return property_from_type(node_id, index, out, options, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -2937,10 +2945,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					return Vec::new();
 				};
 
-				let mut number_options = NumberOptions::default();
-				let mut display_decimal_places = None;
-				let mut step = None;
-				let mut unit_suffix = None;
+				let mut options = ParameterOptions::default();
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						// Clone to end the `network_interface` borrow held via `implementation`, freeing the mutable borrow `input_type` needs below
@@ -2953,16 +2958,18 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.get(&proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
-							number_options = NumberOptions {
+							options = ParameterOptions {
 								soft_min: field.number_soft_min,
 								soft_max: field.number_soft_max,
 								hard_min: field.number_hard_min,
 								hard_max: field.number_hard_max,
 								slider: field.number_mode_range,
+								multiline: field.multiline,
+								progression: field.progression,
+								unit: field.unit,
+								display_decimal_places: field.number_display_decimal_places,
+								step: field.number_step,
 							};
-							display_decimal_places = field.number_display_decimal_places;
-							unit_suffix = field.unit;
-							step = field.number_step;
 							default_type = field.default_type.clone();
 						}
 
@@ -2990,7 +2997,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						.unwrap_or(concrete!(())),
 				};
 
-				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
+				property_from_type(node_id, input_index, &input_type, options, context).unwrap_or_else(|value| value)
 			});
 
 			layout.extend(row);

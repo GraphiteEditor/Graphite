@@ -42,6 +42,10 @@ pub struct FieldMetadata {
 	pub number_display_decimal_places: Option<u32>,
 	pub number_step: Option<f64>,
 	pub unit: Option<&'static str>,
+	/// Whether a `String` parameter uses the multi-line text area widget instead of the single-line field, from `#[multiline]`.
+	pub multiline: bool,
+	/// Whether a number parameter uses the progression widget, which splits the value into fractional-progress and whole-element-number fields, from `#[progression]`.
+	pub progression: bool,
 }
 
 #[derive(Clone, Debug)]
