@@ -39,13 +39,14 @@ impl Session {
 				retired_snapshot: Registry::default(),
 				history: History::new(),
 				hot_log: Vec::new(),
-				retired_through: HashMap::new(),
+				retired: RetiredMarks::default(),
 				head: None,
 				redo_stack: Vec::new(),
 				clock: LamportClock::new(peer),
 				peer,
 				last_broadcast_rev: None,
 				next_node_counter: 0,
+				next_hot_sequence: 0,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -160,9 +161,11 @@ impl Session {
 
 		let mut staged = Vec::with_capacity(pending.len());
 		for op in pending {
+			self.document.next_hot_sequence += 1;
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
+				sequence: self.document.next_hot_sequence,
 			};
 			self.document.apply_hot_op(hot_op.clone())?;
 			staged.push(hot_op);
@@ -221,7 +224,7 @@ impl Session {
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
 	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in on-disk
 	/// (topological) order.
-	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
+	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64, next_hot_sequence: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
 		for delta in &history {
 			clock.observe(delta.timestamp);
@@ -235,13 +238,14 @@ impl Session {
 				working_registry: registry,
 				history: History::from_ordered(history),
 				hot_log: Vec::new(),
-				retired_through: HashMap::new(),
+				retired: RetiredMarks::default(),
 				head,
 				redo_stack,
 				clock,
 				peer,
 				last_broadcast_rev: None,
 				next_node_counter,
+				next_hot_sequence,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -271,33 +275,28 @@ impl Session {
 		self.document.apply_hot_op(hot_op)
 	}
 
-	/// Timestamps of the hot ops a `retire(up_to)` call would drain. Broadcast alongside the retired
-	/// deltas so guests drop exactly these; a cutoff alone doesn't transfer, since a lagging peer's op
-	/// can carry a timestamp below the cutoff yet reach the host only after that retirement.
-	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<TimeStamp> {
-		self.document.hot_log.iter().map(|hot_op| hot_op.timestamp).filter(|&timestamp| timestamp <= up_to).collect()
+	/// The hot ops a `retire(up_to)` call would drain. Broadcast alongside the retired deltas so guests
+	/// drop exactly these; a cutoff alone doesn't transfer, since a lagging peer's op can carry a
+	/// timestamp below the cutoff yet reach the host only after that retirement.
+	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
+		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
 	}
 
 	/// Drop hot ops another peer has retired without retiring them locally.
-	pub fn discard_hot_ops(&mut self, retired: &[TimeStamp]) {
-		self.document.hot_log.retain(|hot_op| !retired.contains(&hot_op.timestamp));
+	pub fn discard_hot_ops(&mut self, retired: &[HotOpId]) {
+		self.document.hot_log.retain(|hot_op| !retired.contains(&hot_op.id()));
 		// How a peer that did not retire these learns they are in history now.
 		self.document.mark_retired(retired.iter().copied());
 	}
 
-	/// Highest hot-op counter retired per author, for a peer catching up on what is already in history.
-	pub fn retired_through(&self) -> &HashMap<PeerId, u64> {
-		&self.document.retired_through
+	/// Which hot ops history already covers, for a peer catching up. See [`RetiredMarks`].
+	pub fn retired_marks(&self) -> &RetiredMarks {
+		&self.document.retired
 	}
 
-	/// Adopt another peer's retirement watermark, keeping the higher counter per author.
-	pub fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) {
-		self.document.mark_retired(remote.iter().map(|(&peer, &counter)| TimeStamp { counter, peer }));
-
-		let retired_through = self.document.retired_through.clone();
-		self.document
-			.hot_log
-			.retain(|hot_op| retired_through.get(&hot_op.timestamp.peer).is_none_or(|&counter| hot_op.timestamp.counter > counter));
+	/// Take on another peer's retirement marks as well as this peer's.
+	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) {
+		self.document.absorb_retired(remote);
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -396,6 +395,8 @@ impl Session {
 	///
 	/// Today: one retired delta per hot op. Coarsening is a future step.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
+		// Drained in hot-log order, which is causal, so the deltas commit in an order their references
+		// survive.
 		let mut drained = Vec::new();
 		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
 		for hot_op in self.document.hot_log.drain(..) {
@@ -406,7 +407,7 @@ impl Session {
 			}
 		}
 		self.document.hot_log = remaining;
-		self.document.mark_retired(drained.iter().map(|hot_op| hot_op.timestamp));
+		self.document.mark_retired(drained.iter().map(HotOp::id));
 
 		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
 	}
@@ -660,6 +661,12 @@ impl Session {
 	pub fn next_node_counter(&self) -> u64 {
 		self.document.next_node_counter
 	}
+
+	/// How many hot ops this peer has authored. Persisted and carried across a reload so a fresh op
+	/// never reuses a sequence an earlier one already spent. See [`HotOp::sequence`].
+	pub fn next_hot_sequence(&self) -> u64 {
+		self.document.next_hot_sequence
+	}
 }
 
 /// Errors from `Session::commit_from_runtime`.
@@ -702,6 +709,86 @@ impl MergeOutcome {
 pub struct HotOp {
 	pub op: RegistryDelta,
 	pub timestamp: TimeStamp,
+	/// Position in its author's own run of hot ops, counting from 1 with no gaps. The Lamport counter
+	/// skips whenever a higher remote timestamp is observed, so it cannot tell a missing op from a
+	/// skipped tick; this can, which is what lets a watermark stand for a contiguous prefix.
+	pub sequence: u64,
+}
+
+impl HotOp {
+	/// Identifies the op for retirement, which tracks a contiguous prefix per author.
+	pub fn id(&self) -> HotOpId {
+		HotOpId {
+			peer: self.timestamp.peer,
+			sequence: self.sequence,
+		}
+	}
+}
+
+/// One hot op's author and position in that author's run. Retirement names the ops it promoted with
+/// these rather than with timestamps, so a receiver can tell which prefix history now covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HotOpId {
+	pub peer: PeerId,
+	pub sequence: u64,
+}
+
+/// Which hot ops history already covers. `through` is how far each author's run has retired without a
+/// gap, and `above` names the retired ops past that point, which is where an op lands when it retires
+/// before an earlier one from the same author has arrived. Replicated so a peer catching up can tell
+/// an op already in the history it was handed from one still owed to it.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RetiredMarks {
+	pub through: HashMap<PeerId, u64>,
+	pub above: HashSet<HotOpId>,
+}
+
+impl RetiredMarks {
+	/// Whether history already holds this hot op.
+	pub fn covers(&self, id: HotOpId) -> bool {
+		self.through.get(&id.peer).is_some_and(|&through| id.sequence <= through) || self.above.contains(&id)
+	}
+
+	/// Take on `remote`'s coverage as well as this one's.
+	pub fn absorb(&mut self, remote: &Self) {
+		for (&peer, &remote_through) in &remote.through {
+			let through = self.through.entry(peer).or_default();
+			*through = (*through).max(remote_through);
+		}
+		self.above.extend(remote.above.iter().copied());
+
+		self.compact();
+	}
+
+	/// Record newly retired ops.
+	pub fn extend(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
+		self.above.extend(retired);
+
+		self.compact();
+	}
+
+	/// Fold every exception that continues its author's prefix into `through`, so the set only ever
+	/// holds ops still separated from the prefix by a gap.
+	fn compact(&mut self) {
+		let mut by_author: HashMap<PeerId, Vec<u64>> = HashMap::new();
+		for id in &self.above {
+			by_author.entry(id.peer).or_default().push(id.sequence);
+		}
+
+		for (peer, mut sequences) in by_author {
+			sequences.sort_unstable();
+			let through = self.through.entry(peer).or_default();
+			for sequence in sequences {
+				if sequence == *through + 1 {
+					*through = sequence;
+				}
+			}
+		}
+
+		let through = std::mem::take(&mut self.through);
+		self.above.retain(|id| through.get(&id.peer).is_none_or(|&covered| id.sequence > covered));
+		self.through = through;
+	}
 }
 
 #[derive(Debug, thiserror::Error)]

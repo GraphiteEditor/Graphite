@@ -190,6 +190,7 @@ impl<L: Layout> Gdd<L> {
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
+			next_hot_sequence: self.session.next_hot_sequence(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};

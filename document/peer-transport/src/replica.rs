@@ -1,7 +1,7 @@
 use crate::packet::{Broadcast, BroadcastBody, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
 use crate::target::{SyncTarget, TargetError};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
-use document_graph_storage::{Delta, HotOp, PeerId, ResourceHash, TimeStamp, UserId};
+use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, ResourceHash, UserId};
 use std::collections::{HashMap, HashSet};
 
 pub enum Event {
@@ -148,7 +148,7 @@ impl Replica {
 	}
 
 	/// Host only.
-	pub fn broadcast_retired(&mut self, deltas: &[Delta], retires: &[TimeStamp]) -> Result<(), PacketError> {
+	pub fn broadcast_retired(&mut self, deltas: &[Delta], retires: &[HotOpId]) -> Result<(), PacketError> {
 		debug_assert_eq!(self.role, Role::Host);
 		if deltas.is_empty() {
 			return Ok(());
@@ -259,13 +259,12 @@ impl Replica {
 	/// Re-announce hot ops authored here that are not in history yet. A broadcast can be lost with the
 	/// link that carried it, and nothing else would resend it. Runs on membership changes, where loss
 	/// is plausible; the watermark ends it as soon as the host retires them.
-	fn reannounce_own_hot_ops(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
-		let retired_through = target.retired_through().get(&self.peer).copied();
-		let unretired: Vec<HotOp> = target
-			.hot_log()
-			.into_iter()
-			.filter(|hot_op| hot_op.timestamp.peer == self.peer && retired_through.is_none_or(|counter| hot_op.timestamp.counter > counter))
-			.collect();
+	/// Re-announce every hot op held here that history does not yet cover, whoever wrote it. A peer can
+	/// hold the only copy of another's op, so replaying only our own would leave that one to die with the
+	/// connection it arrived on. Ops the watermark covers replay as no-ops on every receiver.
+	fn reannounce_hot_ops(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
+		let retired = target.retired_marks();
+		let unretired: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !retired.covers(hot_op.id())).collect();
 
 		self.broadcast_hot_ops(&unretired)
 	}
@@ -347,7 +346,7 @@ impl Replica {
 
 				// The anchor can unblock broadcasts held against the counter an earlier link reached.
 				self.deliver_held(target, events)?;
-				self.reannounce_own_hot_ops(&*target)?;
+				self.reannounce_hot_ops(&*target)?;
 				events.push(Event::PeerJoined { peer, user });
 				// A fresh peer may hold bytes nobody else here could serve.
 				self.requested_resources.clear();
@@ -369,7 +368,7 @@ impl Replica {
 					hot_log: target.hot_log(),
 					known_revs: target.known_revs(),
 					seen: self.seen_vector(),
-					retired_through: target.retired_through(),
+					retired: target.retired_marks(),
 				};
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
 			}
@@ -381,23 +380,14 @@ impl Replica {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
 					None => target.merge_remote(sync.deltas, &[])?,
 				}
-				target.absorb_retired_through(&sync.retired_through)?;
-
-				// The host's hot log is authoritative, so another author's op missing from it was retired
-				// while this peer was away and comes back through history. Own ops are re-announced below.
-				let still_hot: HashSet<TimeStamp> = sync.hot_log.iter().map(|hot_op| hot_op.timestamp).collect();
-				let stale: Vec<TimeStamp> = target
-					.hot_log()
-					.into_iter()
-					.map(|hot_op| hot_op.timestamp)
-					.filter(|timestamp| timestamp.peer != self.peer && !still_hot.contains(timestamp))
-					.collect();
-				if !stale.is_empty() {
-					target.merge_remote(Vec::new(), &stale)?;
-				}
+				target.absorb_retired_marks(&sync.retired)?;
 
 				self.deferred.extend(target.apply_remote_hot_ops(sync.hot_log)?);
 				self.resources_stale = true;
+
+				// The host's hot log is not a superset of the room's: this peer may hold the only copy of an
+				// op that never reached the host, and history is the only way it survives.
+				self.reannounce_hot_ops(&*target)?;
 
 				// Broadcasts the host had delivered before answering are already reflected in the snapshot.
 				for mark in sync.seen {
@@ -509,13 +499,11 @@ impl Replica {
 		self.deferred.retain(|hot_op| hot_op.timestamp.peer != peer);
 
 		self.deliver_held(target, events)?;
-		self.reannounce_own_hot_ops(&*target)?;
 
-		// Its unretired work reached some peers and not others, and it can no longer re-announce the
-		// difference itself. Pass on what this peer holds so the host can retire it into history, which
-		// is the only way it survives; dropping it instead would strand every hot op that depends on it.
-		let orphaned: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| hot_op.timestamp.peer == peer).collect();
-		self.broadcast_hot_ops(&orphaned)?;
+		// The departed peer's unretired work reached some peers and not others, and it can no longer
+		// re-announce the difference itself. Passing on the whole hot tail covers it along with anything
+		// that depends on it, so the host can retire the lot into history.
+		self.reannounce_hot_ops(&*target)?;
 		Ok(())
 	}
 

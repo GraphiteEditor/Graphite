@@ -1,8 +1,7 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
-	apply_attribute_delta, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, RetiredMarks, Rev,
+	SourceValue, TimeStamp, apply_attribute_delta, reverse_attribute_delta,
 };
-use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -12,11 +11,10 @@ pub struct Document {
 	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
 	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
 	pub(crate) hot_log: Vec<HotOp>,
-	/// Highest hot-op counter retired per author, so a hot op that arrives after its own retirement is
-	/// recognized and dropped rather than re-entering the hot log for good. Retirement discards the
-	/// link from a delta back to the hot op it came from, so this is the only record of it. Merges by
-	/// per-author max, which makes it safe to adopt a peer's vector wholesale.
-	pub(crate) retired_through: HashMap<PeerId, u64>,
+	/// Which hot ops history already covers, so one that arrives after its own retirement is recognized
+	/// and dropped rather than re-entering the hot log for good. Retirement discards the link from a
+	/// delta back to the hot op it came from, so this is the only record of it. See [`RetiredMarks`].
+	pub(crate) retired: RetiredMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it, stamping fields at the fresh `T_retire`. Kept equal
@@ -42,6 +40,8 @@ pub struct Document {
 	/// peer is calling; collision avoidance comes from hashing `(self.peer, counter)`, so two peers
 	/// reading the same counter still produce distinct IDs.
 	pub(crate) next_node_counter: u64,
+	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
+	pub(crate) next_hot_sequence: u64,
 }
 
 impl Document {
@@ -111,7 +111,7 @@ impl Document {
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
 		// Its effect is already in retired history, and re-adding it would leave an entry no retirement
 		// list will ever name.
-		if self.is_retired(hot_op.timestamp) {
+		if self.is_retired(hot_op.id()) {
 			return Ok(());
 		}
 
@@ -121,29 +121,41 @@ impl Document {
 			return Ok(());
 		}
 
+		// Replaying our own persisted ops after a reload is what restores the sequence counter.
+		if hot_op.timestamp.peer == self.peer {
+			self.next_hot_sequence = self.next_hot_sequence.max(hot_op.sequence);
+		}
+
 		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())
 	}
 
 	/// Whether this hot op has already been promoted into history.
-	pub(crate) fn is_retired(&self, timestamp: TimeStamp) -> bool {
-		self.retired_through.get(&timestamp.peer).is_some_and(|&counter| timestamp.counter <= counter)
+	pub(crate) fn is_retired(&self, id: HotOpId) -> bool {
+		self.retired.covers(id)
 	}
 
-	/// Raise the watermark to cover these newly retired hot ops, dropping any the hot log still holds.
-	/// Keeping the two in step is what makes the watermark authoritative: a retired op must not sit in
-	/// the hot log whatever path put it there.
-	pub(crate) fn mark_retired(&mut self, retired: impl IntoIterator<Item = TimeStamp>) {
-		for timestamp in retired {
-			let counter = self.retired_through.entry(timestamp.peer).or_default();
-			*counter = (*counter).max(timestamp.counter);
-		}
+	/// Record newly retired hot ops, dropping any the hot log still holds.
+	pub(crate) fn mark_retired(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
+		self.retired.extend(retired);
 
-		let retired_through = std::mem::take(&mut self.retired_through);
-		self.hot_log
-			.retain(|hot_op| retired_through.get(&hot_op.timestamp.peer).is_none_or(|&counter| hot_op.timestamp.counter > counter));
-		self.retired_through = retired_through;
+		self.drop_retired_hot_ops();
+	}
+
+	/// Take on another peer's retirement marks as well as this peer's.
+	pub(crate) fn absorb_retired(&mut self, remote: &RetiredMarks) {
+		self.retired.absorb(remote);
+
+		self.drop_retired_hot_ops();
+	}
+
+	/// Drop hot ops history already covers, so a retired op never sits in the hot log whatever path
+	/// put it there.
+	fn drop_retired_hot_ops(&mut self) {
+		let retired = std::mem::take(&mut self.retired);
+		self.hot_log.retain(|hot_op| !retired.covers(hot_op.id()));
+		self.retired = retired;
 	}
 
 	/// Apply a retired commit. Idempotent on structural ops (AddNode/AddNetwork on existing

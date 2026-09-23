@@ -3,9 +3,9 @@
 //! send through the [`SyncTarget`] impl below, which persists inbound state the same way local
 //! edits are.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp, UserId};
+use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredMarks, Rev, Session, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -110,7 +110,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(deferred)
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
 		self.session.merge_remote(deltas, retires)?;
 		self.pending_persist.history = true;
 		self.pending_persist.hot_log |= !retires.is_empty();
@@ -118,12 +118,12 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
-	fn retired_through(&self) -> HashMap<PeerId, u64> {
-		SyncTarget::retired_through(&self.session)
+	fn retired_marks(&self) -> RetiredMarks {
+		SyncTarget::retired_marks(&self.session)
 	}
 
-	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError> {
-		SyncTarget::absorb_retired_through(&mut self.session, remote)?;
+	fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Result<(), TargetError> {
+		SyncTarget::absorb_retired_marks(&mut self.session, remote)?;
 		self.pending_persist.hot_log = true;
 		Ok(())
 	}

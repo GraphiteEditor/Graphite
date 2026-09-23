@@ -182,7 +182,15 @@ impl<L: Layout> Gdd<L> {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
+				Session::load(
+					peer,
+					registry,
+					history,
+					session_state.head_rev,
+					session_state.redo_stack,
+					session_state.next_node_counter,
+					session_state.next_hot_sequence,
+				)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.

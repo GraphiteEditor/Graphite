@@ -1,6 +1,5 @@
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, TimeStamp, UserId};
+use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredMarks, Rev, UserId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 /// The host is the single peer that retires hot ops.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,9 +55,9 @@ pub struct SyncPayload {
 	pub hot_log: Vec<HotOp>,
 	pub known_revs: Vec<Rev>,
 	pub seen: Vec<PeerSeq>,
-	/// Highest hot-op counter retired per author, so the requester can recognize a hot op that is
-	/// already in the history it is being handed.
-	pub retired_through: HashMap<PeerId, u64>,
+	/// Which hot ops the history being handed over already covers, so the requester can recognize one
+	/// it is holding rather than re-entering it as live work.
+	pub retired: RetiredMarks,
 }
 
 /// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`
@@ -78,7 +77,7 @@ pub enum BroadcastBody {
 	/// `deltas` are in causal order. `retires` names the hot ops they replace (empty for a plain history transfer).
 	Deltas {
 		deltas: Vec<Delta>,
-		retires: Vec<TimeStamp>,
+		retires: Vec<HotOpId>,
 	},
 }
 

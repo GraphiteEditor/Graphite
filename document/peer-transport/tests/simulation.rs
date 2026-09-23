@@ -4,7 +4,7 @@
 //! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
 use document_graph_storage::{
-	AttributeDelta, Delta, HotOp, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId,
+	AttributeDelta, Delta, HotOp, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, RetiredMarks, Rev, Session, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
@@ -76,16 +76,16 @@ impl SyncTarget for SimTarget {
 		SyncTarget::apply_remote_hot_ops(&mut self.session, ops)
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
 		SyncTarget::merge_remote(&mut self.session, deltas, retires)
 	}
 
-	fn retired_through(&self) -> HashMap<PeerId, u64> {
-		SyncTarget::retired_through(&self.session)
+	fn retired_marks(&self) -> RetiredMarks {
+		SyncTarget::retired_marks(&self.session)
 	}
 
-	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError> {
-		SyncTarget::absorb_retired_through(&mut self.session, remote)
+	fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Result<(), TargetError> {
+		SyncTarget::absorb_retired_marks(&mut self.session, remote)
 	}
 
 	fn flush(&mut self) -> Result<(), TargetError> {
@@ -371,11 +371,18 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 			peer.replica.held_broadcasts(),
 			peer.replica.pending_resource_requests().count(),
 			peer.session().history().count(),
-			peer.session().hot_log().iter().map(|h| format!("{}:{}", h.timestamp.peer.0, h.timestamp.counter)).collect::<Vec<_>>(),
+			peer.session()
+				.hot_log()
+				.iter()
+				.map(|h| format!("{}:{}#{}", h.timestamp.peer.0, h.timestamp.counter, h.sequence))
+				.collect::<Vec<_>>(),
 			{
-				let mut marks: Vec<_> = peer.session().retired_through().iter().map(|(p, c)| (p.0, *c)).collect();
-				marks.sort();
-				marks
+				let retired = peer.session().retired_marks();
+				let mut through: Vec<_> = retired.through.iter().map(|(p, c)| (p.0, *c)).collect();
+				through.sort();
+				let mut above: Vec<_> = retired.above.iter().map(|id| (id.peer.0, id.sequence)).collect();
+				above.sort();
+				format!("{through:?} above {above:?}")
 			}
 		);
 	}

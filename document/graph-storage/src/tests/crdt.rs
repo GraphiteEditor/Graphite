@@ -40,6 +40,7 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 	let hot_op = HotOp {
 		op: remove_node_op(NodeId(99)),
 		timestamp: observed,
+		sequence: 1,
 	};
 
 	document.apply_hot_op(hot_op).expect("RemoveNode on absent node is a no-op, not an error");
@@ -975,4 +976,51 @@ fn a_concurrent_remove_and_attribute_change_commute() {
 	let change_first = merge_order_outcome(&base, &deltas, [1, 0]);
 
 	assert_eq!(removal_first, change_first, "the retired registry must not depend on delta arrival order");
+}
+
+/// A hot op can retire before an earlier one from the same author has arrived, so the marks have to
+/// cover it out of order. The prefix absorbs it once the gap fills, which is what keeps the exception
+/// set from growing.
+#[test]
+fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
+	let author = PeerId(1);
+	let id = |sequence| crate::HotOpId { peer: author, sequence };
+
+	let mut marks = crate::RetiredMarks::default();
+	marks.extend([id(1), id(2)]);
+	assert_eq!(marks.through.get(&author), Some(&2), "a contiguous run folds straight into the prefix");
+	assert!(marks.above.is_empty());
+
+	// Sequence 3 never arrived, so 4 retires above the prefix rather than extending it.
+	marks.extend([id(4)]);
+	assert_eq!(marks.through.get(&author), Some(&2));
+	assert!(marks.covers(id(4)), "an op past the gap is still recognized as retired");
+	assert!(!marks.covers(id(3)), "the missing op is not claimed");
+
+	// The gap fills, so the prefix swallows both it and the exception behind it.
+	marks.extend([id(3)]);
+	assert_eq!(marks.through.get(&author), Some(&4));
+	assert!(marks.above.is_empty(), "the exception set empties once the prefix reaches it");
+}
+
+/// Marks merge by union, and a peer adopting another's wholesale must not lose its own coverage.
+#[test]
+fn absorbing_marks_keeps_both_sides_coverage() {
+	let author = PeerId(1);
+	let id = |sequence| crate::HotOpId { peer: author, sequence };
+
+	let mut local = crate::RetiredMarks::default();
+	local.extend([id(1), id(4)]);
+
+	let mut remote = crate::RetiredMarks::default();
+	remote.extend([id(1), id(2), id(3), id(5)]);
+
+	local.absorb(&remote);
+
+	// The union is 1..=5 contiguous, so it all collapses into the prefix.
+	assert_eq!(local.through.get(&author), Some(&5));
+	assert!(local.above.is_empty());
+	for sequence in 1..=5 {
+		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
+	}
 }

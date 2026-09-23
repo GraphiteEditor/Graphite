@@ -1,5 +1,5 @@
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp};
-use std::collections::{HashMap, HashSet};
+use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredMarks, Rev, Session};
+use std::collections::HashSet;
 
 pub type TargetError = Box<dyn std::error::Error>;
 
@@ -14,9 +14,9 @@ pub trait SyncTarget {
 	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta>;
 
 	/// Highest hot-op counter retired per author.
-	fn retired_through(&self) -> HashMap<PeerId, u64>;
+	fn retired_marks(&self) -> RetiredMarks;
 	/// Take on a peer's retirement watermark, dropping any hot op it shows as already retired.
-	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError>;
+	fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Result<(), TargetError>;
 
 	/// Replace all state with the given retired state.
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;
@@ -24,7 +24,7 @@ pub trait SyncTarget {
 	/// Returns the ops it could not apply, whose referents have not arrived yet; the caller retries
 	/// them as later ops fill the gaps.
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError>;
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError>;
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError>;
 	/// Make everything applied since the last flush durable. Called once per [`Replica::poll`](crate::Replica::poll),
 	/// so a target that rewrites whole files can do it once for a batch rather than once per packet.
 	fn flush(&mut self) -> Result<(), TargetError> {
@@ -76,7 +76,9 @@ impl SyncTarget for Session {
 	}
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
-		*self = Session::load(self.peer(), registry, history, head, Vec::new(), self.next_node_counter());
+		// Kept across the replace: a sequence this peer already spent must not come round again, or an
+		// op of its own would be taken for one already retired.
+		*self = Session::load(self.peer(), registry, history, head, Vec::new(), self.next_node_counter(), self.next_hot_sequence());
 		Ok(())
 	}
 
@@ -94,19 +96,19 @@ impl SyncTarget for Session {
 		Ok(deferred)
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
 		// Hot ops stay until after the merge: a delta may target something a still-hot removal took away.
 		self.merge(deltas)?;
 		self.discard_hot_ops(retires);
 		Ok(())
 	}
 
-	fn retired_through(&self) -> HashMap<PeerId, u64> {
-		Session::retired_through(self).clone()
+	fn retired_marks(&self) -> RetiredMarks {
+		Session::retired_marks(self).clone()
 	}
 
-	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError> {
-		Session::absorb_retired_through(self, remote);
+	fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Result<(), TargetError> {
+		Session::absorb_retired_marks(self, remote);
 		Ok(())
 	}
 }
