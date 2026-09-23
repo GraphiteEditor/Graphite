@@ -3404,63 +3404,6 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	vec![LayoutGroup::row(distance), join, LayoutGroup::row(miter_limit)]
 }
 
-pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	use graphene_std::math_nodes::math::*;
-
-	let expression = (|| {
-		let mut widgets = start_widgets(&ParameterWidgetsInfo::new(node_id, ExpressionInput, true, context));
-
-		let document_node = match get_document_node(node_id, context) {
-			Ok(document_node) => document_node,
-			Err(err) => {
-				log::error!("Could not get document node in offset_path_properties: {err}");
-				return Vec::new();
-			}
-		};
-		let Some(input) = document_node.input(ExpressionInput) else {
-			log::warn!("A widget failed to be built because its node's input index is invalid.");
-			return vec![];
-		};
-		if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				TextInput::new(x.clone())
-					.centered(true)
-					.on_update(update_value(
-						|x: &TextInput| {
-							TaggedValue::String({
-								let mut expression = x.value.trim().to_string();
-
-								if ["+", "-", "*", "/", "^"].iter().any(|&infix| infix == expression) {
-									expression = format!("A {expression} B");
-								} else if expression == "^" {
-									expression = String::from("A^B");
-								} else if expression == "%" || expression == "mod" {
-									expression = String::from("mod(a, b)");
-								}
-
-								expression
-							})
-						},
-						node_id,
-						ExpressionInput,
-					))
-					.on_commit(commit_value)
-					.widget_instance(),
-			])
-		}
-		widgets
-	})();
-	let operand_b = number_widget(ParameterWidgetsInfo::new(node_id, OperandBInput, true, context), NumberInput::default());
-	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_instance()];
-
-	vec![
-		LayoutGroup::row(expression).with_tooltip_description(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"."#),
-		LayoutGroup::row(operand_b).with_tooltip_description(r#"The value of "B" when calculating the expression."#),
-		LayoutGroup::row(operand_a_hint).with_tooltip_description(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected."#),
-	]
-}
-
 pub struct ParameterWidgetsInfo<'a> {
 	document_id: DocumentId,
 	network_interface: &'a NodeNetworkInterface,

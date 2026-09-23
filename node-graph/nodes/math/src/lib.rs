@@ -12,79 +12,10 @@ use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::lexer::Constant;
 use math_parser::reducer::classify_reducer;
-use math_parser::value::{Number, Value};
+use math_parser::value::Value;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use vector_types::Gradient;
-
-/// The struct that stores the context for the maths parser.
-/// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
-struct MathNodeContext {
-	a: f64,
-	b: f64,
-}
-
-impl ValueProvider for MathNodeContext {
-	fn get_value(&self, name: &str) -> Option<Value> {
-		if name.eq_ignore_ascii_case("a") {
-			Some(Value::from_f64(self.a))
-		} else if name.eq_ignore_ascii_case("b") {
-			Some(Value::from_f64(self.b))
-		} else {
-			None
-		}
-	}
-}
-
-/// Calculates a mathematical expression with input values "A" and "B".
-#[node_macro::node(category("Math: Arithmetic"), properties("math_properties"))]
-fn math<T: num_traits::float::Float>(
-	_: impl Ctx,
-	/// The value of "A" when calculating the expression.
-	#[implementations(f64, f32)]
-	operand_a: Item<T>,
-	/// A math expression that may incorporate "A" and/or "B", such as `sqrt(A + B) - B^2`.
-	#[default("A + B")]
-	expression: Item<String>,
-	/// The value of "B" when calculating the expression.
-	#[implementations(f64, f32)]
-	#[default(1.)]
-	operand_b: Item<T>,
-) -> Item<T> {
-	let (operand_a, attributes) = operand_a.into_parts();
-	let (expression, operand_b) = (expression.element(), *operand_b.element());
-
-	let node = match ast::Node::try_parse_from_str(expression) {
-		Ok(expr) => expr,
-		Err(e) => {
-			warn!("Invalid expression: `{expression}`\n{e}");
-			return Item::from_parts(T::from(0.).unwrap(), attributes);
-		}
-	};
-	let context = EvalContext::new(
-		MathNodeContext {
-			a: operand_a.to_f64().unwrap(),
-			b: operand_b.to_f64().unwrap(),
-		},
-		NothingMap,
-	);
-
-	let value = match node.eval(&context) {
-		Ok(value) => value,
-		Err(e) => {
-			warn!("Expression evaluation error: {e:?}");
-			return Item::from_parts(T::from(0.).unwrap(), attributes);
-		}
-	};
-
-	let Value::Number(num) = value;
-	let result = match num {
-		Number::Real(val) => T::from(val).unwrap(),
-		Number::Complex(c) => T::from(c.re).unwrap(),
-	};
-
-	Item::from_parts(result, attributes)
-}
 
 /// Parses and evaluates a math expression with the given variable bindings, logging and returning `None` on failure.
 fn evaluate_expression(expression: &str, provider: impl ValueProvider) -> Option<Value> {
@@ -1988,19 +1919,25 @@ mod test {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()), Item::new_from_element(0.));
+		let result = math_fx((), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()));
 		assert_eq!(result.into_element(), 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()), Item::new_from_element(0.));
+		let result = math_fx((), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()));
 		assert_eq!(result.into_element(), 20.);
 	}
 
 	#[test]
-	fn test_default_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("0".to_string()), Item::new_from_element(0.));
+	fn test_variable_binding() {
+		let result = math_fx((), Item::new_from_element(7.), Item::new_from_element("x * 2".to_string()));
+		assert_eq!(result.into_element(), 14.);
+	}
+
+	#[test]
+	fn test_invalid_expression() {
+		let result = math_fx((), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()));
 		assert_eq!(result.into_element(), 0.);
 	}
 
@@ -2033,9 +1970,13 @@ mod test {
 	}
 
 	#[test]
-	fn test_invalid_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()), Item::new_from_element(0.));
-		assert_eq!(result.into_element(), 0.);
+	fn test_positional_and_reducer_expressions() {
+		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
+
+		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
+		assert_eq!(math_f((), values(), Item::new_from_element("a - b + c".to_string())).into_element(), 10.);
+		assert_eq!(math_f((), values(), Item::new_from_element("min".to_string())).into_element(), 1.);
+		assert_eq!(math_f((), values(), Item::new_from_element("+".to_string())).into_element(), 12.);
 	}
 
 	#[test]

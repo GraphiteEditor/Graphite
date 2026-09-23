@@ -483,6 +483,33 @@ impl<'a> Iterator for Lexer<'a> {
 	}
 }
 
+/// Replaces each whole identifier for which `rename` returns a new spelling, so `b` never matches inside `logb`, and leaves all other source text untouched.
+/// Returns `None` if the source fails to lex.
+pub fn rename_identifiers(source: &str, mut rename: impl FnMut(&str) -> Option<String>) -> Option<String> {
+	let mut lexer = Lexer::new(source);
+	let mut result = String::with_capacity(source.len());
+	let mut copied_up_to = 0;
+
+	while let Some(token) = lexer.next_token() {
+		match token {
+			Token::Error => return None,
+			Token::Ident(name) => {
+				if let Some(new_name) = rename(name) {
+					// An `Ident` always borrows directly from the source, so its span is recoverable by pointer offset
+					let start = name.as_ptr() as usize - source.as_ptr() as usize;
+					result.push_str(&source[copied_up_to..start]);
+					result.push_str(&new_name);
+					copied_up_to = start + name.len();
+				}
+			}
+			_ => {}
+		}
+	}
+
+	result.push_str(&source[copied_up_to..]);
+	Some(result)
+}
+
 impl<'src> Input<'src> for Lexer<'src> {
 	type Token = Token<'src>;
 	type Span = Span;

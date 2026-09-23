@@ -340,10 +340,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::math::IDENTIFIER,
-		aliases: &["graphene_math_nodes::MathNode", "graphene_core::ops::MathNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::max::IDENTIFIER,
 		aliases: &["graphene_math_nodes::MaxNode", "graphene_core::ops::MaxNode"],
 	},
@@ -1261,6 +1257,134 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		// Forward the embedded image data into input 0, where the `migrate_node` `image` pass finds it and converts it to a resource.
 		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), image_input, network_path);
+		}
+	}
+
+	// The old "Math" node evaluated an expression over "A" and "B". A static expression not reading a wired `B` becomes "Math f(x)"
+	// with `A` as `x` and a constant `B` inlined. Anything else becomes "Extend" feeding "Math f(…)", which reads the pair as `a` and `b`.
+	let math_nodes: Vec<(NodeId, Vec<NodeId>, Vec<NodeInput>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation else { return None };
+			let name = protonode_id.as_str().split('<').next().unwrap_or_default();
+			let is_old_math = matches!(name, "math_nodes::MathNode" | "graphene_math_nodes::MathNode" | "graphene_core::ops::MathNode");
+			(is_old_math && node.inputs.len() >= 3).then(|| (*node_id, path, node.inputs.clone()))
+		})
+		.collect();
+	for (node_id, network_path, old_inputs) in &math_nodes {
+		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves wires from cache, as in the Transform pass above
+		let _ = document.network_interface.outward_wires(network_path);
+		let (operand_a, expression, operand_b) = (&old_inputs[0], &old_inputs[1], &old_inputs[2]);
+
+		// Lex a static expression once, learning both whether it lexes at all and whether it references `B`
+		let static_expression = match expression.as_value() {
+			Some(TaggedValue::String(expression)) => Some(expression.clone()),
+			_ => None,
+		};
+		let mut references_b = false;
+		let lexable = static_expression
+			.as_deref()
+			.and_then(|source| {
+				math_parser::lexer::rename_identifiers(source, |name| {
+					references_b |= name.eq_ignore_ascii_case("b");
+					None
+				})
+			})
+			.is_some();
+
+		// The rewritten "Math f(x)" expression, or `None` when only the Extend + "Math f(…)" form can preserve the node's meaning
+		let inline_b_constant = match operand_b.as_value() {
+			Some(TaggedValue::F64(constant)) => Some(*constant),
+			Some(TaggedValue::F32(constant)) => Some(*constant as f64),
+			_ => None,
+		};
+		let fx_expression = match &static_expression {
+			Some(source) if lexable && !references_b => math_parser::lexer::rename_identifiers(source, |name| name.eq_ignore_ascii_case("a").then(|| "x".to_string())),
+			Some(source) if lexable && let Some(constant) = inline_b_constant => math_parser::lexer::rename_identifiers(source, |name| {
+				if name.eq_ignore_ascii_case("a") {
+					Some("x".to_string())
+				} else if name.eq_ignore_ascii_case("b") {
+					Some(format!("({constant:?})"))
+				} else {
+					None
+				}
+			}),
+			_ => None,
+		};
+
+		if let Some(fx_expression) = fx_expression {
+			// "Math f(x)": forward the old `A` input and the rewritten expression; the old `B` input is dropped
+			let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_fx::IDENTIFIER)) else {
+				continue;
+			};
+			let mut node_template = definition.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			if document.network_interface.replace_inputs(node_id, network_path, &mut node_template).is_none() {
+				continue;
+			}
+
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), operand_a.clone(), network_path);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::String(fx_expression), false), network_path);
+		} else {
+			// "Extend" joins the two operands into the list "Math f(…)" reads; an unwired constant operand becomes a one-item list value
+			let as_list_input = |input: &NodeInput| match input.as_value() {
+				Some(TaggedValue::F64(value)) => NodeInput::value(TaggedValue::F64Array(vec![*value]), input.is_exposed()),
+				Some(TaggedValue::F32(value)) => NodeInput::value(TaggedValue::F64Array(vec![*value as f64]), input.is_exposed()),
+				_ => input.clone(),
+			};
+			let Some(extend_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::graphic::extend::IDENTIFIER)) else {
+				continue;
+			};
+			let extend_template = extend_definition.default_node_template();
+
+			let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_f::IDENTIFIER)) else {
+				continue;
+			};
+			let mut node_template = definition.default_node_template();
+			document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+			if document.network_interface.replace_inputs(node_id, network_path, &mut node_template).is_none() {
+				continue;
+			}
+
+			// Wire inputs cannot ride along on an inserted template, so the Extend node's operands are set after insertion
+			let extend_node_id = NodeId::new();
+			let math_position = document.network_interface.position_from_downstream_node(node_id, network_path);
+			document.network_interface.insert_node(extend_node_id, extend_template, network_path);
+			if let Some(math_position) = math_position {
+				document
+					.network_interface
+					.shift_absolute_node_position(&extend_node_id, math_position + IVec2::new(-7, 1), network_path);
+			}
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(extend_node_id, 0), as_list_input(operand_a), network_path);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(extend_node_id, 1), as_list_input(operand_b), network_path);
+
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::node(extend_node_id, 0), network_path);
+
+			// A static expression is rewritten to the exact-lowercase positional spellings, escaping the old node's
+			// constants `e` and `i` behind the `\` prefix that always reaches the builtin; a wired or unlexable one forwards untouched
+			let positional_expression = match (&static_expression, lexable) {
+				(Some(source), true) => math_parser::lexer::rename_identifiers(source, |name| {
+					if name.eq_ignore_ascii_case("a") || name.eq_ignore_ascii_case("b") {
+						return Some(name.to_ascii_lowercase());
+					}
+					matches!(name, "e" | "i").then(|| format!("\\{name}"))
+				})
+				.map(|rewritten| NodeInput::value(TaggedValue::String(rewritten), false)),
+				_ => None,
+			};
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, 1), positional_expression.unwrap_or_else(|| expression.clone()), network_path);
 		}
 	}
 
@@ -3137,6 +3261,135 @@ mod tests {
 					"shape {shape} lost its letter tilt"
 				);
 			}
+		}
+	}
+
+	// The old Math node's expression decides its replacement: a static string that never reads `B` becomes "Math f(x)",
+	// while a wired `B` or an uninspectable expression becomes "Extend" feeding "Math f(…)"
+	#[test]
+	fn old_math_nodes_split_into_the_expression_node_pair() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+
+		let math_id = NodeId(1);
+		let (source_a_id, source_b_id, source_expression_id) = (NodeId(2), NodeId(3), NodeId(4));
+
+		// Builds a document holding one old Math node with the given inputs, plus three source nodes to wire from
+		let build_document = |identifier: &'static str, inputs: Vec<NodeInput>| {
+			let mut document = DocumentMessageHandler::default();
+			for source_id in [source_a_id, source_b_id, source_expression_id] {
+				document.network_interface.insert_node(
+					source_id,
+					NodeTemplate {
+						inputs: vec![NodeInput::value(TaggedValue::None, false)],
+						..Default::default()
+					},
+					&[],
+				);
+			}
+			document.network_interface.insert_node(
+				math_id,
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
+					inputs: vec![NodeInput::value(TaggedValue::None, false); 3],
+					..Default::default()
+				},
+				&[],
+			);
+			for (index, input) in inputs.into_iter().enumerate() {
+				document.network_interface.set_input(&InputConnector::node_at_index(math_id, index), input, &[]);
+			}
+			document
+		};
+
+		let implementation_of = |document: &DocumentMessageHandler, node_id: NodeId| match &document.network_interface.document_network().nodes[&node_id].implementation {
+			DocumentNodeImplementation::ProtoNode(identifier) => identifier.clone(),
+			other => panic!("expected a proto node implementation, got {other:?}"),
+		};
+		let find_extend = |document: &DocumentMessageHandler| {
+			document
+				.network_interface
+				.document_network()
+				.nodes
+				.iter()
+				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::graphic::extend::IDENTIFIER))
+				.map(|(extend_id, _)| *extend_id)
+				.expect("an Extend node should be spliced in")
+		};
+
+		// A static expression that never reads `B` becomes "Math f(x)" with `A` renamed to `x` and the `B` input dropped
+		{
+			let inputs = vec![
+				NodeInput::node(source_a_id, 0),
+				NodeInput::value(TaggedValue::String("2 - 0.2A".into()), false),
+				NodeInput::value(TaggedValue::F64(0.), false),
+			];
+			let mut document = build_document("math_nodes::MathNode", inputs);
+			document_migration_upgrades(&mut document, false);
+
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
+			let node = &document.network_interface.document_network().nodes[&math_id];
+			assert_eq!(node.inputs.len(), 2, "the old `B` input should be dropped");
+			assert_eq!(node.inputs.first(), Some(&NodeInput::node(source_a_id, 0)));
+			assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::String("2 - 0.2x".into())));
+		}
+
+		// A constant `B` inlines into the rewritten string as a parenthesized literal; an alias spelling of the old identifier also matches
+		{
+			let inputs = vec![
+				NodeInput::node(source_a_id, 0),
+				NodeInput::value(TaggedValue::String("sqrt(A + B) - B^2".into()), false),
+				NodeInput::value(TaggedValue::F64(3.), false),
+			];
+			let mut document = build_document("graphene_core::ops::MathNode", inputs);
+			document_migration_upgrades(&mut document, false);
+
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
+			let node = &document.network_interface.document_network().nodes[&math_id];
+			assert_eq!(
+				node.inputs.get(1).and_then(|input| input.as_value()).cloned(),
+				Some(TaggedValue::String("sqrt(x + (3.0)) - (3.0)^2".into()))
+			);
+		}
+
+		// A wired `B` keeps both wires by joining them through a spliced Extend node, with the expression rewritten to the
+		// lowercase positional spellings and the old constants escaped behind the `\` prefix that still reaches them
+		{
+			let inputs = vec![
+				NodeInput::node(source_a_id, 0),
+				NodeInput::value(TaggedValue::String("A * B + e".into()), false),
+				NodeInput::node(source_b_id, 0),
+			];
+			let mut document = build_document("math_nodes::MathNode", inputs);
+			document_migration_upgrades(&mut document, false);
+
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_f::IDENTIFIER);
+			let extend_id = find_extend(&document);
+			let network = document.network_interface.document_network();
+			assert_eq!(network.nodes[&math_id].inputs.first(), Some(&NodeInput::node(extend_id, 0)));
+			assert_eq!(
+				network.nodes[&math_id].inputs.get(1).and_then(|input| input.as_value()).cloned(),
+				Some(TaggedValue::String("a * b + \\e".into()))
+			);
+			assert_eq!(network.nodes[&extend_id].inputs.first(), Some(&NodeInput::node(source_a_id, 0)));
+			assert_eq!(network.nodes[&extend_id].inputs.get(1), Some(&NodeInput::node(source_b_id, 0)));
+		}
+
+		// A wired expression cannot be inspected, so it splices too, wrapping unwired constant operands as one-item list values
+		{
+			let inputs = vec![
+				NodeInput::value(TaggedValue::F64(2.), true),
+				NodeInput::node(source_expression_id, 0),
+				NodeInput::value(TaggedValue::F64(5.), false),
+			];
+			let mut document = build_document("math_nodes::MathNode", inputs);
+			document_migration_upgrades(&mut document, false);
+
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_f::IDENTIFIER);
+			let extend_id = find_extend(&document);
+			let network = document.network_interface.document_network();
+			assert_eq!(network.nodes[&math_id].inputs.get(1), Some(&NodeInput::node(source_expression_id, 0)));
+			assert_eq!(network.nodes[&extend_id].inputs.first(), Some(&NodeInput::value(TaggedValue::F64Array(vec![2.]), true)));
+			assert_eq!(network.nodes[&extend_id].inputs.get(1), Some(&NodeInput::value(TaggedValue::F64Array(vec![5.]), false)));
 		}
 	}
 

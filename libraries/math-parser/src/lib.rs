@@ -347,6 +347,23 @@ mod tests {
 	}
 
 	#[test]
+	fn rename_identifiers_is_token_exact() {
+		let a_to_x = |name: &str| name.eq_ignore_ascii_case("a").then(|| "x".to_string());
+
+		// Only whole identifiers rename, so function names and other tokens that merely contain the letter stay untouched
+		assert_eq!(crate::lexer::rename_identifiers("2 - 0.2A", a_to_x).as_deref(), Some("2 - 0.2x"));
+		assert_eq!(crate::lexer::rename_identifiers("atan(a) + tau", a_to_x).as_deref(), Some("atan(x) + tau"));
+		assert_eq!(
+			crate::lexer::rename_identifiers("sqrt(A + B) - B^2", |name| name.eq_ignore_ascii_case("b").then(|| "(3)".to_string())).as_deref(),
+			Some("sqrt(A + (3)) - (3)^2")
+		);
+		assert_eq!(crate::lexer::rename_identifiers("logb + b", |name| (name == "b").then(|| "c".to_string())).as_deref(), Some("logb + c"));
+
+		// A string that fails to lex reports `None` rather than renaming unreliably
+		assert_eq!(crate::lexer::rename_identifiers("a + \u{200b}b", a_to_x), None);
+	}
+
+	#[test]
 	fn dot_led_function_suffixes_fail_to_parse() {
 		// A `.`-led base suffix is an error (the supported spelling is `log0.5`)
 		for input in ["log.5(8)", "log.5", "root.5(9)", "log_.5(8)"] {
