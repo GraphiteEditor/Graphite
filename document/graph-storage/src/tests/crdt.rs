@@ -906,8 +906,8 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
 }
 
-/// Commit a retired delta and mirror it onto the working registry, which sits at
-/// `retired_snapshot + hot tail`. `commit_op_for_test` alone only advances the snapshot zone.
+/// Commit a retired delta and mirror it onto the working registry; `commit_op_for_test` alone only
+/// advances the snapshot zone.
 fn commit_retired(session: &mut Session, op: RegistryDelta) {
 	let before = session.history().count();
 	session.commit_op_for_test(op).expect("commit failed");
@@ -917,8 +917,7 @@ fn commit_retired(session: &mut Session, op: RegistryDelta) {
 	}
 }
 
-/// Merge `deltas` into a copy of `base` in the given order and report whether node 7 survived,
-/// with the stamp on its `tint` attribute.
+/// Merge `deltas` into a copy of `base` in the given order, reporting node 7's surviving `tint`.
 fn merge_order_outcome(base: &Session, deltas: &[Delta], order: [usize; 2]) -> Option<(serde_json::Value, TimeStamp)> {
 	let mut session = base.clone();
 	let ordered: Vec<Delta> = order.iter().map(|&index| deltas[index].clone()).collect();
@@ -932,9 +931,8 @@ fn merge_order_outcome(base: &Session, deltas: &[Delta], order: [usize; 2]) -> O
 		.map(|value| (value.value.clone(), value.timestamp))
 }
 
-/// Retired deltas reach the registries in arrival order while only `history` is canonically sorted,
-/// so concurrent deltas must commute. A remove concurrent with an attribute change does not: taken
-/// change-first the node is gone, taken remove-first it is resurrected from the removal's snapshot.
+/// The registries are folded in arrival order while only `history` is sorted, so concurrent deltas must
+/// commute. Change-first leaves the node gone; remove-first resurrects it from the removal's snapshot.
 #[test]
 fn a_concurrent_remove_and_attribute_change_commute() {
 	let network_id = NetworkId(5);
@@ -978,8 +976,8 @@ fn a_concurrent_remove_and_attribute_change_commute() {
 	assert_eq!(removal_first, change_first, "the retired registry must not depend on delta arrival order");
 }
 
-/// A hot op can retire before an earlier one from the same author has arrived, so the marks cover it
-/// out of order. The prefix absorbs it once the gap fills, which is what bounds the exception set.
+/// An op can retire before an earlier one from its author arrives, so the marks cover it out of order.
+/// The prefix absorbs it once the gap fills, which bounds the exception set.
 #[test]
 fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 	let author = PeerId(1);
@@ -1002,7 +1000,7 @@ fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
 	assert!(marks.above.is_empty(), "the exception set empties once the prefix reaches it");
 }
 
-/// Marks merge by union, and a peer adopting another's wholesale must not lose its own coverage.
+/// Marks merge by union, so adopting a peer's wholesale must not lose local coverage.
 #[test]
 fn absorbing_marks_keeps_both_sides_coverage() {
 	let author = PeerId(1);
@@ -1024,9 +1022,8 @@ fn absorbing_marks_keeps_both_sides_coverage() {
 	}
 }
 
-/// Undo rewinds retired history, so it must leave the hot tail alone: the retired snapshot is the
-/// state history alone produces, and copying the working registry onto it promotes live work nobody
-/// has retired. Hot ops exist between staging and retirement even with no peers.
+/// Undo rewinds retired history and must leave the hot tail alone: copying the working registry onto
+/// the snapshot promotes unretired work. Hot ops exist between staging and retirement even solo.
 #[test]
 fn undo_does_not_promote_hot_ops_into_the_retired_snapshot() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1051,8 +1048,7 @@ fn undo_does_not_promote_hot_ops_into_the_retired_snapshot() {
 	);
 }
 
-/// Redo puts the interaction back on both zones, so the pair stays `snapshot + hot tail` rather than
-/// drifting apart in the other direction.
+/// Redo puts the interaction back on both zones, so the pair does not drift the other way.
 #[test]
 fn redo_restores_the_retired_snapshot_without_the_hot_tail() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1074,8 +1070,8 @@ fn redo_restores_the_retired_snapshot_without_the_hot_tail() {
 	assert!(session.registry().attributes.contains_key("hot"), "the hot op must survive an undo/redo round trip");
 }
 
-/// Silent undo rewrites the local registries without emitting anything, so it is only legal while a
-/// commit is still unpublished. Once peers hold it, a rewind would diverge from them for good.
+/// Silent undo emits nothing, so it is only legal while a commit is unpublished. Once peers hold it, a
+/// rewind would diverge from them for good.
 #[test]
 fn publishing_a_commit_disables_silent_undo() {
 	let mut session = Session::with_peer(PeerId(1));

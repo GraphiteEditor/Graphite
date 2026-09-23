@@ -281,9 +281,8 @@ impl Session {
 		self.document.apply_hot_op(hot_op)
 	}
 
-	/// The hot ops a `retire(up_to)` call would drain. Broadcast alongside the retired deltas so guests
-	/// drop exactly these; a cutoff alone doesn't transfer, since a lagging peer's op can carry a
-	/// timestamp below the cutoff yet reach the host only after that retirement.
+	/// The hot ops a `retire(up_to)` call would drain. Sent with the deltas so peers drop exactly these;
+	/// the cutoff alone doesn't transfer, since a lagging op can arrive below it afterwards.
 	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
 		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
 	}
@@ -300,7 +299,7 @@ impl Session {
 		&self.document.retired
 	}
 
-	/// Take on another peer's retirement marks as well as this peer's.
+	/// See [`RetiredMarks::absorb`].
 	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) {
 		self.document.absorb_retired(remote);
 	}
@@ -311,9 +310,8 @@ impl Session {
 		self.document.replay_hot_op(hot_op)
 	}
 
-	/// The retired snapshot as canonical history alone produces it. Every peer sorts history the same
-	/// way, so this is independent of the order deltas arrived in and of which hot ops a peer holds.
-	/// Folded on a throwaway clone, so it observes rather than changes this session.
+	/// The retired snapshot as canonical history alone produces it, independent of arrival order and the
+	/// hot log. Folded on a clone, so it observes rather than changes this session.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
 		let mut folded = self.clone();
 		folded.document.retired_snapshot = Registry::default();
@@ -326,13 +324,12 @@ impl Session {
 		Ok(folded.document.retired_snapshot)
 	}
 
-	/// Rebuild both registries from canonical history, then re-layer the hot tail. Costs a full replay,
-	/// so callers check that it is needed first.
+	/// Rebuild both registries from canonical history, then re-layer the hot tail. A full replay, so
+	/// callers check it is needed first.
 	fn refold_registries(&mut self) -> Result<(), CrdtError> {
 		self.document.retired_snapshot = self.snapshot_from_history()?;
 
-		// A hot op the refold left unapplicable is kept rather than dropped, since a later delta or hot
-		// op can still supply the referent it names.
+		// One left unapplicable is kept, not dropped: a later delta or hot op can still supply its referent.
 		self.document.working_registry = self.document.retired_snapshot.clone();
 		let mut failure = None;
 		for hot_op in std::mem::take(&mut self.document.hot_log) {
@@ -364,8 +361,7 @@ impl Session {
 			}
 			arrival_order.push(delta.id);
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			// The working registry is the snapshot plus the hot tail, so a retired delta lands on both
-			// rather than cloning one over the other, which would promote unretired hot ops.
+			// Working is snapshot plus hot tail, so a delta lands on both; cloning would promote hot ops.
 			self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 			absorbed_ids.insert(delta.id);
 			self.document.history.push(delta);
@@ -375,9 +371,8 @@ impl Session {
 		}
 		self.document.history.canonical_sort();
 
-		// The loop above folds in arrival order, and concurrent ops do not all commute: a remove and a
-		// change to the same target resolve by whichever lands second. Refold unless the sort left the
-		// batch in the order it was applied.
+		// The loop folds in arrival order, and concurrent ops do not all commute: a remove and a change to
+		// the same target resolve by whichever lands second.
 		let folded_in_canonical_order = self.document.history.iter().skip(length_before).map(|delta| delta.id).eq(arrival_order.iter().copied());
 		if !folded_in_canonical_order {
 			self.refold_registries()?;
@@ -410,8 +405,7 @@ impl Session {
 	///
 	/// Today: one retired delta per hot op. Coarsening is a future step.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
-		// Drained in hot-log order, which is causal, so the deltas commit in an order their references
-		// survive.
+		// Hot-log order is causal, so the deltas commit in an order their references survive.
 		let mut drained = Vec::new();
 		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
 		for hot_op in self.document.hot_log.drain(..) {
@@ -478,11 +472,10 @@ impl Session {
 		!self.document.redo_stack.is_empty()
 	}
 
-	/// Silent-zone undo of one *interaction*: revert deltas walking `head` back along first-parents until it
-	/// reaches the previous interaction boundary (a delta marked `interaction_end`) or the empty root. One
-	/// interaction spans several deltas (one `commit_from_runtime` batch), so undo reverts the whole run
-	/// rather than a single delta, matching the legacy per-interaction granularity. The undone interaction's
-	/// `head` rev is pushed onto the redo stack. Reflog semantics: the DAG is never rewritten.
+	/// Silent-zone undo of one *interaction*: revert deltas back along first-parents until `head` reaches
+	/// the previous `interaction_end` boundary or the root. An interaction spans a whole
+	/// `commit_from_runtime` batch, so the run is reverted rather than one delta. Its `head` rev goes on
+	/// the redo stack; the DAG itself is never rewritten.
 	pub fn undo(&mut self) -> Result<Rev, CrdtError> {
 		if !self.can_undo() {
 			return Err(CrdtError::NothingToUndo);
@@ -499,8 +492,7 @@ impl Session {
 			let parent = delta.parent;
 
 			self.document.revert_delta(RegistryTarget::Working, delta.clone())?;
-			// The working registry is the snapshot plus the hot tail, so rewind both rather than copying
-			// one over the other, which would promote unretired hot ops into retired state.
+			// Working is snapshot plus hot tail, so rewind both; copying would promote unretired hot ops.
 			self.document.revert_delta(RegistryTarget::Snapshot, delta)?;
 
 			self.document.head = parent;
@@ -678,8 +670,7 @@ impl Session {
 		self.document.next_node_counter
 	}
 
-	/// How many hot ops this peer has authored. Persisted and carried across a reload so a fresh op
-	/// never reuses a sequence an earlier one already spent. See [`HotOp::sequence`].
+	/// How many hot ops this peer has authored, carried across a reload so no sequence is spent twice.
 	pub fn next_hot_sequence(&self) -> u64 {
 		self.document.next_hot_sequence
 	}
@@ -725,9 +716,8 @@ impl MergeOutcome {
 pub struct HotOp {
 	pub op: RegistryDelta,
 	pub timestamp: TimeStamp,
-	/// Position in its author's own run of hot ops, counting from 1 with no gaps, so a watermark over it
-	/// stands for a contiguous prefix. The Lamport counter cannot: it skips on observing a higher remote
-	/// timestamp, making a missing op indistinguishable from a skipped tick.
+	/// Position in its author's run, from 1 with no gaps, so a watermark over it means a contiguous prefix.
+	/// The Lamport counter skips on observing a higher remote timestamp, so it cannot.
 	pub sequence: u64,
 }
 
@@ -741,18 +731,17 @@ impl HotOp {
 	}
 }
 
-/// One hot op's author and position in that author's run. Retirement names the ops it promoted with
-/// these rather than with timestamps, so a receiver can tell which prefix history now covers.
+/// One hot op's author and position in its run. Retirement names promoted ops by these, so a receiver
+/// can tell which prefix history covers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct HotOpId {
 	pub peer: PeerId,
 	pub sequence: u64,
 }
 
-/// Which hot ops history already covers. `through` is how far each author's run has retired without a
-/// gap, and `above` names the retired ops past that point, which is where an op lands when it retires
-/// before an earlier one from the same author has arrived. Replicated so a peer catching up can tell
-/// an op already in the history it was handed from one still owed to it.
+/// Which hot ops history already covers: `through` is each author's gap-free retired prefix, `above` the
+/// retired ops past it. Replicated, so a peer catching up can tell an op already in history from one
+/// still owed to it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetiredMarks {
 	pub through: HashMap<PeerId, u64>,
@@ -783,8 +772,7 @@ impl RetiredMarks {
 		self.compact();
 	}
 
-	/// Fold every exception that continues its author's prefix into `through`, so the set only ever
-	/// holds ops still separated from the prefix by a gap.
+	/// Fold exceptions that continue their author's prefix into `through`, leaving only those past a gap.
 	fn compact(&mut self) {
 		let mut by_author: HashMap<PeerId, Vec<u64>> = HashMap::new();
 		for id in &self.above {

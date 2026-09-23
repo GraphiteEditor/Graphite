@@ -11,9 +11,9 @@ pub struct Document {
 	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
 	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
 	pub(crate) hot_log: Vec<HotOp>,
-	/// Which hot ops history already covers, so one that arrives after its own retirement is recognized
-	/// and dropped rather than re-entering the hot log for good. Retirement discards the link from a
-	/// delta back to the hot op it came from, so this is the only record of it. See [`RetiredMarks`].
+	/// Which hot ops history already covers, so one arriving after its own retirement is dropped rather
+	/// than re-entering the hot log. Retirement drops the delta's link back to its hot op, so this is the
+	/// only record. See [`RetiredMarks`].
 	pub(crate) retired: RetiredMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
@@ -72,10 +72,8 @@ impl Document {
 		self.revert_delta(target, delta)
 	}
 
-	/// The last delta in canonical history order matching `predicate`, among those reachable from `head` or
-	/// any history tip (following all parents, including a merge's `extra_parents`). Tips cover deltas
-	/// absorbed mid-merge that `head` doesn't reach yet. Canonical order rather than a walk from `head`,
-	/// because resurrection reads the removed entity out of the match and peers sit on different merge revs.
+	/// The last match in canonical history order, over everything reachable from `head` or any tip. Not a
+	/// walk from `head`: peers sit on different merge revs, and resurrection must pick the same delta.
 	fn find_in_ancestry(&self, predicate: impl Fn(&Delta) -> bool) -> Option<Delta> {
 		let reachable = self.history.ancestors(self.head.into_iter().chain(self.history.tips()));
 
@@ -107,19 +105,17 @@ impl Document {
 	/// re-applying an op whose effect is already reflected in the registry is a no-op rather
 	/// than an error.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		// Its effect is already in retired history, and re-adding it would leave an entry no retirement
-		// list will ever name.
+		// Already in retired history; re-adding it would leave an entry no retirement will ever name.
 		if self.is_retired(hot_op.id()) {
 			return Ok(());
 		}
 
-		// A hot op is identified by its timestamp, so a re-announcement of one already held is a no-op
-		// rather than a second copy that replays and re-broadcasts as though it were new work.
+		// Identified by timestamp, so a re-announcement of one already held must not become a second copy.
 		if self.hot_log.iter().any(|held| held.timestamp == hot_op.timestamp) {
 			return Ok(());
 		}
 
-		// Our own ops replayed after a reload are what carry the sequence counter back.
+		// Replaying our own ops is what carries the sequence counter across a reload.
 		if hot_op.timestamp.peer == self.peer {
 			self.next_hot_sequence = self.next_hot_sequence.max(hot_op.sequence);
 		}
@@ -141,15 +137,14 @@ impl Document {
 		self.drop_retired_hot_ops();
 	}
 
-	/// Take on another peer's retirement marks as well as this peer's.
+	/// Take on a peer's retirement marks as well as this peer's.
 	pub(crate) fn absorb_retired(&mut self, remote: &RetiredMarks) {
 		self.retired.absorb(remote);
 
 		self.drop_retired_hot_ops();
 	}
 
-	/// Drop hot ops history already covers, so a retired op never sits in the hot log whatever path
-	/// put it there.
+	/// Drop hot ops history already covers, whatever path put them in the log.
 	fn drop_retired_hot_ops(&mut self) {
 		let retired = std::mem::take(&mut self.retired);
 		self.hot_log.retain(|hot_op| !retired.covers(hot_op.id()));
@@ -404,8 +399,8 @@ impl Document {
 		}
 	}
 
-	/// The most recent hot removal of a network, for reviving it in the working zone. Returns `None`
-	/// for the snapshot, which must stay a function of history alone.
+	/// The most recent hot removal of a network, for reviving it in the working zone. `None` for the
+	/// snapshot, which stays a function of history alone.
 	fn hot_log_removal(&self, target: RegistryTarget, network_id: NetworkId) -> Option<(RegistryDelta, TimeStamp)> {
 		if target != RegistryTarget::Working {
 			return None;
@@ -433,8 +428,7 @@ impl Document {
 		if self.registry_ref(target).networks.contains_key(&network_id) {
 			return Ok(());
 		}
-		// The hot log is this peer's own, so reviving the snapshot zone from it would make the retired
-		// state depend on which hot ops happened to be here. Only history is shared.
+		// The hot log is peer-local, so reviving retired state from it would make it peer-dependent.
 		let removal = self.hot_log_removal(target, network_id);
 		match removal {
 			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
