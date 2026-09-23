@@ -124,6 +124,24 @@ pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -
 	})
 }
 
+// TODO: Eventually remove this document upgrade code
+/// Reads an integer stored by the retired unsigned variants, whose upper range reached past [`i64::MAX`] and saturates there.
+pub fn migrate_to_i64<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+	use serde::Deserialize;
+
+	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
+	enum IntegerFormat {
+		Signed(i64),
+		Unsigned(u64),
+	}
+
+	Ok(match IntegerFormat::deserialize(deserializer)? {
+		IntegerFormat::Signed(value) => value,
+		IntegerFormat::Unsigned(value) => i64::try_from(value).unwrap_or(i64::MAX),
+	})
+}
+
 /// Parses a number from text, reading infinity as `∞` (optionally signed) as well as the `inf` and `infinity` spellings.
 pub fn parse_f64(text: &str) -> Option<f64> {
 	let (negative, unsigned) = match text.strip_prefix('-') {

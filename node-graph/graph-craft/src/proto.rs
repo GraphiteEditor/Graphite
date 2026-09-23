@@ -140,7 +140,7 @@ impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
 			identifier: graphene_core::ops::passthrough::IDENTIFIER,
-			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::I64(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
@@ -1059,7 +1059,7 @@ mod test {
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
 		assert_eq!(
 			ids,
-			vec![NodeId(9617677014563055585), NodeId(3306304180790283913), NodeId(4482673701109291121), NodeId(1535890178157254933)]
+			vec![NodeId(7074930193456627328), NodeId(651950451264872860), NodeId(15983493604836528424), NodeId(2458326405488235061)]
 		);
 	}
 
@@ -1109,7 +1109,7 @@ mod test {
 					ProtoNode {
 						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
-						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::I64(2).into()),
 						..Default::default()
 					},
 				),

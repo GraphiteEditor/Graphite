@@ -352,10 +352,10 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 2)),
 							..Default::default()
 						},
-						// 3: Floor (integer count per subpath)
+						// 3: As Number (the integer count enters the network's decimal math)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-							inputs: vec![NodeInput::import(item!(f64), 1)],
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::as_number::IDENTIFIER),
+							inputs: vec![NodeInput::import(item!(i64), 1)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 13)),
 							..Default::default()
 						},
@@ -479,7 +479,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				}),
 				inputs: vec![
 					NodeInput::type_default(list!(Vector), true),
-					NodeInput::value(TaggedValue::F64(10.), false),
+					NodeInput::value(TaggedValue::I64(10), false),
 					NodeInput::value(TaggedValue::Bool(Default::default()), false),
 					NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
 					NodeInput::type_default(item!(Vector), false),
@@ -801,7 +801,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							inputs: vec![
 								NodeInput::import(item!(String), 0),
 								NodeInput::import(item!(String), 1),
-								NodeInput::import(item!(f64), 2),
+								NodeInput::import(item!(i64), 2),
 								NodeInput::import(item!(bool), 3),
 								NodeInput::import(item!(bool), 4),
 							],
@@ -811,14 +811,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						},
 						// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::I64(0), false)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
 							..Default::default()
 						},
 						// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
 						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::I64(0), false)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 2)),
 							..Default::default()
@@ -833,7 +833,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				inputs: vec![
 					NodeInput::value(TaggedValue::String(String::new()), true),
 					NodeInput::value(TaggedValue::String(String::new()), false),
-					NodeInput::value(TaggedValue::F64(0.), false),
+					NodeInput::value(TaggedValue::I64(0), false),
 					NodeInput::value(TaggedValue::Bool(false), false),
 					NodeInput::value(TaggedValue::Bool(false), false),
 				],

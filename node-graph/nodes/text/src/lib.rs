@@ -11,7 +11,7 @@ use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
 use core_types::misc::{format_f64, parse_f64};
-use core_types::registry::types::{SignedInteger, TextArea};
+use core_types::registry::types::TextArea;
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -284,22 +284,14 @@ fn string_replace(_: impl Ctx, string: Item<String>, from: Item<TextArea>, to: I
 ///
 /// Negative indices count from the end of the string. If the index of "Start" equals or exceeds "End", the result is an empty string.
 #[node_macro::node(category("Text"))]
-fn string_slice(_: impl Ctx, string: Item<String>, start: Item<SignedInteger>, end: Item<SignedInteger>) -> Item<String> {
+fn string_slice(_: impl Ctx, string: Item<String>, start: Item<i64>, end: Item<i64>) -> Item<String> {
 	let mut string = string;
 	let (start, end) = (*start.element(), *end.element());
 
-	let total_graphemes = string.element().graphemes(true).count();
+	let total_graphemes = string.element().graphemes(true).count() as i64;
 
-	let start = if start < 0. {
-		total_graphemes.saturating_sub(start.abs() as usize)
-	} else {
-		(start as usize).min(total_graphemes)
-	};
-	let end = if end <= 0. {
-		total_graphemes.saturating_sub(end.abs() as usize)
-	} else {
-		(end as usize).min(total_graphemes)
-	};
+	let start = if start < 0 { (total_graphemes + start).max(0) } else { start.min(total_graphemes) } as usize;
+	let end = if end <= 0 { (total_graphemes + end).max(0) } else { end.min(total_graphemes) } as usize;
 
 	let result = if start >= end {
 		String::new()
@@ -894,7 +886,7 @@ fn string_capitalization(
 	string
 }
 
-// TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
+// TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts the number of characters in a string.
 #[node_macro::node(category("Text"))]

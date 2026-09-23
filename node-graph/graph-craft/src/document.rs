@@ -1297,7 +1297,7 @@ mod test {
 				(
 					NodeId(0),
 					DocumentNode {
-						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::import(concrete!(u32), 1)],
+						inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::import(concrete!(i64), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						..Default::default()
 					},
@@ -1327,7 +1327,7 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::import(concrete!(u32), 1)],
+						inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::import(concrete!(i64), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						..Default::default()
 					},
@@ -1386,7 +1386,7 @@ mod test {
 			nodes: [(
 				NodeId(1),
 				DocumentNode {
-					inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::value(TaggedValue::U32(2), false)],
+					inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::value(TaggedValue::I64(2), false)],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 					..Default::default()
 				},
@@ -1408,7 +1408,7 @@ mod test {
 	fn resolve_proto_node_add() {
 		let document_node = DocumentNode {
 			inputs: vec![NodeInput::node(NodeId(0), 0)],
-			call_argument: concrete!(u32),
+			call_argument: concrete!(i64),
 			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 			..Default::default()
 		};
@@ -1416,7 +1416,7 @@ mod test {
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
 			identifier: ProtoNodeIdentifier::new("core_types::structural::ConsNode"),
-			call_argument: concrete!(u32),
+			call_argument: concrete!(i64),
 			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
 		};
@@ -1433,7 +1433,7 @@ mod test {
 					NodeId(10),
 					ProtoNode {
 						identifier: ProtoNodeIdentifier::new("core_types::structural::ConsNode"),
-						call_argument: concrete!(u32),
+						call_argument: concrete!(i64),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
@@ -1465,7 +1465,7 @@ mod test {
 					ProtoNode {
 						identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 						call_argument: concrete!(core_types::Context),
-						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
+						construction_args: ConstructionArgs::Value(TaggedValue::I64(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
@@ -1495,7 +1495,7 @@ mod test {
 				(
 					NodeId(10),
 					DocumentNode {
-						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::node(NodeId(14), 0)],
+						inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::node(NodeId(14), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
 							inputs_source: [(Source { node: vec![], index: 0 }, 1)].into(),
@@ -1508,7 +1508,7 @@ mod test {
 				(
 					NodeId(14),
 					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
+						inputs: vec![NodeInput::value(TaggedValue::I64(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(4)]),
@@ -1545,7 +1545,7 @@ mod test {
 					NodeId(10),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(14), 0)],
-						call_argument: concrete!(u32),
+						call_argument: concrete!(i64),
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
@@ -1559,7 +1559,7 @@ mod test {
 				(
 					NodeId(14),
 					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
+						inputs: vec![NodeInput::value(TaggedValue::I64(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
@@ -1598,7 +1598,7 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						inputs: vec![NodeInput::import(concrete!(u32), 0)],
+						inputs: vec![NodeInput::import(concrete!(i64), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},
@@ -1606,7 +1606,7 @@ mod test {
 				(
 					NodeId(2),
 					DocumentNode {
-						inputs: vec![NodeInput::import(concrete!(u32), 1)],
+						inputs: vec![NodeInput::import(concrete!(i64), 1)],
 						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
 						..Default::default()
 					},

@@ -85,10 +85,10 @@ fn text(
 		item.set_attribute(ATTR_LETTER_TILT, letter_tilt);
 	}
 	if has_max_width {
-		item.set_attribute(ATTR_MAX_WIDTH, Some(max_width));
+		item.set_attribute(ATTR_MAX_WIDTH, max_width);
 	}
 	if has_max_height {
-		item.set_attribute(ATTR_MAX_HEIGHT, Some(max_height));
+		item.set_attribute(ATTR_MAX_HEIGHT, max_height);
 	}
 	if align != TextAlign::default() {
 		item.set_attribute(ATTR_TEXT_ALIGN, align);

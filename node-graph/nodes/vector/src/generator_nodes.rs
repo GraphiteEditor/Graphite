@@ -7,7 +7,7 @@ use graphic_types::Vector;
 use vector_types::vector::VectorExt;
 use vector_types::vector::algorithms::shapes;
 use vector_types::vector::misc::BezierHandles;
-use vector_types::vector::misc::{ArcType, AsU64, BoxCorners, GridType};
+use vector_types::vector::misc::{ArcType, BoxCorners, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId};
 
@@ -157,30 +157,28 @@ fn box_corners(
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon<T: AsU64>(
+fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
 	#[hard(3..)]
-	#[implementations(i64, f64)]
-	sides: Item<T>,
+	sides: Item<i64>,
 	#[unit(" px")]
 	#[default(50)]
 	radius: Item<f64>,
 ) -> Item<Vector> {
-	let points = sides.element().as_u64();
+	let points = *sides.element() as u64;
 	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
 #[node_macro::node(category("Vector: Shape"))]
-fn star<T: AsU64>(
+fn star(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
 	#[hard(2..)]
-	#[implementations(i64, f64)]
-	sides: Item<T>,
+	sides: Item<i64>,
 	#[unit(" px")]
 	#[default(50)]
 	radius_1: Item<f64>,
@@ -188,7 +186,7 @@ fn star<T: AsU64>(
 	#[default(25)]
 	radius_2: Item<f64>,
 ) -> Item<Vector> {
-	let points = sides.element().as_u64();
+	let points = *sides.element() as u64;
 	Item::new_from_element(Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())))
 }
 

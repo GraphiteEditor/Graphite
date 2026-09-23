@@ -9,13 +9,13 @@ use graphene_std::vector::Vector;
 #[test]
 fn push_node_sync() {
 	let mut tree = BorrowTree::default();
-	let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::U32(2u32).into()), vec![]);
+	let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::I64(2_i64).into()), vec![]);
 	let context = TypingContext::default();
 	let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 	futures::executor::block_on(future).unwrap();
 	let _node = tree.get(NodeId(0)).unwrap();
-	let result: Option<Item<u32>> = futures::executor::block_on(tree.eval(NodeId(0), ()));
-	assert_eq!(result.map(|item| *item.element()), Some(2_u32));
+	let result: Option<Item<i64>> = futures::executor::block_on(tree.eval(NodeId(0), ()));
+	assert_eq!(result.map(|item| *item.element()), Some(2_i64));
 }
 
 /// Builds a two-node network feeding the given value into Bounding Box, whose primary input registers both `Item<Vector>` and `List<Vector>` wire variants.
