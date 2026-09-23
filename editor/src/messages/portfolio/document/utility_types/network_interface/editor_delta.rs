@@ -178,7 +178,7 @@ impl EditorDelta {
 				input,
 			}) => {
 				let new_input = context.resolver.convert_input_at(input, network_path)?;
-				construct_referenced_resource(&new_input, context, batch, ops)?;
+				construct_referenced_resource(Some(context.resolver.node_id(network_path, *node_id)), &new_input, context, batch, ops)?;
 
 				ops.push(RegistryDelta::ChangeNodeInput {
 					id: context.resolver.node_id(network_path, *node_id),
@@ -190,7 +190,7 @@ impl EditorDelta {
 			EditorDelta::Graph(RuntimeDelta::SetExport { network_path, export_index, input }) => {
 				let export = input.as_ref().map(|input| context.resolver.convert_input_at(input, network_path)).transpose()?;
 				if let Some(export) = export.as_ref() {
-					construct_referenced_resource(export, context, batch, ops)?;
+					construct_referenced_resource(None, export, context, batch, ops)?;
 				}
 
 				ops.push(RegistryDelta::SetNetworkExport {
@@ -236,7 +236,7 @@ impl EditorDelta {
 					.collect::<Result<Vec<_>, ConversionError>>()?;
 
 				for slot in &inputs {
-					construct_referenced_resource(&slot.input, context, batch, ops)?;
+					construct_referenced_resource(Some(context.resolver.node_id(network_path, *node_id)), &slot.input, context, batch, ops)?;
 				}
 
 				ops.push(RegistryDelta::SetNodeInputs {
@@ -410,8 +410,17 @@ fn construct_structural_additions(
 
 /// Stages the resource a value input references, so setting an input to an asset persists the entry
 /// alongside the reference rather than leaving the registry pointing at something it does not hold.
-fn construct_referenced_resource(input: &document_graph_storage::NodeInput, context: &ConversionContext, batch: &mut BatchRegistry, ops: &mut Vec<RegistryDelta>) -> Result<(), ConversionError> {
+fn construct_referenced_resource(
+	owner: Option<document_graph_storage::NodeId>,
+	input: &document_graph_storage::NodeInput,
+	context: &ConversionContext,
+	batch: &mut BatchRegistry,
+	ops: &mut Vec<RegistryDelta>,
+) -> Result<(), ConversionError> {
 	let Some(id) = value_resource_ref(input) else { return Ok(()) };
+	if let Some(owner) = owner {
+		batch.record_input_resource(owner, id);
+	}
 	if batch.resource(id).is_some() {
 		return Ok(());
 	}
@@ -568,16 +577,18 @@ fn construct_removals(
 /// Emits removals for resources referenced only by the batch's removed nodes, checked after every
 /// removal is known.
 fn construct_resource_removals(batch_removed_nodes: &[(document_graph_storage::NodeId, document_graph_storage::Node)], batch: &BatchRegistry, ops: &mut Vec<RegistryDelta>) {
+	// A node this batch wrote an input on and then removed orphans whatever that write referenced, which
+	// the stored node does not mention.
 	let mut candidates: Vec<ResourceId> = batch_removed_nodes
 		.iter()
-		.map(|(_, node)| node)
-		.flat_map(|node| {
+		.flat_map(|(id, _)| batch.input_resources.get(id).into_iter().flatten().copied())
+		.chain(batch_removed_nodes.iter().map(|(_, node)| node).flat_map(|node| {
 			let declaration = match node.implementation() {
 				Implementation::ProtoNode(declaration) => Some(*declaration),
 				Implementation::Network(_) => None,
 			};
 			declaration.into_iter().chain(node_value_resource_refs(node))
-		})
+		}))
 		.collect();
 	candidates.sort();
 	candidates.dedup();
@@ -587,11 +598,14 @@ fn construct_resource_removals(batch_removed_nodes: &[(document_graph_storage::N
 
 	// Gathered in one pass so each candidate is a lookup rather than another scan of the whole registry
 	let mut still_referenced: HashSet<ResourceId> = HashSet::new();
-	for (_, node) in batch.live_nodes() {
+	for (id, node) in batch.live_nodes() {
 		if let Implementation::ProtoNode(declaration) = node.implementation() {
 			still_referenced.insert(*declaration);
 		}
 		still_referenced.extend(node_value_resource_refs(node));
+		// What this batch wrote onto a node that survives it is a live reference, even though the stored
+		// node still carries the input it had before.
+		still_referenced.extend(batch.input_resources.get(&id).into_iter().flatten().copied());
 	}
 	// The batch's own networks count too: one added earlier in it can export a resource the removal would
 	// otherwise see as orphaned.
@@ -626,6 +640,10 @@ struct BatchRegistry<'a> {
 	/// Nodes the batch has removed and not since re-added, so a lookup answers with the state the ops so
 	/// far have produced rather than the state the batch started from.
 	removed: HashSet<document_graph_storage::NodeId>,
+	/// Resources the batch's own input writes reference, keyed by the node written to. The stored node
+	/// still holds its pre-batch inputs, so liveness would otherwise miss both the reference these writes
+	/// create and the orphan they leave when that node is later removed.
+	input_resources: HashMap<document_graph_storage::NodeId, HashSet<ResourceId>>,
 }
 
 impl<'a> BatchRegistry<'a> {
@@ -641,7 +659,13 @@ impl<'a> BatchRegistry<'a> {
 			added_resources: HashMap::new(),
 			by_network,
 			removed: HashSet::new(),
+			input_resources: HashMap::new(),
 		}
+	}
+
+	/// Records that an input write on `owner` references `resource`.
+	fn record_input_resource(&mut self, owner: document_graph_storage::NodeId, resource: ResourceId) {
+		self.input_resources.entry(owner).or_default().insert(resource);
 	}
 
 	/// Records a node an earlier delta in this batch added, so a later one can read it back.

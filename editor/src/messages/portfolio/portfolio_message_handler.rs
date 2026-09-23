@@ -642,10 +642,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.network_interface.validate_input_metadata(node_id, node, &path);
 					document.network_interface.validate_output_names(node_id, node, &path);
 				}
-				// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what
-				// the fix-ups recorded must not ride along in the first real commit.
-				document.network_interface.discard_deltas();
-
 				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 				document.network_interface.load_structure();
 				let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
@@ -675,6 +671,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						}
 					}
 				}
+
+				// Everything above is how the document arrives rather than an edit to it, so what those fix-ups
+				// recorded must not ride along in the first real commit. They still have to reach storage, so
+				// the next commit converts the whole document instead of staging the batch that follows them.
+				document.network_interface.discard_deltas();
+				document.require_whole_document_stage();
 
 				// Set the save state of the document based on what's given to us by the caller to this message
 				document.set_auto_save_state(document_is_auto_saved);

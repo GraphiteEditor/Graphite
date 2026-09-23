@@ -1834,9 +1834,11 @@ impl DocumentMessageHandler {
 			self.network_interface.validate_output_names(node_id, node, &path);
 		}
 
-		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what
-		// the fix-ups recorded must not ride along in the first real commit.
+		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what the
+		// fix-ups recorded must not ride along in the first real commit. They still have to reach storage,
+		// so the next commit converts the whole document rather than staging the batch that follows them.
 		self.network_interface.discard_deltas();
+		self.history.require_whole_document_stage();
 
 		self.network_interface.load_structure();
 	}

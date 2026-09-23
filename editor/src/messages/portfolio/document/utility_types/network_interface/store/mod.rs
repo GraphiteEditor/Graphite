@@ -216,7 +216,10 @@ impl NodeNetworkInterface {
 			log::error!("Could not get input {connector:?} in edit_input_value");
 			return false;
 		};
-		let previous = slot.clone();
+		// Compared by the value's memoized hash, which the guard refreshes when it drops. Cloning the value
+		// to compare it instead would share its `Arc` and make the edit below deep-copy the whole value,
+		// which is the copy this method exists to avoid.
+		let previous_hash = value_hash(slot);
 		let Some(mut value) = slot.as_value_mut() else {
 			log::error!("Input {connector:?} is not a value in edit_input_value");
 			return false;
@@ -227,7 +230,7 @@ impl NodeNetworkInterface {
 
 		// An edit that changes nothing still carries a timestamp, which would let it supersede a concurrent
 		// peer's real edit to the same input.
-		if *slot == previous {
+		if previous_hash == value_hash(slot) {
 			return true;
 		}
 
@@ -333,6 +336,15 @@ impl NodeNetworkInterface {
 		if let Some(mut network) = self.network_mut(network_path) {
 			network.set_reference(None);
 		}
+	}
+}
+
+/// The memoized hash of a value input, which moves when the value does. Reading it is free, where
+/// comparing the values themselves would mean copying one out.
+fn value_hash(input: &NodeInput) -> Option<u64> {
+	match input {
+		NodeInput::Value { tagged_value, .. } => Some(tagged_value.hash_code()),
+		_ => None,
 	}
 }
 
