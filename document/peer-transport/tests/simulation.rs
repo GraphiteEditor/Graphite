@@ -494,11 +494,7 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 				let retired = peer.session().retired_marks();
 				let mut through: Vec<_> = retired.retired_up_to.iter().map(|(peer, sequence)| (peer.0, sequence.0)).collect();
 				through.sort();
-				let mut above: Vec<_> = retired
-					.retired_beyond
-					.iter()
-					.map(|(peer, runs)| (peer.0, runs.iter().map(|(a, b)| (a.0, b.0)).collect::<Vec<_>>()))
-					.collect();
+				let mut above: Vec<_> = retired.retired_beyond.iter().map(|(peer, runs)| (peer.0, runs.len())).collect();
 				above.sort();
 				format!("{through:?} above {above:?}")
 			}
@@ -799,4 +795,29 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	let retired = peers[0].session().retired_marks();
 	assert!(retired.retired_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
 	assert_converged(0, &peers);
+}
+
+/// The working registry is what the editor renders, and at quiescence it should be each peer's snapshot
+/// plus an empty hot tail, so all peers should agree on it by value. They do not: at seed 14 the host's
+/// own working registry is behind its own snapshot (`key1` at 18 where the snapshot has 92) with an empty
+/// hot log, so an op reached retired state without reaching the live view.
+///
+/// Ignored because it fails, and it predates the retirement work: it reproduces with the hot-log
+/// preservation reverted. Comparison is by value, since retirement re-stamps the snapshot while the
+/// working registry keeps staging-time stamps.
+#[test]
+#[ignore = "known failure, seed 14: the host's working registry drifts from its own snapshot"]
+fn working_registries_converge() {
+	for seed in 0..1000 {
+		let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
+		let present: Vec<&Peer> = peers.iter().filter(|peer| !peer.departed).collect();
+		let Some(host) = present.first() else { continue };
+
+		for (index, guest) in present.iter().enumerate().skip(1) {
+			assert!(
+				guest.session().registry().value_equal(host.session().registry()),
+				"seed {seed}: guest {index} working registry diverged from the host's"
+			);
+		}
+	}
 }
