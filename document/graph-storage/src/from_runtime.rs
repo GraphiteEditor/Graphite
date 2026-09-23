@@ -333,16 +333,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 		.collect::<Result<Vec<_>, ConversionError>>()?;
 
 	let mut attributes = crate::Attributes::new();
-	write_ui_network_attributes(
-		&mut attributes,
-		ctx.metadata,
-		node_network,
-		metadata_path,
-		parent_path,
-		network_id,
-		ctx.ids(metadata_path),
-		TimeStamp::ORIGIN,
-	)?;
+	write_ui_network_attributes(&mut attributes, node_network, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 
 	registry.networks.insert(network_id, Network { exports, attributes });
@@ -551,7 +542,6 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 /// does it: a runtime ID is not stable across a round trip.
 fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
-	metadata: &M,
 	node_network: &NodeNetwork,
 	network_path: &[RuntimeNodeId],
 	parent_path: Option<&NodePath>,
@@ -559,6 +549,8 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	ids: NodeIds<'_, M>,
 	timestamp: TimeStamp,
 ) -> Result<(), ConversionError> {
+	// The same source the IDs resolve through, so a network's attributes and the nodes they name agree.
+	let Some(metadata) = ids.metadata else { return Ok(()) };
 	if let Some(reference) = metadata.reference(network_path) {
 		attributes.set(node::ui::REFERENCE, serde_json::Value::String(reference.to_string()), timestamp);
 	}
@@ -817,16 +809,7 @@ impl<'m> ScopedConversion<'m> {
 			.collect::<Result<Vec<_>, ConversionError>>()?;
 
 		let mut attributes = crate::Attributes::new();
-		write_ui_network_attributes(
-			&mut attributes,
-			self.ctx.metadata,
-			node_network,
-			local_path,
-			owner_path.as_ref(),
-			network_id,
-			self.ctx.ids(local_path),
-			TimeStamp::ORIGIN,
-		)?;
+		write_ui_network_attributes(&mut attributes, node_network, local_path, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 		write_scope_injections(&mut attributes, node_network, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 
 		registry.networks.insert(network_id, Network { exports, attributes });
