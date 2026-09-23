@@ -506,10 +506,16 @@ impl Replica {
 				},
 			);
 
-			match broadcast.body {
-				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops)?,
-				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires)?,
+			// Applying is best effort: the ops that did land still have to be accounted for, so a failure
+			// is reported rather than abandoning the bookkeeping and the rest of the queue.
+			let applied = match broadcast.body {
+				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops),
+				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires),
+			};
+			if let Err(error) = applied {
+				log::error!("Applying a delivered broadcast: {error}");
 			}
+
 			self.resources_stale = true;
 			events.push(Event::Changed);
 		}

@@ -79,10 +79,18 @@ impl SyncTarget for Session {
 	}
 
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<(), TargetError> {
+		// Every op gets its turn even if one fails. The broadcast that carried them is consumed by the
+		// time this runs, so stopping at the first failure would lose the rest of the batch outright.
+		let mut first_error = None;
 		for hot_op in ops {
-			self.replay_hot_op(hot_op)?;
+			if let Err(error) = self.replay_hot_op(hot_op)
+				&& first_error.is_none()
+			{
+				first_error = Some(error);
+			}
 		}
-		Ok(())
+
+		first_error.map_or(Ok(()), |error| Err(error.into()))
 	}
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[TimeStamp]) -> Result<(), TargetError> {
