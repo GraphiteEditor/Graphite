@@ -4,7 +4,8 @@
 //! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
 use document_graph_storage::{
-	AttributeDelta, Delta, HotOp, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, RetiredMarks, Rev, Session, UserId,
+	AttributeDelta, Delta, HotOp, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceHash, ResourceId, RetiredMarks, Rev, Session,
+	TimeStamp, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
@@ -181,6 +182,22 @@ impl Peer {
 		let Some(up_to) = self.target.session.hot_log().iter().map(|hot_op| hot_op.timestamp).max() else {
 			return;
 		};
+		self.retire_up_to(up_to);
+	}
+
+	/// Retire only part of the hot log, leaving newer ops live. A later op of one author can then retire
+	/// while an earlier one is still in flight, which is what puts entries above the retired prefix.
+	fn retire_prefix(&mut self, nth: usize) {
+		let mut timestamps: Vec<TimeStamp> = self.target.session.hot_log().iter().map(|hot_op| hot_op.timestamp).collect();
+		if timestamps.is_empty() {
+			return;
+		}
+		timestamps.sort();
+
+		self.retire_up_to(timestamps[nth.min(timestamps.len() - 1)]);
+	}
+
+	fn retire_up_to(&mut self, up_to: TimeStamp) {
 		let retired_hot_ops = self.target.session.hot_ops_up_to(up_to);
 
 		let revs = self.target.session.retire(up_to).expect("retire");
@@ -330,7 +347,11 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 				peers[index].stage_resource(bytes);
 			}
 			0..=2 | 8 => {}
-			3 => peers[0].retire(),
+			// Mostly a partial retire, so the host's history lags its hot log the way a real one does.
+			3 => {
+				let nth = network.random_below(4);
+				peers[0].retire_prefix(nth);
+			}
 			4..=7 => {
 				network.step();
 			}
