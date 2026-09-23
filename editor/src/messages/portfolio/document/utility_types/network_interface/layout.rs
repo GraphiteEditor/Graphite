@@ -6,7 +6,24 @@ impl NodeNetworkInterface {
 	/// Only absolute positions are stored. A stack layer sits below its downstream sibling and a chain node to the
 	/// left of the layer it feeds, so both are resolved by walking downstream to the first stored position.
 	pub fn position(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<IVec2> {
-		self.position_from_downstream(node_id, network_path, &mut HashSet::new())
+		self.position_from_downstream(node_id, network_path, &mut HashSet::new(), &mut HashMap::new())
+	}
+
+	/// The positions of many nodes at once, resolving each one only once.
+	///
+	/// Asking node by node re-walks the same downstream chain for every node on it, which is quadratic
+	/// down a tall stack. Sharing one memo across the batch keeps a node reached on someone else.s walk,
+	/// so the whole set costs one pass. Not cached between calls: a position read between a write and its
+	/// invalidation would be stale, and the layout code does exactly that.
+	pub(crate) fn positions(&self, node_ids: impl IntoIterator<Item = NodeId>, network_path: &[NodeId]) -> Vec<(NodeId, IVec2)> {
+		let mut resolved = HashMap::new();
+		node_ids
+			.into_iter()
+			.filter_map(|node_id| {
+				let position = self.position_from_downstream(&node_id, network_path, &mut HashSet::new(), &mut resolved)?;
+				Some((node_id, position))
+			})
+			.collect()
 	}
 
 	/// The grid rows a node occupies vertically, which is the spacing the layers stacked above it are offset by.
@@ -21,12 +38,24 @@ impl NodeNetworkInterface {
 
 	/// Walks downstream to the first stored position, accumulating the relative offsets along the way. `visited`
 	/// stops the walk on a cyclic graph, which concurrent edits can produce, rather than recursing forever.
-	fn position_from_downstream(&self, node_id: &NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>) -> Option<IVec2> {
+	fn position_from_downstream(&self, node_id: &NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>, resolved: &mut HashMap<NodeId, IVec2>) -> Option<IVec2> {
+		if let Some(position) = resolved.get(node_id) {
+			return Some(*position);
+		}
 		if !visited.insert(*node_id) {
 			log::error!("Cycle reached while resolving the position of node {node_id}");
 			return None;
 		}
 
+		let position = self.resolve_position(node_id, network_path, visited, resolved);
+		if let Some(position) = position {
+			resolved.insert(*node_id, position);
+		}
+		position
+	}
+
+	/// The position itself, once the memo has been missed and the cycle guard passed.
+	fn resolve_position(&self, node_id: &NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>, resolved: &mut HashMap<NodeId, IVec2>) -> Option<IVec2> {
 		let Some(node_metadata) = self.node_metadata(node_id, network_path) else {
 			log::error!("Could not get nested node_metadata in position_from_downstream");
 			return None;
@@ -51,7 +80,7 @@ impl NodeNetworkInterface {
 
 					// Offset past the downstream node's own height so the two do not overlap
 					let downstream_node_height = self.node_height(&downstream_node_id, network_path);
-					self.position_from_downstream(&downstream_node_id, network_path, visited)
+					self.position_from_downstream(&downstream_node_id, network_path, visited, resolved)
 						.map(|position| position + IVec2::new(0, 1 + downstream_node_height as i32 + y_offset as i32))
 				}
 			},
@@ -84,7 +113,7 @@ impl NodeNetworkInterface {
 
 						if self.is_layer(&downstream_node_id, network_path) {
 							return self
-								.position_from_downstream(&downstream_node_id, network_path, visited)
+								.position_from_downstream(&downstream_node_id, network_path, visited, resolved)
 								.map(|layer_position| layer_position + IVec2::new(-node_distance_from_layer * NODE_CHAIN_WIDTH, 0));
 						}
 
@@ -368,17 +397,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn nodes_sorted_top_to_bottom<'a>(&mut self, node_ids: impl Iterator<Item = &'a NodeId>, network_path: &[NodeId]) -> Option<Vec<NodeId>> {
-		let mut node_ids_with_position = node_ids
-			.filter_map(|&node_id| {
-				let Some(position) = self.position(&node_id, network_path) else {
-					log::error!("Could not get position for node {node_id} in shift_selected_nodes");
-					return None;
-				};
-				Some((node_id, position.y))
-			})
-			.collect::<Vec<(NodeId, i32)>>();
+		// Resolved as one batch: every node here is likely on the same stack, so walking each one
+		// separately would re-walk that stack per node.
+		let mut node_ids_with_position = self.positions(node_ids.copied(), network_path);
 
-		node_ids_with_position.sort_unstable_by_key(|a| a.1);
+		node_ids_with_position.sort_unstable_by_key(|(_, position)| position.y);
 		Some(node_ids_with_position.into_iter().map(|(node_id, _)| node_id).collect::<Vec<_>>())
 	}
 

@@ -450,3 +450,71 @@ async fn the_evaluated_network_renders_the_previewed_node() {
 		"The document itself should be unchanged"
 	);
 }
+
+/// The previewed node is marked for the frontend so it can be highlighted. Derived from the preview
+/// itself: it used to be inferred from the export, which previewing no longer rewires, so inferring it
+/// would silently mark nothing.
+#[tokio::test]
+async fn the_previewed_node_is_flagged_for_the_frontend() {
+	use crate::messages::portfolio::document::node_graph::NodeGraphMessageHandler;
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let handler = NodeGraphMessageHandler::default();
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	let flagged = |handler: &NodeGraphMessageHandler, network_interface: &mut super::NodeNetworkInterface| {
+		handler
+			.collect_nodes(network_interface, &[])
+			.into_iter()
+			.filter(|node| node.previewed)
+			.map(|node| node.id)
+			.collect::<Vec<_>>()
+	};
+
+	assert!(flagged(&handler, network_interface).is_empty(), "Nothing is previewed to begin with");
+
+	network_interface.toggle_preview(node, &[]);
+	assert_eq!(flagged(&handler, network_interface), vec![node], "The previewed node should be the one flagged");
+
+	network_interface.toggle_preview(node, &[]);
+	assert!(flagged(&handler, network_interface).is_empty(), "Ending the preview should unflag it");
+}
+
+/// Resolving a batch of positions shares one downstream walk, so it has to agree with resolving each
+/// node on its own. A stack is the case that matters: every layer walks through the ones below it, so
+/// a shared memo is what keeps the batch from being quadratic.
+#[tokio::test]
+async fn batched_positions_agree_with_resolving_each_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.handle_message(new_artboard_message(NodeId::new())).await;
+
+	for offset in 0..4 {
+		editor.draw_rect(0., offset as f64 * 20., 100., offset as f64 * 20. + 10.).await;
+	}
+
+	let network_interface = &editor.active_document().network_interface;
+	let node_ids = network_interface.document_network().nodes.keys().copied().collect::<Vec<_>>();
+	assert!(node_ids.len() > 4, "the fixture should build a stack, found {} nodes", node_ids.len());
+
+	let batched = network_interface.positions(node_ids.iter().copied(), &[]);
+	let individually = node_ids
+		.iter()
+		.filter_map(|node_id| network_interface.position(node_id, &[]).map(|position| (*node_id, position)))
+		.collect::<Vec<_>>();
+
+	assert_eq!(batched.len(), individually.len(), "The batch should resolve exactly the nodes that resolve on their own");
+	for (node_id, position) in individually {
+		assert_eq!(
+			batched.iter().find(|(batched_id, _)| *batched_id == node_id).map(|(_, position)| *position),
+			Some(position),
+			"Batched position disagrees for node {node_id}"
+		);
+	}
+}
