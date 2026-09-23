@@ -759,6 +759,7 @@ fn cyclic_network_reference_is_rejected() {
 		crate::NodeId(0),
 		Node {
 			implementation: Implementation::Network(child_network_id),
+			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
 			attributes: crate::Attributes::default(),
 			network: crate::ROOT_NETWORK,
@@ -768,6 +769,7 @@ fn cyclic_network_reference_is_rejected() {
 		crate::NodeId(1),
 		Node {
 			implementation: Implementation::Network(crate::ROOT_NETWORK),
+			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
 			attributes: crate::Attributes::default(),
 			network: child_network_id,

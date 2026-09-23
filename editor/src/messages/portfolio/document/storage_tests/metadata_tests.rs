@@ -4,7 +4,7 @@
 //! metadata survives the conversion. The end-to-end save/reopen pipeline is covered separately in
 //! [`round_trip_tests`](super::round_trip_tests).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use document_graph_storage::{NodeMetadataSource, PeerId, Registry};
 
@@ -56,22 +56,6 @@ fn editor_metadata_round_trip_against_demo() {
 				|| source.widget_override(&network_path, local_id, i).is_some()
 				|| !source.input_data(&network_path, local_id, i).is_empty()
 		});
-
-		let any_metadata = expected_position.is_some()
-			|| expected_is_layer
-			|| expected_display.as_deref().is_some_and(|s| !s.is_empty())
-			|| expected_locked
-			|| expected_pinned
-			|| any_input_metadata_present
-			|| !expected_output_names.is_empty();
-
-		if !any_metadata {
-			assert!(
-				!entries_by_address.contains_key(&(network_path.clone(), local_id)),
-				"node {local_id:?} in network {network_path:?} has no editor metadata but produced an entry"
-			);
-			continue;
-		}
 
 		let entry = entries_by_address
 			.get(&(network_path.clone(), local_id))
@@ -260,6 +244,76 @@ fn editor_interface_rebuild_round_trip() {
 	}
 
 	assert!(checked_any_reference, "demo artwork produced no reference metadata: fixture is wrong or extraction is broken");
+}
+
+/// The rebuild pins every node to the identity storage named it, rather than leaving it to be
+/// re-derived. Re-converting under a different peer is the sharp test: a location hash mixes the peer
+/// in, so it would produce an entirely different set of IDs.
+#[test]
+fn rebuilt_interface_keeps_storage_identities() {
+	let document = load_demo("changing-seasons.graphite");
+	let view = StorageMetadataView::new(&document.network_interface);
+
+	let network = document.network_interface.document_network().clone();
+	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
+	let declarations = conversion.declarations;
+	let registry = conversion.registry;
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+
+	let reconverted_network = rebuilt.document_network().clone();
+	let reconverted = Registry::convert_from_runtime(&reconverted_network, &StorageMetadataView::new(&rebuilt), &Default::default(), PeerId(9)).expect("re-convert from_runtime failed");
+
+	let stored_ids: BTreeSet<_> = registry.node_instances.keys().copied().collect();
+	let reconverted_ids: BTreeSet<_> = reconverted.registry.node_instances.keys().copied().collect();
+
+	assert!(!stored_ids.is_empty(), "demo artwork produced no nodes: fixture is wrong");
+	assert_eq!(reconverted_ids, stored_ids, "re-converting the rebuilt interface under a different peer changed the node identities");
+}
+
+/// Migrating an opened document must leave the recorded-delta buffer empty.
+#[test]
+fn migrating_a_document_records_no_changes() {
+	let mut document = load_demo("painted-dreams.graphite");
+	document.network_interface.discard_deltas();
+
+	crate::messages::portfolio::document_migration::document_migration_upgrades(&mut document, false);
+
+	let recorded = document.network_interface.take_deltas();
+	assert!(recorded.is_empty(), "migration left {} recorded changes behind", recorded.len());
+}
+
+/// The pinned display order is document state, so it survives a registry round trip. It names nodes and
+/// the stored form uses storage IDs, so this also checks the references resolve back to the right
+/// runtime nodes.
+#[test]
+fn pinned_order_round_trips_through_the_registry() {
+	let mut document = load_demo("changing-seasons.graphite");
+
+	let pinned: Vec<_> = document.network_interface.document_network().nodes.keys().copied().take(3).collect();
+	assert_eq!(pinned.len(), 3, "demo artwork should have at least three nodes: fixture is wrong");
+
+	{
+		let interface = &mut document.network_interface;
+		let Some(mut network) = interface.network_mut(&[]) else {
+			panic!("the document network should resolve")
+		};
+		network.set_pinned_order(pinned.clone());
+	}
+
+	let network = document.network_interface.document_network().clone();
+	let view = StorageMetadataView::new(&document.network_interface);
+	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
+	let declarations = conversion.declarations;
+	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime failed");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+
+	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");
+	assert_eq!(
+		rebuilt_metadata.persistent_metadata.pinned_node_order, pinned,
+		"the pinned display order did not survive the registry round trip"
+	);
 }
 
 /// Per-peer view settings (`ui::doc::*`) survive the `session.json` round-trip: serialize them into

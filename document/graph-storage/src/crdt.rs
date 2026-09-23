@@ -1,4 +1,6 @@
-use crate::{Attributes, AttributesWrite, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
+use crate::{
+	Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev,
+};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -92,7 +94,7 @@ impl Delta {
 
 /// Op payload. Timestamps live on the wrapping `Delta` — one per delta, applied to all LWW-eligible
 /// writes within. See `notes/document-format-collaboration.md`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum RegistryDelta {
 	AddNode {
 		id: NodeId,
@@ -108,6 +110,25 @@ pub enum RegistryDelta {
 		id: NodeId,
 		index: u32,
 		new_input: NodeInput,
+	},
+	/// A node's whole input list, for a change to the number or order of its slots that the
+	/// index-addressed `ChangeNodeInput` cannot express. Assigns rather than merging: concurrent
+	/// per-slot edits are lost, which is inherent to the indices themselves moving.
+	///
+	/// Touches only the inputs, leaving the node's attributes and implementation alone, so it composes
+	/// with attribute ops on the same node instead of reverting them.
+	SetNodeInputs {
+		id: NodeId,
+		inputs: Vec<InputSlot>,
+	},
+	/// A node's implementation, for swapping what it computes without rebuilding the node.
+	///
+	/// Removing and re-adding the node would express the same change, but would also clear every
+	/// attribute it carries, so restating them would clobber whatever a concurrent peer wrote to the
+	/// node's name, lock or pin.
+	SetNodeImplementation {
+		id: NodeId,
+		implementation: Implementation,
 	},
 	ChangeNodeAttribute {
 		id: NodeId,
@@ -190,7 +211,7 @@ pub enum RegistryDelta {
 }
 
 /// `value: None` means remove. The timestamp comes from the wrapping `Delta`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeDelta {
 	pub key: String,
 	pub value: Option<serde_json::Value>,

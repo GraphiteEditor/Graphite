@@ -126,6 +126,52 @@ async fn cyclic_connection_is_rejected_without_side_effects() {
 	assert_invariants(&editor, "after rejecting a cyclic connection");
 }
 
+/// The check answers for the network with the proposed input substituted, so it has to see a loop that
+/// closes through intermediate nodes rather than only one that connects two neighbors.
+#[tokio::test]
+async fn a_cycle_closing_through_a_chain_is_rejected() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let a = editor.create_node_by_name(rectangle_definition()).await;
+	let b = editor.create_node_by_name(rectangle_definition()).await;
+	let c = editor.create_node_by_name(rectangle_definition()).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_input(&InputConnector::node_at_index(a, 1), NodeInput::node(b, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(b, 1), NodeInput::node(c, 0), &[]);
+
+	// `a` already reaches `c` through `b`, so feeding `a` back into `c` closes a three-node loop
+	let input_before = network_interface.input_from_connector(&InputConnector::node_at_index(c, 1), &[]).cloned();
+	network_interface.set_input(&InputConnector::node_at_index(c, 1), NodeInput::node(a, 0), &[]);
+
+	let input_after = network_interface.input_from_connector(&InputConnector::node_at_index(c, 1), &[]).cloned();
+	assert_eq!(input_before, input_after, "A cycle closing through an intermediate node should be rejected");
+
+	assert_invariants(&editor, "after rejecting a chained cyclic connection");
+}
+
+/// An export is not something a node takes as input, so connecting one cannot close a loop and must
+/// not be refused.
+#[tokio::test]
+async fn connecting_an_export_is_never_cyclic() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let node = editor.create_node_by_name(rectangle_definition()).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_input(&InputConnector::Export(0), NodeInput::node(node, 0), &[]);
+
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::Export(0), &[]).cloned(),
+		Some(NodeInput::node(node, 0)),
+		"Connecting a node to the export should be accepted"
+	);
+
+	assert_invariants(&editor, "after connecting the export");
+}
+
 #[tokio::test]
 async fn toggling_preview_on_a_disconnected_export() {
 	let mut editor = EditorTestUtils::create();
