@@ -39,6 +39,11 @@ impl History {
 		self.index.contains_key(&rev)
 	}
 
+	/// Whether history holds a delta authored at `timestamp`.
+	pub fn contains_timestamp(&self, timestamp: TimeStamp) -> bool {
+		self.deltas.iter().any(|delta| delta.timestamp == timestamp)
+	}
+
 	pub fn len(&self) -> usize {
 		self.deltas.len()
 	}

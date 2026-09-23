@@ -141,18 +141,21 @@ impl Document {
 		self.drop_retired_hot_ops();
 	}
 
-	/// Take on a peer's retirement marks as well as this peer's.
-	pub(crate) fn absorb_retired(&mut self, remote: &RetiredHotOps) {
+	/// Take on a peer's retirement marks as well as this peer's. Returns whether a hot op was dropped,
+	/// which owes the caller a refold.
+	pub(crate) fn absorb_retired(&mut self, remote: &RetiredHotOps) -> bool {
 		self.retired.absorb(remote);
 
-		self.drop_retired_hot_ops();
+		self.drop_retired_hot_ops()
 	}
 
-	/// Drop hot ops history already covers, whatever path put them in the log.
-	fn drop_retired_hot_ops(&mut self) {
-		let retired = std::mem::take(&mut self.retired);
-		self.hot_log.retain(|hot_op| !retired.covers(hot_op.id()));
-		self.retired = retired;
+	/// Drop hot ops the retired snapshot already accounts for. A mark alone will not do: it can arrive
+	/// ahead of the delta carrying the op into history, stranding its effect in the working registry.
+	fn drop_retired_hot_ops(&mut self) -> bool {
+		let before = self.hot_log.len();
+		self.hot_log.retain(|hot_op| !self.history.contains_timestamp(hot_op.timestamp));
+
+		before != self.hot_log.len()
 	}
 
 	/// Apply a retired commit. Idempotent on structural ops (AddNode/AddNetwork on existing

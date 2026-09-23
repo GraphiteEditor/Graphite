@@ -196,11 +196,18 @@ impl Session {
 	/// `idempotent`: pass `true` when the snapshot already reflects the op (retirement of an already-
 	/// applied hot op) so duplicate structural inserts no-op rather than error.
 	fn commit_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
+		self.commit_ops_authored_at(ops.into_iter().map(|op| (op, None)), idempotent)
+	}
+
+	/// [`commit_ops`](Self::commit_ops) for ops authored elsewhere, paired with the timestamp they were
+	/// authored at (`None` to mint one). The delta's timestamp is what the registry resolves LWW on, so
+	/// retirement passes the op's own; a coarsened delta passes the newest it fuses.
+	fn commit_ops_authored_at(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Option<TimeStamp>)>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
 		let target = RegistryTarget::Snapshot;
 		let ops = ops.into_iter();
 		let mut produced = Vec::with_capacity(ops.size_hint().0);
 
-		for op in ops {
+		for (op, authored_at) in ops {
 			// A new edit abandons any undone-forward branch: those revs stay in the DAG but are no
 			// longer reachable via redo. (Mirrors the legacy editor clearing its redo history on
 			// commit.) Done on the first real op so a no-op commit doesn't silently disable redo.
@@ -211,9 +218,9 @@ impl Session {
 			// The reverse must read the pre-op value of a target that may have been concurrently removed.
 			self.document.ensure_referenced_exist(target, &op)?;
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
-			let timestamp = self.document.clock.tick();
+			let timestamp = authored_at.unwrap_or_else(|| self.document.clock.tick());
 			let parent = self.document.head;
-			let author = self.document.peer;
+			let author = timestamp.peer;
 
 			let delta = Delta::new(parent, author, timestamp, op, reverse);
 			let rev = delta.id;
@@ -296,11 +303,19 @@ impl Session {
 		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
 	}
 
-	/// Drop hot ops another peer has retired without retiring them locally.
-	pub fn discard_hot_ops(&mut self, retired: &[HotOpId]) {
+	/// Drop hot ops another peer has retired without retiring them locally. Refolds like
+	/// [`absorb_retired_marks`](Self::absorb_retired_marks).
+	pub fn discard_hot_ops(&mut self, retired: &[HotOpId]) -> Result<(), CrdtError> {
+		let before = self.document.hot_log.len();
 		self.document.hot_log.retain(|hot_op| !retired.contains(&hot_op.id()));
 		// How a peer that did not retire these learns they are in history now.
 		self.document.mark_retired(retired.iter().copied());
+
+		if before != self.document.hot_log.len() {
+			self.refold_registries()?;
+		}
+
+		Ok(())
 	}
 
 	/// Which hot ops history already covers, for a peer catching up. See [`RetiredHotOps`].
@@ -308,9 +323,14 @@ impl Session {
 		&self.document.retired
 	}
 
-	/// See [`RetiredHotOps::absorb`].
-	pub fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) {
-		self.document.absorb_retired(remote);
+	/// See [`RetiredHotOps::absorb`]. A drop owes a refold, since the working registry holds the op's
+	/// effect in hot-log order where the snapshot holds it in canonical order.
+	pub fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), CrdtError> {
+		if self.document.absorb_retired(remote) {
+			self.refold_registries()?;
+		}
+
+		Ok(())
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -431,25 +451,39 @@ impl Session {
 		Ok(outcome)
 	}
 
-	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, re-applied with fresh
-	/// retirement timestamps so LWW arms bump field timestamps to `T_retire`.
+	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, each keeping the timestamp it was
+	/// authored at.
 	///
 	/// Today: one retired delta per hot op. Coarsening is a future step.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
 		// Hot-log order is causal, so the deltas commit in an order their references survive.
 		let mut drained = Vec::new();
 		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
+
+		// Retiring by timestamp reorders against the hot-log order the working registry applied: past a
+		// skipped op, everything drained was applied here before it.
+		let mut skipped = false;
+		let mut reordered = false;
 		for hot_op in self.document.hot_log.drain(..) {
 			if hot_op.timestamp <= up_to {
+				reordered |= skipped;
 				drained.push(hot_op);
 			} else {
+				skipped = true;
 				remaining.push(hot_op);
 			}
 		}
 		self.document.hot_log = remaining;
 		self.document.mark_retired(drained.iter().map(HotOp::id));
 
-		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
+		let revs = self.commit_ops_authored_at(drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp))), true)?;
+
+		// Structural ops have no timestamp to arbitrate, so the reorder changes the outcome.
+		if reordered {
+			self.refold_registries()?;
+		}
+
+		Ok(revs)
 	}
 
 	/// Mark a retired delta as the end of a user interaction, so the undo cursor treats it as a checkpoint.

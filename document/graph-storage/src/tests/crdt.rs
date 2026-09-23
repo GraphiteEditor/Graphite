@@ -1194,3 +1194,65 @@ fn a_permanent_gap_accumulates_every_later_op() {
 	}
 	assert!(!marks.covers(id(1)), "the lost op is not claimed");
 }
+
+/// A retired delta keeps its op's authoring timestamp, so the snapshot resolves LWW on the same stamps
+/// the live view did rather than on retirement order.
+#[test]
+fn retirement_preserves_the_live_lww_winner() {
+	let mut host = Session::with_peer(PeerId(1));
+
+	// Same key from two authors, the newer op arriving first, so LWW keeps it and discards the older.
+	let newer = HotOp {
+		op: set_document_attribute("k", 1),
+		timestamp: TimeStamp { counter: 10, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	let older = HotOp {
+		op: set_document_attribute("k", 2),
+		timestamp: TimeStamp { counter: 5, peer: PeerId(3) },
+		sequence: crate::HotSequence(1),
+	};
+	host.apply_hot_op(newer.clone()).expect("apply newer");
+	host.apply_hot_op(older).expect("apply older");
+
+	let live = host.registry().attributes.get("k").cloned();
+	host.retire(newer.timestamp).expect("retire");
+
+	assert_eq!(host.registry().attributes.get("k"), live.as_ref(), "retirement must not move the live value");
+	assert_eq!(
+		host.retired_registry().attributes.get("k").map(|attribute| &attribute.value),
+		live.as_ref().map(|attribute| &attribute.value),
+		"the snapshot has to record the value the live view settled on"
+	);
+}
+
+/// A straggler LWW discarded still retires, and must not return by doing so: stamped at retirement it
+/// would outrank the op that beat it, putting the discarded value into history itself.
+#[test]
+fn retiring_a_straggler_leaves_the_discarded_value_behind() {
+	let mut host = Session::with_peer(PeerId(1));
+
+	let winner = HotOp {
+		op: set_document_attribute("k", 1),
+		timestamp: TimeStamp { counter: 10, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	host.apply_hot_op(winner.clone()).expect("apply winner");
+	host.retire(winner.timestamp).expect("retire winner");
+
+	// Arriving behind the winner, this op loses in the live view and its value is dropped.
+	let straggler = HotOp {
+		op: set_document_attribute("k", 2),
+		timestamp: TimeStamp { counter: 5, peer: PeerId(3) },
+		sequence: crate::HotSequence(1),
+	};
+	host.apply_hot_op(straggler.clone()).expect("apply straggler");
+	host.retire(straggler.timestamp).expect("retire straggler");
+
+	let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
+	assert_eq!(value(host.registry()), Some(serde_json::json!(1)), "the live view keeps the winner");
+	assert_eq!(value(host.retired_registry()), Some(serde_json::json!(1)), "and retiring the straggler must not overwrite it");
+
+	let replayed = host.snapshot_from_history().expect("refold");
+	assert_eq!(value(&replayed), Some(serde_json::json!(1)), "nor may history replay to the discarded value");
+}
