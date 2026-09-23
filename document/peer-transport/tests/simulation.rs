@@ -74,6 +74,14 @@ impl SyncTarget for SimTarget {
 		SyncTarget::merge_remote(&mut self.session, deltas, retires)
 	}
 
+	fn retired_through(&self) -> HashMap<PeerId, u64> {
+		SyncTarget::retired_through(&self.session)
+	}
+
+	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError> {
+		SyncTarget::absorb_retired_through(&mut self.session, remote)
+	}
+
 	fn flush(&mut self) -> Result<(), TargetError> {
 		self.durable_history = self.history_revs();
 		self.flushes += 1;
@@ -100,6 +108,8 @@ struct Peer {
 	peer: PeerId,
 	user: UserId,
 	transport: TransportPeerId,
+	/// Gone for good, unlike a rejoin. Its document stops taking part and stops being asserted on.
+	departed: bool,
 }
 
 impl Peer {
@@ -116,6 +126,7 @@ impl Peer {
 			peer,
 			user,
 			transport,
+			departed: false,
 		}
 	}
 
@@ -128,6 +139,13 @@ impl Peer {
 		self.transport = endpoint.id();
 		self.replica = Replica::guest(endpoint, self.peer, self.user);
 		network.connect(self.transport);
+	}
+
+	/// Close the tab. The peer is never heard from again, so the room has to settle without whatever
+	/// it alone knew.
+	fn depart(&mut self, network: &mut MockNetwork) {
+		network.disconnect(self.transport);
+		self.departed = true;
 	}
 
 	fn session(&self) -> &Session {
@@ -197,12 +215,16 @@ fn random_op(network: &mut MockNetwork, session: &Session) -> RegistryDelta {
 	}
 }
 
+fn present_guests(peers: &[Peer]) -> usize {
+	peers.iter().skip(1).filter(|peer| !peer.departed).count()
+}
+
 /// Run until nothing is in flight and no peer reports progress. Resource transfers need several
 /// rounds (request out, bytes back), so this is not a fixed number of passes.
 fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) {
 	for _ in 0..1000 {
 		network.deliver_all();
-		let events: usize = peers.iter_mut().map(|peer| peer.poll().len()).sum();
+		let events: usize = peers.iter_mut().filter(|peer| !peer.departed).map(|peer| peer.poll().len()).sum();
 		if events == 0 && network.pending() == 0 {
 			return;
 		}
@@ -226,31 +248,37 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 
 	for _ in 0..steps {
 		let index = network.random_below(peers.len());
-		match network.random_below(8) {
+		if peers[index].departed {
+			continue;
+		}
+
+		match network.random_below(16) {
 			// A guest edits only once synced; anything staged earlier would be invisible to its peers.
-			0 | 1 if peers[index].replica.is_synced() => {
+			0..=2 if peers[index].replica.is_synced() => {
 				let op = random_op(&mut network, peers[index].session());
 				peers[index].stage(op);
 			}
 			// A small pool of distinct payloads, so peers sometimes introduce the same resource
 			// concurrently and sometimes one nobody else can serve.
-			6 if peers[index].replica.is_synced() => {
+			8 if peers[index].replica.is_synced() => {
 				let bytes = format!("resource-{}", network.random_below(5)).into_bytes();
 				peers[index].stage_resource(bytes);
 			}
-			0 | 1 | 6 => {}
-			2 => peers[0].retire(),
-			3 | 4 => {
+			0..=2 | 8 => {}
+			3 => peers[0].retire(),
+			4..=7 => {
 				network.step();
 			}
 			// The host cannot hand over, so only guests drop and come back.
-			7 if index > 0 => peers[index].rejoin(&mut network),
-			7 => {
+			9 if index > 0 => peers[index].rejoin(&mut network),
+			9 => {
 				let endpoint = network.endpoint();
 				let id = endpoint.id();
 				peers.push(Peer::new(endpoint, Role::Guest, peers.len() as u64 + 1));
 				network.connect(id);
 			}
+			// Keep one guest around, so the room stays a room.
+			10 if index > 0 && present_guests(&peers) > 1 => peers[index].depart(&mut network),
 			_ => {
 				peers[index].poll();
 			}
@@ -265,9 +293,11 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 }
 
 fn assert_converged(seed: u64, peers: &[Peer]) {
+	let present = || peers.iter().enumerate().filter(|(_, peer)| !peer.departed);
+
 	let host = &peers[0];
 	let host_history: Vec<_> = host.session().history().map(|delta| delta.id).collect();
-	for (index, guest) in peers.iter().enumerate().skip(1) {
+	for (index, guest) in present().skip(1) {
 		let guest_history: Vec<_> = guest.session().history().map(|delta| delta.id).collect();
 		assert_eq!(guest_history, host_history, "seed {seed}: guest {index} history diverged");
 		assert_eq!(guest.session().head_rev(), host.session().head_rev(), "seed {seed}: guest {index} head diverged");
@@ -275,16 +305,18 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		assert!(guest.session().hot_log().is_empty(), "seed {seed}: guest {index} still holds hot ops");
 	}
 
+	// Bytes that left with a departed peer are gone for good, so the room is only answerable for the
+	// resources someone still in it could have served.
+	let servable: HashSet<ResourceHash> = present().flat_map(|(_, peer)| peer.target.resources.keys().copied()).collect();
+
 	// An idle room with anything outstanding is stuck, which convergence of content alone can miss:
 	// a broadcast held forever behind a dependency that will never arrive changes nothing observable.
-	for (index, peer) in peers.iter().enumerate() {
+	for (index, peer) in present() {
 		assert_eq!(peer.replica.held_broadcasts(), 0, "seed {seed}: peer {index} still holds undelivered broadcasts");
-		assert_eq!(peer.replica.pending_resource_requests(), 0, "seed {seed}: peer {index} is still waiting on resources");
 		assert_eq!(peer.target.durable_history, peer.target.history_revs(), "seed {seed}: peer {index} has unflushed history");
-		assert!(
-			SyncTarget::missing_resources(&peer.target).is_empty(),
-			"seed {seed}: peer {index} is missing resource bytes it references"
-		);
+
+		let unserved: Vec<_> = SyncTarget::missing_resources(&peer.target).into_iter().filter(|hash| servable.contains(hash)).collect();
+		assert!(unserved.is_empty(), "seed {seed}: peer {index} is missing resource bytes another peer holds: {unserved:?}");
 	}
 }
 

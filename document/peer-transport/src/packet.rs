@@ -1,5 +1,6 @@
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, TimeStamp, UserId};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 /// The host is the single peer that retires hot ops.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -8,9 +9,9 @@ pub enum Role {
 	Guest,
 }
 
-/// How far one peer's broadcasts had got. `epoch` names the incarnation that produced `seq`: a peer
-/// keeps its `PeerId` across a reconnect but restarts its numbering, so counters carrying different
-/// epochs describe different sequences and must not be compared.
+/// How far one peer's broadcasts had got. A peer keeps its `PeerId` across a reconnect but restarts
+/// `seq`, so `epoch` names the incarnation that produced it and counters from different epochs are
+/// never compared.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerSeq {
 	pub peer: PeerId,
@@ -55,6 +56,9 @@ pub struct SyncPayload {
 	pub hot_log: Vec<HotOp>,
 	pub known_revs: Vec<Rev>,
 	pub seen: Vec<PeerSeq>,
+	/// Highest hot-op counter retired per author, so the requester can recognize a hot op that is
+	/// already in the history it is being handed.
+	pub retired_through: HashMap<PeerId, u64>,
 }
 
 /// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`

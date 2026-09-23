@@ -1,5 +1,5 @@
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 pub type TargetError = Box<dyn std::error::Error>;
 
@@ -12,6 +12,11 @@ pub trait SyncTarget {
 	fn known_revs(&self) -> Vec<Rev>;
 	fn contains_rev(&self, rev: Rev) -> bool;
 	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta>;
+
+	/// Highest hot-op counter retired per author.
+	fn retired_through(&self) -> HashMap<PeerId, u64>;
+	/// Take on a peer's retirement watermark, dropping any hot op it shows as already retired.
+	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError>;
 
 	/// Replace all state with the given retired state.
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;
@@ -84,6 +89,15 @@ impl SyncTarget for Session {
 		// Hot ops stay until after the merge: a delta may target something a still-hot removal took away.
 		self.merge(deltas)?;
 		self.discard_hot_ops(retires);
+		Ok(())
+	}
+
+	fn retired_through(&self) -> HashMap<PeerId, u64> {
+		Session::retired_through(self).clone()
+	}
+
+	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError> {
+		Session::absorb_retired_through(self, remote);
 		Ok(())
 	}
 }

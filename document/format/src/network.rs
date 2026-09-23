@@ -3,7 +3,7 @@
 //! send through the [`SyncTarget`] impl below, which persists inbound state the same way local
 //! edits are.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, ResourceHash, Rev, Session, TimeStamp, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
@@ -108,6 +108,16 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		self.pending_persist.history = true;
 		self.pending_persist.hot_log |= !retires.is_empty();
 		self.pending_persist.snapshot = true;
+		Ok(())
+	}
+
+	fn retired_through(&self) -> HashMap<PeerId, u64> {
+		SyncTarget::retired_through(&self.session)
+	}
+
+	fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) -> Result<(), TargetError> {
+		SyncTarget::absorb_retired_through(&mut self.session, remote)?;
+		self.pending_persist.hot_log = true;
 		Ok(())
 	}
 

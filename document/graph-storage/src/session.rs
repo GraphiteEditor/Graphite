@@ -39,6 +39,7 @@ impl Session {
 				retired_snapshot: Registry::default(),
 				history: History::new(),
 				hot_log: Vec::new(),
+				retired_through: HashMap::new(),
 				head: None,
 				redo_stack: Vec::new(),
 				clock: LamportClock::new(peer),
@@ -234,6 +235,7 @@ impl Session {
 				working_registry: registry,
 				history: History::from_ordered(history),
 				hot_log: Vec::new(),
+				retired_through: HashMap::new(),
 				head,
 				redo_stack,
 				clock,
@@ -279,6 +281,23 @@ impl Session {
 	/// Drop hot ops another peer has retired without retiring them locally.
 	pub fn discard_hot_ops(&mut self, retired: &[TimeStamp]) {
 		self.document.hot_log.retain(|hot_op| !retired.contains(&hot_op.timestamp));
+		// How a peer that did not retire these learns they are in history now.
+		self.document.mark_retired(retired.iter().copied());
+	}
+
+	/// Highest hot-op counter retired per author, for a peer catching up on what is already in history.
+	pub fn retired_through(&self) -> &HashMap<PeerId, u64> {
+		&self.document.retired_through
+	}
+
+	/// Adopt another peer's retirement watermark, keeping the higher counter per author.
+	pub fn absorb_retired_through(&mut self, remote: &HashMap<PeerId, u64>) {
+		self.document.mark_retired(remote.iter().map(|(&peer, &counter)| TimeStamp { counter, peer }));
+
+		let retired_through = self.document.retired_through.clone();
+		self.document
+			.hot_log
+			.retain(|hot_op| retired_through.get(&hot_op.timestamp.peer).is_none_or(|&counter| hot_op.timestamp.counter > counter));
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -299,6 +318,9 @@ impl Session {
 				continue;
 			}
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
+			// The working registry is the snapshot plus the hot tail, so a retired delta lands on both
+			// rather than cloning one over the other, which would promote unretired hot ops.
+			self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 			absorbed_ids.insert(delta.id);
 			self.document.history.push(delta);
 		}
@@ -326,8 +348,6 @@ impl Session {
 		};
 		self.document.head = outcome.head();
 
-		// Merge runs with an empty hot log; keep the retired snapshot in step with the working registry.
-		self.document.retired_snapshot = self.document.working_registry.clone();
 		Ok(outcome)
 	}
 
@@ -346,6 +366,7 @@ impl Session {
 			}
 		}
 		self.document.hot_log = remaining;
+		self.document.mark_retired(drained.iter().map(|hot_op| hot_op.timestamp));
 
 		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
 	}

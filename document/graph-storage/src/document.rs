@@ -2,6 +2,7 @@ use crate::{
 	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
 	apply_attribute_delta, reverse_attribute_delta,
 };
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct Document {
@@ -11,6 +12,11 @@ pub struct Document {
 	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
 	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
 	pub(crate) hot_log: Vec<HotOp>,
+	/// Highest hot-op counter retired per author, so a hot op that arrives after its own retirement is
+	/// recognized and dropped rather than re-entering the hot log for good. Retirement discards the
+	/// link from a delta back to the hot op it came from, so this is the only record of it. Merges by
+	/// per-author max, which makes it safe to adopt a peer's vector wholesale.
+	pub(crate) retired_through: HashMap<PeerId, u64>,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it, stamping fields at the fresh `T_retire`. Kept equal
@@ -111,9 +117,28 @@ impl Document {
 	/// re-applying an op whose effect is already reflected in the registry is a no-op rather
 	/// than an error.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
+		// Its effect is already in retired history, and re-adding it would leave an entry no retirement
+		// list will ever name.
+		if self.is_retired(hot_op.timestamp) {
+			return Ok(());
+		}
+
 		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())
+	}
+
+	/// Whether this hot op has already been promoted into history.
+	pub(crate) fn is_retired(&self, timestamp: TimeStamp) -> bool {
+		self.retired_through.get(&timestamp.peer).is_some_and(|&counter| timestamp.counter <= counter)
+	}
+
+	/// Raise the watermark to cover these newly retired hot ops.
+	pub(crate) fn mark_retired(&mut self, retired: impl IntoIterator<Item = TimeStamp>) {
+		for timestamp in retired {
+			let counter = self.retired_through.entry(timestamp.peer).or_default();
+			*counter = (*counter).max(timestamp.counter);
+		}
 	}
 
 	/// Apply a retired commit. Idempotent on structural ops (AddNode/AddNetwork on existing
