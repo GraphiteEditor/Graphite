@@ -15,7 +15,7 @@ use graphene_std::vector::style::RenderMode;
 
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ,
+	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
 };
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
@@ -219,6 +219,13 @@ pub fn collect_network_view_settings(
 			settings.insert(session::network::NAV_WIDTH.to_string(), value);
 		}
 
+		// Skip the inert `Previewing::No` default so a network that has never been previewed stays empty.
+		if !matches!(network_metadata.persistent_metadata.previewing, Previewing::No)
+			&& let Ok(value) = serde_json::to_value(network_metadata.persistent_metadata.previewing)
+		{
+			settings.insert(session::network::PREVIEWING.to_string(), value);
+		}
+
 		if !settings.is_empty() {
 			out.insert(network_id, settings);
 		}
@@ -256,6 +263,13 @@ pub fn apply_network_view_settings(
 			&& let Ok(width) = serde_json::from_value(value.clone())
 		{
 			navigation.node_graph_width = width;
+		}
+
+		if let Some(value) = settings.get(session::network::PREVIEWING)
+			&& let Ok(previewing) = serde_json::from_value::<Previewing>(value.clone())
+			&& let Some(mut network) = interface.network_mut(network_path)
+		{
+			network.set_previewing(previewing);
 		}
 	}
 }

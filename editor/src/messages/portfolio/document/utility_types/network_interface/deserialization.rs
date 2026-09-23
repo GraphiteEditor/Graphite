@@ -141,7 +141,6 @@ impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersist
 			metadata.persistent_metadata.reference = old.reference;
 		}
 		DocumentNodePersistentMetadata {
-			// Predates stored identities, so this node falls back to a hash of its location
 			display_name: old.display_name,
 			input_metadata: old.input_metadata,
 			output_names: old.output_names,

@@ -173,6 +173,31 @@ async fn connecting_an_export_is_never_cyclic() {
 }
 
 #[tokio::test]
+async fn toggling_preview_on_a_disconnected_export() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let node = editor.create_node_by_name(rectangle_definition()).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.disconnect_input(&InputConnector::Export(0), &[]);
+
+	// Previewing a node while the export is disconnected is a preview with nothing to restore
+	network_interface.toggle_preview(node, &[]);
+	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
+	let export = network_interface.input_from_connector(&InputConnector::Export(0), &[]);
+	assert_eq!(export.and_then(|input| input.as_node()), Some(node), "The previewed node should be wired to the export");
+
+	// Ending the preview restores the disconnected export
+	network_interface.toggle_preview(node, &[]);
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+	let export = network_interface.input_from_connector(&InputConnector::Export(0), &[]);
+	assert!(export.is_some_and(|input| input.as_node().is_none()), "Ending the preview should disconnect the export again");
+
+	assert_invariants(&editor, "after toggling preview twice");
+}
+
+#[tokio::test]
 async fn artboard_identity_is_independent_of_scene_connectivity() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -381,10 +406,8 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 	assert_invariants(&editor, "after removing the added export");
 }
 
-/// Previewing renders a different node without rewiring anything: the export keeps whatever it is
-/// connected to, so ending a preview has nothing to restore and cannot disconnect anything.
 #[tokio::test]
-async fn previewing_leaves_the_export_alone() {
+async fn toggle_preview_transitions_with_a_connected_export() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
@@ -396,123 +419,31 @@ async fn previewing_leaves_the_export_alone() {
 	let export_node = |network_interface: &super::NodeNetworkInterface| network_interface.input_from_connector(&InputConnector::Export(0), &[]).and_then(|input| input.as_node());
 	assert_eq!(export_node(network_interface), Some(artboard));
 
-	// Previewing a node names it without touching the export
+	// Previewing a node remembers the artboard as the connection to restore
 	network_interface.toggle_preview(node, &[]);
+	assert_eq!(export_node(network_interface), Some(node));
 	assert_eq!(
 		network_interface.previewing(&[]),
 		Previewing::Yes {
-			previewed: RootNode { node_id: node, output_index: 0 }
+			root_node_to_restore: Some(RootNode { node_id: artboard, output_index: 0 })
 		}
 	);
-	assert_eq!(export_node(network_interface), Some(artboard), "Previewing must not rewire the export");
 
-	// Previewing a different node moves the preview, still without touching the export
-	network_interface.toggle_preview(artboard, &[]);
-	assert_eq!(
-		network_interface.previewing(&[]),
-		Previewing::Yes {
-			previewed: RootNode { node_id: artboard, output_index: 0 }
-		}
-	);
+	// Toggling the previewed node again restores the artboard connection
+	network_interface.toggle_preview(node, &[]);
 	assert_eq!(export_node(network_interface), Some(artboard));
-
-	// Toggling the previewed node again ends the preview, leaving the export as it always was
-	network_interface.toggle_preview(artboard, &[]);
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+
+	// Toggling the restore node while previewing promotes it to the export with nothing left to restore
+	network_interface.toggle_preview(node, &[]);
+	network_interface.toggle_preview(artboard, &[]);
 	assert_eq!(export_node(network_interface), Some(artboard));
+	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
+
+	// Toggling it once more ends the preview by disconnecting the export entirely
+	network_interface.toggle_preview(artboard, &[]);
+	assert_eq!(export_node(network_interface), None);
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
 	assert_invariants(&editor, "after cycling through the preview states");
-}
-
-/// The graph handed to the compiler renders the previewed node, which is the whole point of a preview
-/// that does not rewire the document.
-#[tokio::test]
-async fn the_evaluated_network_renders_the_previewed_node() {
-	let mut editor = EditorTestUtils::create();
-	editor.new_document().await;
-
-	let artboard = NodeId::new();
-	editor.handle_message(new_artboard_message(artboard)).await;
-	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
-
-	let network_interface = &mut editor.active_document_mut().network_interface;
-	network_interface.toggle_preview(node, &[]);
-
-	let evaluated = network_interface.network_to_evaluate();
-	assert_eq!(
-		evaluated.exports.first().and_then(|export| export.as_node()),
-		Some(node),
-		"The network being evaluated should export the previewed node"
-	);
-	assert_eq!(
-		network_interface.document_network().exports.first().and_then(|export| export.as_node()),
-		Some(artboard),
-		"The document itself should be unchanged"
-	);
-}
-
-/// The previewed node is marked for the frontend so it can be highlighted. The mark comes from the
-/// preview state itself, not from the export.
-#[tokio::test]
-async fn the_previewed_node_is_flagged_for_the_frontend() {
-	use crate::messages::portfolio::document::node_graph::NodeGraphMessageHandler;
-
-	let mut editor = EditorTestUtils::create();
-	editor.new_document().await;
-
-	let artboard = NodeId::new();
-	editor.handle_message(new_artboard_message(artboard)).await;
-	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
-
-	let handler = NodeGraphMessageHandler::default();
-	let network_interface = &mut editor.active_document_mut().network_interface;
-
-	let flagged = |handler: &NodeGraphMessageHandler, network_interface: &mut super::NodeNetworkInterface| {
-		handler
-			.collect_nodes(network_interface, &[])
-			.into_iter()
-			.filter(|node| node.previewed)
-			.map(|node| node.id)
-			.collect::<Vec<_>>()
-	};
-
-	assert!(flagged(&handler, network_interface).is_empty(), "Nothing is previewed to begin with");
-
-	network_interface.toggle_preview(node, &[]);
-	assert_eq!(flagged(&handler, network_interface), vec![node], "The previewed node should be the one flagged");
-
-	network_interface.toggle_preview(node, &[]);
-	assert!(flagged(&handler, network_interface).is_empty(), "Ending the preview should unflag it");
-}
-
-/// Resolving a batch of positions shares one downstream walk, so it has to agree with resolving each
-/// node on its own, with a stack as the case that matters.
-#[tokio::test]
-async fn batched_positions_agree_with_resolving_each_node() {
-	let mut editor = EditorTestUtils::create();
-	editor.new_document().await;
-	editor.handle_message(new_artboard_message(NodeId::new())).await;
-
-	for offset in 0..4 {
-		editor.draw_rect(0., offset as f64 * 20., 100., offset as f64 * 20. + 10.).await;
-	}
-
-	let network_interface = &editor.active_document().network_interface;
-	let node_ids = network_interface.document_network().nodes.keys().copied().collect::<Vec<_>>();
-	assert!(node_ids.len() > 4, "the fixture should build a stack, found {} nodes", node_ids.len());
-
-	let batched = network_interface.positions(node_ids.iter().copied(), &[]);
-	let individually = node_ids
-		.iter()
-		.filter_map(|node_id| network_interface.position(node_id, &[]).map(|position| (*node_id, position)))
-		.collect::<Vec<_>>();
-
-	assert_eq!(batched.len(), individually.len(), "The batch should resolve exactly the nodes that resolve on their own");
-	for (node_id, position) in individually {
-		assert_eq!(
-			batched.iter().find(|(batched_id, _)| *batched_id == node_id).map(|(_, position)| *position),
-			Some(position),
-			"Batched position disagrees for node {node_id}"
-		);
-	}
 }

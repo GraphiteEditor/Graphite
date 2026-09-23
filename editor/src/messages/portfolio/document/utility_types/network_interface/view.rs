@@ -282,15 +282,19 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	/// The root node (the node that the solid line is connected to), or None if no nodes are connected to the output.
-	///
-	/// Simply what the export is wired to: previewing renders a different node but does not rewire it.
 	pub fn root_node(&self) -> Option<RootNode> {
-		match self.network.exports.first() {
-			Some(NodeInput::Node { node_id, output_index, .. }) => Some(RootNode {
-				node_id: *node_id,
-				output_index: *output_index,
+		match &self.metadata.persistent_metadata.previewing {
+			Previewing::Yes { root_node_to_restore } => *root_node_to_restore,
+			Previewing::No => self.network.exports.first().and_then(|export| {
+				if let NodeInput::Node { node_id, output_index, .. } = export {
+					Some(RootNode {
+						node_id: *node_id,
+						output_index: *output_index,
+					})
+				} else {
+					None
+				}
 			}),
-			_ => None,
 		}
 	}
 

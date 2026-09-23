@@ -19,11 +19,12 @@ impl NodeNetworkInterface {
 				let other_persistent = &other_network_metadata.persistent_metadata;
 				*view.navigation = other_persistent.navigation_metadata.clone();
 
-				// The preview is this peer's and survives a rebuild, unless it names a node the rebuilt
-				// network no longer contains (e.g. after a storage undo), in which case there is nothing
-				// left to look at.
+				// The live preview root may name a node that the rebuilt-from-storage network no longer contains
+				// (e.g. after a storage undo), so only carry it over when the root still exists; otherwise drop it.
 				*view.previewing = match other_persistent.previewing {
-					Previewing::Yes { previewed } if !view.nodes.contains_key(&previewed.node_id) => Previewing::No,
+					Previewing::Yes {
+						root_node_to_restore: Some(root_node),
+					} if !view.nodes.contains_key(&root_node.node_id) => Previewing::No,
 					previewing => previewing,
 				};
 
@@ -847,13 +848,8 @@ impl NodeNetworkInterface {
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
 	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		// A preview of the node being removed cannot outlive it. A preview of any other node is untouched:
-		// previewing does not rewire anything, so the reconnection below cannot invalidate it.
-		if matches!(self.previewing(network_path), Previewing::Yes { previewed } if previewed.node_id == *node_id)
-			&& let Some(mut network) = self.network_mut(network_path)
-		{
-			network.set_previewing(Previewing::No);
-		}
+		// TODO: Add more logic to support retaining preview when removing references. Since there are so many edge cases/possible crashes, for now the preview is ended.
+		self.stop_previewing(network_path);
 
 		// The wire the downstream inputs reconnect to, which is the first exposed input of the node being removed
 		let reconnect_to_input = self.document_node(node_id, network_path).and_then(|node| {
@@ -918,6 +914,34 @@ impl NodeNetworkInterface {
 		}
 
 		true
+	}
+
+	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
+		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
+		let Some(mut network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in start_previewing_without_restore");
+			return;
+		};
+		network.set_previewing(Previewing::Yes { root_node_to_restore: None });
+	}
+
+	fn stop_previewing(&mut self, network_path: &[NodeId]) {
+		if let Previewing::Yes {
+			root_node_to_restore: Some(root_node_to_restore),
+		} = self.previewing(network_path)
+		{
+			self.set_input(
+				&InputConnector::Export(0),
+				NodeInput::node(root_node_to_restore.node_id, root_node_to_restore.output_index),
+				network_path,
+			);
+		}
+
+		let Some(mut network) = self.network_mut(network_path) else {
+			log::error!("Could not get nested network_metadata in stop_previewing");
+			return;
+		};
+		network.set_previewing(Previewing::No);
 	}
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
@@ -1113,19 +1137,87 @@ impl NodeNetworkInterface {
 		self.load_structure();
 	}
 
-	/// Renders `toggle_id` instead of the network's export, or stops doing so if it already is.
-	///
-	/// Per-peer and not a change to the document: the export keeps whatever it is wired to, and the
-	/// compile path substitutes the previewed node into the graph it evaluates, so no other peer sees it.
 	pub fn toggle_preview(&mut self, toggle_id: NodeId, network_path: &[NodeId]) {
-		let previewing = match self.previewing(network_path) {
-			Previewing::Yes { previewed } if previewed.node_id == toggle_id => Previewing::No,
-			_ => Previewing::Yes {
-				previewed: RootNode { node_id: toggle_id, output_index: 0 },
-			},
+		let Some(network) = self.nested_network(network_path) else {
+			return;
 		};
+		// If new_export is None then disconnect
+		let mut new_export = None;
+		let mut new_previewing_state = Previewing::No;
+		if let Some(export) = network.exports.first() {
+			// If there currently an export
+			if let NodeInput::Node { node_id, output_index, .. } = export {
+				let previous_export_id = *node_id;
+				let previous_output_index = *output_index;
 
+				// The export is clicked
+				if *node_id == toggle_id {
+					// If the current export is clicked and is being previewed end the preview and set either export back to root node or disconnect
+					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
+						new_export = root_node_to_restore.map(|root_node| root_node.to_connector());
+						new_previewing_state = Previewing::No;
+					}
+					// The export is clicked and there is no preview
+					else {
+						new_previewing_state = Previewing::Yes {
+							root_node_to_restore: Some(RootNode {
+								node_id: previous_export_id,
+								output_index: previous_output_index,
+							}),
+						};
+					}
+				}
+				// The export is not clicked
+				else {
+					new_export = Some(OutputConnector::primary_output(toggle_id));
+
+					// There is currently a dashed line being drawn
+					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
+						// There is also a solid line being drawn
+						if let Some(root_node_to_restore) = root_node_to_restore {
+							// If the node with the solid line is clicked, then start previewing that node without restore
+							if root_node_to_restore.node_id == toggle_id {
+								new_export = Some(OutputConnector::primary_output(toggle_id));
+								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+							} else {
+								// Root node to restore does not change
+								new_previewing_state = Previewing::Yes {
+									root_node_to_restore: Some(root_node_to_restore),
+								};
+							}
+						}
+						// There is a dashed line without a solid line.
+						else {
+							new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+						}
+					}
+					// Not previewing, there is no dashed line being drawn
+					else {
+						new_export = Some(OutputConnector::primary_output(toggle_id));
+						new_previewing_state = Previewing::Yes {
+							root_node_to_restore: Some(RootNode {
+								node_id: previous_export_id,
+								output_index: previous_output_index,
+							}),
+						};
+					}
+				}
+			}
+			// The primary export is disconnected, so preview the node with nothing to restore, which disconnects the export again when the preview ends
+			else {
+				new_export = Some(OutputConnector::primary_output(toggle_id));
+				new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+			}
+		}
+		match new_export {
+			Some(new_export) => {
+				self.create_wire(&new_export, &InputConnector::Export(0), network_path);
+			}
+			None => {
+				self.disconnect_input(&InputConnector::Export(0), network_path);
+			}
+		}
 		let Some(mut network) = self.network_mut(network_path) else { return };
-		network.set_previewing(previewing);
+		network.set_previewing(new_previewing_state);
 	}
 }

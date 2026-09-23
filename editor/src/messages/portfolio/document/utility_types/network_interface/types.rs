@@ -338,16 +338,11 @@ impl RootNode {
 	}
 }
 
-/// Which node the node graph renders instead of the network's export.
-///
-/// Per-peer view state, not part of the document: the export keeps whatever it is wired to, and the
-/// compile path substitutes the previewed node into the graph it evaluates. So previewing a node
-/// changes nothing another peer would see.
 #[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub enum Previewing {
-	Yes {
-		previewed: RootNode,
-	},
+	/// If there is a node to restore the connection to the export for, then it is stored in the option.
+	/// Otherwise, nothing gets restored and the primary export is disconnected.
+	Yes { root_node_to_restore: Option<RootNode> },
 	#[default]
 	No,
 }
