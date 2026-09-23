@@ -3742,7 +3742,9 @@ mod test {
 		// Relaxation preserves the point count but repositions the interior anchors within the hull.
 		assert_eq!(vector.point_domain.ids().len(), points.len());
 		assert_ne!(vector.point_domain.positions(), &points[..]);
-		// The convex-hull corners are pinned.
+		// The convex-hull corners are pinned. Asserted on the count first, since zipping a short result
+		// would skip the checks rather than fail them.
+		assert!(vector.point_domain.positions().len() >= 4, "the relaxed hull should still have its four corners");
 		for (corner, (&position, &point)) in vector.point_domain.positions().iter().zip(&points).take(4).enumerate() {
 			assert_eq!(position, point, "hull corner {corner} should be pinned");
 		}

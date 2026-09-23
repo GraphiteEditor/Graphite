@@ -38,7 +38,8 @@ pub enum ConversionError {
 pub type Declarations = std::collections::HashMap<ResourceId, ProtoNode>;
 
 impl Registry {
-	/// Returns the network plus per-node metadata entries (one per node carrying any `ui::*` attribute).
+	/// Returns the network plus one metadata entry per node, since every node carries an identity to
+	/// restore even when it has no `ui::*` attribute.
 	pub fn to_runtime_with_metadata(&self, declarations: &Declarations) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>), ConversionError> {
 		let (network, node_entries, _) = self.to_runtime_with_full_metadata(declarations)?;
 		Ok((network, node_entries))

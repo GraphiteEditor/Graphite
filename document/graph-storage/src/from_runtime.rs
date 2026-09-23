@@ -333,7 +333,16 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 		.collect::<Result<Vec<_>, ConversionError>>()?;
 
 	let mut attributes = crate::Attributes::new();
-	write_ui_network_attributes(&mut attributes, ctx.metadata, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
+	write_ui_network_attributes(
+		&mut attributes,
+		ctx.metadata,
+		node_network,
+		metadata_path,
+		parent_path,
+		network_id,
+		ctx.ids(metadata_path),
+		TimeStamp::ORIGIN,
+	)?;
 	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 
 	registry.networks.insert(network_id, Network { exports, attributes });
@@ -543,6 +552,7 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	attributes: &mut crate::Attributes,
 	metadata: &M,
+	node_network: &NodeNetwork,
 	network_path: &[RuntimeNodeId],
 	parent_path: Option<&NodePath>,
 	network_id: NetworkId,
@@ -555,7 +565,10 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 
 	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(&child_path(parent_path, network_id, runtime_id), runtime_id);
 
-	let pinned_order = metadata.pinned_order(network_path);
+	// Only nodes the converted network still holds: the read side drops a stored ID it cannot find, so
+	// persisting one for a node deleted or reparented elsewhere would leave stored state disagreeing with
+	// what a peer converting the same input produces.
+	let pinned_order: Vec<_> = metadata.pinned_order(network_path).into_iter().filter(|pinned| node_network.nodes.contains_key(pinned)).collect();
 	if !pinned_order.is_empty() {
 		let stored: Vec<NodeId> = pinned_order.into_iter().map(to_storage_id).collect();
 		attributes
@@ -807,6 +820,7 @@ impl<'m> ScopedConversion<'m> {
 		write_ui_network_attributes(
 			&mut attributes,
 			self.ctx.metadata,
+			node_network,
 			local_path,
 			owner_path.as_ref(),
 			network_id,
