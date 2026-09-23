@@ -234,8 +234,8 @@ impl Peer {
 fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<RegistryDelta> {
 	let registry = session.registry();
 	let node_id = NodeId(1 + network.random_below(4) as u64);
-	let live_nodes: Vec<NodeId> = registry.node_instances.keys().copied().collect();
-	let live_networks: Vec<NetworkId> = registry.networks.keys().copied().collect();
+	let live_nodes: Vec<NodeId> = sorted(registry.node_instances.keys().copied());
+	let live_networks: Vec<NetworkId> = sorted(registry.networks.keys().copied());
 
 	match network.random_below(8) {
 		// Per-slot attributes, the one place `InputSlot.attributes` is written.
@@ -293,7 +293,7 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<RegistryDelta> {
 	let session = &target.session;
 	let registry = session.registry();
-	let live: Vec<ResourceId> = registry.resources.keys().copied().collect();
+	let live: Vec<ResourceId> = sorted(registry.resources.keys().copied());
 	let id = *pick(network, &live)?;
 
 	// A small pool of priorities, so concurrent adds sometimes collide on a key and sometimes stack up
@@ -307,7 +307,7 @@ fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<R
 		// Only a hash this peer holds the bytes for: a resolved hash is content derived, so in the editor
 		// the peer that resolves a resource is the one that fetched it.
 		0 => {
-			let held: Vec<ResourceHash> = target.resources.keys().copied().collect();
+			let held: Vec<ResourceHash> = sorted(target.resources.keys().copied());
 			RegistryDelta::SetResourceHash {
 				id,
 				hash: Some(*pick(network, &held)?),
@@ -328,6 +328,14 @@ fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<R
 }
 
 /// One element at random, or `None` when there is nothing to choose from.
+/// Collect into a sorted `Vec`. Every list the generator indexes with the seeded RNG comes from a hashed
+/// registry map, whose order varies per process, so without this the seed would not fix the edit.
+fn sorted<T: Ord>(values: impl Iterator<Item = T>) -> Vec<T> {
+	let mut values: Vec<T> = values.collect();
+	values.sort_unstable();
+	values
+}
+
 fn pick<'a, T>(network: &mut MockNetwork, options: &'a [T]) -> Option<&'a T> {
 	(!options.is_empty()).then(|| &options[network.random_below(options.len())])
 }
@@ -354,7 +362,7 @@ fn random_op(network: &mut MockNetwork, target: &SimTarget) -> RegistryDelta {
 		// Export slots resize on demand and LWW per slot, and clearing one leaves a tombstone that must
 		// still compare equal to the slot being absent.
 		4 | 5 if session.registry().networks.contains_key(&network_id) => {
-			let live_nodes: Vec<NodeId> = session.registry().node_instances.keys().copied().collect();
+			let live_nodes: Vec<NodeId> = sorted(session.registry().node_instances.keys().copied());
 			let export = match pick(network, &live_nodes).copied() {
 				Some(id) if network.random_below(4) > 0 => Some(NodeInput::Node { id, index: 0 }),
 				_ => None,
@@ -502,6 +510,24 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 	}
 }
 
+/// The working registry is what the editor renders: a peer's snapshot plus its hot tail. With the tail
+/// empty it should hold exactly what the snapshot holds. The two zones apply the same ops in different
+/// orders, the working registry in arrival order and the snapshot in canonical history order, and
+/// structural ops carry no timestamp to arbitrate that, so whatever drops a hot op the snapshot now
+/// covers owes a refold. Compared by value, since a refold re-stamps what it replays.
+fn assert_zones_agree(seed: u64, peers: &[Peer]) {
+	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
+		if !peer.session().hot_log().is_empty() {
+			continue;
+		}
+
+		assert!(
+			peer.session().registry().value_equal(peer.session().retired_registry()),
+			"seed {seed}: peer {index} working registry drifted from its own snapshot"
+		);
+	}
+}
+
 /// The retired snapshot has to be exactly what canonical history produces, holding no trace of which
 /// order deltas arrived in or which hot ops this peer happens to hold. Convergence alone does not say
 /// this: every peer can agree on a snapshot that none of their histories accounts for.
@@ -557,6 +583,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 	dump_if_requested(seed, peers);
 	assert_no_duplicate_hot_ops(seed, peers);
 	assert_snapshot_matches_history(seed, peers);
+	assert_zones_agree(seed, peers);
 	assert_history_self_contained(seed, peers);
 
 	let present = || peers.iter().enumerate().filter(|(_, peer)| !peer.departed);
@@ -795,29 +822,4 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	let retired = peers[0].session().retired_marks();
 	assert!(retired.retired_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
 	assert_converged(0, &peers);
-}
-
-/// The working registry is what the editor renders, and at quiescence it should be each peer's snapshot
-/// plus an empty hot tail, so all peers should agree on it by value. They do not: at seed 14 the host's
-/// own working registry is behind its own snapshot (`key1` at 18 where the snapshot has 92) with an empty
-/// hot log, so an op reached retired state without reaching the live view.
-///
-/// Ignored because it fails, and it predates the retirement work: it reproduces with the hot-log
-/// preservation reverted. Comparison is by value, since retirement re-stamps the snapshot while the
-/// working registry keeps staging-time stamps.
-#[test]
-#[ignore = "known failure, seed 14: the host's working registry drifts from its own snapshot"]
-fn working_registries_converge() {
-	for seed in 0..1000 {
-		let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
-		let present: Vec<&Peer> = peers.iter().filter(|peer| !peer.departed).collect();
-		let Some(host) = present.first() else { continue };
-
-		for (index, guest) in present.iter().enumerate().skip(1) {
-			assert!(
-				guest.session().registry().value_equal(host.session().registry()),
-				"seed {seed}: guest {index} working registry diverged from the host's"
-			);
-		}
-	}
 }

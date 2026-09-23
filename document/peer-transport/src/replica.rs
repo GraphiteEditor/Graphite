@@ -307,7 +307,10 @@ impl Replica {
 		// Clearing those keeps a later ask for the same hash from being suppressed.
 		self.requested_resources.retain(|hash| missing.contains(hash));
 
-		let unasked: Vec<ResourceHash> = missing.into_iter().filter(|hash| !self.requested_resources.contains(hash)).collect();
+		// Sorted because `missing_resources` answers with a `HashSet`, whose order varies per process and
+		// would otherwise reach the wire, making a seeded run unreproducible.
+		let mut unasked: Vec<ResourceHash> = missing.into_iter().filter(|hash| !self.requested_resources.contains(hash)).collect();
+		unasked.sort_unstable();
 		if unasked.is_empty() {
 			return Ok(());
 		}
@@ -323,9 +326,16 @@ impl Replica {
 			return Ok(());
 		}
 
-		let ready: Vec<(ResourceHash, Vec<u8>)> = self.owed_resources.keys().filter_map(|&hash| target.resource_bytes(hash).map(|bytes| (hash, bytes))).collect();
+		// Both loops run in sorted order: the collections are hashed, so their iteration order varies per
+		// process and would decide send order, leaving a seeded run unreproducible.
+		let mut ready: Vec<(ResourceHash, Vec<u8>)> = self.owed_resources.keys().filter_map(|&hash| target.resource_bytes(hash).map(|bytes| (hash, bytes))).collect();
+		ready.sort_unstable_by_key(|(hash, _)| *hash);
+
 		for (hash, bytes) in ready {
-			for to in self.owed_resources.remove(&hash).unwrap_or_default() {
+			let mut recipients: Vec<TransportPeerId> = self.owed_resources.remove(&hash).unwrap_or_default().into_iter().collect();
+			recipients.sort_unstable();
+
+			for to in recipients {
 				self.transport.send(to, &SyncPacket::Resource { hash, bytes: bytes.clone() })?;
 			}
 		}
@@ -384,7 +394,7 @@ impl Replica {
 				};
 				// A full registry replaces the session, hot log included, so the unretired ops held here are
 				// kept and replayed back on top. They are the only copy of whatever never reached the host.
-				let held = matches!(sync.registry, Some(_)).then(|| target.hot_log()).unwrap_or_default();
+				let held = if sync.registry.is_some() { target.hot_log() } else { Vec::new() };
 
 				match sync.registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
