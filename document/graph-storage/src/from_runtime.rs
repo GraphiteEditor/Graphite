@@ -447,6 +447,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 
 	Ok(Node {
 		implementation,
+		implementation_timestamp: timestamp,
 		inputs,
 		attributes,
 		network: network_id,

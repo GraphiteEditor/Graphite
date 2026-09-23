@@ -216,7 +216,10 @@ impl Document {
 			}
 			RegistryDelta::SetNodeImplementation { id, implementation } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
-				node.implementation = implementation;
+				if force || timestamp > node.implementation_timestamp {
+					node.implementation = implementation;
+					node.implementation_timestamp = timestamp;
+				}
 			}
 			RegistryDelta::ChangeNodeAttribute { id, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;

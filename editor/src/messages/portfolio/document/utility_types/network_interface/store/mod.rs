@@ -206,7 +206,7 @@ impl NodeNetworkInterface {
 	/// For a change expressed as an operation on the existing value rather than as a replacement of it,
 	/// which avoids copying the value out and back. The recorded delta still carries the whole result,
 	/// since the storage op is a whole-value write.
-	pub(crate) fn edit_input_value(&mut self, connector: &InputConnector, network_path: &[NodeId], edit: impl FnOnce(&mut TaggedValue)) -> bool {
+	pub(crate) fn edit_input_value(&mut self, connector: &InputConnector, network_path: &[NodeId], edit: impl FnOnce(&mut TaggedValue) -> bool) -> bool {
 		let Some(network) = self.network_graph_mut(network_path) else {
 			log::error!("Could not get nested network in edit_input_value");
 			return false;
@@ -216,21 +216,20 @@ impl NodeNetworkInterface {
 			log::error!("Could not get input {connector:?} in edit_input_value");
 			return false;
 		};
-		// Compared by the value's memoized hash, which the guard refreshes when it drops. Cloning the value
-		// to compare it instead would share its `Arc` and make the edit below deep-copy the whole value,
-		// which is the copy this method exists to avoid.
-		let previous_hash = value_hash(slot);
 		let Some(mut value) = slot.as_value_mut() else {
 			log::error!("Input {connector:?} is not a value in edit_input_value");
 			return false;
 		};
 
-		edit(&mut value);
+		// The edit reports whether it changed anything, rather than this comparing before and after.
+		// Comparing the values would mean copying one out, which is the copy this method exists to avoid,
+		// and comparing their memoized hashes would let a collision silently drop a real edit.
+		let changed = edit(&mut value);
 		drop(value);
 
 		// An edit that changes nothing still carries a timestamp, which would let it supersede a concurrent
 		// peer's real edit to the same input.
-		if previous_hash == value_hash(slot) {
+		if !changed {
 			return true;
 		}
 
@@ -336,15 +335,6 @@ impl NodeNetworkInterface {
 		if let Some(mut network) = self.network_mut(network_path) {
 			network.set_reference(None);
 		}
-	}
-}
-
-/// The memoized hash of a value input, which moves when the value does. Reading it is free, where
-/// comparing the values themselves would mean copying one out.
-fn value_hash(input: &NodeInput) -> Option<u64> {
-	match input {
-		NodeInput::Value { tagged_value, .. } => Some(tagged_value.hash_code()),
-		_ => None,
 	}
 }
 

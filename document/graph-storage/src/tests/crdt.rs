@@ -837,6 +837,7 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 
 		Node {
 			implementation: implementation.clone(),
+			implementation_timestamp: Default::default(),
 			inputs,
 			attributes,
 			network: ROOT_NETWORK,

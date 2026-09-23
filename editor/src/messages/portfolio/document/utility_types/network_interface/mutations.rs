@@ -62,10 +62,11 @@ impl NodeNetworkInterface {
 		self.edit_input_value(&InputConnector::node_at_index(*node_id, 1), &[], |value| {
 			let TaggedValue::VectorModification(modification) = value else {
 				log::error!("Path node {node_id} does not have a modification input");
-				return;
+				return false;
 			};
 			modification.modify(&modification_type);
 			modified = true;
+			true
 		});
 
 		if modified {

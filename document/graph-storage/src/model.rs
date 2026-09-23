@@ -5,6 +5,10 @@ use std::borrow::Cow;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
 	pub(crate) implementation: Implementation,
+	/// When the implementation was last written, so a swap resolves by last-writer-wins rather than by
+	/// the order ops happen to arrive in. Absent from documents written before swaps were expressible.
+	#[serde(default)]
+	pub(crate) implementation_timestamp: TimeStamp,
 	pub(crate) inputs: Vec<InputSlot>,
 	pub(crate) attributes: Attributes,
 	pub(crate) network: NetworkId,
@@ -47,6 +51,7 @@ impl Node {
 	pub(crate) fn dummy() -> Self {
 		Self {
 			implementation: Implementation::ProtoNode(ResourceId::new()),
+			implementation_timestamp: TimeStamp::default(),
 			inputs: vec![],
 			attributes: Attributes::new(),
 			network: crate::ROOT_NETWORK,
