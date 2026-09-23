@@ -331,12 +331,16 @@ impl NodeMut<'_> {
 		self.deltas.metadata(change);
 	}
 
-	/// Appends input metadata until there is one entry per input, filling from `defaults` where it has an
-	/// entry for the added index. Restores the parallel-array invariant for an older document.
+	/// Resizes the input metadata to one entry per input, filling from `defaults` where it has an entry
+	/// for an added index. Restores the parallel-array invariant for an older document.
+	///
+	/// Entries past the last input are dropped as well as missing ones added: leaving them would keep the
+	/// document in the state this exists to repair, indexed by inputs that are not there.
 	pub(crate) fn pad_input_metadata(&mut self, number_of_inputs: usize, defaults: impl Fn(usize) -> Option<InputMetadata>) {
-		if self.metadata.input_metadata.len() >= number_of_inputs {
+		if self.metadata.input_metadata.len() == number_of_inputs {
 			return;
 		}
+		self.metadata.input_metadata.truncate(number_of_inputs);
 		for added_input_index in self.metadata.input_metadata.len()..number_of_inputs {
 			self.metadata.input_metadata.push(defaults(added_input_index).unwrap_or_default());
 		}
