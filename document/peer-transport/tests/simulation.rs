@@ -685,3 +685,51 @@ fn inspect_seed() {
 	}
 	assert_converged(seed, &peers);
 }
+
+/// A hot op can reach one guest and not the host, and its author can then leave for good. The guest
+/// holds the only copy, so unless it passes the op on the work is lost with the peer that made it.
+/// Random delivery reaches this only by luck, so it is built by hand.
+#[test]
+fn a_guest_holding_the_only_copy_gets_it_retired() {
+	let mut network = MockNetwork::new(0);
+
+	let mut peers: Vec<Peer> = (0..3)
+		.map(|index| {
+			let endpoint = network.endpoint();
+			let id = endpoint.id();
+			let role = if index == 0 { Role::Host } else { Role::Guest };
+			let peer = Peer::new(endpoint, role, index as u64 + 1, 0);
+			network.connect(id);
+			peer
+		})
+		.collect();
+
+	quiesce(&mut network, &mut peers);
+
+	// The author stages one op, and only the other guest is allowed to receive it.
+	let author_transport = peers[1].transport;
+	peers[1].stage(RegistryDelta::AddNetwork {
+		id: NetworkId(9),
+		network: Network::default(),
+	});
+	let witness_transport = peers[2].transport;
+	network.deliver_to(witness_transport);
+	peers[2].poll();
+
+	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)), "the witness must have received the op");
+	assert!(peers[0].session().hot_log().is_empty(), "the host must not have received it yet");
+
+	// The author leaves for good, taking its own copy and its undelivered packets with it.
+	network.disconnect(author_transport);
+	peers[1].departed = true;
+
+	quiesce(&mut network, &mut peers);
+	peers[0].retire();
+	quiesce(&mut network, &mut peers);
+
+	assert!(
+		peers[0].session().retired_registry().networks.contains_key(&NetworkId(9)),
+		"the op the witness alone held never reached history"
+	);
+	assert_converged(0, &peers);
+}

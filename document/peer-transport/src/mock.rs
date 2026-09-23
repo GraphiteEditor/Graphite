@@ -90,6 +90,21 @@ impl MockNetwork {
 		while self.step() {}
 	}
 
+	/// Deliver everything in flight to one peer, leaving every other peer's queues untouched. Random
+	/// stepping cannot target a receiver, so this is how a test puts a packet in one peer's hands and
+	/// not another's.
+	pub fn deliver_to(&mut self, to: TransportPeerId) {
+		let mut shared = self.shared.lock().unwrap();
+		let queues: Vec<_> = shared.in_flight.keys().copied().filter(|&(_, receiver)| receiver == to).collect();
+
+		for key in queues {
+			let packets: VecDeque<SyncPacket> = shared.in_flight.get_mut(&key).map(std::mem::take).unwrap_or_default();
+			for packet in packets {
+				shared.inboxes.entry(to).or_default().push_back(TransportEvent::Packet(key.0, packet));
+			}
+		}
+	}
+
 	pub fn random_below(&mut self, bound: usize) -> usize {
 		self.rng.below(bound)
 	}
