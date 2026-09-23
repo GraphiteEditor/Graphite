@@ -166,6 +166,7 @@ impl Default for PathSnapping {
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum GridType {
+	// TODO: Eventually remove this alias document upgrade code
 	#[serde(alias = "Rectangle")]
 	Rectangular {
 		spacing: DVec2,

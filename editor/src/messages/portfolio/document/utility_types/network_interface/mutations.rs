@@ -1131,6 +1131,7 @@ impl NodeNetworkInterface {
 		network.set_previewing(previewing);
 	}
 
+	// TODO: Eventually remove this document upgrade code
 	/// Converts a preview written by the version that previewed by rewiring the export.
 	///
 	/// That version left the export pointing at the previewed node, so the node it points at becomes the

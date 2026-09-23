@@ -224,6 +224,7 @@ impl NodeTemplate {
 		}
 	}
 
+	// TODO: Eventually remove this document upgrade code
 	/// Normalizes the stored types at every nesting level via [`DocumentNode::normalize_stored_types`], round-tripping through the split halves to reuse its logic.
 	pub fn normalize_stored_types(&mut self) {
 		let (mut document_node, persistent_node_metadata) = std::mem::take(self).into_parts();

@@ -348,6 +348,7 @@ pub enum Previewing {
 	Yes {
 		previewed: RootNode,
 	},
+	// TODO: Eventually remove this document upgrade code
 	/// Written by a version that previewed by rewiring the export, so the export already points at the
 	/// previewed node and this names what to put back. Converted to `Yes` when the document is opened,
 	/// and never written by this version.
@@ -359,6 +360,7 @@ pub enum Previewing {
 }
 
 impl<'de> serde::Deserialize<'de> for Previewing {
+	// TODO: Eventually remove this document upgrade code, restoring the derived `Deserialize`
 	/// Accepts both the current shape and the one written while previewing rewired the export, so a
 	/// document saved mid-preview by an older version still opens.
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {

@@ -1,3 +1,7 @@
+// TODO: Eventually remove this document upgrade code
+// This file holds the older serialized shapes of the network metadata, read once when a document is
+// opened and converted to the current form.
+
 use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata};
 use serde_json::Value;
 use std::collections::HashMap;
