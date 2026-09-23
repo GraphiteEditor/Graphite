@@ -22,10 +22,6 @@ impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network.network()
 	}
-	pub(super) fn document_network_mut(&mut self) -> &mut NodeNetwork {
-		self.network.network_mut()
-	}
-
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.document_network().nested_network(network_path) else {
@@ -906,14 +902,7 @@ impl NodeNetworkInterface {
 				nested_network_metadata.persistent_metadata.node_metadata.insert(node_id, node_metadata);
 			}
 		}
-		Self {
-			network: MemoNetwork::new(node_network),
-			network_metadata,
-			document_metadata: DocumentMetadata::default(),
-			resolved_types: ResolvedDocumentNodeTypes::default(),
-			deltas: Vec::new(),
-			transaction_status: TransactionStatus::Finished,
-		}
+		Self::from_trees(node_network, network_metadata)
 	}
 }
 
@@ -921,10 +910,6 @@ impl NodeNetworkInterface {
 impl NodeNetworkInterface {
 	pub(super) fn network_graph_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
 		self.document_network_mut().nested_network_mut(network_path)
-	}
-
-	pub(super) fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
-		self.network_metadata.nested_metadata_mut(network_path)
 	}
 
 	pub(super) fn node_metadata_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {

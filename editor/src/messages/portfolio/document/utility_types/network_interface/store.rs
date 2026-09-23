@@ -1,6 +1,38 @@
 use super::*;
 use graph_craft::runtime_delta::RuntimeDelta;
 
+/// Holds one of the two parallel trees so that only this module can write it.
+///
+/// `Deref` passes reads straight through, so a query reads the tree as though the interface held it
+/// directly. There is deliberately no `DerefMut` and the field is private to this module, so the only
+/// route to a `&mut` is the store API below, and a write that skips it does not compile rather than
+/// silently going unrecorded.
+///
+/// Transparent to serde, so wrapping a field does not change the document format.
+#[derive(Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Guarded<T>(T);
+
+impl<T> std::ops::Deref for Guarded<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self.0
+	}
+}
+
+impl<T> Guarded<T> {
+	/// Both of these are private to the store, which is what makes the wrapper worth having: a sibling
+	/// module can neither write a tree in place nor swap a different one into its place.
+	fn new(value: T) -> Self {
+		Self(value)
+	}
+
+	fn get_mut(&mut self) -> &mut T {
+		&mut self.0
+	}
+}
+
 /// Addresses one node: the network it lives in, and its ID within that network.
 ///
 /// The store is the only place node identity is used for addressing, so this is the one type that
@@ -483,9 +515,33 @@ impl NetworkMut<'_> {
 // two halves in step by construction, so the invariants checked by `validate_invariants` hold without
 // each caller restating them.
 impl NodeNetworkInterface {
+	/// Builds an interface around a freshly-assembled pair of trees, for a document arriving from
+	/// storage or from an older format rather than being edited into existence.
+	///
+	/// The only way to install them, since `Guarded` cannot be constructed outside this module either.
+	/// Nothing is recorded: the trees are the document, not a set of changes to it.
+	pub(super) fn from_trees(network: NodeNetwork, network_metadata: NodeNetworkMetadata) -> Self {
+		Self {
+			network: Guarded::new(MemoNetwork::new(network)),
+			network_metadata: Guarded::new(network_metadata),
+			..Default::default()
+		}
+	}
+
+	/// The root of the graph tree. The only `&mut` to it in the codebase, since `Guarded` withholds one
+	/// everywhere else.
+	pub(super) fn document_network_mut(&mut self) -> &mut NodeNetwork {
+		self.network.get_mut().network_mut()
+	}
+
+	/// The metadata tree at `network_path`. The only `&mut` to it, for the same reason.
+	pub(super) fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
+		self.network_metadata.get_mut().nested_metadata_mut(network_path)
+	}
+
 	/// The persistent metadata of a network, or `None` if the network is missing.
 	pub(crate) fn network_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
-		let metadata = &mut self.network_metadata.nested_metadata_mut(network_path)?.persistent_metadata;
+		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(network_path)?.persistent_metadata;
 		Some(NetworkMut {
 			metadata,
 			deltas: &mut self.deltas,
@@ -495,9 +551,10 @@ impl NodeNetworkInterface {
 
 	/// Both halves of a node, or `None` if either is missing.
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
-		let node = self.network.network_mut().nested_network_mut(locator.network_path)?.nodes.get_mut(&locator.node_id)?;
+		let node = self.network.get_mut().network_mut().nested_network_mut(locator.network_path)?.nodes.get_mut(&locator.node_id)?;
 		let metadata = self
 			.network_metadata
+			.get_mut()
 			.nested_metadata_mut(locator.network_path)?
 			.persistent_metadata
 			.node_metadata
@@ -732,8 +789,14 @@ impl NodeNetworkInterface {
 		let node = Box::new(document_node.clone());
 		let metadata = Box::new(persistent_metadata.clone());
 
-		let previous_node = self.network.network_mut().nested_network_mut(locator.network_path)?.nodes.insert(locator.node_id, document_node);
-		let previous_metadata = self.network_metadata.nested_metadata_mut(locator.network_path)?.persistent_metadata.node_metadata.insert(
+		let previous_node = self
+			.network
+			.get_mut()
+			.network_mut()
+			.nested_network_mut(locator.network_path)?
+			.nodes
+			.insert(locator.node_id, document_node);
+		let previous_metadata = self.network_metadata.get_mut().nested_metadata_mut(locator.network_path)?.persistent_metadata.node_metadata.insert(
 			locator.node_id,
 			DocumentNodeMetadata {
 				persistent_metadata,
@@ -771,9 +834,10 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		let node = self.network.network_mut().nested_network_mut(locator.network_path)?.nodes.remove(&locator.node_id);
+		let node = self.network.get_mut().network_mut().nested_network_mut(locator.network_path)?.nodes.remove(&locator.node_id);
 		let metadata = self
 			.network_metadata
+			.get_mut()
 			.nested_metadata_mut(locator.network_path)?
 			.persistent_metadata
 			.node_metadata

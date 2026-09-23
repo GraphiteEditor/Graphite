@@ -25,6 +25,7 @@ mod validation;
 mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
+use store::Guarded;
 pub use store::NodeLocator;
 pub use template::*;
 pub use types::*;
@@ -69,9 +70,9 @@ use std::sync::Arc;
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A public mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
-	network: MemoNetwork,
+	network: Guarded<MemoNetwork>,
 	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
-	network_metadata: NodeNetworkMetadata,
+	network_metadata: Guarded<NodeNetworkMetadata>,
 	// TODO: Wrap in a TransientCache
 	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	#[serde(skip)]
@@ -113,7 +114,7 @@ impl PartialEq for NodeNetworkInterface {
 impl NodeNetworkInterface {
 	/// Normalizes the stored types of every node at every nesting level, for an older document whose stored types predate the current form.
 	pub fn normalize_stored_types(&mut self) {
-		self.network.network_mut().normalize_stored_types();
+		self.document_network_mut().normalize_stored_types();
 	}
 
 	/// Add DocumentNodePath input to the PathModifyNode protonode

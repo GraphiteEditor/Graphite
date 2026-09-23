@@ -13,7 +13,6 @@ use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
-use super::memo_network::MemoNetwork;
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
 	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing, RootNode,
@@ -222,12 +221,7 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	apply_entries_into_tree(&network, &mut network_metadata, node_entries)?;
 	apply_network_entries_into_tree(&mut network_metadata, network_entries);
 
-	let interface = NodeNetworkInterface {
-		network: MemoNetwork::new(network),
-		network_metadata,
-		..Default::default()
-	};
-	Ok(interface)
+	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
 
 /// Build the runtime-`network_path` -> stable-`NetworkId` map from the `NetworkMetadataEntry`s that
@@ -291,7 +285,7 @@ pub fn apply_network_view_settings(
 ) {
 	for (network_path, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
-		let Some(network_metadata) = interface.network_metadata.nested_metadata_mut(network_path) else {
+		let Some(network_metadata) = interface.network_metadata_mut(network_path) else {
 			continue;
 		};
 		let persistent = &mut network_metadata.persistent_metadata;
