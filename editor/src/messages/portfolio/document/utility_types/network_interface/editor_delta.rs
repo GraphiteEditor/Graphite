@@ -302,9 +302,7 @@ impl EditorDelta {
 }
 
 fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<Value, ConversionError> {
-	serde_json::to_value(value)
-		.map(Value::from)
-		.map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
+	document_graph_storage::to_value(value).map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
 }
 
 /// The attribute writes one metadata field makes, as the whole-document encoder would write them.
@@ -821,8 +819,10 @@ impl NodeMetadataSource for InputMetadataSource<'_> {
 		self.persistent(input_index)?.widget_override.as_deref()
 	}
 
-	fn input_data(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> HashMap<String, serde_json::Value> {
-		self.persistent(input_index).map(|metadata| metadata.input_data.clone()).unwrap_or_default()
+	fn input_data(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> HashMap<String, Value> {
+		self.persistent(input_index)
+			.map(|metadata| metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
+			.unwrap_or_default()
 	}
 }
 
@@ -912,10 +912,10 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 			.and_then(|input| input.persistent_metadata.widget_override.as_deref())
 	}
 
-	fn input_data(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, serde_json::Value> {
+	fn input_data(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, Value> {
 		self.metadata_for(metadata_path, node_id)
 			.and_then(|metadata| metadata.input_metadata.get(input_index))
-			.map(|input| input.persistent_metadata.input_data.clone())
+			.map(|input| input.persistent_metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
 			.unwrap_or_default()
 	}
 

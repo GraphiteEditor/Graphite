@@ -1,6 +1,14 @@
-use serde::de::{self, MapAccess, SeqAccess, Visitor};
+use serde::de::{self, DeserializeOwned, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
+
+pub fn to_value<T: Serialize + ?Sized>(value: &T) -> Result<Value, ValueError> {
+	serde_json::to_value(value).map(Value::from).map_err(ValueError)
+}
+
+pub fn from_value<T: DeserializeOwned>(value: &Value) -> Result<T, ValueError> {
+	serde_json::from_value(value.clone().into()).map_err(ValueError)
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(remote = "Self")]
@@ -148,6 +156,10 @@ impl From<Value> for serde_json::Value {
 	}
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+pub struct ValueError(serde_json::Error);
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -183,6 +195,49 @@ mod tests {
 	fn json_object_keys_sort_and_last_duplicate_wins() {
 		let value: Value = serde_json::from_str(r#"{"b": 1, "a": 2, "b": 3}"#).unwrap();
 		assert_eq!(value, Value::Object(vec![("a".into(), Value::Int(2)), ("b".into(), Value::Int(3))]));
+	}
+
+	#[derive(Debug, PartialEq, Serialize, Deserialize)]
+	enum Sample {
+		Unit,
+		Newtype(u8),
+		Tuple(i64, String),
+		Struct { flag: bool, nested: Option<Box<Sample>> },
+	}
+
+	#[derive(Debug, PartialEq, Serialize, Deserialize)]
+	struct Record {
+		samples: Vec<Sample>,
+		by_id: std::collections::BTreeMap<u32, f64>,
+		bytes: Vec<u8>,
+		letter: char,
+		unit: (),
+		big: u64,
+	}
+
+	fn record() -> Record {
+		Record {
+			samples: vec![
+				Sample::Unit,
+				Sample::Newtype(7),
+				Sample::Tuple(-3, "t".into()),
+				Sample::Struct {
+					flag: true,
+					nested: Some(Box::new(Sample::Unit)),
+				},
+				Sample::Struct { flag: false, nested: None },
+			],
+			by_id: [(2, 0.5), (10, -1.)].into(),
+			bytes: vec![0, 255],
+			letter: 'x',
+			unit: (),
+			big: u64::MAX,
+		}
+	}
+
+	#[test]
+	fn from_value_round_trips_serde_types() {
+		assert_eq!(from_value::<Record>(&to_value(&record()).unwrap()).unwrap(), record());
 	}
 
 	#[test]

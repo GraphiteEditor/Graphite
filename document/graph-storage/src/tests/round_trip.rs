@@ -7,7 +7,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput,
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 
-use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry};
+use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry, from_value};
 
 /// Helper function to verify a NodeNetwork can be compiled successfully.
 /// Note: This only works for complete networks with all inputs resolved.
@@ -530,11 +530,7 @@ fn resources_round_trip_through_from_runtime() {
 	assert_eq!(entry.sources.len(), 2, "both sources carried through");
 
 	// The chain iterates in priority order; decode bodies back to DataSource to compare.
-	let decoded: Vec<DataSource> = entry
-		.sources
-		.iter()
-		.map(|(_, v)| serde_json::from_value(v.source.clone().into()).expect("source body decodes"))
-		.collect();
+	let decoded: Vec<DataSource> = entry.sources.iter().map(|(_, v)| from_value(&v.source).expect("source body decodes")).collect();
 	assert_eq!(decoded, vec![DataSource::Embedded, DataSource::Url("https://example.com/img.png".parse().unwrap())]);
 
 	// All source keys carry the document peer.
@@ -614,7 +610,7 @@ fn unreferenced_runtime_resource_is_not_snapshotted() {
 }
 
 /// A node-input `TaggedValue::Number` must survive the storage round-trip bit-exact. Inputs are stored
-/// type-erased as a `Value`, so this guards against any precision loss in the f64 -> serde_json::Number
+/// type-erased as a `Value`, so this guards against any precision loss in the f64
 /// -> Value -> f64 path for a value with a full 17-significant-digit mantissa.
 #[test]
 fn node_input_f64_round_trips_bit_exact() {

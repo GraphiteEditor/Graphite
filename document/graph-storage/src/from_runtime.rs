@@ -12,9 +12,10 @@ use crate::attr::*;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
 use crate::{
 	AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value,
+	ValueError, from_value, to_value,
 };
 
-fn map_serialization_error(key: &str) -> impl FnOnce(serde_json::Error) -> ConversionError + '_ {
+fn map_serialization_error(key: &str) -> impl FnOnce(ValueError) -> ConversionError + '_ {
 	move |e| ConversionError::SerializationError(format!("{key}: {e:?}"))
 }
 
@@ -130,18 +131,18 @@ pub struct RuntimeConversion {
 	pub network_ids: HashMap<Vec<RuntimeNodeId>, NetworkId>,
 }
 
-/// Encode a [`ProtoNode`] declaration to its content-addressed bytes: through a self-describing
-/// `serde_json::Value` (so serde aliases keep working and the on-disk shape stays migratable), stored
-/// as a postcard-encoded [`Value`]. Paired with [`decode_declaration`].
+/// Encode a [`ProtoNode`] declaration to its content-addressed bytes: through the self-describing
+/// [`Value`] (so serde aliases keep working and the on-disk shape stays migratable), then postcard.
+/// Paired with [`decode_declaration`].
 pub fn encode_declaration(proto: &ProtoNode) -> Result<Vec<u8>, String> {
-	let value = serde_json::to_value(proto).map_err(|error| error.to_string())?;
-	postcard::to_stdvec(&Value::from(value)).map_err(|error| error.to_string())
+	let value = to_value(proto).map_err(|error| error.to_string())?;
+	postcard::to_stdvec(&value).map_err(|error| error.to_string())
 }
 
 /// Decode a [`ProtoNode`] declaration from the bytes [`encode_declaration`] produced.
 pub fn decode_declaration(bytes: &[u8]) -> Result<ProtoNode, String> {
 	let value: Value = postcard::from_bytes(bytes).map_err(|error| error.to_string())?;
-	serde_json::from_value(value.into()).map_err(|error| error.to_string())
+	from_value(&value).map_err(|error| error.to_string())
 }
 
 impl Registry {
@@ -219,11 +220,11 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 			priority: crate::Priority::new(position as f64).expect("enumerate index is finite"),
 			peer,
 		};
-		let body = serde_json::to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
+		let body = to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
 		entry.set_source(
 			key,
 			crate::SourceValue {
-				source: body.into(),
+				source: body,
 				timestamp: TimeStamp::ORIGIN,
 			},
 		);
@@ -468,11 +469,7 @@ pub fn encode_context_features(context_features: &ContextDependencies) -> Result
 }
 
 fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default: &T) -> Result<crate::AttributeDelta, ConversionError> {
-	let value = if value == default {
-		None
-	} else {
-		Some(serde_json::to_value(value).map_err(map_serialization_error(key))?.into())
-	};
+	let value = if value == default { None } else { Some(to_value(value).map_err(map_serialization_error(key))?) };
 
 	Ok(crate::AttributeDelta { key: key.to_string(), value })
 }
@@ -595,7 +592,7 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 	non_empty_string(node::input::ui::WIDGET_OVERRIDE, metadata.widget_override(metadata_path, runtime_node_id, input_index), attributes);
 
 	for (sub_key, value) in metadata.input_data(metadata_path, runtime_node_id, input_index) {
-		attributes.set(&format!("{prefix}{sub_key}", prefix = node::input::ui::DATA_PREFIX), value.into(), timestamp);
+		attributes.set(&format!("{prefix}{sub_key}", prefix = node::input::ui::DATA_PREFIX), value, timestamp);
 	}
 
 	Ok(())
@@ -608,11 +605,8 @@ fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, pa
 			index: (*output_index).try_into().map_err(|_| ConversionError::IndexOverflow(*output_index))?,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
-			let value = serde_json::to_value(&**tagged_value).map_err(|e| ConversionError::SerializationError(format!("{e:?}")))?;
-			NodeInput::Value {
-				value: value.into(),
-				exposed: *exposed,
-			}
+			let value = to_value(&**tagged_value).map_err(|e| ConversionError::SerializationError(format!("{e:?}")))?;
+			NodeInput::Value { value, exposed: *exposed }
 		}
 		GraphCraftNodeInput::Scope(s) => NodeInput::Scope(s.clone()),
 		GraphCraftNodeInput::Import { import_index, .. } => NodeInput::Import {
@@ -842,7 +836,7 @@ pub fn node_value_resource_refs(node: &Node) -> impl Iterator<Item = ResourceId>
 pub fn value_resource_ref(input: &NodeInput) -> Option<ResourceId> {
 	match input {
 		NodeInput::Value { value: Value::Object(fields), .. } => match fields.as_slice() {
-			[(key, id)] if key == "Resource" => serde_json::from_value(id.clone().into()).ok(),
+			[(key, id)] if key == "Resource" => from_value(id).ok(),
 			_ => None,
 		},
 		_ => None,
@@ -856,8 +850,8 @@ mod resource_ref_shape {
 	#[test]
 	fn resource_ref_shape_matches_serde() {
 		let id = ResourceId::from_hash(&ResourceHash::from(b"shape test".as_slice()));
-		let value = serde_json::to_value(TaggedValue::Resource(id)).expect("TaggedValue::Resource serializes");
-		let parsed: Option<ResourceId> = value.get("Resource").and_then(|inner| serde_json::from_value(inner.clone()).ok());
+		let value = to_value(&TaggedValue::Resource(id)).expect("TaggedValue::Resource serializes");
+		let parsed = value_resource_ref(&NodeInput::Value { value, exposed: false });
 		assert_eq!(parsed, Some(id), "The shape peek in node_value_resource_refs must match TaggedValue's serde form");
 	}
 }
