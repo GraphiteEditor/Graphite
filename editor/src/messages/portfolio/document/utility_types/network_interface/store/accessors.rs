@@ -34,6 +34,7 @@ impl NodeNetworkInterface {
 		self.network_metadata_mut(&encapsulating_path)?.persistent_metadata.node_metadata.get_mut(&encapsulating_node_id)
 	}
 
+	// TODO: Eventually remove this document upgrade code, along with the migrations that call it
 	/// Rewrites the whole graph in place, for a document arriving in an older shape than the current one.
 	///
 	/// Nothing is recorded: a migration produces the document the peer should have had rather than

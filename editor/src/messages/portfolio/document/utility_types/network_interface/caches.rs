@@ -680,26 +680,25 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
-	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	/// The dashed wire from the previewed node to the export, drawn alongside the solid wire the export is
+	/// really connected to. See [`Previewing`].
+	pub fn wire_to_preview(&self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
-		let current_export = self.upstream_output_connector(&input, network_path)?;
 
-		let root_node = match self.previewing(network_path) {
-			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => None,
-		}?;
+		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
 
-		if Some(root_node.node_id) == current_export.node_id() {
+		// Whole connector, not just the node: the export already reaching this exact port is what would put a
+		// second wire on top of the solid one
+		if self.upstream_output_connector(&input, network_path) == Some(previewed.to_connector()) {
 			return None;
 		}
 		let Some(input_position) = self.get_input_center(&input, network_path) else {
-			log::error!("Could not get input position for wire end in root node: {input:?}");
+			log::error!("Could not get input position for wire end in preview: {input:?}");
 			return None;
 		};
-		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let upstream_output = OutputConnector::node(previewed.node_id, previewed.output_index);
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
+			log::error!("Could not get output position for wire start in preview: {upstream_output:?}");
 			return None;
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);

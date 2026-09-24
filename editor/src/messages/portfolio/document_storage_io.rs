@@ -136,6 +136,8 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 				Ok(mut interface) => {
 					// Per-network view state lives in `session.json`, not the registry, so restore it here.
 					apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
+					// Deliberately no document upgrades: the format is still unstable, and migrating it belongs
+					// to the versioned migration it will get rather than to fixups called from here.
 					Some(interface)
 				}
 				Err(error) => {

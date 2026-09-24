@@ -1,5 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -80,6 +81,23 @@ pub struct GraphUpdate {
 	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
 	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
 	pub(super) node_to_inspect: Vec<NodeId>,
+	/// The node each network renders instead of its export, paired with that network's path.
+	///
+	/// Per-evaluation and this peer's alone, like `node_to_inspect`: the document travels unchanged and
+	/// the substitution happens here, so nothing that is not being evaluated ever sees a doctored graph.
+	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+}
+
+/// Substitutes each network's previewed node for its export, on the graph about to be compiled.
+///
+/// Applies the list as given rather than deciding again which previews count: the editor's change check
+/// is derived from the same list, and a second opinion here would let the two disagree.
+pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
+	for (network_path, previewed) in previewed {
+		let Some(nested) = network.nested_network_mut(network_path) else { continue };
+		let Some(export) = nested.exports.first_mut() else { continue };
+		*export = NodeInput::node(previewed.node_id, previewed.output_index);
+	}
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -214,7 +232,13 @@ impl NodeRuntime {
 					mut network,
 					resources,
 					node_to_inspect,
+					previewed,
 				}) => {
+					// Previews first, so the monitor below is spliced into the graph as it will be evaluated.
+					// Inserting it first would leave the preview pointing at the raw node, routing the export
+					// around the monitor and leaving the Data panel with nothing to read.
+					apply_previews(&mut network, &previewed);
+
 					// Insert the monitor node to manage the inspection
 					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
 
@@ -710,4 +734,41 @@ fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) ->
 		};
 	}
 	Some(current)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::document::DocumentNode;
+
+	/// Previews are applied before the inspection monitor is spliced in. The other order leaves the export
+	/// pointing at the previewed node itself, routing around the monitor so the Data panel reads nothing.
+	#[test]
+	fn a_previewed_node_is_inspected_through_its_monitor() {
+		let previewed_node = NodeId(1);
+		let exported_node = NodeId(2);
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(exported_node, 0)],
+			nodes: [(previewed_node, DocumentNode::default()), (exported_node, DocumentNode::default())].into_iter().collect(),
+			..Default::default()
+		};
+
+		apply_previews(
+			&mut network,
+			&[(
+				Vec::new(),
+				RootNode {
+					node_id: previewed_node,
+					output_index: 0,
+				},
+			)],
+		);
+		let inspect_state = InspectState::monitor_inspect_node(&mut network, &[previewed_node]).expect("the previewed node should be monitorable");
+
+		assert_eq!(
+			network.exports.first().and_then(|export| export.as_node()),
+			Some(inspect_state.monitor_node),
+			"The export should reach the previewed node through its monitor rather than around it"
+		);
+	}
 }

@@ -1,4 +1,5 @@
 use super::*;
+use std::hash::{Hash, Hasher};
 
 /// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
 pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
@@ -22,6 +23,81 @@ impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network.network()
 	}
+
+	/// The node each network is previewing, paired with that network's path, ordered so the result does
+	/// not follow the metadata map's iteration order.
+	///
+	/// Resolved here rather than where the graph is compiled, since deciding which previews take effect
+	/// needs the metadata this holds; the runtime applies the answer. See [`Previewing`].
+	pub fn previewed_nodes(&self) -> Vec<(Vec<NodeId>, RootNode)> {
+		let mut previewed = Vec::new();
+		self.for_each_preview(|network_path, root_node| previewed.push((network_path.to_vec(), root_node)));
+
+		previewed.sort_by(|(left, _), (right, _)| left.cmp(right));
+		previewed
+	}
+
+	/// Visits each preview that replaces an export, skipping one whose network, export or node is gone:
+	/// reaching the change check but not the substitution would recompile an identical graph.
+	fn for_each_preview(&self, mut visit: impl FnMut(&[NodeId], RootNode)) {
+		self.for_each_network(|network_path, network_metadata| {
+			let Previewing::Yes { previewed } = network_metadata.persistent_metadata.previewing else { return };
+			let replaces_export = self
+				.document_network()
+				.nested_network(network_path)
+				.is_some_and(|nested| !nested.exports.is_empty() && nested.nodes.contains_key(&previewed.node_id));
+
+			if replaces_export {
+				visit(network_path, previewed);
+			}
+		});
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Every network whose preview was written by a version that rewired the export, paired with what
+	/// that version would have restored.
+	pub(crate) fn legacy_rewired_previews(&self) -> Vec<(Vec<NodeId>, Option<RootNode>)> {
+		let mut legacy = Vec::new();
+		self.for_each_network(|network_path, network_metadata| {
+			if let Previewing::LegacyRewired { root_node_to_restore } = network_metadata.persistent_metadata.previewing {
+				legacy.push((network_path.to_vec(), root_node_to_restore));
+			}
+		});
+
+		legacy
+	}
+
+	/// Visits every network with its path. Iterative and reusing one path buffer, since the change check
+	/// before every graph refresh walks this.
+	fn for_each_network(&self, mut visit: impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
+		enum Step<'a> {
+			/// The network owned by this node, or the document network when there is no owner.
+			Enter(Option<NodeId>, &'a NodeNetworkMetadata),
+			Leave,
+		}
+
+		let mut network_path = Vec::new();
+		let mut pending = vec![Step::Enter(None, &self.network_metadata)];
+
+		while let Some(step) = pending.pop() {
+			let Step::Enter(owner, network_metadata) = step else {
+				network_path.pop();
+				continue;
+			};
+			if let Some(owner) = owner {
+				network_path.push(owner);
+				pending.push(Step::Leave);
+			}
+
+			visit(&network_path, network_metadata);
+
+			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
+				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
+				pending.push(Step::Enter(Some(*node_id), nested));
+			}
+		}
+	}
+
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.document_network().nested_network(network_path) else {
@@ -31,8 +107,26 @@ impl NodeNetworkInterface {
 		Some(network)
 	}
 
+	/// Identifies the graph that would be evaluated, so a caller can skip recompiling when nothing the
+	/// compiler sees has changed.
+	///
+	/// Previewing is mixed in because it redirects an export on the way to the compiler without touching
+	/// the graph itself, so the graph's own hash does not move when a preview is toggled.
 	pub fn network_hash(&self) -> u64 {
-		self.network.current_hash()
+		// Combined by XOR so the result does not depend on the order the walk meets each network in, which
+		// follows a hash map. One preview per network, so no two entries can cancel each other out.
+		let mut previews = 0_u64;
+		self.for_each_preview(|network_path, previewed| {
+			let mut hasher = std::hash::DefaultHasher::new();
+			network_path.hash(&mut hasher);
+			previewed.hash(&mut hasher);
+			previews ^= hasher.finish();
+		});
+
+		let mut hasher = std::hash::DefaultHasher::new();
+		self.network.current_hash().hash(&mut hasher);
+		previews.hash(&mut hasher);
+		hasher.finish()
 	}
 
 	/// Get the specified document node in the nested network based on node_id and network_path
