@@ -169,7 +169,7 @@ impl<L: Layout> Gdd<L> {
 	/// Encode the history deltas identified by `revs` and append them to the history file. `revs` comes
 	/// from `Session::retire` in append order, which is a valid replay order, so a direct per-rev lookup
 	/// preserves replay order without scanning the whole history.
-	fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), Error> {
+	pub(crate) fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		for &rev in revs {
 			let Some(delta) = self.session.delta(rev) else {

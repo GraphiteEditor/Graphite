@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
+use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -154,6 +154,8 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
+		let incoming: HashSet<Rev> = deltas.iter().map(|delta| delta.id).collect();
+		let length_before = self.session.history_len();
 		for delta in &deltas {
 			self.remote_changes.touched.record(&delta.kind);
 		}
@@ -165,7 +167,16 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 			self.session.publish_up_to(head);
 		}
 
-		self.pending_persist.history = true;
+		// A batch that extended canonical history at the end, with any merge delta joining it there, extends
+		// the file the same way. One that sorted earlier deltas after it rewrites the file.
+		let tail: Vec<Rev> = self.session.history().skip(length_before).map(|delta| delta.id).collect();
+		let appended = tail
+			.iter()
+			.all(|&rev| incoming.contains(&rev) || self.session.delta(rev).is_some_and(|delta| matches!(delta.kind, RegistryDelta::Merge { .. })));
+		match appended {
+			true => self.append_history_deltas(&tail)?,
+			false => self.pending_persist.history = true,
+		}
 		self.pending_persist.hot_log |= !retires.is_empty();
 		self.pending_persist.snapshot = true;
 		Ok(())
