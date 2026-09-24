@@ -680,19 +680,15 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
-	/// The dashed wire from the previewed node to the export, drawn alongside the solid wire the export
-	/// is really connected to.
-	///
-	/// Previewing does not rewire the export, so both are shown: the solid wire says what the document
-	/// renders, and this one says what this peer is looking at instead.
+	/// The dashed wire from the previewed node to the export, drawn alongside the solid wire the export is
+	/// really connected to. See [`Previewing`].
 	pub fn wire_to_preview(&self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
 
 		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
 
-		// The export already reaches it, so a second wire would land on top of the solid one. Compared by
-		// the whole connector: two outputs of the same node leave from different ports, so those wires do
-		// not overlap.
+		// Whole connector, not just the node: the export already reaching this exact port is what would put a
+		// second wire on top of the solid one
 		if self.upstream_output_connector(&input, network_path) == Some(previewed.to_connector()) {
 			return None;
 		}

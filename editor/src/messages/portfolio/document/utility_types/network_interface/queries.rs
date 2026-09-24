@@ -24,17 +24,10 @@ impl NodeNetworkInterface {
 		self.network.network()
 	}
 
-	/// The document network as it should be evaluated, which is the document itself with the previewed
-	/// node substituted for the export.
-	///
-	/// Previewing is this peer's alone, so it is applied to the copy being compiled rather than written
-	/// into the document. Every path that compiles the graph goes through here, so none of them can
-	/// render the export while the user is previewing something else.
+	/// The document itself, with each network's previewed node substituted for its export. See [`Previewing`].
 	pub fn network_to_evaluate(&self) -> NodeNetwork {
 		let mut network = self.document_network().clone();
 
-		// A preview is set on whichever network the user is looking at, which is nested whenever they are
-		// working inside a node, so every network's preview is applied rather than only the document's.
 		for (network_path, previewed) in self.previewed_nodes() {
 			let Some(nested) = network.nested_network_mut(&network_path) else { continue };
 			let Some(export) = nested.exports.first_mut() else { continue };
@@ -44,8 +37,8 @@ impl NodeNetworkInterface {
 		network
 	}
 
-	/// The node each network is previewing, paired with that network's path, ordered by path so the
-	/// result is stable across runs rather than following the metadata map's iteration order.
+	/// The node each network is previewing, paired with that network's path, ordered so the result does
+	/// not follow the metadata map's iteration order.
 	pub fn previewed_nodes(&self) -> Vec<(Vec<NodeId>, RootNode)> {
 		let mut previewed = Vec::new();
 		self.for_each_preview(|network_path, root_node| previewed.push((network_path.to_vec(), root_node)));
@@ -54,15 +47,39 @@ impl NodeNetworkInterface {
 		previewed
 	}
 
-	/// Visits each preview that replaces an export, with the path of the network it replaces it in.
-	///
-	/// A preview whose network or node is gone, or whose network exports nothing, changes what is
-	/// evaluated in no way, so it is skipped here rather than at each caller: one that reached the change
-	/// check but not the substitution would recompile an identical graph.
-	///
-	/// Iterative, and carrying one reusable path buffer: the change check before every graph refresh walks
-	/// this, so it must neither allocate per level nor put the nesting depth on the stack.
+	/// Visits each preview that replaces an export, skipping one whose network, export or node is gone:
+	/// reaching the change check but not the substitution would recompile an identical graph.
 	fn for_each_preview(&self, mut visit: impl FnMut(&[NodeId], RootNode)) {
+		self.for_each_network(|network_path, network_metadata| {
+			let Previewing::Yes { previewed } = network_metadata.persistent_metadata.previewing else { return };
+			let replaces_export = self
+				.document_network()
+				.nested_network(network_path)
+				.is_some_and(|nested| !nested.exports.is_empty() && nested.nodes.contains_key(&previewed.node_id));
+
+			if replaces_export {
+				visit(network_path, previewed);
+			}
+		});
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Every network whose preview was written by a version that rewired the export, paired with what
+	/// that version would have restored.
+	pub(crate) fn legacy_rewired_previews(&self) -> Vec<(Vec<NodeId>, Option<RootNode>)> {
+		let mut legacy = Vec::new();
+		self.for_each_network(|network_path, network_metadata| {
+			if let Previewing::LegacyRewired { root_node_to_restore } = network_metadata.persistent_metadata.previewing {
+				legacy.push((network_path.to_vec(), root_node_to_restore));
+			}
+		});
+
+		legacy
+	}
+
+	/// Visits every network with its path. Iterative and reusing one path buffer, since the change check
+	/// before every graph refresh walks this.
+	fn for_each_network(&self, mut visit: impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
 		enum Step<'a> {
 			/// The network owned by this node, or the document network when there is no owner.
 			Enter(Option<NodeId>, &'a NodeNetworkMetadata),
@@ -82,14 +99,7 @@ impl NodeNetworkInterface {
 				pending.push(Step::Leave);
 			}
 
-			if let Previewing::Yes { previewed } = network_metadata.persistent_metadata.previewing
-				&& self
-					.document_network()
-					.nested_network(&network_path)
-					.is_some_and(|nested| !nested.exports.is_empty() && nested.nodes.contains_key(&previewed.node_id))
-			{
-				visit(&network_path, previewed);
-			}
+			visit(&network_path, network_metadata);
 
 			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
 				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
@@ -98,25 +108,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Every network whose preview was written by a version that rewired the export, paired with what
-	/// that version would have restored.
-	pub(crate) fn legacy_rewired_previews(&self) -> Vec<(Vec<NodeId>, Option<RootNode>)> {
-		let mut legacy = Vec::new();
-		let mut pending = vec![(Vec::new(), &*self.network_metadata)];
-
-		while let Some((network_path, network_metadata)) = pending.pop() {
-			if let Previewing::LegacyRewired { root_node_to_restore } = network_metadata.persistent_metadata.previewing {
-				legacy.push((network_path.clone(), root_node_to_restore));
-			}
-
-			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
-				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
-				pending.push(([network_path.as_slice(), &[*node_id]].concat(), nested));
-			}
-		}
-
-		legacy
-	}
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.document_network().nested_network(network_path) else {

@@ -381,8 +381,7 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 	assert_invariants(&editor, "after removing the added export");
 }
 
-/// Previewing renders a different node without rewiring anything: the export keeps whatever it is
-/// connected to, so ending a preview has nothing to restore and cannot disconnect anything.
+/// Previewing rewires nothing, so ending one has nothing to restore and cannot disconnect anything.
 #[tokio::test]
 async fn previewing_leaves_the_export_alone() {
 	let mut editor = EditorTestUtils::create();
@@ -424,8 +423,7 @@ async fn previewing_leaves_the_export_alone() {
 	assert_invariants(&editor, "after cycling through the preview states");
 }
 
-/// The graph handed to the compiler renders the previewed node, which is the whole point of a preview
-/// that does not rewire the document.
+/// The graph handed to the compiler renders the previewed node, while the document keeps its own export.
 #[tokio::test]
 async fn the_evaluated_network_renders_the_previewed_node() {
 	let mut editor = EditorTestUtils::create();
@@ -451,8 +449,8 @@ async fn the_evaluated_network_renders_the_previewed_node() {
 	);
 }
 
-/// A document saved by a version that previewed by rewiring the export still opens: the shape it wrote
-/// is accepted rather than failing the whole document's deserialization.
+/// A document saved by the version that rewired the export still opens, rather than failing the whole
+/// document's deserialization.
 #[test]
 fn a_preview_written_by_the_rewiring_version_still_deserializes() {
 	let stored = r#"{"Yes":{"root_node_to_restore":{"node_id":7,"output_index":1}}}"#;
@@ -480,8 +478,8 @@ fn the_current_preview_shape_round_trips() {
 	assert_eq!(serde_json::from_str::<Previewing>(&stored).expect("previewing should deserialize"), previewing);
 }
 
-/// Migrating a preview written by the rewiring version puts the export back and keeps the node the user
-/// was looking at as the preview, so the document is no longer rewired but looks the same.
+/// Migrating a rewired preview puts the export back and keeps the node the user was looking at as the
+/// preview, so the document is no longer rewired but looks the same.
 #[tokio::test]
 async fn migrating_a_rewired_preview_restores_the_export() {
 	let mut editor = EditorTestUtils::create();
@@ -524,7 +522,7 @@ async fn migrating_a_rewired_preview_restores_the_export() {
 	);
 }
 
-/// Toggling a preview has to move the hash the executor caches against, or the graph it already sent is
+/// Toggling a preview must move the hash the executor caches against, or the graph it already sent is
 /// reused and the canvas keeps rendering the old export.
 #[tokio::test]
 async fn toggling_a_preview_changes_the_network_hash() {
@@ -546,8 +544,7 @@ async fn toggling_a_preview_changes_the_network_hash() {
 	assert_eq!(before, network_interface.network_hash(), "Ending the preview should return the hash to what it was");
 }
 
-/// The hash has to be stable for an unchanged document, or every frame looks like a change and the graph
-/// is recompiled continuously.
+/// The hash must be stable for an unchanged document, or every frame looks like a change.
 #[tokio::test]
 async fn the_network_hash_is_stable_while_previewing() {
 	let mut editor = EditorTestUtils::create();
@@ -566,9 +563,8 @@ async fn the_network_hash_is_stable_while_previewing() {
 	}
 }
 
-/// A preview restored from the session must name a node the document still has, since the session
-/// outlives the document it describes and a preview of a removed node would redirect the export to
-/// nothing.
+/// A preview restored from the session must name a node the document still has: the session outlives the
+/// document, and previewing a removed node would redirect the export to nothing.
 #[tokio::test]
 async fn a_session_preview_of_a_removed_node_is_dropped() {
 	use super::storage_metadata::{apply_network_view_settings, collect_network_view_settings};

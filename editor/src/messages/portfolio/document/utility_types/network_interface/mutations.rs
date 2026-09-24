@@ -19,9 +19,7 @@ impl NodeNetworkInterface {
 				let other_persistent = &other_network_metadata.persistent_metadata;
 				*view.navigation = other_persistent.navigation_metadata.clone();
 
-				// The preview is this peer's and survives a rebuild, unless it names a node the rebuilt
-				// network no longer contains (e.g. after a storage undo), in which case there is nothing
-				// left to look at.
+				// A preview survives a rebuild unless it names a node the rebuilt network no longer has
 				*view.previewing = match other_persistent.previewing {
 					Previewing::Yes { previewed } if !view.nodes.contains_key(&previewed.node_id) => Previewing::No,
 					previewing => previewing,
@@ -848,8 +846,8 @@ impl NodeNetworkInterface {
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
 	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		// A preview of the node being removed cannot outlive it. A preview of any other node is untouched:
-		// previewing does not rewire anything, so the reconnection below cannot invalidate it.
+		// Only a preview of the node being removed: previewing rewires nothing, so the reconnection below
+		// cannot invalidate any other
 		if matches!(self.previewing(network_path), Previewing::Yes { previewed } if previewed.node_id == *node_id)
 			&& let Some(mut network) = self.network_mut(network_path)
 		{
@@ -1114,11 +1112,7 @@ impl NodeNetworkInterface {
 		self.load_structure();
 	}
 
-	/// Renders `toggle_id` instead of the network's export, or stops doing so if it already is.
-	///
-	/// Per-peer and not a change to the document: the export keeps whatever it is wired to, and the
-	/// compile path substitutes the previewed node into the graph it evaluates. So there is nothing to
-	/// restore when the preview ends, and nothing another peer would see.
+	/// Renders `toggle_id` instead of the network's export, or stops doing so if it already is. See [`Previewing`].
 	pub fn toggle_preview(&mut self, toggle_id: NodeId, network_path: &[NodeId]) {
 		let previewing = match self.previewing(network_path) {
 			Previewing::Yes { previewed } if previewed.node_id == toggle_id => Previewing::No,
@@ -1132,11 +1126,8 @@ impl NodeNetworkInterface {
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	/// Converts a preview written by the version that previewed by rewiring the export.
-	///
-	/// That version left the export pointing at the previewed node, so the node it points at becomes the
-	/// preview and the export goes back to what the document recorded to restore. The user sees what they
-	/// saw when they saved, with the document no longer rewired underneath it.
+	/// Converts a preview written by the version that previewed by rewiring the export: the node the export
+	/// points at becomes the preview, and the export goes back to what was recorded to restore.
 	pub fn migrate_rewired_previews(&mut self) {
 		for (network_path, root_node_to_restore) in self.legacy_rewired_previews() {
 			let previewed = match self.input_from_connector(&InputConnector::Export(0), &network_path) {

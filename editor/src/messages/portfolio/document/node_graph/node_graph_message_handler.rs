@@ -1096,7 +1096,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.wire_in_progress_to_connector = Some(point);
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
-							// Previewing leaves the export alone, so dragging its wire off is an ordinary disconnect
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
 							// Update the frontend that the node is disconnected
 							responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -2378,8 +2377,8 @@ impl NodeGraphMessageHandler {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
-		// Taken from the preview rather than the export, which previewing no longer rewires: reading the
-		// export would name the document root and start a preview on it instead of ending this one.
+		// From the preview, not the export: the export names the document root, so reading it would start a
+		// preview on that instead of ending this one
 		let previewing = match network_interface.previewing(breadcrumb_network_path) {
 			Previewing::Yes { previewed } => Some(previewed.node_id),
 			_ => None,
@@ -2728,7 +2727,7 @@ impl NodeGraphMessageHandler {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
-			// Asked of the preview itself rather than inferred from the export, which previewing no longer rewires
+			// Asked of the preview itself, which the export no longer reflects
 			let previewed = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { previewed } if previewed.node_id == node_id);
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
