@@ -7,9 +7,6 @@ macro_rules! concrete {
 	($type:ty) => {
 		$crate::Type::Concrete($crate::descriptor!($type))
 	};
-	($type:ty, $name:ty) => {
-		$crate::Type::Concrete($crate::descriptor!($type, $name))
-	};
 }
 
 #[macro_export]
@@ -18,16 +15,6 @@ macro_rules! descriptor {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
-			alias: None,
-			size: std::mem::size_of::<$type>(),
-			align: std::mem::align_of::<$type>(),
-		}
-	};
-	($type:ty, $name:ty) => {
-		$crate::TypeDescriptor {
-			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
-			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
 		}
@@ -40,7 +27,6 @@ macro_rules! concrete_with_name {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
-			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
 		})
@@ -53,7 +39,6 @@ macro_rules! generic {
 }
 
 /// Constructs the [`Type`] of an `Item` holding the given element type, e.g. `item!(f64)` is the type of an `Item<f64>`.
-/// The two-argument form tags the element descriptor with an alias, preserving the source spelling for widget dispatch.
 #[macro_export]
 macro_rules! item {
 	(Item<$inner:ty>) => {
@@ -61,9 +46,6 @@ macro_rules! item {
 	};
 	($element:ty) => {
 		$crate::Type::Item(Box::new($crate::concrete!($element)))
-	};
-	($element:ty, $alias:ty) => {
-		$crate::Type::Item(Box::new($crate::concrete!($element, $alias)))
 	};
 }
 
@@ -85,19 +67,10 @@ macro_rules! future {
 	(List<$inner:ty>) => {
 		$crate::Type::Future(Box::new($crate::list!($inner)))
 	};
-	(List<$inner:ty>, $name:ty) => {
-		$crate::Type::Future(Box::new($crate::list!($inner)))
-	};
 	(Item<$inner:ty>) => {
 		$crate::Type::Future(Box::new($crate::item!($inner)))
 	};
-	(Item<$inner:ty>, $name:ty) => {
-		$crate::Type::Future(Box::new($crate::item!($inner, $name)))
-	};
 	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
-	($type:ty, $name:ty) => {
-		$crate::Type::Future(Box::new(concrete!($type, $name)))
-	};
 }
 
 #[macro_export]
@@ -111,20 +84,11 @@ macro_rules! fn_type {
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
 	};
-	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
-	};
 	($in_type:ty, List<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
 	};
-	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner, $inner)))
-	};
 	($in_type:ty, Item<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner)))
-	};
-	($in_type:ty, $type:ty, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type, $outname)))
 	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
@@ -141,20 +105,11 @@ macro_rules! fn_type_fut {
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
 	};
-	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
-	};
 	($in_type:ty, List<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
 	};
-	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner, $inner)))))
-	};
 	($in_type:ty, Item<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
-	};
-	($in_type:ty, $type:ty, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
 	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
@@ -188,14 +143,12 @@ impl NodeIOTypes {
 		let tds1 = TypeDescriptor {
 			id: None,
 			name: Cow::Borrowed("()"),
-			alias: None,
 			size: 0,
 			align: 0,
 		};
 		let tds2 = TypeDescriptor {
 			id: None,
 			name: Cow::Borrowed("()"),
-			alias: None,
 			size: 0,
 			align: 0,
 		};
@@ -267,8 +220,6 @@ pub struct TypeDescriptor {
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub id: Option<TypeId>,
 	pub name: Cow<'static, str>,
-	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
-	pub alias: Option<Cow<'static, str>>,
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub size: usize,
 	#[cfg_attr(feature = "serde", serde(skip))]
@@ -385,7 +336,6 @@ impl Type {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
-			alias: None,
 			size: size_of::<T>(),
 			align: align_of::<T>(),
 		})
@@ -478,7 +428,6 @@ impl Type {
 			let element = Type::Concrete(TypeDescriptor {
 				id: None,
 				name: Cow::Owned(element_name.to_string()),
-				alias: None,
 				size: 0,
 				align: 0,
 			});

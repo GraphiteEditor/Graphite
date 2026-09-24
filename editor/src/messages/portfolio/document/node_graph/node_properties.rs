@@ -244,10 +244,8 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, optio
 		number_input = number_input.step(step);
 	}
 
-	// Applies the parameter's typing clamp and slider extent to the widget, given the type's own default bounds.
-	// Per end: the clamp is the hard bound (or unbounded if only a soft bound is given, since soft is a suggested
-	// extent rather than a limit), and the slider extent is the soft bound, each falling back to the hard bound
-	// and then to the type default when unspecified. An end with any explicit bound ignores the type default.
+	// The hard bound sets the typing clamp, and the soft bound (or the hard one) the slider extent, each falling
+	// back to the passed-in default. A soft bound alone leaves that end unclamped, since soft is only a suggestion.
 	let bounded = |number_input: NumberInput, type_min: f64, type_max: f64| {
 		let clamp_min = hard_min.unwrap_or(if soft_min.is_some() { f64::NEG_INFINITY } else { type_min });
 		let clamp_max = hard_max.unwrap_or(if soft_max.is_some() { f64::INFINITY } else { type_max });
@@ -261,12 +259,11 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, optio
 			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
 	};
 
-	// A range-mode number clamped at both ends by its own hard bounds, or by a type whose extent is a true limit, becomes a range
-	// slider beside its number input, unless a soft bound lets typing pass the slider. An Angle's type default is no such limit.
+	// A range-mode number hard-clamped at both ends becomes a range slider beside its number input, unless a soft bound lets typing pass it
 	let no_soft_bounds = soft_min.is_none() && soft_max.is_none();
 	let hard_both_ends = hard_min.is_some() && hard_max.is_some();
-	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput, type_limits: bool| -> LayoutGroup {
-		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && (hard_both_ends || type_limits);
+	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput| -> LayoutGroup {
+		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && hard_both_ends;
 		match (number_input.min, number_input.max) {
 			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() && min < max => {
 				let default = definition_default_number(&default_info);
@@ -299,105 +296,88 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, optio
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
-			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
-				// Aliased types (ambiguous values)
-				Some("Percentage") => number_or_slider(default_info, bounded(number_input.percentage(), 0., 100.), true),
-				Some("SignedPercentage") => number_or_slider(default_info, bounded(number_input.percentage(), -100., 100.), true),
-				Some("Angle") => number_or_slider(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°")), false),
-				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
-				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
-				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("Fraction") => number_or_slider(default_info, bounded(number_input.mode_range(), 0., 1.), true),
-				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
-				Some("TextArea") => text_area_widget(default_info).into(),
+			use std::any::TypeId;
 
-				// For all other types, use TypeId-based matching
-				_ => {
-					use std::any::TypeId;
+			// The compiler peels a rank-0 `Item` cell to its element before this arm runs, so widgets dispatch on the bare element `T`
+			fn id_is<T: 'static>(id: TypeId) -> bool {
+				id == TypeId::of::<T>()
+			}
 
-					// The compiler peels a rank-0 `Item` cell to its element before this arm runs, so widgets dispatch on the bare element `T`
-					fn id_is<T: 'static>(id: TypeId) -> bool {
-						id == TypeId::of::<T>()
-					}
-
-					match concrete_type.id {
-						// ===============
-						// PRIMITIVE TYPES
-						// ===============
-						Some(x) if id_is::<f64>(x) => match progression {
-							true => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-							false => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
-						},
-						Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
-						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
-						Some(x) if id_is::<String>(x) => match multiline {
-							true => text_area_widget(default_info).into(),
-							false => text_widget(default_info).into(),
-						},
-						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false),
-						Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
-						Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
-						// ============
-						// STRUCT TYPES
-						// ============
-						Some(x) if id_is::<Font>(x) => font_widget(default_info),
-						Some(x) if id_is::<TransferCurve>(x) => transfer_curve_widget(default_info),
-						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
-						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
-						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
-						Some(x) if id_is::<Resource>(x) => resource_widget(default_info, Vec::new()).into(),
-						// ===============================
-						// MANUALLY IMPLEMENTED ENUM TYPES
-						// ===============================
-						Some(x) if id_is::<ReferencePoint>(x) => reference_point_widget(default_info, false).into(),
-						Some(x) if id_is::<BlendMode>(x) => blend_mode_widget(default_info),
-						// =========================
-						// AUTO-GENERATED ENUM TYPES
-						// =========================
-						Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<XY>(x) => enum_choice::<XY>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<TextDenomination>(x) => enum_choice::<TextDenomination>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
-						// =====
-						// OTHER
-						// =====
-						_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
-					}
-				}
+			match concrete_type.id {
+				// ===============
+				// PRIMITIVE TYPES
+				// ===============
+				Some(x) if id_is::<f64>(x) => match progression {
+					true => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+					false => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)),
+				},
+				Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
+				Some(x) if id_is::<String>(x) => match multiline {
+					true => text_area_widget(default_info).into(),
+					false => text_widget(default_info).into(),
+				},
+				Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false),
+				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
+				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+				// ============
+				// STRUCT TYPES
+				// ============
+				Some(x) if id_is::<Font>(x) => font_widget(default_info),
+				Some(x) if id_is::<TransferCurve>(x) => transfer_curve_widget(default_info),
+				Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
+				Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
+				Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
+				Some(x) if id_is::<Resource>(x) => resource_widget(default_info, Vec::new()).into(),
+				// ===============================
+				// MANUALLY IMPLEMENTED ENUM TYPES
+				// ===============================
+				Some(x) if id_is::<ReferencePoint>(x) => reference_point_widget(default_info, false).into(),
+				Some(x) if id_is::<BlendMode>(x) => blend_mode_widget(default_info),
+				// =========================
+				// AUTO-GENERATED ENUM TYPES
+				// =========================
+				Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<XY>(x) => enum_choice::<XY>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<TextDenomination>(x) => enum_choice::<TextDenomination>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
+				// =====
+				// OTHER
+				// =====
+				_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
 			}
 		}
 		Type::Item(element) => return property_from_type(node_id, index, element, options, context),

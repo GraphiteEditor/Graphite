@@ -29,7 +29,10 @@ async fn transform<T: 'n + Send + 'static>(
 	#[widget(ParsedWidgetOverride::Custom = "transform_scale")]
 	#[default(1., 1.)]
 	scale: Item<DVec2>,
-	#[widget(ParsedWidgetOverride::Custom = "transform_skew")] skew: Item<DVec2>,
+	// TODO: Replace this pair of shear angles with a single `f64` skew angle
+	#[widget(ParsedWidgetOverride::Custom = "transform_skew")]
+	#[hard(-89.9..89.9)]
+	skew: Item<DVec2>,
 ) -> Item<T> {
 	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
 
@@ -61,7 +64,7 @@ async fn transform_list<T: 'n + Send + 'static>(
 	translation: Item<DVec2>,
 	rotation: Item<f64>,
 	scale: Item<DVec2>,
-	skew: Item<DVec2>,
+	#[hard(-89.9..89.9)] skew: Item<DVec2>,
 ) -> List<T> {
 	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
 

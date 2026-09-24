@@ -1,6 +1,5 @@
 use crate::{Color, ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
-pub use no_std_types::registry::types;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;

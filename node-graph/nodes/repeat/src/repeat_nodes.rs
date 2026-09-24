@@ -1,7 +1,6 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
-use core_types::registry::types::{Angle, PixelSize};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -72,10 +71,14 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	#[unit(" px")]
 	#[default(100., 100.)]
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: Item<PixelSize>,
-	angle: Item<Angle>,
+	direction: Item<DVec2>,
+	#[unit("°")]
+	#[range]
+	#[soft(-360..360)]
+	angle: Item<f64>,
 	#[default(5)]
 	#[hard(1..)]
 	count: Item<i64>,
@@ -129,7 +132,10 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
-	start_angle: Item<Angle>,
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	start_angle: Item<f64>,
 	#[unit(" px")]
 	#[default(5)]
 	radius: Item<f64>,
