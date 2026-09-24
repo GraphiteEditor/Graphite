@@ -5,12 +5,52 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session, UserId};
+use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::{Gdd, PendingPersist};
+
+/// What peers changed in the working registry since the editor last asked. The editor keeps a runtime
+/// mirror of the registry and brings just the touched entities back into line, unless the registry was
+/// rederived wholesale, when the touched set no longer bounds what changed.
+#[derive(Clone, Debug, Default)]
+pub struct RemoteChanges {
+	pub touched: Touched,
+	/// The working registry was replaced or refolded to different values, so the mirror has to be rebuilt
+	/// from the whole registry.
+	pub rebuilt: bool,
+}
+
+impl RemoteChanges {
+	pub fn is_empty(&self) -> bool {
+		self.touched.is_empty() && !self.rebuilt
+	}
+
+	pub fn extend(&mut self, other: RemoteChanges) {
+		self.touched.extend(other.touched);
+		self.rebuilt |= other.rebuilt;
+	}
+}
+
+impl<L: Layout> Gdd<L> {
+	/// Takes what peers changed since the last call. Empty when nothing did.
+	pub fn take_remote_changes(&mut self) -> RemoteChanges {
+		std::mem::take(&mut self.remote_changes)
+	}
+
+	/// Runs a sync step that can refold the working registry, and marks the mirror for a rebuild if the
+	/// refold left values the applied ops do not account for.
+	fn noting_rederivation<R>(&mut self, step: impl FnOnce(&mut Self) -> R) -> R {
+		let before = self.session.working_rederivations();
+		let result = step(self);
+		if self.session.working_rederivations() != before {
+			self.remote_changes.rebuilt = true;
+		}
+		result
+	}
+}
 
 impl<L: Layout> Gdd<L> {
 	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) {
@@ -87,6 +127,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
 		self.session.load(registry, history, head)?;
+		self.remote_changes.rebuilt = true;
 		self.pending_persist = PendingPersist {
 			history: true,
 			hot_log: true,
@@ -100,6 +141,8 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		// what actually applied reaches the hot frame log.
 		let mut deferred = Vec::new();
 		for hot_op in ops {
+			// Recorded whether or not it applies: a failed apply can still have resurrected what it references.
+			self.remote_changes.touched.record(&hot_op.op);
 			if self.session.replay_hot_op(hot_op.clone()).is_err() {
 				deferred.push(hot_op);
 				continue;
@@ -111,7 +154,10 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
-		self.session.merge_remote(deltas, retires)?;
+		for delta in &deltas {
+			self.remote_changes.touched.record(&delta.kind);
+		}
+		self.noting_rederivation(|gdd| gdd.session.merge_remote(deltas, retires))?;
 
 		// Whatever a peer sent is shared by definition, so it sits behind the published frontier too: a
 		// guest must no more silently rewind the host's history than the host may rewind its own.
@@ -130,7 +176,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		SyncTarget::absorb_retired_marks(&mut self.session, remote)?;
+		self.noting_rederivation(|gdd| SyncTarget::absorb_retired_marks(&mut gdd.session, remote))?;
 		self.pending_persist.hot_log = true;
 		Ok(())
 	}

@@ -94,6 +94,10 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) network: Option<peer_transport::Replica>,
 	#[cfg(feature = "network")]
 	pub(crate) pending_persist: PendingPersist,
+	/// What peers changed since the editor last took it, so it can bring its runtime mirror into line
+	/// with the registry without rebuilding it.
+	#[cfg(feature = "network")]
+	pub(crate) remote_changes: network::RemoteChanges,
 }
 
 /// Whole-file rewrites the sync path defers to the end of a poll, so one batch of remote packets costs
@@ -120,6 +124,8 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 			network: None,
 			#[cfg(feature = "network")]
 			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
 		}
 	}
 }
@@ -213,6 +219,8 @@ impl<L: Layout> Gdd<L> {
 			network: None,
 			#[cfg(feature = "network")]
 			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
 		})
 	}
 
@@ -240,6 +248,8 @@ impl<L: Layout> Gdd<L> {
 			network: None,
 			#[cfg(feature = "network")]
 			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
 		})
 	}
 }
