@@ -77,23 +77,19 @@ impl<L: Layout> Gdd<L> {
 	/// the whole document and diffing it against the working registry.
 	///
 	/// Otherwise identical to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot): each op becomes a
-	/// hot frame, and the proto-node declaration bytes go to the byte store.
+	/// hot frame, is broadcast to any session, and the proto-node declaration bytes go to the byte store.
 	#[cfg(feature = "conversion")]
 	pub fn stage_constructed_ops(
 		&mut self,
 		ops: Vec<document_graph_storage::RegistryDelta>,
 		declaration_bytes: &document_graph_storage::from_runtime::DeclarationBytes,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<(), Error> {
-		let hot_ops = self.session.stage_computed_ops(ops)?;
-
-		for hot_op in &hot_ops {
-			self.append_hot_frame(hot_op)?;
-		}
+	) -> Result<Vec<HotOp>, Error> {
+		let hot_ops = self.stage_ops(ops)?;
 		for bytes in declaration_bytes.values() {
 			byte_store.store(bytes);
 		}
-		Ok(())
+		Ok(hot_ops)
 	}
 
 	/// Stage raw registry ops as hot ops, for callers that don't go through the runtime diff.
@@ -103,6 +99,8 @@ impl<L: Layout> Gdd<L> {
 		Ok(hot_ops)
 	}
 
+	/// Every staged hot op takes this path, whether it came from a recorded batch, a whole-document diff or
+	/// a raw op: the frame that survives a crash, then the broadcast that reaches the room.
 	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
