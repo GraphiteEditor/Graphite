@@ -7,6 +7,7 @@ pub enum NewDocumentDialogMessage {
 	Infinite { infinite: bool },
 	DimensionsX { width: f64 },
 	DimensionsY { height: f64 },
+	SwapDimensions,
 
 	Submit,
 }
