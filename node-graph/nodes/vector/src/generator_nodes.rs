@@ -1,5 +1,4 @@
 use core_types::list::{Item, List};
-use core_types::registry::types::{Angle, PixelLength, PixelSize};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
@@ -7,7 +6,7 @@ use graphic_types::Vector;
 use vector_types::vector::VectorExt;
 use vector_types::vector::algorithms::shapes;
 use vector_types::vector::misc::BezierHandles;
-use vector_types::vector::misc::{ArcType, AsU64, BoxCorners, GridType};
+use vector_types::vector::misc::{ArcType, BoxCorners, GridType};
 use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId};
 
@@ -32,11 +31,15 @@ fn arc(
 	#[unit(" px")]
 	#[default(50.)]
 	radius: Item<f64>,
-	start_angle: Item<Angle>,
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	start_angle: Item<f64>,
+	#[unit("°")]
 	#[default(270.)]
 	#[range]
 	#[soft(0..360)]
-	sweep_angle: Item<Angle>,
+	sweep_angle: Item<f64>,
 	arc_type: Item<ArcType>,
 ) -> Item<Vector> {
 	let (radius, start_angle, sweep_angle, arc_type) = (*radius.element(), *start_angle.element(), *sweep_angle.element(), arc_type.into_element());
@@ -55,10 +58,18 @@ fn spiral(
 	_primary: (),
 	spiral_type: Item<SpiralType>,
 	#[default(5.)] turns: Item<f64>,
-	#[default(0.)] start_angle: Item<f64>,
-	#[default(0.)] inner_radius: Item<f64>,
-	#[default(25)] outer_radius: Item<f64>,
-	#[default(90.)] angular_resolution: Item<f64>,
+	#[unit("°")]
+	#[default(0.)]
+	start_angle: Item<f64>,
+	#[unit(" px")]
+	#[default(0.)]
+	inner_radius: Item<f64>,
+	#[unit(" px")]
+	#[default(25)]
+	outer_radius: Item<f64>,
+	#[unit("°")]
+	#[default(90.)]
+	angular_resolution: Item<f64>,
 ) -> Item<Vector> {
 	let (turns, start_angle, inner_radius, outer_radius, angular_resolution) = (
 		*turns.element(),
@@ -157,30 +168,28 @@ fn box_corners(
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
 #[node_macro::node(category("Vector: Shape"))]
-fn regular_polygon<T: AsU64>(
+fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
 	#[hard(3..)]
-	#[implementations(i64, f64)]
-	sides: Item<T>,
+	sides: Item<i64>,
 	#[unit(" px")]
 	#[default(50)]
 	radius: Item<f64>,
 ) -> Item<Vector> {
-	let points = sides.element().as_u64();
+	let points = *sides.element() as u64;
 	Item::new_from_element(Vector::from_bezpath(shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
 #[node_macro::node(category("Vector: Shape"))]
-fn star<T: AsU64>(
+fn star(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
 	#[hard(2..)]
-	#[implementations(i64, f64)]
-	sides: Item<T>,
+	sides: Item<i64>,
 	#[unit(" px")]
 	#[default(50)]
 	radius_1: Item<f64>,
@@ -188,7 +197,7 @@ fn star<T: AsU64>(
 	#[default(25)]
 	radius_2: Item<f64>,
 ) -> Item<Vector> {
-	let points = sides.element().as_u64();
+	let points = *sides.element() as u64;
 	Item::new_from_element(Vector::from_bezpath(shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())))
 }
 
@@ -269,17 +278,34 @@ fn qr_code(
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	#[default(100., 0.)] arrow_to: Item<PixelSize>,
-	#[default(10)] shaft_width: Item<PixelLength>,
-	#[default(30)] head_width: Item<PixelLength>,
-	#[default(20)] head_length: Item<PixelLength>,
+	#[unit(" px")]
+	#[default(100., 0.)]
+	arrow_to: Item<DVec2>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(10)]
+	shaft_width: Item<f64>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(30)]
+	head_width: Item<f64>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(20)]
+	head_length: Item<f64>,
 ) -> Item<Vector> {
 	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), *shaft_width.element(), *head_width.element(), *head_length.element());
 	Item::new_from_element(Vector::from_bezpath(shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
-fn line(_: impl Ctx, _primary: (), #[default(100., 100.)] line_to: Item<PixelSize>) -> Item<Vector> {
+fn line(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(100., 100.)]
+	line_to: Item<DVec2>,
+) -> Item<Vector> {
 	Item::new_from_element(Vector::from_bezpath(shapes::line_bezpath(DVec2::ZERO, *line_to.element())))
 }
 
@@ -314,11 +340,13 @@ fn grid<T: GridSpacing>(
 	#[default(10)]
 	#[hard(0..)]
 	rows: Item<i64>,
-	#[default(30., 30.)] angles: Item<DVec2>,
+	#[unit("°")]
+	#[default(30., 30.)]
+	angles: Item<DVec2>,
 	#[default(true)] connect_cells: Item<bool>,
 ) -> Item<Vector> {
 	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
-	let (columns, rows) = (columns.max(0) as u32, rows.max(0) as u32);
+	let (columns, rows) = (columns as u32, rows as u32);
 
 	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
 	let (angle_a, angle_b) = angles.into();

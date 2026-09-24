@@ -1,7 +1,6 @@
 use core_types::Context;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
-use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
 use glam::{DAffine2, DVec2};
@@ -89,6 +88,17 @@ fn output<T: ExpressionValue>(result: Option<Value>) -> T {
 		.unwrap_or_default()
 }
 
+impl ExpressionValue for i64 {
+	fn into_f64(self) -> f64 {
+		self as f64
+	}
+
+	// Evaluation happens in real numbers, so the result snaps to the nearest whole number (the graph's one Number to Integer rule)
+	fn from_value(value: &Value) -> Option<Self> {
+		value.as_i64()
+	}
+}
+
 impl ExpressionValue for bool {
 	fn into_f64(self) -> f64 {
 		self as u8 as f64
@@ -114,19 +124,27 @@ impl ValueProvider for SingleVariableMathContext {
 
 /// Evaluates a math expression written in terms of the single variable `x`, which carries the input value.
 ///
-/// A boolean input reads as 0 or 1, and a boolean output requires the expression to produce exactly 0 or 1, since any other number is not a truth value.
+/// The result is read as the chosen output type: an Integer rounds a fractional result to the nearest whole number, and a Bool requires the expression to produce exactly 0 or 1, since any other number is not a truth value. A boolean input reads as 0 or 1.
 #[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"))]
-fn math_fx<T: ExpressionValue>(
+fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
-	#[implementations(f64, bool)]
+	#[implementations(f64, f64, f64, i64, i64, i64, bool, bool, bool)]
 	value: Item<T>,
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`.
 	#[name("f(x) =")]
 	#[default("x")]
 	fx: Item<String>,
+	/// The type the result is read as.
+	#[implementations(f64, i64, bool, f64, i64, bool, f64, i64, bool)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
 	#[data] parsed: ParseCache,
-) -> Item<T> {
+) -> Item<U> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
 	let (value, attributes) = value.into_parts();
 
 	let x = value.into_f64();
@@ -161,18 +179,26 @@ impl ValueProvider for PositionalMathContext {
 
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
-/// Boolean items read as 0 or 1, and a boolean output requires the expression to produce exactly 0 or 1, since any other number is not a truth value.
+/// The result is read as the chosen output type: an Integer rounds a fractional result to the nearest whole number, and a Bool requires the expression to produce exactly 0 or 1, since any other number is not a truth value. Boolean items read as 0 or 1.
 #[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
-fn math_f<T: ExpressionValue>(
+fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
-	#[implementations(List<f64>, List<bool>)]
+	#[implementations(List<f64>, List<f64>, List<f64>, List<i64>, List<i64>, List<i64>, List<bool>, List<bool>, List<bool>)]
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
 	f: Item<String>,
+	/// The type the result is read as.
+	#[implementations(f64, i64, bool, f64, i64, bool, f64, i64, bool)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
 	#[data] parsed: ParseCache,
-) -> Item<T> {
+) -> Item<U> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
 	let expression = f.element();
 	let items: Vec<f64> = values.iter_element_values().map(|&value| value.into_f64()).collect();
 	let bindings = PositionalMathContext { items };
@@ -181,7 +207,7 @@ fn math_f<T: ExpressionValue>(
 	if let Some(reducer) = classify_reducer(expression, &bindings) {
 		let Some(result) = reducer.evaluate(&bindings.items) else {
 			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
-			return Item::new_from_element(T::default());
+			return Item::new_from_element(U::default());
 		};
 		return Item::new_from_element(output(Some(Value::from_f64(result))));
 	}
@@ -594,13 +620,15 @@ fn tangent<T: Componentwise>(
 fn sine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
+	#[range]
+	#[hard(-1..1)]
 	value: Item<f64>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(-1., 1.).asin();
+	let angle = value.asin();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -610,13 +638,15 @@ fn sine_inverse(
 fn cosine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
+	#[range]
+	#[hard(-1..1)]
 	value: Item<f64>,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(-1., 1.).acos();
+	let angle = value.acos();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -777,21 +807,21 @@ fn random(
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Converts a number to the standard integer type, which may be the required type for certain node inputs.
+/// Converts a `Number` to the `Integer` type, which may be the required type for certain node inputs.
 #[node_macro::node(category("Type Assertion"))]
 fn as_integer(_: impl Ctx, value: Item<i64>) -> Item<i64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Converts an integer or bool to the decimal number type, which may be the required type for certain node inputs. A bool becomes 0 (false) or 1 (true).
+/// Converts an `Integer` or `Bool` to the `Number` type, which may be the required type for certain node inputs. A `Bool` becomes 0 (false) or 1 (true).
 #[node_macro::node(category("Type Assertion"))]
 fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Passes a true or false value through as the type bool, which may be the required type for certain node inputs.
+/// Passes a true or false value through as the type `Bool`, which may be the required type for certain node inputs.
 #[node_macro::node(category("Type Assertion"))]
 fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
@@ -855,11 +885,6 @@ impl AbsoluteValue for f64 {
 		self.abs()
 	}
 }
-impl AbsoluteValue for i32 {
-	fn abs(self) -> Self {
-		self.abs()
-	}
-}
 impl AbsoluteValue for i64 {
 	fn abs(self) -> Self {
 		self.abs()
@@ -873,7 +898,7 @@ impl AbsoluteValue for i64 {
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, i32, i64, DVec2)]
+	#[implementations(f64, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -1030,47 +1055,38 @@ where
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
 #[node_macro::node(category("Math: Numeric"))]
-fn greatest_common_divisor<T: num_traits::int::PrimInt>(
+fn greatest_common_divisor(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
-	#[implementations(i64, i32)]
-	value: Item<T>,
+	value: Item<i64>,
 	/// The other of the two numbers for which the GCD is calculated.
-	#[implementations(i64, i32)]
-	other_value: Item<T>,
-) -> Item<T> {
+	other_value: Item<i64>,
+) -> Item<i64> {
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let gcd = math_parser::constants::gcd(integer_magnitude(value), integer_magnitude(other_value));
+	let gcd = math_parser::constants::gcd(value.unsigned_abs() as u128, other_value.unsigned_abs() as u128);
 
-	// A result too large for the output type (like the GCD of `i32::MIN` and 0) saturates at the type's maximum
-	Item::from_parts(T::from(gcd).unwrap_or_else(T::max_value), attributes)
+	// A result too large for the output type (like the GCD of `i64::MIN` and 0) saturates at the type's maximum
+	Item::from_parts(i64::try_from(gcd).unwrap_or(i64::MAX), attributes)
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
 #[node_macro::node(category("Math: Numeric"))]
-fn least_common_multiple<T: num_traits::int::PrimInt>(
+fn least_common_multiple(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
-	#[implementations(i64, i32)]
-	value: Item<T>,
+	value: Item<i64>,
 	/// The other of the two numbers for which the LCM is calculated.
-	#[implementations(i64, i32)]
-	other_value: Item<T>,
-) -> Item<T> {
+	other_value: Item<i64>,
+) -> Item<i64> {
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let lcm = math_parser::constants::lcm(integer_magnitude(value), integer_magnitude(other_value));
+	let lcm = math_parser::constants::lcm(value.unsigned_abs() as u128, other_value.unsigned_abs() as u128);
 
 	// A result too large for the output type saturates at the type's maximum rather than overflowing
-	Item::from_parts(T::from(lcm).unwrap_or_else(T::max_value), attributes)
-}
-
-/// Reads an integer's magnitude as a `u128`, which every implemented input type fits within.
-fn integer_magnitude<T: num_traits::int::PrimInt>(value: T) -> u128 {
-	value.to_i128().map_or(0, i128::unsigned_abs)
+	Item::from_parts(i64::try_from(lcm).unwrap_or(i64::MAX), attributes)
 }
 
 /// Adds together all the numbers in the input list, producing their total.
@@ -1117,7 +1133,7 @@ fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 fn is_nonzero<T: Default + std::cmp::PartialEq>(
 	_: impl Ctx,
 	/// The value compared against zero.
-	#[implementations(f64, i32, i64, DVec2)]
+	#[implementations(f64, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
@@ -1311,7 +1327,7 @@ async fn switch<T: 'n + Send>(
 	if *condition.element() { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }
 
-/// Constructs a bool value which may be set to true or false.
+/// Constructs a `Bool` value which may be set to true or false.
 #[node_macro::node(category("Value"))]
 fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: Item<bool>) -> Item<bool> {
 	bool_value
@@ -1325,7 +1341,14 @@ fn number_value(_: impl Ctx, _primary: (), number: Item<f64>) -> Item<f64> {
 
 /// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
 #[node_macro::node(category("Value"))]
-fn percentage_value(_: impl Ctx, _primary: (), percentage: Item<Percentage>) -> Item<f64> {
+fn percentage_value(
+	_: impl Ctx,
+	_primary: (),
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	percentage: Item<f64>,
+) -> Item<f64> {
 	percentage
 }
 
@@ -1343,11 +1366,27 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Item<C
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Item<Fraction>, green: Item<Fraction>, blue: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
-	let red = (*red.element() as f32).clamp(0., 1.);
-	let green = (*green.element() as f32).clamp(0., 1.);
-	let blue = (*blue.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+fn rgba_to_color(
+	_: impl Ctx,
+	_primary: (),
+	#[range]
+	#[hard(0..1)]
+	red: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	green: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	blue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
+) -> Item<Color> {
+	let red = *red.element() as f32;
+	let green = *green.element() as f32;
+	let blue = *blue.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
 	Item::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
@@ -1355,11 +1394,30 @@ fn rgba_to_color(_: impl Ctx, _primary: (), red: Item<Fraction>, green: Item<Fra
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
 #[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] saturation: Item<Fraction>, #[default(1.)] value: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+fn hsva_to_color(
+	_: impl Ctx,
+	_primary: (),
+	// Hue is periodic, so a value past either end wraps around instead of clamping
+	#[range]
+	#[soft(0..1)]
+	hue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	saturation: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	value: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
+) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
-	let saturation = (*saturation.element() as f32).clamp(0., 1.);
-	let value = (*value.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+	let saturation = *saturation.element() as f32;
+	let value = *value.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	Item::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
 }
@@ -1369,15 +1427,26 @@ fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] 
 fn hsla_to_color(
 	_: impl Ctx,
 	_primary: (),
-	hue: Item<Fraction>,
-	#[default(1.)] saturation: Item<Fraction>,
-	#[default(0.5)] lightness: Item<Fraction>,
-	#[default(1.)] alpha: Item<Fraction>,
+	#[range]
+	#[soft(0..1)]
+	hue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	saturation: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(0.5)]
+	lightness: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
 ) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
-	let saturation = (*saturation.element() as f32).clamp(0., 1.);
-	let lightness = (*lightness.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+	let saturation = *saturation.element() as f32;
+	let lightness = *lightness.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	Item::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
@@ -1534,10 +1603,18 @@ fn evaluate_gradient(
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
 #[node_macro::node(category("Value"))]
-fn footprint_value(_: impl Ctx, _primary: (), transform: Item<DAffine2>, #[default(100., 100.)] resolution: Item<PixelSize>) -> Item<Footprint> {
+fn footprint_value(
+	_: impl Ctx,
+	_primary: (),
+	transform: Item<DAffine2>,
+	#[unit(" px")]
+	#[hard(1..)]
+	#[default(100., 100.)]
+	resolution: Item<DVec2>,
+) -> Item<Footprint> {
 	Item::new_from_element(Footprint {
 		transform: *transform.element(),
-		resolution: resolution.element().max(DVec2::ONE).as_uvec2(),
+		resolution: resolution.element().as_uvec2(),
 		..Default::default()
 	})
 }
@@ -1844,6 +1921,75 @@ mod test {
 	}
 
 	#[test]
+	fn integer_lane_keeps_integers_and_rounds_fractions() {
+		let integer = |value: i64, expression: &str| {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(0_i64),
+			)
+			.into_element()
+		};
+		assert_eq!(integer(3, "x * 2"), 6);
+		assert_eq!(integer(3, "x / 2"), 2, "1.5 rounds away from zero");
+		assert_eq!(integer(-3, "x / 2"), -2, "-1.5 rounds away from zero");
+		assert_eq!(integer(3, "x * 1.1 / 1.1"), 3, "float noise snaps back to the whole number");
+
+		let items: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			2,
+			"7/3 rounds to 2"
+		);
+	}
+
+	#[test]
+	fn output_type_witness_picks_the_output_rung() {
+		// The witness input's type, not the input value's, decides how the result is read
+		assert_eq!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(2.5),
+				Item::new_from_element("x * 2".to_string()),
+				Item::new_from_element(0_i64)
+			)
+			.into_element(),
+			5
+		);
+		assert!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(3_i64),
+				Item::new_from_element("x > 2".to_string()),
+				Item::new_from_element(false)
+			)
+			.into_element()
+		);
+		assert_eq!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(true),
+				Item::new_from_element("x / 2".to_string()),
+				Item::new_from_element(0.)
+			)
+			.into_element(),
+			0.5
+		);
+
+		let items: List<f64> = [1., 2.].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			2,
+			"1.5 rounds to 2"
+		);
+	}
+
+	#[test]
 	pub fn round_floor_ceiling_vec2() {
 		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
 		assert_eq!(round((), vec2(1.5, -1.4)).into_element(), DVec2::new(2., -1.));
@@ -1853,25 +1999,49 @@ mod test {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("2 + 2".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("(5 * 3) + (10 / 2)".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 20.);
 	}
 
 	#[test]
 	fn test_variable_binding() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(7.), Item::new_from_element("x * 2".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(7.),
+			Item::new_from_element("x * 2".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 14.);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("invalid".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 0.);
 	}
 
@@ -1887,16 +2057,17 @@ mod test {
 	#[test]
 	fn test_boolean_items() {
 		// Booleans read as exactly 0 and 1, and logical results convert back
-		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string())).into_element());
-		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string())).into_element());
+		let as_bool = Item::new_from_element(false);
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone()).into_element());
+		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone()).into_element());
 
 		// A result that is not exactly 0 or 1 cannot be a truth value, so it reads as false
-		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string())).into_element());
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).into_element());
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string())).into_element());
-		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string())).into_element());
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string())).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).into_element());
+		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).into_element());
 	}
 
 	#[test]
@@ -1917,9 +2088,16 @@ mod test {
 		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
 
 		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string())).into_element(), 10.);
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string())).into_element(), 1.);
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string())).into_element(), 12.);
+		let as_number = Item::new_from_element(0.);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone()).into_element(),
+			10.
+		);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone()).into_element(),
+			1.
+		);
+		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).into_element(), 12.);
 	}
 
 	#[test]

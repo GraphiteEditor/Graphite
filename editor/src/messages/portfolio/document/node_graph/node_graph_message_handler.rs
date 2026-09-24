@@ -2704,7 +2704,7 @@ impl NodeGraphMessageHandler {
 		added_wires
 	}
 
-	fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
+	pub(crate) fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
 		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
@@ -2739,15 +2739,14 @@ impl NodeGraphMessageHandler {
 				(false, false)
 			};
 
-			let is_export = network_interface
-				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
-				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
-
 			let Some(position) = network_interface.position(&node_id, breadcrumb_network_path) else {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
+			let is_export = network_interface
+				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
+				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
+			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
 			let previewed = is_export && !is_root_node;
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);

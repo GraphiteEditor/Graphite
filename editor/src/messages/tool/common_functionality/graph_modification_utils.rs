@@ -428,7 +428,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 
 		if positions_pending && reference == positions_reference {
 			positions_pending = false;
-			if let Some(TaggedValue::F64Array(positions)) = node
+			if let Some(TaggedValue::Numbers(positions)) = node
 				.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput))
 				.and_then(|input| input.as_value())
 			{
@@ -436,7 +436,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			}
 		} else if midpoints_pending && reference == midpoints_reference {
 			midpoints_pending = false;
-			if let Some(TaggedValue::F64Array(midpoints)) = node
+			if let Some(TaggedValue::Numbers(midpoints)) = node
 				.and_then(|node| node.input(graphene_std::math_nodes::gradient_midpoints::MidpointsInput))
 				.and_then(|input| input.as_value())
 			{
@@ -517,7 +517,7 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	let TaggedValue::Bool(true) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
-	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
+	let TaggedValue::Number(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)
@@ -537,7 +537,7 @@ pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let TaggedValue::Bool(true) = inputs.get(3)?.as_value()? else {
 		return None;
 	};
-	let TaggedValue::F64(fill) = inputs.get(4)?.as_value()? else {
+	let TaggedValue::Number(fill) = inputs.get(4)?.as_value()? else {
 		return None;
 	};
 	Some(*fill)
@@ -606,24 +606,26 @@ pub fn get_text<'a>(
 		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
 		_ => Font::default(),
 	};
-	let Some(&TaggedValue::F64(font_size)) = parameters.value(text::SizeInput) else { return None };
-	let Some(&TaggedValue::F64(line_height_ratio)) = parameters.value(text::LineHeightInput) else {
+	let Some(&TaggedValue::Number(font_size)) = parameters.value(text::SizeInput) else { return None };
+	let Some(&TaggedValue::Number(line_height_ratio)) = parameters.value(text::LineHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(letter_spacing)) = parameters.value(text::LetterSpacingInput) else {
+	let Some(&TaggedValue::Number(letter_spacing)) = parameters.value(text::LetterSpacingInput) else {
 		return None;
 	};
 	let Some(&TaggedValue::Bool(has_max_width)) = parameters.value(text::HasMaxWidthInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_width)) = parameters.value(text::MaxWidthInput) else { return None };
+	let Some(&TaggedValue::Number(max_width)) = parameters.value(text::MaxWidthInput) else {
+		return None;
+	};
 	let Some(&TaggedValue::Bool(has_max_height)) = parameters.value(text::HasMaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_height)) = parameters.value(text::MaxHeightInput) else {
+	let Some(&TaggedValue::Number(max_height)) = parameters.value(text::MaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(letter_tilt)) = parameters.value(text::LetterTiltInput) else {
+	let Some(&TaggedValue::Number(letter_tilt)) = parameters.value(text::LetterTiltInput) else {
 		return None;
 	};
 	let Some(&TaggedValue::TextAlign(align)) = parameters.value(text::AlignInput) else { return None };
@@ -641,7 +643,7 @@ pub fn get_text<'a>(
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)? {
+	if let TaggedValue::Number(width) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)? {
 		Some(*width)
 	} else {
 		None
@@ -679,7 +681,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		_ => StrokeJoin::default(),
 	};
 	let miter_limit = match parameters.value(stroke::MiterLimitInput) {
-		Some(TaggedValue::F64(value)) => *value,
+		Some(TaggedValue::Number(value)) => *value,
 		_ => 4.,
 	};
 	let paint_order = get_stroke_paint_order(layer, network_interface);
@@ -688,7 +690,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		_ => Vec::new(),
 	};
 	let dash_offset = match parameters.value(stroke::DashOffsetInput) {
-		Some(TaggedValue::F64(value)) => *value,
+		Some(TaggedValue::Number(value)) => *value,
 		_ => 0.,
 	};
 
@@ -778,7 +780,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: graphene_std::vector::stroke::WeightInput::INDEX,
-				value: TaggedValue::F64(weight).into(),
+				value: TaggedValue::Number(weight).into(),
 			});
 		} else if weight > 0. {
 			let color = Some(Color::BLACK);

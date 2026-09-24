@@ -17,8 +17,6 @@ use no_std_types::color::{Color, linear_to_srgb, set_luminosity, srgb_to_linear}
 use no_std_types::context::Ctx;
 #[cfg(not(feature = "std"))]
 use no_std_types::list::ShaderItem as Item;
-#[cfg(feature = "std")]
-use no_std_types::registry::types::{Angle, Percentage, SignedPercentage};
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(not(feature = "std"))]
@@ -283,19 +281,31 @@ fn brightness_contrast<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
-	brightness: Item<SignedPercentage>,
-	contrast: Item<SignedPercentage>,
+	#[unit("%")]
+	#[range]
+	#[hard(-150..150)]
+	brightness: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	contrast: Item<f64>,
 	use_classic: Item<bool>,
-	#[default(127.)] classic_pivot: Item<f64>,
+	#[range]
+	#[soft(0..255)]
+	#[default(127.)]
+	classic_pivot: Item<f64>,
 ) -> Item<T> {
 	let mut input = input;
-	let brightness = brightness.into_element() as f32;
-	let contrast = (contrast.into_element() / 100.) as f32;
 	let use_classic = use_classic.into_element();
 	let classic_pivot = (classic_pivot.into_element() / 255.) as f32;
 
+	// Each algorithm has its own slider range, matched here and in the Properties panel
+	let (brightness_extent, contrast_minimum) = if use_classic { (100., -100.) } else { (150., -50.) };
+	let brightness = (brightness.into_element() as f32).clamp(-brightness_extent, brightness_extent);
+	let contrast = (contrast.into_element() as f32).clamp(contrast_minimum, 100.) / 100.;
+
 	// Beyond a magnitude of 100, the curve for 100 is applied first and the curve for the remainder after it
-	let magnitude = brightness.abs().min(150.);
+	let magnitude = brightness.abs();
 	let first_curve = BrightnessCurve::new(magnitude.min(100.));
 	let second_curve = BrightnessCurve::new((magnitude - 100.).max(0.));
 
@@ -433,71 +443,146 @@ fn levels<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
-	#[default(0.)] shadows: Item<Percentage>,
-	#[default(1.)] midtones: Item<f64>,
-	#[default(100.)] highlights: Item<Percentage>,
-	#[default(0.)] output_minimums: Item<Percentage>,
-	#[default(100.)] output_maximums: Item<Percentage>,
-	#[name("(Red) Shadows")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	red_shadows: Item<Percentage>,
+	shadows: Item<f64>,
+	#[range]
+	#[soft(0.01..9.99)]
+	#[default(1.)]
+	midtones: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	highlights: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(0.)]
+	output_minimums: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	output_maximums: Item<f64>,
+	#[name("(Red) Shadows")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(0.)]
+	red_shadows: Item<f64>,
 	#[name("(Red) Midtones")]
+	#[range]
+	#[soft(0.01..9.99)]
 	#[default(1.)]
 	red_midtones: Item<f64>,
 	#[name("(Red) Highlights")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	red_highlights: Item<Percentage>,
+	red_highlights: Item<f64>,
 	#[name("(Red) Output Minimums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	red_output_minimums: Item<Percentage>,
+	red_output_minimums: Item<f64>,
 	#[name("(Red) Output Maximums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	red_output_maximums: Item<Percentage>,
+	red_output_maximums: Item<f64>,
 	#[name("(Green) Shadows")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	green_shadows: Item<Percentage>,
+	green_shadows: Item<f64>,
 	#[name("(Green) Midtones")]
+	#[range]
+	#[soft(0.01..9.99)]
 	#[default(1.)]
 	green_midtones: Item<f64>,
 	#[name("(Green) Highlights")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	green_highlights: Item<Percentage>,
+	green_highlights: Item<f64>,
 	#[name("(Green) Output Minimums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	green_output_minimums: Item<Percentage>,
+	green_output_minimums: Item<f64>,
 	#[name("(Green) Output Maximums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	green_output_maximums: Item<Percentage>,
+	green_output_maximums: Item<f64>,
 	#[name("(Blue) Shadows")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	blue_shadows: Item<Percentage>,
+	blue_shadows: Item<f64>,
 	#[name("(Blue) Midtones")]
+	#[range]
+	#[soft(0.01..9.99)]
 	#[default(1.)]
 	blue_midtones: Item<f64>,
 	#[name("(Blue) Highlights")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	blue_highlights: Item<Percentage>,
+	blue_highlights: Item<f64>,
 	#[name("(Blue) Output Minimums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	blue_output_minimums: Item<Percentage>,
+	blue_output_minimums: Item<f64>,
 	#[name("(Blue) Output Maximums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	blue_output_maximums: Item<Percentage>,
+	blue_output_maximums: Item<f64>,
 	#[name("(Alpha) Shadows")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	alpha_shadows: Item<Percentage>,
+	alpha_shadows: Item<f64>,
 	#[name("(Alpha) Midtones")]
+	#[range]
+	#[soft(0.01..9.99)]
 	#[default(1.)]
 	alpha_midtones: Item<f64>,
 	#[name("(Alpha) Highlights")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	alpha_highlights: Item<Percentage>,
+	alpha_highlights: Item<f64>,
 	#[name("(Alpha) Output Minimums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(0.)]
-	alpha_output_minimums: Item<Percentage>,
+	alpha_output_minimums: Item<f64>,
 	#[name("(Alpha) Output Maximums")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(100.)]
-	alpha_output_maximums: Item<Percentage>,
+	alpha_output_maximums: Item<f64>,
 	_channel: Item<AdjustmentChannel>,
 ) -> Item<T> {
 	let mut image = image;
@@ -626,30 +711,36 @@ fn black_and_white<T: Adjust<Color>>(
 	image: Item<T>,
 	use_tint: Item<bool>,
 	#[default("#e1d3b3")] tint: Item<Color>,
+	#[unit("%")]
 	#[default(40.)]
 	#[range]
 	#[soft(-200..300)]
-	reds: Item<Percentage>,
+	reds: Item<f64>,
+	#[unit("%")]
 	#[default(60.)]
 	#[range]
 	#[soft(-200..300)]
-	yellows: Item<Percentage>,
+	yellows: Item<f64>,
+	#[unit("%")]
 	#[default(40.)]
 	#[range]
 	#[soft(-200..300)]
-	greens: Item<Percentage>,
+	greens: Item<f64>,
+	#[unit("%")]
 	#[default(60.)]
 	#[range]
 	#[soft(-200..300)]
-	cyans: Item<Percentage>,
+	cyans: Item<f64>,
+	#[unit("%")]
 	#[default(20.)]
 	#[range]
 	#[soft(-200..300)]
-	blues: Item<Percentage>,
+	blues: Item<f64>,
+	#[unit("%")]
 	#[default(80.)]
 	#[range]
 	#[soft(-200..300)]
-	magentas: Item<Percentage>,
+	magentas: Item<f64>,
 ) -> Item<T> {
 	let mut image = image;
 	let tint = tint.into_element();
@@ -793,8 +884,8 @@ impl HueSaturationSettings {
 	fn new(hue: f32, saturation_percent: f32, lightness_percent: f32) -> Self {
 		Self {
 			hue,
-			saturation: (saturation_percent / 100.).clamp(-1., 1.),
-			lightness: (lightness_percent / 100.).clamp(-1., 1.),
+			saturation: saturation_percent / 100.,
+			lightness: lightness_percent / 100.,
 		}
 	}
 }
@@ -901,105 +992,269 @@ fn hue_saturation<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
-	hue: Item<Angle>,
-	saturation: Item<SignedPercentage>,
-	lightness: Item<SignedPercentage>,
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	hue: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	saturation: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	lightness: Item<f64>,
 	colorize: Item<bool>,
+	// Colorize sets an absolute hue rather than shifting one, so its range covers the whole turn
 	#[name("(Colorize) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(24.)]
-	colorize_hue: Item<Angle>,
+	colorize_hue: Item<f64>,
 	#[name("(Colorize) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
 	#[default(25.)]
-	colorize_saturation: Item<Percentage>,
-	#[name("(Colorize) Lightness")] colorize_lightness: Item<SignedPercentage>,
-	#[name("(Reds) Hue")] reds_hue: Item<Angle>,
-	#[name("(Reds) Saturation")] reds_saturation: Item<SignedPercentage>,
-	#[name("(Reds) Lightness")] reds_lightness: Item<SignedPercentage>,
+	colorize_saturation: Item<f64>,
+	#[name("(Colorize) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	colorize_lightness: Item<f64>,
+	#[name("(Reds) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	reds_hue: Item<f64>,
+	#[name("(Reds) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	reds_saturation: Item<f64>,
+	#[name("(Reds) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	reds_lightness: Item<f64>,
 	#[name("(Reds) Falloff Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(315.)]
 	reds_falloff_start: Item<f64>,
 	#[name("(Reds) Range Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(345.)]
 	reds_range_start: Item<f64>,
 	#[name("(Reds) Range End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(15.)]
 	reds_range_end: Item<f64>,
 	#[name("(Reds) Falloff End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(45.)]
 	reds_falloff_end: Item<f64>,
-	#[name("(Yellows) Hue")] yellows_hue: Item<Angle>,
-	#[name("(Yellows) Saturation")] yellows_saturation: Item<SignedPercentage>,
-	#[name("(Yellows) Lightness")] yellows_lightness: Item<SignedPercentage>,
+	#[name("(Yellows) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	yellows_hue: Item<f64>,
+	#[name("(Yellows) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	yellows_saturation: Item<f64>,
+	#[name("(Yellows) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	yellows_lightness: Item<f64>,
 	#[name("(Yellows) Falloff Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(15.)]
 	yellows_falloff_start: Item<f64>,
 	#[name("(Yellows) Range Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(45.)]
 	yellows_range_start: Item<f64>,
 	#[name("(Yellows) Range End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(75.)]
 	yellows_range_end: Item<f64>,
 	#[name("(Yellows) Falloff End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(105.)]
 	yellows_falloff_end: Item<f64>,
-	#[name("(Greens) Hue")] greens_hue: Item<Angle>,
-	#[name("(Greens) Saturation")] greens_saturation: Item<SignedPercentage>,
-	#[name("(Greens) Lightness")] greens_lightness: Item<SignedPercentage>,
+	#[name("(Greens) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	greens_hue: Item<f64>,
+	#[name("(Greens) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	greens_saturation: Item<f64>,
+	#[name("(Greens) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	greens_lightness: Item<f64>,
 	#[name("(Greens) Falloff Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(75.)]
 	greens_falloff_start: Item<f64>,
 	#[name("(Greens) Range Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(105.)]
 	greens_range_start: Item<f64>,
 	#[name("(Greens) Range End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(135.)]
 	greens_range_end: Item<f64>,
 	#[name("(Greens) Falloff End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(165.)]
 	greens_falloff_end: Item<f64>,
-	#[name("(Cyans) Hue")] cyans_hue: Item<Angle>,
-	#[name("(Cyans) Saturation")] cyans_saturation: Item<SignedPercentage>,
-	#[name("(Cyans) Lightness")] cyans_lightness: Item<SignedPercentage>,
+	#[name("(Cyans) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	cyans_hue: Item<f64>,
+	#[name("(Cyans) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	cyans_saturation: Item<f64>,
+	#[name("(Cyans) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	cyans_lightness: Item<f64>,
 	#[name("(Cyans) Falloff Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(135.)]
 	cyans_falloff_start: Item<f64>,
 	#[name("(Cyans) Range Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(165.)]
 	cyans_range_start: Item<f64>,
 	#[name("(Cyans) Range End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(195.)]
 	cyans_range_end: Item<f64>,
 	#[name("(Cyans) Falloff End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(225.)]
 	cyans_falloff_end: Item<f64>,
-	#[name("(Blues) Hue")] blues_hue: Item<Angle>,
-	#[name("(Blues) Saturation")] blues_saturation: Item<SignedPercentage>,
-	#[name("(Blues) Lightness")] blues_lightness: Item<SignedPercentage>,
+	#[name("(Blues) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	blues_hue: Item<f64>,
+	#[name("(Blues) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	blues_saturation: Item<f64>,
+	#[name("(Blues) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	blues_lightness: Item<f64>,
 	#[name("(Blues) Falloff Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(195.)]
 	blues_falloff_start: Item<f64>,
 	#[name("(Blues) Range Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(225.)]
 	blues_range_start: Item<f64>,
 	#[name("(Blues) Range End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(255.)]
 	blues_range_end: Item<f64>,
 	#[name("(Blues) Falloff End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(285.)]
 	blues_falloff_end: Item<f64>,
-	#[name("(Magentas) Hue")] magentas_hue: Item<Angle>,
-	#[name("(Magentas) Saturation")] magentas_saturation: Item<SignedPercentage>,
-	#[name("(Magentas) Lightness")] magentas_lightness: Item<SignedPercentage>,
+	#[name("(Magentas) Hue")]
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	magentas_hue: Item<f64>,
+	#[name("(Magentas) Saturation")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	magentas_saturation: Item<f64>,
+	#[name("(Magentas) Lightness")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	magentas_lightness: Item<f64>,
 	#[name("(Magentas) Falloff Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(255.)]
 	magentas_falloff_start: Item<f64>,
 	#[name("(Magentas) Range Start")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(285.)]
 	magentas_range_start: Item<f64>,
 	#[name("(Magentas) Range End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(315.)]
 	magentas_range_end: Item<f64>,
 	#[name("(Magentas) Falloff End")]
+	#[unit("°")]
+	#[range]
+	#[soft(0..360)]
 	#[default(345.)]
 	magentas_falloff_end: Item<f64>,
 	_range: Item<HueSaturationRange>,
@@ -1059,8 +1314,7 @@ fn hue_saturation<T: Adjust<Color>>(
 		if colorize {
 			let [_, _, lightness] = gamma_rgb_to_hsl(r, g, b);
 			let lightness = lightness_toward_white_or_black(lightness, colorize_settings.lightness);
-			let saturation = colorize_settings.saturation.max(0.);
-			let [r, g, b] = hsl_to_gamma_rgb(colorize_settings.hue, saturation, lightness);
+			let [r, g, b] = hsl_to_gamma_rgb(colorize_settings.hue, colorize_settings.saturation, lightness);
 			return Color::from_gamma_srgb_channels(r, g, b, alpha);
 		}
 
@@ -1133,8 +1387,16 @@ fn threshold<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
-	#[default(50.)] min_luminance: Item<Percentage>,
-	#[default(100.)] max_luminance: Item<Percentage>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(50.)]
+	min_luminance: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	max_luminance: Item<f64>,
 ) -> Item<T> {
 	let mut image = image;
 	let min_luminance = (min_luminance.into_element() / 100.) as f32;
@@ -1199,12 +1461,18 @@ fn vibrance<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	image: Item<T>,
-	vibrance: Item<SignedPercentage>,
-	saturation: Item<SignedPercentage>,
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	vibrance: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	saturation: Item<f64>,
 ) -> Item<T> {
 	let mut image = image;
-	let vibrance = (vibrance.into_element().clamp(-100., 100.) / 100.) as f32;
-	let saturation_scale = (1. + saturation.into_element().clamp(-100., 100.) / 100.) as f32;
+	let vibrance = (vibrance.into_element() / 100.) as f32;
+	let saturation_scale = (1. + saturation.into_element() / 100.) as f32;
 
 	// Vibrance then saturation, both in linear light, which equals applying each alone in turn
 	image.element_mut().adjust(|color| {
@@ -1398,56 +1666,104 @@ fn channel_mixer<T: Adjust<Color>>(
 
 	monochrome: Item<bool>,
 
-	#[default(40.)]
 	#[name("Red")]
-	monochrome_r: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
 	#[default(40.)]
+	monochrome_r: Item<f64>,
 	#[name("Green")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(40.)]
 	monochrome_g: Item<f64>,
-	#[default(20.)]
 	#[name("Blue")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(20.)]
 	monochrome_b: Item<f64>,
-	#[default(0.)]
 	#[name("Constant")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	monochrome_c: Item<f64>,
 
-	#[default(100.)]
 	#[name("(Red) Red")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(100.)]
 	red_r: Item<f64>,
-	#[default(0.)]
 	#[name("(Red) Green")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	red_g: Item<f64>,
-	#[default(0.)]
 	#[name("(Red) Blue")]
-	red_b: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
 	#[default(0.)]
+	red_b: Item<f64>,
 	#[name("(Red) Constant")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	red_c: Item<f64>,
 
-	#[default(0.)]
 	#[name("(Green) Red")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	green_r: Item<f64>,
-	#[default(100.)]
 	#[name("(Green) Green")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(100.)]
 	green_g: Item<f64>,
-	#[default(0.)]
 	#[name("(Green) Blue")]
-	green_b: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
 	#[default(0.)]
+	green_b: Item<f64>,
 	#[name("(Green) Constant")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	green_c: Item<f64>,
 
-	#[default(0.)]
 	#[name("(Blue) Red")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	blue_r: Item<f64>,
-	#[default(0.)]
 	#[name("(Blue) Green")]
-	blue_g: Item<f64>,
-	#[default(100.)]
-	#[name("(Blue) Blue")]
-	blue_b: Item<f64>,
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
 	#[default(0.)]
+	blue_g: Item<f64>,
+	#[name("(Blue) Blue")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(100.)]
+	blue_b: Item<f64>,
 	#[name("(Blue) Constant")]
+	#[unit("%")]
+	#[range]
+	#[soft(-200..200)]
+	#[default(0.)]
 	blue_c: Item<f64>,
 
 	// Display-only properties (not used within the node)
@@ -1546,50 +1862,194 @@ fn selective_color<T: Adjust<Color>>(
 
 	mode: Item<RelativeAbsolute>,
 
-	#[name("(Reds) Cyan")] r_c: Item<f64>,
-	#[name("(Reds) Magenta")] r_m: Item<f64>,
-	#[name("(Reds) Yellow")] r_y: Item<f64>,
-	#[name("(Reds) Black")] r_k: Item<f64>,
+	#[name("(Reds) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	r_c: Item<f64>,
+	#[name("(Reds) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	r_m: Item<f64>,
+	#[name("(Reds) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	r_y: Item<f64>,
+	#[name("(Reds) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	r_k: Item<f64>,
 
-	#[name("(Yellows) Cyan")] y_c: Item<f64>,
-	#[name("(Yellows) Magenta")] y_m: Item<f64>,
-	#[name("(Yellows) Yellow")] y_y: Item<f64>,
-	#[name("(Yellows) Black")] y_k: Item<f64>,
+	#[name("(Yellows) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	y_c: Item<f64>,
+	#[name("(Yellows) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	y_m: Item<f64>,
+	#[name("(Yellows) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	y_y: Item<f64>,
+	#[name("(Yellows) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	y_k: Item<f64>,
 
-	#[name("(Greens) Cyan")] g_c: Item<f64>,
-	#[name("(Greens) Magenta")] g_m: Item<f64>,
-	#[name("(Greens) Yellow")] g_y: Item<f64>,
-	#[name("(Greens) Black")] g_k: Item<f64>,
+	#[name("(Greens) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	g_c: Item<f64>,
+	#[name("(Greens) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	g_m: Item<f64>,
+	#[name("(Greens) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	g_y: Item<f64>,
+	#[name("(Greens) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	g_k: Item<f64>,
 
-	#[name("(Cyans) Cyan")] c_c: Item<f64>,
-	#[name("(Cyans) Magenta")] c_m: Item<f64>,
-	#[name("(Cyans) Yellow")] c_y: Item<f64>,
-	#[name("(Cyans) Black")] c_k: Item<f64>,
+	#[name("(Cyans) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	c_c: Item<f64>,
+	#[name("(Cyans) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	c_m: Item<f64>,
+	#[name("(Cyans) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	c_y: Item<f64>,
+	#[name("(Cyans) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	c_k: Item<f64>,
 
-	#[name("(Blues) Cyan")] b_c: Item<f64>,
-	#[name("(Blues) Magenta")] b_m: Item<f64>,
-	#[name("(Blues) Yellow")] b_y: Item<f64>,
-	#[name("(Blues) Black")] b_k: Item<f64>,
+	#[name("(Blues) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	b_c: Item<f64>,
+	#[name("(Blues) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	b_m: Item<f64>,
+	#[name("(Blues) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	b_y: Item<f64>,
+	#[name("(Blues) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	b_k: Item<f64>,
 
-	#[name("(Magentas) Cyan")] m_c: Item<f64>,
-	#[name("(Magentas) Magenta")] m_m: Item<f64>,
-	#[name("(Magentas) Yellow")] m_y: Item<f64>,
-	#[name("(Magentas) Black")] m_k: Item<f64>,
+	#[name("(Magentas) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	m_c: Item<f64>,
+	#[name("(Magentas) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	m_m: Item<f64>,
+	#[name("(Magentas) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	m_y: Item<f64>,
+	#[name("(Magentas) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	m_k: Item<f64>,
 
-	#[name("(Whites) Cyan")] w_c: Item<f64>,
-	#[name("(Whites) Magenta")] w_m: Item<f64>,
-	#[name("(Whites) Yellow")] w_y: Item<f64>,
-	#[name("(Whites) Black")] w_k: Item<f64>,
+	#[name("(Whites) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	w_c: Item<f64>,
+	#[name("(Whites) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	w_m: Item<f64>,
+	#[name("(Whites) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	w_y: Item<f64>,
+	#[name("(Whites) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	w_k: Item<f64>,
 
-	#[name("(Neutrals) Cyan")] n_c: Item<f64>,
-	#[name("(Neutrals) Magenta")] n_m: Item<f64>,
-	#[name("(Neutrals) Yellow")] n_y: Item<f64>,
-	#[name("(Neutrals) Black")] n_k: Item<f64>,
+	#[name("(Neutrals) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	n_c: Item<f64>,
+	#[name("(Neutrals) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	n_m: Item<f64>,
+	#[name("(Neutrals) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	n_y: Item<f64>,
+	#[name("(Neutrals) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	n_k: Item<f64>,
 
-	#[name("(Blacks) Cyan")] k_c: Item<f64>,
-	#[name("(Blacks) Magenta")] k_m: Item<f64>,
-	#[name("(Blacks) Yellow")] k_y: Item<f64>,
-	#[name("(Blacks) Black")] k_k: Item<f64>,
+	#[name("(Blacks) Cyan")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	k_c: Item<f64>,
+	#[name("(Blacks) Magenta")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	k_m: Item<f64>,
+	#[name("(Blacks) Yellow")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	k_y: Item<f64>,
+	#[name("(Blacks) Black")]
+	#[unit("%")]
+	#[range]
+	#[soft(-100..100)]
+	k_k: Item<f64>,
 
 	_colors: Item<SelectiveColorChoice>,
 ) -> Item<T> {
@@ -1740,7 +2200,11 @@ fn exposure<T: Adjust<Color>>(
 	#[implementations(Raster<CPU>, Color, Gradient)]
 	#[gpu_image]
 	input: Item<T>,
+	#[range]
+	#[soft(-20..20)]
 	exposure: Item<f64>,
+	#[range]
+	#[soft(-0.5..0.5)]
 	offset: Item<f64>,
 	#[default(1.)]
 	#[range]
@@ -1873,17 +2337,53 @@ fn color_balance<T: Adjust<Color>>(
 	#[gpu_image]
 	image: Item<T>,
 
-	#[name("(Shadows) Cyan-Red")] shadows_cyan_red: Item<SignedPercentage>,
-	#[name("(Shadows) Magenta-Green")] shadows_magenta_green: Item<SignedPercentage>,
-	#[name("(Shadows) Yellow-Blue")] shadows_yellow_blue: Item<SignedPercentage>,
+	#[name("(Shadows) Cyan-Red")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	shadows_cyan_red: Item<f64>,
+	#[name("(Shadows) Magenta-Green")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	shadows_magenta_green: Item<f64>,
+	#[name("(Shadows) Yellow-Blue")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	shadows_yellow_blue: Item<f64>,
 
-	#[name("(Midtones) Cyan-Red")] midtones_cyan_red: Item<SignedPercentage>,
-	#[name("(Midtones) Magenta-Green")] midtones_magenta_green: Item<SignedPercentage>,
-	#[name("(Midtones) Yellow-Blue")] midtones_yellow_blue: Item<SignedPercentage>,
+	#[name("(Midtones) Cyan-Red")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	midtones_cyan_red: Item<f64>,
+	#[name("(Midtones) Magenta-Green")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	midtones_magenta_green: Item<f64>,
+	#[name("(Midtones) Yellow-Blue")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	midtones_yellow_blue: Item<f64>,
 
-	#[name("(Highlights) Cyan-Red")] highlights_cyan_red: Item<SignedPercentage>,
-	#[name("(Highlights) Magenta-Green")] highlights_magenta_green: Item<SignedPercentage>,
-	#[name("(Highlights) Yellow-Blue")] highlights_yellow_blue: Item<SignedPercentage>,
+	#[name("(Highlights) Cyan-Red")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	highlights_cyan_red: Item<f64>,
+	#[name("(Highlights) Magenta-Green")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	highlights_magenta_green: Item<f64>,
+	#[name("(Highlights) Yellow-Blue")]
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	highlights_yellow_blue: Item<f64>,
 
 	#[default(true)] preserve_luminosity: Item<bool>,
 
@@ -1894,7 +2394,7 @@ fn color_balance<T: Adjust<Color>>(
 	let preserve_luminosity = preserve_luminosity.into_element();
 
 	// The derivation below is integer arithmetic, so the sliders round to whole percentages first
-	let slider = |value: f32| value.clamp(-100., 100.).round() as i32;
+	let slider = |value: f32| value.round() as i32;
 	let (s_r, s_g, s_b) = (
 		slider(shadows_cyan_red.into_element() as f32),
 		slider(shadows_magenta_green.into_element() as f32),
@@ -1937,12 +2437,16 @@ fn photo_filter<T: Adjust<Color>>(
 	#[gpu_image]
 	image: Item<T>,
 	#[default("#ec8a00")] color: Item<Color>,
-	#[default(25.)] density: Item<Percentage>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(25.)]
+	density: Item<f64>,
 	#[default(true)] preserve_luminosity: Item<bool>,
 ) -> Item<T> {
 	let mut image = image;
 	let color = color.into_element();
-	let density = (density.into_element() / 100.).clamp(0., 1.) as f32;
+	let density = (density.into_element() / 100.) as f32;
 	let preserve_luminosity = preserve_luminosity.into_element();
 
 	// The image is multiplied in XYZ by the filter color normalized to the white point, with density easing that multiplier toward 1

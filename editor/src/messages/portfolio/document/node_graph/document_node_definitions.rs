@@ -40,17 +40,30 @@ pub struct NodePropertiesContext<'a> {
 impl NodePropertiesContext<'_> {
 	pub fn call_widget_override(&mut self, node_id: &NodeId, index: usize) -> Option<Vec<LayoutGroup>> {
 		let input_properties_row = self.network_interface.persistent_input_metadata(node_id, index, self.selection_network_path)?;
-		if let Some(widget_override) = &input_properties_row.widget_override {
-			let Some(widget_override_lambda) = INPUT_OVERRIDES.get(widget_override) else {
-				log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
+
+		// The stored override wins, falling back to the definition's own so documents saved before it gained one still
+		// pick it up. Only `Custom` is recovered, since the other kinds also need input data stored at insertion time.
+		let widget_override = input_properties_row.widget_override.clone().or_else(|| {
+			let implementation = self.network_interface.implementation(node_id, self.selection_network_path)?;
+			let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation else {
 				return None;
 			};
-			widget_override_lambda(*node_id, index, self)
-				.map_err(|error| log::error!("Error in widget override lambda: {error}"))
-				.ok()
-		} else {
-			None
-		}
+
+			let metadata = registry::NODE_METADATA.lock().unwrap();
+			let field = metadata.get(proto_node_identifier)?.fields.get(index)?;
+			match field.widget_override {
+				registry::RegistryWidgetOverride::Custom(name) => Some(name.to_string()),
+				_ => None,
+			}
+		})?;
+
+		let Some(widget_override_lambda) = INPUT_OVERRIDES.get(&widget_override) else {
+			log::error!("Could not get widget override '{widget_override}' lambda in call_widget_override");
+			return None;
+		};
+		widget_override_lambda(*node_id, index, self)
+			.map_err(|error| log::error!("Error in widget override lambda: {error}"))
+			.ok()
 	}
 }
 
@@ -348,14 +361,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// 2: Max (clamp subpath count to at least 1 for empty path case)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::Number(1.), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 2)),
 							..Default::default()
 						},
-						// 3: Floor (integer count per subpath)
+						// 3: As Number (the integer count enters the network's decimal math)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::floor::IDENTIFIER),
-							inputs: vec![NodeInput::import(item!(f64), 1)],
+							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::as_number::IDENTIFIER),
+							inputs: vec![NodeInput::import(item!(i64), 1)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 13)),
 							..Default::default()
 						},
@@ -369,14 +382,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// 5: Subtract (count - 1, open subpath denominator)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::subtract::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::value(TaggedValue::Number(1.), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(16, 14)),
 							..Default::default()
 						},
 						// 6: Read Index (current repetition index)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(context::read_index::IDENTIFIER),
-							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::I64(0), false)],
+							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::Integer(0), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 7)),
 							..Default::default()
 						},
@@ -425,7 +438,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// 13: Multiply (fraction × 0.9999999999 to avoid overflowing to the next subpath)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::multiply::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::value(TaggedValue::F64(0.9999999999), false)],
+							inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::value(TaggedValue::Number(0.9999999999), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(30, 7)),
 							..Default::default()
 						},
@@ -459,14 +472,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						// 17: Max (clamp count to at least 1)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(3), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							inputs: vec![NodeInput::node(NodeId(3), 0), NodeInput::value(TaggedValue::Number(1.), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(9, 13)),
 							..Default::default()
 						},
 						// 18: Max (clamp open-path denominator to at least 1 to avoid division by zero when count = 1)
 						NodeTemplate {
 							implementation: NodeTemplateImplementation::ProtoNode(math_nodes::max::IDENTIFIER),
-							inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::value(TaggedValue::F64(1.), false)],
+							inputs: vec![NodeInput::node(NodeId(5), 0), NodeInput::value(TaggedValue::Number(1.), false)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(23, 14)),
 							..Default::default()
 						},
@@ -479,7 +492,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				}),
 				inputs: vec![
 					NodeInput::type_default(list!(Vector), true),
-					NodeInput::value(TaggedValue::F64(10.), false),
+					NodeInput::value(TaggedValue::Integer(10), false),
 					NodeInput::value(TaggedValue::Bool(Default::default()), false),
 					NodeInput::value(TaggedValue::InterpolationDistribution(Default::default()), false),
 					NodeInput::type_default(item!(Vector), false),
@@ -801,7 +814,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							inputs: vec![
 								NodeInput::import(item!(String), 0),
 								NodeInput::import(item!(String), 1),
-								NodeInput::import(item!(f64), 2),
+								NodeInput::import(item!(i64), 2),
 								NodeInput::import(item!(bool), 3),
 								NodeInput::import(item!(bool), 4),
 							],
@@ -811,14 +824,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						},
 						// Node 1: item_at_index at index 0, extracts the whole match as a bare String (drops the item's start/end/name attributes since the unwrapped String can't carry them)
 						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::Integer(0), false)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::item_at_index::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 0)),
 							..Default::default()
 						},
 						// Node 2: remove_at_index at index 0, returns the capture group items as a List<String>, preserving each item's start/end/name attributes
 						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(0.), false)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::Integer(0), false)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::remove_at_index::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(8, 2)),
 							..Default::default()
@@ -833,7 +846,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				inputs: vec![
 					NodeInput::value(TaggedValue::String(String::new()), true),
 					NodeInput::value(TaggedValue::String(String::new()), false),
-					NodeInput::value(TaggedValue::F64(0.), false),
+					NodeInput::value(TaggedValue::Integer(0), false),
 					NodeInput::value(TaggedValue::Bool(false), false),
 					NodeInput::value(TaggedValue::Bool(false), false),
 				],
@@ -1098,6 +1111,11 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
+		// A type-witness input, whose stored value's type selects the node's row: the dropdown lists the types the rows accept there
+		"type_choice".to_string(),
+		Box::new(|node_id, index, context| Ok(vec![node_properties::type_choice_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context))])),
+	);
+	map.insert(
 		"vec2".to_string(),
 		Box::new(|node_id, index, context| {
 			let x = context
@@ -1350,7 +1368,7 @@ fn static_input_properties() -> InputProperties {
 			let Some(input) = document_node.inputs.get(index) else {
 				return Err("Input not found in transform rotation input override".to_string());
 			};
-			if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
+			if let Some(&TaggedValue::Number(val)) = input.as_non_exposed_value() {
 				widgets.extend_from_slice(&[
 					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(val))
@@ -1359,7 +1377,7 @@ fn static_input_properties() -> InputProperties {
 						.range_min(Some(-180.))
 						.range_max(Some(180.))
 						.on_update(node_properties::update_value_at_index(
-							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()),
+							|number_input: &NumberInput| TaggedValue::Number(number_input.value.unwrap()),
 							node_id,
 							index,
 						))

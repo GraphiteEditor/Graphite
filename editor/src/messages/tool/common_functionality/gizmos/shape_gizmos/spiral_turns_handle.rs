@@ -68,6 +68,7 @@ impl SpiralTurns {
 		self.handle_state == SpiralTurnsState::Dragging
 	}
 
+	#[expect(clippy::too_many_arguments, reason = "the gizmo records one value per spiral parameter, so grouping them would only move the argument list")]
 	pub fn store_initial_parameters(
 		&mut self,
 		layer: LayerNodeIdentifier,
@@ -190,15 +191,15 @@ impl SpiralTurns {
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, StartAngleInput),
-					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),
+					input: NodeInput::value(TaggedValue::Number(self.initial_start_angle + total_delta), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
-					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
+					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
 				});
 			}
 			GizmoType::End => {
@@ -207,11 +208,11 @@ impl SpiralTurns {
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
-					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
+					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
 				});
 			}
 			GizmoType::None => {

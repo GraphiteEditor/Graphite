@@ -101,30 +101,6 @@ impl From<String> for BoxCorners {
 	}
 }
 
-pub trait AsU64 {
-	fn as_u64(&self) -> u64;
-}
-impl AsU64 for u32 {
-	fn as_u64(&self) -> u64 {
-		*self as u64
-	}
-}
-impl AsU64 for u64 {
-	fn as_u64(&self) -> u64 {
-		*self
-	}
-}
-impl AsU64 for i64 {
-	fn as_u64(&self) -> u64 {
-		(*self).max(0) as u64
-	}
-}
-impl AsU64 for f64 {
-	fn as_u64(&self) -> u64 {
-		*self as u64
-	}
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

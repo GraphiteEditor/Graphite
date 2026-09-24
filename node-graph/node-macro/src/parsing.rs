@@ -119,6 +119,8 @@ pub struct ParsedField {
 	pub number_display_decimal_places: Option<LitInt>,
 	pub number_step: Option<LitFloat>,
 	pub unit: Option<LitStr>,
+	pub multiline: bool,
+	pub progression: bool,
 	pub is_data_field: bool,
 }
 
@@ -858,12 +860,17 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, "Expected a unit type as string".to_string())))
 		.transpose()?;
 
+	// Widget-selection markers: `#[multiline]` gives a `String` parameter the multi-line text area widget, and `#[progression]`
+	// splits a number into fractional-progress and whole-element-number fields
+	let multiline = extract_attribute(attrs, "multiline").is_some();
+	let progression = extract_attribute(attrs, "progression").is_some();
+
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
 		.map(|attr| {
 			attr.parse_args::<LitInt>().map_err(|e| {
 				Error::new_spanned(
 					attr,
-					format!("Invalid `integer` for number of decimals for argument '{ident}': {e}\nUSAGE EXAMPLE: #[display_decimal_places(2)]"),
+					format!("Invalid whole number of decimal places for argument '{ident}': {e}\nUSAGE EXAMPLE: #[display_decimal_places(2)]"),
 				)
 			})
 		})
@@ -937,6 +944,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_display_decimal_places,
 			number_step,
 			unit,
+			multiline,
+			progression,
 			is_data_field,
 		})
 	} else {
@@ -988,6 +997,8 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_display_decimal_places,
 			number_step,
 			unit,
+			multiline,
+			progression,
 			is_data_field,
 		})
 	}
@@ -1032,27 +1043,14 @@ fn narrow_shader_fields(fields: &mut [ParsedField]) -> syn::Result<()> {
 		}
 
 		let element = peel_item(&declared).unwrap_or_else(|| declared.clone());
-		if ["f32", "i32", "PercentageF32", "SignedPercentageF32", "AngleF32"].iter().any(|name| is_primitive_type(&element, name)) {
+		if is_primitive_type(&element, "f32") || is_primitive_type(&element, "i32") {
 			return Err(Error::new_spanned(
 				&declared,
 				"A shader node's parameters are declared as `f64` or `i64`, the graph's Number and Integer types; the macro narrows them to the `f32` or `i32` the shader computes with",
 			));
 		}
 
-		// The registry's f64 typedefs, like `Percentage` and `Angle`, spell the graph's Number by its widget meaning and narrow the same way
-		let spells_f64 = [
-			"f64",
-			"Percentage",
-			"SignedPercentage",
-			"Angle",
-			"Multiplier",
-			"PixelLength",
-			"Length",
-			"Fraction",
-			"Progression",
-			"SignedInteger",
-		];
-		let counterpart: Type = if spells_f64.iter().any(|name| is_primitive_type(&element, name)) {
+		let counterpart: Type = if is_primitive_type(&element, "f64") {
 			parse_quote!(f32)
 		} else if is_primitive_type(&element, "i64") {
 			parse_quote!(i32)
@@ -1309,6 +1307,8 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				multiline: false,
+				progression: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1375,6 +1375,8 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
+					multiline: false,
+					progression: false,
 					is_data_field: false,
 				},
 				ParsedField {
@@ -1398,6 +1400,8 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
+					multiline: false,
+					progression: false,
 					is_data_field: false,
 				},
 			],
@@ -1468,6 +1472,8 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				multiline: false,
+				progression: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1541,6 +1547,8 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				multiline: false,
+				progression: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1616,6 +1624,8 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				multiline: false,
+				progression: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1699,6 +1709,8 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				multiline: false,
+				progression: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),

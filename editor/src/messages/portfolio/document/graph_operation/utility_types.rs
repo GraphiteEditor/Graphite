@@ -94,10 +94,10 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&boolean_id, layer, &[], self.import);
 	}
 
-	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: f64) -> NodeId {
+	pub fn insert_blend_data(&mut self, layer: LayerNodeIdentifier, count: i64) -> NodeId {
 		let blend = resolve_network_node_type("Blend")
 			.expect("Blend node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::F64(count), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::Integer(count), false))]);
 
 		let blend_id = NodeId::new();
 		self.network_interface.insert_node(blend_id, blend, &[]);
@@ -109,7 +109,7 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn insert_morph_data(&mut self, layer: LayerNodeIdentifier) -> NodeId {
 		let morph = resolve_proto_node_type(graphene_std::vector::morph::IDENTIFIER)
 			.expect("Morph node does not exist")
-			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::F64(0.5), false))]);
+			.node_template_input_override([Some(NodeInput::type_default(list!(Graphic), true)), Some(NodeInput::value(TaggedValue::Number(0.5), false))]);
 
 		let morph_id = NodeId::new();
 		self.network_interface.insert_node(morph_id, morph, &[]);
@@ -131,7 +131,7 @@ impl<'a> ModifyInputsContext<'a> {
 		// Add Auto-Tangents node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
 		let auto_tangents = resolve_proto_node_type(graphene_std::vector::auto_tangents::IDENTIFIER)
 			.expect("Auto-Tangents node does not exist")
-			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::Bool(false), false))]);
+			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(1.), false)), Some(NodeInput::value(TaggedValue::Bool(false), false))]);
 		let auto_tangents_id = NodeId::new();
 		self.network_interface.insert_node(auto_tangents_id, auto_tangents, &[]);
 		self.network_interface.move_node_to_chain_start(&auto_tangents_id, layer, &[], self.import);
@@ -193,14 +193,14 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::None, false)),
 				Some(NodeInput::value(TaggedValue::String(text), false)),
 				Some(NodeInput::value(TaggedValue::Resource(font_resource_id), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.font_size), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.line_height_ratio), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.letter_spacing), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.letter_tilt), false)),
+				Some(NodeInput::value(TaggedValue::Number(typesetting.font_size), false)),
+				Some(NodeInput::value(TaggedValue::Number(typesetting.line_height_ratio), false)),
+				Some(NodeInput::value(TaggedValue::Number(typesetting.letter_spacing), false)),
+				Some(NodeInput::value(TaggedValue::Number(typesetting.letter_tilt), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.max_width.unwrap_or(100.)), false)),
+				Some(NodeInput::value(TaggedValue::Number(typesetting.max_width.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),
-				Some(NodeInput::value(TaggedValue::F64(typesetting.max_height.unwrap_or(100.)), false)),
+				Some(NodeInput::value(TaggedValue::Number(typesetting.max_height.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::TextAlign(typesetting.align), false)),
 			]);
 		let text_to_vector = resolve_proto_node_type(graphene_std::text::text_to_vector::IDENTIFIER)
@@ -526,7 +526,7 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 		self.set_input_with_refresh(
 			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::OpacityInput),
-			NodeInput::value(TaggedValue::F64(opacity * 100.), false),
+			NodeInput::value(TaggedValue::Number(opacity * 100.), false),
 			false,
 		);
 	}
@@ -555,7 +555,7 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 		self.set_input_with_refresh(
 			InputConnector::node(opacity_node_id, graphene_std::blending_nodes::opacity::FillInput),
-			NodeInput::value(TaggedValue::F64(fill * 100.), false),
+			NodeInput::value(TaggedValue::Number(fill * 100.), false),
 			false,
 		);
 	}
@@ -666,7 +666,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_positions::PositionsInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(positions), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Numbers(positions), false), false);
 	}
 
 	/// The 'Gradient Midpoints' counterpart of [`Self::gradient_positions_set`], likewise update-only.
@@ -690,7 +690,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 
 		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_midpoints::MidpointsInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64Array(midpoints), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Numbers(midpoints), false), false);
 	}
 
 	/// Update the transform to map the unit gradient ((0,0), (1, 0)) to the geometry's local space.
@@ -865,7 +865,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.weight), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Number(stroke.weight), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput);
@@ -873,11 +873,11 @@ impl<'a> ModifyInputsContext<'a> {
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::JoinInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeJoin(stroke.join), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::MiterLimitInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Number(stroke.join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Number(stroke.dash_offset), false), true);
 	}
 
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.

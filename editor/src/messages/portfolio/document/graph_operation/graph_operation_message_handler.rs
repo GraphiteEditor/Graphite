@@ -287,7 +287,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// Insert the main chain node (Blend or Morph) depending on whether a blend count is provided, referencing
 				// its control path input by the Blend template's named position or the Morph proto node's parameter symbol
 				let (path_input_connector, layer_alias, path_alias) = if let Some(count) = blend_count {
-					let blend_node_id = modify_inputs.insert_blend_data(layer, count as f64);
+					let blend_node_id = modify_inputs.insert_blend_data(layer, count as i64);
 					(InputConnector::node_at_index(blend_node_id, BLEND_PATH_INPUT_INDEX), "Blend", "Blend Path")
 				} else {
 					let morph_node_id = modify_inputs.insert_morph_data(layer);
@@ -881,9 +881,9 @@ fn insert_brush_strokes_chain(network_interface: &mut NodeNetworkInterface, laye
 	let strokes_node = strokes_node_type.node_template_input_override([
 		Some(NodeInput::value(TaggedValue::Strokes(Vec::new()), false)),
 		Some(NodeInput::value(TaggedValue::Color(color), false)),
-		Some(NodeInput::value(TaggedValue::F64(diameter), false)),
-		Some(NodeInput::value(TaggedValue::F64(hardness), false)),
-		Some(NodeInput::value(TaggedValue::F64(flow), false)),
+		Some(NodeInput::value(TaggedValue::Number(diameter), false)),
+		Some(NodeInput::value(TaggedValue::Number(hardness), false)),
+		Some(NodeInput::value(TaggedValue::Number(flow), false)),
 	]);
 	network_interface.insert_node(strokes_node_id, strokes_node, &[]);
 	network_interface.set_input(&InputConnector::node_at_index(layer.to_node(), 1), NodeInput::node(strokes_node_id, 0), &[]);

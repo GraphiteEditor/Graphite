@@ -62,14 +62,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Footprint>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DVec2>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<bool>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<u32>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<u64>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<String>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<NodeIdPath>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<f64>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<u32>]),
-		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<u64>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DVec2>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<bool>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<DAffine2>]),
@@ -133,8 +129,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Footprint>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<DVec2>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<bool>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<u32>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<u64>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
@@ -330,7 +324,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	macro_rules! ranked_value_types {
 		($register:ident) => {
 			$register!(
-				i32,
 				i64,
 				BlendMode,
 				StrokeJoin,
@@ -391,8 +384,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Gradient,
 		String,
 		f64,
-		u64,
-		u32,
 		DVec2,
 		DAffine2,
 		bool,
@@ -424,8 +415,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Color,
 		Gradient,
 		f64,
-		u32,
-		u64,
+		i64,
 		bool,
 		String,
 		DVec2,
@@ -451,12 +441,13 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		}};
 	}
 	node_types.extend(bundle_adapter_nodes!(
+		// Numeric family
 		bool,
 		f64,
-		u32,
-		u64,
+		i64,
 		DVec2,
 		DAffine2,
+		// Graphic family
 		Graphic,
 		Raster<CPU>,
 		Vector,
@@ -539,13 +530,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		}};
 	}
 	// Numeric wires cast between numeric element types, splat to fill both axes of a `DVec2` connector, and format into a `String` connector
-	node_types.extend(convert_adapter_wildcard!(from: f64, to: [u32, u64, i32, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: u32, to: [f64, u64, i32, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: u64, to: [f64, u32, i32, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: i32, to: [f64, u32, u64, i64, DVec2, String]));
-	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, u32, u64, i32, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: f64, to: [i64, DVec2, String]));
+	node_types.extend(convert_adapter_wildcard!(from: i64, to: [f64, DVec2, String]));
 	// A bool embeds in number types as exactly 0 or 1 and formats as text as true or false, but deliberately has no `DVec2` row, which would silently turn a stray bool wire into (1., 1.)
-	node_types.extend(convert_adapter_wildcard!(from: bool, to: [f64, u32, u64, i32, i64, String]));
+	node_types.extend(convert_adapter_wildcard!(from: bool, to: [f64, i64, String]));
 	// Position and transform wires may feed a ranked `String` connector by formatting each element as text
 	node_types.extend(convert_adapter_node!(from_element: DVec2, element: String));
 	node_types.extend(convert_adapter_node!(from_element: DAffine2, element: String));
@@ -560,8 +548,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	}
 	let attribute_value_rows: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
 		attribute_value_node!(Item<f64>),
-		attribute_value_node!(Item<u32>),
-		attribute_value_node!(Item<u64>),
+		attribute_value_node!(Item<i64>),
 		attribute_value_node!(Item<bool>),
 		attribute_value_node!(Item<String>),
 		attribute_value_node!(Item<DVec2>),

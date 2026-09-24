@@ -105,11 +105,11 @@ impl Spiral {
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::SpiralType(spiral_type), false)),
-			Some(NodeInput::value(TaggedValue::F64(turns), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.), false)),
-			Some(NodeInput::value(TaggedValue::F64(inner_radius), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.1), false)),
-			Some(NodeInput::value(TaggedValue::F64(90.), false)),
+			Some(NodeInput::value(TaggedValue::Number(turns), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.), false)),
+			Some(NodeInput::value(TaggedValue::Number(inner_radius), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.1), false)),
+			Some(NodeInput::value(TaggedValue::Number(90.), false)),
 		])
 	}
 
@@ -156,7 +156,7 @@ impl Spiral {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, OuterRadiusInput),
-			input: NodeInput::value(TaggedValue::F64(new_radius), false),
+			input: NodeInput::value(TaggedValue::Number(new_radius), false),
 		});
 	}
 
@@ -173,7 +173,7 @@ impl Spiral {
 			return;
 		};
 
-		let Some(&TaggedValue::F64(mut turns)) = parameters.value(TurnsInput) else {
+		let Some(&TaggedValue::Number(mut turns)) = parameters.value(TurnsInput) else {
 			return;
 		};
 
@@ -189,7 +189,7 @@ impl Spiral {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, TurnsInput),
-			input: NodeInput::value(TaggedValue::F64(turns), false),
+			input: NodeInput::value(TaggedValue::Number(turns), false),
 		});
 	}
 }

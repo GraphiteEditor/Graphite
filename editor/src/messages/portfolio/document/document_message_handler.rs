@@ -1834,6 +1834,12 @@ impl DocumentMessageHandler {
 			self.network_interface.validate_output_names(node_id, node, &path);
 		}
 
+		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what the
+		// fix-ups recorded must not ride along in the first real commit. They still have to reach storage,
+		// so the next commit converts the whole document rather than staging the batch that follows them.
+		self.network_interface.discard_deltas();
+		self.history.require_whole_document_stage();
+
 		self.network_interface.load_structure();
 	}
 
@@ -2027,13 +2033,35 @@ impl DocumentMessageHandler {
 		self.history.retire_storage_interaction();
 	}
 
-	/// Stages the runtime network into the `Gdd` working copy.
-	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
+	/// Marks the working copy as needing a whole-document stage on its next commit, for a change to the
+	/// runtime that went unrecorded.
+	pub(crate) fn require_whole_document_stage(&mut self) {
+		self.history.require_whole_document_stage();
+	}
 
+	/// Stages what the store recorded since the last commit into the `Gdd` working copy.
+	///
+	/// The batch boundary: everything the interface recorded since the last one is this commit's batch.
+	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
+	/// session that never mounts one.
+	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;
 		}
+
+		let (view_settings, legacy_document) = self.storage_side_channels();
+		self.history
+			.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
+
+		if validate {
+			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// The per-peer view settings and legacy bytes that ride along with either kind of staging.
+	fn storage_side_channels(&self) -> (std::collections::BTreeMap<String, serde_json::Value>, String) {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
 		let view_settings = DocumentSettings {
 			document_ptz: &self.document_ptz,
@@ -2045,14 +2073,7 @@ impl DocumentMessageHandler {
 		}
 		.to_view_map();
 
-		let legacy_document = self.serialize_document();
-
-		self.history
-			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
-
-		if validate {
-			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
-		}
+		(view_settings, self.serialize_document())
 	}
 
 	/// Restore `view_settings` map into the document.
@@ -2795,9 +2816,9 @@ impl DocumentMessageHandler {
 			self.network_interface.move_node_to_chain_start(&solidify_id, layer, &[], false);
 
 			if has_fill && has_stroke {
-				let (existing_index, new_index) = (0_f64, 1_f64);
+				let (existing_index, new_index) = (0_i64, 1_i64);
 
-				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Integer(existing_index), false))]);
 				let existing_index_id = NodeId::new();
 				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
@@ -2819,7 +2840,7 @@ impl DocumentMessageHandler {
 					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
 				}
 
-				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Integer(new_index), false))]);
 				let new_index_id = NodeId::new();
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
@@ -4106,10 +4127,11 @@ mod document_message_handler_tests {
 		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
 			let document = editor.active_document();
 			for layer in document.metadata().all_layers() {
-				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
-						return Some(layer);
-					}
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer)
+					&& (bbox[0].x - min_x).abs() < 1.
+					&& (bbox[0].y - min_y).abs() < 1.
+				{
+					return Some(layer);
 				}
 			}
 			None
@@ -4166,7 +4188,6 @@ mod document_message_handler_tests {
 		// The operation completed without crashing
 		// Verifying application still functions by performing another operation
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		assert!(true, "Application didn't crash after folder move operation");
 	}
 
 	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.

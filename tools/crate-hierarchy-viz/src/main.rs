@@ -249,6 +249,9 @@ fn dot_to_svg(dot: &str) -> Result<String> {
 	String::from_utf8(output.stdout).with_context(|| "SVG output was not valid UTF-8")
 }
 
+/// A Graphviz subgraph cluster: its id, its label, its fill color, and which crates belong to it.
+type Cluster = (&'static str, &'static str, &'static str, Box<dyn Fn(&CrateInfo) -> bool>);
+
 fn generate_dot(crates: &[CrateInfo]) -> String {
 	let mut out = String::new();
 	out.push_str("digraph CrateHierarchy {\n");
@@ -257,7 +260,7 @@ fn generate_dot(crates: &[CrateInfo]) -> String {
 	out.push_str("    edge [color=gray];\n\n");
 
 	// Define subgraph clusters
-	let clusters: &[(&str, &str, &str, Box<dyn Fn(&CrateInfo) -> bool>)] = &[
+	let clusters: &[Cluster] = &[
 		(
 			"cluster_core",
 			"Core Components",

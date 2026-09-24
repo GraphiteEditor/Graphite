@@ -113,10 +113,10 @@ pub const ATTR_FONT: &str = "font";
 pub const ATTR_LINE_HEIGHT: &str = "line_height";
 /// Text item's extra spacing between letters in document-space units (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_SPACING: &str = "letter_spacing";
-/// Text item's maximum line-wrap width in document-space units (`Option<f64>`, implicit default `None`).
+/// Text item's maximum line-wrap width in document-space units (`f64`, implicit default `0.`, which leaves the width unbounded).
 pub const ATTR_MAX_WIDTH: &str = "max_width";
 /// Text item's maximum block height in document-space units, past which lines are not drawn
-/// (`Option<f64>`, implicit default `None`).
+/// (`f64`, implicit default `0.`, which leaves the height unbounded).
 pub const ATTR_MAX_HEIGHT: &str = "max_height";
 /// Text item's faux-italic letter tilt angle in degrees (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";

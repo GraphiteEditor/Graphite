@@ -48,7 +48,7 @@ macro_rules! for_each_item_type_default {
 }
 
 /// List element types routed through [`TaggedValue::TypeDefault`], stored as the structural [`Type::List`] form.
-/// `List<f64>` is absent because it stores as `TaggedValue::F64Array`.
+/// `List<f64>` is absent because it stores as `TaggedValue::Numbers`.
 macro_rules! for_each_list_type_default {
 	($action:ident) => {
 		$action!(Graphic);
@@ -84,9 +84,9 @@ macro_rules! tagged_value {
 			/// (Old documents stored a bare `TypeDescriptor` payload, routed to this shape by `deserialize_tagged_value_with_legacy_migration`.)
 			TypeDefault(Type),
 			/// Stored compactly as a `Vec<f64>`, materializes as `List<f64>` at runtime via `to_dynany`/`to_any`. Aliases recover legacy on-disk shapes.
-			#[serde(deserialize_with = "core_types::misc::migrate_to_f64_array")] // TODO: Eventually remove this document upgrade code
-			#[serde(alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
-			F64Array(Vec<f64>),
+			#[serde(deserialize_with = "core_types::misc::migrate_to_numbers")] // TODO: Eventually remove this document upgrade code
+			#[serde(alias = "F64Array", alias = "F64Table", alias = "VecF64", alias = "VecF32", alias = "F64Array4")]
+			Numbers(Vec<f64>),
 			/// Stored compactly as a `Vec<f64>` of dash lengths, materializes as an `Item<DashPattern>` at runtime via `to_dynany`/`to_any`.
 			DashPattern(Vec<f64>),
 			/// Stored compactly as a `Vec<f64>` of corner values, materializes as an `Item<BoxCorners>` at runtime via `to_dynany`/`to_any`.
@@ -139,7 +139,7 @@ macro_rules! tagged_value {
 					// AUTO-GENERATED VARIANTS
 					// =======================
 					$( Self::$identifier(x) => { x.cache_hash(state) }),*
-					Self::F64Array(values) => values.cache_hash(state),
+					Self::Numbers(values) => values.cache_hash(state),
 					Self::DashPattern(lengths) => lengths.cache_hash(state),
 					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::TransferCurve(points) => points.cache_hash(state),
@@ -201,7 +201,7 @@ macro_rules! tagged_value {
 						}
 						Self::from_type_or_none(&td).to_dynany()
 					}
-					Self::F64Array(values) => {
+					Self::Numbers(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
@@ -269,7 +269,7 @@ macro_rules! tagged_value {
 						}
 						Self::from_type_or_none(&td).to_any()
 					}
-					Self::F64Array(values) => {
+					Self::Numbers(values) => {
 						let list: List<f64> = values.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
@@ -306,7 +306,7 @@ macro_rules! tagged_value {
 					// ===============
 					Self::None => concrete!(()),
 					Self::TypeDefault(td) => td.clone(),
-					Self::F64Array(_) => list!(f64),
+					Self::Numbers(_) => list!(f64),
 					Self::DashPattern(_) => item!(DashPattern),
 					Self::BoxCorners(_) => item!(BoxCorners),
 					Self::TransferCurve(_) => item!(TransferCurve),
@@ -343,8 +343,8 @@ macro_rules! tagged_value {
 					// ===============
 					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
-					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(*downcast(input).unwrap())),
-					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::Numbers(*downcast(input).unwrap())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::Numbers(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
 					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
@@ -379,8 +379,8 @@ macro_rules! tagged_value {
 					// ===============
 					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
-					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<Vec<f64>>().unwrap().clone())),
-					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::F64Array(input.downcast_ref::<List<f64>>().unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::Numbers(input.downcast_ref::<Vec<f64>>().unwrap().clone())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::Numbers(input.downcast_ref::<List<f64>>().unwrap().iter_element_values().copied().collect())),
 					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast_ref::<Item<DashPattern>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
@@ -442,10 +442,10 @@ macro_rules! tagged_value {
 						for_each_item_type_default!(check);
 						None
 					}),
-					// Structural lists match by element; `List<f64>` stays the dedicated `F64Array` variant
+					// Structural lists match by element; `List<f64>` stays the dedicated `Numbers` variant
 					Type::List(element) => {
 						if **element == concrete!(f64) {
-							return Some(TaggedValue::F64Array(Vec::new()));
+							return Some(TaggedValue::Numbers(Vec::new()));
 						}
 						if **element == concrete!(Stroke) {
 							return Some(TaggedValue::Strokes(Vec::new()));
@@ -472,7 +472,7 @@ macro_rules! tagged_value {
 					// ===============
 					Self::None => "()".to_string(),
 					Self::TypeDefault(td) => format!("TypeDefault({td})"),
-					Self::F64Array(values) => format!("F64Array({values:?})"),
+					Self::Numbers(values) => format!("Numbers({values:?})"),
 					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::TransferCurve(points) => format!("TransferCurve({points:?})"),
@@ -522,11 +522,11 @@ tagged_value! {
 	// ===============
 	// PRIMITIVE TYPES
 	// ===============
-	F32(f32),
-	F64(f64),
-	U32(u32),
-	U64(u64),
-	I64(i64),
+	#[serde(alias = "F64", alias = "F32")] // TODO: Eventually remove this document upgrade code
+	Number(f64),
+	#[serde(deserialize_with = "core_types::misc::migrate_to_i64")] // TODO: Eventually remove this document upgrade code
+	#[serde(alias = "I64", alias = "U32", alias = "U64")]
+	Integer(i64),
 	Bool(bool),
 	String(String),
 	#[serde(alias = "IVec2", alias = "UVec2", alias = "Vec2")]
@@ -607,11 +607,8 @@ impl TaggedValue {
 		match self {
 			TaggedValue::None => "()".to_string(),
 			TaggedValue::String(x) => format!("\"{x}\""),
-			TaggedValue::U32(x) => x.to_string() + "_u32",
-			TaggedValue::U64(x) => x.to_string() + "_u64",
-			TaggedValue::I64(x) => x.to_string() + "_i64",
-			TaggedValue::F32(x) => x.to_string() + "_f32",
-			TaggedValue::F64(x) => x.to_string() + "_f64",
+			TaggedValue::Integer(x) => x.to_string() + "_i64",
+			TaggedValue::Number(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
 			_ => panic!("Cannot convert to primitive string"),
@@ -706,8 +703,8 @@ impl TaggedValue {
 				let ty = match () {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,
 					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					() if ty == TypeId::of::<i64>() => FromStr::from_str(string).map(TaggedValue::I64).ok()?,
+					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::Number).ok()?,
+					() if ty == TypeId::of::<i64>() => FromStr::from_str(string).map(TaggedValue::Integer).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
@@ -860,11 +857,8 @@ impl Display for TaggedValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			TaggedValue::String(x) => f.write_str(x),
-			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::I64(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::F32(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::Integer(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::Number(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
@@ -1160,5 +1154,37 @@ mod gradient_shape_migration {
 			vec![0., 1.],
 			"the nested tuple stops should parse through the field adapter"
 		);
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+#[cfg(test)]
+mod retired_numeric_variants {
+	use super::*;
+
+	fn load(payload: serde_json::Value) -> TaggedValue {
+		deserialize_tagged_value_with_legacy_migration(payload)
+			.expect("The numeric payload should deserialize")
+			.into_inner()
+			.as_ref()
+			.clone()
+	}
+
+	#[test]
+	fn unsigned_tags_read_as_integers() {
+		assert_eq!(load(serde_json::json!({ "U32": 7 })), TaggedValue::Integer(7));
+		assert_eq!(load(serde_json::json!({ "U64": 9 })), TaggedValue::Integer(9));
+	}
+
+	#[test]
+	fn an_unsigned_value_past_the_signed_range_saturates() {
+		assert_eq!(load(serde_json::json!({ "U64": u64::MAX })), TaggedValue::Integer(i64::MAX));
+	}
+
+	#[test]
+	fn the_32_bit_float_tag_reads_the_digits_it_stored() {
+		// The stored text is what the author chose, so reading it as f64 beats widening the 32-bit value it parsed into
+		assert_eq!(load(serde_json::json!({ "F32": 2.2 })), TaggedValue::Number(2.2));
+		assert_ne!(load(serde_json::json!({ "F32": 2.2 })), TaggedValue::Number(2.2_f32 as f64));
 	}
 }

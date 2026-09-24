@@ -314,10 +314,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Document was closed before its working copy finished mounting.
 					return;
 				};
-				let Some((gdd, declarations)) = mounted else {
+				let Some(mounted) = mounted else {
 					log::error!("DocumentStorageMounted for {document_id:?} arrived without its payload");
 					return;
 				};
+				let (gdd, declarations) = *mounted;
 				document.set_storage(gdd, declarations);
 				if !reopened {
 					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
@@ -641,7 +642,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.network_interface.validate_input_metadata(node_id, node, &path);
 					document.network_interface.validate_output_names(node_id, node, &path);
 				}
-
 				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 				document.network_interface.load_structure();
 				let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
@@ -671,6 +671,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						}
 					}
 				}
+
+				// Everything above is how the document arrives rather than an edit to it, so what those fix-ups
+				// recorded must not ride along in the first real commit. They still have to reach storage, so
+				// the next commit converts the whole document instead of staging the batch that follows them.
+				document.network_interface.discard_deltas();
+				document.require_whole_document_stage();
 
 				// Set the save state of the document based on what's given to us by the caller to this message
 				document.set_auto_save_state(document_is_auto_saved);
@@ -1319,7 +1325,7 @@ impl PortfolioMessageHandler {
 			Message::Portfolio(PortfolioMessage::DocumentStorageMounted {
 				document_id,
 				reopened,
-				mounted: Some((gdd, declarations)),
+				mounted: Some(Box::new((gdd, declarations))),
 			})
 		};
 		future.into()
