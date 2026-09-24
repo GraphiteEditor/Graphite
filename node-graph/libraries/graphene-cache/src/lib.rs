@@ -6,85 +6,84 @@ use std::sync::{Arc, Mutex};
 // Cache
 // =====
 
-/// A small keyed cache backed by a linear `Vec`.
-/// It is not intended for many entries, so its `CachePolicy` must evict entries to keep the cache bounded.
+/// A keyed cache backed by a linear `Vec`.
 pub struct Cache<Key, Policy: CachePolicy<Key>> {
-	inner: Arc<Mutex<CacheInner<Key, Policy>>>,
-	nonce: u64, // Avoid deduplication of cache entries across different brush nodes.
+	state: Arc<Mutex<CacheState<Key, Policy>>>,
+	nonce: u64, // Avoid deduplication of cache instances across different nodes.
 }
 
-impl<K: Copy + PartialEq, Policy: CachePolicy<K>> Cache<K, Policy> {
+impl<Key: Copy + PartialEq, Policy: CachePolicy<Key>> Cache<Key, Policy> {
 	/// Removes and returns the value stored for `key`.
 	/// Returns `None` if the key is absent or the stored value has a different type.
 	/// A type mismatch leaves the original value cached.
-	pub fn take<V: std::any::Any + Send + Sync>(&self, key: &K) -> Option<V> {
-		let mut guard = self.inner.lock().unwrap();
+	pub fn take<V: std::any::Any + Send + Sync>(&self, key: &Key) -> Option<V> {
+		let mut guard = self.state.lock().unwrap();
 		guard.take::<V>(key)
 	}
 
 	/// Clones the value stored for `key` without removing it.
 	/// Returns `None` if the key is absent or the stored value has a different type.
 	/// Cloning occurs while the cache lock is held.
-	pub fn get_cloned<V: std::any::Any + Send + Sync + Clone>(&self, key: &K) -> Option<V> {
-		let mut guard = self.inner.lock().unwrap();
+	pub fn get_cloned<V: std::any::Any + Send + Sync + Clone>(&self, key: &Key) -> Option<V> {
+		let mut guard = self.state.lock().unwrap();
 		guard.get_cloned(key)
 	}
 
 	/// Stores a value for `key`, replacing any existing value with the same key, regardless of its concrete type.
-	pub fn store<V: std::any::Any + Send + Sync>(&self, key: &K, value: V) {
-		self.inner.lock().unwrap().store(key, Box::new(value));
+	pub fn store<V: std::any::Any + Send + Sync>(&self, key: &Key, value: V) {
+		self.state.lock().unwrap().store(key, Box::new(value));
 	}
 }
 
-impl<K, Policy: CachePolicy<K>> Default for Cache<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> Default for Cache<Key, Policy> {
 	fn default() -> Self {
 		Self {
-			inner: Default::default(),
+			state: Default::default(),
 			nonce: core_types::uuid::generate_uuid(),
 		}
 	}
 }
 
-impl<K, Policy: CachePolicy<K>> Clone for Cache<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> Clone for Cache<Key, Policy> {
 	fn clone(&self) -> Self {
 		Self {
-			inner: self.inner.clone(),
+			state: self.state.clone(),
 			nonce: self.nonce,
 		}
 	}
 }
 
-impl<K, Policy: CachePolicy<K>> PartialEq for Cache<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> PartialEq for Cache<Key, Policy> {
 	fn eq(&self, _: &Self) -> bool {
 		true
 	}
 }
 
-impl<K, Policy: CachePolicy<K>> std::fmt::Debug for Cache<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> std::fmt::Debug for Cache<Key, Policy> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("Cache").field("entries", &self.inner.lock().unwrap().entries.len()).finish()
+		f.debug_struct("Cache").field("entries", &self.state.lock().unwrap().entries.len()).finish()
 	}
 }
 
-impl<K, Policy: CachePolicy<K>> core_types::CacheHash for Cache<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> core_types::CacheHash for Cache<Key, Policy> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		state.write_u64(self.nonce);
 	}
 }
 
-unsafe impl<K: 'static, Policy: CachePolicy<K> + 'static> dyn_any::StaticType for Cache<K, Policy> {
-	type Static = Cache<K, Policy>;
+unsafe impl<Key: 'static, Policy: CachePolicy<Key> + 'static> dyn_any::StaticType for Cache<Key, Policy> {
+	type Static = Cache<Key, Policy>;
 }
 
 #[cfg(feature = "serde")]
-impl<K, Policy: CachePolicy<K>> serde::Serialize for Cache<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> serde::Serialize for Cache<Key, Policy> {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		serializer.serialize_unit()
 	}
 }
 
 #[cfg(feature = "serde")]
-impl<'de, K, Policy: CachePolicy<K>> serde::Deserialize<'de> for Cache<K, Policy> {
+impl<'de, Key, Policy: CachePolicy<Key>> serde::Deserialize<'de> for Cache<Key, Policy> {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		serde::de::IgnoredAny::deserialize(deserializer)?;
 		Ok(Self::default())
@@ -96,25 +95,25 @@ impl<'de, K, Policy: CachePolicy<K>> serde::Deserialize<'de> for Cache<K, Policy
 // ===================
 
 /// Defines the policy state and lifecycle hooks used to manage cached entries.
-pub trait CachePolicy<K>: Sized {
+pub trait CachePolicy<Key>: Sized {
 	/// State shared by all entries in one cache.
 	type PolicyState: Default;
 	/// Policy-specific state stored with each cache entry.
 	type EntryState: Default;
 
 	/// Updates entry ordering or policy state before accessing `key`.
-	fn touch(key: &K, entries: &mut Vec<Entry<K, Self>>, policy_state: &mut Self::PolicyState);
+	fn touch(key: &Key, entries: &mut Vec<Entry<Key, Self>>, policy_state: &mut Self::PolicyState);
 	/// Removes entries that should no longer be retained.
-	fn retire(entries: &mut Vec<Entry<K, Self>>, policy_state: &mut Self::PolicyState);
+	fn retire(entries: &mut Vec<Entry<Key, Self>>, policy_state: &mut Self::PolicyState);
 	/// Updates policy state when an entry is accessed successfully.
-	fn on_hit(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState);
+	fn hit(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState);
 	/// Initializes or updates policy state for a stored entry.
-	fn on_store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState);
+	fn store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState);
 }
 
-pub struct Entry<K, Policy: CachePolicy<K>> {
+pub struct Entry<Key, Policy: CachePolicy<Key>> {
 	entry_state: Policy::EntryState,
-	key: K,
+	key: Key,
 	value: BoxedValue,
 }
 
@@ -125,15 +124,15 @@ pub struct Entry<K, Policy: CachePolicy<K>> {
 /// Retains recently used key groups and evicts entries that exceed the configured age or group limit.
 pub struct GenerationalEviction<const STALE_EPOCHS: u64, const MAX_GROUPS: usize>;
 
-impl<K: CacheKeyGroup, const STALE_EPOCHS: u64, const MAX_GROUPS: usize> CachePolicy<K> for GenerationalEviction<STALE_EPOCHS, MAX_GROUPS> {
+impl<Key: CacheKeyGroup, const STALE_EPOCHS: u64, const MAX_GROUPS: usize> CachePolicy<Key> for GenerationalEviction<STALE_EPOCHS, MAX_GROUPS> {
 	type PolicyState = u64;
 	type EntryState = u64;
 
-	fn touch(key: &K, entries: &mut Vec<Entry<K, Self>>, _policy_state: &mut Self::PolicyState) {
+	fn touch(key: &Key, entries: &mut Vec<Entry<Key, Self>>, _policy_state: &mut Self::PolicyState) {
 		entries.sort_by_key(|entry| entry.key.group() == key.group());
 	}
 
-	fn retire(entries: &mut Vec<Entry<K, Self>>, policy_state: &mut Self::PolicyState) {
+	fn retire(entries: &mut Vec<Entry<Key, Self>>, policy_state: &mut Self::PolicyState) {
 		if *policy_state == u64::MAX {
 			entries.clear();
 			*policy_state = 0;
@@ -148,14 +147,14 @@ impl<K: CacheKeyGroup, const STALE_EPOCHS: u64, const MAX_GROUPS: usize> CachePo
 		}
 	}
 
-	fn on_hit(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
+	fn hit(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
 		if entry_state == policy_state {
 			*policy_state += 1;
 		}
 		*entry_state = *policy_state;
 	}
 
-	fn on_store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
+	fn store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
 		*entry_state = *policy_state;
 	}
 }
@@ -180,15 +179,15 @@ impl CacheKeyGroup for Footprint {
 /// Retains up to `CAPACITY` entries and evicts the least recently used entry when full.
 pub struct Lru<const CAPACITY: usize>;
 
-impl<K, const CAPACITY: usize> CachePolicy<K> for Lru<CAPACITY> {
+impl<Key, const CAPACITY: usize> CachePolicy<Key> for Lru<CAPACITY> {
 	// Keep tracks the most recent state.
 	type PolicyState = u64;
 	// Stores entry's recency. Larger is more recent.
 	type EntryState = u64;
 
-	fn touch(_key: &K, _entries: &mut Vec<Entry<K, Self>>, _policy_state: &mut Self::PolicyState) {}
+	fn touch(_key: &Key, _entries: &mut Vec<Entry<Key, Self>>, _policy_state: &mut Self::PolicyState) {}
 
-	fn retire(entries: &mut Vec<Entry<K, Self>>, policy_state: &mut Self::PolicyState) {
+	fn retire(entries: &mut Vec<Entry<Key, Self>>, policy_state: &mut Self::PolicyState) {
 		if *policy_state == u64::MAX {
 			entries.clear();
 			*policy_state = 0;
@@ -203,29 +202,29 @@ impl<K, const CAPACITY: usize> CachePolicy<K> for Lru<CAPACITY> {
 		entries.swap_remove(oldest_index);
 	}
 
-	fn on_hit(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
+	fn hit(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
 		*policy_state += 1;
 		*entry_state = *policy_state;
 	}
 
-	fn on_store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
+	fn store(entry_state: &mut Self::EntryState, policy_state: &mut Self::PolicyState) {
 		*policy_state += 1;
 		*entry_state = *policy_state;
 	}
 }
 
 // ==========
-// CacheInner
+// CacheState
 // ==========
 
 type BoxedValue = Box<dyn std::any::Any + Send + Sync>;
 
-struct CacheInner<K, Policy: CachePolicy<K>> {
+struct CacheState<Key, Policy: CachePolicy<Key>> {
 	policy_state: Policy::PolicyState,
-	entries: Vec<Entry<K, Policy>>,
+	entries: Vec<Entry<Key, Policy>>,
 }
 
-impl<K, Policy: CachePolicy<K>> Default for CacheInner<K, Policy> {
+impl<Key, Policy: CachePolicy<Key>> Default for CacheState<Key, Policy> {
 	fn default() -> Self {
 		Self {
 			policy_state: Default::default(),
@@ -234,8 +233,8 @@ impl<K, Policy: CachePolicy<K>> Default for CacheInner<K, Policy> {
 	}
 }
 
-impl<K: Copy + PartialEq, Policy: CachePolicy<K>> CacheInner<K, Policy> {
-	fn take<V: 'static>(&mut self, key: &K) -> Option<V> {
+impl<Key: Copy + PartialEq, Policy: CachePolicy<Key>> CacheState<Key, Policy> {
+	fn take<V: 'static>(&mut self, key: &Key) -> Option<V> {
 		Policy::touch(key, &mut self.entries, &mut self.policy_state);
 
 		let index = self.entries.iter().position(|entry| entry.key == *key);
@@ -245,7 +244,7 @@ impl<K: Copy + PartialEq, Policy: CachePolicy<K>> CacheInner<K, Policy> {
 
 			let mut entry = self.entries.remove(index);
 			entry.value.downcast().ok().map(|value| {
-				Policy::on_hit(&mut entry.entry_state, &mut self.policy_state);
+				Policy::hit(&mut entry.entry_state, &mut self.policy_state);
 				*value
 			})
 		});
@@ -254,14 +253,14 @@ impl<K: Copy + PartialEq, Policy: CachePolicy<K>> CacheInner<K, Policy> {
 		hit.flatten()
 	}
 
-	fn get_cloned<V: Clone + 'static>(&mut self, key: &K) -> Option<V> {
+	fn get_cloned<V: Clone + 'static>(&mut self, key: &Key) -> Option<V> {
 		Policy::touch(key, &mut self.entries, &mut self.policy_state);
 
 		let index = self.entries.iter().position(|entry| entry.key == *key);
 		let hit = index.map(|index| {
 			let entry = self.entries.get_mut(index).unwrap();
 			let value = <dyn std::any::Any>::downcast_ref::<V>(entry.value.as_ref())?;
-			Policy::on_hit(&mut entry.entry_state, &mut self.policy_state);
+			Policy::hit(&mut entry.entry_state, &mut self.policy_state);
 			Some(value.clone())
 		});
 
@@ -269,7 +268,7 @@ impl<K: Copy + PartialEq, Policy: CachePolicy<K>> CacheInner<K, Policy> {
 		hit.flatten()
 	}
 
-	fn store(&mut self, key: &K, value: BoxedValue) {
+	fn store(&mut self, key: &Key, value: BoxedValue) {
 		Policy::touch(key, &mut self.entries, &mut self.policy_state);
 
 		self.entries.retain(|entry| entry.key != *key);
@@ -279,7 +278,7 @@ impl<K: Copy + PartialEq, Policy: CachePolicy<K>> CacheInner<K, Policy> {
 			entry_state: Policy::EntryState::default(),
 		};
 
-		Policy::on_store(&mut entry.entry_state, &mut self.policy_state);
+		Policy::store(&mut entry.entry_state, &mut self.policy_state);
 		self.entries.push(entry);
 		Policy::retire(&mut self.entries, &mut self.policy_state);
 	}
@@ -302,29 +301,29 @@ mod tests {
 	}
 
 	struct TestPolicy;
-	impl<K> CachePolicy<K> for TestPolicy {
+	impl<Key> CachePolicy<Key> for TestPolicy {
 		type PolicyState = CallCounts;
 		type EntryState = ();
 
-		fn touch(_key: &K, _entries: &mut Vec<Entry<K, Self>>, counts: &mut Self::PolicyState) {
+		fn touch(_key: &Key, _entries: &mut Vec<Entry<Key, Self>>, counts: &mut Self::PolicyState) {
 			counts.touch += 1;
 		}
 
-		fn retire(_entries: &mut Vec<Entry<K, Self>>, counts: &mut Self::PolicyState) {
+		fn retire(_entries: &mut Vec<Entry<Key, Self>>, counts: &mut Self::PolicyState) {
 			counts.retire += 1;
 		}
 
-		fn on_hit(_entry_state: &mut Self::EntryState, counts: &mut Self::PolicyState) {
+		fn hit(_entry_state: &mut Self::EntryState, counts: &mut Self::PolicyState) {
 			counts.on_hit += 1;
 		}
 
-		fn on_store(_entry_state: &mut Self::EntryState, counts: &mut Self::PolicyState) {
+		fn store(_entry_state: &mut Self::EntryState, counts: &mut Self::PolicyState) {
 			counts.on_store += 1;
 		}
 	}
 
-	fn live<K, Policy: CachePolicy<K>>(cache: &Cache<K, Policy>) -> usize {
-		cache.inner.lock().unwrap().entries.len()
+	fn live<Key, Policy: CachePolicy<Key>>(cache: &Cache<Key, Policy>) -> usize {
+		cache.state.lock().unwrap().entries.len()
 	}
 
 	#[test]
@@ -338,11 +337,11 @@ mod tests {
 		assert_eq!(taken_val, Some(DummyValue(0)));
 		assert_eq!(live(&cache), 0);
 
-		let inner = cache.inner.lock().unwrap();
-		assert_eq!(inner.policy_state.touch, 2);
-		assert_eq!(inner.policy_state.retire, 2);
-		assert_eq!(inner.policy_state.on_store, 1);
-		assert_eq!(inner.policy_state.on_hit, 1);
+		let state = cache.state.lock().unwrap();
+		assert_eq!(state.policy_state.touch, 2);
+		assert_eq!(state.policy_state.retire, 2);
+		assert_eq!(state.policy_state.on_store, 1);
+		assert_eq!(state.policy_state.on_hit, 1);
 	}
 
 	#[test]
@@ -358,11 +357,11 @@ mod tests {
 		let correct_val = cache.take::<DummyValue>(&key);
 		assert_eq!(correct_val, Some(DummyValue(0)));
 
-		let inner = cache.inner.lock().unwrap();
-		assert_eq!(inner.policy_state.touch, 3);
-		assert_eq!(inner.policy_state.retire, 3);
-		assert_eq!(inner.policy_state.on_store, 1);
-		assert_eq!(inner.policy_state.on_hit, 1);
+		let state = cache.state.lock().unwrap();
+		assert_eq!(state.policy_state.touch, 3);
+		assert_eq!(state.policy_state.retire, 3);
+		assert_eq!(state.policy_state.on_store, 1);
+		assert_eq!(state.policy_state.on_hit, 1);
 	}
 
 	#[test]
@@ -376,11 +375,11 @@ mod tests {
 		assert_eq!(cloned_val, Some(DummyValue(0)));
 		assert_eq!(live(&cache), 1);
 
-		let inner = cache.inner.lock().unwrap();
-		assert_eq!(inner.policy_state.touch, 2);
-		assert_eq!(inner.policy_state.retire, 2);
-		assert_eq!(inner.policy_state.on_store, 1);
-		assert_eq!(inner.policy_state.on_hit, 1);
+		let state = cache.state.lock().unwrap();
+		assert_eq!(state.policy_state.touch, 2);
+		assert_eq!(state.policy_state.retire, 2);
+		assert_eq!(state.policy_state.on_store, 1);
+		assert_eq!(state.policy_state.on_hit, 1);
 	}
 
 	#[test]
@@ -396,11 +395,11 @@ mod tests {
 		let correct_val = cache.get_cloned::<DummyValue>(&key);
 		assert_eq!(correct_val, Some(DummyValue(0)));
 
-		let inner = cache.inner.lock().unwrap();
-		assert_eq!(inner.policy_state.touch, 3);
-		assert_eq!(inner.policy_state.retire, 3);
-		assert_eq!(inner.policy_state.on_store, 1);
-		assert_eq!(inner.policy_state.on_hit, 1);
+		let state = cache.state.lock().unwrap();
+		assert_eq!(state.policy_state.touch, 3);
+		assert_eq!(state.policy_state.retire, 3);
+		assert_eq!(state.policy_state.on_store, 1);
+		assert_eq!(state.policy_state.on_hit, 1);
 	}
 
 	mod footprint_generational_eviction {
@@ -519,8 +518,8 @@ mod tests {
 			cache.store(&key2, val2);
 
 			assert_eq!(live(&cache), 2);
-			let inner = cache.inner.lock().unwrap();
-			assert!(inner.entries.iter().find(|entry| entry.key == key1).is_none());
+			let state = cache.state.lock().unwrap();
+			assert!(state.entries.iter().find(|entry| entry.key == key1).is_none());
 		}
 
 		#[test]
@@ -531,8 +530,8 @@ mod tests {
 			cache.store(&key1, val1);
 			let _ = cache.get_cloned::<DummyValue>(&key0);
 
-			let inner = cache.inner.lock().unwrap();
-			assert_eq!(inner.entries.iter().find(|entry| entry.key == key0).unwrap().entry_state, inner.policy_state);
+			let state = cache.state.lock().unwrap();
+			assert_eq!(state.entries.iter().find(|entry| entry.key == key0).unwrap().entry_state, state.policy_state);
 		}
 
 		#[test]
