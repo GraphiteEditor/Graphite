@@ -1115,6 +1115,69 @@ fn snapshot_from_history_ignores_undone_deltas() {
 	assert!(!folded.attributes.contains_key("second"), "a fold restored an undone delta");
 }
 
+/// Resurrection takes the last removal of the entity in canonical order. When the deltas first landed
+/// that was the latest one so far, but a fold over finished history also sees the removals after the
+/// replay position, and one of those can carry the node in a network the replay has not created yet
+/// (simulation seed 3588534).
+#[test]
+fn snapshot_from_history_resurrects_from_the_replay_position() {
+	let node_id = NodeId(3);
+	let first_network = NetworkId(1);
+	let later_network = NetworkId(3);
+	let node_in = |network: NetworkId| Node { network, ..Node::dummy() };
+
+	let mut session = Session::with_peer(PeerId(1));
+	commit_retired(
+		&mut session,
+		RegistryDelta::AddNetwork {
+			id: first_network,
+			network: Network::default(),
+		},
+	);
+	commit_retired(
+		&mut session,
+		RegistryDelta::AddNode {
+			id: node_id,
+			node: node_in(first_network),
+		},
+	);
+	commit_retired(
+		&mut session,
+		RegistryDelta::RemoveNode {
+			id: node_id,
+			snapshot: node_in(first_network),
+		},
+	);
+	// Resurrects the node from the removal above, the only one so far.
+	commit_retired(
+		&mut session,
+		RegistryDelta::SetNetworkExport {
+			id: first_network,
+			index: 0,
+			export: Some(crate::NodeInput::Node { id: node_id, index: 0 }),
+		},
+	);
+	commit_retired(
+		&mut session,
+		RegistryDelta::AddNetwork {
+			id: later_network,
+			network: Network::default(),
+		},
+	);
+	// A later removal whose snapshot places the node in the network created after the export.
+	commit_retired(
+		&mut session,
+		RegistryDelta::RemoveNode {
+			id: node_id,
+			snapshot: node_in(later_network),
+		},
+	);
+
+	let folded = session.snapshot_from_history().expect("a fold must resurrect from what the replay has seen, not from a later removal");
+
+	assert_eq!(&folded, session.retired_registry(), "the fold must reproduce the snapshot the deltas built as they landed");
+}
+
 /// A failed refold leaves the registries on an older history, and the deltas are already absorbed, so
 /// re-merging them is a no-op. Without a retry the registries never catch up.
 #[test]

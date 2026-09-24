@@ -342,21 +342,20 @@ impl Session {
 	/// The retired snapshot as canonical history alone produces it, independent of arrival order and the
 	/// hot log. Folded on a clone, over `head`'s ancestry only: an undone delta stays in the DAG for redo
 	/// to find, and folding all of history would restore work the user undid.
+	///
+	/// The clone's history grows with the replay, as it did when each delta first landed. Resurrection
+	/// takes the last removal in canonical order, and with the whole history in view that can be one past
+	/// the replay position, whose snapshot places the entity in a network the replay has not created yet.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
 		let reachable = self.document.history.ancestors(self.document.head);
 
 		let mut folded = self.clone();
 		folded.document.retired_snapshot = Registry::default();
+		folded.document.history = History::new();
 
-		let replay: Vec<(RegistryDelta, TimeStamp)> = folded
-			.document
-			.history
-			.iter()
-			.filter(|delta| reachable.contains(&delta.id))
-			.map(|delta| (delta.kind.clone(), delta.timestamp))
-			.collect();
-		for (kind, timestamp) in replay {
-			folded.document.apply_op_with(RegistryTarget::Snapshot, kind, timestamp, ApplyMode::Idempotent)?;
+		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
+			folded.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
+			folded.document.history.push(delta.clone());
 		}
 
 		Ok(folded.document.retired_snapshot)
