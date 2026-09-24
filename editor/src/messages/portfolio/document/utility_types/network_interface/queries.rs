@@ -37,12 +37,6 @@ impl NodeNetworkInterface {
 		// working inside a node, so every network's preview is applied rather than only the document's.
 		for (network_path, previewed) in self.previewed_nodes() {
 			let Some(nested) = network.nested_network_mut(&network_path) else { continue };
-			// A preview naming a node the network no longer holds is dropped rather than substituted:
-			// exporting a reference to a node that is not there would fail the whole graph, not just the
-			// preview.
-			if !nested.nodes.contains_key(&previewed.node_id) {
-				continue;
-			}
 			let Some(export) = nested.exports.first_mut() else { continue };
 			*export = NodeInput::node(previewed.node_id, previewed.output_index);
 		}
@@ -60,25 +54,48 @@ impl NodeNetworkInterface {
 		previewed
 	}
 
-	/// Visits the node each network is previewing, with that network's path.
+	/// Visits each preview that replaces an export, with the path of the network it replaces it in.
 	///
-	/// Carries one reusable path buffer rather than building a path per level, since the change check
-	/// before every graph refresh walks this and would otherwise allocate on each one.
+	/// A preview whose network or node is gone, or whose network exports nothing, changes what is
+	/// evaluated in no way, so it is skipped here rather than at each caller: one that reached the change
+	/// check but not the substitution would recompile an identical graph.
+	///
+	/// Iterative, and carrying one reusable path buffer: the change check before every graph refresh walks
+	/// this, so it must neither allocate per level nor put the nesting depth on the stack.
 	fn for_each_preview(&self, mut visit: impl FnMut(&[NodeId], RootNode)) {
-		fn walk(metadata: &NodeNetworkMetadata, network_path: &mut Vec<NodeId>, visit: &mut impl FnMut(&[NodeId], RootNode)) {
-			if let Previewing::Yes { previewed } = metadata.persistent_metadata.previewing {
-				visit(network_path, previewed);
-			}
-
-			for (node_id, node_metadata) in &metadata.persistent_metadata.node_metadata {
-				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
-				network_path.push(*node_id);
-				walk(nested, network_path, visit);
-				network_path.pop();
-			}
+		enum Step<'a> {
+			/// The network owned by this node, or the document network when there is no owner.
+			Enter(Option<NodeId>, &'a NodeNetworkMetadata),
+			Leave,
 		}
 
-		walk(&self.network_metadata, &mut Vec::new(), &mut visit);
+		let mut network_path = Vec::new();
+		let mut pending = vec![Step::Enter(None, &self.network_metadata)];
+
+		while let Some(step) = pending.pop() {
+			let Step::Enter(owner, network_metadata) = step else {
+				network_path.pop();
+				continue;
+			};
+			if let Some(owner) = owner {
+				network_path.push(owner);
+				pending.push(Step::Leave);
+			}
+
+			if let Previewing::Yes { previewed } = network_metadata.persistent_metadata.previewing
+				&& self
+					.document_network()
+					.nested_network(&network_path)
+					.is_some_and(|nested| !nested.exports.is_empty() && nested.nodes.contains_key(&previewed.node_id))
+			{
+				visit(&network_path, previewed);
+			}
+
+			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
+				let Some(nested) = node_metadata.persistent_metadata.network_metadata.as_ref() else { continue };
+				pending.push(Step::Enter(Some(*node_id), nested));
+			}
+		}
 	}
 
 	/// Every network whose preview was written by a version that rewired the export, paired with what
