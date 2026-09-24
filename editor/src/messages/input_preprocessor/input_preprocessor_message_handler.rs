@@ -76,14 +76,17 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 					};
 
 					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
+				} else {
+					responses.add(InputMapperMessage::KeyDown(key));
 				}
-				responses.add(InputMapperMessage::KeyDown(key));
 			}
 			InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.unset(key as usize);
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
+				} else {
+					responses.add(InputMapperMessage::KeyUp(key));
 				}
 				if let DoubleTapState::SecondTap { key: tapped_key, start_time } = self.double_tap_state
 					&& tapped_key == key
@@ -97,7 +100,6 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 						responses.add(InputMapperMessage::DoubleTap(key));
 					}
 				}
-				responses.add(InputMapperMessage::KeyUp(key));
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
 				self.double_tap_state = DoubleTapState::Idle;
