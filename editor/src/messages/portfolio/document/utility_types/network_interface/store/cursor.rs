@@ -303,7 +303,6 @@ impl NodeMut<'_> {
 
 	/// The encapsulating node's names for every one of the network's exports, replaced together since
 	/// they are stored as one array.
-	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
 	pub(crate) fn set_output_names(&mut self, output_names: Vec<String>) -> bool {
 		let changed = self.metadata.output_names != output_names;
 		self.metadata.output_names = output_names;
@@ -315,7 +314,6 @@ impl NodeMut<'_> {
 	}
 
 	/// The metadata array the node's inputs index, one entry per input.
-	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
 	pub(crate) fn input_metadata(&self) -> &[InputMetadata] {
 		&self.metadata.input_metadata
 	}
@@ -374,7 +372,6 @@ impl NodeMut<'_> {
 
 	/// Replaces the node's whole persistent metadata, including that of everything nested under it,
 	/// which is the write a metadata snapshot describes.
-	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
 	pub(crate) fn replace_metadata(&mut self, metadata: DocumentNodePersistentMetadata) {
 		*self.metadata = metadata;
 
@@ -383,7 +380,6 @@ impl NodeMut<'_> {
 	}
 
 	/// Replaces the metadata array the node's inputs index, leaving the inputs themselves alone.
-	#[cfg_attr(not(test), expect(dead_code, reason = "reached only through replay, which has no caller until deltas from another peer arrive"))]
 	pub(crate) fn set_input_metadata(&mut self, input_metadata: Vec<InputMetadata>) {
 		self.metadata.input_metadata = input_metadata;
 		self.emit_input_metadata();

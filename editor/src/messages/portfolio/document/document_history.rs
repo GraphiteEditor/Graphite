@@ -99,6 +99,11 @@ impl DocumentHistory {
 		self.storage.as_mut()
 	}
 
+	/// The decoded proto-node declarations the working copy's registry states reference.
+	pub fn declarations(&self) -> &Declarations {
+		&self.declarations
+	}
+
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
 	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
 		self.needs_whole_document_stage |= storage.registry().node_instances.is_empty();

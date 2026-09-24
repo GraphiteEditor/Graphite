@@ -108,11 +108,17 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 
 					let events = gdd.poll_peers();
+					// Taken every poll rather than on an event: a refold a hello triggers can leave the
+					// registry rederived with no change event to announce it.
+					let changes = gdd.take_remote_changes();
+					if !changes.is_empty() {
+						document.pending_remote.extend(changes);
+						self.dirty.insert(document_id);
+					}
 					for event in events {
 						match event {
 							Event::Synced | Event::Changed => {
 								self.dirty.insert(document_id);
-								document.runtime_stale = true;
 							}
 							Event::ResourceRequested { from, hash } => {
 								log::debug!("Peer asked for resource {hash}");
@@ -129,8 +135,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 				}
 
-				// Rebuild only once every referenced resource is in the app cache, and never underneath an
-				// open transaction, whose un-staged edits the swap would discard.
+				// Apply only once every referenced resource is in the app cache, and never underneath an
+				// open transaction, whose tool state names nodes a peer may have removed.
 				for document_id in self.dirty.clone() {
 					let Some(document) = documents.get_mut(&document_id) else {
 						self.dirty.remove(&document_id);
@@ -142,16 +148,18 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					if missing > 0 || transaction != TransactionStatus::Finished {
 						let reason = format!("missing {missing} transaction {transaction:?}");
 						if self.blocked_reason.get(&document_id) != Some(&reason) {
-							log::debug!("Sync rebuild for {document_id:?} waiting: {reason}");
+							log::debug!("Applying remote changes to {document_id:?} waits: {reason}");
 							self.blocked_reason.insert(document_id, reason);
 						}
 						continue;
 					}
 					self.blocked_reason.remove(&document_id);
 
-					self.dirty.remove(&document_id);
-					document.apply_remote_changes(responses);
-					// The swapped-in registry names resources this peer may still have to fetch or resolve.
+					// Stays dirty while a declaration the changes need is still on its way.
+					if document.apply_remote_changes(responses) {
+						self.dirty.remove(&document_id);
+					}
+					// The registry names resources this peer may still have to fetch or resolve.
 					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 				}
 			}

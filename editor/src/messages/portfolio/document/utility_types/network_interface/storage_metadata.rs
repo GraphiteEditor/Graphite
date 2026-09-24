@@ -188,6 +188,47 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
 
+/// The runtime node and the persistent metadata for it and everything nested under it, from a
+/// single-node projection of the registry. Built through the same entry patching as a whole rebuild, on
+/// a tree holding just this node, so a reconciled node matches what a rebuild would hold for it.
+pub(super) fn node_metadata_from_projection(projected: document_graph_storage::ProjectedNode) -> Result<(graph_craft::document::DocumentNode, DocumentNodePersistentMetadata), InterfaceRebuildError> {
+	let document_graph_storage::ProjectedNode {
+		network_path: prefix,
+		local_id,
+		node,
+		node_entries,
+		network_entries,
+	} = projected;
+
+	// The entries carry absolute paths; the scratch tree is rooted at the node's own network.
+	let rebase = |path: Vec<NodeId>| path.get(prefix.len()..).map(<[NodeId]>::to_vec).unwrap_or_default();
+	let node_entries = node_entries
+		.into_iter()
+		.map(|entry| NodeMetadataEntry {
+			network_path: rebase(entry.network_path),
+			..entry
+		})
+		.collect();
+	let network_entries = network_entries
+		.into_iter()
+		.map(|entry| NetworkMetadataEntry {
+			network_path: rebase(entry.network_path),
+			..entry
+		})
+		.collect();
+
+	let mut scratch = NodeNetwork::default();
+	scratch.nodes.insert(local_id, node);
+	let mut metadata = NodeNetworkMetadata::default();
+	seed_metadata_tree(&scratch, &mut metadata);
+	apply_entries_into_tree(&scratch, &mut metadata, node_entries)?;
+	apply_network_entries_into_tree(&mut metadata, network_entries);
+
+	let persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
+	let node = scratch.nodes.remove(&local_id).expect("inserted above");
+	Ok((node, persistent))
+}
+
 /// Build the runtime-`network_path` -> stable-`NetworkId` map from the `NetworkMetadataEntry`s that
 /// `to_runtime_with_full_metadata` emits, so the open path can apply per-network view settings.
 pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<Vec<NodeId>, document_graph_storage::NetworkId> {

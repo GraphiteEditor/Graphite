@@ -23,7 +23,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -149,10 +149,11 @@ pub struct DocumentMessageHandler {
 	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
 	history: DocumentHistory,
-	/// Peers changed the registry and the interface hasn't been rebuilt from it yet, so a staged diff
-	/// would read as reverting their edits.
+	/// What peers changed in the working registry that the interface does not show yet. Applied once every
+	/// declaration it needs is cached. Local edits stage meanwhile: they are constructed against the
+	/// registry rather than diffed from the interface, so nothing here reads as reverting them.
 	#[serde(skip)]
-	pub(crate) runtime_stale: bool,
+	pub(crate) pending_remote: document_format::network::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -204,7 +205,7 @@ impl Default for DocumentMessageHandler {
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
-			runtime_stale: false,
+			pending_remote: Default::default(),
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -2056,7 +2057,7 @@ impl DocumentMessageHandler {
 	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
 		let deltas = self.network_interface.take_deltas();
-		if self.history.storage().is_none() || self.runtime_stale {
+		if self.history.storage().is_none() {
 			return;
 		}
 
@@ -2064,7 +2065,9 @@ impl DocumentMessageHandler {
 		self.history
 			.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
 
-		if validate {
+		// The interface is behind the registry by what peers changed, so the two are only expected to
+		// agree once that is applied.
+		if validate && self.pending_remote.is_empty() {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
 		}
 	}
@@ -2141,10 +2144,69 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Swap in an interface rebuilt from the registry a peer's changes left behind.
-	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) {
-		let Some(rebuilt) = self.history.rebuild_interface() else { return };
-		self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+	/// Brings the interface into line with what peers changed in the registry. Returns whether nothing is
+	/// left pending: a declaration still on its way keeps the changes for a later call.
+	///
+	/// The touched entities are reconciled in place. Only a registry rederived wholesale, or a reconcile
+	/// that fails for some other reason, costs a rebuild of the whole interface.
+	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
+		let changes = std::mem::take(&mut self.pending_remote);
+		if changes.is_empty() {
+			return true;
+		}
+
+		if !changes.rebuilt
+			&& let Some(gdd) = self.history.storage()
+		{
+			let peer = gdd.session().peer();
+			match self.network_interface.reconcile_remote(gdd.registry(), self.history.declarations(), &changes.touched, peer) {
+				Ok(reconciled) => {
+					self.finish_remote_reconcile(reconciled, changes.touched.resources, responses);
+					return true;
+				}
+				Err(ReconcileError::DeclarationMissing(id)) => {
+					log::debug!("Remote changes wait for declaration {id}");
+					self.pending_remote = changes;
+					return false;
+				}
+				Err(error) => log::warn!("Reconciling remote changes failed, rebuilding the interface instead: {error}"),
+			}
+		}
+
+		if let Some(rebuilt) = self.history.rebuild_interface() {
+			self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+		}
+		true
+	}
+
+	/// What a rebuild does for the whole interface, for the networks a reconcile changed: drops what the
+	/// changed nodes feed and re-derives the layer structure.
+	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, responses: &mut VecDeque<Message>) {
+		for path in &reconciled.networks {
+			if self.network_interface.document_network().nested_network(path).is_none() {
+				continue;
+			}
+			self.network_interface.unload_stack_dependents(path);
+			self.network_interface.unload_import_export_ports(path);
+			self.network_interface.unload_modify_import_export(path);
+			self.network_interface.unload_all_nodes_bounding_box(path);
+			self.network_interface.unload_outward_wires(path);
+			self.network_interface.unload_all_nodes_click_targets(path);
+		}
+		self.network_interface.load_structure();
+
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
+		if resources_changed {
+			self.refresh_resource_registry();
+		}
+
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
 	}
 
 	/// Cache a resource received from a peer as a proto-node declaration, so a rebuild can resolve it.
@@ -2163,7 +2225,7 @@ impl DocumentMessageHandler {
 		}
 
 		self.network_interface = rebuilt;
-		self.runtime_stale = false;
+		self.pending_remote = Default::default();
 		if let Some(gdd) = self.history.storage_mut() {
 			gdd.mark_runtime_current();
 		}
