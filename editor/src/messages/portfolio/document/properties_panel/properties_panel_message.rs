@@ -6,4 +6,6 @@ pub enum PropertiesPanelMessage {
 	// Messages
 	Clear,
 	Refresh,
+	SetAllSectionsExpanded { expanded: bool },
+	SetSectionExpanded { node_id: u64, expanded: bool },
 }
