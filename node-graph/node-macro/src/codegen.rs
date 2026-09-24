@@ -1199,7 +1199,9 @@ fn generate_register_node_impl(
 					(WireWrapper::List.apply(&gcore, &element_ty), Some(quote!(List<#element_ty>)))
 				} else {
 					match (field_is_ranked, variant.param_wrap()) {
-						(true, Some(wrap)) => {
+						// A ranked field's bare rows take the variant's wire shape, or the field's own `Item` shape in a variant without one
+						(true, wrap) => {
+							let wrap = wrap.unwrap_or(WireWrapper::Item);
 							let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 							let signature = match wrap {
 								WireWrapper::List => quote!(List<#element_ty>),

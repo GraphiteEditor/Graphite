@@ -88,6 +88,17 @@ fn output<T: ExpressionValue>(result: Option<Value>) -> T {
 		.unwrap_or_default()
 }
 
+impl ExpressionValue for i64 {
+	fn into_f64(self) -> f64 {
+		self as f64
+	}
+
+	// Evaluation happens in real numbers, so the result snaps to the nearest whole number (the graph's one Number to Integer rule)
+	fn from_value(value: &Value) -> Option<Self> {
+		value.as_i64()
+	}
+}
+
 impl ExpressionValue for bool {
 	fn into_f64(self) -> f64 {
 		self as u8 as f64
@@ -113,19 +124,27 @@ impl ValueProvider for SingleVariableMathContext {
 
 /// Evaluates a math expression written in terms of the single variable `x`, which carries the input value.
 ///
-/// A boolean input reads as 0 or 1, and a boolean output requires the expression to produce exactly 0 or 1, since any other number is not a truth value.
+/// The result is read as the chosen output type: an Integer rounds a fractional result to the nearest whole number, and a Bool requires the expression to produce exactly 0 or 1, since any other number is not a truth value. A boolean input reads as 0 or 1.
 #[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"))]
-fn math_fx<T: ExpressionValue>(
+fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
-	#[implementations(f64, bool)]
+	#[implementations(f64, f64, f64, i64, i64, i64, bool, bool, bool)]
 	value: Item<T>,
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`.
 	#[name("f(x) =")]
 	#[default("x")]
 	fx: Item<String>,
+	/// The type the result is read as.
+	#[implementations(f64, i64, bool, f64, i64, bool, f64, i64, bool)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
 	#[data] parsed: ParseCache,
-) -> Item<T> {
+) -> Item<U> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
 	let (value, attributes) = value.into_parts();
 
 	let x = value.into_f64();
@@ -160,18 +179,26 @@ impl ValueProvider for PositionalMathContext {
 
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
-/// Boolean items read as 0 or 1, and a boolean output requires the expression to produce exactly 0 or 1, since any other number is not a truth value.
+/// The result is read as the chosen output type: an Integer rounds a fractional result to the nearest whole number, and a Bool requires the expression to produce exactly 0 or 1, since any other number is not a truth value. Boolean items read as 0 or 1.
 #[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
-fn math_f<T: ExpressionValue>(
+fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
-	#[implementations(List<f64>, List<bool>)]
+	#[implementations(List<f64>, List<f64>, List<f64>, List<i64>, List<i64>, List<i64>, List<bool>, List<bool>, List<bool>)]
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
 	f: Item<String>,
+	/// The type the result is read as.
+	#[implementations(f64, i64, bool, f64, i64, bool, f64, i64, bool)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
 	#[data] parsed: ParseCache,
-) -> Item<T> {
+) -> Item<U> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
 	let expression = f.element();
 	let items: Vec<f64> = values.iter_element_values().map(|&value| value.into_f64()).collect();
 	let bindings = PositionalMathContext { items };
@@ -180,7 +207,7 @@ fn math_f<T: ExpressionValue>(
 	if let Some(reducer) = classify_reducer(expression, &bindings) {
 		let Some(result) = reducer.evaluate(&bindings.items) else {
 			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
-			return Item::new_from_element(T::default());
+			return Item::new_from_element(U::default());
 		};
 		return Item::new_from_element(output(Some(Value::from_f64(result))));
 	}
@@ -1894,6 +1921,75 @@ mod test {
 	}
 
 	#[test]
+	fn integer_lane_keeps_integers_and_rounds_fractions() {
+		let integer = |value: i64, expression: &str| {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(0_i64),
+			)
+			.into_element()
+		};
+		assert_eq!(integer(3, "x * 2"), 6);
+		assert_eq!(integer(3, "x / 2"), 2, "1.5 rounds away from zero");
+		assert_eq!(integer(-3, "x / 2"), -2, "-1.5 rounds away from zero");
+		assert_eq!(integer(3, "x * 1.1 / 1.1"), 3, "float noise snaps back to the whole number");
+
+		let items: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			2,
+			"7/3 rounds to 2"
+		);
+	}
+
+	#[test]
+	fn output_type_witness_picks_the_output_rung() {
+		// The witness input's type, not the input value's, decides how the result is read
+		assert_eq!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(2.5),
+				Item::new_from_element("x * 2".to_string()),
+				Item::new_from_element(0_i64)
+			)
+			.into_element(),
+			5
+		);
+		assert!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(3_i64),
+				Item::new_from_element("x > 2".to_string()),
+				Item::new_from_element(false)
+			)
+			.into_element()
+		);
+		assert_eq!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(true),
+				Item::new_from_element("x / 2".to_string()),
+				Item::new_from_element(0.)
+			)
+			.into_element(),
+			0.5
+		);
+
+		let items: List<f64> = [1., 2.].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			2,
+			"1.5 rounds to 2"
+		);
+	}
+
+	#[test]
 	pub fn round_floor_ceiling_vec2() {
 		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
 		assert_eq!(round((), vec2(1.5, -1.4)).into_element(), DVec2::new(2., -1.));
@@ -1903,25 +1999,49 @@ mod test {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("2 + 2".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("(5 * 3) + (10 / 2)".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 20.);
 	}
 
 	#[test]
 	fn test_variable_binding() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(7.), Item::new_from_element("x * 2".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(7.),
+			Item::new_from_element("x * 2".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 14.);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math_fx((), &ParseCache::default(), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("invalid".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 0.);
 	}
 
@@ -1937,16 +2057,17 @@ mod test {
 	#[test]
 	fn test_boolean_items() {
 		// Booleans read as exactly 0 and 1, and logical results convert back
-		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string())).into_element());
-		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string())).into_element());
+		let as_bool = Item::new_from_element(false);
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone()).into_element());
+		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone()).into_element());
 
 		// A result that is not exactly 0 or 1 cannot be a truth value, so it reads as false
-		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string())).into_element());
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).into_element());
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string())).into_element());
-		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string())).into_element());
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string())).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).into_element());
+		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).into_element());
 	}
 
 	#[test]
@@ -1967,9 +2088,16 @@ mod test {
 		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
 
 		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string())).into_element(), 10.);
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string())).into_element(), 1.);
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string())).into_element(), 12.);
+		let as_number = Item::new_from_element(0.);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone()).into_element(),
+			10.
+		);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone()).into_element(),
+			1.
+		);
+		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).into_element(), 12.);
 	}
 
 	#[test]

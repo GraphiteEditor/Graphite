@@ -24,7 +24,7 @@ use graphene_std::raster::{
 	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
 	RelativeAbsolute, SelectiveColorChoice, TonalRange,
 };
-use graphene_std::raster_types::Image;
+use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
@@ -38,6 +38,7 @@ use graphene_std::vector::style::{
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
+use graphene_std::{Artboard, Graphic, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::path::PathBuf;
 
@@ -1167,6 +1168,96 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 		]);
 	}
 	LayoutGroup::row(widgets).with_tooltip_description("Formula used for blending.")
+}
+
+/// A dropdown choosing among the types this input takes across the node's registered rows. The input is a type witness:
+/// its stored value's type, not the value itself, selects the row, which is how a node offers a choice of output type.
+pub fn type_choice_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(current) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
+		return LayoutGroup::row(widgets);
+	};
+
+	// Every element type the node's rows accept at this input
+	let mut offered: Vec<Type> = Vec::new();
+	let implementation = parameter_widgets_info
+		.network_interface
+		.implementation(&parameter_widgets_info.node_id, parameter_widgets_info.selection_network_path);
+	if let Some(DocumentNodeImplementation::ProtoNode(identifier)) = implementation
+		&& let Some(rows) = interpreted_executor::node_registry::NODE_REGISTRY.get(identifier)
+	{
+		for row in rows.keys() {
+			let Some(ty) = row.inputs.get(parameter_widgets_info.index) else { continue };
+			let element = wire_element(ty);
+			if !offered.contains(&element) {
+				offered.push(element);
+			}
+		}
+	}
+	let sections = type_choice_sections(&offered);
+
+	let entry_sections = sections
+		.iter()
+		.map(|section| {
+			section
+				.iter()
+				.map(|ty| {
+					let chosen = TaggedValue::from_type_or_none(ty);
+					MenuListEntry::new(ty.to_string())
+						.label(ty.to_string())
+						.on_update(parameter_widgets_info.update_value(move |_| chosen.clone()))
+						.on_commit(commit_value)
+				})
+				.collect()
+		})
+		.collect();
+	// The dropdown counts its selection across every section, since separators divide the entries without renumbering them
+	let current_element = wire_element(&current.ty());
+	let selected = sections.iter().flatten().position(|ty| *ty == current_element).map(|position| position as u32);
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		DropdownInput::new(entry_sections).selected_index(selected).widget_instance(),
+	]);
+	LayoutGroup::row(widgets)
+}
+
+/// The element a wire type carries, peeling the `Item` or `List` rank a registry row or stored value wraps it in.
+fn wire_element(ty: &Type) -> Type {
+	match ty.nested_type() {
+		Type::Item(element) | Type::List(element) => (**element).clone(),
+		other => other.clone(),
+	}
+}
+
+/// The canonical order and grouping of the graph's types, which a type choice renders as dropdown sections divided by separators.
+/// Enums stay unlisted on purpose, joining any other unnamed type in a trailing alphabetical section.
+fn type_choice_sections(offered: &[Type]) -> Vec<Vec<Type>> {
+	let vocabulary = [
+		vec![concrete!(bool), concrete!(i64), concrete!(f64)],
+		vec![concrete!(DVec2)],
+		vec![concrete!(DAffine2)],
+		vec![concrete!(Artboard)],
+		vec![
+			concrete!(Graphic),
+			concrete!(Vector),
+			concrete!(Raster<CPU>),
+			concrete!(Raster<GPU>),
+			concrete!(Color),
+			concrete!(Gradient),
+			concrete!(String),
+		],
+	];
+
+	let mut sections: Vec<Vec<Type>> = vocabulary.iter().map(|section| section.iter().filter(|ty| offered.contains(ty)).cloned().collect()).collect();
+
+	let mut unlisted: Vec<Type> = offered.iter().filter(|ty| !vocabulary.iter().any(|section| section.contains(ty))).cloned().collect();
+	unlisted.sort_by_key(|ty| ty.to_string());
+	sections.push(unlisted);
+
+	sections.retain(|section| !section.is_empty());
+	sections
 }
 
 pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: ColorInput) -> LayoutGroup {
@@ -3599,4 +3690,24 @@ pub mod choice {
 	}
 
 	pub struct ForValue<W>(PhantomData<W>);
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::{item, list};
+
+	#[test]
+	fn wire_element_reads_every_spelling_down_to_the_element() {
+		// A stored value's ranked type, a registry row's fn type, and a mapped row's list all carry the same element
+		let row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(item!(f64)))));
+		let mapped_row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(list!(f64)))));
+		for ty in [TaggedValue::Number(0.).ty(), item!(f64), list!(f64), row, mapped_row] {
+			assert_eq!(wire_element(&ty), concrete!(f64), "{ty:?} should read down to its element");
+		}
+
+		// The element of a stored value and of the row that accepts it agree, which is what selects the dropdown entry
+		assert_eq!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(i64)));
+		assert_ne!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(f64)));
+	}
 }
