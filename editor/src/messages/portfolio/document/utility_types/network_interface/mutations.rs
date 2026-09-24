@@ -846,8 +846,8 @@ impl NodeNetworkInterface {
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
 	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		// Only a preview of the node being removed: previewing rewires nothing, so the reconnection below
-		// cannot invalidate any other
+		// Only a preview of the node being removed is cleared: previewing rewires nothing, so the
+		// reconnection below cannot invalidate a preview of any other node
 		if matches!(self.previewing(network_path), Previewing::Yes { previewed } if previewed.node_id == *node_id)
 			&& let Some(mut network) = self.network_mut(network_path)
 		{
