@@ -1,4 +1,4 @@
-use super::{InputConnector, OutputConnector, Previewing, RootNode, TransactionStatus};
+use super::{InputConnector, NodeNetworkInterface, OutputConnector, Previewing, RootNode, TransactionStatus};
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::NodeInput;
@@ -12,6 +12,14 @@ fn assert_invariants(editor: &EditorTestUtils, context: &str) {
 
 fn rectangle_definition() -> DefinitionIdentifier {
 	DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+}
+
+/// The graph the runtime compiles: the document as it stands, plus the previews the interface resolved.
+/// Assembled the same way the runtime does, so these assertions cover the path an evaluation takes.
+fn evaluated_network(network_interface: &NodeNetworkInterface) -> graph_craft::document::NodeNetwork {
+	let mut network = network_interface.document_network().clone();
+	crate::node_graph_executor::apply_previews(&mut network, &network_interface.previewed_nodes());
+	network
 }
 
 fn new_artboard_message(id: NodeId) -> GraphOperationMessage {
@@ -436,7 +444,7 @@ async fn the_evaluated_network_renders_the_previewed_node() {
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.toggle_preview(node, &[]);
 
-	let evaluated = network_interface.network_to_evaluate();
+	let evaluated = evaluated_network(network_interface);
 	assert_eq!(
 		evaluated.exports.first().and_then(|export| export.as_node()),
 		Some(node),
@@ -516,7 +524,7 @@ async fn migrating_a_rewired_preview_restores_the_export() {
 		"The node the export had been moved to should become the preview"
 	);
 	assert_eq!(
-		network_interface.network_to_evaluate().exports.first().and_then(|export| export.as_node()),
+		evaluated_network(network_interface).exports.first().and_then(|export| export.as_node()),
 		Some(node),
 		"What is evaluated should still be the previewed node, so the user sees what they saved"
 	);
@@ -592,7 +600,7 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 		"A preview naming a node the document no longer has should be dropped rather than restored"
 	);
 	assert_eq!(
-		network_interface.network_to_evaluate().exports.first().and_then(|export| export.as_node()),
+		evaluated_network(network_interface).exports.first().and_then(|export| export.as_node()),
 		Some(artboard),
 		"The evaluated network should fall back to the document's own export"
 	);

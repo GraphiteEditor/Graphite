@@ -1,5 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -80,6 +81,23 @@ pub struct GraphUpdate {
 	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
 	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
 	pub(super) node_to_inspect: Vec<NodeId>,
+	/// The node each network renders instead of its export, paired with that network's path.
+	///
+	/// Per-evaluation and this peer's alone, like `node_to_inspect`: the document travels unchanged and
+	/// the substitution happens here, so nothing that is not being evaluated ever sees a doctored graph.
+	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+}
+
+/// Substitutes each network's previewed node for its export, on the graph about to be compiled.
+///
+/// Applies the list as given rather than deciding again which previews count: the editor's change check
+/// is derived from the same list, and a second opinion here would let the two disagree.
+pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
+	for (network_path, previewed) in previewed {
+		let Some(nested) = network.nested_network_mut(network_path) else { continue };
+		let Some(export) = nested.exports.first_mut() else { continue };
+		*export = NodeInput::node(previewed.node_id, previewed.output_index);
+	}
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -214,9 +232,11 @@ impl NodeRuntime {
 					mut network,
 					resources,
 					node_to_inspect,
+					previewed,
 				}) => {
 					// Insert the monitor node to manage the inspection
 					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
+					apply_previews(&mut network, &previewed);
 
 					self.old_graph = Some(network.clone());
 					self.resources = resources;

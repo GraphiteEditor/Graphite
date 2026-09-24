@@ -24,21 +24,11 @@ impl NodeNetworkInterface {
 		self.network.network()
 	}
 
-	/// The document itself, with each network's previewed node substituted for its export. See [`Previewing`].
-	pub fn network_to_evaluate(&self) -> NodeNetwork {
-		let mut network = self.document_network().clone();
-
-		for (network_path, previewed) in self.previewed_nodes() {
-			let Some(nested) = network.nested_network_mut(&network_path) else { continue };
-			let Some(export) = nested.exports.first_mut() else { continue };
-			*export = NodeInput::node(previewed.node_id, previewed.output_index);
-		}
-
-		network
-	}
-
 	/// The node each network is previewing, paired with that network's path, ordered so the result does
 	/// not follow the metadata map's iteration order.
+	///
+	/// Resolved here rather than where the graph is compiled, since deciding which previews take effect
+	/// needs the metadata this holds; the runtime applies the answer. See [`Previewing`].
 	pub fn previewed_nodes(&self) -> Vec<(Vec<NodeId>, RootNode)> {
 		let mut previewed = Vec::new();
 		self.for_each_preview(|network_path, root_node| previewed.push((network_path.to_vec(), root_node)));
