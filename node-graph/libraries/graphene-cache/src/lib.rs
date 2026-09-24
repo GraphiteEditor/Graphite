@@ -2,7 +2,7 @@ use core_types::transform::Footprint;
 use glam::DMat2;
 use std::{
 	any::Any,
-	sync::{Arc, Mutex},
+	sync::{Arc, Mutex, MutexGuard},
 };
 
 // ===========
@@ -16,8 +16,20 @@ pub struct CacheHandle {
 }
 
 impl CacheHandle {
+	fn get_clean_guard(&self) -> MutexGuard<'_, Option<Box<dyn Any + Send + Sync>>> {
+		match self.slot.lock() {
+			Ok(guard) => guard,
+			Err(poisoned) => {
+				let mut guard = poisoned.into_inner();
+				*guard = None;
+				self.slot.clear_poison();
+				guard
+			}
+		}
+	}
+
 	pub fn get<T: 'static + Any + Send + Sync + Default + Clone>(&self) -> Result<T, CacheTypeError> {
-		let mut guard = self.slot.lock().unwrap();
+		let mut guard = self.get_clean_guard();
 		if guard.is_none() {
 			*guard = Some(Box::new(T::default()));
 		}
@@ -72,7 +84,7 @@ impl<'de> serde::Deserialize<'de> for CacheHandle {
 impl std::fmt::Debug for CacheHandle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("CacheHandle")
-			.field("initialized", &self.slot.lock().unwrap().is_some())
+			.field("initialized", &self.get_clean_guard().is_some())
 			.field("nonce", &self.nonce)
 			.finish()
 	}
@@ -90,10 +102,24 @@ pub struct Cache<K, V, P: CachePolicy<K, V>> {
 	state: Arc<Mutex<CacheState<K, V, P>>>,
 }
 
+impl<K, V, P: CachePolicy<K, V>> Cache<K, V, P> {
+	fn get_clean_guard(&self) -> MutexGuard<'_, CacheState<K, V, P>> {
+		match self.state.lock() {
+			Ok(guard) => guard,
+			Err(poisoned) => {
+				let mut guard = poisoned.into_inner();
+				*guard = CacheState::default();
+				self.state.clear_poison();
+				guard
+			}
+		}
+	}
+}
+
 impl<K: Copy + PartialEq, V, P: CachePolicy<K, V>> Cache<K, V, P> {
 	/// Removes and returns the value stored for `key`.
 	pub fn take(&self, key: &K) -> Option<V> {
-		let mut guard = self.state.lock().unwrap();
+		let mut guard = self.get_clean_guard();
 		guard.take(key)
 	}
 
@@ -102,13 +128,13 @@ impl<K: Copy + PartialEq, V, P: CachePolicy<K, V>> Cache<K, V, P> {
 	where
 		V: Clone,
 	{
-		let mut guard = self.state.lock().unwrap();
+		let mut guard = self.get_clean_guard();
 		guard.get_cloned(key)
 	}
 
 	/// Stores a value for `key`, replacing any existing value with the same key.
 	pub fn store(&self, key: &K, value: V) {
-		self.state.lock().unwrap().store(key, value);
+		self.get_clean_guard().store(key, value);
 	}
 }
 
@@ -126,7 +152,7 @@ impl<K, V, P: CachePolicy<K, V>> Clone for Cache<K, V, P> {
 
 impl<K, V, P: CachePolicy<K, V>> std::fmt::Debug for Cache<K, V, P> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("Cache").field("entries", &self.state.lock().unwrap().entries.len()).finish()
+		f.debug_struct("Cache").field("entries", &self.get_clean_guard().entries.len()).finish()
 	}
 }
 
