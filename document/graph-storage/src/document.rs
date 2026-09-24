@@ -48,6 +48,18 @@ pub struct Document {
 	/// Counts the refolds that changed the working registry's values. See
 	/// [`Session::working_rederivations`](crate::Session::working_rederivations).
 	pub(crate) working_rederivations: u64,
+	/// Counts every refold run, changed values or not, for the tests that pin when one is skipped.
+	pub(crate) refolds: u64,
+	/// Set while [`fold_snapshot_from_history`](Self::fold_snapshot_from_history) replays, bounding what
+	/// resurrection may see.
+	pub(crate) fold: Option<FoldScope>,
+}
+
+/// What a fold in progress has in view: `head`'s ancestry, up to the delta being replayed.
+#[derive(Clone, Debug)]
+pub(crate) struct FoldScope {
+	pub(crate) reachable: std::collections::HashSet<Rev>,
+	pub(crate) horizon: usize,
 }
 
 impl Document {
@@ -80,10 +92,52 @@ impl Document {
 
 	/// The last match in canonical history order, over everything reachable from `head` or any tip. Not a
 	/// walk from `head`: peers sit on different merge revs, and resurrection must pick the same delta.
+	///
+	/// Inside a fold only the deltas already replayed are in view, so resurrection picks what it picked
+	/// when each delta first landed rather than a removal the replay has not reached.
 	fn find_in_ancestry(&self, predicate: impl Fn(&Delta) -> bool) -> Option<Delta> {
-		let reachable = self.history.ancestors(self.head.into_iter().chain(self.history.tips()));
+		if let Some(fold) = &self.fold {
+			return self
+				.history
+				.iter()
+				.take(fold.horizon)
+				.filter(|delta| fold.reachable.contains(&delta.id) && predicate(delta))
+				.last()
+				.cloned();
+		}
 
+		let reachable = self.history.ancestors(self.head.into_iter().chain(self.history.tips()));
 		self.history.iter().filter(|delta| reachable.contains(&delta.id) && predicate(delta)).last().cloned()
+	}
+
+	/// Folds `head`'s ancestry, in canonical order, into a fresh snapshot in place: no copy of history is
+	/// made, and the working registry, hot log and cursor are left alone. An undone delta stays in the DAG
+	/// for redo to find, and folding all of history would restore work the user undid.
+	pub(crate) fn fold_snapshot_from_history(&mut self) -> Result<Registry, CrdtError> {
+		let previous = std::mem::take(&mut self.retired_snapshot);
+		self.fold = Some(FoldScope {
+			reachable: self.history.ancestors(self.head),
+			horizon: 0,
+		});
+
+		let mut outcome = Ok(());
+		for position in 0..self.history.len() {
+			let delta = self.history.at(position).expect("position is in range");
+			let Some(fold) = &mut self.fold else { break };
+			if !fold.reachable.contains(&delta.id) {
+				continue;
+			}
+			fold.horizon = position;
+			let (kind, timestamp) = (delta.kind.clone(), delta.timestamp);
+			if let Err(error) = self.apply_op_with(RegistryTarget::Snapshot, kind, timestamp, ApplyMode::Idempotent) {
+				outcome = Err(error);
+				break;
+			}
+		}
+		self.fold = None;
+
+		let folded = std::mem::replace(&mut self.retired_snapshot, previous);
+		outcome.map(|()| folded)
 	}
 
 	/// Apply a delta's `reverse` as the new forward op (silent-zone undo). Force-applied: structural

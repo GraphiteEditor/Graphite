@@ -10,14 +10,25 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::{AttributesWrite, CrdtError, Delta, Rev, TimeStamp};
+use crate::{AttributesWrite, CrdtError, Delta, RegistryDelta, ResourceHash, Rev, TimeStamp};
 
+/// The indexes are maintained by every mutator, so the questions the per-frame and per-interaction
+/// paths ask (is this timestamp retired, what are the tips, which hashes does history name) are probes
+/// rather than scans of a history that only ever grows.
 #[derive(Clone, Debug, Default)]
 pub struct History {
 	/// Deltas in topological order. Mutated only via [`push`](Self::push).
 	deltas: Vec<Delta>,
 	/// `Rev` to its position in `deltas`. Kept in sync with `deltas` by every mutator.
 	index: HashMap<Rev, usize>,
+	/// The timestamps the deltas were authored at.
+	timestamps: HashSet<TimeStamp>,
+	/// Every rev some delta names as a parent.
+	referenced: HashSet<Rev>,
+	/// Deltas no other delta names as a parent.
+	tips: HashSet<Rev>,
+	/// Content hashes the deltas name, from resource additions and removals.
+	resource_hashes: HashSet<ResourceHash>,
 }
 
 impl History {
@@ -27,8 +38,11 @@ impl History {
 
 	/// Build from deltas already in topological order (the on-disk load path), indexing them in place.
 	pub fn from_ordered(deltas: Vec<Delta>) -> Self {
-		let index = deltas.iter().enumerate().map(|(position, delta)| (delta.id, position)).collect();
-		Self { deltas, index }
+		let mut history = Self::default();
+		for delta in deltas {
+			history.push(delta);
+		}
+		history
 	}
 
 	pub fn get(&self, rev: Rev) -> Option<&Delta> {
@@ -41,7 +55,31 @@ impl History {
 
 	/// Whether history holds a delta authored at `timestamp`.
 	pub fn contains_timestamp(&self, timestamp: TimeStamp) -> bool {
-		self.deltas.iter().any(|delta| delta.timestamp == timestamp)
+		self.timestamps.contains(&timestamp)
+	}
+
+	/// The content hashes named by any resource addition or removal in history.
+	pub fn resource_hashes(&self) -> &HashSet<ResourceHash> {
+		&self.resource_hashes
+	}
+
+	/// Whether the deltas from `from` on extend the canonical order as they stand: a chain, each the
+	/// first's child in turn, hanging off the last delta before them. Such a tail is what every
+	/// retirement in a hosted session appends, and needs no re-sort.
+	///
+	/// The sort emits, among the deltas whose parents are all out, the lowest rev. A chain on the last
+	/// delta is alone in that set at every step, so it sorts where it was appended. A tail whose root
+	/// hangs off an earlier delta competes with that delta's later siblings and may sort before them.
+	pub fn extends_canonically(&self, from: usize) -> bool {
+		let Some(tail) = self.deltas.get(from..) else { return true };
+		let mut previous = from.checked_sub(1).map(|position| self.deltas[position].id);
+		for delta in tail {
+			if delta.parent != previous || matches!(delta.kind, RegistryDelta::Merge { .. }) {
+				return false;
+			}
+			previous = Some(delta.id);
+		}
+		true
 	}
 
 	pub fn len(&self) -> usize {
@@ -56,9 +94,22 @@ impl History {
 	/// (idempotent re-apply) overwrites the existing entry in place rather than appending, so the
 	/// order and index are unchanged.
 	pub fn push(&mut self, delta: Delta) {
+		self.timestamps.insert(delta.timestamp);
+		match &delta.kind {
+			RegistryDelta::AddResource { entry, .. } => self.resource_hashes.extend(entry.hash),
+			RegistryDelta::RemoveResource { snapshot, .. } => self.resource_hashes.extend(snapshot.hash),
+			_ => {}
+		}
 		if let Some(&position) = self.index.get(&delta.id) {
 			self.deltas[position] = delta;
 			return;
+		}
+		for parent in delta.all_parents() {
+			self.referenced.insert(parent);
+			self.tips.remove(&parent);
+		}
+		if !self.referenced.contains(&delta.id) {
+			self.tips.insert(delta.id);
 		}
 		self.index.insert(delta.id, self.deltas.len());
 		self.deltas.push(delta);
@@ -67,6 +118,11 @@ impl History {
 	/// Deltas in topological order (a valid replay order).
 	pub fn iter(&self) -> impl Iterator<Item = &Delta> + '_ {
 		self.deltas.iter()
+	}
+
+	/// The delta at `position` in topological order.
+	pub fn at(&self, position: usize) -> Option<&Delta> {
+		self.deltas.get(position)
 	}
 
 	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
@@ -162,8 +218,7 @@ impl History {
 	/// The current tips: revs that no other delta lists as a parent (the divergent heads). A linear
 	/// history has exactly one tip; concurrent branches have several. Sorted ascending for determinism.
 	pub fn tips(&self) -> Vec<Rev> {
-		let referenced: std::collections::HashSet<Rev> = self.deltas.iter().flat_map(|delta| delta.all_parents()).collect();
-		let mut tips: Vec<Rev> = self.deltas.iter().map(|delta| delta.id).filter(|rev| !referenced.contains(rev)).collect();
+		let mut tips: Vec<Rev> = self.tips.iter().copied().collect();
 		tips.sort_unstable();
 		tips
 	}

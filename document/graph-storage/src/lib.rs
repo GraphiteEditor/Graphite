@@ -42,6 +42,7 @@ pub use to_runtime::{Declarations, ProjectedNetwork, ProjectedNode, RuntimeProje
 
 #[cfg(test)]
 mod tests {
+	mod bookkeeping;
 	mod crdt;
 	mod projection;
 	mod round_trip;

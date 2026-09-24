@@ -49,6 +49,8 @@ impl Session {
 				next_hot_sequence: HotSequence::NONE,
 				refold_owed: false,
 				working_rederivations: 0,
+				refolds: 0,
+				fold: None,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -269,6 +271,8 @@ impl Session {
 				next_hot_sequence: HotSequence::NONE,
 				refold_owed: false,
 				working_rederivations: 0,
+				refolds: 0,
+				fold: None,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -309,7 +313,8 @@ impl Session {
 	/// [`absorb_retired_marks`](Self::absorb_retired_marks).
 	pub fn discard_hot_ops(&mut self, retired: &[HotOpId]) -> Result<(), CrdtError> {
 		let before = self.document.hot_log.len();
-		self.document.hot_log.retain(|hot_op| !retired.contains(&hot_op.id()));
+		let retired_ids: HashSet<HotOpId> = retired.iter().copied().collect();
+		self.document.hot_log.retain(|hot_op| !retired_ids.contains(&hot_op.id()));
 		// How a peer that did not retire these learns they are in history now.
 		self.document.mark_retired(retired.iter().copied());
 
@@ -349,27 +354,18 @@ impl Session {
 	/// takes the last removal in canonical order, and with the whole history in view that can be one past
 	/// the replay position, whose snapshot places the entity in a network the replay has not created yet.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
-		let reachable = self.document.history.ancestors(self.document.head);
-
-		let mut folded = self.clone();
-		folded.document.retired_snapshot = Registry::default();
-		folded.document.history = History::new();
-
-		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
-			folded.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
-			folded.document.history.push(delta.clone());
-		}
-
-		Ok(folded.document.retired_snapshot)
+		// The oracle for tests and the simulation; the live path folds in place through `refold_registries`.
+		self.clone().document.fold_snapshot_from_history()
 	}
 
 	/// Rebuild both registries from canonical history, then re-layer the hot tail. A full replay; callers
 	/// check it is needed first.
 	fn refold_registries(&mut self) -> Result<(), CrdtError> {
+		self.document.refolds += 1;
 		// Cleared only on the way out. The deltas are in history either way, and a failure here leaves the
 		// registries derived from an older one until something retries.
 		self.document.refold_owed = true;
-		self.document.retired_snapshot = self.snapshot_from_history()?;
+		self.document.retired_snapshot = self.document.fold_snapshot_from_history()?;
 
 		// One left unapplicable is kept, not dropped: a later delta or hot op can still supply its referent.
 		let previous = std::mem::replace(&mut self.document.working_registry, self.document.retired_snapshot.clone());
@@ -403,6 +399,15 @@ impl Session {
 		self.document.working_rederivations
 	}
 
+	/// How many refolds have run, whatever they produced.
+	pub fn refolds(&self) -> u64 {
+		self.document.refolds
+	}
+
+	pub fn history_len(&self) -> usize {
+		self.document.history.len()
+	}
+
 	/// Integrate `incoming` retired deltas (in causal order) from another peer. Moves `head` forward
 	/// without a new delta when the incoming history extends it, otherwise joins `head` and the
 	/// incoming tips with a [`RegistryDelta::Merge`].
@@ -433,17 +438,29 @@ impl Session {
 
 			return Ok(MergeOutcome::NoOp);
 		}
-		self.document.history.canonical_sort();
+
+		// A batch that chains off the last delta is already in canonical order, which is every retirement
+		// a host sends, and costs nothing to place. Anything else is sorted into place, over all of history.
+		let extends = self.document.history.extends_canonically(length_before);
+		if !extends {
+			self.document.history.canonical_sort();
+		}
 
 		// The loop folds in arrival order, and concurrent ops do not all commute: a remove and a change to
 		// the same target resolve by whichever lands second.
-		let folded_in_canonical_order = self.document.history.iter().skip(length_before).map(|delta| delta.id).eq(arrival_order.iter().copied());
+		let folded_in_canonical_order = extends || self.document.history.iter().skip(length_before).map(|delta| delta.id).eq(arrival_order.iter().copied());
 
 		let history = &self.document.history;
-		let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();
-		candidates.extend(self.document.head);
-		let is_dominated = |candidate: Rev| candidates.iter().any(|&other| other != candidate && history.is_ancestor(candidate, other));
-		let parents: Vec<Rev> = candidates.iter().copied().filter(|&candidate| !is_dominated(candidate)).collect();
+		let last_before = length_before.checked_sub(1).and_then(|position| history.at(position)).map(|delta| delta.id);
+		let parents: Vec<Rev> = if extends && self.document.head == last_before {
+			// The chain hangs off `head`, so `head` is its ancestor and the chain's end is the one tip.
+			vec![history.at(history.len() - 1).expect("the batch is non-empty").id]
+		} else {
+			let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();
+			candidates.extend(self.document.head);
+			let is_dominated = |candidate: Rev| candidates.iter().any(|&other| other != candidate && history.is_ancestor(candidate, other));
+			candidates.iter().copied().filter(|&candidate| !is_dominated(candidate)).collect()
+		};
 
 		let outcome = match parents.as_slice() {
 			[tip] => MergeOutcome::FastForward(*tip),
@@ -661,15 +678,7 @@ impl Session {
 	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
-
-		for delta in self.document.history.iter() {
-			match &delta.kind {
-				RegistryDelta::AddResource { entry, .. } => hashes.extend(entry.hash),
-				RegistryDelta::RemoveResource { snapshot, .. } => hashes.extend(snapshot.hash),
-				_ => {}
-			}
-		}
-
+		hashes.extend(self.document.history.resource_hashes());
 		hashes
 	}
 
