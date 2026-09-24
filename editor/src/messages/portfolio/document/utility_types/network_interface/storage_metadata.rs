@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
-use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position};
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value};
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
@@ -96,8 +96,10 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.input_persistent(network_path, local_id, input_index)?.widget_override.as_deref()
 	}
 
-	fn input_data(&self, network_path: &[NodeId], local_id: NodeId, input_index: usize) -> HashMap<String, serde_json::Value> {
-		self.input_persistent(network_path, local_id, input_index).map(|p| p.input_data.clone()).unwrap_or_default()
+	fn input_data(&self, network_path: &[NodeId], local_id: NodeId, input_index: usize) -> HashMap<String, Value> {
+		self.input_persistent(network_path, local_id, input_index)
+			.map(|p| p.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
+			.unwrap_or_default()
 	}
 
 	fn output_names(&self, network_path: &[NodeId], local_id: NodeId) -> Vec<String> {
@@ -398,7 +400,7 @@ fn input_metadata_entry_to_runtime(entry: InputMetadataEntry) -> InputMetadata {
 			input_name: entry.input_name.unwrap_or_default(),
 			input_description: entry.input_description.unwrap_or_default(),
 			widget_override: entry.widget_override,
-			input_data: entry.input_data,
+			input_data: entry.input_data.into_iter().map(|(key, value)| (key, value.into())).collect(),
 		},
 	}
 }

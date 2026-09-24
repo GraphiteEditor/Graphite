@@ -28,7 +28,7 @@ pub use model::*;
 pub use registry::*;
 pub use resources::*;
 pub use session::*;
-pub use value::Value;
+pub use value::{Value, ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
 pub use from_runtime::{

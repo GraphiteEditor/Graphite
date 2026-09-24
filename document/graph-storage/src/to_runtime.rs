@@ -10,7 +10,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
-use crate::{AttributesRead, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId};
+use crate::{AttributesRead, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
@@ -83,7 +83,7 @@ impl Registry {
 
 		for (id, entry) in &self.resources {
 			for (_, source) in &entry.sources {
-				let decoded: graphene_resource::DataSource = serde_json::from_value(source.source.clone().into()).map_err(|error| ConversionError::DeserializationError(error.to_string()))?;
+				let decoded: graphene_resource::DataSource = from_value(&source.source).map_err(|error| ConversionError::DeserializationError(error.to_string()))?;
 				registry.push_source_back(id, decoded);
 			}
 			if let Some(hash) = entry.hash {
@@ -292,9 +292,9 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 
 /// Reassembles `input_data` by scanning every attribute under `ui::input_data::` and stripping the prefix.
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
-	let input_data: HashMap<String, serde_json::Value> = attributes
+	let input_data: HashMap<String, Value> = attributes
 		.iter()
-		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone().into())))
+		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
 		.collect();
 
 	InputMetadataEntry {
@@ -353,7 +353,7 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 			}
 		}
 		NodeInput::Value { value, exposed } => {
-			let tagged_value: TaggedValue = serde_json::from_value(value.clone().into()).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
+			let tagged_value: TaggedValue = from_value(value).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
 			GraphCraftNodeInput::Value {
 				tagged_value: MemoHash::new(tagged_value),
 				exposed: *exposed,

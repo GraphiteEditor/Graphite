@@ -1,4 +1,4 @@
-use crate::{TimeStamp, Value};
+use crate::{TimeStamp, Value, ValueError, from_value, to_value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -29,12 +29,12 @@ pub trait AttributesWrite {
 	fn set(&mut self, key: &str, value: Value, timestamp: TimeStamp);
 
 	/// Serializes `value` and inserts it under `key`.
-	fn set_serialized<T: serde::Serialize>(&mut self, key: &str, value: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error> {
-		self.set(key, serde_json::to_value(value)?.into(), timestamp);
+	fn set_serialized<T: serde::Serialize>(&mut self, key: &str, value: &T, timestamp: TimeStamp) -> Result<(), ValueError> {
+		self.set(key, to_value(value)?, timestamp);
 		Ok(())
 	}
 	/// Inserts only when `value != default`, so the read side falls back to the same default.
-	fn set_if_not_default<T: serde::Serialize + PartialEq>(&mut self, key: &str, value: &T, default: &T, timestamp: TimeStamp) -> Result<(), serde_json::Error> {
+	fn set_if_not_default<T: serde::Serialize + PartialEq>(&mut self, key: &str, value: &T, default: &T, timestamp: TimeStamp) -> Result<(), ValueError> {
 		if value != default {
 			self.set_serialized(key, value, timestamp)?;
 		}
@@ -66,6 +66,6 @@ pub trait AttributesRead {
 
 impl AttributesRead for Attributes {
 	fn get_typed<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-		self.get(key).and_then(|v| serde_json::from_value(v.value.clone().into()).ok())
+		self.get(key).and_then(|v| from_value(&v.value).ok())
 	}
 }

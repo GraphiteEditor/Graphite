@@ -2,7 +2,9 @@
 use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
-use crate::{ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value};
+use crate::{
+	ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value, to_value,
+};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -104,7 +106,7 @@ impl Session {
 	/// Used on a throwaway session clone at export time so the exported registry and history agree;
 	/// callers must guarantee the bytes are available in the export's resource store.
 	pub fn embed_resource_sources(&mut self, ids: impl IntoIterator<Item = ResourceId>) -> Result<Vec<Rev>, CrdtError> {
-		let embedded = Value::from(serde_json::to_value(graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes"));
+		let embedded = to_value(&graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
 
 		let mut ops = Vec::new();
 		for id in ids {
