@@ -349,7 +349,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 			} else {
 				ParameterRef::from(star::SidesInput)
 			};
-			if let Some(&TaggedValue::I64(sides)) = layer_view.parameter_value(sides_parameter)
+			if let Some(&TaggedValue::Integer(sides)) = layer_view.parameter_value(sides_parameter)
 				&& options.vertices != sides.max(0) as u32
 			{
 				options.vertices = sides.max(0) as u32;
@@ -371,7 +371,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 				options.spiral_type = spiral_type;
 				changed = true;
 			}
-			if let Some(&TaggedValue::F64(turns)) = layer_view.parameter_value(spiral::TurnsInput)
+			if let Some(&TaggedValue::Number(turns)) = layer_view.parameter_value(spiral::TurnsInput)
 				&& options.turns != turns
 			{
 				options.turns = turns;
@@ -387,19 +387,19 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 			}
 		}
 		ShapeType::Arrow => {
-			if let Some(&TaggedValue::F64(shaft)) = layer_view.parameter_value(arrow::ShaftWidthInput)
+			if let Some(&TaggedValue::Number(shaft)) = layer_view.parameter_value(arrow::ShaftWidthInput)
 				&& options.arrow_shaft_width != shaft
 			{
 				options.arrow_shaft_width = shaft;
 				changed = true;
 			}
-			if let Some(&TaggedValue::F64(head_w)) = layer_view.parameter_value(arrow::HeadWidthInput)
+			if let Some(&TaggedValue::Number(head_w)) = layer_view.parameter_value(arrow::HeadWidthInput)
 				&& options.arrow_head_width != head_w
 			{
 				options.arrow_head_width = head_w;
 				changed = true;
 			}
-			if let Some(&TaggedValue::F64(head_l)) = layer_view.parameter_value(arrow::HeadLengthInput)
+			if let Some(&TaggedValue::Number(head_l)) = layer_view.parameter_value(arrow::HeadLengthInput)
 				&& options.arrow_head_length != head_l
 			{
 				options.arrow_head_length = head_l;
@@ -622,7 +622,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 					ShapeType::Star => ParameterRef::from(star::SidesInput),
 					_ => return,
 				};
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, sides_parameter, TaggedValue::I64(vertices as i64), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, sides_parameter, TaggedValue::Integer(vertices as i64), responses);
 			}
 			ShapeOptionsUpdate::ArcType(arc_type) => {
 				self.options.arc_type = arc_type;
@@ -634,7 +634,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::Turns(turns) => {
 				self.options.turns = turns;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, spiral::TurnsInput, TaggedValue::F64(turns), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, spiral::TurnsInput, TaggedValue::Number(turns), responses);
 			}
 			ShapeOptionsUpdate::GridType(grid_type) => {
 				self.options.grid_type = grid_type;
@@ -642,15 +642,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::ArrowShaftWidth(shaft_width) => {
 				self.options.arrow_shaft_width = shaft_width;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::ShaftWidthInput, TaggedValue::F64(shaft_width), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::ShaftWidthInput, TaggedValue::Number(shaft_width), responses);
 			}
 			ShapeOptionsUpdate::ArrowHeadWidth(head_width) => {
 				self.options.arrow_head_width = head_width;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadWidthInput, TaggedValue::F64(head_width), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadWidthInput, TaggedValue::Number(head_width), responses);
 			}
 			ShapeOptionsUpdate::ArrowHeadLength(head_length) => {
 				self.options.arrow_head_length = head_length;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadLengthInput, TaggedValue::F64(head_length), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadLengthInput, TaggedValue::Number(head_length), responses);
 			}
 		}
 

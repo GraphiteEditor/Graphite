@@ -2818,7 +2818,7 @@ impl DocumentMessageHandler {
 			if has_fill && has_stroke {
 				let (existing_index, new_index) = (0_i64, 1_i64);
 
-				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::I64(existing_index), false))]);
+				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Integer(existing_index), false))]);
 				let existing_index_id = NodeId::new();
 				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
@@ -2840,7 +2840,7 @@ impl DocumentMessageHandler {
 					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
 				}
 
-				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::I64(new_index), false))]);
+				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Integer(new_index), false))]);
 				let new_index_id = NodeId::new();
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);

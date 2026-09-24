@@ -211,7 +211,7 @@ fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> O
 	let input = resolve_document_node_type(&identifier)?.node_template.inputs.get(parameter_widgets_info.index)?;
 
 	match input.as_value()? {
-		TaggedValue::F64(value) => Some(*value),
+		TaggedValue::Number(value) => Some(*value),
 		_ => None,
 	}
 }
@@ -791,7 +791,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.widget_instance(),
 			]);
 		}
-		Some(&TaggedValue::F64(value)) => {
+		Some(&TaggedValue::Number(value)) => {
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(value))
@@ -830,14 +830,14 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			.filter(|x| !x.is_empty())
 			.map(graphene_std::core_types::misc::parse_f64)
 			.collect::<Option<Vec<_>>>()
-			.map(TaggedValue::F64Array)
+			.map(TaggedValue::Numbers)
 	};
 
 	let Some(input) = parameter_widgets_info.input() else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(TaggedValue::F64Array(values)) = &input.as_non_exposed_value() {
+	if let Some(TaggedValue::Numbers(values)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
@@ -992,7 +992,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(&TaggedValue::F64(x)) = input.as_non_exposed_value() {
+	if let Some(&TaggedValue::Number(x)) = input.as_non_exposed_value() {
 		let whole_part = x.trunc();
 		let fractional_part = x.fract();
 
@@ -1005,7 +1005,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.min(0.)
 				.max(0.99999)
 				.value(Some(fractional_part))
-				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::F64(whole_part + input.value.unwrap())))
+				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::Number(whole_part + input.value.unwrap())))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -1017,7 +1017,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.min(0.)
 				.is_integer(true)
 				.value(Some(whole_part))
-				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap() + fractional_part)))
+				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::Number(input.value.unwrap() + fractional_part)))
 				.on_commit(commit_value)
 				.widget_instance(),
 		])
@@ -1104,19 +1104,19 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 		return vec![];
 	};
 	match input.as_non_exposed_value() {
-		Some(&TaggedValue::F64(x)) => widgets.extend_from_slice(&[
+		Some(&TaggedValue::Number(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap())))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Number(x.value.unwrap())))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
-		Some(&TaggedValue::I64(x)) => widgets.extend_from_slice(&[
+		Some(&TaggedValue::Integer(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::I64(x.value.unwrap().round() as i64)))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Integer(x.value.unwrap().round() as i64)))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1125,7 +1125,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			number_props
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap())))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Number(x.value.unwrap())))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1687,7 +1687,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 				let exposed = input.is_some_and(|input| input.is_exposed());
 				let value = input
 					.and_then(|input| input.as_value())
-					.and_then(|tagged| if let TaggedValue::F64(value) = tagged { Some(*value) } else { None })
+					.and_then(|tagged| if let TaggedValue::Number(value) = tagged { Some(*value) } else { None })
 					.unwrap_or(0.);
 				(exposed, value)
 			})
@@ -1810,7 +1810,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F64(scale.value(scale_position)).into(),
+						value: TaggedValue::Number(scale.value(scale_position)).into(),
 					}
 					.into()
 				}
@@ -1846,7 +1846,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 					.value(Some(current))
 					.min_width(60)
 					.max_width(60)
-					.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::F64(widget.value.unwrap_or(0.)), node_id, input_index))
+					.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 					.on_commit(commit_value)
 					.widget_instance(),
 			);
@@ -1871,7 +1871,7 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		_ => HueSaturationRange::Master,
 	};
 	let slider_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
-		Some(TaggedValue::F64(value)) => *value as f32,
+		Some(TaggedValue::Number(value)) => *value as f32,
 		_ => 0.,
 	};
 
@@ -2085,7 +2085,7 @@ fn slider_row(
 	};
 	// An exposed input shows only its label and source
 	let (current, tagged_value): (f64, fn(f64) -> TaggedValue) = match input.as_non_exposed_value() {
-		Some(&TaggedValue::F64(value)) => (value, TaggedValue::F64),
+		Some(&TaggedValue::Number(value)) => (value, TaggedValue::Number),
 		_ => return widgets,
 	};
 	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
@@ -2147,7 +2147,7 @@ fn gradient_slider_row(
 		.ok()
 		.and_then(|document_node| document_node.inputs.get(input_index))
 		.and_then(|input| input.as_non_exposed_value())
-		.and_then(|tagged| if let TaggedValue::F64(value) = tagged { Some(*value) } else { None });
+		.and_then(|tagged| if let TaggedValue::Number(value) = tagged { Some(*value) } else { None });
 
 	// Only add the slider and number widgets when the input is not exposed
 	if let Some(current) = current {
@@ -2156,7 +2156,7 @@ fn gradient_slider_row(
 			max: value_max,
 			default: Some(default_value),
 		};
-		let value_at = move |position| TaggedValue::F64(slider.value(position));
+		let value_at = move |position| TaggedValue::Number(slider.value(position));
 
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		row.push(
@@ -2179,7 +2179,7 @@ fn gradient_slider_row(
 				.min_width(60)
 				.max_width(60)
 				.display_decimal_places(0)
-				.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::F64(widget.value.unwrap_or(0.)), node_id, input_index))
+				.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		);
@@ -2601,7 +2601,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let decimal_places = match document_node.input(DecimalPlacesInput).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::I64(x)) => x,
+				Some(&TaggedValue::Integer(x)) => x,
 				_ => 2,
 			};
 			let decimal_sep = match document_node.input(DecimalSeparatorInput).and_then(|input| input.as_non_exposed_value()) {

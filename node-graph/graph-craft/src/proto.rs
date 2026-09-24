@@ -140,7 +140,7 @@ impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
 			identifier: graphene_core::ops::passthrough::IDENTIFIER,
-			construction_args: ConstructionArgs::Value(value::TaggedValue::I64(0).into()),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::Integer(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
@@ -1109,7 +1109,7 @@ mod test {
 					ProtoNode {
 						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
-						construction_args: ConstructionArgs::Value(value::TaggedValue::I64(2).into()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::Integer(2).into()),
 						..Default::default()
 					},
 				),

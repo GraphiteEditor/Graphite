@@ -1400,7 +1400,7 @@ mod test {
 			nodes: [(
 				NodeId(1),
 				DocumentNode {
-					inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::value(TaggedValue::I64(2), false)],
+					inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::value(TaggedValue::Integer(2), false)],
 					implementation: DocumentNodeImplementation::Network(add_network()),
 					..Default::default()
 				},
@@ -1479,7 +1479,7 @@ mod test {
 					ProtoNode {
 						identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 						call_argument: concrete!(core_types::Context),
-						construction_args: ConstructionArgs::Value(TaggedValue::I64(2).into()),
+						construction_args: ConstructionArgs::Value(TaggedValue::Integer(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
@@ -1522,7 +1522,7 @@ mod test {
 				(
 					NodeId(14),
 					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::I64(2), false)],
+						inputs: vec![NodeInput::value(TaggedValue::Integer(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(4)]),
@@ -1573,7 +1573,7 @@ mod test {
 				(
 					NodeId(14),
 					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::I64(2), false)],
+						inputs: vec![NodeInput::value(TaggedValue::Integer(2), false)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
@@ -1639,7 +1639,7 @@ mod test {
 				(
 					NodeId(1),
 					DocumentNode {
-						inputs: vec![NodeInput::value(TaggedValue::F64(1.), false), NodeInput::value(TaggedValue::F64(2.), false)],
+						inputs: vec![NodeInput::value(TaggedValue::Number(1.), false), NodeInput::value(TaggedValue::Number(2.), false)],
 						implementation: DocumentNodeImplementation::Network(two_node_passthrough()),
 						..Default::default()
 					},

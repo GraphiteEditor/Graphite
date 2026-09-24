@@ -9,7 +9,7 @@ use graphene_std::vector::Vector;
 #[test]
 fn push_node_sync() {
 	let mut tree = BorrowTree::default();
-	let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::I64(2_i64).into()), vec![]);
+	let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2_i64).into()), vec![]);
 	let context = TypingContext::default();
 	let future = tree.push_node(NodeId(0), val_1_protonode, &context);
 	futures::executor::block_on(future).unwrap();
@@ -108,7 +108,7 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 /// Builds a network feeding the given content plus an f64 distance value into Offset Points, whose distance input is ranked `Item<f64>`.
 fn offset_points_network(content: TaggedValue) -> ProtoNetwork {
 	let content_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);
-	let distance_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(10.).into()), vec![NodeId(1)]);
+	let distance_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(10.).into()), vec![NodeId(1)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
 	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
@@ -187,7 +187,7 @@ fn transform_network(content: TaggedValue, rotation: TaggedValue) -> ProtoNetwor
 fn transform_composes_onto_item_wire() {
 	use glam::{DAffine2, DVec2};
 
-	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::F64(0.));
+	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::Number(0.));
 	let output = network.output;
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Transform should resolve its rank-0 variant");
@@ -205,7 +205,7 @@ fn transform_composes_onto_item_wire() {
 fn transform_broadcasts_item_content_across_a_framed_parameter() {
 	use glam::DAffine2;
 
-	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::F64Array(vec![0., 90.]));
+	let network = transform_network(TaggedValue::TypeDefault(item!(Vector)), TaggedValue::Numbers(vec![0., 90.]));
 	let output = network.output;
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context
@@ -230,7 +230,7 @@ fn generator_frames_over_a_list_parameter() {
 	// A `()` generator (Circle) fed a `List<f64>` radius should frame into one circle per slot
 	let primary = ProtoNode::value(ConstructionArgs::Value(TaggedValue::None.into()), vec![NodeId(0)]);
 
-	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![10., 20., 30.]).into()), vec![NodeId(1)]);
+	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![10., 20., 30.]).into()), vec![NodeId(1)]);
 	let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
 	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
 
@@ -294,7 +294,7 @@ fn value_wires_materialize_as_items_at_resolution() {
 	let values = [
 		TaggedValue::DAffine2(DAffine2::IDENTITY),
 		TaggedValue::DVec2(DVec2::new(7., 0.)),
-		TaggedValue::F64(0.),
+		TaggedValue::Number(0.),
 		TaggedValue::DVec2(DVec2::ONE),
 		TaggedValue::DVec2(DVec2::ZERO),
 	];
@@ -413,7 +413,7 @@ fn as_graphic_converts_a_vector_list_element_wise() {
 
 	// Two radii frame the Circle generator into a two-element `List<Vector>`, the wire As Graphic then converts
 	let primary = ProtoNode::value(ConstructionArgs::Value(TaggedValue::None.into()), vec![NodeId(0)]);
-	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![10., 20.]).into()), vec![NodeId(1)]);
+	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![10., 20.]).into()), vec![NodeId(1)]);
 
 	let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
 	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
@@ -497,7 +497,7 @@ fn gradient_value_embeds_through_the_graphic_input_adapter() {
 // A scalar wire feeding a `DVec2` connector splats into both axes through the input adapter's `Convert` row
 #[test]
 fn number_value_splats_through_the_vec2_input_adapter() {
-	let number_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(-60.).into()), vec![NodeId(0)]);
+	let number_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(-60.).into()), vec![NodeId(0)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<DVec2>");
@@ -519,7 +519,7 @@ fn number_value_splats_through_the_vec2_input_adapter() {
 // A scalar wire feeding a `String` connector formats as text through the input adapter's `Convert` row
 #[test]
 fn number_value_formats_through_the_string_input_adapter() {
-	let number_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(42.).into()), vec![NodeId(0)]);
+	let number_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(42.).into()), vec![NodeId(0)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<String>");
@@ -591,7 +591,7 @@ fn bool_value_formats_through_the_string_input_adapter() {
 fn list_wire_erases_through_the_list_dyn_input_adapter() {
 	use core_types::list::ListDyn;
 
-	let list_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![1., 2., 3.]).into()), vec![NodeId(0)]);
+	let list_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![1., 2., 3.]).into()), vec![NodeId(0)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<ListDyn>");
@@ -613,7 +613,7 @@ fn list_wire_erases_through_the_list_dyn_input_adapter() {
 
 #[test]
 fn value_wire_passes_through_the_input_adapter_as_item() {
-	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(3.).into()), vec![NodeId(0)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
@@ -663,7 +663,7 @@ fn modification_value_rides_the_item_wire_through_its_input_adapter() {
 fn item_wire_boxes_into_the_attribute_value_connector() {
 	use graphene_std::list::AttributeValueDyn;
 
-	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64(3.).into()), vec![NodeId(0)]);
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(3.).into()), vec![NodeId(0)]);
 	let mut attribute_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	attribute_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<AttributeValueDyn>");
 
@@ -747,8 +747,8 @@ fn expander_flattens_under_the_frame() {
 fn whole_list_switches_as_one_bundle() {
 	// One bool selecting between two whole `List<f64>` stacks: each branch bundles into a rank-0 cell, and the result unbundles back to the flat stack
 	let condition_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(0)]);
-	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![1., 2., 3.]).into()), vec![NodeId(1)]);
-	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![4., 5.]).into()), vec![NodeId(2)]);
+	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![1., 2., 3.]).into()), vec![NodeId(1)]);
+	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![4., 5.]).into()), vec![NodeId(2)]);
 
 	let mut switch_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	switch_node.identifier = ProtoNodeIdentifier::new("math_nodes::SwitchNode");
@@ -824,8 +824,8 @@ fn a_bundle_unbundles_into_a_list_connector() {
 fn a_whole_list_of_scalars_switches_as_one_bundle() {
 	// A single bool selecting between two whole `List<f64>` values, covering a primitive element type and confirming the selected list survives intact
 	let condition_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(0)]);
-	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![1., 2.]).into()), vec![NodeId(1)]);
-	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::F64Array(vec![3., 4., 5.]).into()), vec![NodeId(2)]);
+	let if_true_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![1., 2.]).into()), vec![NodeId(1)]);
+	let if_false_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![3., 4., 5.]).into()), vec![NodeId(2)]);
 
 	let mut switch_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	switch_node.identifier = ProtoNodeIdentifier::new("math_nodes::SwitchNode");

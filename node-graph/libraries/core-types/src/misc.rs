@@ -108,19 +108,19 @@ pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 }
 
 // TODO: Eventually remove this document upgrade code
-pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
+pub fn migrate_to_numbers<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
 	use serde::Deserialize;
 
 	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum F64ArrayFormat {
+	enum NumbersFormat {
 		Array(Vec<f64>),
 		List(LegacyTable<f64>),
 	}
 
-	Ok(match F64ArrayFormat::deserialize(deserializer)? {
-		F64ArrayFormat::Array(values) => values,
-		F64ArrayFormat::List(list) => list.element,
+	Ok(match NumbersFormat::deserialize(deserializer)? {
+		NumbersFormat::Array(values) => values,
+		NumbersFormat::List(list) => list.element,
 	})
 }
 

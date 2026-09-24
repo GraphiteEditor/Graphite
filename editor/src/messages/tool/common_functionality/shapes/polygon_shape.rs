@@ -111,8 +111,8 @@ impl Polygon {
 		let node_type = resolve_document_node_type(&identifier).expect("Regular Polygon can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::I64(vertices as i64), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.5), false)),
+			Some(NodeInput::value(TaggedValue::Integer(vertices as i64), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.5), false)),
 		])
 	}
 
@@ -152,7 +152,7 @@ impl Polygon {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
-				input: NodeInput::value(TaggedValue::F64(radius), false),
+				input: NodeInput::value(TaggedValue::Number(radius), false),
 			});
 
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), aspect));
@@ -173,7 +173,7 @@ impl Polygon {
 			return;
 		};
 
-		let Some(&TaggedValue::I64(n)) = node_inputs.get(1).unwrap().as_value() else {
+		let Some(&TaggedValue::Integer(n)) = node_inputs.get(1).unwrap().as_value() else {
 			return;
 		};
 
@@ -185,7 +185,7 @@ impl Polygon {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::regular_polygon::SidesInput),
-			input: NodeInput::value(TaggedValue::I64(new_dimension), false),
+			input: NodeInput::value(TaggedValue::Integer(new_dimension), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

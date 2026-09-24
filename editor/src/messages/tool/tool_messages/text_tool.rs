@@ -337,7 +337,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: graphene_std::text::text::SizeInput::INDEX,
-						value: TaggedValue::F64(font_size).into(),
+						value: TaggedValue::Number(font_size).into(),
 					});
 				}
 			}
@@ -880,7 +880,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput),
-						input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
+						input: NodeInput::value(TaggedValue::Number(size_layer.x), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput),
@@ -888,7 +888,7 @@ impl Fsm for TextToolFsmState {
 					});
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput),
-						input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
+						input: NodeInput::value(TaggedValue::Number(size_layer.y), false),
 					});
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: dragging_layer.id,
