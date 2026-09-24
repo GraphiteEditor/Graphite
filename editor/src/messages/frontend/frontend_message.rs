@@ -118,21 +118,8 @@ pub enum FrontendMessage {
 		filename: String,
 	},
 	TriggerPersistenceReadState,
-	TriggerPersistenceReadDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
 	TriggerPersistenceWriteState {
 		state: PersistedState,
-	},
-	TriggerPersistenceDeleteDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
-	TriggerPersistenceWriteDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		document: String,
 	},
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,

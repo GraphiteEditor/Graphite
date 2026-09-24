@@ -112,6 +112,12 @@ impl DocumentHistory {
 		self.needs_whole_document_stage = true;
 	}
 
+	/// Detach the `Gdd` working copy, dropping its declaration cache with it.
+	pub fn clear_storage(&mut self) {
+		self.storage = None;
+		self.declarations.clear();
+	}
+
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
 	/// boundary (a new `StartTransaction`) and before undo/redo, so the per-`CommitTransaction` staging
 	/// coalesces into one interaction aligned with the legacy step. No-op while unmounted.
@@ -132,7 +138,6 @@ impl DocumentHistory {
 		interface: &NodeNetworkInterface,
 		registry: &ResourceRegistry,
 		view_settings: BTreeMap<String, serde_json::Value>,
-		legacy_document: &str,
 		byte_store: &dyn ResourceStorage,
 	) {
 		let needs_whole_document_stage = self.needs_whole_document_stage;
@@ -161,7 +166,7 @@ impl DocumentHistory {
 			}
 		}
 
-		self.persist_view_state(interface, view_settings, legacy_document);
+		self.persist_view_state(interface, view_settings);
 	}
 
 	/// Converts the whole document and stages the difference from what the working copy holds.
@@ -198,9 +203,8 @@ impl DocumentHistory {
 		Ok(constructed.declarations.decoded)
 	}
 
-	/// The parts of a commit that are not the graph: the per-peer view settings, and the legacy bytes the
-	/// dual-write soak validates the new format against.
-	fn persist_view_state(&mut self, interface: &NodeNetworkInterface, view_settings: BTreeMap<String, serde_json::Value>, legacy_document: &str) {
+	/// The parts of a commit that are not the graph: the per-peer and per-network view settings.
+	fn persist_view_state(&mut self, interface: &NodeNetworkInterface, view_settings: BTreeMap<String, serde_json::Value>) {
 		let Some(storage) = self.storage.as_mut() else { return };
 
 		let network_view_settings = storage
@@ -216,10 +220,6 @@ impl DocumentHistory {
 			&& let Err(error) = storage.set_network_view_settings(network_view_settings)
 		{
 			log::error!("Persisting per-network view settings failed: {error}");
-		}
-
-		if let Err(error) = storage.store_legacy_document(legacy_document.as_bytes()) {
-			log::error!("Embedding legacy document into working copy failed: {error}");
 		}
 	}
 

@@ -158,9 +158,7 @@ async fn edit_after_open_commits_cleanly() {
 	// reopened registry: the editor's .gdd-open path.
 	let byte_store = HashMapResourceStorage::new();
 	let source = editor.active_document();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let source_network = source.network_interface.document_network().clone();
 	let source_view = StorageMetadataView::new(&source.network_interface);
 	gdd.commit_from_runtime(&source_network, &source_view, &source.resources.registry, &byte_store)
@@ -210,9 +208,7 @@ async fn edit_after_open_commits_cleanly() {
 #[tokio::test]
 async fn gdd_undo_redo_walks_interactions() {
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	// Commit the active document's current runtime state as one interaction.
 	async fn commit_interaction(gdd: &mut GddV1, document: &DocumentMessageHandler, byte_store: &HashMapResourceStorage) {
@@ -263,9 +259,7 @@ async fn gdd_undo_redo_walks_interactions() {
 #[tokio::test]
 async fn reopen_after_undo_restores_consistent_registry() {
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	async fn commit_interaction(gdd: &mut GddV1, document: &DocumentMessageHandler, byte_store: &HashMapResourceStorage) {
 		let network = document.network_interface.document_network().clone();
@@ -387,9 +381,7 @@ async fn gdd_archive_round_trips_view_settings() {
 	use document_graph_storage::attr::session::doc;
 
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	// Stage a distinctive PTZ into the working copy's `view_settings`, as `commit_storage_snapshot` does.
 	let mut ptz = crate::messages::portfolio::document::utility_types::misc::PTZ::default();
@@ -437,9 +429,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	let expected_pan = editor.active_document().network_interface.node_graph_ptz(&[]).unwrap().pan;
 
 	// Commit the document into a fresh `Gdd`, collecting the per-network view state the editor persists.
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let document = editor.active_document();
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);
@@ -472,7 +462,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 }
 
 /// Mirror the real "new document, draw a rect, press undo" flow: mount storage and capture the
-/// new-document base as the mount-time snapshot (as `DocumentStorageMounted` does), then draw a rect
+/// new-document base as the attach-time snapshot (as `StorageAttached` does), then draw a rect
 /// (one `CommitTransaction` interaction) and undo. The shadow must reproduce the legacy-restored interface.
 #[tokio::test]
 async fn live_undo_new_document_draw_rect() {
@@ -675,9 +665,7 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
 async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
-	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into()).expect("create_in");
 	editor.active_document_mut().set_storage(gdd, Default::default());
 	HashMapResourceStorage::new()
 }
@@ -769,7 +757,7 @@ async fn none_fill_survives_document_reopen() {
 	// Reopen through the editor's real open path, which runs the document migrations
 	let serialized = editor.active_document().serialize_document();
 	editor
-		.handle_message(PortfolioMessage::OpenDocumentFile {
+		.handle_message(PortfolioMessage::OpenLegacyDocumentFile {
 			document_name: None,
 			document_path: None,
 			document_serialized_content: serialized,
@@ -792,7 +780,7 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 
 	let mut editor = EditorTestUtils::create();
 	editor
-		.handle_message(PortfolioMessage::OpenDocumentFile {
+		.handle_message(PortfolioMessage::OpenLegacyDocumentFile {
 			document_name: None,
 			document_path: None,
 			document_serialized_content: LEGACY_DOCUMENT.to_string(),
@@ -850,7 +838,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 
 	let mut editor = EditorTestUtils::create();
 	editor
-		.handle_message(PortfolioMessage::OpenDocumentFile {
+		.handle_message(PortfolioMessage::OpenLegacyDocumentFile {
 			document_name: None,
 			document_path: None,
 			document_serialized_content: EIGHT_INPUT_DOCUMENT.to_string(),

@@ -56,9 +56,7 @@ pub struct RoundTrip {
 pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundTrip {
 	let byte_store = HashMapResourceStorage::new();
 
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);

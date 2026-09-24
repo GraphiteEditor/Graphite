@@ -1,14 +1,6 @@
 import type { PortfolioStore } from "/src/stores/portfolio";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import {
-	saveEditorPreferences,
-	loadEditorPreferences,
-	writePersistedState,
-	readPersistedState,
-	writePersistedDocument,
-	readPersistedDocument,
-	deletePersistedDocument,
-} from "/src/utility-functions/persistence";
+import { saveEditorPreferences, loadEditorPreferences, writePersistedState, readPersistedState } from "/src/utility-functions/persistence";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -38,18 +30,6 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 		await readPersistedState(editor);
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
-		await writePersistedDocument(data);
-	});
-
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceReadDocument", async (data) => {
-		await readPersistedDocument(data.documentId, editor);
-	});
-
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceDeleteDocument", async (data) => {
-		await deletePersistedDocument(String(data.documentId));
-	});
-
 	subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch
 	});
@@ -63,9 +43,6 @@ export function destroyPersistenceManager() {
 	subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteState");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceReadState");
-	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceReadDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceDeleteDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerOpenLaunchDocuments");
 }
 

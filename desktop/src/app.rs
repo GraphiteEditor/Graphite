@@ -25,7 +25,7 @@ use crate::render::{RenderError, RenderState};
 use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
-use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -99,7 +99,13 @@ impl App {
 		let wake = Arc::new(move || {
 			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
 		});
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), dirs::app_autosave_documents_dir(), wgpu_context.clone(), wake);
+		let desktop_wrapper = DesktopWrapper::new(
+			rand::rng().random(),
+			Arc::new(resource_storage),
+			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
+			wgpu_context.clone(),
+			wake,
+		);
 
 		Self {
 			render_state: None,
@@ -306,19 +312,6 @@ impl App {
 			}
 			DesktopFrontendMessage::PersistenceReadState => {
 				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
-			}
-			DesktopFrontendMessage::PersistenceReadDocument { id } => {
-				if let Some(document) = persist::read_document_content(&id) {
-					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document });
-				} else {
-					tracing::error!("Failed to read document content for {id:?}");
-				}
-			}
-			DesktopFrontendMessage::PersistenceWriteDocument { id, document_serialized_content } => {
-				persist::write_document_content(id, document_serialized_content);
-			}
-			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
-				persist::delete_document(&id);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
 				preferences::write(preferences);

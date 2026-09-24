@@ -32,6 +32,7 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
+use document_container::AnyContainer;
 use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -149,6 +150,10 @@ pub struct DocumentMessageHandler {
 	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
 	history: DocumentHistory,
+	/// The document's container in the document store. `None` for a document created this session until its store entry opens.
+	#[serde(skip)]
+	#[derivative(Debug = "ignore")]
+	pub(crate) container: Option<AnyContainer>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -200,6 +205,7 @@ impl Default for DocumentMessageHandler {
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
+			container: None,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -407,8 +413,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, preferences.validate_storage_round_trip, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -2028,6 +2034,11 @@ impl DocumentMessageHandler {
 		self.history.set_storage(storage, declarations);
 	}
 
+	/// Detach the `Gdd` working copy.
+	pub fn clear_storage(&mut self) {
+		self.history.clear_storage();
+	}
+
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
 	pub(crate) fn retire_storage_interaction(&mut self) {
 		self.history.retire_storage_interaction();
@@ -2050,20 +2061,19 @@ impl DocumentMessageHandler {
 			return;
 		}
 
-		let (view_settings, legacy_document) = self.storage_side_channels();
-		self.history
-			.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
+		let view_settings = self.storage_view_settings();
+		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
 
 		if validate {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
 		}
 	}
 
-	/// The per-peer view settings and legacy bytes that ride along with either kind of staging.
-	fn storage_side_channels(&self) -> (std::collections::BTreeMap<String, serde_json::Value>, String) {
+	/// The per-peer view settings that ride along with either kind of staging.
+	fn storage_view_settings(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
-		let view_settings = DocumentSettings {
+		DocumentSettings {
 			document_ptz: &self.document_ptz,
 			render_mode: &self.render_mode,
 			overlays_visibility: &self.overlays_visibility_settings,
@@ -2071,9 +2081,7 @@ impl DocumentMessageHandler {
 			snapping_state: &self.snapping_state,
 			collapsed: &self.collapsed,
 		}
-		.to_view_map();
-
-		(view_settings, self.serialize_document())
+		.to_view_map()
 	}
 
 	/// Restore `view_settings` map into the document.
@@ -2104,11 +2112,15 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Move the `Gdd` undo/redo cursor and swap in the interface rebuilt from it. `had_oracle` records
-	/// whether the legacy snapshot already applied, so the rebuild can be compared against it.
-	fn drive_storage_undo_redo(&mut self, had_oracle: bool, undo: bool, validate: bool, responses: &mut VecDeque<Message>) {
+	/// Move the `Gdd` undo/redo cursor, swap in the interface rebuilt from it, and autosave so the legacy
+	/// document matches the cursor. `had_oracle` records whether the legacy snapshot already applied, so the
+	/// rebuild can be compared against it.
+	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, had_oracle: bool, undo: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		match self.history.move_cursor(undo) {
-			Ok(rebuilt) => self.apply_gdd_cursor_rebuild(rebuilt, had_oracle, validate, responses),
+			Ok(rebuilt) => {
+				self.apply_gdd_cursor_rebuild(rebuilt, had_oracle, validate, responses);
+				responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			}
 			Err(CursorMoveError::NotMoved) => {}
 			// Without the legacy snapshot the interface stayed put, so the cursor has to follow it back.
 			Err(CursorMoveError::RebuildFailed) => {
@@ -2431,7 +2443,7 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
 			true
@@ -2439,7 +2451,7 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(legacy_applied, true, validate, responses);
+		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2473,7 +2485,7 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
 			true
@@ -2481,7 +2493,7 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(legacy_applied, false, validate, responses);
+		self.drive_storage_undo_redo(document_id, legacy_applied, false, validate, responses);
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
