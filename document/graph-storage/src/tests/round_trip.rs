@@ -758,20 +758,28 @@ fn cyclic_network_reference_is_rejected() {
 	registry.node_instances.insert(
 		crate::NodeId(0),
 		Node {
+			presence: Default::default(),
+			added: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(child_network_id),
 			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
 			attributes: crate::Attributes::default(),
+			attributes_timestamp: Default::default(),
 			network: crate::ROOT_NETWORK,
 		},
 	);
 	registry.node_instances.insert(
 		crate::NodeId(1),
 		Node {
+			presence: Default::default(),
+			added: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(crate::ROOT_NETWORK),
 			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
 			attributes: crate::Attributes::default(),
+			attributes_timestamp: Default::default(),
 			network: child_network_id,
 		},
 	);

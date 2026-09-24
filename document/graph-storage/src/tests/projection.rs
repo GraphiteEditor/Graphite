@@ -6,7 +6,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 
-use crate::{Delta, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, Registry, RegistryDelta, Session};
+use crate::{NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, Registry};
 
 fn proto(identifier: &'static str, inputs: Vec<NodeInput>) -> DocumentNode {
 	DocumentNode {
@@ -153,46 +153,4 @@ fn an_unreachable_network_has_no_address() {
 	assert_eq!(projection.network_path(crate::NetworkId(5)), None);
 	assert_eq!(projection.node_address(NodeId(9)), None);
 	assert!(matches!(projection.node(NodeId(9)), Err(crate::to_runtime::ConversionError::NetworkNotFound(_))));
-}
-
-/// The counter tells a mirror that a refold produced values the applied ops do not account for. A refold
-/// that lands on the same values, which is the common case when a hot op retires, leaves it alone.
-#[test]
-fn rederivations_count_only_refolds_that_change_the_working_registry() {
-	let mut session = Session::with_peer(PeerId(1));
-	session
-		.stage_computed_ops(vec![RegistryDelta::AddNetwork {
-			id: crate::NetworkId(3),
-			network: crate::Network::default(),
-		}])
-		.expect("stage");
-	let last = session.hot_log().last().expect("staged").timestamp;
-	session.retire(last).expect("retire");
-	assert_eq!(session.working_rederivations(), 0);
-
-	// A refold over the same history and an empty hot log reproduces the same values.
-	session.document.refold_owed = true;
-	session.merge(Vec::<Delta>::new()).expect("a merge absorbing nothing settles the owed refold");
-	assert_eq!(session.working_rederivations(), 0, "a refold to the same values is not a rederivation");
-
-	// A removal held hot and an addition arriving retired do not commute: applied in arrival order the
-	// node is present, refolded it is absent. That is what a mirror following the ops cannot know.
-	let node_id = NodeId(4);
-	let mut node = Node::dummy();
-	node.network = crate::NetworkId(3);
-	session
-		.stage_computed_ops(vec![RegistryDelta::RemoveNode { id: node_id, snapshot: node.clone() }])
-		.expect("a removal of an absent node stages as a no-op");
-	let mut other = session.clone();
-	other.document.hot_log.clear();
-	other.commit_op_for_test(RegistryDelta::AddNode { id: node_id, node }).expect("the other peer adds the node");
-	let incoming: Vec<Delta> = other.cloned_deltas().into_iter().filter(|delta| session.delta(delta.id).is_none()).collect();
-
-	session.merge(incoming).expect("merge");
-	assert!(session.registry().node_instances.contains_key(&node_id), "applied in arrival order the addition lands last");
-
-	session.document.refold_owed = true;
-	session.merge(Vec::<Delta>::new()).expect("refold");
-	assert!(!session.registry().node_instances.contains_key(&node_id), "refolded, the hot removal lands last");
-	assert_eq!(session.working_rederivations(), 1, "a refold that changed the values is a rederivation");
 }

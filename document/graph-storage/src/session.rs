@@ -34,24 +34,7 @@ impl Session {
 	/// `Session::new`.
 	pub fn with_peer(peer: PeerId) -> Self {
 		Self {
-			document: Document {
-				working_registry: Registry::default(),
-				retired_snapshot: Registry::default(),
-				history: History::new(),
-				hot_log: Vec::new(),
-				retired: RetiredHotOps::default(),
-				head: None,
-				redo_stack: Vec::new(),
-				clock: LamportClock::new(peer),
-				peer,
-				last_broadcast_rev: None,
-				next_node_counter: 0,
-				next_hot_sequence: HotSequence::NONE,
-				refold_owed: false,
-				working_rederivations: 0,
-				refolds: 0,
-				fold: None,
-			},
+			document: Document::empty(peer),
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 		}
@@ -218,8 +201,6 @@ impl Session {
 				self.document.redo_stack.clear();
 			}
 
-			// The reverse must read the pre-op value of a target that may have been concurrently removed.
-			self.document.ensure_referenced_exist(target, &op)?;
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
 			let timestamp = authored_at.unwrap_or_else(|| self.document.clock.tick());
 			let parent = self.document.head;
@@ -260,19 +241,11 @@ impl Session {
 				retired_snapshot: registry.clone(),
 				working_registry: registry,
 				history: History::from_ordered(history),
-				hot_log: Vec::new(),
-				retired: RetiredHotOps::default(),
 				head,
 				redo_stack,
 				clock,
-				peer,
-				last_broadcast_rev: None,
 				next_node_counter,
-				next_hot_sequence: HotSequence::NONE,
-				refold_owed: false,
-				working_rederivations: 0,
-				refolds: 0,
-				fold: None,
+				..Document::empty(peer)
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -311,24 +284,19 @@ impl Session {
 
 	/// How much of the hot log `retire(up_to)` drains: everything through the last op stamped at or
 	/// before `up_to`. A prefix of the log rather than the ops under the cutoff, so retirement commits
-	/// them in the order the working registry applied them and the snapshot folds to the same values
-	/// without a refold. An op stamped later that sits earlier in the log goes with the prefix.
+	/// them in the order the working registry applied them. An op stamped later that sits earlier in the log goes with the prefix.
 	fn retirement_prefix(&self, up_to: TimeStamp) -> usize {
 		self.document.hot_log.iter().rposition(|hot_op| hot_op.timestamp <= up_to).map_or(0, |last| last + 1)
 	}
 
-	/// Drop hot ops another peer has retired without retiring them locally. Refolds like
-	/// [`absorb_retired_marks`](Self::absorb_retired_marks).
+	/// Drop hot ops another peer has retired without retiring them locally. The registries need nothing:
+	/// each op's effect is a function of its timestamp, so the working registry holds the same fold with
+	/// or without the hot copy of an op whose delta has landed.
 	pub fn discard_hot_ops(&mut self, retired: &[HotOpId]) -> Result<(), CrdtError> {
-		let before = self.document.hot_log.len();
 		let retired_ids: HashSet<HotOpId> = retired.iter().copied().collect();
 		self.document.hot_log.retain(|hot_op| !retired_ids.contains(&hot_op.id()));
 		// How a peer that did not retire these learns they are in history now.
 		self.document.mark_retired(retired.iter().copied());
-
-		if before != self.document.hot_log.len() {
-			self.refold_registries()?;
-		}
 
 		Ok(())
 	}
@@ -338,12 +306,9 @@ impl Session {
 		&self.document.retired
 	}
 
-	/// See [`RetiredHotOps::absorb`]. A drop owes a refold, since the working registry holds the op's
-	/// effect in hot-log order where the snapshot holds it in canonical order.
+	/// See [`RetiredHotOps::absorb`].
 	pub fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), CrdtError> {
-		if self.document.absorb_retired(remote) {
-			self.refold_registries()?;
-		}
+		self.document.absorb_retired(remote);
 
 		Ok(())
 	}
@@ -362,54 +327,14 @@ impl Session {
 	/// takes the last removal in canonical order, and with the whole history in view that can be one past
 	/// the replay position, whose snapshot places the entity in a network the replay has not created yet.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
-		// The oracle for tests and the simulation; the live path folds in place through `refold_registries`.
-		self.clone().document.fold_snapshot_from_history()
-	}
-
-	/// Rebuild both registries from canonical history, then re-layer the hot tail. A full replay; callers
-	/// check it is needed first.
-	fn refold_registries(&mut self) -> Result<(), CrdtError> {
-		self.document.refolds += 1;
-		// Cleared only on the way out. The deltas are in history either way, and a failure here leaves the
-		// registries derived from an older one until something retries.
-		self.document.refold_owed = true;
-		self.document.retired_snapshot = self.document.fold_snapshot_from_history()?;
-
-		// One left unapplicable is kept, not dropped: a later delta or hot op can still supply its referent.
-		let previous = std::mem::replace(&mut self.document.working_registry, self.document.retired_snapshot.clone());
-		let mut failure = None;
-		for hot_op in std::mem::take(&mut self.document.hot_log) {
-			if let Err(error) = self.document.replay_hot_op(hot_op.clone()) {
-				self.document.hot_log.push(hot_op);
-				failure = failure.or(Some(error));
-			}
+		// The oracle for tests and the simulation. The live registries are never rebuilt from history:
+		// every op lands the same whatever order it arrives in, so applying each once is the fold.
+		let reachable = self.document.history.ancestors(self.document.head);
+		let mut scratch = Document::empty(self.document.peer);
+		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
+			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 		}
-
-		// A mirror of the working registry follows it op by op and cannot follow a rederivation, so it
-		// is told when one produced something the ops alone do not account for. Usually they do: dropping
-		// a hot op that history now covers refolds to the same values, just stamped differently.
-		if !previous.value_equal(&self.document.working_registry) {
-			self.document.working_rederivations += 1;
-		}
-
-		if let Some(error) = failure {
-			return Err(error);
-		}
-
-		self.document.refold_owed = false;
-		Ok(())
-	}
-
-	/// How many times a refold has left the working registry with different values than the ops applied to
-	/// it would have. A caller mirroring the registry op by op compares this before and after, and rebuilds
-	/// its mirror wholesale when it moved.
-	pub fn working_rederivations(&self) -> u64 {
-		self.document.working_rederivations
-	}
-
-	/// How many refolds have run, whatever they produced.
-	pub fn refolds(&self) -> u64 {
-		self.document.refolds
+		Ok(scratch.working_registry)
 	}
 
 	pub fn history_len(&self) -> usize {
@@ -422,15 +347,13 @@ impl Session {
 	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<MergeOutcome, CrdtError> {
 		let length_before = self.document.history.len();
 
-		// Each delta enters history before the next is applied, so a later delta in the batch that
-		// targets something an earlier one removed can resurrect it.
+		// Each delta lands on both registries once. Every field, presence included, is last-writer-wins on
+		// the delta's timestamp, so the order the batch arrives in does not decide anything.
 		let mut absorbed_ids = HashSet::new();
-		let mut arrival_order = Vec::new();
 		for delta in incoming {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
-			arrival_order.push(delta.id);
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
 			// Working is snapshot plus hot tail, so a delta lands on both; cloning would promote hot ops.
 			self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
@@ -438,25 +361,16 @@ impl Session {
 			self.document.history.push(delta);
 		}
 		if absorbed_ids.is_empty() {
-			// Nothing new, but a refold left owed by an earlier failure is still the only way the registries
-			// catch up with the history they are derived from.
-			if self.document.refold_owed {
-				self.refold_registries()?;
-			}
-
 			return Ok(MergeOutcome::NoOp);
 		}
 
 		// A batch that chains off the last delta is already in canonical order, which is every retirement
 		// a host sends, and costs nothing to place. Anything else is sorted into place, over all of history.
+		// The order matters to the history file and to `Rev` determinism only; the registries do not care.
 		let extends = self.document.history.extends_canonically(length_before);
 		if !extends {
 			self.document.history.canonical_sort();
 		}
-
-		// The loop folds in arrival order, and concurrent ops do not all commute: a remove and a change to
-		// the same target resolve by whichever lands second.
-		let folded_in_canonical_order = extends || self.document.history.iter().skip(length_before).map(|delta| delta.id).eq(arrival_order.iter().copied());
 
 		let history = &self.document.history;
 		let last_before = length_before.checked_sub(1).and_then(|position| history.at(position)).map(|delta| delta.id);
@@ -482,11 +396,6 @@ impl Session {
 			}
 		};
 		self.document.head = outcome.head();
-
-		// After `head`, since the fold is over its ancestry.
-		if !folded_in_canonical_order || self.document.refold_owed {
-			self.refold_registries()?;
-		}
 
 		Ok(outcome)
 	}
@@ -733,7 +642,7 @@ impl Session {
 	}
 
 	/// Test-only: commit a single op as a retired delta on the local chain, returning the result so a
-	/// test can observe a resurrection failure (e.g. `NotFoundInHistory`).
+	/// test can observe a failure (e.g. `NotFoundInHistory`).
 	#[cfg(test)]
 	pub(crate) fn commit_op_for_test(&mut self, op: RegistryDelta) -> Result<(), CrdtError> {
 		self.commit_ops(std::iter::once(op), false).map(|_| ())
@@ -925,16 +834,14 @@ pub enum CrdtError {
 	TargetNodeDoesNotExist(NodeId),
 	#[error("Network {0} does not exist")]
 	NetworkDoesNotExist(NetworkId),
+	#[error("Resource {0:?} does not exist")]
+	ResourceDoesNotExist(ResourceId),
 	#[error("Input index {0} out of bounds")]
 	InputIndexOutOfBounds(usize),
 	#[error("Export slot index {0} out of bounds")]
 	ExportSlotOutOfBounds(u32),
 	#[error("Delta {0} not found in history")]
 	NotFoundInHistory(Rev),
-	#[error("No history entry resurrects node {0}")]
-	NodeNotInHistory(NodeId),
-	#[error("No history entry resurrects network {0}")]
-	NetworkNotInHistory(NetworkId),
 	#[error("Nothing to undo")]
 	NothingToUndo,
 	#[error("Nothing to redo")]

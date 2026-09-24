@@ -111,8 +111,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					let Some(gdd) = document.storage_mut() else { continue };
 
 					let events = gdd.poll_peers();
-					// Taken every poll rather than on an event: a refold a hello triggers can leave the
-					// registry rederived with no change event to announce it.
+					// Taken every poll rather than on an event: a full sync a hello triggers can replace the
+					// registry with no change event to announce it.
 					let changes = gdd.take_remote_changes();
 					if !changes.is_empty() {
 						document.pending_remote.extend(changes);

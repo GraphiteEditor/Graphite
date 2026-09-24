@@ -222,7 +222,9 @@ impl RuntimeProjection<'_> {
 	/// The network's exports, scope injections and metadata, without its nodes.
 	pub fn network_entry(&self, id: NetworkId) -> Result<ProjectedNetwork, ConversionError> {
 		let registry = self.context.registry;
-		let network = registry.networks.get(&id).ok_or(ConversionError::NetworkNotFound(id))?;
+		// A network removed concurrently with a write into it renders as it was, so the nodes still in it
+		// keep their place.
+		let network = registry.network_or_removed(id).ok_or(ConversionError::NetworkNotFound(id))?;
 		let network_path = self.network_path(id).ok_or(ConversionError::NetworkNotFound(id))?;
 
 		let empty_attrs = crate::Attributes::new();
@@ -304,7 +306,7 @@ fn convert_network(
 	node_collector: &mut Option<Vec<NodeMetadataEntry>>,
 	network_collector: &mut Option<Vec<NetworkMetadataEntry>>,
 ) -> Result<NodeNetwork, ConversionError> {
-	let network = context.registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
+	let network = context.registry.network_or_removed(network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	if let Some(collector) = network_collector.as_mut() {
 		collector.push(extract_network_metadata(context.registry, &network.attributes, metadata_path, network_id));
@@ -428,8 +430,7 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 
 /// Reassembles `input_data` by scanning every attribute under `ui::input_data::` and stripping the prefix.
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
-	let input_data: HashMap<String, serde_json::Value> = attributes
-		.iter()
+	let input_data: HashMap<String, serde_json::Value> = crate::attributes::live(attributes)
 		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
 		.collect();
 
@@ -471,7 +472,9 @@ fn convert_node(
 fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
 		NodeInput::Node { id: node_id, index: output_index } => {
-			let referenced = registry.node_instances.get(node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
+			// A reference to a node removed concurrently keeps the id it had, the way the editor holds a
+			// dangling input; only a node never seen has no id to map to.
+			let referenced = registry.node_or_removed(*node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
 
 			// Runtime references are local to one network. A cross-network reference would remap to a
 			// local ID that doesn't exist in the current runtime network, so reject it.

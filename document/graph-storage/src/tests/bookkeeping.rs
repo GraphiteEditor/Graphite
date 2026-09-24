@@ -91,11 +91,9 @@ fn a_chain_off_the_last_delta_fast_forwards_without_sorting() {
 	let incoming: Vec<Delta> = host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect();
 	assert!(guest.document.history.extends_canonically(guest.history_len()), "an empty tail extends trivially");
 
-	let refolds = guest.refolds();
 	let outcome = guest.merge(incoming).expect("merge");
 
 	assert!(matches!(outcome, MergeOutcome::FastForward(rev) if Some(rev) == host.head_rev()), "{outcome:?}");
-	assert_eq!(guest.refolds(), refolds, "a fast-forward folds nothing again");
 	assert_eq!(guest.history().map(|delta| delta.id).collect::<Vec<_>>(), host.history().map(|delta| delta.id).collect::<Vec<_>>());
 
 	let mut sorted = guest.document.history.clone();
@@ -122,31 +120,9 @@ fn a_batch_off_an_earlier_delta_is_sorted_into_place() {
 	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
 }
 
-/// The in-place fold leaves everything but the snapshot alone and agrees with the cloning oracle.
-#[test]
-fn the_in_place_fold_matches_the_oracle_and_touches_nothing_else() {
-	let mut session = Session::with_peer(PeerId(1));
-	session.commit_op_for_test(add_network(3)).expect("network");
-	session.commit_op_for_test(set_attribute("x", 1)).expect("x");
-	session.stage_ops(vec![set_attribute("hot", 9)]).expect("a hot op on top");
-
-	let oracle = session.snapshot_from_history().expect("oracle");
-	let working_before = session.registry().clone();
-	let hot_before = session.hot_log().to_vec();
-	let head_before = session.head_rev();
-
-	let folded = session.document.fold_snapshot_from_history().expect("fold");
-
-	assert!(folded.value_equal(&oracle));
-	assert!(session.registry().value_equal(&working_before), "the working registry is untouched");
-	assert_eq!(session.hot_log().len(), hot_before.len());
-	assert_eq!(session.head_rev(), head_before);
-	assert!(session.document.fold.is_none(), "the scope is cleared on the way out");
-}
-
 /// Retirement takes a prefix of the hot log, in the order the working registry applied it, rather than
 /// every op under the cutoff. An op stamped later than the cutoff but applied earlier goes with the
-/// prefix, so the snapshot folds in the same order and the zones agree without a refold.
+/// prefix, so the snapshot folds in the same order and the zones agree.
 #[test]
 fn retirement_drains_a_hot_log_prefix_in_applied_order() {
 	let mut host = Session::with_peer(PeerId(1));
@@ -168,10 +144,8 @@ fn retirement_drains_a_hot_log_prefix_in_applied_order() {
 	let would_retire = host.hot_ops_up_to(own.timestamp);
 	assert_eq!(would_retire.len(), 2, "the prefix through the earlier-stamped op includes the later-stamped op before it");
 
-	let refolds = host.refolds();
 	host.retire(own.timestamp).expect("retire");
 	assert!(host.hot_log().is_empty());
-	assert_eq!(host.refolds(), refolds, "committing in applied order owes no refold");
 	assert!(host.registry().value_equal(host.retired_registry()));
 	assert!(host.retired_registry().networks.contains_key(&NetworkId(9)));
 }

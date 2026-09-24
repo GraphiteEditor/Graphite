@@ -526,6 +526,10 @@ fn assert_zones_agree(seed: u64, peers: &[Peer]) {
 			"seed {seed}: peer {index} working registry drifted from its own snapshot\nworking minus snapshot: {:#?}",
 			document_graph_storage::delta::compute_deltas(peer.session().retired_registry(), peer.session().registry())
 		);
+		assert!(
+			peer.session().registry().removal_marks_equal(peer.session().retired_registry()),
+			"seed {seed}: peer {index} working registry removed different things than its snapshot"
+		);
 	}
 }
 

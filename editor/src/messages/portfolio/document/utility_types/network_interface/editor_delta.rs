@@ -233,6 +233,7 @@ impl EditorDelta {
 							input: context.resolver.convert_input_at(input, network_path)?,
 							timestamp: TimeStamp::ORIGIN,
 							attributes: convert_input_attributes(input)?,
+							attributes_timestamp: TimeStamp::ORIGIN,
 						})
 					})
 					.collect::<Result<Vec<_>, ConversionError>>()?;
@@ -392,8 +393,13 @@ fn construct_structural_additions(
 					.map(|(index, slot)| {
 						let mut slot = slot.clone();
 						if let Some(previous) = held.inputs().get(index) {
-							slot.attributes
-								.extend(previous.attributes.iter().filter(|(key, _)| key.starts_with("ui::")).map(|(key, value)| (key.clone(), value.clone())));
+							slot.attributes.extend(
+								previous
+									.attributes
+									.iter()
+									.filter(|(key, value)| key.starts_with("ui::") && !value.deleted)
+									.map(|(key, value)| (key.clone(), value.clone())),
+							);
 						}
 						slot
 					})

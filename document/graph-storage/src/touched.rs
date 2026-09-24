@@ -131,6 +131,7 @@ mod tests {
 			input: NodeInput::Node { id: NodeId(9), index: 0 },
 			timestamp: crate::TimeStamp::ORIGIN,
 			attributes: Default::default(),
+			attributes_timestamp: crate::TimeStamp::ORIGIN,
 		});
 		let mut touched = Touched::default();
 		touched.record(&RegistryDelta::AddNode { id: NodeId(8), node });

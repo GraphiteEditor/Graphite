@@ -336,7 +336,15 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 	write_ui_network_attributes(&mut attributes, node_network, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 
-	registry.networks.insert(network_id, Network { exports, attributes });
+	registry.networks.insert(
+		network_id,
+		Network {
+			presence: TimeStamp::ORIGIN,
+			exports,
+			attributes,
+			attributes_timestamp: TimeStamp::ORIGIN,
+		},
+	);
 	ctx.network_ids.insert(metadata_path.to_vec(), network_id);
 
 	Ok(())
@@ -414,6 +422,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 			input: convert_input(input, parent_path, network_id, ctx.ids(metadata_path))?,
 			timestamp,
 			attributes: input_attrs,
+			attributes_timestamp: timestamp,
 		});
 	}
 
@@ -446,10 +455,14 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	write_ui_attributes(&mut attributes, ctx.metadata, metadata_path, runtime_node_id, timestamp)?;
 
 	Ok(Node {
+		presence: timestamp,
+		added: timestamp,
+		inputs_timestamp: timestamp,
 		implementation,
 		implementation_timestamp: timestamp,
 		inputs,
 		attributes,
+		attributes_timestamp: timestamp,
 		network: network_id,
 	})
 }
@@ -813,7 +826,15 @@ impl<'m> ScopedConversion<'m> {
 		write_ui_network_attributes(&mut attributes, node_network, local_path, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 		write_scope_injections(&mut attributes, node_network, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 
-		registry.networks.insert(network_id, Network { exports, attributes });
+		registry.networks.insert(
+			network_id,
+			Network {
+				presence: TimeStamp::ORIGIN,
+				exports,
+				attributes,
+				attributes_timestamp: TimeStamp::ORIGIN,
+			},
+		);
 		Ok(())
 	}
 

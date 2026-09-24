@@ -220,28 +220,21 @@ pub struct AttributeDelta {
 pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
 	AttributeDelta {
 		key: delta.key.clone(),
-		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
+		value: attributes.get(&delta.key).filter(|previous| !previous.deleted).map(|previous| previous.value.clone()),
 	}
 }
 
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {
+/// Lands a single-key write. `floor` is when the map was last written whole: a key the map does not
+/// hold is deleted as of then, so a write older than it is dropped. A deletion leaves a tombstone.
+pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes, floor: TimeStamp) {
 	let AttributeDelta { key, value } = delta;
-	match value {
-		Some(value) => match attributes.entry(key) {
-			std::collections::btree_map::Entry::Occupied(mut entry) => {
-				if force || timestamp > entry.get().timestamp {
-					entry.insert(Value { value, timestamp });
-				}
-			}
-			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(Value { value, timestamp });
-			}
-		},
-		None => {
-			let should_remove = force || attributes.get(&key).is_none_or(|existing| timestamp > existing.timestamp);
-			if should_remove {
-				attributes.remove(&key);
-			}
-		}
+	let decided = attributes.get(&key).map_or(floor, |existing| existing.timestamp);
+	if !force && timestamp <= decided {
+		return;
 	}
+	let entry = match value {
+		Some(value) => Value::new(value, timestamp),
+		None => Value::deleted(timestamp),
+	};
+	attributes.insert(key, entry);
 }

@@ -4,6 +4,19 @@ use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
+	/// When the node was last added, so a concurrent addition of the same id and a removal resolve by
+	/// last-writer-wins rather than by arrival order. See [`Registry::removed_nodes`](crate::Registry::removed_nodes).
+	#[serde(default)]
+	pub(crate) presence: TimeStamp,
+	/// When the node was last added, which is what decides its network between concurrent additions
+	/// of one id; every other field carries its own timestamp.
+	#[serde(default)]
+	pub(crate) added: TimeStamp,
+	/// When the input list last changed shape, so a whole-list write and a per-slot write resolve the
+	/// same whichever lands first: the list follows the newer of the two, and a slot the older list also
+	/// held keeps whichever of its values is newer.
+	#[serde(default)]
+	pub(crate) inputs_timestamp: TimeStamp,
 	pub(crate) implementation: Implementation,
 	/// When the implementation was last written, so a swap resolves by last-writer-wins rather than by
 	/// the order ops happen to arrive in. Absent from documents written before swaps were expressible.
@@ -11,6 +24,9 @@ pub struct Node {
 	pub(crate) implementation_timestamp: TimeStamp,
 	pub(crate) inputs: Vec<InputSlot>,
 	pub(crate) attributes: Attributes,
+	/// When `attributes` was last written whole; see [`Attributes`].
+	#[serde(default)]
+	pub(crate) attributes_timestamp: TimeStamp,
 	pub(crate) network: NetworkId,
 }
 
@@ -51,22 +67,17 @@ impl Node {
 	/// `ChangeNodeInput`. The slot count is fixed at creation, since changing an input addresses a
 	/// slot by position.
 	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
-		// `to_runtime` reads this back as a `TaggedValue`, whose unit `None` variant encodes as this string.
-		// Pinned by `unset_input_slot_deserializes_as_tagged_value_none`.
-		let slot = InputSlot {
-			input: NodeInput::Value {
-				value: serde_json::Value::String("None".to_string()),
-				exposed: false,
-			},
-			timestamp: TimeStamp::ORIGIN,
-			attributes: Attributes::new(),
-		};
+		let slot = InputSlot::unset(TimeStamp::ORIGIN);
 
 		Self {
+			presence: TimeStamp::ORIGIN,
+			added: TimeStamp::ORIGIN,
+			inputs_timestamp: TimeStamp::ORIGIN,
 			implementation,
 			implementation_timestamp: TimeStamp::ORIGIN,
 			inputs: vec![slot; inputs],
 			attributes: Attributes::new(),
+			attributes_timestamp: TimeStamp::ORIGIN,
 			network,
 		}
 	}
@@ -74,10 +85,14 @@ impl Node {
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
 		Self {
+			presence: TimeStamp::ORIGIN,
+			added: TimeStamp::ORIGIN,
+			inputs_timestamp: TimeStamp::ORIGIN,
 			implementation: Implementation::ProtoNode(ResourceId::new()),
 			implementation_timestamp: TimeStamp::default(),
 			inputs: vec![],
 			attributes: Attributes::new(),
+			attributes_timestamp: TimeStamp::ORIGIN,
 			network: crate::ROOT_NETWORK,
 		}
 	}
@@ -90,6 +105,26 @@ pub struct InputSlot {
 	pub input: NodeInput,
 	pub timestamp: TimeStamp,
 	pub attributes: Attributes,
+	/// When `attributes` was last written whole; see [`Attributes`].
+	#[serde(default)]
+	pub attributes_timestamp: TimeStamp,
+}
+
+impl InputSlot {
+	/// A slot holding nothing, stamped `at`.
+	pub fn unset(at: TimeStamp) -> Self {
+		// `to_runtime` reads this back as a `TaggedValue`, whose unit `None` variant encodes as this string.
+		// Pinned by `unset_input_slot_deserializes_as_tagged_value_none`.
+		Self {
+			input: NodeInput::Value {
+				value: serde_json::Value::String("None".to_string()),
+				exposed: false,
+			},
+			timestamp: at,
+			attributes: Attributes::new(),
+			attributes_timestamp: at,
+		}
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -121,10 +156,16 @@ pub enum Implementation {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Network {
+	/// When the network was last added; see [`Node::presence`].
+	#[serde(default)]
+	pub presence: TimeStamp,
 	pub exports: Vec<ExportSlot>,
 	/// Per-network `ui::*` state (navigation, previewing). Separate from `Node.attributes` so
 	/// view-state edits LWW independently.
 	pub attributes: Attributes,
+	/// When `attributes` was last written whole; see [`Attributes`].
+	#[serde(default)]
+	pub attributes_timestamp: TimeStamp,
 }
 
 impl Network {

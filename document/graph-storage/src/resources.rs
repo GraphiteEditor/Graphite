@@ -26,6 +26,8 @@ pub struct SourceValue {
 /// resource agree by construction, since the hash is content-derived).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ResourceEntry {
+	/// When the entry was last added; see [`Node::presence`](crate::Node).
+	pub presence: TimeStamp,
 	/// Fallback chain kept sorted by `SourceKey`, so iteration yields highest-priority first.
 	pub sources: Vec<(SourceKey, SourceValue)>,
 	pub hash: Option<ResourceHash>,
@@ -39,12 +41,19 @@ impl<'de> Deserialize<'de> for ResourceEntry {
 		// collapse any duplicate keys, keeping the higher-timestamp value (LWW).
 		#[derive(Deserialize)]
 		struct Raw {
+			#[serde(default)]
+			presence: TimeStamp,
 			sources: Vec<(SourceKey, SourceValue)>,
 			hash: Option<ResourceHash>,
 			hash_timestamp: TimeStamp,
 		}
 
-		let Raw { mut sources, hash, hash_timestamp } = Raw::deserialize(deserializer)?;
+		let Raw {
+			presence,
+			mut sources,
+			hash,
+			hash_timestamp,
+		} = Raw::deserialize(deserializer)?;
 		sources.sort_by_key(|(a, _)| *a);
 		sources.dedup_by(|(later_key, later_value), (kept_key, kept_value)| {
 			// `dedup_by` keeps the first of each run; sorting is stable, so resolve duplicates by LWW.
@@ -57,7 +66,12 @@ impl<'de> Deserialize<'de> for ResourceEntry {
 			true
 		});
 
-		Ok(Self { sources, hash, hash_timestamp })
+		Ok(Self {
+			presence,
+			sources,
+			hash,
+			hash_timestamp,
+		})
 	}
 }
 
@@ -71,6 +85,7 @@ impl ResourceEntry {
 		let sources = vec![(SourceKey { priority, peer }, SourceValue { source: embedded, timestamp })];
 
 		Self {
+			presence: timestamp,
 			sources,
 			hash: Some(hash),
 			hash_timestamp: timestamp,

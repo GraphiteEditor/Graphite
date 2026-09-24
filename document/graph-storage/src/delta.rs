@@ -196,15 +196,16 @@ fn nodes_have_same_implementation(a: &Node, b: &Node) -> bool {
 fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) -> Vec<AttributeDelta> {
 	let mut deltas = Vec::new();
 
-	for key in from.keys() {
-		if !to.contains_key(key) {
+	let held = |attributes: &crate::Attributes, key: &str| attributes.get(key).filter(|value| !value.deleted).map(|value| value.value.clone());
+	for (key, _) in crate::attributes::live(from) {
+		if held(to, key).is_none() {
 			deltas.push(AttributeDelta { key: key.clone(), value: None });
 		}
 	}
 
 	// Compare by `value` only; the per-entry `timestamp` is derived from the diff, not part of it.
-	for (key, to_value) in to {
-		if from.get(key).is_none_or(|from_value| from_value.value != to_value.value) {
+	for (key, to_value) in crate::attributes::live(to) {
+		if held(from, key).is_none_or(|from_value| from_value != to_value.value) {
 			deltas.push(AttributeDelta {
 				key: key.clone(),
 				value: Some(to_value.value.clone()),
@@ -287,6 +288,7 @@ mod tests {
 			input: NodeInput::Import { index: 0 },
 			timestamp: TimeStamp::ORIGIN,
 			attributes: Attributes::new(),
+			attributes_timestamp: TimeStamp::ORIGIN,
 		});
 
 		let deltas = compute_deltas(&from, &to);
@@ -344,6 +346,7 @@ mod tests {
 			crate::Value {
 				value: serde_json::json!("old"),
 				timestamp: stamp(0),
+				deleted: false,
 			},
 		);
 		from.node_instances.insert(NodeId(42), node);
@@ -354,6 +357,7 @@ mod tests {
 			crate::Value {
 				value: serde_json::json!("new"),
 				timestamp: stamp(1),
+				deleted: false,
 			},
 		);
 
@@ -379,6 +383,7 @@ mod tests {
 			crate::Value {
 				value: serde_json::json!("value"),
 				timestamp: stamp(1),
+				deleted: false,
 			},
 		);
 

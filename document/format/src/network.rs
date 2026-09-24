@@ -18,8 +18,7 @@ use crate::{Gdd, PendingPersist};
 #[derive(Clone, Debug, Default)]
 pub struct RemoteChanges {
 	pub touched: Touched,
-	/// The working registry was replaced or refolded to different values, so the mirror has to be rebuilt
-	/// from the whole registry.
+	/// The working registry was replaced wholesale by a full sync, so the mirror has to be rebuilt from it.
 	pub rebuilt: bool,
 }
 
@@ -38,17 +37,6 @@ impl<L: Layout> Gdd<L> {
 	/// Takes what peers changed since the last call. Empty when nothing did.
 	pub fn take_remote_changes(&mut self) -> RemoteChanges {
 		std::mem::take(&mut self.remote_changes)
-	}
-
-	/// Runs a sync step that can refold the working registry, and marks the mirror for a rebuild if the
-	/// refold left values the applied ops do not account for.
-	fn noting_rederivation<R>(&mut self, step: impl FnOnce(&mut Self) -> R) -> R {
-		let before = self.session.working_rederivations();
-		let result = step(self);
-		if self.session.working_rederivations() != before {
-			self.remote_changes.rebuilt = true;
-		}
-		result
 	}
 }
 
@@ -159,7 +147,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		for delta in &deltas {
 			self.remote_changes.touched.record(&delta.kind);
 		}
-		self.noting_rederivation(|gdd| gdd.session.merge_remote(deltas, retires))?;
+		self.session.merge_remote(deltas, retires)?;
 
 		// Whatever a peer sent is shared by definition, so it sits behind the published frontier too: a
 		// guest must no more silently rewind the host's history than the host may rewind its own.
@@ -187,7 +175,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		self.noting_rederivation(|gdd| SyncTarget::absorb_retired_marks(&mut gdd.session, remote))?;
+		SyncTarget::absorb_retired_marks(&mut self.session, remote)?;
 		self.pending_persist.hot_log = true;
 		Ok(())
 	}
