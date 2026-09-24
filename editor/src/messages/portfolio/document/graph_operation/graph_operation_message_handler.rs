@@ -881,9 +881,9 @@ fn insert_brush_strokes_chain(network_interface: &mut NodeNetworkInterface, laye
 	let strokes_node = strokes_node_type.node_template_input_override([
 		Some(NodeInput::value(TaggedValue::Strokes(Vec::new()), false)),
 		Some(NodeInput::value(TaggedValue::Color(color), false)),
-		Some(NodeInput::value(TaggedValue::F64(diameter), false)),
-		Some(NodeInput::value(TaggedValue::F64(hardness), false)),
-		Some(NodeInput::value(TaggedValue::F64(flow), false)),
+		Some(NodeInput::value(TaggedValue::Number(diameter), false)),
+		Some(NodeInput::value(TaggedValue::Number(hardness), false)),
+		Some(NodeInput::value(TaggedValue::Number(flow), false)),
 	]);
 	network_interface.insert_node(strokes_node_id, strokes_node, &[]);
 	network_interface.set_input(&InputConnector::node_at_index(layer.to_node(), 1), NodeInput::node(strokes_node_id, 0), &[]);

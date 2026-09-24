@@ -78,7 +78,7 @@ async fn set_input_value_constructs_the_exact_diff_op() {
 	let node = editor.create_node_by_name(rectangle_definition()).await;
 
 	let working = convert(&editor);
-	let input = NodeInput::value(TaggedValue::F64(42.), false);
+	let input = NodeInput::value(TaggedValue::Number(42.), false);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(node, 1), input.clone(), &[]);
 
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
@@ -337,7 +337,7 @@ async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
 	editor
 		.active_document_mut()
 		.network_interface
-		.add_import(TaggedValue::F64(7.), true, -1, "Added", "An added import", &[group]);
+		.add_import(TaggedValue::Number(7.), true, -1, "Added", "An added import", &[group]);
 
 	let emitted = editor.active_document_mut().network_interface.take_deltas();
 	assert!(!emitted.is_empty(), "adding an import should have emitted deltas");
@@ -378,7 +378,7 @@ async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
 	editor
 		.active_document_mut()
 		.network_interface
-		.add_import(TaggedValue::F64(7.), true, -1, "Added", "An added import", &[group]);
+		.add_import(TaggedValue::Number(7.), true, -1, "Added", "An added import", &[group]);
 
 	let emitted = editor.active_document_mut().network_interface.take_deltas();
 	let constructed = construct(&editor, &emitted, &working);
@@ -452,7 +452,7 @@ async fn replaying_an_arity_change_reproduces_the_interface() {
 		editor
 			.active_document_mut()
 			.network_interface
-			.add_import(TaggedValue::F64(7.), true, -1, "Added", "An added import", &[group]);
+			.add_import(TaggedValue::Number(7.), true, -1, "Added", "An added import", &[group]);
 	})
 	.await;
 }

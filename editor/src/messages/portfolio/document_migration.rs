@@ -32,7 +32,7 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 		"core::option::Option<alloc::sync::Arc<core_types::context::OwnedContextImpl>>",
 	),
 	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
-	("\"OptionalF64\":", "\"F64\":"),
+	("\"OptionalF64\":", "\"Number\":"),
 	("\"path_bool_nodes::BooleanOperation\"", "\"vector_types::vector::misc::BooleanOperation\""),
 	("\"core_types::table::Table<", "\"core_types::list::List<"),
 	// The `GradientStops` type was renamed to `Gradient`; stale stored output names are cleared so the display falls back to the live type name
@@ -1205,8 +1205,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		if *old_inputs_count == 6 {
 			match old_inputs.get(2) {
 				Some(NodeInput::Value { tagged_value, exposed }) => {
-					if let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() {
-						let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
+					if let TaggedValue::Number(radians) = *tagged_value.clone().into_inner() {
+						let degrees = NodeInput::value(TaggedValue::Number(radians.to_degrees()), *exposed);
 						document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), degrees, network_path);
 					}
 				}
@@ -1215,7 +1215,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					// (which represented radians in the legacy format) reaches the now-degrees Rotation input correctly.
 					if let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) {
 						let mut multiply_template = multiply_node.default_node_template();
-						multiply_template.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+						multiply_template.inputs[1] = NodeInput::value(TaggedValue::Number(180. / PI), false);
 						let multiply_node_id = NodeId::new();
 						if let Some(transform_position) = document.network_interface.position(node_id, network_path) {
 							let multiply_position = transform_position + IVec2::new(-7, 1);
@@ -1301,7 +1301,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// The rewritten "Math f(x)" expression, or `None` when only the Extend + "Math f(…)" form can preserve the node's meaning
 		let inline_b_constant = match operand_b.as_value() {
-			Some(TaggedValue::F64(constant)) => Some(*constant),
+			Some(TaggedValue::Number(constant)) => Some(*constant),
 			_ => None,
 		};
 		let fx_expression = match &static_expression {
@@ -1336,7 +1336,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		} else {
 			// "Extend" joins the two operands into the list "Math f(…)" reads; an unwired constant operand becomes a one-item list value
 			let as_list_input = |input: &NodeInput| match input.as_value() {
-				Some(TaggedValue::F64(value)) => NodeInput::value(TaggedValue::F64Array(vec![*value]), input.is_exposed()),
+				Some(TaggedValue::Number(value)) => NodeInput::value(TaggedValue::Numbers(vec![*value]), input.is_exposed()),
 				_ => input.clone(),
 			};
 			let Some(extend_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::graphic::extend::IDENTIFIER)) else {
@@ -1532,7 +1532,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				.iter()
 				.filter_map(|&index| {
 					let NodeInput::Value { tagged_value, exposed } = node.inputs.get(index)? else { return None };
-					let TaggedValue::F64(value) = &**tagged_value else { return None };
+					let TaggedValue::Number(value) = &**tagged_value else { return None };
 					Some((*node_id, path.clone(), index, *value as i64, *exposed))
 				})
 				.collect::<Vec<_>>()
@@ -1541,7 +1541,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	for (node_id, network_path, index, integer, exposed) in fractional_value_inputs {
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::I64(integer), exposed), &network_path);
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::Integer(integer), exposed), &network_path);
 	}
 
 	// Bringing an old document up to date is not a set of edits on it, it is how the document arrives.
@@ -1555,8 +1555,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
 	let lengths = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(lengths) => lengths.clone(),
-		TaggedValue::F64(length) => vec![*length],
+		TaggedValue::Numbers(lengths) => lengths.clone(),
+		TaggedValue::Number(length) => vec![*length],
 		TaggedValue::String(text) => graphene_std::core_types::misc::parse_f64_list(text),
 		_ => return None,
 	};
@@ -1567,8 +1567,8 @@ fn migrate_dash_input(input: &NodeInput) -> Option<NodeInput> {
 fn migrate_corner_radius_input(input: &NodeInput) -> Option<NodeInput> {
 	let NodeInput::Value { tagged_value, exposed } = input else { return None };
 	let values = match &*tagged_value.clone().into_inner() {
-		TaggedValue::F64Array(values) => values.clone(),
-		TaggedValue::F64(value) => vec![*value],
+		TaggedValue::Numbers(values) => values.clone(),
+		TaggedValue::Number(value) => vec![*value],
 		_ => return None,
 	};
 	Some(NodeInput::value(TaggedValue::BoxCorners(values), *exposed))
@@ -1656,8 +1656,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		// A sub-node is kept if its input is exposed/wired (so the user can drive it from the graph) OR if its value differs from the default
 		let keep_blend_mode = blend_mode_input.is_exposed() || !matches!(blend_mode_input.as_value(), Some(TaggedValue::BlendMode(BlendMode::Normal)));
-		let keep_opacity = opacity_input.is_exposed() || !matches!(opacity_input.as_value(), Some(TaggedValue::F64(v)) if (*v - 100.).abs() < f64::EPSILON);
-		let keep_fill = fill_input.is_exposed() || !matches!(fill_input.as_value(), Some(TaggedValue::F64(v)) if (*v - 100.).abs() < f64::EPSILON);
+		let keep_opacity = opacity_input.is_exposed() || !matches!(opacity_input.as_value(), Some(TaggedValue::Number(v)) if (*v - 100.).abs() < f64::EPSILON);
+		let keep_fill = fill_input.is_exposed() || !matches!(fill_input.as_value(), Some(TaggedValue::Number(v)) if (*v - 100.).abs() < f64::EPSILON);
 		let keep_clip = clip_input.is_exposed() || !matches!(clip_input.as_value(), Some(TaggedValue::Bool(false)));
 
 		// Find the downstream connection so we can chain new nodes between this node and downstream
@@ -1803,7 +1803,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node_at_index(*node_id, 3), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::F64(100.), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 4), NodeInput::value(TaggedValue::Number(100.), false), network_path);
 
 		inputs_count = 5;
 	}
@@ -2149,9 +2149,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
 		// Line height and character spacing were hardcoded to 1 in the era before they became inputs
-		let hardcoded_to_one = || NodeInput::value(TaggedValue::F64(1.), false);
+		let hardcoded_to_one = || NodeInput::value(TaggedValue::Number(1.), false);
 		// Zero is how an absent `Option<f64>` maximum reads to the split below
-		let unset_maximum = || NodeInput::value(TaggedValue::F64(0.), false);
+		let unset_maximum = || NodeInput::value(TaggedValue::Number(0.), false);
 
 		let upgraded_inputs = [
 			old_inputs[0].clone(),
@@ -2165,7 +2165,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			old_inputs
 				.get(8)
 				.cloned()
-				.unwrap_or_else(|| NodeInput::value(TaggedValue::F64(TypesettingConfig::default().letter_tilt), false)),
+				.unwrap_or_else(|| NodeInput::value(TaggedValue::Number(TypesettingConfig::default().letter_tilt), false)),
 			NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false),
 			old_inputs.get(9).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::Bool(false), false)),
 		];
@@ -2192,7 +2192,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// The old `Option<f64>` maximum becomes a bool plus a value, with zero standing in for the absent option.
 		// A wired maximum has no value to read, so it keeps its connection and counts as present.
 		let split_maximum = |input: &NodeInput| match input.as_value() {
-			Some(&TaggedValue::F64(maximum)) => (maximum != 0., NodeInput::value(TaggedValue::F64(if maximum == 0. { 100. } else { maximum }), false)),
+			Some(&TaggedValue::Number(maximum)) => (maximum != 0., NodeInput::value(TaggedValue::Number(if maximum == 0. { 100. } else { maximum }), false)),
 			_ => (true, input.clone()),
 		};
 
@@ -2315,7 +2315,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::F64(old_offset), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Number(old_offset), false), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[2].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[3].clone(), network_path);
 	}
@@ -2449,17 +2449,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		let output_level = |index: usize, default: f64| match old_inputs.get(index).and_then(|input| input.as_value()) {
-			Some(TaggedValue::F64(percent)) => percent / 100.,
+			Some(TaggedValue::Number(percent)) => percent / 100.,
 			_ => default,
 		};
 		let (output_minimums, output_maximums) = (output_level(4, 0.), output_level(5, 1.));
 		for (index, input) in old_inputs.iter().take(6).enumerate() {
 			let input = match (index, input.as_value()) {
-				(2, Some(TaggedValue::F64(percent))) => {
+				(2, Some(TaggedValue::Number(percent))) => {
 					// The old node's midtones-to-gamma mapping, from https://stackoverflow.com/questions/39510072/algorithm-for-adjustment-of-image-levels
 					let midtones = output_minimums + (output_maximums - output_minimums) * percent / 100.;
 					let gamma = if midtones < 0.5 { 1. + 9. * (1. - midtones * 2.) } else { ((1. - midtones) * 2.).max(0.01) };
-					NodeInput::value(TaggedValue::F64(gamma.clamp(0.01, 9.99)), input.is_exposed())
+					NodeInput::value(TaggedValue::Number(gamma.clamp(0.01, 9.99)), input.is_exposed())
 				}
 				_ => input.clone(),
 			};
@@ -2514,7 +2514,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::F64(0.), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Number(0.), false), network_path);
 		document
 			.network_interface
 			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
@@ -2569,7 +2569,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		let new_spacing_value = NodeInput::value(TaggedValue::PointSpacingType(graphene_std::vector::misc::PointSpacingType::Separation), false);
-		let new_quantity_value = NodeInput::value(TaggedValue::I64(100), false);
+		let new_quantity_value = NodeInput::value(TaggedValue::Integer(100), false);
 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), new_spacing_value, network_path);
@@ -2588,9 +2588,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.input_from_connector(&InputConnector::Node { node_id: *node_id, input_index: 3 }, network_path)?;
 
 		if let NodeInput::Value { tagged_value, exposed } = quantity_value
-			&& let TaggedValue::F64(value) = **tagged_value
+			&& let TaggedValue::Number(value) = **tagged_value
 		{
-			let new_quantity_value = NodeInput::value(TaggedValue::I64(value as i64), *exposed);
+			let new_quantity_value = NodeInput::value(TaggedValue::Integer(value as i64), *exposed);
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), new_quantity_value, network_path);
 		}
 	}
@@ -2638,7 +2638,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		node_path.push(*node_id);
 
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
-		document.network_interface.add_import(TaggedValue::I64(0), false, 1, "Loop Level", "TODO", &node_path);
+		document.network_interface.add_import(TaggedValue::Integer(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
 	// Drop the placeholder primary input the "Read Vector" node used to carry, since it reads its value from the context
@@ -2685,7 +2685,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Number(1.), false), network_path);
 	}
 
 	// Upgrade the "Read Position" node to add the "Loop Level" input
@@ -2699,7 +2699,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::I64(0), false), network_path);
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Integer(0), false), network_path);
 	}
 
 	// Migrate from the old source/target v1 "Morph" node to the new `List<Vector>`-based v2 "Morph" node.
@@ -2792,7 +2792,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 		let mut subtract_template = subtract_def.default_node_template();
-		subtract_template.inputs[1] = NodeInput::value(TaggedValue::F64(1.), false);
+		subtract_template.inputs[1] = NodeInput::value(TaggedValue::Number(1.), false);
 		let subtract_id = NodeId::new();
 
 		// Create Divide node: old_progression / (N-1) → new progression
@@ -3268,12 +3268,12 @@ mod tests {
 			NodeInput::scope("editor-api"),
 			NodeInput::value(TaggedValue::String("Lorem".into()), false),
 			NodeInput::value(TaggedValue::Font(Font::new("Lato".to_string(), "Regular (400)".to_string())), false),
-			NodeInput::value(TaggedValue::F64(48.), false),
-			NodeInput::value(TaggedValue::F64(1.5), false),
-			NodeInput::value(TaggedValue::F64(2.), false),
-			NodeInput::value(TaggedValue::F64(0.), false),
-			NodeInput::value(TaggedValue::F64(0.), false),
-			NodeInput::value(TaggedValue::F64(10.), false),
+			NodeInput::value(TaggedValue::Number(48.), false),
+			NodeInput::value(TaggedValue::Number(1.5), false),
+			NodeInput::value(TaggedValue::Number(2.), false),
+			NodeInput::value(TaggedValue::Number(0.), false),
+			NodeInput::value(TaggedValue::Number(0.), false),
+			NodeInput::value(TaggedValue::Number(10.), false),
 			NodeInput::value(TaggedValue::Bool(false), false),
 		];
 
@@ -3319,23 +3319,23 @@ mod tests {
 			);
 
 			let input_value = |index: usize| text_node.inputs.get(index).and_then(|input| input.as_value()).cloned();
-			assert_eq!(input_value(graphene_std::text::text::SizeInput::INDEX), Some(TaggedValue::F64(48.)), "shape {shape} lost its size");
+			assert_eq!(input_value(graphene_std::text::text::SizeInput::INDEX), Some(TaggedValue::Number(48.)), "shape {shape} lost its size");
 			if shape >= 6 {
 				assert_eq!(
 					input_value(graphene_std::text::text::LineHeightInput::INDEX),
-					Some(TaggedValue::F64(1.5)),
+					Some(TaggedValue::Number(1.5)),
 					"shape {shape} lost its line height"
 				);
 				assert_eq!(
 					input_value(graphene_std::text::text::LetterSpacingInput::INDEX),
-					Some(TaggedValue::F64(2.)),
+					Some(TaggedValue::Number(2.)),
 					"shape {shape} lost its letter spacing"
 				);
 			}
 			if shape >= 9 {
 				assert_eq!(
 					input_value(graphene_std::text::text::LetterTiltInput::INDEX),
-					Some(TaggedValue::F64(10.)),
+					Some(TaggedValue::Number(10.)),
 					"shape {shape} lost its letter tilt"
 				);
 			}
@@ -3399,7 +3399,7 @@ mod tests {
 			let inputs = vec![
 				NodeInput::node(source_a_id, 0),
 				NodeInput::value(TaggedValue::String("2 - 0.2A".into()), false),
-				NodeInput::value(TaggedValue::F64(0.), false),
+				NodeInput::value(TaggedValue::Number(0.), false),
 			];
 			let mut document = build_document("math_nodes::MathNode", inputs);
 			document_migration_upgrades(&mut document, false);
@@ -3416,7 +3416,7 @@ mod tests {
 			let inputs = vec![
 				NodeInput::node(source_a_id, 0),
 				NodeInput::value(TaggedValue::String("sqrt(A + B) - B^2".into()), false),
-				NodeInput::value(TaggedValue::F64(3.), false),
+				NodeInput::value(TaggedValue::Number(3.), false),
 			];
 			let mut document = build_document("graphene_core::ops::MathNode", inputs);
 			document_migration_upgrades(&mut document, false);
@@ -3455,9 +3455,9 @@ mod tests {
 		// A wired expression cannot be inspected, so it splices too, wrapping unwired constant operands as one-item list values
 		{
 			let inputs = vec![
-				NodeInput::value(TaggedValue::F64(2.), true),
+				NodeInput::value(TaggedValue::Number(2.), true),
 				NodeInput::node(source_expression_id, 0),
-				NodeInput::value(TaggedValue::F64(5.), false),
+				NodeInput::value(TaggedValue::Number(5.), false),
 			];
 			let mut document = build_document("math_nodes::MathNode", inputs);
 			document_migration_upgrades(&mut document, false);
@@ -3466,8 +3466,8 @@ mod tests {
 			let extend_id = find_extend(&document);
 			let network = document.network_interface.document_network();
 			assert_eq!(network.nodes[&math_id].inputs.get(1), Some(&NodeInput::node(source_expression_id, 0)));
-			assert_eq!(network.nodes[&extend_id].inputs.first(), Some(&NodeInput::value(TaggedValue::F64Array(vec![2.]), true)));
-			assert_eq!(network.nodes[&extend_id].inputs.get(1), Some(&NodeInput::value(TaggedValue::F64Array(vec![5.]), false)));
+			assert_eq!(network.nodes[&extend_id].inputs.first(), Some(&NodeInput::value(TaggedValue::Numbers(vec![2.]), true)));
+			assert_eq!(network.nodes[&extend_id].inputs.get(1), Some(&NodeInput::value(TaggedValue::Numbers(vec![5.]), false)));
 		}
 	}
 
@@ -3480,7 +3480,7 @@ mod tests {
 		let node_id = NodeId(1);
 		let mut document = DocumentMessageHandler::default();
 		let mut node_template = resolve_network_node_type("Blend").expect("Blend should exist").default_node_template();
-		node_template.inputs[1] = NodeInput::value(TaggedValue::F64(6.9), false);
+		node_template.inputs[1] = NodeInput::value(TaggedValue::Number(6.9), false);
 		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
 			panic!("Blend should be a network node")
 		};
@@ -3494,7 +3494,7 @@ mod tests {
 		let node = &document.network_interface.document_network().nodes[&node_id];
 		assert_eq!(
 			node.inputs.get(1).and_then(|input| input.as_value()).cloned(),
-			Some(TaggedValue::I64(6)),
+			Some(TaggedValue::Integer(6)),
 			"the count truncates as the retired Floor did, so the document keeps drawing six"
 		);
 		let DocumentNodeImplementation::Network(inner) = &node.implementation else {
@@ -3519,7 +3519,7 @@ mod tests {
 			panic!("Blend should be a network node")
 		};
 		let edited_subtract = network_template.nodes.get_mut(&NodeId(5)).expect("Blend should have an open-path denominator node");
-		edited_subtract.inputs[1] = NodeInput::value(TaggedValue::F64(42.), false);
+		edited_subtract.inputs[1] = NodeInput::value(TaggedValue::Number(42.), false);
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
 		document_migration_upgrades(&mut document, false);
@@ -3527,7 +3527,7 @@ mod tests {
 		let DocumentNodeImplementation::Network(inner) = &document.network_interface.document_network().nodes[&node_id].implementation else {
 			panic!("Blend should stay a network node")
 		};
-		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::F64(42.)));
+		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
 	}
 
 	// Regex Find's Match Index is now an integer, so an old instance rounds its stored F64 index and rebuilds the subgraph
@@ -3539,12 +3539,12 @@ mod tests {
 		let node_id = NodeId(1);
 		let mut document = DocumentMessageHandler::default();
 		let mut node_template = resolve_network_node_type("Regex Find").expect("Regex Find should exist").default_node_template();
-		node_template.inputs[2] = NodeInput::value(TaggedValue::F64(1.6), false);
+		node_template.inputs[2] = NodeInput::value(TaggedValue::Number(1.6), false);
 		let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
 			panic!("Regex Find should be a network node")
 		};
 		network_template.nodes.get_mut(&NodeId(0)).expect("Regex Find should have a find node").inputs[2] = NodeInput::import(item!(f64), 2);
-		network_template.nodes.get_mut(&NodeId(1)).expect("Regex Find should have an item-at-index node").inputs[1] = NodeInput::value(TaggedValue::F64(0.), false);
+		network_template.nodes.get_mut(&NodeId(1)).expect("Regex Find should have an item-at-index node").inputs[1] = NodeInput::value(TaggedValue::Number(0.), false);
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
 		document_migration_upgrades(&mut document, false);
@@ -3552,14 +3552,14 @@ mod tests {
 		let node = &document.network_interface.document_network().nodes[&node_id];
 		assert_eq!(
 			node.inputs.get(2).and_then(|input| input.as_value()).cloned(),
-			Some(TaggedValue::I64(1)),
+			Some(TaggedValue::Integer(1)),
 			"the match index truncates as the retired cast did"
 		);
 		let DocumentNodeImplementation::Network(inner) = &node.implementation else {
 			panic!("Regex Find should stay a network node")
 		};
 		assert_eq!(inner.nodes[&NodeId(0)].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));
-		assert_eq!(inner.nodes[&NodeId(1)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::I64(0)));
+		assert_eq!(inner.nodes[&NodeId(1)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Integer(0)));
 	}
 
 	#[test]

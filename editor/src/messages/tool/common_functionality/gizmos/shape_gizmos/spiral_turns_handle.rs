@@ -191,15 +191,15 @@ impl SpiralTurns {
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, StartAngleInput),
-					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),
+					input: NodeInput::value(TaggedValue::Number(self.initial_start_angle + total_delta), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
-					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
+					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
 				});
 			}
 			GizmoType::End => {
@@ -208,11 +208,11 @@ impl SpiralTurns {
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
-					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
+					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
 				});
 			}
 			GizmoType::None => {

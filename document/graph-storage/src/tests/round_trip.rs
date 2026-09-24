@@ -609,7 +609,7 @@ fn unreferenced_runtime_resource_is_not_snapshotted() {
 	assert!(!registry.resources.contains_key(&orphan), "the unreferenced (orphan) resource must not be snapshotted");
 }
 
-/// A node-input `TaggedValue::F64` must survive the storage round-trip bit-exact. Inputs are stored as a
+/// A node-input `TaggedValue::Number` must survive the storage round-trip bit-exact. Inputs are stored as a
 /// self-describing `serde_json::Value` (encoded with the registry's MessagePack codec), so this guards
 /// against any precision loss in the f64 -> serde_json::Number -> f64 path for a value with a full
 /// 17-significant-digit mantissa.
@@ -623,7 +623,7 @@ fn node_input_f64_round_trips_bit_exact() {
 		nodes: [(
 			NodeId(0),
 			DocumentNode {
-				inputs: vec![NodeInput::value(TaggedValue::F64(precise), false)],
+				inputs: vec![NodeInput::value(TaggedValue::Number(precise), false)],
 				implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::identity::IdentityNode")),
 				..Default::default()
 			},
@@ -640,8 +640,8 @@ fn node_input_f64_round_trips_bit_exact() {
 	let NodeInput::Value { tagged_value, .. } = input else {
 		panic!("expected a value input, got {input:?}")
 	};
-	let TaggedValue::F64(actual) = &**tagged_value else {
-		panic!("expected F64, got {:?}", tagged_value)
+	let TaggedValue::Number(actual) = &**tagged_value else {
+		panic!("expected Number, got {:?}", tagged_value)
 	};
 
 	assert_eq!(actual.to_bits(), precise.to_bits(), "f64 node input drifted: {actual} != {precise}");

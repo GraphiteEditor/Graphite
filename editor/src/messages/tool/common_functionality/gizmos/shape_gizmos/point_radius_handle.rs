@@ -343,13 +343,13 @@ impl PointRadiusHandle {
 			return snap_radii;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
+		let (Some(&TaggedValue::Number(radius_1)), Some(&TaggedValue::Number(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
 			return snap_radii;
 		};
 
 		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 
-		let Some(&TaggedValue::I64(sides)) = parameters.value(star::SidesInput) else {
+		let Some(&TaggedValue::Integer(sides)) = parameters.value(star::SidesInput) else {
 			return snap_radii;
 		};
 
@@ -452,7 +452,7 @@ impl PointRadiusHandle {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, radius_parameter),
-			input: NodeInput::value(TaggedValue::F64(original_radius + net_delta), false),
+			input: NodeInput::value(TaggedValue::Number(original_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
@@ -462,7 +462,7 @@ impl PointRadiusHandle {
 			return;
 		};
 
-		let (Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
+		let (Some(&TaggedValue::Number(radius_1)), Some(&TaggedValue::Number(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
 			return;
 		};
 
