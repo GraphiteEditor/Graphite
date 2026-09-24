@@ -598,10 +598,11 @@ fn stamp_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, at: Time
 }
 
 /// Folds `other` in key by key. A key only one map holds is dead when the other map's floor is newer
-/// than it: the other map was written whole after it. Every entry, tombstones included, is newer than
-/// its map's floor, so the newer entry wins where both hold a key.
+/// than it: the other map was written whole after it. An entry stamped exactly at a floor was written by
+/// the whole-map write that set the floor, so it is not older than it. Every entry, tombstones included,
+/// is at or past its map's floor, so the newer entry wins where both hold a key.
 fn merge_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, other: Attributes, other_floor: TimeStamp) {
-	attributes.retain(|_, value| value.timestamp > other_floor);
+	attributes.retain(|_, value| value.timestamp >= other_floor);
 	for (key, value) in other {
 		match attributes.entry(key) {
 			std::collections::btree_map::Entry::Occupied(mut entry) => {
@@ -610,7 +611,7 @@ fn merge_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, other: A
 				}
 			}
 			std::collections::btree_map::Entry::Vacant(entry) => {
-				if value.timestamp > *floor {
+				if value.timestamp >= *floor {
 					entry.insert(value);
 				}
 			}

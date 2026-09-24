@@ -1452,3 +1452,65 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 		}
 	}
 }
+
+/// A removal's snapshot is a copy of the node, stamped exactly as the addition stamped it. Folding it in
+/// must keep what the addition wrote: an entry stamped at a map's floor was written by the same op that
+/// set the floor, not before it. Caught in the editor as a revived node missing `reflection_metadata`.
+#[test]
+fn a_removal_snapshot_keeps_the_attributes_the_addition_wrote() {
+	use crate::{AttributesRead, AttributesWrite};
+
+	let mut document = fresh_document(PeerId(1));
+	let node_id = NodeId(4);
+	let mut node = Node::new(ROOT_NETWORK, crate::Implementation::ProtoNode(graphene_resource::ResourceId::from(7)), 1);
+	node.attributes.set("ui::name", serde_json::json!("Layer"), TimeStamp::ORIGIN);
+	node.inputs[0].attributes.set("reflection_metadata", serde_json::json!("meta"), TimeStamp::ORIGIN);
+
+	commit_op(
+		&mut document,
+		RegistryDelta::AddNetwork {
+			id: ROOT_NETWORK,
+			network: Network::default(),
+		},
+	);
+	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node });
+	let added = document.working_registry.node_instances[&node_id].clone();
+
+	// A removal and a concurrent, newer write to the node: the write revives it from the tombstone.
+	let removed_at = document.clock.tick();
+	document
+		.apply_op_idempotent(RegistryDelta::RemoveNode { id: node_id, snapshot: added.clone() }, removed_at)
+		.expect("removal");
+	let written_at = document.clock.tick();
+	document
+		.apply_op_idempotent(
+			RegistryDelta::ChangeNodeAttribute {
+				id: node_id,
+				delta: crate::AttributeDelta {
+					key: "ui::lock".into(),
+					value: Some(serde_json::json!(true)),
+				},
+			},
+			written_at,
+		)
+		.expect("write");
+
+	let revived = &document.working_registry.node_instances[&node_id];
+	assert_eq!(
+		revived.attributes.get_typed::<String>("ui::name").as_deref(),
+		Some("Layer"),
+		"the node attribute the addition wrote survives"
+	);
+	assert_eq!(
+		revived.inputs()[0].attributes.get_typed::<String>("reflection_metadata").as_deref(),
+		Some("meta"),
+		"the slot attribute the addition wrote survives"
+	);
+
+	// The same snapshot folding into the live node, from a removal too old to land, changes nothing.
+	let mut untouched = document.clone();
+	untouched
+		.apply_op_idempotent(RegistryDelta::RemoveNode { id: node_id, snapshot: added }, removed_at)
+		.expect("a replayed removal");
+	assert_eq!(untouched.working_registry, document.working_registry);
+}
