@@ -381,15 +381,30 @@ fn construct_structural_additions(
 		// A node the registry already holds is updated rather than rebuilt: rebuilding would clear the
 		// `ui::*` attributes it carries, and restating those would clobber whatever a concurrent peer
 		// wrote to its name, lock or pin.
-		match batch.node(id).is_some() {
-			true => {
+		match batch.node(id) {
+			Some(held) => {
+				// The swap did not write the slots' `ui::*` attributes, and a whole-slot assignment would
+				// otherwise drop the names and descriptions this peer holds for the slots that survive it.
+				let inputs = node
+					.inputs()
+					.iter()
+					.enumerate()
+					.map(|(index, slot)| {
+						let mut slot = slot.clone();
+						if let Some(previous) = held.inputs().get(index) {
+							slot.attributes
+								.extend(previous.attributes.iter().filter(|(key, _)| key.starts_with("ui::")).map(|(key, value)| (key.clone(), value.clone())));
+						}
+						slot
+					})
+					.collect();
 				ops.push(RegistryDelta::SetNodeImplementation {
 					id,
 					implementation: node.implementation().clone(),
 				});
-				ops.push(RegistryDelta::SetNodeInputs { id, inputs: node.inputs().to_vec() });
+				ops.push(RegistryDelta::SetNodeInputs { id, inputs });
 			}
-			false => ops.push(RegistryDelta::AddNode { id, node: node.clone() }),
+			None => ops.push(RegistryDelta::AddNode { id, node: node.clone() }),
 		}
 		batch.record_addition(id, node);
 	}
