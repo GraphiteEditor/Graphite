@@ -1,13 +1,9 @@
 use core_types::CacheHash;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
-use core_types::transform::Footprint;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, Vec2};
-use graphene_cache::{Cache, GenerationalEviction};
 use std::f32::consts::{PI, TAU};
-
-pub type BrushCache = Cache<Footprint, GenerationalEviction<2, 3>>;
 
 #[derive(Clone, Debug, PartialEq, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

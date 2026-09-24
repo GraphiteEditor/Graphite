@@ -18,6 +18,7 @@ dyn-any = { workspace = true }
 brush-types = { workspace = true }
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
+graphene-cache = { workspace = true }
 graphic-types = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 wgpu-executor = { workspace = true }

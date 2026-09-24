@@ -1,3 +1,4 @@
+pub mod cache;
 mod consts;
 mod convert;
 mod kernel;
@@ -6,23 +7,25 @@ mod region;
 mod render;
 mod stroke;
 
+use cache::BrushCache;
 use core_types::list::{ATTR_COLOR, ATTR_DIAMETER, ATTR_FLOW, ATTR_HARDNESS, Item, List};
 use core_types::{ATTR_TRANSFORM, Ctx, ExtractFootprint};
+use graphene_cache::CacheHandle;
 use graphic_types::Graphic;
 use pipeline::{BasicBrushPipeline, BasicBrushPipelineArgs};
 use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
-use crate::BrushCache;
-
 #[node_macro::node(category("Raster: Brush"))]
 pub async fn basic_brush<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
-	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<BrushCache>,
+	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<CacheHandle>,
 	#[scope(basic_brush_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> List<Raster<GPU>> {
-	let (cache, pipeline) = (cache.into_element(), pipeline.into_element());
+	let (cache_handle, pipeline) = (cache.into_element(), pipeline.into_element());
+	let Ok(cache) = cache_handle.get::<BrushCache>() else { return List::new() };
+
 	let mut stack = vec![strokes.into_iter()];
 	let mut strokes = Vec::new();
 	while let Some(top) = stack.last_mut() {

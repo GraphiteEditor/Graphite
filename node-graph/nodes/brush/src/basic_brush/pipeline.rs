@@ -1,3 +1,4 @@
+use super::cache::BrushCache;
 use super::consts::{LUT_SIZE, LUT_T_MAX, LUT_V_MAX, RIDGE_GAIN, SIGMA_CUTOFF};
 use super::convert::Convert;
 use super::kernel::{Kernel, KernelCache};
@@ -9,8 +10,6 @@ use core_types::transform::Footprint;
 use glam::{DAffine2, UVec2};
 use raster_types::Texture;
 use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor};
-
-use crate::BrushCache;
 
 pub(super) const DENSITY_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 pub(super) const COMPOSITE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;

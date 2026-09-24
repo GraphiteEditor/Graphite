@@ -2,7 +2,7 @@ use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
 use crate::proto::{Any as DAny, FutureAny};
-use brush_nodes::{BrushCache, Stroke};
+use brush_nodes::Stroke;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
@@ -13,6 +13,7 @@ pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
+use graphene_cache::CacheHandle;
 use graphic_types::raster_types::{CPU, Image, Raster};
 use graphic_types::vector_types::vector::misc::BoxCorners;
 use graphic_types::vector_types::vector::style::DashPattern;
@@ -97,7 +98,9 @@ macro_rules! tagged_value {
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			GradientRamp(GradientRamp),
 			Strokes(Vec<Stroke>),
-			BrushCache(BrushCache),
+			/// Type-erased handle to a lazily initialized `graphene_cache::Cache`.
+			#[serde(alias = "BrushCache")]
+			CacheHandle(CacheHandle),
 			// =======================
 			// AUTO-GENERATED VARIANTS
 			// =======================
@@ -142,7 +145,7 @@ macro_rules! tagged_value {
 					Self::TransferCurve(points) => points.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
-					Self::BrushCache(cache) => cache.cache_hash(state),
+					Self::CacheHandle(cache) => cache.cache_hash(state),
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
@@ -210,7 +213,7 @@ macro_rules! tagged_value {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Box::new(list)
 					}
-					Self::BrushCache(cache) => Box::new(Item::new_from_element(cache)),
+					Self::CacheHandle(cache) => Box::new(Item::new_from_element(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -278,7 +281,7 @@ macro_rules! tagged_value {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
 						Arc::new(list)
 					}
-					Self::BrushCache(cache) => Arc::new(Item::new_from_element(cache)),
+					Self::CacheHandle(cache) => Arc::new(Item::new_from_element(cache)),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -309,7 +312,7 @@ macro_rules! tagged_value {
 					Self::TransferCurve(_) => item!(TransferCurve),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::Strokes(_) => list!(Stroke),
-					Self::BrushCache(_) => item!(BrushCache),
+					Self::CacheHandle(_) => item!(CacheHandle),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -351,7 +354,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(downcast::<List<Stroke>>(input).unwrap().into_iter().map(Item::into_element).collect())),
-					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(downcast::<Item<BrushCache>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Item<CacheHandle>>() => Ok(TaggedValue::CacheHandle(downcast::<Item<CacheHandle>>(input).unwrap().into_element())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -387,7 +390,7 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast_ref::<List<Stroke>>().unwrap().iter_element_values().cloned().collect())),
-					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(input.downcast_ref::<Item<BrushCache>>().unwrap().element().clone())),
+					x if x == TypeId::of::<Item<CacheHandle>>() => Ok(TaggedValue::CacheHandle(input.downcast_ref::<Item<CacheHandle>>().unwrap().element().clone())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
@@ -417,7 +420,7 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<TransferCurve>() { return Some(TaggedValue::TransferCurve(TransferCurve::default().points().to_vec())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
-						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
+						if name == std::any::type_name::<CacheHandle>() { return Some(TaggedValue::CacheHandle(Default::default())) }
 						// Unranked types without a variant route through `TypeDefault`, with `to_dynany`/`to_any` constructing the actual default at execution time
 						macro_rules! check_bare {
 							($type_default:ty) => {
@@ -475,7 +478,7 @@ macro_rules! tagged_value {
 					Self::TransferCurve(points) => format!("TransferCurve({points:?})"),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
-					Self::BrushCache(cache) => format!("{cache:?}"),
+					Self::CacheHandle(cache) => format!("{cache:?}"),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
