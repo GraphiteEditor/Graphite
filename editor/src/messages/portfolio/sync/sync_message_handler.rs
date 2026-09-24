@@ -102,10 +102,13 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			SyncMessage::Poll => {
 				let resources = resource_storage.resources_mut();
 				for (&document_id, document) in documents.iter_mut() {
-					let Some(gdd) = document.storage_mut() else { continue };
-					if gdd.role().is_none() {
+					if document.storage().is_none_or(|gdd| gdd.role().is_none()) {
 						continue;
 					}
+					// Each movement reaches peers as it happens: what the interface recorded since the last
+					// frame is staged, and so broadcast, ahead of this frame's poll.
+					document.stage_pending_edits(&resources);
+					let Some(gdd) = document.storage_mut() else { continue };
 
 					let events = gdd.poll_peers();
 					// Taken every poll rather than on an event: a refold a hello triggers can leave the

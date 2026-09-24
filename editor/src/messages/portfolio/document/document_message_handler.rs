@@ -2144,6 +2144,16 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Stages what the interface recorded since the last drain, so a session sends each movement in the
+	/// frame it was made rather than at the next commit or autosave. Nothing else a commit does is done here.
+	pub(crate) fn stage_pending_edits(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
+		let deltas = self.network_interface.take_deltas();
+		if deltas.is_empty() {
+			return;
+		}
+		self.history.stage_graph(&deltas, &self.network_interface, &self.resources.registry, byte_store);
+	}
+
 	/// Brings the interface into line with what peers changed in the registry. Returns whether nothing is
 	/// left pending: a declaration still on its way keeps the changes for a later call.
 	///

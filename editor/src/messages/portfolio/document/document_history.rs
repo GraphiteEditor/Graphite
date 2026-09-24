@@ -140,8 +140,20 @@ impl DocumentHistory {
 		legacy_document: &str,
 		byte_store: &dyn ResourceStorage,
 	) {
+		if !self.stage_graph(deltas, interface, registry, byte_store) {
+			return;
+		}
+
+		self.persist_view_state(interface, view_settings, legacy_document);
+	}
+
+	/// The graph half of [`stage_snapshot`](Self::stage_snapshot), without the view state. A session
+	/// does this every frame, so a peer sees each movement of a drag as its own hot op rather than
+	/// whatever the autosave timer happened to catch; retirement coarsens them later. Returns whether the
+	/// working copy is mounted and took the batch.
+	pub fn stage_graph(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> bool {
 		let needs_whole_document_stage = self.needs_whole_document_stage;
-		let Some(storage) = self.storage.as_mut() else { return };
+		let Some(storage) = self.storage.as_mut() else { return false };
 
 		let staged = match needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
@@ -159,14 +171,13 @@ impl DocumentHistory {
 			Ok(declarations) => {
 				self.declarations.extend(declarations);
 				self.needs_whole_document_stage = false;
+				true
 			}
 			Err(error) => {
 				log::error!("Storage snapshot staging failed: {error}");
-				return;
+				false
 			}
 		}
-
-		self.persist_view_state(interface, view_settings, legacy_document);
 	}
 
 	/// Converts the whole document and stages the difference from what the working copy holds.
