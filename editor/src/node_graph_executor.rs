@@ -138,7 +138,7 @@ impl NodeGraphExecutor {
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {
 		// We should always invalidate the cache.
 		self.node_graph_hash = crate::application::generate_uuid();
-		let mut network = document.network_interface.network_to_evaluate();
+		let mut network = document.network_interface.document_network().clone();
 		let instrumented = Instrumented::new(&mut network);
 
 		let resources = document.resources.registry.clone();
@@ -522,7 +522,9 @@ impl NodeGraphExecutor {
 		scale: f64,
 		responses: &mut VecDeque<Message>,
 	) {
-		let mut network = document.network_interface.network_to_evaluate();
+		let mut network = document.network_interface.document_network().clone();
+		// Not `network_to_evaluate`: the export chain is redirected to the Fill below, so a preview
+		// substituted here would only be overwritten
 
 		// On this throwaway clone, redirect each level's export down to the Fill, un-hiding the Fill and its enclosing subnetworks so it's measured as a real Fill rather than a passthrough.
 		// But upstream generators keep their visibility, so a hidden one intentionally contributes no geometry.
