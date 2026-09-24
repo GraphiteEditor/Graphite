@@ -98,7 +98,7 @@ macro_rules! tagged_value {
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
 			GradientRamp(GradientRamp),
 			Strokes(Vec<Stroke>),
-			/// Type-erased handle to a lazily initialized `graphene_cache::Cache`.
+			/// Type-erased handle to a lazily initialized [`graphene_cache::Cache`].
 			#[serde(alias = "BrushCache")]
 			CacheHandle(CacheHandle),
 			// =======================
