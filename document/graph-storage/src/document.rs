@@ -45,6 +45,9 @@ pub struct Document {
 	/// Set while the registries are still folded from an older history. A failed refold is retried; the
 	/// derived state does not stay behind the history it comes from.
 	pub(crate) refold_owed: bool,
+	/// Counts the refolds that changed the working registry's values. See
+	/// [`Session::working_rederivations`](crate::Session::working_rederivations).
+	pub(crate) working_rederivations: u64,
 }
 
 impl Document {

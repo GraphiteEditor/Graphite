@@ -48,6 +48,7 @@ impl Session {
 				next_node_counter: 0,
 				next_hot_sequence: HotSequence::NONE,
 				refold_owed: false,
+				working_rederivations: 0,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -267,6 +268,7 @@ impl Session {
 				next_node_counter,
 				next_hot_sequence: HotSequence::NONE,
 				refold_owed: false,
+				working_rederivations: 0,
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -370,7 +372,7 @@ impl Session {
 		self.document.retired_snapshot = self.snapshot_from_history()?;
 
 		// One left unapplicable is kept, not dropped: a later delta or hot op can still supply its referent.
-		self.document.working_registry = self.document.retired_snapshot.clone();
+		let previous = std::mem::replace(&mut self.document.working_registry, self.document.retired_snapshot.clone());
 		let mut failure = None;
 		for hot_op in std::mem::take(&mut self.document.hot_log) {
 			if let Err(error) = self.document.replay_hot_op(hot_op.clone()) {
@@ -379,12 +381,26 @@ impl Session {
 			}
 		}
 
+		// A mirror of the working registry follows it op by op and cannot follow a rederivation, so it
+		// is told when one produced something the ops alone do not account for. Usually they do: dropping
+		// a hot op that history now covers refolds to the same values, just stamped differently.
+		if !previous.value_equal(&self.document.working_registry) {
+			self.document.working_rederivations += 1;
+		}
+
 		if let Some(error) = failure {
 			return Err(error);
 		}
 
 		self.document.refold_owed = false;
 		Ok(())
+	}
+
+	/// How many times a refold has left the working registry with different values than the ops applied to
+	/// it would have. A caller mirroring the registry op by op compares this before and after, and rebuilds
+	/// its mirror wholesale when it moved.
+	pub fn working_rederivations(&self) -> u64 {
+		self.document.working_rederivations
 	}
 
 	/// Integrate `incoming` retired deltas (in causal order) from another peer. Moves `head` forward
