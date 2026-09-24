@@ -6,4 +6,4 @@
 
 mod metadata_tests;
 mod round_trip_tests;
-mod test_support;
+pub(crate) mod test_support;

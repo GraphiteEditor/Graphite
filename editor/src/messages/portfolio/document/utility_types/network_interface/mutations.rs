@@ -142,6 +142,7 @@ impl NodeNetworkInterface {
 		}
 
 		// Update the metadata for the encapsulating node
+		self.unload_outward_wires(&encapsulating_network_path);
 		self.unload_node_click_targets(&node_id, &encapsulating_network_path);
 		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
 		if encapsulating_network_path.is_empty() && inserted_index <= 1 {
@@ -384,12 +385,16 @@ impl NodeNetworkInterface {
 	/// Replaces the implementation and corresponding metadata.
 	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
 		let (new_implementation, new_network_metadata) = std::mem::take(&mut new_template.implementation).into_parts();
+		let old_output_count = self.number_of_outputs(node_id, network_path);
 
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in replace_implementation");
 			return;
 		};
 		node.replace_implementation(new_implementation, new_network_metadata);
+
+		let new_output_count = self.number_of_outputs(node_id, network_path);
+		self.update_outward_wires_for_outputs(network_path, node_id, old_output_count, new_output_count);
 	}
 
 	/// Replaces the inputs and corresponding metadata.
@@ -401,7 +406,10 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;
 		};
-		Some(node.replace_inputs(new_inputs, new_input_metadata))
+		let old_inputs = node.replace_inputs(new_inputs.clone(), new_input_metadata);
+
+		self.update_outward_wires_for_inputs(network_path, node_id, &old_inputs, &new_inputs);
+		Some(old_inputs)
 	}
 
 	/// Used when opening an old document to add the persistent metadata for each input if it doesn't exist, which is where the name/description are saved.
@@ -728,6 +736,14 @@ impl NodeNetworkInterface {
 
 		let previous_entry = self.insert_node_entry(NodeLocator::new(node_id, network_path), node_template);
 
+		// A node inserted over another changes what its ID is fed by, which is simplest to relearn from scratch
+		if previous_entry.is_some() {
+			self.unload_outward_wires(network_path);
+		} else {
+			let output_count = self.number_of_outputs(&node_id, network_path);
+			self.update_outward_wires_for_outputs(network_path, &node_id, 0, output_count);
+		}
+
 		self.transaction_modified();
 		self.unload_all_nodes_bounding_box(network_path);
 		self.unload_node_click_targets(&node_id, network_path);
@@ -822,19 +838,29 @@ impl NodeNetworkInterface {
 
 		// Prune this network's pinned display order down to the nodes that still exist
 		let surviving_nodes = self.nested_network(network_path).map(|network| network.nodes.keys().copied().collect::<HashSet<_>>());
+
+		// Read from the network rather than from the removal, which reports a template that a node missing its metadata cannot form
+		let removed_nodes: HashSet<NodeId> = surviving_nodes.as_ref().map_or_else(HashSet::new, |surviving| delete_nodes.difference(surviving).copied().collect());
+
 		if let Some(surviving_nodes) = surviving_nodes
 			&& let Some(mut network) = self.network_mut(network_path)
 		{
 			network.retain_pinned(|node_id| surviving_nodes.contains(node_id));
 		}
 
-		// Purge the deleted nodes' cached wire paths, which the per-node unload can no longer reach
+		// Purge the removed nodes' cached wire paths, which the per-node unload can no longer reach
 		if let Some(network_metadata) = self.network_metadata(network_path) {
 			network_metadata
 				.transient_metadata
 				.wires
 				.borrow_mut()
-				.retain(|connector, _| connector.node_id().is_none_or(|node_id| !delete_nodes.contains(&node_id)));
+				.retain(|connector, _| connector.node_id().is_none_or(|node_id| !removed_nodes.contains(&node_id)));
+		}
+		// Their outputs leave the outward wire cache with them
+		if let Some(transient) = self.network_transient_mut(network_path)
+			&& let Some(outward_wires) = transient.outward_wires.get_loaded_mut()
+		{
+			outward_wires.retain(|output, _| output.node_id().is_none_or(|node_id| !removed_nodes.contains(&node_id)));
 		}
 
 		self.unload_all_nodes_bounding_box(network_path);

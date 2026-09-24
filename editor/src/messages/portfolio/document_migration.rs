@@ -1185,9 +1185,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 	for (node_id, network_path, old_inputs_count) in &transform_layers {
-		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves the original upstream→node wire from cache
-		// rather than triggering a fresh rebuild from the (already-mutated) post-`replace_inputs` state, which would orphan wires.
-		let _ = document.network_interface.outward_wires(network_path);
 		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
 		let mut node_template = definition.default_node_template();
@@ -1250,7 +1247,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.filter_map(|(node_id, _, path)| (document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Image".into()))).then_some((*node_id, path)))
 		.collect();
 	for (node_id, network_path) in &image_layers {
-		let _ = document.network_interface.outward_wires(network_path);
 		let new_reference = DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER);
 		let Some(definition) = resolve_document_node_type(&new_reference) else { continue };
 		let mut node_template = definition.default_node_template();
@@ -1279,8 +1275,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 	for (node_id, network_path, old_inputs) in &math_nodes {
-		// Pre-load `outward_wires` so the chain-break check inside `set_input` resolves wires from cache, as in the Transform pass above
-		let _ = document.network_interface.outward_wires(network_path);
 		let (operand_a, expression, operand_b) = (&old_inputs[0], &old_inputs[1], &old_inputs[2]);
 
 		// Lex a static expression once, learning both whether it lexes at all and whether it references `B`
@@ -1430,9 +1424,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 	for (node_id, network_path) in &old_text_nodes {
-		// Pre-load `outward_wires` so the splice below resolves the original downstream wiring from cache rather than a mutated state.
-		let _ = document.network_interface.outward_wires(network_path);
-
 		// Convert the old node in place to the current `text` node (12 inputs), capturing its old inputs.
 		let Some(text_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) else {
 			continue;
@@ -3248,6 +3239,40 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 mod tests {
 	use super::*;
 
+	/// Runs the upgrades with the root wire cache loaded, the state a migration meets after its first rewire, and asserts the interface they leave behind is consistent.
+	fn migrate(document: &mut DocumentMessageHandler) {
+		migrate_with_context(document, "the migration");
+	}
+
+	fn migrate_with_context(document: &mut DocumentMessageHandler, context: &str) {
+		assert!(document.network_interface.outward_wires(&[]).is_some());
+		document_migration_upgrades(document, false);
+
+		let violations = document.network_interface.validate_invariants();
+		assert!(violations.is_empty(), "{context} left the interface inconsistent:\n{}", violations.join("\n"));
+	}
+
+	// Real documents drive every migration at once, on wiring no synthetic fixture reproduces
+	#[test]
+	fn demo_artwork_migrates_to_a_consistent_interface() {
+		use crate::messages::portfolio::document::storage_tests::test_support::load_demo;
+
+		let demo_artwork = [
+			"changing-seasons.graphite",
+			"isometric-fountain.graphite",
+			"marbled-mandelbrot.graphite",
+			"painted-dreams.graphite",
+			"parametric-dunescape.graphite",
+			"procedural-string-lights.graphite",
+			"red-dress.graphite",
+			"valley-of-spires.graphite",
+		];
+		for file_name in demo_artwork {
+			let mut document = load_demo(file_name);
+			migrate_with_context(&mut document, &format!("migrating {file_name}"));
+		}
+	}
+
 	// The removed-definition blocks above abort silently via `?` if their swap target ever leaves the catalog
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
@@ -3313,7 +3338,7 @@ mod tests {
 			);
 			document.network_interface.set_input(&InputConnector::node_at_index(consumer_id, 0), NodeInput::node(text_id, 0), &[]);
 
-			document_migration_upgrades(&mut document, false);
+			migrate(&mut document);
 
 			let network = document.network_interface.document_network();
 			let text_node = network.nodes.get(&text_id).expect("the upgraded text node should keep its ID");
@@ -3372,7 +3397,7 @@ mod tests {
 			},
 			&[],
 		);
-		document_migration_upgrades(&mut document, false);
+		migrate(&mut document);
 
 		// The old inputs stay in place and the witness defaults to Number, the output type every such node had
 		let node = &document.network_interface.document_network().nodes[&node_id];
@@ -3381,6 +3406,47 @@ mod tests {
 		assert_eq!(value_at(0), Some(TaggedValue::Number(4.)));
 		assert_eq!(value_at(1), Some(TaggedValue::String("x^2".into())));
 		assert_eq!(value_at(2), Some(TaggedValue::Number(0.)));
+	}
+
+	// The same upgrade on a node whose value comes from upstream, where restoring the inputs has to preserve the wire
+	#[test]
+	fn expression_nodes_gaining_the_witness_keep_their_upstream_wire() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+
+		let (source_id, node_id) = (NodeId(1), NodeId(2));
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(
+			source_id,
+			NodeTemplate {
+				inputs: vec![NodeInput::value(TaggedValue::None, false)],
+				..Default::default()
+			},
+			&[],
+		);
+		document.network_interface.insert_node(
+			node_id,
+			NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::math_fx::IDENTIFIER),
+				inputs: vec![NodeInput::value(TaggedValue::Number(4.), false), NodeInput::value(TaggedValue::String("x^2".into()), false)],
+				..Default::default()
+			},
+			&[],
+		);
+		document.network_interface.set_input(&InputConnector::node_at_index(node_id, 0), NodeInput::node(source_id, 0), &[]);
+
+		migrate(&mut document);
+
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		assert_eq!(node.inputs.len(), 3);
+		assert!(
+			matches!(node.inputs.first(), Some(NodeInput::Node { node_id: upstream, .. }) if *upstream == source_id),
+			"the upstream wire was dropped by the upgrade, leaving {:?}",
+			node.inputs.first()
+		);
+
+		// The wire has to survive in the outward direction too, since a stale cache is what orphans it
+		let outward_wires = document.network_interface.outward_wires(&[]).and_then(|wires| wires.get(&OutputConnector::node(source_id, 0)).cloned());
+		assert_eq!(outward_wires.as_deref(), Some([InputConnector::node_at_index(node_id, 0)].as_slice()));
 	}
 
 	// The old Math node's expression decides its replacement: a static string that never reads `B` becomes "Math f(x)",
@@ -3443,7 +3509,7 @@ mod tests {
 				NodeInput::value(TaggedValue::Number(0.), false),
 			];
 			let mut document = build_document("math_nodes::MathNode", inputs);
-			document_migration_upgrades(&mut document, false);
+			migrate(&mut document);
 
 			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
 			let node = &document.network_interface.document_network().nodes[&math_id];
@@ -3465,7 +3531,7 @@ mod tests {
 				NodeInput::value(TaggedValue::Number(3.), false),
 			];
 			let mut document = build_document("graphene_core::ops::MathNode", inputs);
-			document_migration_upgrades(&mut document, false);
+			migrate(&mut document);
 
 			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
 			let node = &document.network_interface.document_network().nodes[&math_id];
@@ -3484,7 +3550,7 @@ mod tests {
 				NodeInput::node(source_b_id, 0),
 			];
 			let mut document = build_document("math_nodes::MathNode", inputs);
-			document_migration_upgrades(&mut document, false);
+			migrate(&mut document);
 
 			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_f::IDENTIFIER);
 			let extend_id = find_extend(&document);
@@ -3506,7 +3572,7 @@ mod tests {
 				NodeInput::value(TaggedValue::Number(5.), false),
 			];
 			let mut document = build_document("math_nodes::MathNode", inputs);
-			document_migration_upgrades(&mut document, false);
+			migrate(&mut document);
 
 			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_f::IDENTIFIER);
 			let extend_id = find_extend(&document);
@@ -3535,7 +3601,7 @@ mod tests {
 		count_conversion.inputs = vec![NodeInput::import(item!(f64), 1)];
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
-		document_migration_upgrades(&mut document, false);
+		migrate(&mut document);
 
 		let node = &document.network_interface.document_network().nodes[&node_id];
 		assert_eq!(
@@ -3568,7 +3634,7 @@ mod tests {
 		edited_subtract.inputs[1] = NodeInput::value(TaggedValue::Number(42.), false);
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
-		document_migration_upgrades(&mut document, false);
+		migrate(&mut document);
 
 		let DocumentNodeImplementation::Network(inner) = &document.network_interface.document_network().nodes[&node_id].implementation else {
 			panic!("Blend should stay a network node")
@@ -3593,7 +3659,7 @@ mod tests {
 		network_template.nodes.get_mut(&NodeId(1)).expect("Regex Find should have an item-at-index node").inputs[1] = NodeInput::value(TaggedValue::Number(0.), false);
 		document.network_interface.insert_node(node_id, node_template, &[]);
 
-		document_migration_upgrades(&mut document, false);
+		migrate(&mut document);
 
 		let node = &document.network_interface.document_network().nodes[&node_id];
 		assert_eq!(
@@ -3632,7 +3698,7 @@ mod tests {
 			document.network_interface.insert_node(image_id, image_template, &[]);
 			document.network_interface.set_input(&InputConnector::node_at_index(image_id, 0), legacy_input.clone(), &[]);
 
-			document_migration_upgrades(&mut document, false);
+			migrate(&mut document);
 
 			let image_node = &document.network_interface.document_network().nodes[&image_id];
 			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
@@ -3663,7 +3729,7 @@ mod tests {
 		};
 		document.network_interface.insert_node(node_id, image_template, &[]);
 
-		document_migration_upgrades(&mut document, false);
+		migrate(&mut document);
 
 		let migrated = &document.network_interface.document_network().nodes[&node_id].inputs[1];
 		assert_eq!(migrated.as_value(), Some(&TaggedValue::TypeDefault(item!(Resource))), "the bare default should become the item default");
