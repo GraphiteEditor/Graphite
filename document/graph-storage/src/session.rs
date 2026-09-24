@@ -306,7 +306,15 @@ impl Session {
 	/// The hot ops a `retire(up_to)` call would drain. Sent with the deltas for peers to drop exactly
 	/// these; the cutoff alone doesn't transfer, a lagging op can arrive below it afterwards.
 	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
-		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
+		self.document.hot_log[..self.retirement_prefix(up_to)].iter().map(HotOp::id).collect()
+	}
+
+	/// How much of the hot log `retire(up_to)` drains: everything through the last op stamped at or
+	/// before `up_to`. A prefix of the log rather than the ops under the cutoff, so retirement commits
+	/// them in the order the working registry applied them and the snapshot folds to the same values
+	/// without a refold. An op stamped later that sits earlier in the log goes with the prefix.
+	fn retirement_prefix(&self, up_to: TimeStamp) -> usize {
+		self.document.hot_log.iter().rposition(|hot_op| hot_op.timestamp <= up_to).map_or(0, |last| last + 1)
 	}
 
 	/// Drop hot ops another peer has retired without retiring them locally. Refolds like
@@ -483,37 +491,18 @@ impl Session {
 		Ok(outcome)
 	}
 
-	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, each keeping the timestamp it was
-	/// authored at.
+	/// Promote the hot-log prefix through the last op stamped at or before `up_to` into retired deltas,
+	/// each keeping the timestamp it was authored at. See [`retirement_prefix`](Self::retirement_prefix)
+	/// for why the prefix and not the ops under the cutoff.
 	///
 	/// Today: one retired delta per hot op. Coarsening is a future step.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
 		// Hot-log order is causal, so the deltas commit in an order their references survive.
-		let mut drained = Vec::new();
-		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
-
-		// Retiring by timestamp reorders against the hot-log order the working registry applied: past a
-		// skipped op, everything drained was applied here before it.
-		let mut skipped = false;
-		let mut reordered = false;
-		for hot_op in self.document.hot_log.drain(..) {
-			if hot_op.timestamp <= up_to {
-				reordered |= skipped;
-				drained.push(hot_op);
-			} else {
-				skipped = true;
-				remaining.push(hot_op);
-			}
-		}
-		self.document.hot_log = remaining;
+		let prefix = self.retirement_prefix(up_to);
+		let drained: Vec<HotOp> = self.document.hot_log.drain(..prefix).collect();
 		self.document.mark_retired(drained.iter().map(HotOp::id));
 
 		let revs = self.commit_ops_authored_at(drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp))), true)?;
-
-		// Structural ops have no timestamp to arbitrate, so the reorder changes the outcome.
-		if reordered {
-			self.refold_registries()?;
-		}
 
 		Ok(revs)
 	}

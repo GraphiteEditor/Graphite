@@ -143,3 +143,35 @@ fn the_in_place_fold_matches_the_oracle_and_touches_nothing_else() {
 	assert_eq!(session.head_rev(), head_before);
 	assert!(session.document.fold.is_none(), "the scope is cleared on the way out");
 }
+
+/// Retirement takes a prefix of the hot log, in the order the working registry applied it, rather than
+/// every op under the cutoff. An op stamped later than the cutoff but applied earlier goes with the
+/// prefix, so the snapshot folds in the same order and the zones agree without a refold.
+#[test]
+fn retirement_drains_a_hot_log_prefix_in_applied_order() {
+	let mut host = Session::with_peer(PeerId(1));
+	// A guest's op stamped late sits first in the log, ahead of an op stamped earlier: the log is in
+	// arrival order, and stamps are the authors' clocks, not the arrival order.
+	let late = crate::HotOp {
+		op: add_network(9),
+		timestamp: crate::TimeStamp { counter: 50, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	let own = crate::HotOp {
+		op: set_attribute("x", 1),
+		timestamp: crate::TimeStamp { counter: 20, peer: PeerId(3) },
+		sequence: crate::HotSequence(1),
+	};
+	host.apply_hot_op(late).expect("the late-stamped op lands first");
+	host.apply_hot_op(own.clone()).expect("the earlier-stamped op lands second");
+
+	let would_retire = host.hot_ops_up_to(own.timestamp);
+	assert_eq!(would_retire.len(), 2, "the prefix through the earlier-stamped op includes the later-stamped op before it");
+
+	let refolds = host.refolds();
+	host.retire(own.timestamp).expect("retire");
+	assert!(host.hot_log().is_empty());
+	assert_eq!(host.refolds(), refolds, "committing in applied order owes no refold");
+	assert!(host.registry().value_equal(host.retired_registry()));
+	assert!(host.retired_registry().networks.contains_key(&NetworkId(9)));
+}
