@@ -1,6 +1,6 @@
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::{ToTokens, quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Error, FnArg, Ident, Item, ItemFn, ItemMod, ItemUse, Pat, Visibility};
 
@@ -62,6 +62,13 @@ pub fn editor_commands_impl(attr: TokenStream, module: ItemMod) -> syn::Result<T
 
 		let mut param_names = Vec::new();
 		let mut param_types = Vec::new();
+
+		// The tsify crate requires wrapping e.g. `Ts<MyStruct>` or `Vec<Ts<MyStruct>>` where `MyStruct: Tsify`.
+		// To get rid of this, `unwrapping_tsify` contains some expressions to get back the tsify free param types
+		let mut unwrapping_tsify = Vec::new();
+		// A list of the types without any Ts<T> wrappers.
+		let mut tsify_free_param_types = Vec::new();
+
 		for parameter in &signature.inputs {
 			let FnArg::Typed(pat_type) = parameter else { unreachable!("receiver is rejected above") };
 			let Pat::Ident(pat_ident) = &*pat_type.pat else {
@@ -69,6 +76,47 @@ pub fn editor_commands_impl(attr: TokenStream, module: ItemMod) -> syn::Result<T
 			};
 			param_names.push(&pat_ident.ident);
 			param_types.push(&*pat_type.ty);
+
+			/// Unwrap a generic type of the form `ident<T>`, returning the inner `T`.
+			fn try_get_nested_type<'a>(ty: &'a syn::Type, ident: &str) -> Option<&'a syn::Type> {
+				let syn::Type::Path(type_path) = ty else { return None };
+				let last_segment = type_path.path.segments.last()?;
+				if last_segment.ident != ident {
+					return None;
+				}
+				let syn::PathArguments::AngleBracketed(argument) = &last_segment.arguments else { return None };
+				argument.args.iter().find_map(|g| if let syn::GenericArgument::Type(t) = g { Some(t) } else { None })
+			}
+
+			let debug_info = quote! {concat!("convert ", stringify!(#pat_ident), " to type ", stringify!(#pat_type) )};
+			if let Some(nested_type) = try_get_nested_type(&pat_type.ty, "Ts") {
+				// This is a tsify::Ts<T>
+				unwrapping_tsify.push(quote_spanned! {
+					pat_ident.span() => let #pat_ident = match #pat_ident.to_rust() {
+						Ok(#pat_ident) => #pat_ident,
+						Err(e) => {
+							log::error!("Cannot {}: {:?}", #debug_info, e);
+							return;
+						}
+					};
+				});
+				tsify_free_param_types.push(nested_type.to_token_stream());
+			} else if let Some(nested_type) = try_get_nested_type(&pat_type.ty, "Vec").and_then(|inner| try_get_nested_type(inner, "Ts")) {
+				// This is a Vec<Ts<T>>
+				unwrapping_tsify.push(quote_spanned! {
+					pat_ident.span() => let #pat_ident = match #pat_ident.into_iter().map(|item|item.to_rust()).collect::<Result<Vec<_>,_>>() {
+						Ok(#pat_ident) => #pat_ident,
+						Err(e) => {
+							log::error!("Cannot {} failed: {:?}", #debug_info, e);
+							return;
+						}
+					};
+				});
+				tsify_free_param_types.push(quote! { Vec<#nested_type> });
+			} else {
+				// This a type without a Ts wrapper
+				tsify_free_param_types.push(pat_type.ty.to_token_stream());
+			}
 		}
 
 		let return_type = &signature.output;
@@ -77,19 +125,21 @@ pub fn editor_commands_impl(attr: TokenStream, module: ItemMod) -> syn::Result<T
 		let span = fn_name.span();
 		variants.extend(quote_spanned! {span=>
 			#(#docs)*
-			#variant { #(#param_names: #param_types,)* },
+			#variant { #(#param_names: #tsify_free_param_types,)* },
 		});
 		stubs.extend(quote_spanned! {span=>
 			#(#docs)*
 			#[cfg(not(feature = "native"))]
 			#[wasm_bindgen(js_name = #js_name)]
 			pub fn #fn_name(&self, #(#param_names: #param_types,)*) {
+				#(#unwrapping_tsify)*
 				self.dispatch((move || #return_type #body)())
 			}
 			#(#docs)*
 			#[cfg(feature = "native")]
 			#[wasm_bindgen(js_name = #js_name)]
 			pub fn #fn_name(&self, #(#param_names: #param_types,)*) {
+				#(#unwrapping_tsify)*
 				self.send(EditorCommand::#variant { #(#param_names,)* })
 			}
 		});
