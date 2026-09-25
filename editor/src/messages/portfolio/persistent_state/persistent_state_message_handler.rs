@@ -32,21 +32,6 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 				self.loaded = true;
 				responses.add(PortfolioMessage::LoadPersistedState { state });
 			}
-			PersistentStateMessage::ReadDocument { document_id } => {
-				responses.add(FrontendMessage::TriggerPersistenceReadDocument { document_id });
-			}
-			PersistentStateMessage::WriteDocument { document_id, document } => {
-				responses.add(FrontendMessage::TriggerPersistenceWriteDocument { document_id, document });
-			}
-			PersistentStateMessage::DeleteDocument { document_id } => {
-				responses.add(FrontendMessage::TriggerPersistenceDeleteDocument { document_id });
-			}
-			PersistentStateMessage::LoadDocument { document_id, document } => {
-				responses.add(PortfolioMessage::LoadDocumentContent {
-					document_id,
-					document_serialized_content: document,
-				});
-			}
 		}
 	}
 

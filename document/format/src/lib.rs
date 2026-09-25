@@ -6,7 +6,6 @@
 //!
 //! See the "On-disk container" section of `node-graph/rfcs/document-format.md` for the format spec.
 
-use std::sync::Arc;
 // `Path` and `FolderBackend` are only used by the native-only path-based open/create, so they're
 // gated off wasm to avoid unused-import warnings.
 #[cfg(not(target_family = "wasm"))]
@@ -14,7 +13,7 @@ use std::path::Path;
 
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
-use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
+use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
 use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session};
@@ -64,15 +63,15 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
 ///
 /// The per-edit persist path (`commit_from_runtime`, `apply_hot_op`, `retire`) is synchronous and
 /// read-free: the manifest is cached in memory (so payload codecs need no disk read), and writes go
-/// through the container's sync write surface. Only `open` / `create` / `export` are async, since they
+/// through the container's sync write surface. Only `open` / `export` are async, since they
 /// read.
-/// `Clone` shares the working-copy container (`Arc<AnyContainer>`) so a cloned handle reads and writes
+/// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
 /// `Session` is cloned (a snapshot copy); the container is shared.
 #[derive(Clone)]
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
-	pub(crate) working: Arc<AnyContainer>,
+	pub(crate) working: AnyContainer,
 	pub(crate) layout: L,
 	/// In-memory copy of the manifest, kept authoritative since `Gdd` is its sole writer. Holds the
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
@@ -101,10 +100,10 @@ impl<L: Layout + Default> Gdd<L> {
 
 	/// Create a fresh, empty working copy at `path` bound to `peer`. Writes a default manifest
 	/// and session state; the caller fills in editor metadata via [`Gdd::update_manifest`].
-	pub async fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::create(path)?);
 		let layout = L::default();
-		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version).await
+		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version)
 	}
 }
 
@@ -124,10 +123,14 @@ impl<L: Layout> Gdd<L> {
 	/// Backend-agnostic open. Splits out so tests can supply a [`document_container::backends::memory::MemoryBackend`].
 	///
 	/// # Errors
-	/// [`Error::WrongFormat`] / [`Error::UnsupportedVersion`] if the manifest fails validation, plus
-	/// the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
+	/// [`Error::MissingManifest`] if the container holds no manifest, [`Error::WrongFormat`] / [`Error::UnsupportedVersion`]
+	/// if it fails validation, plus the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
 	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, Error> {
-		let manifest: Manifest = io::read_single(&working, layout.manifest_basename(), MANIFEST_CODEC).await?;
+		let manifest: Manifest = match io::read_single(&working, layout.manifest_basename(), MANIFEST_CODEC).await {
+			Ok(manifest) => manifest,
+			Err(io::ReadError::NotFound { .. }) => return Err(Error::MissingManifest),
+			Err(error) => return Err(error.into()),
+		};
 		validate_manifest(&manifest)?;
 		let codecs = manifest.codecs;
 
@@ -163,7 +166,7 @@ impl<L: Layout> Gdd<L> {
 
 		Ok(Self {
 			session,
-			working: Arc::new(working),
+			working,
 			layout,
 			manifest,
 			view_settings: session_state.view_settings,
@@ -173,7 +176,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
-	pub async fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
@@ -185,7 +188,7 @@ impl<L: Layout> Gdd<L> {
 
 		Ok(Self {
 			session,
-			working: Arc::new(working),
+			working,
 			layout,
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
@@ -285,11 +288,8 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Drop the session and return the working-copy container + layout.
-	/// Intended for test code that needs to reopen against the same container; panics if the container
-	/// is still shared by a `Gdd` clone (tests don't clone before calling this).
 	pub fn into_storage(self) -> (AnyContainer, L) {
-		let working = Arc::try_unwrap(self.working).unwrap_or_else(|_| panic!("into_storage called while the working-copy container is still shared by a Gdd clone"));
-		(working, self.layout)
+		(self.working, self.layout)
 	}
 
 	/// Resolve every proto-node declaration referenced by the registry or its history into a
@@ -320,16 +320,7 @@ impl<L: Layout> Gdd<L> {
 		declarations
 	}
 
-	/// Store the legacy `.graphite` document bytes verbatim inside the working copy (dual-write soak).
-	/// Synchronous (hot-path safe via `write_non_blocking`): called at the autosave boundary alongside
-	/// the registry snapshot. The bytes are opaque to `Gdd` — it never deserializes them.
-	// TODO: Add feature gate for legacy embedding
-	pub fn store_legacy_document(&self, bytes: &[u8]) -> Result<(), ContainerError> {
-		self.working.write_non_blocking(self.layout.legacy_path(), bytes)
-	}
-
-	/// Read back the embedded legacy `.graphite` document, if present. The compare-on-open oracle and
-	/// the recovery fallback both go through here. `None` when no legacy blob was ever written.
+	/// Read the embedded legacy `.graphite` document, if present.
 	pub async fn read_legacy_document(&self) -> Option<ByteHolder> {
 		self.working.read(self.layout.legacy_path()).await.ok()
 	}

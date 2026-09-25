@@ -2,11 +2,11 @@
 
 use crate::{ByteHolder, Container, ContainerError, Result, validate_path, validate_prefix, with_trailing_slash};
 use std::collections::{HashMap, HashSet};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct MemoryBackend {
-	files: Mutex<HashMap<String, Vec<u8>>>,
+	files: Arc<Mutex<HashMap<String, Vec<u8>>>>,
 }
 
 impl MemoryBackend {

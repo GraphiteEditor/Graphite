@@ -1,6 +1,9 @@
-use crate::wrapper::messages::{DocumentId, PersistedState};
+use crate::wrapper::messages::PersistedState;
 
 pub(crate) fn read_state() -> PersistedState {
+	if let Err(error) = migrate_documents() {
+		tracing::error!("Autosave migration failed: {error}");
+	}
 	let path = state_file_path();
 	let data = match std::fs::read_to_string(&path) {
 		Ok(d) => d,
@@ -13,16 +16,13 @@ pub(crate) fn read_state() -> PersistedState {
 			return PersistedState::default();
 		}
 	};
-	let loaded = match ron::from_str(&data) {
+	match ron::from_str(&data) {
 		Ok(d) => d,
 		Err(e) => {
 			tracing::error!("Failed to deserialize persistent data: {e}");
-			return PersistedState::default();
+			PersistedState::default()
 		}
-	};
-
-	garbage_collect_document_files(&loaded);
-	loaded
+	}
 }
 
 pub(crate) fn write_state(state: PersistedState) {
@@ -37,47 +37,6 @@ pub(crate) fn write_state(state: PersistedState) {
 	if let Err(e) = std::fs::write(state_file_path(), data) {
 		tracing::error!("Failed to write persistent data to disk: {e}");
 	}
-	garbage_collect_document_files(state);
-}
-
-pub(crate) fn write_document_content(id: DocumentId, document_content: String) {
-	if let Err(e) = std::fs::write(document_content_path(&id), document_content) {
-		tracing::error!("Failed to write document {id:?} to disk: {e}");
-	}
-}
-
-pub(crate) fn read_document_content(id: &DocumentId) -> Option<String> {
-	std::fs::read_to_string(document_content_path(id)).ok()
-}
-
-pub(crate) fn delete_document(id: &DocumentId) {
-	if let Err(e) = std::fs::remove_file(document_content_path(id)) {
-		tracing::error!("Failed to delete document {id:?} from disk: {e}");
-	}
-}
-
-fn garbage_collect_document_files(state: &PersistedState) {
-	let valid_paths: std::collections::HashSet<_> = state.documents.iter().map(|doc| document_content_path(&doc.id)).collect();
-
-	let directory = crate::dirs::app_autosave_documents_dir();
-	let entries = match std::fs::read_dir(&directory) {
-		Ok(entries) => entries,
-		Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
-		Err(e) => {
-			tracing::error!("Failed to read autosave documents directory: {e}");
-			return;
-		}
-	};
-
-	for entry in entries.flatten() {
-		let path = entry.path();
-		if path.is_file()
-			&& !valid_paths.contains(&path)
-			&& let Err(e) = std::fs::remove_file(&path)
-		{
-			tracing::error!("Failed to remove orphaned document file {path:?}: {e}");
-		}
-	}
 }
 
 fn state_file_path() -> std::path::PathBuf {
@@ -86,8 +45,47 @@ fn state_file_path() -> std::path::PathBuf {
 	path
 }
 
-fn document_content_path(id: &DocumentId) -> std::path::PathBuf {
-	let mut path = crate::dirs::app_autosave_documents_dir();
-	path.push(format!("{:x}.{}", id.0, graphite_desktop_wrapper::FILE_EXTENSION));
-	path
+// TODO: Remove this migration code
+fn migrate_documents() -> std::io::Result<()> {
+	let root = crate::dirs::app_autosave_documents_dir();
+	let entries = match std::fs::read_dir(&root) {
+		Ok(entries) => entries,
+		Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+		Err(error) => return Err(error),
+	};
+	for entry in entries {
+		let entry = match entry {
+			Ok(entry) => entry,
+			Err(error) => {
+				tracing::error!("Skipping an unreadable autosave entry: {error}");
+				continue;
+			}
+		};
+		if let Err(error) = migrate_document(&root, &entry) {
+			tracing::error!("Autosave migration of {} failed: {error}", entry.path().display());
+		}
+	}
+	Ok(())
+}
+
+fn migrate_document(root: &std::path::Path, entry: &std::fs::DirEntry) -> std::io::Result<()> {
+	let path = entry.path();
+	if !entry.file_type()?.is_file() || path.extension().and_then(|s| s.to_str()) != Some(graphite_desktop_wrapper::FILE_EXTENSION) {
+		return Ok(());
+	}
+	let Some(id) = path.file_stem().and_then(|s| s.to_str()).and_then(|s| u64::from_str_radix(s, 16).ok()) else {
+		return Ok(());
+	};
+	let destination = root.join(format!("{id:016x}"));
+	if !destination.join("legacy.graphite").exists() && !destination.join("manifest.json").exists() {
+		std::fs::create_dir_all(&destination)?;
+		let staging = destination.join("legacy.graphite.migrating");
+		std::fs::copy(&path, &staging)?;
+		std::fs::rename(staging, destination.join("legacy.graphite"))?;
+	}
+	let backup = path.with_extension(format!("{}.migrated", graphite_desktop_wrapper::FILE_EXTENSION));
+	if backup.exists() {
+		return Ok(());
+	}
+	std::fs::rename(path, backup)
 }

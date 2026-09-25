@@ -89,16 +89,19 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>, working_copy_root: Option<std::path::PathBuf>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
-		s.message_handlers.portfolio_message_handler.set_working_copy_root(working_copy_root);
+		s.message_handlers.portfolio_message_handler.set_document_store(document_store);
 		s
 	}
 
 	#[cfg(test)]
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		let mut s = Self::new(Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()), None);
+		let mut s = Self::new(
+			Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()),
+			Arc::new(document_container::store::MemoryStore::default()),
+		);
 		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
 		s
 	}

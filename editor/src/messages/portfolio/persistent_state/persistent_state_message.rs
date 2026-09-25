@@ -6,25 +6,5 @@ use crate::messages::prelude::*;
 pub enum PersistentStateMessage {
 	ReadState,
 	WriteState,
-	LoadState {
-		state: PersistedState,
-	},
-	ReadDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
-	WriteDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		document: String,
-	},
-	DeleteDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
-	LoadDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		document: String,
-	},
+	LoadState { state: PersistedState },
 }

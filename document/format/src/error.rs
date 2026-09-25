@@ -35,6 +35,9 @@ pub enum Error {
 	#[cfg(feature = "conversion")]
 	#[error("commit error: {0}")]
 	Commit(#[from] CommitError),
+	/// The container has no manifest, cannot be opened.
+	#[error("container has no manifest")]
+	MissingManifest,
 	/// The manifest's `format` field is not the `.gdd` magic, so this is not a `.gdd` document.
 	#[error("not a .gdd document (manifest format = {found:?}, expected {expected:?})")]
 	WrongFormat { found: String, expected: &'static str },

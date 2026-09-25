@@ -2,6 +2,7 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
+use document_container::AnyContainer;
 use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
@@ -45,70 +46,76 @@ pub enum PortfolioMessage {
 	DeleteDocument {
 		document_id: DocumentId,
 	},
-	/// Delivers an asynchronously-built `Gdd` working copy, with the proto-node declarations its history
-	/// references, into its document. Emitted by the mount future spawned in `load_document`. The `mounted`
-	/// payload is non-serializable and a clone carries none (`clone_to_none`), so it travels exactly once.
-	/// `reopened` is true when an existing working copy was opened: the persisted cursor is trusted as-is
-	/// and the mount-time re-commit is skipped, since re-committing would stack a spurious interaction on
-	/// the restored cursor and make the first undo a no-op.
-	DocumentStorageMounted {
-		document_id: DocumentId,
-		reopened: bool,
-		#[serde(skip, default)]
-		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
-		mounted: Option<Box<(document_format::GddV1, document_graph_storage::Declarations)>>,
-	},
 	DestroyAllDocuments,
 	EditorPreferences,
 	GarbageCollectResources,
+	ResolveResources,
 	ResolveDocumentResources {
 		document_id: DocumentId,
 	},
-	ResolveResources,
 	LoadPersistedState {
 		state: PersistedState,
 	},
-	LoadDocumentContent {
+	StoredDocumentsListed {
+		document_ids: Option<Vec<DocumentId>>,
+	},
+	StoredDocumentLoaded {
 		document_id: DocumentId,
-		document_serialized_content: String,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		document: Option<Box<DocumentMessageHandler>>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		gdd: Option<Box<document_format::GddV1>>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		declarations: document_graph_storage::Declarations,
 	},
 	NewDocumentWithName {
 		name: String,
 	},
-	NextDocument,
-	OpenDocumentFile {
+	OpenLegacyDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		document_serialized_content: String,
 	},
-	/// Open a `.gdd` document container (archive bytes), building the runtime from its stored registry.
-	OpenGddDocument {
+	OpenDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		content: Vec<u8>,
 	},
-	/// Delivers a document built asynchronously from a `.gdd` archive (registry → runtime, working copy
-	/// mounted) into the portfolio. Travels once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).
-	GddDocumentLoaded {
+	DocumentFileLoaded {
 		document_id: DocumentId,
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		#[serde(skip, default)]
 		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
 		document: Option<Box<DocumentMessageHandler>>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		gdd: Option<Box<document_format::GddV1>>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		declarations: document_graph_storage::Declarations,
 	},
-	LoadDocument {
+	StorageUpdated,
+	StorageAttached {
 		document_id: DocumentId,
-		document_name: Option<String>,
-		document_path: Option<PathBuf>,
-		document_is_auto_saved: bool,
-		document_is_saved: bool,
-		document_serialized_content: String,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		container: Option<AnyContainer>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore", Clone(clone_with = "clone_to_none"))]
+		gdd: Option<Box<document_format::GddV1>>,
+		#[serde(skip, default)]
+		#[derivative(Debug = "ignore", PartialEq = "ignore")]
+		declarations: document_graph_storage::Declarations,
 	},
+	NextDocument,
+	PrevDocument,
 	CenterLayers {
 		layers: Vec<LayerNodeIdentifier>,
 	},
-	PrevDocument,
 	ReorderDocument {
 		document_id: DocumentId,
 		new_index: usize,
@@ -148,8 +155,7 @@ pub enum PortfolioMessage {
 	UpdateOpenDocumentsList,
 }
 
-/// Clone helper for non-serializable payloads: a cloned message carries none of the `Gdd` working copy,
-/// its declarations, or the built document.
+/// Clone helper for non-serializable payloads: a cloned completion message carries none.
 fn clone_to_none<T>(_: &Option<T>) -> Option<T> {
 	None
 }
