@@ -474,25 +474,25 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 	let (mut key_up, mut key_down, mut double_click, mut double_tap, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by_key(|entry| std::cmp::Reverse(entry.modifiers.count_ones()));
-	// Sort the sublists of `key_up` and `key_down`
+
 	for list in [&mut key_up, &mut key_down] {
 		for sublist in list {
 			sort(sublist);
 		}
 	}
-	// Sort the sublists of `double_click`
+
 	for sublist in &mut double_click {
 		sort(sublist)
 	}
-	// Sort the sublists of `double_tap`
+
 	for sublist in &mut double_tap {
 		sort(sublist)
 	}
-	// Sort `wheel_scroll`
+
 	sort(&mut wheel_scroll);
-	// Sort `pointer_move`
+
 	sort(&mut pointer_move);
-	// Sort `pointer_shake`
+
 	sort(&mut pointer_shake);
 
 	Mapping {

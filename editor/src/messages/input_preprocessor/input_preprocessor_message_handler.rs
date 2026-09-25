@@ -653,4 +653,31 @@ mod test {
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
 	}
+
+	#[test]
+	/// Only one of `InputMapperMessage::KeyDownNoRepeat` and `InputMapperMessage::KeyDown` is sent
+	fn process_key_repeats() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+
+		let key = Key::KeyA;
+
+		for i in 0..5 {
+			let key_repeat = i == 0;
+			let modifier_keys = ModifierKeys::empty();
+			let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
+
+			let mut responses = VecDeque::new();
+
+			let context = InputPreprocessorMessageContext {
+				viewport: &ViewportMessageHandler::default(),
+			};
+			input_preprocessor.process_message(message, &mut responses, context);
+
+			assert_eq!(
+				responses.pop_front(),
+				Some(if key_repeat { InputMapperMessage::KeyDown(key) } else { InputMapperMessage::KeyDownNoRepeat(key) }.into())
+			);
+			assert!(responses.is_empty()); // No more respoonses
+		}
+	}
 }
