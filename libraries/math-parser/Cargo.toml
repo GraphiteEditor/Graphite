@@ -18,6 +18,7 @@ workspace = true
 thiserror = "2.0"
 num-complex = "0.4"
 unicode-ident = "1.0"
+# This is intentionally not upgraded since the cache API was removed for soundness https://codeberg.org/zesterer/chumsky/pulls/980
 chumsky = { version = "0.10", default-features = false, features = ["std", "unstable"] }
 
 [dev-dependencies]

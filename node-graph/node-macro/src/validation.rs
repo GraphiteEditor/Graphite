@@ -1,5 +1,5 @@
 use crate::parsing::{Implementation, NodeOutputTier, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload, output_tier};
-use proc_macro_error2::{abort_if_dirty, emit_error};
+use proc_macro_error3::{abort_if_dirty, emit_error};
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{GenericParam, Type};

@@ -15,7 +15,7 @@ use math_parser::object::Object;
 use math_parser::parser::{MessagePart, ParseError};
 use math_parser::reducer::{Reducer, classify_reducer};
 use math_parser::value::{Value, Vector2, Vector3};
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
