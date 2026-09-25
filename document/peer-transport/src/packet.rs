@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 pub enum Role {
 	Host,
 	Guest,
+	/// Connected to the document's room without knowing yet whether a host is there: a host's hello makes
+	/// this peer a guest, and a room with no host makes it the host after a grace period.
+	Undecided,
 }
 
 /// How far one peer's broadcasts had got. A peer keeps its `PeerId` across a reconnect but restarts

@@ -171,6 +171,7 @@ impl Peer {
 		let replica = match role {
 			Role::Host => Replica::host(endpoint, peer, user),
 			Role::Guest => Replica::guest(endpoint, peer, user),
+			Role::Undecided => Replica::connect(endpoint, peer, user),
 		};
 		Self {
 			target: SimTarget::new(peer, seed),
@@ -984,4 +985,46 @@ fn a_seed_fixes_the_run() {
 			);
 		}
 	}
+}
+
+/// Two copies of a document connect to their room without knowing who hosts. Neither greets as host,
+/// so after the grace period the lower peer id takes the role and greets again; the other, settled
+/// as a guest by that hello, syncs. A third copy that connects once a host is there is a guest at once.
+#[test]
+fn undecided_peers_settle_on_a_host_and_the_rest_sync() {
+	let mut network = MockNetwork::new(0);
+	let mut peers: Vec<Peer> = (0..2)
+		.map(|index| {
+			let endpoint = network.endpoint();
+			let id = endpoint.id();
+			let peer = Peer::new(endpoint, Role::Undecided, index as u64 + 1, 0);
+			network.connect(id);
+			peer
+		})
+		.collect();
+	quiesce(&mut network, &mut peers);
+	assert!(peers.iter().all(|peer| peer.replica.role() == Role::Undecided), "hellos alone decide nothing");
+
+	// The grace period passes on both; only the lower id takes the role.
+	assert_eq!(peers[1].replica.decide_role(), None, "the higher id waits for the lower one");
+	assert_eq!(peers[0].replica.decide_role(), Some(Role::Host));
+	quiesce(&mut network, &mut peers);
+	assert_eq!(peers[1].replica.role(), Role::Guest);
+	assert!(peers[1].replica.is_synced(), "the host's hello prompted a sync");
+
+	peers[0].stage(RegistryDelta::AddNetwork {
+		id: NetworkId(9),
+		network: Network::default(),
+	});
+	quiesce(&mut network, &mut peers);
+	assert!(peers[1].session().registry().networks.contains_key(&NetworkId(9)));
+
+	let endpoint = network.endpoint();
+	let id = endpoint.id();
+	peers.push(Peer::new(endpoint, Role::Undecided, 3, 0));
+	network.connect(id);
+	quiesce(&mut network, &mut peers);
+	assert_eq!(peers[2].replica.role(), Role::Guest, "a host is there, so the newcomer is its guest");
+	assert!(peers[2].replica.is_synced());
+	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)));
 }

@@ -9,9 +9,7 @@ pub enum SyncMessage {
 	Share,
 	/// Open a new document that follows the session behind `token`.
 	Join { token: String },
-	/// Join the room the active document's copies share, with this copy and whatever it did while apart.
-	Rejoin,
-	/// Leave the active document's session.
+	/// Disconnect the active document from its room; editing goes on alone until the next share.
 	Leave,
 	/// Per frame: apply what peers sent and answer their requests.
 	Poll,

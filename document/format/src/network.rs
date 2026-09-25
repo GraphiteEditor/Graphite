@@ -45,6 +45,25 @@ impl<L: Layout> Gdd<L> {
 		self.network = Some(Replica::host(transport, self.session.peer(), user));
 	}
 
+	/// Connect to the room every copy of this document shares, host or guest as the room calls for, and
+	/// remember that the document is shared so a reopen reconnects on its own.
+	pub fn connect(&mut self, transport: impl Transport + 'static, user: UserId) -> Result<(), Error> {
+		self.network = Some(Replica::connect(transport, self.session.peer(), user));
+		self.shared = true;
+		self.persist_session_state()
+	}
+
+	/// Whether the document is meant to be in its room; see [`connect`](Self::connect).
+	pub fn is_shared(&self) -> bool {
+		self.shared
+	}
+
+	/// For a connection still undecided after the grace period: take the host role if no host is there. See
+	/// [`Replica::decide_role`].
+	pub fn decide_role(&mut self) -> Option<Role> {
+		self.network.as_mut().and_then(Replica::decide_role)
+	}
+
 	pub fn join(&mut self, transport: impl Transport + 'static, user: UserId) {
 		self.network = Some(Replica::guest(transport, self.session.peer(), user));
 	}
@@ -52,6 +71,10 @@ impl<L: Layout> Gdd<L> {
 	/// Leaves the room. A host retires every closed transaction first, so what peers finished is in
 	/// history before the retirer goes away.
 	pub fn leave(&mut self) {
+		self.shared = false;
+		if let Err(error) = self.persist_session_state() {
+			log::error!("Persisting the session state before leaving failed: {error}");
+		}
 		let closed = self.session.closed_transactions();
 		if let Err(error) = self.retire_transactions(&closed) {
 			log::error!("Retiring before leaving failed: {error}");

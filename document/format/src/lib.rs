@@ -106,6 +106,9 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) own_last_staged_ms: Option<f64>,
 	/// Whether an op of this peer's own was staged since the last policy tick.
 	pub(crate) own_staged_since_tick: bool,
+	/// Whether the document is meant to be in its room: set by sharing, cleared by disconnecting, and
+	/// persisted so a reopened document reconnects on its own.
+	pub(crate) shared: bool,
 }
 
 /// Whole-file rewrites the sync path defers to the end of a poll, so one batch of remote packets costs
@@ -128,6 +131,7 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 			byte_store: self.byte_store.clone(),
+			shared: self.shared,
 			#[cfg(feature = "network")]
 			network: None,
 			#[cfg(feature = "network")]
@@ -225,6 +229,7 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
+			shared: session_state.shared,
 			byte_store: None,
 			#[cfg(feature = "network")]
 			network: None,
@@ -258,6 +263,7 @@ impl<L: Layout> Gdd<L> {
 			view_settings: std::collections::BTreeMap::new(),
 			network_view_settings: std::collections::BTreeMap::new(),
 			byte_store: None,
+			shared: false,
 			#[cfg(feature = "network")]
 			network: None,
 			#[cfg(feature = "network")]

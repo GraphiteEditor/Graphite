@@ -93,6 +93,38 @@ impl Replica {
 		Self::new(Box::new(transport), Role::Guest, peer, user, SyncState::AwaitingSync { pending: Vec::new() })
 	}
 
+	/// Connect to the room every copy of the document shares, taking whichever role the room calls for: a
+	/// host's hello makes this peer a guest that syncs, and [`decide_role`](Self::decide_role) makes it the
+	/// host once it has waited long enough for one to greet it.
+	pub fn connect(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
+		Self::new(Box::new(transport), Role::Undecided, peer, user, SyncState::AwaitingSync { pending: Vec::new() })
+	}
+
+	/// For a peer still undecided after the grace period: become the host unless another undecided peer
+	/// with a lower id is there to become it, in which case its hello as host is on its way. Returns the
+	/// role taken, if one was.
+	pub fn decide_role(&mut self) -> Option<Role> {
+		if self.role != Role::Undecided {
+			return None;
+		}
+		if self.peers.values().any(|remote| remote.role == Role::Host) {
+			return None;
+		}
+		if self.peers.values().any(|remote| remote.role == Role::Undecided && remote.peer < self.peer) {
+			return None;
+		}
+		self.role = Role::Host;
+		self.sync = SyncState::Synced;
+		log::info!("Join handshake: no host greeted, becoming the host");
+		let peers: Vec<TransportPeerId> = self.peers.keys().copied().collect();
+		for transport_peer in peers {
+			if let Err(error) = self.send_hello(transport_peer) {
+				log::error!("Greeting the room as host: {error}");
+			}
+		}
+		Some(Role::Host)
+	}
+
 	fn new(transport: Box<dyn Transport>, role: Role, peer: PeerId, user: UserId, sync: SyncState) -> Self {
 		Self {
 			transport,
@@ -403,6 +435,10 @@ impl Replica {
 				self.requested_resources.clear();
 				self.resources_stale = true;
 
+				// A host greeting an undecided peer settles it: it is a guest of that host.
+				if role == Role::Host && self.role == Role::Undecided {
+					self.role = Role::Guest;
+				}
 				if role == Role::Host && !self.is_synced() {
 					log::info!("Join handshake: sync request sent to the host");
 					self.transport.send(from, &SyncPacket::SyncRequest { known_revs: target.known_revs() })?;

@@ -25,6 +25,9 @@ pub struct SyncMessageHandler {
 	/// Documents that just took the host's state on: once their interface follows and the graph has run, the
 	/// viewport is fitted to the document, so a guest sees what it joined rather than an empty canvas.
 	fit_after_sync: HashSet<DocumentId>,
+	/// When each document connected to its room still undecided, so the host role is taken once no host has
+	/// greeted it for the grace period.
+	undecided_since: HashMap<DocumentId, f64>,
 	blocked_reason: HashMap<DocumentId, String>,
 }
 
@@ -48,38 +51,13 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					return;
 				}
 
-				// Every copy of the document derives the same token, so a copy edited apart can come back to the
-				// room by itself.
-				let token = SessionToken::for_document(gdd.manifest().document_id);
-				let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
-				let user = UserId(gdd.session().peer().0);
-				gdd.share(room, user);
-
 				let document_id = active_document_id.expect("checked above");
-				responses.add(driver_future(document_id, driver));
+				let Some(token) = self.connect_document(document_id, gdd, responses) else { return };
 				responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
 				responses.add(DialogMessage::DisplayDialogError {
 					title: "Live session started".into(),
 					description: format!("A link to join was copied to the clipboard.\n\nSession {token}"),
 				});
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				self.start_polling(responses);
-			}
-			SyncMessage::Rejoin => {
-				let Some(document_id) = active_document_id else { return };
-				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
-					log::warn!("Cannot rejoin a session before the working copy is mounted");
-					return;
-				};
-				if gdd.role().is_some() {
-					return;
-				}
-				// This copy keeps its own history and hot ops; the sync merges them with the host's line.
-				let token = SessionToken::for_document(gdd.manifest().document_id);
-				let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
-				let user = UserId(gdd.session().peer().0);
-				gdd.join(room, user);
-				responses.add(driver_future(document_id, driver));
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				self.start_polling(responses);
 			}
@@ -95,18 +73,21 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				responses.add(PortfolioMessage::NewDocumentWithName { name: "Shared session".into() });
 			}
 			SyncMessage::StorageMounted { document_id } => {
-				let Some(token) = self.pending_join.take() else { return };
 				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
 					return;
 				};
+				if let Some(token) = self.pending_join.take() {
+					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
+					let user = UserId(gdd.session().peer().0);
+					gdd.join(room, user);
 
-				let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
-				let user = UserId(gdd.session().peer().0);
-				gdd.join(room, user);
-
-				responses.add(driver_future(document_id, driver));
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				self.start_polling(responses);
+					responses.add(driver_future(document_id, driver));
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+					self.start_polling(responses);
+				} else if gdd.is_shared() && gdd.role().is_none() {
+					// The document was in its room when it was last persisted: a reload rejoins on its own.
+					self.connect_document(document_id, gdd, responses);
+				}
 			}
 			SyncMessage::Leave => {
 				let Some(gdd) = active_document_id.and_then(|id| documents.get_mut(&id)).and_then(|document| document.storage_mut()) else {
@@ -134,6 +115,16 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 					if document.storage().is_none_or(|gdd| gdd.role().is_none()) {
 						continue;
+					}
+					// A document connected without knowing who hosts takes the role itself once no host has greeted
+					// it for the grace period.
+					if self.undecided_since.get(&document_id).is_some_and(|since| now_ms() - since >= ROLE_GRACE_MS)
+						&& let Some(gdd) = document.storage_mut()
+						&& gdd.role() == Some(peer_transport::Role::Undecided)
+						&& gdd.decide_role().is_some()
+					{
+						self.undecided_since.remove(&document_id);
+						responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 					}
 					// Each movement reaches peers as it happens: what the interface recorded since the last
 					// frame is staged, and so broadcast, ahead of this frame's poll.
@@ -220,10 +211,27 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 		}
 	}
 
-	advertise_actions!(SyncMessageDiscriminant; Share, Rejoin, Leave);
+	advertise_actions!(SyncMessageDiscriminant; Share, Leave);
 }
 
 impl SyncMessageHandler {
+	/// Connect `document_id`'s working copy to the room every copy of the document shares, and hand the
+	/// frontend the link. Returns the token, `None` when the connection could not be set up.
+	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut document_format::GddV1, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
+		let token = SessionToken::for_document(gdd.manifest().document_id);
+		let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
+		let user = UserId(gdd.session().peer().0);
+		if let Err(error) = gdd.connect(room, user) {
+			log::error!("Connecting to the session failed: {error}");
+			return None;
+		}
+		self.undecided_since.insert(document_id, now_ms());
+		responses.add(driver_future(document_id, driver));
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		self.start_polling(responses);
+		Some(token)
+	}
+
 	fn start_polling(&mut self, responses: &mut VecDeque<Message>) {
 		if self.polling {
 			return;
@@ -263,6 +271,10 @@ fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPe
 	};
 	future.into()
 }
+
+/// How long a peer that connected to an empty-looking room waits for a host's hello before it takes the
+/// role itself.
+const ROLE_GRACE_MS: f64 = 1_500.;
 
 /// A monotonic-enough millisecond clock for the retirement policy, which only ever compares differences.
 fn now_ms() -> f64 {

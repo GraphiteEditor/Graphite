@@ -44,4 +44,7 @@ pub struct SessionState {
 	/// decodes these fields in declaration order.
 	#[serde(default)]
 	pub next_hot_sequence: HotSequence,
+	/// Whether the document was in its room when it was last persisted, so a reopen reconnects by itself.
+	#[serde(default)]
+	pub shared: bool,
 }

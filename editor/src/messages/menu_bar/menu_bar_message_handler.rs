@@ -8,6 +8,8 @@ use graphene_std::vector::misc::BooleanOperation;
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct MenuBarMessageHandler {
 	pub has_active_document: bool,
+	/// Whether the active document is connected to its live-session room, which turns Share into Disconnect.
+	pub in_session: bool,
 	pub canvas_tilted: bool,
 	pub canvas_flipped: bool,
 	pub rulers_visible: bool,
@@ -43,6 +45,7 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 impl LayoutHolder for MenuBarMessageHandler {
 	fn layout(&self) -> Layout {
 		let no_active_document = !self.has_active_document;
+		let in_session = self.in_session;
 		let node_graph_open = self.node_graph_open;
 		let has_selected_nodes = self.has_selected_nodes;
 		let has_selected_layers = self.has_selected_layers;
@@ -174,19 +177,18 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.disabled(no_active_document),
 					],
 					vec![
-						MenuListEntry::new("Share Live Session")
-							.label("Share Live Session")
-							.icon("Link")
-							.on_commit(|_| SyncMessage::Share.into())
-							.disabled(no_active_document),
-						MenuListEntry::new("Rejoin Live Session")
-							.label("Rejoin Live Session")
-							.on_commit(|_| SyncMessage::Rejoin.into())
-							.disabled(no_active_document),
-						MenuListEntry::new("Leave Live Session")
-							.label("Leave Live Session")
-							.on_commit(|_| SyncMessage::Leave.into())
-							.disabled(no_active_document),
+						// One entry: share a document that is not in its room, disconnect one that is.
+						match in_session {
+							false => MenuListEntry::new("Share Live Session")
+								.label("Share Live Session")
+								.icon("Link")
+								.on_commit(|_| SyncMessage::Share.into())
+								.disabled(no_active_document),
+							true => MenuListEntry::new("Disconnect Live Session")
+								.label("Disconnect Live Session")
+								.on_commit(|_| SyncMessage::Leave.into())
+								.disabled(no_active_document),
+						},
 					],
 					#[cfg(not(target_os = "macos"))]
 					vec![preferences],
