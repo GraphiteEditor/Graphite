@@ -2230,6 +2230,11 @@ impl DocumentMessageHandler {
 		self.history.cache_declaration_bytes(hash, bytes);
 	}
 
+	/// Declaration resources the working copy names whose bytes are on hand but not yet decoded.
+	pub(crate) fn undecoded_declaration_hashes(&self) -> Vec<graph_craft::application_io::resource::ResourceHash> {
+		self.history.undecoded_declaration_hashes()
+	}
+
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
 	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);

@@ -395,6 +395,23 @@ impl DocumentHistory {
 		}
 	}
 
+	/// The hashes of declaration resources the working copy names but holds no decoded declaration for.
+	/// A remote change can name a declaration whose bytes are already in the byte store from an earlier
+	/// session, so it is never requested from a peer and has to be decoded from what is on hand.
+	pub fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
+		let Some(storage) = self.storage.as_ref() else { return Vec::new() };
+
+		let mut hashes: Vec<ResourceHash> = storage
+			.session()
+			.all_declaration_resources()
+			.into_iter()
+			.filter_map(|(id, hash)| (!self.declarations.contains_key(&id)).then_some(hash?))
+			.collect();
+		hashes.sort_unstable();
+		hashes.dedup();
+		hashes
+	}
+
 	/// Cache a resource that arrived from a peer as a proto-node declaration, under every declaration
 	/// resource referencing its hash. Ignores resources no declaration refers to (images, fonts).
 	pub fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) {

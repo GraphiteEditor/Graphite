@@ -20,6 +20,9 @@ pub enum SyncMessage {
 	StorageMounted { document_id: DocumentId },
 	/// The transport loop of a document's session ended.
 	Disconnected { document_id: DocumentId },
+	/// A declaration a remote change names was already on hand and was read from the byte store to be
+	/// decoded; `None` when the store turned out not to hold it after all.
+	DeclarationLoaded { document_id: DocumentId, hash: ResourceHash, bytes: Option<Vec<u8>> },
 	/// A resource a peer asked for was read from the byte store.
 	ResourceLoaded {
 		document_id: DocumentId,

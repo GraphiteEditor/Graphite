@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Tran
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use document_graph_storage::UserId;
-use graph_craft::application_io::resource::LoadResource;
+use graph_craft::application_io::resource::{LoadResource, ResourceHash};
 use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, Room, SessionToken, SyncTarget};
 use std::collections::HashSet;
 
@@ -33,6 +33,8 @@ pub struct SyncMessageHandler {
 	/// greeted it for the grace period.
 	undecided_since: HashMap<DocumentId, f64>,
 	blocked_reason: HashMap<DocumentId, String>,
+	/// Declarations being read from the byte store to be decoded, so a document waiting on them asks once.
+	decoding: HashSet<(DocumentId, ResourceHash)>,
 }
 
 #[message_handler_data]
@@ -201,6 +203,22 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 						}
 						continue;
 					}
+					// Every resource is on hand, but a declaration held since an earlier session was never received from
+					// a peer and so never decoded: read it from the byte store, and apply once it is cached.
+					let undecoded = document.undecoded_declaration_hashes();
+					if !undecoded.is_empty() {
+						let reason = format!("decoding {} held declarations", undecoded.len());
+						if self.blocked_reason.get(&document_id) != Some(&reason) {
+							log::debug!("Applying remote changes to {document_id:?} waits: {reason}");
+							self.blocked_reason.insert(document_id, reason);
+						}
+						for hash in undecoded {
+							if self.decoding.insert((document_id, hash)) {
+								responses.add(decode_declaration_future(document_id, hash, resources.clone()));
+							}
+						}
+						continue;
+					}
 					self.blocked_reason.remove(&document_id);
 
 					// Stays dirty while a declaration the changes need is still on its way.
@@ -222,6 +240,18 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if let Some(document_id) = woken {
 					self.arm(document_id, responses);
 				}
+			}
+			SyncMessage::DeclarationLoaded { document_id, hash, bytes } => {
+				let Some(bytes) = bytes else {
+					// Stays in `decoding` so it is not asked for again every frame; the document waits on it.
+					log::warn!("Declaration {hash} is recorded as held but the byte store has no bytes for it");
+					return;
+				};
+				self.decoding.remove(&(document_id, hash));
+				let Some(document) = documents.get_mut(&document_id) else { return };
+				log::debug!("Decoded held declaration {hash} ({} bytes)", bytes.len());
+				document.cache_declaration_bytes(hash, &bytes);
+				self.dirty.insert(document_id);
 			}
 			SyncMessage::ResourceLoaded { document_id, to, hash, bytes } => {
 				log::debug!("Sending resource {hash} ({} bytes)", bytes.len());
@@ -302,7 +332,16 @@ fn driver_future(document_id: DocumentId, driver: peer_transport::MessageLoopFut
 	future.into()
 }
 
-fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPeerId, hash: graph_craft::application_io::resource::ResourceHash, resources: ResourcesHandle) -> Message {
+/// Read a declaration the byte store already holds, so it can be decoded for a remote change that names it.
+fn decode_declaration_future(document_id: DocumentId, hash: ResourceHash, resources: ResourcesHandle) -> Message {
+	let future = async move {
+		let bytes = resources.load(hash).await.map(|resource| resource.as_ref().to_vec());
+		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::DeclarationLoaded { document_id, hash, bytes }))
+	};
+	future.into()
+}
+
+fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPeerId, hash: ResourceHash, resources: ResourcesHandle) -> Message {
 	let future = async move {
 		match resources.load(hash).await {
 			Some(resource) => Message::Portfolio(PortfolioMessage::Sync(SyncMessage::ResourceLoaded {
