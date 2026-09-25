@@ -123,7 +123,7 @@ env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
-convert_case = "0.8"
+convert_case = "0.12"
 titlecase = "3.6"
 fancy-regex = "0.18.0"
 unicode-segmentation = "1.13.2"
