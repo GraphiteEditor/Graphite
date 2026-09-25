@@ -293,7 +293,7 @@ impl Session {
 	/// never retire, so an accidental gesture and its undo leave no step in history. `None` when there is
 	/// nothing hot to take back, or when the transaction has already retired somewhere this peer knows
 	/// of, which makes it an undo of a retired step instead. Returns the ids to send and what they named.
-	pub fn retract_transaction(&mut self) -> Result<Option<(Vec<HotOpId>, Touched)>, CrdtError> {
+	pub fn retract_transaction(&mut self) -> Result<Option<Retraction>, CrdtError> {
 		let peer = self.document.peer;
 		let mut own: Vec<&HotOp> = self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp.peer == peer).collect();
 		own.sort_by_key(|hot_op| hot_op.sequence);
@@ -314,14 +314,16 @@ impl Session {
 		if ids.iter().any(|&id| self.document.retired.covers(id)) {
 			return Ok(None);
 		}
-		let touched = self.retract_hot_ops(&ids);
-		Ok(Some((ids, touched)))
+		self.runtime_base = None;
+		let (touched, taken) = self.document.retract_hot_ops(&ids);
+		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::EndTransaction)).collect();
+		Ok(Some(Retraction { ids, touched, ops }))
 	}
 
 	/// Take back hot ops another peer retracted. See [`retract_transaction`](Self::retract_transaction).
 	pub fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> Touched {
 		self.runtime_base = None;
-		self.document.retract_hot_ops(ids)
+		self.document.retract_hot_ops(ids).0
 	}
 
 	/// Which hot ops were taken back, for a peer catching up.
@@ -673,9 +675,12 @@ impl Session {
 		self.document.head.map(|head| self.document.history.sample_chain(head)).unwrap_or_default()
 	}
 
-	/// Retired deltas not reachable from `known`, in replay order.
+	/// Retired deltas on `head`'s ancestry that are not reachable from `known`, in replay order. A branch
+	/// the cursor walked away from stays here: it is this peer's to redo, and a peer that merged it would
+	/// bring the undone step back. Merging thus joins heads, never every tip.
 	pub fn deltas_unknown_to(&self, known: impl IntoIterator<Item = Rev>) -> Vec<&Delta> {
-		self.document.history.deltas_unknown_to(known)
+		let reachable = self.document.history.ancestors(self.document.head);
+		self.document.history.deltas_unknown_to(known).into_iter().filter(|delta| reachable.contains(&delta.id)).collect()
 	}
 
 	/// The retired delta for `rev`, or `None` if it isn't in history. O(1) lookup, for callers that
@@ -989,4 +994,15 @@ pub struct ClosedTransaction {
 	/// Whether every op from the author's retired frontier through the marker is here. One with a gap is
 	/// waiting on a re-announcement; retiring it anyway commits what arrived.
 	pub contiguous: bool,
+}
+
+/// What [`Session::retract_transaction`] took back.
+#[derive(Clone, Debug)]
+pub struct Retraction {
+	/// The ids to send, so every peer drops the same ops.
+	pub ids: Vec<HotOpId>,
+	/// What the ops named, for a mirror to bring back into line.
+	pub touched: Touched,
+	/// The ops themselves, marker aside, for a redo to stage afresh.
+	pub ops: Vec<RegistryDelta>,
 }

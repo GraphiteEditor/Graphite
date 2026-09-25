@@ -257,7 +257,8 @@ fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
 	host.stage_ops([add_network(9)]).expect("host op");
 	let own: Vec<crate::HotOpId> = host.hot_log().iter().filter(|hot_op| hot_op.timestamp.peer == PeerId(1)).map(crate::HotOp::id).collect();
 
-	let (ids, touched) = host.retract_transaction().expect("retract").expect("the host's transaction is hot");
+	let crate::Retraction { ids, touched, ops } = host.retract_transaction().expect("retract").expect("the host's transaction is hot");
+	assert_eq!(ops.len(), 3, "RegisterPeer and the two writes come back for a redo, the marker does not");
 	assert_eq!(ids, own, "the whole open transaction is taken back");
 	assert!(touched.networks.contains(&NetworkId(3)) && touched.networks.contains(&NetworkId(9)));
 	assert_eq!(host.hot_log().len(), 1, "only the guest's op stays");
@@ -293,4 +294,34 @@ fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
 	assert!(touched.networks.contains(&NetworkId(9)));
 	assert!(!guest.registry().networks.contains_key(&NetworkId(9)));
 	assert!(guest.hot_log().is_empty());
+}
+
+/// A step the cursor walked away from is not sent to a peer, and a merge never joins it: the peer gets the
+/// branch the cursor is on, and the undone step's effect stays gone.
+#[test]
+fn an_undone_branch_is_kept_to_itself() {
+	let mut author = Session::with_peer(PeerId(1));
+	author.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = author.head_rev().expect("base rev");
+	author.mark_interaction_end(base);
+	let mut peer = author.clone();
+	peer.document.peer = PeerId(2);
+
+	author.commit_op_for_test(set_attribute("undone", 1)).expect("the step to undo");
+	let undone = author.head_rev().expect("rev");
+	author.mark_interaction_end(undone);
+	author.undo().expect("undo");
+	assert_eq!(author.head_rev(), Some(base));
+	author.commit_op_for_test(set_attribute("kept", 2)).expect("a new branch");
+	let kept = author.head_rev().expect("rev");
+
+	let sent: Vec<Rev> = author.deltas_unknown_to(peer.known_revs()).into_iter().map(|delta| delta.id).collect();
+	assert_eq!(sent, vec![kept], "only the branch the cursor is on goes out, not the undone step");
+	assert!(author.delta(undone).is_some(), "the undone step stays in the author's DAG for a history panel");
+
+	let incoming: Vec<Delta> = sent.iter().filter_map(|&rev| author.delta(rev).cloned()).collect();
+	let outcome = peer.merge(incoming).expect("merge");
+	assert!(matches!(outcome, MergeOutcome::FastForward(rev) if rev == kept), "{outcome:?}");
+	assert!(peer.retired_registry().attributes.get("kept").is_some_and(|value| !value.deleted));
+	assert!(!peer.retired_registry().attributes.contains_key("undone"), "the undone step never reached the peer");
 }

@@ -228,8 +228,8 @@ impl Peer {
 	/// Undo this peer's latest transaction while it is hot, the way the editor does for a step not yet
 	/// retired: the ops leave every hot log and never become history.
 	fn retract(&mut self) {
-		if let Some((ids, _)) = self.target.session.retract_transaction().expect("retract") {
-			self.replica.broadcast_retraction(&ids).expect("broadcast retraction");
+		if let Some(retraction) = self.target.session.retract_transaction().expect("retract") {
+			self.replica.broadcast_retraction(&retraction.ids).expect("broadcast retraction");
 		}
 	}
 

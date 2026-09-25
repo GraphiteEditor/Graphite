@@ -35,9 +35,10 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
-	/// For each step on the legacy redo stack, whether undoing it took its hot transaction back rather
-	/// than moving the storage cursor, so redo knows to stage the step again instead of moving forward.
-	retracted_undos: Vec<bool>,
+	/// For each step on the legacy redo stack, the ops undoing it took back from the hot log, when it did
+	/// that rather than move the storage cursor, so redo stages exactly those again instead of moving
+	/// forward or diffing a snapshot that predates what peers wrote meanwhile.
+	retracted_undos: Vec<Option<Vec<document_graph_storage::RegistryDelta>>>,
 }
 
 /// Why [`DocumentHistory::move_cursor`] produced no interface.
@@ -133,25 +134,50 @@ impl DocumentHistory {
 
 	/// Undo the latest storage transaction while it is still hot by taking it back, so it leaves every hot
 	/// log and never becomes a history step. `false` when the step already retired. No-op while unmounted.
-	pub fn retract_storage_transaction(&mut self) -> bool {
-		let Some(storage) = self.storage.as_mut() else { return false };
+	pub fn retract_storage_transaction(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
+		let storage = self.storage.as_mut()?;
 		match storage.retract_transaction() {
 			Ok(retracted) => retracted,
 			Err(error) => {
 				log::error!("Taking the storage transaction back failed: {error}");
-				false
+				None
 			}
 		}
 	}
 
+	/// Stage ops a retraction took back, as a fresh transaction: the redo of a step taken back. What they
+	/// name lands in the remote changes, for the interface to follow.
+	pub fn restage_ops(&mut self, ops: Vec<document_graph_storage::RegistryDelta>) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.restage_ops(ops) {
+			log::error!("Staging the redone step failed: {error}");
+		}
+	}
+
+	/// Whether there is a legacy undo step to pop, and so a step storage may take back.
+	pub fn has_undo_step(&self) -> bool {
+		!self.legacy_undo_stack.is_empty()
+	}
+
+	/// Whether there is a legacy redo step to pop.
+	pub fn has_redo_step(&self) -> bool {
+		!self.legacy_redo_stack.is_empty()
+	}
+
+	/// The ops the next redo step was taken back with, without popping, so the caller can decide how to
+	/// redo before it moves the legacy stacks.
+	pub fn next_redo_is_retracted(&self) -> bool {
+		self.retracted_undos.last().is_some_and(|note| note.is_some())
+	}
+
 	/// Record how the step just undone reached storage, paired with the legacy redo entry pushed for it.
-	pub fn note_undo(&mut self, retracted: bool) {
+	pub fn note_undo(&mut self, retracted: Option<Vec<document_graph_storage::RegistryDelta>>) {
 		self.retracted_undos.push(retracted);
 	}
 
-	/// Whether the step about to be redone was taken back rather than cursor-undone.
-	pub fn take_undo_note(&mut self) -> bool {
-		self.retracted_undos.pop().unwrap_or(false)
+	/// The ops the step about to be redone was taken back with, if it was, rather than cursor-undone.
+	pub fn take_undo_note(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
+		self.retracted_undos.pop().flatten()
 	}
 
 	/// Close this peer's open transaction and retire every closed one into durable Gdd history, so the

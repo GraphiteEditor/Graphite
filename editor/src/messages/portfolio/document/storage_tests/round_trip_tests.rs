@@ -902,3 +902,36 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 		"the transform input should shift down intact, but became {transform:?}"
 	);
 }
+
+/// Undoing a step that is still hot takes it back rather than moving the cursor: the hot log empties,
+/// history gains nothing, and the interface follows the registry. Redo stages the same ops afresh.
+#[tokio::test]
+async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(&mut editor).await;
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().retire_storage_interaction();
+	let history_base = editor.active_document().storage().unwrap().session().history().count();
+	let before_edit = editor.active_document().network_interface.document_network().clone();
+
+	editor.draw_rect(64., 64., 192., 192.).await;
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	let after_edit = editor.active_document().network_interface.document_network().clone();
+	assert_ne!(after_edit, before_edit);
+	assert!(!editor.active_document().storage().unwrap().session().hot_log().is_empty(), "the step is hot");
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &before_edit, "undo restores the pre-edit network");
+	let storage = editor.active_document().storage().unwrap();
+	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
+	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	editor.handle_message(DocumentMessage::Redo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo restores the edit");
+	let storage = editor.active_document().storage().unwrap();
+	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
+	assert_eq!(storage.session().history().count(), history_base);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+}

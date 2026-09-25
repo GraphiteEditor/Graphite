@@ -2547,26 +2547,49 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+		// A step still hot is taken back and never becomes history. The legacy snapshot is not installed: it
+		// predates whatever peers wrote in the meantime, so the interface keeps what it holds and follows the
+		// registry on just the entities the step named. Only a retired step moves the cursor.
+		if self.history.has_undo_step()
+			&& let Some(ops) = self.history.retract_storage_transaction()
+		{
+			if let Some(snapshot) = self.history.pop_undo() {
+				self.history.push_redo(snapshot);
+			}
+			self.history.note_undo(Some(ops));
+			self.follow_storage_changes(responses);
+			return;
+		}
+
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
 			true
 		} else {
 			false
 		};
-
-		// A step still hot is taken back and never becomes history; only a retired step moves the cursor.
-		if legacy_applied && self.history.retract_storage_transaction() {
-			self.history.note_undo(true);
-			return;
-		}
 		if legacy_applied {
-			self.history.note_undo(false);
+			self.history.note_undo(None);
 		}
 		if self.is_in_session() {
 			self.stage_session_undo(resource_storage);
 			return;
 		}
 		self.drive_storage_undo_redo(legacy_applied, true, validate, responses);
+	}
+
+	/// Bring the interface into line with what storage just changed under it, a step taken back or staged
+	/// again, by reconciling the entities those ops named, the way remote changes are applied. Anything a
+	/// peer wrote meanwhile stays as the interface holds it.
+	fn follow_storage_changes(&mut self, responses: &mut VecDeque<Message>) {
+		if let Some(gdd) = self.history.storage_mut() {
+			let changes = gdd.take_remote_changes();
+			self.pending_remote.extend(changes);
+		}
+		self.apply_remote_changes(responses);
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
 	}
 
 	fn is_in_session(&self) -> bool {
@@ -2613,17 +2636,27 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+		// A step that was taken back is staged afresh from the ops themselves: they are gone from every hot log,
+		// so redo is a new edit, and the interface follows the registry on what they name, as for the undo.
+		if self.history.has_redo_step() && self.history.next_redo_is_retracted() {
+			if let Some(snapshot) = self.history.pop_redo() {
+				self.history.push_undo(snapshot);
+			}
+			if let Some(ops) = self.history.take_undo_note() {
+				self.history.restage_ops(ops);
+			}
+			self.follow_storage_changes(responses);
+			return;
+		}
+
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
 			true
 		} else {
 			false
 		};
-
-		// A step that was taken back is staged afresh: its ops are gone from every hot log, so redo is a new edit.
-		if legacy_applied && self.history.take_undo_note() {
-			self.stage_session_undo(resource_storage);
-			return;
+		if legacy_applied {
+			self.history.take_undo_note();
 		}
 		if self.is_in_session() {
 			self.stage_session_undo(resource_storage);

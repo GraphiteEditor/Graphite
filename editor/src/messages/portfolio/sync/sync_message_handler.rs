@@ -104,8 +104,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				for (&document_id, document) in documents.iter_mut() {
 					// Retirement follows the working copy's policy on every document, in a session or not: closed
 					// transactions retire once enough have waited long enough, never on a gesture.
+					let idle = document.network_interface.transaction_status() == TransactionStatus::Finished;
 					if let Some(gdd) = document.storage_mut()
-						&& let Err(error) = gdd.retire_due(now_ms())
+						&& let Err(error) = gdd.retire_due(now_ms(), idle)
 					{
 						log::error!("Retirement failed: {error}");
 					}

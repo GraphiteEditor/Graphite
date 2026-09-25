@@ -284,9 +284,9 @@ impl<L: Layout> Gdd<L> {
 	/// transaction to take back; `false` means the step already retired and undo has to move the cursor.
 	/// What the ops named lands in the remote changes, so a mirror brings those entities into line with
 	/// whatever others wrote to them meanwhile.
-	pub fn retract_transaction(&mut self) -> Result<bool, Error> {
-		let Some((ids, touched)) = self.session.retract_transaction()? else {
-			return Ok(false);
+	pub fn retract_transaction(&mut self) -> Result<Option<Vec<RegistryDelta>>, Error> {
+		let Some(document_graph_storage::Retraction { ids, touched, ops }) = self.session.retract_transaction()? else {
+			return Ok(None);
 		};
 		self.own_last_staged_ms = None;
 		#[cfg(feature = "network")]
@@ -302,21 +302,34 @@ impl<L: Layout> Gdd<L> {
 		}
 		#[cfg(not(feature = "network"))]
 		let _ = ids;
-		Ok(true)
+		Ok(Some(ops))
+	}
+
+	/// Stage ops a retraction took back, as a fresh transaction, noting what they name as a change for the
+	/// mirror to follow: the redo of a step taken back is a new edit to everyone, this peer included.
+	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
+		#[cfg(feature = "network")]
+		for op in &ops {
+			self.remote_changes.touched.record(op);
+		}
+		self.stage_ops(ops)?;
+		Ok(())
 	}
 
 	/// Retire every transaction the policy says is due at `now_ms`, on any monotonic millisecond clock the
 	/// caller keeps: closed transactions that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS),
 	/// once [`RETIRE_AFTER_TRANSACTIONS`](Self::RETIRE_AFTER_TRANSACTIONS) of them are waiting or the oldest
 	/// has waited [`RETIRE_MAX_AGE_MS`](Self::RETIRE_MAX_AGE_MS). An open transaction never retires, whoever
-	/// its author is. Called once a frame by the editor; a peer that does not retire only closes its own
-	/// transaction here once it has gone quiet for the minimum age.
-	pub fn retire_due(&mut self, now_ms: f64) -> Result<Vec<Rev>, Error> {
-		// A gesture the editor never closed, or one interrupted by a reopen, closes on its own once quiet.
+	/// its author is. Called once a frame by the editor with whether it is between steps; a peer that does
+	/// not retire only closes its own transaction here, once it has gone quiet for the minimum age.
+	pub fn retire_due(&mut self, now_ms: f64, idle: bool) -> Result<Vec<Rev>, Error> {
+		// A gesture the editor never closed, or one interrupted by a reopen, closes on its own once quiet,
+		// but only while the editor is between steps: a pause inside a gesture must not split it, since undo
+		// takes a whole transaction back.
 		if self.own_staged_since_tick {
 			self.own_staged_since_tick = false;
 			self.own_last_staged_ms = Some(now_ms);
-		} else if self.own_last_staged_ms.is_some_and(|last| now_ms - last >= Self::RETIRE_MIN_AGE_MS) {
+		} else if idle && self.own_last_staged_ms.is_some_and(|last| now_ms - last >= Self::RETIRE_MIN_AGE_MS) {
 			self.end_transaction()?;
 			self.own_last_staged_ms = None;
 		}

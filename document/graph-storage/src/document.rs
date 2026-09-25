@@ -150,7 +150,7 @@ impl Document {
 	/// the retired snapshot plus every remaining hot op, since the effect of an op that commutes cannot be
 	/// undone in place without knowing what else wrote its fields. Returns what the ops named, for a
 	/// mirror to bring back into line; ops not in the log are recorded and otherwise ignored.
-	pub(crate) fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> crate::Touched {
+	pub(crate) fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> (crate::Touched, Vec<HotOp>) {
 		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
 		let (taken, kept): (Vec<HotOp>, Vec<HotOp>) = self.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
 		self.hot_log = kept;
@@ -158,7 +158,7 @@ impl Document {
 
 		let mut touched = crate::Touched::default();
 		if taken.is_empty() {
-			return touched;
+			return (touched, taken);
 		}
 		for hot_op in &taken {
 			touched.record(&hot_op.op);
@@ -170,7 +170,7 @@ impl Document {
 			let _ = self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp);
 			self.hot_log.push(hot_op);
 		}
-		touched
+		(touched, taken)
 	}
 
 	/// Drop hot ops the retired snapshot already accounts for. A mark alone will not do: it can arrive
