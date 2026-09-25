@@ -86,10 +86,7 @@ impl Reducer {
 
 			// A chain over zero or one items is true, since no pair exists to fail the relation
 			Reducer::ChainAdjacent(op) => {
-				let satisfied = items.windows(2).all(|pair| {
-					let (Value::Number(lhs), Value::Number(rhs)) = (pair[0], pair[1]);
-					lhs.binary_op(*op, rhs).and_then(Number::as_bool) == Some(true)
-				});
+				let satisfied = numbers.clone().zip(numbers.skip(1)).all(|(lhs, rhs)| lhs.binary_op(*op, rhs).and_then(Number::as_bool) == Some(true));
 				Some(Value::from_bool(satisfied))
 			}
 
@@ -100,6 +97,10 @@ impl Reducer {
 				Some(Value::from_bool(distinct))
 			}
 
+			// Builtins read any complex or quaternion storage as having a vector part, which a host's item may lack
+			Reducer::Function(function) if items.iter().any(|Value::Number(number)| matches!(number, Number::Complex(_) | Number::Quaternion(_))) => {
+				function(&numbers.map(Value::Number).collect::<Vec<_>>())
+			}
 			Reducer::Function(function) => function(items),
 		}
 	}
@@ -111,6 +112,7 @@ enum CanonicalBits {
 	Integer(i64),
 	Real(u64),
 	Complex(u64, u64),
+	Quaternion([u64; 4]),
 }
 
 // Hashes the bits alone, leaving equality to tell the variants apart, which spares hashing the variant for every item
@@ -123,6 +125,11 @@ impl Hash for CanonicalBits {
 				state.write_u64(real_bits);
 				state.write_u64(imaginary_bits);
 			}
+			CanonicalBits::Quaternion(parts) => {
+				for part in parts {
+					state.write_u64(part);
+				}
+			}
 		}
 	}
 }
@@ -133,6 +140,7 @@ impl CanonicalBits {
 			Number::Integer(integer) => Self::Integer(integer),
 			Number::Real(real) => Self::Real(real.to_bits()),
 			Number::Complex(complex) => Self::Complex(complex.re.to_bits(), complex.im.to_bits()),
+			Number::Quaternion(quaternion) => Self::Quaternion(quaternion.parts().map(f64::to_bits)),
 		}
 	}
 }
@@ -142,6 +150,7 @@ mod tests {
 	use super::*;
 	use crate::ast;
 	use crate::context::{EvalContext, NothingMap, ValueMap};
+	use crate::quaternion::Quaternion;
 	use crate::value::Complex;
 	use std::collections::HashMap;
 
@@ -253,7 +262,18 @@ mod tests {
 
 		assert_eq!(distinct(&[Value::from_i64(2), Value::from_f64(2.)]), Some(false));
 		assert_eq!(distinct(&[Value::from_f64(3.), Value::from(Complex::new(3., 0.))]), Some(false));
+		assert_eq!(distinct(&[Value::from(Complex::new(1., 2.)), Value::from(Quaternion::new(1., 2., 0., -0.))]), Some(false));
+		assert_eq!(distinct(&[Value::from(Quaternion::J), Value::from(Quaternion::K)]), Some(true));
 		assert_eq!(distinct(&[Value::from_i64(1 << 53), Value::from_i64((1 << 53) + 1)]), Some(true));
+	}
+
+	#[test]
+	fn items_stored_with_zero_vector_parts_read_as_reals() {
+		let items = [Value::from(Quaternion::new(3., 0., 0., 0.)), Value::from(Complex::new(-2., 0.))];
+		let reduce = |source: &str| classify_reducer(source, NothingMap).unwrap().evaluate(&items);
+
+		assert_eq!(reduce("min"), Some(Value::from_i64(-2)));
+		assert_eq!(reduce(">"), Some(Value::from_bool(true)));
 	}
 
 	#[test]

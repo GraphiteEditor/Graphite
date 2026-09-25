@@ -1,6 +1,8 @@
 use crate::ast::BinaryOp;
-use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma};
+use crate::quaternion::Quaternion;
+use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, part_product, power_of_two_scale};
 use num_complex::ComplexFloat;
+use std::array;
 use std::cmp::Ordering;
 use std::f64::consts::{LN_2, PI, TAU};
 
@@ -39,16 +41,13 @@ fn reals<const N: usize>(values: &[Value]) -> Option<[f64; N]> {
 	Some(reals)
 }
 
-/// Rounds a real, passing an integer through since it is already whole.
+/// Rounds each part of the one argument, as `floor`, `ceil`, `round`, and `trunc` do.
 fn rounding(values: &[Value], function: fn(f64) -> f64) -> Option<Value> {
-	if let [whole @ Value::Number(Number::Integer(_))] = values {
-		return Some(*whole);
-	}
-	let [x] = reals(values)?;
-	Some(Value::from_f64(function(x)))
+	let [Value::Number(number)] = values else { return None };
+	Some(Value::Number(number.round_parts(function)))
 }
 
-/// The argument ordered `extreme` of all the others (the earliest among equals), returning that operand itself. A complex argument has no order and errors.
+/// The argument ordered `extreme` of all the others (the earliest among equals), returning that operand itself, or `None` when one has a vector part and so no order.
 fn extremum(values: &[Value], extreme: Ordering) -> Option<Value> {
 	let (mut kept, rest) = values.split_first()?;
 	// The first argument meets no comparison of its own, so its order is checked here
@@ -83,59 +82,142 @@ fn real_operands(values: &[Value]) -> Option<impl Iterator<Item = f64> + Clone +
 	Some(values.iter().filter_map(Value::as_real))
 }
 
-/// Every argument in the complex plane, or `None` if there are no arguments at all.
+/// Every argument in the complex plane, or `None` if one has a `j` or `k` part or there are no arguments at all.
 fn complex_operands(values: &[Value]) -> Option<impl Iterator<Item = Complex> + Clone + '_> {
+	if values.is_empty() || !values.iter().all(|Value::Number(number)| number.as_complex().is_some()) {
+		return None;
+	}
+	Some(values.iter().filter_map(|Value::Number(number)| number.as_complex()))
+}
+
+/// Every argument in its full quaternion form, or `None` if there are no arguments at all. The statistics take this path only
+/// once an argument has a vector part, since reals need one part each rather than four.
+fn quaternion_operands(values: &[Value]) -> Option<impl Iterator<Item = Quaternion> + Clone + '_> {
 	if values.is_empty() {
 		return None;
 	}
-	Some(values.iter().map(|Value::Number(number)| number.as_complex()))
+	Some(values.iter().map(|Value::Number(number)| number.to_quaternion()))
 }
 
-/// The [`power_of_two_scale`] of the numbers' largest part.
-fn scale_of(numbers: impl Iterator<Item = Complex>) -> f64 {
-	power_of_two_scale(numbers.flat_map(|number| [number.re, number.im]))
+/// Applies a one-argument function, climbing into the complex plane where a real result does not exist (`sqrt(-4)`, `ln(-1)`,
+/// `asin(2)`) and taking a number with a `j` or `k` part in its own complex plane.
+fn apply_climbing(number: Number, real_function: impl Fn(f64) -> f64, complex_function: impl Fn(Complex) -> Complex) -> Number {
+	if let Some(real) = number.as_real() {
+		let result = real_function(real);
+		return if result.is_nan() {
+			Number::Complex(complex_function(Complex::new(real, 0.)))
+		} else {
+			Number::Real(result)
+		};
+	}
+
+	match number.as_complex() {
+		Some(complex) => Number::Complex(complex_function(complex)),
+		None => Number::Quaternion(number.to_quaternion().in_plane(complex_function)),
+	}
 }
 
-/// Applies a one-argument function that may climb into the complex plane: a real result that does not exist,
-/// like `sqrt(-4)`, `ln(-1)`, or `asin(2)`, is recomputed as the function's principal complex value.
+/// The one-argument builtin form of [`apply_climbing`].
 fn climbing(values: &[Value], real_function: fn(f64) -> f64, complex_function: fn(Complex) -> Complex) -> Option<Value> {
 	let [Value::Number(number)] = values else { return None };
-	match number.as_real() {
-		Some(real) => {
-			let result = real_function(real);
-			let result = if result.is_nan() {
-				Value::from(complex_function(Complex::new(real, 0.)))
-			} else {
-				Value::from_f64(result)
-			};
-			Some(result)
+	Some(Value::Number(apply_climbing(*number, real_function, complex_function)))
+}
+
+/// Applies a function to every part of the one argument, the componentwise reading of `abs`, `fract`, and `sign`.
+fn mapping(values: &[Value], function: fn(f64) -> f64) -> Option<Value> {
+	let [Value::Number(number)] = values else { return None };
+	Some(Value::Number(number.map_parts(function)))
+}
+
+/// Folds every argument's quaternion form part by part, where a real's vector parts are zero, or `None` when there are no arguments.
+fn zipping(values: &[Value], function: fn(f64, f64) -> f64) -> Option<Value> {
+	values
+		.iter()
+		.map(|Value::Number(number)| number.to_quaternion())
+		.reduce(|accumulated, quaternion| accumulated.zip(quaternion, function))
+		.map(Value::from)
+}
+
+/// Reads exactly `N` arguments in their full quaternion form, or `None` when the count differs.
+fn quaternions<const N: usize>(values: &[Value]) -> Option<[Quaternion; N]> {
+	if values.len() != N {
+		return None;
+	}
+
+	let mut quaternions = [Quaternion::default(); N];
+	for (quaternion, Value::Number(number)) in quaternions.iter_mut().zip(values) {
+		*quaternion = number.to_quaternion();
+	}
+	Some(quaternions)
+}
+
+/// Splits an optional trailing axis argument off a call's `fixed` leading arguments, defaulting it to `k`, the canvas normal.
+fn with_axis(values: &[Value], fixed: usize) -> Option<(&[Value], Quaternion)> {
+	match values.len().checked_sub(fixed)? {
+		0 => Some((values, Quaternion::K)),
+		1 => {
+			let Value::Number(axis) = values[fixed];
+			Some((&values[..fixed], axis.to_quaternion()))
 		}
-		None => Some(Value::from(complex_function(number.as_complex()))),
+		_ => None,
 	}
 }
 
-/// The power of two at or below the largest magnitude, dividing by which is exact and brings every value within ±2, so sums and
-/// squares of the scaled values neither overflow nor underflow. It's 1 when the largest magnitude is zero, subnormal, or infinite.
-fn power_of_two_scale(reals: impl Iterator<Item = f64>) -> f64 {
-	let largest = reals.fold(0_f64, |largest, real| largest.max(real.abs()));
-	if !largest.is_normal() {
-		return 1.;
-	}
+/// The rotor `cos(θ/2) + sin(θ/2) axis` about the axis's vector part, or `None` for an axis with no direction.
+fn rotor(angle: f64, axis: Quaternion) -> Option<Quaternion> {
+	let axis = Quaternion::new(0., axis.x, axis.y, axis.z).normalized()?;
+	let (sin, cos) = (angle / 2.).sin_cos();
+	Some(Quaternion::new(cos, 0., 0., 0.) + axis.map(|part| part * sin))
+}
 
-	// Keeping only the exponent bits zeroes the mantissa, leaving the power of two
-	f64::from_bits(largest.to_bits() & (0x7FF << 52))
+/// The projection of `a` onto `b` over all four parts, or `None` for a zero `b`.
+fn projection(a: Quaternion, b: Quaternion) -> Option<Quaternion> {
+	// Onto the unit direction, whose dot product with `a` cannot overflow, and whose zero parts stay zero beside an infinite one
+	let direction = b.normalized()?;
+	let length = a.dot(direction);
+	Some(direction.map(|part| part_product(part, length, false)))
+}
+
+/// The mean of `count` numbers given as their `N` parts, each part averaged on its own over its [`power_of_two_scale`] so its sum cannot overflow.
+fn mean_of<const N: usize>(numbers: impl Iterator<Item = [f64; N]> + Clone, count: usize) -> [f64; N] {
+	array::from_fn(|index| {
+		let parts = numbers.clone().map(|parts| parts[index]);
+		let scale = power_of_two_scale(parts.clone());
+		parts.map(|part| part / scale).sum::<f64>() / count as f64 * scale
+	})
 }
 
 /// Computes the variance of the arguments, the mean of `|x - mean|²`, divided by the returned scale, over the count less `correction`
 /// (1 for a sample, undefined for a single value, or 0 for a population). Staying scaled lets a standard deviation take its root before overflowing.
 fn scaled_variance(values: &[Value], correction: usize) -> Option<(f64, f64)> {
-	let numbers = complex_operands(values)?;
 	let divisor = values.len().checked_sub(correction).filter(|divisor| *divisor > 0)? as f64;
-	let scale = scale_of(numbers.clone());
+	Some(match real_operands(values) {
+		Some(reals) => scaled_variance_of(reals.map(|real| [real]), values.len(), divisor),
+		None => scaled_variance_of(quaternion_operands(values)?.map(Quaternion::parts), values.len(), divisor),
+	})
+}
 
-	let mean = numbers.clone().map(|number| number / scale).sum::<Complex>() / values.len() as f64;
-	let variance = numbers.map(|number| (number / scale - mean).norm_sqr()).sum::<f64>() / divisor;
-	Some((variance, scale))
+/// The [`scaled_variance`] of `count` numbers given as their `N` parts.
+fn scaled_variance_of<const N: usize>(numbers: impl Iterator<Item = [f64; N]> + Clone, count: usize, divisor: f64) -> (f64, f64) {
+	let scale = power_of_two_scale(numbers.clone().flatten());
+	let scaled = numbers.map(|parts| parts.map(|part| part / scale));
+
+	let sum = scaled.clone().fold([0.; N], |sum, parts| array::from_fn(|index| sum[index] + parts[index]));
+	let mean = sum.map(|part| part / count as f64);
+	let variance = scaled.map(|parts| (0..N).map(|index| (parts[index] - mean[index]).powi(2)).sum::<f64>()).sum::<f64>() / divisor;
+	(variance, scale)
+}
+
+/// The root mean square of `count` numbers given by all their parts, over a [`power_of_two_scale`] so no square overflows or underflows.
+fn root_mean_square(parts: impl Iterator<Item = f64> + Clone, count: usize) -> f64 {
+	let scale = power_of_two_scale(parts.clone());
+	let mean_square = parts.map(|part| (part / scale).powi(2)).sum::<f64>() / count as f64;
+	mean_square.sqrt() * scale
+}
+
+/// Whether every part of the number is finite.
+fn all_parts_finite(number: Number) -> bool {
+	number.to_quaternion().parts().iter().all(|part| part.is_finite())
 }
 
 /// Interpolates from `a` to `b` by `t` as `a + (b - a) t`, or as `a (1 - t) + b t` when finite endpoints are too far apart for `b - a` to fit.
@@ -177,6 +259,18 @@ fn checked_lcm(a: u128, b: u128) -> Option<u128> {
 		return Some(0);
 	}
 	(a / gcd(a, b)).checked_mul(b)
+}
+
+/// The multiple of `step` nearest `x`, with halfway cases away from zero like `f64::round`, or `None` for a zero step or a multiple past integer storage.
+fn integer_snap(x: i64, step: i64) -> Option<i64> {
+	let (quotient, remainder) = (x.checked_div(step)?, x.checked_rem(step)?);
+	// The truncated quotient falls one short of the nearest when the remainder reaches half the step
+	let quotient = if remainder.unsigned_abs() >= step.unsigned_abs() - remainder.unsigned_abs() {
+		quotient + if (x < 0) == (step < 0) { 1 } else { -1 }
+	} else {
+		quotient
+	};
+	quotient.checked_mul(step)
 }
 
 /// `choose(n, r)` over a whole nonnegative top, exact while it fits, and zero once `r` exceeds `n`.
@@ -237,26 +331,27 @@ fn combinatorial(x: Number, r: u64, binomial: bool) -> Value {
 
 	// The direct product keeps small cases exact at a step per count, so only a count past a few thousand takes the gamma function
 	const DIRECT_PRODUCT_LIMIT: u64 = 4096;
-	let z = x.as_complex();
-	let product = (r <= DIRECT_PRODUCT_LIMIT).then(|| {
-		if binomial {
-			(1..=r).fold(Complex::from(1.), |accumulated, k| accumulated * (z - (k - 1) as f64) / k as f64)
-		} else {
-			(0..r).fold(Complex::from(1.), |accumulated, k| accumulated * (z - k as f64))
-		}
-	});
+	let over_top = |z: Complex| {
+		let product = (r <= DIRECT_PRODUCT_LIMIT).then(|| {
+			if binomial {
+				(1..=r).fold(Complex::from(1.), |accumulated, k| accumulated * (z - (k - 1) as f64) / k as f64)
+			} else {
+				(0..r).fold(Complex::from(1.), |accumulated, k| accumulated * (z - k as f64))
+			}
+		});
 
-	// An overflowed product has NaN cross terms, so the gamma function takes over with the overflow's direction
-	let result = match product {
-		Some(product) if !Number::Complex(product).is_nan() => product,
-		_ => {
-			let count_log = if binomial { complex_log_gamma(Complex::from(r as f64 + 1.)) } else { Complex::from(0.) };
-			(complex_log_gamma(z + 1.) - complex_log_gamma(z - r as f64 + 1.) - count_log).exp()
+		// An overflowed product has NaN cross terms, so the gamma function takes over with the overflow's direction
+		match product {
+			Some(product) if !Number::Complex(product).is_nan() => product,
+			_ => {
+				let count_log = if binomial { complex_log_gamma(Complex::from(r as f64 + 1.)) } else { Complex::from(0.) };
+				(complex_log_gamma(z + 1.) - complex_log_gamma(z - r as f64 + 1.) - count_log).exp()
+			}
 		}
 	};
 
 	// A real top has a real answer, so the rounding residue in the imaginary part is dropped
-	Value::Number(if x.as_real().is_some() { Number::Real(result.re) } else { Number::Complex(result) })
+	Value::Number(apply_climbing(x, |real| over_top(Complex::from(real)).re, over_top))
 }
 
 /// Resolves a base-suffixed function name like `log2` or `root3.25` into the corresponding two-argument
@@ -334,18 +429,17 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 
 		"log" => fixed_arity(|values| match values {
 			[value] => climbing(std::slice::from_ref(value), f64::log10, |z| z.log10()),
-			// Change of base, staying real when it can and climbing into the complex plane when it cannot
-			[Value::Number(x), Value::Number(base)] => match (x.as_real(), base.as_real()) {
-				(Some(x), Some(base)) => {
+			// Change of base, staying real when it can and otherwise climbing, each logarithm taken in its own plane
+			[Value::Number(x), Value::Number(base)] => {
+				if let (Some(x), Some(base)) = (x.as_real(), base.as_real()) {
 					let log = x.ln() / base.ln();
-					Some(if log.is_nan() {
-						Value::from(Complex::new(x, 0.).ln() / Complex::new(base, 0.).ln())
-					} else {
-						Value::from_f64(log)
-					})
+					if !log.is_nan() {
+						return Some(Value::from_f64(log));
+					}
 				}
-				_ => Some(Value::from(x.as_complex().ln() / base.as_complex().ln())),
-			},
+				let (numerator, denominator) = (apply_climbing(*x, f64::ln, Complex::ln), apply_climbing(*base, f64::ln, Complex::ln));
+				numerator.binary_op(BinaryOp::Div, denominator).map(Value::Number)
+			}
 			_ => None,
 		}),
 
@@ -353,60 +447,127 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			let [Value::Number(x), Value::Number(n)] = values else { return None };
 			// A complex degree is the general power `x^(1/n)`
 			let Some(n) = n.as_real() else {
-				return Some(Value::from(x.as_complex().powc(n.as_complex().inv())));
+				let reciprocal = Number::Integer(1).binary_op(BinaryOp::Div, *n)?;
+				return x.binary_op(BinaryOp::Pow, reciprocal).map(Value::Number);
 			};
-			match x.as_real() {
-				Some(x) => {
-					// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
-					if x < 0. && n.rem_euclid(2.) == 1. {
-						return Some(Value::from_f64(-(-x).powf(1. / n)));
-					}
-					let root = x.powf(1. / n);
-					Some(if root.is_nan() { Value::from(Complex::new(x, 0.).powf(1. / n)) } else { Value::from_f64(root) })
-				}
-				None => Some(Value::from(x.as_complex().powf(1. / n))),
+			// An odd root of a negative real is real, where `powf` alone would climb to the principal complex root
+			if let Some(x) = x.as_real()
+				&& x < 0. && n.rem_euclid(2.) == 1.
+			{
+				return Some(Value::from_f64(-(-x).powf(1. / n)));
 			}
+			Some(Value::Number(apply_climbing(*x, |x| x.powf(1. / n), |z| z.powf(1. / n))))
 		}),
 
 		// Geometry Functions
-		// Folding pairwise hypotenuses gives the root of the sum of squares without ever squaring, avoiding overflow
-		"hypot" => variadic(|values| Some(Value::from_f64(real_operands(values)?.fold(0., f64::hypot)))),
+		// The Euclidean norm over the arguments' magnitudes, folding pairwise hypotenuses so nothing is ever squared, avoiding overflow
+		"hypot" => variadic(|values| (!values.is_empty()).then(|| Value::from_f64(values.iter().map(|Value::Number(number)| number.magnitude()).fold(0., f64::hypot)))),
 
 		"atan2" => fixed_arity(|values| {
 			let [y, x] = reals(values)?;
 			Some(Value::from_f64(y.atan2(x)))
 		}),
 
-		// Mapping Functions
-		// Each part's absolute value, where `|x|` is instead the one magnitude of the whole value
+		// Mapping functions, acting on each part of a vector
+		// `|x|` is instead the one magnitude of the whole value
 		"abs" => fixed_arity(|values| match values {
 			[Value::Number(Number::Integer(integer))] => Some(integer.checked_abs().map_or(Value::from_f64((*integer as f64).abs()), Value::from_i64)),
-			[Value::Number(Number::Real(real))] => Some(Value::from_f64(real.abs())),
-			[Value::Number(Number::Complex(complex))] => Some(Value::from(Complex::new(complex.re.abs(), complex.im.abs()))),
-			_ => None,
+			_ => mapping(values, f64::abs),
 		}),
 
 		"floor" => fixed_arity(|values| rounding(values, f64::floor)),
 		"ceil" => fixed_arity(|values| rounding(values, f64::ceil)),
 		"round" => fixed_arity(|values| rounding(values, f64::round)),
+		"trunc" => fixed_arity(|values| rounding(values, f64::trunc)),
+		"fract" => fixed_arity(|values| mapping(values, f64::fract)),
+		"sign" => fixed_arity(|values| {
+			mapping(values, |x| {
+				if x > 0. {
+					1.
+				} else if x < 0. {
+					-1.
+				} else {
+					0.
+				}
+			})
+		}),
+
+		// The nearest multiple of `step`, rounding each part of `x / step`, so a complex value snaps to the square lattice spanned by `step` and `i step`
+		"snap" => fixed_arity(|values| {
+			let [Value::Number(x), Value::Number(step)] = values else { return None };
+			// Integers stay exact, reaching the reals only for a zero step or a multiple past integer storage
+			if let (Number::Integer(x), Number::Integer(step)) = (x, step)
+				&& let Some(multiple) = integer_snap(*x, *step)
+			{
+				return Some(Value::from_i64(multiple));
+			}
+
+			let multiple = x.binary_op(BinaryOp::Div, *step)?.round_parts(f64::round);
+			multiple.binary_op(BinaryOp::Mul, *step).map(Value::Number)
+		}),
+
+		"mod" => fixed_arity(|values| {
+			let [Value::Number(x), Value::Number(modulus)] = values else { return None };
+			// Integers stay exact, reaching the reals only for a zero modulus or `i64::MIN` modulo `-1`
+			if let (Number::Integer(x), Number::Integer(modulus)) = (x, modulus)
+				&& let Some(remainder) = x.checked_rem(*modulus)
+			{
+				return Some(Value::from_i64(if remainder != 0 && (remainder < 0) != (*modulus < 0) { remainder + modulus } else { remainder }));
+			}
+
+			// A real modulus wraps each part, floored so a remainder with the opposite sign from the modulus moves over by one modulus
+			if let Some(modulus) = modulus.as_real() {
+				return Some(Value::Number(x.map_parts(|part| {
+					let remainder = part % modulus;
+					if remainder != 0. && (remainder < 0.) != (modulus < 0.) { remainder + modulus } else { remainder }
+				})));
+			}
+
+			// Otherwise `x - floor(x / m) m` with a per-part floor lands in the cell spanned by `m` and its rotations `im`, `jm`, `km`
+			let quotient = x.binary_op(BinaryOp::Div, *modulus)?.map_parts(f64::floor);
+			x.binary_op(BinaryOp::Sub, quotient.binary_op(BinaryOp::Mul, *modulus)?).map(Value::Number)
+		}),
 
 		"clamp" => fixed_arity(|values| {
 			let [Value::Number(x), Value::Number(min), Value::Number(max)] = values else { return None };
 			// The bounds apply in turn, so the upper one wins where they cross
-			let at_least = if min.real_ordering(*x)? == Ordering::Greater { min } else { x };
-			Some(Value::Number(if max.real_ordering(*at_least)? == Ordering::Less { *max } else { *at_least }))
+			let real_clamp = || {
+				let at_least = if min.real_ordering(*x)? == Ordering::Greater { min } else { x };
+				Some(if max.real_ordering(*at_least)? == Ordering::Less { *max } else { *at_least })
+			};
+			let quaternion_clamp = || Number::Quaternion(x.to_quaternion().zip(min.to_quaternion(), f64::max).zip(max.to_quaternion(), f64::min));
+			Some(Value::Number(real_clamp().unwrap_or_else(quaternion_clamp)))
 		}),
 
-		// Variadic across one or more real arguments
-		"min" => variadic(|values| extremum(values, Ordering::Less)),
-		"max" => variadic(|values| extremum(values, Ordering::Greater)),
+		// Variadic, exact over reals and otherwise part by part
+		"min" => variadic(|values| extremum(values, Ordering::Less).or_else(|| zipping(values, f64::min))),
+		"max" => variadic(|values| extremum(values, Ordering::Greater).or_else(|| zipping(values, f64::max))),
 
-		// Statistics across one or more arguments, with the median and mode over real ones since they need an order
+		// Statistics across one or more arguments: the median and mode over real ones, since they need an order, and the geometric and harmonic means within the complex plane
 		// TODO: Offer `avg` and `average` as autocomplete aliases in the expression widget, resolving to `mean`
 		"mean" => variadic(|values| {
-			let numbers = complex_operands(values)?;
-			let scale = scale_of(numbers.clone());
-			Some(Value::from(numbers.map(|number| number / scale).sum::<Complex>() / values.len() as f64 * scale))
+			if values.is_empty() {
+				return None;
+			}
+
+			// Integers sum exactly, since an `i128` holds the sum of any count of them
+			let integer_sum = values.iter().try_fold(0_i128, |sum, value| match value {
+				Value::Number(Number::Integer(integer)) => Some(sum + *integer as i128),
+				_ => None,
+			});
+			if let Some(sum) = integer_sum {
+				let count = values.len() as i128;
+				return Some(if sum % count == 0 {
+					Value::from_i64((sum / count) as i64)
+				} else {
+					Value::from_f64(sum as f64 / count as f64)
+				});
+			}
+
+			Some(match real_operands(values) {
+				Some(reals) => Value::from_f64(mean_of(reals.map(|real| [real]), values.len())[0]),
+				None => Value::from(Quaternion::from_parts(mean_of(quaternion_operands(values)?.map(Quaternion::parts), values.len()))),
+			})
 		}),
 
 		"median" => variadic(|values| {
@@ -469,10 +630,11 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		}),
 
 		"rms" => variadic(|values| {
-			let numbers = complex_operands(values)?;
-			let scale = scale_of(numbers.clone());
-			let mean_square = numbers.map(|number| (number / scale).norm_sqr()).sum::<f64>() / values.len() as f64;
-			Some(Value::from_f64(mean_square.sqrt() * scale))
+			let rms = match real_operands(values) {
+				Some(reals) => root_mean_square(reals, values.len()),
+				None => root_mean_square(quaternion_operands(values)?.flat_map(Quaternion::parts), values.len()),
+			};
+			Some(Value::from_f64(rms))
 		}),
 
 		"mode" => variadic(|values| {
@@ -502,9 +664,23 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(Value::from_bool(parity))
 		}),
 
+		// Interpolates between values of any rung by a real fraction
 		"lerp" => fixed_arity(|values| {
-			let [a, b, t] = reals(values)?;
-			Some(Value::from_f64(lerp(a, b, t)))
+			let [Value::Number(a), Value::Number(b), Value::Number(t)] = values else { return None };
+			t.as_real()?;
+
+			// Reals by a fractional `t` take the scalar form, while the general one below keeps integers exact and carries vectors
+			if let (Some(a), Some(b), Number::Real(t)) = (a.as_real(), b.as_real(), t) {
+				return Some(Value::from_f64(lerp(a, b, *t)));
+			}
+
+			// As in the real `lerp`, finite endpoints too far apart for `b - a` to fit are weighted separately instead
+			let step = b.binary_op(BinaryOp::Sub, *a)?.binary_op(BinaryOp::Mul, *t)?;
+			if !all_parts_finite(step) && all_parts_finite(*a) && all_parts_finite(*b) {
+				let complement = Number::Integer(1).binary_op(BinaryOp::Sub, *t)?;
+				return a.binary_op(BinaryOp::Mul, complement)?.binary_op(BinaryOp::Add, b.binary_op(BinaryOp::Mul, *t)?).map(Value::Number);
+			}
+			a.binary_op(BinaryOp::Add, step).map(Value::Number)
 		}),
 
 		"remap" => fixed_arity(|values| {
@@ -512,36 +688,89 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(Value::from_f64(lerp(out_a, out_b, inverse_lerp(value, in_a, in_b))))
 		}),
 
-		"trunc" => fixed_arity(|values| rounding(values, f64::trunc)),
+		// Spherical interpolation between unit quaternions, `a (a⁻¹ b)^t`, along the shorter arc since `q` and `-q` are one rotation
+		"slerp" => fixed_arity(|values| {
+			let [Value::Number(a), Value::Number(b), Value::Number(t)] = values else { return None };
+			let t = t.as_real()?;
+			let (a, b) = (a.to_quaternion(), b.to_quaternion());
+			let b = if a.dot(b) < 0. { -b } else { b };
 
-		"fract" => fixed_arity(|values| {
-			let [x] = reals(values)?;
-			Some(Value::from_f64(x.fract()))
+			// `a⁻¹ b` as the conjugate of `b* / a*`, so it shares division's scaling of a tiny or huge `a`
+			let ratio = (b.conj() / a.conj()).conj();
+			Some(Value::from(a * ratio.pow(Quaternion::new(t, 0., 0., 0.))))
 		}),
 
-		"sign" => fixed_arity(|values| {
-			let [x] = reals(values)?;
-			Some(Value::from_i64(if x > 0. {
-				1
-			} else if x < 0. {
-				-1
-			} else {
-				0
-			}))
+		// Vector functions, over the vector part or over all four parts as each is defined
+		"dot" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			Some(Value::from_f64(a.dot(b)))
 		}),
 
-		"mod" => fixed_arity(|values| {
-			// Integers stay exact, reaching the reals only for a zero modulus or `i64::MIN` modulo `-1`
-			if let [Value::Number(Number::Integer(x)), Value::Number(Number::Integer(modulus))] = values
-				&& let Some(remainder) = x.checked_rem(*modulus)
-			{
-				return Some(Value::from_i64(if remainder != 0 && (remainder < 0) != (*modulus < 0) { remainder + modulus } else { remainder }));
-			}
+		"cross" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			Some(Value::from(a.cross(b)))
+		}),
 
-			let [x, modulus] = reals(values)?;
-			// Floored, so a truncated remainder with the opposite sign from the modulus moves over by one modulus
-			let remainder = x % modulus;
-			Some(Value::from_f64(if remainder != 0. && (remainder < 0.) != (modulus < 0.) { remainder + modulus } else { remainder }))
+		"normalize" => fixed_arity(|values| {
+			let [v] = quaternions(values)?;
+			v.normalized().map(Value::from)
+		}),
+
+		"distance" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			Some(Value::from_f64((a - b).norm()))
+		}),
+
+		// The angle from `a` to `b`, over all four parts, signed by the turn's direction seen from `+k` so that `rotate(a, angle(a, b))` is parallel to `b`
+		"angle" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			let (a, b) = (a.normalized()?, b.normalized()?);
+
+			// Kahan's form over the unit directions, which stays accurate at every angle
+			let unsigned = 2. * (a - b).norm().atan2((a + b).norm());
+			Some(Value::from_f64(if a.cross(b).z < 0. { -unsigned } else { unsigned }))
+		}),
+
+		// Rotates by an angle about an axis, `k` unless given, through the rotor sandwich `q v conj(q)`, which leaves the weight alone
+		"rotate" => fixed_arity(|values| {
+			let (values, axis) = with_axis(values, 2)?;
+			let [Value::Number(v), Value::Number(angle)] = values else { return None };
+			let rotor = rotor(angle.as_real()?, axis)?;
+			Some(Value::from(rotor * v.to_quaternion() * rotor.conj()))
+		}),
+
+		"rotor" => fixed_arity(|values| {
+			let (values, axis) = with_axis(values, 1)?;
+			let [angle] = reals(values)?;
+			rotor(angle, axis).map(Value::from)
+		}),
+
+		// A rotor's unit axis, which a rotor with no vector part does not have
+		"axis" => fixed_arity(|values| {
+			let [q] = quaternions(values)?;
+			Quaternion::new(0., q.x, q.y, q.z).normalized().map(Value::from)
+		}),
+
+		"project" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			projection(a, b).map(Value::from)
+		}),
+
+		"reject" => fixed_arity(|values| {
+			let [a, b] = quaternions(values)?;
+			projection(a, b).map(|projected| Value::from(a - projected))
+		}),
+
+		// Reflects `v` across the hyperplane normal to `n`
+		"reflect" => fixed_arity(|values| {
+			let [v, n] = quaternions(values)?;
+			projection(v, n).map(|projected| Value::from(v - projected.map(|part| part * 2.)))
+		}),
+
+		// The counterclockwise perpendicular in the `xy` plane, `cross(k, v)`
+		"perp" => fixed_arity(|values| {
+			let [v] = quaternions(values)?;
+			Some(Value::from(Quaternion::K.cross(v)))
 		}),
 
 		// Integer functions, exact throughout integer storage
@@ -572,11 +801,12 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(combinatorial(*x, whole_count(r)?, false))
 		}),
 
-		// The conjugate negates the imaginary part
+		// The conjugate negates the vector part on every rung
 		"conj" => fixed_arity(|values| {
 			let [Value::Number(number)] = values else { return None };
 			Some(Value::Number(match number {
 				Number::Complex(complex) => Number::Complex(complex.conj()),
+				Number::Quaternion(quaternion) => Number::Quaternion(quaternion.conj()),
 				real => *real,
 			}))
 		}),

@@ -1,3 +1,4 @@
+use crate::quaternion::Quaternion;
 use crate::value::{Complex, Number};
 use chumsky::input::{Input, ValueInput};
 use chumsky::span::SimpleSpan;
@@ -89,6 +90,8 @@ pub enum Constant {
 	Phi,
 	Inf,
 	I,
+	J,
+	K,
 	True,
 	False,
 }
@@ -105,6 +108,8 @@ impl Constant {
 			Phi => Number::Real(1.618033988749895),
 			Inf => Number::Real(f64::INFINITY),
 			I => Number::Complex(Complex::new(0., 1.)),
+			J => Number::Quaternion(Quaternion::J),
+			K => Number::Quaternion(Quaternion::K),
 			True => Number::from_bool(true),
 			False => Number::from_bool(false),
 		}
@@ -116,6 +121,8 @@ impl Constant {
 		let spellings = [
 			("e", E),
 			("i", I),
+			("j", J),
+			("k", K),
 			("pi", Pi),
 			("π", Pi),
 			("tau", Tau),
@@ -141,6 +148,8 @@ impl fmt::Display for Constant {
 			Phi => "phi",
 			Inf => "inf",
 			I => "i",
+			J => "j",
+			K => "k",
 			True => "true",
 			False => "false",
 		})

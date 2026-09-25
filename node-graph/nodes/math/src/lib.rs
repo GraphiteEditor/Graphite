@@ -11,7 +11,7 @@ use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::lexer::Constant;
 use math_parser::reducer::classify_reducer;
-use math_parser::value::Value;
+use math_parser::value::{Value, Vector2, Vector3};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -63,8 +63,13 @@ fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> 
 trait ExpressionValue: Copy + Default {
 	/// Binds this value into the expression language, exactly for an integer.
 	fn into_value(self) -> Value;
-	/// Reads an evaluated result as this type, or `None` when it does not fit, like a complex number read as a Number.
+	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool.
 	fn from_value(value: &Value) -> Option<Self>;
+}
+
+/// The value's real part alone, the only part a scalar type has, keeping an integer's exact storage.
+fn real_part(value: &Value) -> Value {
+	if value.as_real().is_some() { *value } else { Value::from_f64(value.as_particle3().w) }
 }
 
 impl ExpressionValue for f64 {
@@ -72,7 +77,7 @@ impl ExpressionValue for f64 {
 		Value::from_f64(self)
 	}
 	fn from_value(value: &Value) -> Option<Self> {
-		value.as_real()
+		real_part(value).as_real()
 	}
 }
 
@@ -96,7 +101,7 @@ impl ExpressionValue for i64 {
 
 	// A fractional result snaps to the nearest whole number (the graph's one Number to Integer rule)
 	fn from_value(value: &Value) -> Option<Self> {
-		value.as_i64()
+		real_part(value).as_i64()
 	}
 }
 
@@ -105,9 +110,21 @@ impl ExpressionValue for bool {
 		Value::from_bool(self)
 	}
 
-	// A truth value is exactly 0 or 1 in the expression language, so any other result does not fit
+	// A truth value is exactly 0 or 1 in the expression language, so any other real part does not fit
 	fn from_value(value: &Value) -> Option<Self> {
-		value.as_bool()
+		real_part(value).as_bool()
+	}
+}
+
+impl ExpressionValue for DVec2 {
+	fn into_value(self) -> Value {
+		Value::from(Vector2(self.to_array()))
+	}
+
+	// Projects onto the plane, dropping the real and `k` parts
+	fn from_value(value: &Value) -> Option<Self> {
+		let Vector3([x, y, _]) = value.as_particle3().vector;
+		Some(DVec2::new(x, y))
 	}
 }
 
@@ -125,19 +142,19 @@ impl ValueProvider for SingleVariableMathContext {
 
 /// Evaluates a math expression written in terms of the single variable `x`, which carries the input value.
 ///
-/// The result is read as the chosen output type: an Integer rounds a fractional result to the nearest whole number, and a Bool requires the expression to produce exactly 0 or 1, since any other number is not a truth value. A boolean input reads as 0 or 1.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, and a Vec2 takes the X and Y of a vector like `3i + 4j`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
 #[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"))]
 fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
-	#[implementations(f64, f64, f64, i64, i64, i64, bool, bool, bool)]
+	#[implementations(f64, f64, f64, f64, i64, i64, i64, i64, bool, bool, bool, bool, DVec2, DVec2, DVec2, DVec2)]
 	value: Item<T>,
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`.
 	#[name("f(x) =")]
 	#[default("x")]
 	fx: Item<String>,
 	/// The type the result is read as.
-	#[implementations(f64, i64, bool, f64, i64, bool, f64, i64, bool)]
+	#[implementations(f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
 	output_type: Item<U>,
@@ -180,18 +197,23 @@ impl ValueProvider for PositionalMathContext {
 
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
-/// The result is read as the chosen output type: an Integer rounds a fractional result to the nearest whole number, and a Bool requires the expression to produce exactly 0 or 1, since any other number is not a truth value. Boolean items read as 0 or 1.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, and a Vec2 takes the X and Y of a vector like `3i + 4j`. Boolean items read as 0 or 1 and Vec2 items as such vectors.
 #[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
 fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
-	#[implementations(List<f64>, List<f64>, List<f64>, List<i64>, List<i64>, List<i64>, List<bool>, List<bool>, List<bool>)]
+	#[implementations(
+		List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+	)]
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
 	f: Item<String>,
 	/// The type the result is read as.
-	#[implementations(f64, i64, bool, f64, i64, bool, f64, i64, bool)]
+	#[implementations(f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
 	output_type: Item<U>,
@@ -2069,6 +2091,41 @@ mod test {
 		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).into_element());
 		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).into_element());
 		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).into_element());
+	}
+
+	#[test]
+	fn test_vec2_items() {
+		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> U {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(output_type),
+			)
+			.into_element()
+		}
+		fn f<U: ExpressionValue>(expression: &str, output_type: U) -> U {
+			let items: List<DVec2> = [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect();
+			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).into_element()
+		}
+
+		assert_eq!(fx(DVec2::new(3., 4.), "2x + i", DVec2::ZERO), DVec2::new(7., 8.));
+		assert_eq!(fx(DVec2::new(3., 4.), "perp(x)", DVec2::ZERO), DVec2::new(-4., 3.));
+		assert_eq!(fx(DVec2::new(3., 4.), "|x|", 0.), 5.);
+		assert_eq!(fx(2., "x i + j", DVec2::ZERO), DVec2::new(2., 1.));
+
+		assert_eq!(DVec2::from_value(&Value::from_f64(2.5)), Some(DVec2::ZERO));
+		assert_eq!(fx(DVec2::new(3., 4.), "x + 1", DVec2::ZERO), DVec2::new(3., 4.));
+		assert_eq!(DVec2::from_value(&Value::from(Vector3([1., 2., 3.]))), Some(DVec2::new(1., 2.)));
+		assert_eq!(fx(DVec2::new(3., 4.), "x + 2.6", 0.), 2.6);
+		assert_eq!(fx(DVec2::new(3., 4.), "x + 2.6", 0_i64), 3);
+		assert!(fx(DVec2::new(3., 4.), "x + 1", false));
+
+		assert_eq!(f("+", DVec2::ZERO), DVec2::new(4., 7.));
+		assert_eq!(f("min", DVec2::ZERO), DVec2::new(1., 2.));
+		assert_eq!(f("a - b", DVec2::ZERO), DVec2::new(-2., 3.));
+		assert_eq!(f("dot(a, b)", 0.), 13.);
 	}
 
 	#[test]
