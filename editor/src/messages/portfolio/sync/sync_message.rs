@@ -13,6 +13,9 @@ pub enum SyncMessage {
 	Leave,
 	/// Per frame: apply what peers sent and answer their requests.
 	Poll,
+	/// A packet arrived for a document's room: poll it now rather than at the next frame. `generation`
+	/// names the connection it was armed for, so a wake from an earlier connection is ignored.
+	Wake { document_id: DocumentId, generation: u32 },
 	/// A document's working copy mounted; attaches it to a pending join.
 	StorageMounted { document_id: DocumentId },
 	/// The transport loop of a document's session ended.

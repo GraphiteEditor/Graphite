@@ -4,7 +4,7 @@ use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use document_graph_storage::UserId;
 use graph_craft::application_io::resource::LoadResource;
-use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Room, SessionToken, SyncTarget};
+use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, Room, SessionToken, SyncTarget};
 use std::collections::HashSet;
 
 #[derive(ExtractField)]
@@ -14,12 +14,16 @@ pub struct SyncMessageContext<'a> {
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
-/// Drives every document's collaborative session: attaches transports, polls them once per frame,
-/// and turns remote changes into interface rebuilds.
+/// Drives every document's collaborative session: attaches transports, polls them once per frame and as
+/// packets arrive, and turns remote changes into interface rebuilds.
 #[derive(Debug, Default, ExtractField)]
 pub struct SyncMessageHandler {
 	pending_join: Option<SessionToken>,
 	polling: bool,
+	/// Each connected document's room inbox, tagged with the connection it belongs to. One wake future is in
+	/// flight per entry: it resolves to a `Wake`, which polls and arms the next one.
+	incoming: HashMap<DocumentId, (u32, Incoming)>,
+	connections: u32,
 	/// Documents whose registry changed remotely since their interface was last rebuilt.
 	dirty: HashSet<DocumentId>,
 	/// Documents that just took the host's state on: once their interface follows and the graph has run, the
@@ -78,10 +82,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				if let Some(token) = self.pending_join.take() {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
+					let incoming = room.incoming();
 					let user = UserId(gdd.session().peer().0);
 					gdd.join(room, user);
 
 					responses.add(driver_future(document_id, driver));
+					self.attach(document_id, incoming, responses);
 					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 					self.start_polling(responses);
 				} else if gdd.is_shared() && gdd.role().is_none() {
@@ -90,19 +96,32 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				}
 			}
 			SyncMessage::Leave => {
-				let Some(gdd) = active_document_id.and_then(|id| documents.get_mut(&id)).and_then(|document| document.storage_mut()) else {
+				let Some(document_id) = active_document_id else { return };
+				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
 					return;
 				};
 				gdd.leave();
+				self.incoming.remove(&document_id);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			SyncMessage::Disconnected { document_id } => {
 				if let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) {
 					gdd.leave();
 				}
+				self.incoming.remove(&document_id);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			SyncMessage::Poll => {
+			SyncMessage::Poll | SyncMessage::Wake { .. } => {
+				// A wake names the connection it was armed for; one from a connection since left is nothing to act on.
+				let woken = match message {
+					SyncMessage::Wake { document_id, generation } => {
+						if self.incoming.get(&document_id).is_none_or(|(current, _)| *current != generation) {
+							return;
+						}
+						Some(document_id)
+					}
+					_ => None,
+				};
 				let resources = resource_storage.resources_mut();
 				for (&document_id, document) in documents.iter_mut() {
 					// Retirement follows the working copy's policy on every document, in a session or not: closed
@@ -198,6 +217,11 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					// The registry names resources this peer may still have to fetch or resolve.
 					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 				}
+
+				// The inbox was drained above; the next arrival wakes the next poll.
+				if let Some(document_id) = woken {
+					self.arm(document_id, responses);
+				}
 			}
 			SyncMessage::ResourceLoaded { document_id, to, hash, bytes } => {
 				log::debug!("Sending resource {hash} ({} bytes)", bytes.len());
@@ -220,6 +244,7 @@ impl SyncMessageHandler {
 	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut document_format::GddV1, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
 		let token = SessionToken::for_document(gdd.manifest().document_id);
 		let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
+		let incoming = room.incoming();
 		let user = UserId(gdd.session().peer().0);
 		if let Err(error) = gdd.connect(room, user) {
 			log::error!("Connecting to the session failed: {error}");
@@ -227,9 +252,32 @@ impl SyncMessageHandler {
 		}
 		self.undecided_since.insert(document_id, now_ms());
 		responses.add(driver_future(document_id, driver));
+		self.attach(document_id, incoming, responses);
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		self.start_polling(responses);
 		Some(token)
+	}
+
+	/// Poll `document_id`'s room as packets arrive, not only per frame: a hidden browser tab gets about one
+	/// frame a second, which made a host answer each step of a join a second late. The wake rides on the
+	/// editor's future plumbing, so it works the same on the desktop as in the browser.
+	fn attach(&mut self, document_id: DocumentId, incoming: Incoming, responses: &mut VecDeque<Message>) {
+		self.connections += 1;
+		self.incoming.insert(document_id, (self.connections, incoming));
+		self.arm(document_id, responses);
+	}
+
+	/// Put one wake future in flight for `document_id`'s current connection.
+	fn arm(&mut self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		let Some((generation, incoming)) = self.incoming.get(&document_id).cloned() else { return };
+		let future = async move {
+			match incoming.wait().await {
+				true => Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Wake { document_id, generation })),
+				// The room's loop ended; its driver reports the disconnection.
+				false => Message::NoOp,
+			}
+		};
+		responses.add(future);
 	}
 
 	fn start_polling(&mut self, responses: &mut VecDeque<Message>) {

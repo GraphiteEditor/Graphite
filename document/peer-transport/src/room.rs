@@ -1,7 +1,11 @@
 use crate::packet::{PacketError, SyncPacket};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
-use matchbox_socket::{MessageLoopFuture, PeerState, WebRtcSocket};
-use std::collections::HashMap;
+use futures::StreamExt;
+use futures::channel::mpsc::UnboundedSender;
+use matchbox_socket::{MessageLoopFuture, Packet, PeerState, WebRtcSocket};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll, Waker};
 
 const CHANNEL: usize = 0;
 /// Largest SCTP message every browser accepts.
@@ -49,11 +53,54 @@ impl Reassembler {
 	}
 }
 
+/// Packets that arrived and wait to be polled, and whoever is waiting for them.
+#[derive(Debug, Default)]
+struct Inbox {
+	packets: VecDeque<(TransportPeerId, Packet)>,
+	waker: Option<Waker>,
+	/// Set once the socket loop ended: nothing more will arrive.
+	closed: bool,
+}
+
+fn lock(inbox: &Mutex<Inbox>) -> std::sync::MutexGuard<'_, Inbox> {
+	inbox.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// A handle onto a room's inbox that resolves when a packet is waiting, so the room is polled as packets
+/// arrive rather than once per frame. A hidden browser tab gets about one frame a second, which made a
+/// host answer each step of a join a second late while the data channel itself delivered on time.
+#[derive(Clone, Debug)]
+pub struct Incoming {
+	inbox: Arc<Mutex<Inbox>>,
+}
+
+impl Incoming {
+	/// Resolves to `true` once a packet is waiting, and to `false` once the room's loop has ended and
+	/// nothing more can arrive, so the caller knows not to wait again.
+	pub async fn wait(&self) -> bool {
+		std::future::poll_fn(|cx| self.poll_ready(cx)).await
+	}
+
+	fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<bool> {
+		let mut inbox = lock(&self.inbox);
+		if !inbox.packets.is_empty() {
+			return Poll::Ready(true);
+		}
+		if inbox.closed {
+			return Poll::Ready(false);
+		}
+		inbox.waker = Some(cx.waker().clone());
+		Poll::Pending
+	}
+}
+
 /// One matchbox room over WebRTC. Packets are split into `[flag][bytes]` chunks; the reliable
 /// channel is ordered per peer, so the receiver reassembles by appending until the final flag.
 /// The returned future must be polled continuously by the caller.
 pub struct Room {
 	socket: WebRtcSocket,
+	outgoing: UnboundedSender<(TransportPeerId, Packet)>,
+	inbox: Arc<Mutex<Inbox>>,
 	incoming: Reassembler,
 }
 
@@ -63,22 +110,57 @@ impl Room {
 		#[cfg(not(target_family = "wasm"))]
 		let _ = rustls::crypto::ring::default_provider().install_default();
 
-		let (socket, driver) = WebRtcSocket::new_reliable(signaling_url);
+		let (mut socket, driver) = WebRtcSocket::new_reliable(signaling_url);
+		let (outgoing, mut received) = socket.take_channel(CHANNEL).expect("a reliable socket has its one channel").split();
+		let inbox = Arc::new(Mutex::new(Inbox::default()));
+
+		// Arrivals move into the inbox as they happen and wake whoever waits on it. The forwarder ends with
+		// the socket loop, which drops its senders when it returns; the loop's result stays the driver's.
+		let forwarder = {
+			let inbox = Arc::clone(&inbox);
+			async move {
+				while let Some(arrived) = received.next().await {
+					let mut inbox = lock(&inbox);
+					inbox.packets.push_back(arrived);
+					if let Some(waker) = inbox.waker.take() {
+						waker.wake();
+					}
+				}
+				let mut inbox = lock(&inbox);
+				inbox.closed = true;
+				if let Some(waker) = inbox.waker.take() {
+					waker.wake();
+				}
+			}
+		};
+		let driver: MessageLoopFuture = Box::pin(async move {
+			let (result, ()) = futures::join!(driver, forwarder);
+			result
+		});
+
 		(
 			Self {
 				socket,
+				outgoing,
+				inbox,
 				incoming: Reassembler::default(),
 			},
 			driver,
 		)
 	}
 
-	fn send_chunks(&mut self, bytes: &[u8], peers: &[TransportPeerId]) {
-		let channel = self.socket.channel_mut(CHANNEL);
+	/// A handle that resolves whenever a packet waits in this room.
+	pub fn incoming(&self) -> Incoming {
+		Incoming { inbox: Arc::clone(&self.inbox) }
+	}
 
+	fn send_chunks(&mut self, bytes: &[u8], peers: &[TransportPeerId]) {
 		for frame in frames(bytes) {
 			for &peer in peers {
-				channel.send(frame.clone(), peer);
+				// A send only fails once the socket loop has ended, which the loop's own future reports.
+				if self.outgoing.unbounded_send((peer, frame.clone())).is_err() {
+					return;
+				}
 			}
 		}
 	}
@@ -111,7 +193,7 @@ impl Transport for Room {
 			});
 		}
 
-		let received: Vec<_> = self.socket.channel_mut(CHANNEL).receive();
+		let received: Vec<_> = lock(&self.inbox).packets.drain(..).collect();
 		for (peer, frame) in received {
 			let Some(bytes) = self.incoming.accept(peer, &frame) else { continue };
 
@@ -132,9 +214,30 @@ impl Transport for Room {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use futures::FutureExt;
 
 	fn peer(byte: u128) -> TransportPeerId {
 		TransportPeerId(uuid::Uuid::from_u128(byte))
+	}
+
+	/// The inbox handle resolves on an arrival and once more when the loop ends, and is pending otherwise,
+	/// so a poll driven by it runs on packets rather than on frames.
+	#[test]
+	fn the_inbox_wakes_on_arrival_and_reports_the_end() {
+		let inbox = Arc::new(Mutex::new(Inbox::default()));
+		let incoming = Incoming { inbox: Arc::clone(&inbox) };
+
+		assert_eq!(incoming.wait().now_or_never(), None, "nothing arrived yet");
+
+		lock(&inbox).packets.push_back((peer(1), Box::new([FRAME_FINAL, 7])));
+		assert_eq!(incoming.wait().now_or_never(), Some(true), "an arrival resolves the wait");
+		assert_eq!(incoming.wait().now_or_never(), Some(true), "and keeps it resolved until the inbox is drained");
+
+		lock(&inbox).packets.clear();
+		assert_eq!(incoming.wait().now_or_never(), None, "drained: pending again");
+
+		lock(&inbox).closed = true;
+		assert_eq!(incoming.wait().now_or_never(), Some(false), "the end of the loop resolves the wait for good");
 	}
 
 	/// Push every frame at a reassembler and collect whatever packets come back out.

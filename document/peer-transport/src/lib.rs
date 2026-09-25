@@ -8,7 +8,7 @@ mod transport;
 
 pub use packet::{PacketError, Role, SyncPacket, SyncPayload};
 pub use replica::{Event, Replica, ReplicaError};
-pub use room::Room;
+pub use room::{Incoming, Room};
 pub use target::{SyncTarget, TargetError};
 pub use token::{InvalidSessionToken, SessionToken};
 pub use transport::{Transport, TransportEvent, TransportPeerId};
