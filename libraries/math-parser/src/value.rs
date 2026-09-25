@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, UnaryOp};
+use std::cmp::Ordering;
 use std::f64::consts::PI;
 use std::ops::Mul;
 
@@ -9,15 +10,20 @@ pub enum Value {
 	Number(Number),
 }
 
-/// Generates accessors reading the value rounded to the nearest whole number of the target integer type.
+/// Generates accessors reading the value as the target integer type: exactly from integer storage, and otherwise rounded to the nearest whole number.
 macro_rules! integer_accessors {
 	($($fn_name:ident: $int:ty),* $(,)?) => {
 		$(
-			#[doc = concat!("Reads the value rounded to the nearest whole `", stringify!($int), "`, or `None` if it isn't a real number, isn't finite, or lies outside the type's range.")]
+			#[doc = concat!("Reads the value as a `", stringify!($int), "`, rounded to the nearest whole number, or `None` if it isn't a real number, isn't finite, or lies outside the type's range.")]
 			pub fn $fn_name(&self) -> Option<$int> {
-				let rounded = self.as_real()?.round();
-				// The MAX comparison is one float rounding step generous for the widest types, where the cast saturates
-				(rounded.is_finite() && rounded >= <$int>::MIN as f64 && rounded <= <$int>::MAX as f64).then_some(rounded as $int)
+				let Self::Number(number) = self;
+				if let Number::Integer(integer) = number {
+					return <$int>::try_from(*integer).ok();
+				}
+
+				let rounded = number.as_real()?.round();
+				// `MAX + 1` is the power of two past the type, exact or absorbed by rounding, so the bound stays exclusive where `MAX` itself rounds up to it
+				(rounded.is_finite() && rounded >= <$int>::MIN as f64 && rounded < <$int>::MAX as f64 + 1.).then_some(rounded as $int)
 			}
 		)*
 	};
@@ -26,6 +32,16 @@ macro_rules! integer_accessors {
 impl Value {
 	pub fn from_f64(x: f64) -> Self {
 		Self::Number(Number::Real(x))
+	}
+
+	/// Wraps an integer exactly, so integer arithmetic on it stays exact beyond the reals' 2^53 limit.
+	pub fn from_i64(x: i64) -> Self {
+		Self::Number(Number::Integer(x))
+	}
+
+	/// Wraps a truth value as the number 1 or 0, the language's representation of booleans.
+	pub fn from_bool(x: bool) -> Self {
+		Self::Number(Number::from_bool(x))
 	}
 
 	pub fn as_real(&self) -> Option<f64> {
@@ -42,6 +58,12 @@ impl Value {
 	pub fn as_bool(&self) -> Option<bool> {
 		let Self::Number(number) = self;
 		number.as_bool()
+	}
+
+	/// The lowest rung of the number ladder that holds the value losslessly, so a host can choose the right query for it.
+	pub fn rung(&self) -> Rung {
+		let Self::Number(number) = self;
+		number.rung()
 	}
 
 	integer_accessors! {
@@ -64,6 +86,12 @@ impl From<f64> for Value {
 	}
 }
 
+impl From<i64> for Value {
+	fn from(x: i64) -> Self {
+		Self::from_i64(x)
+	}
+}
+
 impl From<Complex> for Value {
 	fn from(complex: Complex) -> Self {
 		Self::Number(Number::Complex(complex))
@@ -78,15 +106,46 @@ impl core::fmt::Display for Value {
 	}
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+/// A rung of the number ladder: each is the set of values whose remaining parts are zero, so every rung is a subset of the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rung {
+	/// Exactly 0 or 1.
+	Bool,
+	/// A whole number.
+	Integer,
+	/// A real number, which Graphite labels Number.
+	Number,
+	/// A complex number, with a real part and an `i` part.
+	Particle1,
+}
+
+/// A number's storage form, an optimization that is never observable: behavior is decided by the number's mathematical
+/// content alone, so `2`, `2.0`, and `2 + 0i` are one value.
+#[derive(Debug, Clone, Copy)]
 pub enum Number {
+	/// A whole number stored exactly, so integer arithmetic stays exact beyond the reals' 2^53 limit.
+	Integer(i64),
 	Real(f64),
 	Complex(Complex),
+}
+
+impl PartialEq for Number {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(Number::Integer(lhs), Number::Integer(rhs)) => lhs == rhs,
+			(Number::Real(lhs), Number::Real(rhs)) => lhs == rhs,
+			(Number::Integer(integer), Number::Real(real)) | (Number::Real(real), Number::Integer(integer)) => compare_integer_real(*integer, *real) == Some(Ordering::Equal),
+			(Number::Complex(lhs), Number::Complex(rhs)) => lhs == rhs,
+			// A complex number without an imaginary part equals a real number the way its real part does
+			(Number::Complex(complex), real) | (real, Number::Complex(complex)) => complex.im == 0. && Number::Real(complex.re) == *real,
+		}
+	}
 }
 
 impl std::fmt::Display for Number {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
+			Number::Integer(integer) => integer.fmt(f),
 			Number::Real(real) => real.fmt(f),
 			Number::Complex(complex) => complex.fmt(f),
 		}
@@ -94,9 +153,30 @@ impl std::fmt::Display for Number {
 }
 
 impl Number {
+	pub fn from_f64(x: f64) -> Self {
+		Self::Real(x)
+	}
+
+	/// The number 1 or 0, the language's representation of a truth value.
+	pub fn from_bool(x: bool) -> Self {
+		Self::Integer(x as i64)
+	}
+
+	/// Stores a real in integer form when it is whole and fits, since a whole number is an integer whatever computed it.
+	pub(crate) fn real_or_integer(real: f64) -> Self {
+		// The saturating cast round-trips exactly for a whole real in range, except 2^63, which saturates to `i64::MAX` and rounds back up
+		let integer = real as i64;
+		if integer as f64 == real && real < i64::MAX as f64 {
+			Number::Integer(integer)
+		} else {
+			Number::Real(real)
+		}
+	}
+
 	/// Reads the number as a real, or `None` if it has an imaginary part.
 	pub fn as_real(self) -> Option<f64> {
 		match self {
+			Number::Integer(integer) => Some(integer as f64),
 			Number::Real(real) => Some(real),
 			// Canonical form stores a zero imaginary part as a real, so a canonical complex number is never real
 			Number::Complex(_) => None,
@@ -106,6 +186,7 @@ impl Number {
 	/// Widens the number into the complex plane, since every real number is a complex number without an imaginary part.
 	pub fn as_complex(self) -> Complex {
 		match self {
+			Number::Integer(integer) => Complex::new(integer as f64, 0.),
 			Number::Real(real) => Complex::new(real, 0.),
 			Number::Complex(complex) => complex,
 		}
@@ -114,18 +195,34 @@ impl Number {
 	/// The truth value of a logical operand, which must be exactly 0 or 1: any other number is not a truth value, so logic on it is an error rather than a guess.
 	pub fn as_bool(self) -> Option<bool> {
 		match self {
-			Number::Real(0.) => Some(false),
-			Number::Real(1.) => Some(true),
+			Number::Integer(0) | Number::Real(0.) => Some(false),
+			Number::Integer(1) | Number::Real(1.) => Some(true),
 			_ => None,
 		}
 	}
 
-	/// The number's canonical form: a zero imaginary part is dropped, since `n + 0i` is exactly `n`, and a signed zero is plain zero, so no zero-valued part can ever change a result.
+	/// The lowest rung of the number ladder that holds the number losslessly.
+	pub fn rung(self) -> Rung {
+		match self {
+			Number::Integer(0 | 1) | Number::Real(0. | 1.) => Rung::Bool,
+			Number::Integer(_) => Rung::Integer,
+			Number::Real(real) if real.fract() == 0. => Rung::Integer,
+			Number::Real(_) => Rung::Number,
+			Number::Complex(complex) if complex.im == 0. => Number::Real(complex.re).rung(),
+			Number::Complex(_) => Rung::Particle1,
+		}
+	}
+
+	/// The number's canonical form: a zero imaginary part is dropped, since `n + 0i` is exactly `n`, a signed zero is plain
+	/// zero, and a whole real takes integer storage, so no zero-valued part or storage form can ever change a result.
+	#[inline(always)]
 	pub fn canonical(self) -> Number {
 		let unsigned_zero = |x: f64| if x == 0. { 0. } else { x };
 		match self {
-			Number::Real(real) => Number::Real(unsigned_zero(real)),
-			Number::Complex(complex) if complex.im == 0. => Number::Real(unsigned_zero(complex.re)),
+			Number::Integer(_) => self,
+			// A signed zero is whole, so it becomes the integer 0
+			Number::Real(real) => Number::real_or_integer(real),
+			Number::Complex(complex) if complex.im == 0. => Number::real_or_integer(complex.re),
 			Number::Complex(complex) => Number::Complex(Complex::new(unsigned_zero(complex.re), unsigned_zero(complex.im))),
 		}
 	}
@@ -133,97 +230,53 @@ impl Number {
 	/// Whether any part is NaN, which no operation may produce: an indeterminate form is an evaluation error instead.
 	pub fn is_nan(self) -> bool {
 		match self {
+			Number::Integer(_) => false,
 			Number::Real(real) => real.is_nan(),
 			Number::Complex(complex) => complex.re.is_nan() || complex.im.is_nan(),
 		}
 	}
 
 	pub fn binary_op(self, op: BinaryOp, other: Number) -> Option<Number> {
-		// Logic and equality work uniformly across real and complex operands
+		// Logic and equality work uniformly across every rung
 		match op {
 			BinaryOp::And | BinaryOp::Or => {
 				let (Some(lhs), Some(rhs)) = (self.as_bool(), other.as_bool()) else { return None };
 				let result = if matches!(op, BinaryOp::And) { lhs && rhs } else { lhs || rhs };
-				return Some(Number::Real(result as u8 as f64));
+				return Some(Number::from_bool(result));
 			}
-			BinaryOp::Eq | BinaryOp::Neq => {
-				let equal = match (self, other) {
-					(Number::Real(lhs), Number::Real(rhs)) => lhs == rhs,
-					(Number::Complex(lhs), Number::Complex(rhs)) => lhs == rhs,
-					(Number::Real(real), Number::Complex(complex)) | (Number::Complex(complex), Number::Real(real)) => complex == Complex::new(real, 0.),
-				};
-				return Some(Number::Real((equal != matches!(op, BinaryOp::Neq)) as u8 as f64));
-			}
+			BinaryOp::Eq | BinaryOp::Neq => return Some(Number::from_bool((self == other) != matches!(op, BinaryOp::Neq))),
 			_ => {}
 		}
 
+		// Two integers compute exactly, falling back to the reals only when the result overflows integer storage
+		let (lhs, rhs) = match (self, other) {
+			(Number::Real(lhs), Number::Real(rhs)) => (lhs, rhs),
+			(Number::Integer(lhs), Number::Integer(rhs)) => match integer_binary_op(lhs, op, rhs) {
+				Some(result) => return Some(result),
+				None => (lhs as f64, rhs as f64),
+			},
+			(Number::Complex(_), _) | (_, Number::Complex(_)) => return complex_binary_op(self.as_complex(), op, other.as_complex()),
+			// An integer beside a real widens for arithmetic, but orders exactly since widening rounds past 2^53
+			_ => {
+				if let Some(accepted) = comparison(op) {
+					return Some(Number::from_bool(self.real_ordering(other).is_some_and(accepted)));
+				}
+				(self.as_real()?, other.as_real()?)
+			}
+		};
+		// One call site keeps the real arithmetic inlined even where optimizing for size
+		real_binary_op(lhs, op, rhs)
+	}
+
+	/// Orders two real numbers by value, exactly across integer and real storage, or `None` when either is complex or NaN, since ordering is real-only.
+	#[inline]
+	pub(crate) fn real_ordering(self, other: Number) -> Option<Ordering> {
 		match (self, other) {
-			(Number::Real(lhs), Number::Real(rhs)) => {
-				let result = match op {
-					BinaryOp::Add => lhs + rhs,
-					BinaryOp::Sub => lhs - rhs,
-					BinaryOp::Mul => lhs * rhs,
-					BinaryOp::Div => lhs / rhs,
-					BinaryOp::Pow => {
-						// A negative base under a fractional exponent has no real power, so it climbs to the principal complex one
-						let power = lhs.powf(rhs);
-						if power.is_nan() {
-							return Some(Number::Complex(Complex::new(lhs, 0.).powf(rhs)));
-						}
-						power
-					}
-					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
-					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
-					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
-					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
-					BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled above"),
-				};
-
-				Some(Number::Real(result))
-			}
-
-			(Number::Complex(lhs), Number::Complex(rhs)) => {
-				let result = match op {
-					BinaryOp::Add => lhs + rhs,
-					BinaryOp::Sub => lhs - rhs,
-					BinaryOp::Mul => lhs * rhs,
-					BinaryOp::Div => complex_divide(lhs, rhs),
-					BinaryOp::Pow if rhs.im == 0. => return complex_real_power(lhs, rhs.re),
-					BinaryOp::Pow => lhs.powc(rhs),
-					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
-						return None;
-					}
-					BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled above"),
-				};
-				Some(Number::Complex(result))
-			}
-
-			(Number::Real(lhs), Number::Complex(rhs)) => {
-				let lhs_complex = Complex::new(lhs, 0.);
-				let result = match op {
-					BinaryOp::Add => lhs_complex + rhs,
-					BinaryOp::Sub => lhs_complex - rhs,
-					BinaryOp::Mul => lhs_complex * rhs,
-					BinaryOp::Div => complex_divide(lhs_complex, rhs),
-					BinaryOp::Pow => lhs_complex.powc(rhs),
-					_ => return None,
-				};
-				Some(Number::Complex(result))
-			}
-
-			(Number::Complex(lhs), Number::Real(rhs)) => {
-				let rhs_complex = Complex::new(rhs, 0.);
-				let result = match op {
-					BinaryOp::Add => lhs + rhs_complex,
-					BinaryOp::Sub => lhs - rhs_complex,
-					BinaryOp::Mul => lhs * rhs_complex,
-					BinaryOp::Div if rhs == 0. => complex_over_zero(lhs, rhs),
-					BinaryOp::Div => lhs / rhs,
-					BinaryOp::Pow => return complex_real_power(lhs, rhs),
-					_ => return None,
-				};
-				Some(Number::Complex(result))
-			}
+			(Number::Real(lhs), Number::Real(rhs)) => lhs.partial_cmp(&rhs),
+			(Number::Integer(lhs), Number::Integer(rhs)) => Some(lhs.cmp(&rhs)),
+			(Number::Integer(integer), Number::Real(real)) => compare_integer_real(integer, real),
+			(Number::Real(real), Number::Integer(integer)) => compare_integer_real(integer, real).map(Ordering::reverse),
+			_ => None,
 		}
 	}
 
@@ -231,24 +284,124 @@ impl Number {
 		match op {
 			UnaryOp::Pos => Some(self),
 			UnaryOp::Neg => Some(match self {
+				Number::Integer(integer) => integer.checked_neg().map_or(Number::Real(-(integer as f64)), Number::Integer),
 				Number::Real(real) => Number::Real(-real),
 				Number::Complex(complex) => Number::Complex(-complex),
 			}),
-			UnaryOp::Not => self.as_bool().map(|boolean| Number::Real(!boolean as u8 as f64)),
-			UnaryOp::Magnitude => Some(Number::Real(match self {
-				Number::Real(real) => real.abs(),
-				Number::Complex(complex) => complex.norm(),
-			})),
-			UnaryOp::Fac => Some(match self {
-				Number::Real(real) => Number::Real(real_factorial(real)?),
-				Number::Complex(complex) => Number::Complex(complex_gamma(complex + 1.)),
+			UnaryOp::Not => self.as_bool().map(|boolean| Number::from_bool(!boolean)),
+			UnaryOp::Magnitude => Some(match self {
+				Number::Integer(integer) => i64::try_from(integer.unsigned_abs()).map_or(Number::Real(integer.unsigned_abs() as f64), Number::Integer),
+				Number::Real(real) => Number::Real(real.abs()),
+				Number::Complex(complex) => Number::Real(complex.norm()),
 			}),
+			UnaryOp::Fac => {
+				// Exact while the product fits integer storage, which 21! overflows
+				const EXACT_FACTORIAL_LIMIT: i64 = 20;
+				match self.canonical() {
+					Number::Integer(whole @ 0..=EXACT_FACTORIAL_LIMIT) => Some(Number::Integer((1..=whole).product())),
+					Number::Integer(whole) => real_factorial(whole as f64).map(Number::Real),
+					Number::Real(real) => real_factorial(real).map(Number::Real),
+					Number::Complex(complex) => Some(Number::Complex(complex_gamma(complex + 1.))),
+				}
+			}
 		}
 	}
+}
 
-	pub fn from_f64(x: f64) -> Self {
-		Self::Real(x)
+/// Exact integer arithmetic, or `None` when the result overflows integer storage, leaves it (a fractional quotient or
+/// a negative power), or has no answer (a zero divisor), each of which the real form settles.
+fn integer_binary_op(lhs: i64, op: BinaryOp, rhs: i64) -> Option<Number> {
+	let result = match op {
+		BinaryOp::Add => lhs.checked_add(rhs)?,
+		BinaryOp::Sub => lhs.checked_sub(rhs)?,
+		// Factors within 32 bits cannot overflow, skipping the 128-bit multiply that detects overflow on wasm
+		BinaryOp::Mul if i32::try_from(lhs).is_ok() && i32::try_from(rhs).is_ok() => lhs * rhs,
+		BinaryOp::Mul => lhs.checked_mul(rhs)?,
+		BinaryOp::Div => {
+			if rhs == 0 || lhs.checked_rem(rhs)? != 0 {
+				return None;
+			}
+			lhs.checked_div(rhs)?
+		}
+		BinaryOp::Pow => lhs.checked_pow(u32::try_from(rhs).ok()?)?,
+		BinaryOp::Leq => return Some(Number::from_bool(lhs <= rhs)),
+		BinaryOp::Lt => return Some(Number::from_bool(lhs < rhs)),
+		BinaryOp::Geq => return Some(Number::from_bool(lhs >= rhs)),
+		BinaryOp::Gt => return Some(Number::from_bool(lhs > rhs)),
+		BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled before dispatch"),
+	};
+	Some(Number::Integer(result))
+}
+
+fn real_binary_op(lhs: f64, op: BinaryOp, rhs: f64) -> Option<Number> {
+	let result = match op {
+		BinaryOp::Add => lhs + rhs,
+		BinaryOp::Sub => lhs - rhs,
+		BinaryOp::Mul => lhs * rhs,
+		BinaryOp::Div => lhs / rhs,
+		BinaryOp::Pow => {
+			// A negative base under a fractional exponent has no real power, so it climbs to the principal complex one
+			let power = lhs.powf(rhs);
+			if power.is_nan() {
+				return Some(Number::Complex(Complex::new(lhs, 0.).powf(rhs)));
+			}
+			power
+		}
+		BinaryOp::Leq => return Some(Number::from_bool(lhs <= rhs)),
+		BinaryOp::Lt => return Some(Number::from_bool(lhs < rhs)),
+		BinaryOp::Geq => return Some(Number::from_bool(lhs >= rhs)),
+		BinaryOp::Gt => return Some(Number::from_bool(lhs > rhs)),
+		BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled before dispatch"),
+	};
+	Some(Number::Real(result))
+}
+
+/// Orders an integer against a real exactly, or `None` against NaN. Within 2^53 the integer widens to f64 exactly, and past it
+/// the integer outruns every real nearer zero while every real as far out is whole, so the real's saturating cast is exact where it matters.
+fn compare_integer_real(integer: i64, real: f64) -> Option<Ordering> {
+	const EXACT_REAL_LIMIT: u64 = 1 << f64::MANTISSA_DIGITS;
+	if integer.unsigned_abs() <= EXACT_REAL_LIMIT {
+		return (integer as f64).partial_cmp(&real);
 	}
+
+	if real.is_nan() {
+		return None;
+	}
+	// Past integer storage the real lies beyond every integer, where `i64::MAX` rounds up to 2^63 as a real
+	if real >= i64::MAX as f64 {
+		return Some(Ordering::Less);
+	}
+	if real < i64::MIN as f64 {
+		return Some(Ordering::Greater);
+	}
+	Some(integer.cmp(&(real as i64)))
+}
+
+/// The orderings a comparison operator accepts, or `None` for an operator that isn't a comparison.
+fn comparison(op: BinaryOp) -> Option<fn(Ordering) -> bool> {
+	Some(match op {
+		BinaryOp::Leq => Ordering::is_le,
+		BinaryOp::Lt => Ordering::is_lt,
+		BinaryOp::Geq => Ordering::is_ge,
+		BinaryOp::Gt => Ordering::is_gt,
+		_ => return None,
+	})
+}
+
+/// Complex arithmetic; ordering is real-only, so it has no answer here.
+fn complex_binary_op(lhs: Complex, op: BinaryOp, rhs: Complex) -> Option<Number> {
+	let result = match op {
+		BinaryOp::Add => lhs + rhs,
+		BinaryOp::Sub => lhs - rhs,
+		BinaryOp::Mul => lhs * rhs,
+		BinaryOp::Div if rhs == Complex::from(0.) => complex_over_zero(lhs, rhs.re),
+		BinaryOp::Div => complex_divide(lhs, rhs),
+		BinaryOp::Pow if rhs.im == 0. => return complex_real_power(lhs, rhs.re),
+		BinaryOp::Pow => lhs.powc(rhs),
+		BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => return None,
+		BinaryOp::And | BinaryOp::Or | BinaryOp::Eq | BinaryOp::Neq => unreachable!("handled before dispatch"),
+	};
+	Some(Number::Complex(result))
 }
 
 /// Division by a real zero, sending each nonzero part to the infinity of its own sign as an overflow would, so `i / 0` is `∞i`.

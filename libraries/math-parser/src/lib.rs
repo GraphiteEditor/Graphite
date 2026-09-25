@@ -21,7 +21,7 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use value::{Complex, Number};
+	use value::{Complex, Number, Rung};
 
 	const EPSILON: f64 = 1e-10_f64;
 
@@ -145,11 +145,15 @@ mod tests {
 			"inf / inf",
 			"sin(inf)",
 			"gcd(inf, 6)",
-			"gcd(10000000000000000000, 2)",
+			"gcd(2.5, 5)",
+			"lcm(4, 1.5)",
 			"mod(5, 0)",
 			"choose(2.5, 1.5)",
 			"pick(3, 0.5)",
 			"choose(3, -1)",
+			"min(i)",
+			"max(1, i)",
+			"clamp(i, 0, 1)",
 			"(-1)!",
 			"(-2)!",
 			"(-inf)!",
@@ -404,38 +408,15 @@ mod tests {
 			Err(err) => panic!("failed to evaluate `{input}` because of error {err}"),
 		};
 
-		match (actual_value, expected_value) {
-			(Value::Number(Number::Complex(a)), Value::Number(Number::Complex(e))) => {
-				// real part
-				if a.re.is_infinite() || e.re.is_infinite() {
-					assert!(a.re == e.re, "`{}` → real part: expected {:?}, got {:?}", input, e.re, a.re);
-				} else {
-					assert!((a.re - e.re).abs() < EPSILON, "`{}` → real part: expected {}, got {}", input, e.re, a.re);
-				}
-
-				// imag part
-				if a.im.is_infinite() || e.im.is_infinite() {
-					assert!(a.im == e.im, "`{}` → imag part: expected {:?}, got {:?}", input, e.im, a.im);
-				} else {
-					assert!((a.im - e.im).abs() < EPSILON, "`{}` → imag part: expected {}, got {}", input, e.im, a.im);
-				}
-			}
-
-			(Value::Number(Number::Real(a)), Value::Number(Number::Real(e))) => {
-				if a.is_infinite() || e.is_infinite() {
-					// both must be infinite and equal (i.e. both +∞ or both −∞)
-					assert!(a == e, "`{input}` → expected infinite {e:?}, got {a:?}");
-				} else if a.is_nan() || e.is_nan() {
-					// both must be NaN
-					assert!(a.is_nan() && e.is_nan(), "`{input}` → expected NaN, got {a:?}");
-				} else {
-					let diff = (a - e).abs();
-					assert!(diff < EPSILON, "`{input}` → expected {e}, got {a}, Δ={diff}");
-				}
-			}
-
-			(got, expect) => {
-				panic!("`{input}` → mismatched types: expected {expect:?}, got {got:?}");
+		// Storage is never observable, so the comparison reads both values by their parts, with infinities matched exactly
+		let (Value::Number(actual), Value::Number(expected)) = (actual_value, expected_value);
+		let (actual, expected) = (actual.as_complex(), expected.as_complex());
+		for (part, actual, expected) in [("real", actual.re, expected.re), ("imaginary", actual.im, expected.im)] {
+			if actual.is_infinite() || expected.is_infinite() {
+				assert!(actual == expected, "`{input}` → {part} part: expected {expected:?}, got {actual:?}");
+			} else {
+				let difference = (actual - expected).abs();
+				assert!(difference < EPSILON, "`{input}` → {part} part: expected {expected}, got {actual}, Δ={difference}");
 			}
 		}
 	}
@@ -694,6 +675,7 @@ mod tests {
 		lcm_simple: "lcm(4, 6)" => 12.,
 		gcd_negative_operand: "gcd(-24, 18)" => 6.,
 		lcm_negative_operand: "lcm(-4, 6)" => 12.,
+		gcd_beyond_the_reals_limit: "gcd(10000000000000000000, 2)" => 2.,
 
 		// Combinatorics over any top and a whole count
 		combinatorics_choose: "choose(5, 2)" => 10.,
@@ -757,6 +739,7 @@ mod tests {
 		lcm_huge_no_overflow: "lcm(1099511627776, 1099511627775)" => 1099511627776. * 1099511627775.,
 		long_literal: "10000000000000000000000" => 1e22,
 		huge_exponent_saturates: "1e4294967296" => f64::INFINITY,
+		power_beyond_integer_storage: "2^127" => 2f64.powi(127),
 
 		// Odd integer roots of negative values are real, while even ones climb into the complex plane
 		root_negative_odd: "root(-8, 3)" => -2.,
@@ -1009,8 +992,94 @@ mod tests {
 		assert_eq!(evaluate("i").unwrap().unwrap().as_i64(), None);
 		assert_eq!(evaluate("inf").unwrap().unwrap().as_u64(), None);
 
+		// An integer reads exactly into every type with room for it, as does a whole real past integer storage
+		assert_eq!(evaluate("2^62").unwrap().unwrap().as_i64(), Some(1 << 62));
+		assert_eq!(evaluate("2^63").unwrap().unwrap().as_u64(), Some(1 << 63));
+		assert_eq!(evaluate("2^63").unwrap().unwrap().as_i32(), None);
+
+		// The range ends exclusively at the power of two past each type
+		assert_eq!(evaluate("2^63").unwrap().unwrap().as_i64(), None);
+		assert_eq!(evaluate("2^64").unwrap().unwrap().as_u64(), None);
+
 		// A truth value is exactly 0 or 1
 		assert_eq!(evaluate("2 > 1").unwrap().unwrap().as_bool(), Some(true));
 		assert_eq!(evaluate("0.5").unwrap().unwrap().as_bool(), None);
+	}
+
+	#[test]
+	fn integer_arithmetic_is_exact_beyond_the_reals_limit() {
+		let evaluate_i64 = |source: &str| evaluate(source).unwrap().unwrap().as_i64();
+
+		// Whole numbers stay in integer storage, so a step past 2^53 that the reals cannot represent is kept
+		assert_eq!(evaluate_i64("2^53 + 1"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("9007199254740993 - 9007199254740992"), Some(1));
+		assert_eq!(evaluate_i64("10^18 / 4"), Some(250_000_000_000_000_000));
+		assert_eq!(evaluate_i64("mod(-2^53 - 1, 2)"), Some(1));
+		assert_eq!(evaluate_i64("mod(2^53 + 1, -2)"), Some(-1));
+		assert_eq!(evaluate_i64("20!"), Some(2_432_902_008_176_640_000));
+		assert_eq!(evaluate_i64("-2147483648 * -2147483648"), Some(1 << 62));
+		assert_eq!(evaluate_i64("3037000499 * 3037000499"), Some(9_223_372_030_926_249_001));
+		assert_eq!(evaluate_i64("gcd(2^62, 2^40 * 3)"), Some(1 << 40));
+		assert_eq!(evaluate_i64("choose(66, 33)"), Some(7_219_428_434_016_265_740));
+
+		// Selection and rounding return the integer itself, and a literal spelled as a real is the same whole number
+		assert_eq!(evaluate_i64("max(2^53 + 1, 2^53)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("min(2^53 + 1, 2^53 + 2)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0, 2^60)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("floor(2^53 + 1)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("9007199254740993 + 1.0"), Some((1_i64 << 53) + 2));
+
+		// Integer storage reaches its own lower bound, whose magnitude no literal can spell
+		assert_eq!(evaluate_i64("-9223372036854775808 + 1"), Some(i64::MIN + 1));
+
+		// A whole real reads as an integer operand only within the widest storage
+		assert_eq!(evaluate_i64("gcd(2^126, 6)"), Some(2));
+		assert!(evaluate("gcd(2^127, 2)").unwrap().is_err());
+
+		// Crossed bounds settle on the upper one
+		assert_eq!(evaluate_i64("clamp(5, 10, 0)"), Some(0));
+
+		// A fractional quotient, a power, and a factorial past integer storage continue in the reals
+		assert_eq!(evaluate("7 / 2").unwrap().unwrap().as_real(), Some(3.5));
+		assert_eq!(evaluate("2^63").unwrap().unwrap().as_real(), Some(9_223_372_036_854_775_808.));
+		assert_eq!(evaluate("34!").unwrap().unwrap().as_real(), Some((1..=34).fold(1., |accumulated, k| accumulated * k as f64)));
+	}
+
+	#[test]
+	fn mixed_storage_compares_by_value() {
+		let evaluate_bool = |source: &str| evaluate(source).unwrap().unwrap().as_bool();
+
+		// An integer beside a real past integer storage compares by value
+		assert_eq!(evaluate_bool("9223372036854775807 < 2^63"), Some(true));
+		assert_eq!(evaluate_bool("9223372036854775807 == 2^63"), Some(false));
+		assert_eq!(evaluate_bool("-9223372036854775807 - 1 == -2^63"), Some(true));
+		assert_eq!(evaluate_bool("-9223372036854775807 - 1 > -2^64"), Some(true));
+
+		// An integer past the reals' 2^53 limit orders exactly against a fraction
+		assert_eq!(evaluate_bool("9007199254740993 > 0.5"), Some(true));
+		assert_eq!(evaluate_bool("-9007199254740993 < -0.5"), Some(true));
+
+		// A whole real a host supplies without canonicalizing compares the same way
+		assert_ne!(Value::from_i64((1 << 53) + 1), Value::from_f64((1_i64 << 53) as f64));
+		assert_eq!(Value::from_i64(1 << 53), Value::from_f64((1_i64 << 53) as f64));
+
+		// NaN is unordered against an integer, as against a real
+		let nan = Number::Real(f64::NAN);
+		assert_eq!(Number::Integer(0).binary_op(ast::BinaryOp::Leq, nan), Some(Number::from_bool(false)));
+		assert_eq!(nan.binary_op(ast::BinaryOp::Geq, Number::Integer(0)), Some(Number::from_bool(false)));
+	}
+
+	#[test]
+	fn minimal_rungs_follow_content() {
+		let rung = |source: &str| evaluate(source).unwrap().unwrap().rung();
+
+		// The rung is decided by the value rather than by how it was computed or stored
+		assert_eq!(rung("1 < 2"), Rung::Bool);
+		assert_eq!(rung("sqrt(4)"), Rung::Integer);
+		assert_eq!(rung("2.5 * 2"), Rung::Integer);
+		assert_eq!(rung("i * i"), Rung::Integer);
+		assert_eq!(rung("0.5"), Rung::Number);
+		assert_eq!(rung("inf"), Rung::Number);
+		assert_eq!(rung("sqrt(-4)"), Rung::Particle1);
 	}
 }

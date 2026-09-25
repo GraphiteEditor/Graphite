@@ -1,9 +1,10 @@
-use crate::value::Complex;
+use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
+	/// A whole-number literal, kept exact so integer arithmetic on it stays exact beyond the reals' 2^53 limit.
+	Integer(i64),
 	Float(f64),
-	Complex(Complex),
 }
 
 impl From<f64> for Literal {
@@ -33,11 +34,13 @@ pub enum BinaryOp {
 
 impl BinaryOp {
 	/// The operand that leaves the other unchanged, like 0 for `+`, which is also what a fold of no items yields.
-	pub fn identity_element(self) -> Option<f64> {
+	pub fn identity_element(self) -> Option<Value> {
 		use BinaryOp as Op;
 		match self {
-			Op::Add | Op::Or => Some(0.),
-			Op::Mul | Op::And => Some(1.),
+			Op::Add => Some(Value::from_i64(0)),
+			Op::Mul => Some(Value::from_i64(1)),
+			Op::And => Some(Value::from_bool(true)),
+			Op::Or => Some(Value::from_bool(false)),
 			Op::Sub | Op::Div | Op::Pow | Op::Leq | Op::Lt | Op::Geq | Op::Gt | Op::Neq | Op::Eq => None,
 		}
 	}

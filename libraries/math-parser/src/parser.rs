@@ -69,7 +69,10 @@ where
 	E::Error: LabelError<'src, I, &'static str> + CustomError,
 {
 	recursive(|expr| {
-		let constant = select! { Token::Float(f) => Node::Lit(Literal::Float(f)) };
+		let constant = select! {
+			Token::Integer(integer) => Node::Lit(Literal::Integer(integer)),
+			Token::Float(float) => Node::Lit(Literal::Float(float)),
+		};
 
 		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
 
@@ -218,66 +221,66 @@ mod tests {
 	}
 
 	test_parser! {
-		test_parse_int_literal: "42" => Node::Lit(Literal::Float(42.)),
+		test_parse_int_literal: "42" => Node::Lit(Literal::Integer(42)),
 		test_parse_float_literal: "3.14" => Node::Lit(Literal::Float(#[allow(clippy::approx_constant)] 3.14)),
 		test_parse_ident: "x" => Node::Var("x".to_string()),
 		test_parse_unary_neg: "-42" => Node::UnaryOp {
-			expr: Box::new(Node::Lit(Literal::Float(42.))),
+			expr: Box::new(Node::Lit(Literal::Integer(42))),
 			op: UnaryOp::Neg,
 		},
 		test_parse_binary_add: "1 + 2" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(1.))),
+			lhs: Box::new(Node::Lit(Literal::Integer(1))),
 			op: BinaryOp::Add,
-			rhs: Box::new(Node::Lit(Literal::Float(2.))),
+			rhs: Box::new(Node::Lit(Literal::Integer(2))),
 		},
 		test_parse_binary_mul: "3 * 4" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(3.))),
+			lhs: Box::new(Node::Lit(Literal::Integer(3))),
 			op: BinaryOp::Mul,
-			rhs: Box::new(Node::Lit(Literal::Float(4.))),
+			rhs: Box::new(Node::Lit(Literal::Integer(4))),
 		},
 		test_parse_binary_pow: "2 ^ 3" => Node::BinOp {
-			lhs: Box::new(Node::Lit(Literal::Float(2.))),
+			lhs: Box::new(Node::Lit(Literal::Integer(2))),
 			op: BinaryOp::Pow,
-			rhs: Box::new(Node::Lit(Literal::Float(3.))),
+			rhs: Box::new(Node::Lit(Literal::Integer(3))),
 		},
 		test_parse_sqrt_call: "sqrt(16)" => Node::FnCall {
 			name: "sqrt".to_string(),
-			expr: vec![Node::Lit(Literal::Float(16.))],
+			expr: vec![Node::Lit(Literal::Integer(16))],
 		},
 		test_parse_ii_call: "ii(16)" => Node::FnCall {
 			name: "ii".to_string(),
-			expr: vec![Node::Lit(Literal::Float(16.))]
+			expr: vec![Node::Lit(Literal::Integer(16))]
 		},
 		// `i` is a name a binding may shadow, so only the evaluator can read this call as `i` times its argument
 		test_parse_i_mul: "i(16)" => Node::FnCall {
 			name: "i".to_string(),
-			expr: vec![Node::Lit(Literal::Float(16.))],
+			expr: vec![Node::Lit(Literal::Integer(16))],
 		},
 		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Node::BinOp {
 			lhs: Box::new(Node::BinOp {
 				lhs: Box::new(Node::BinOp {
-					lhs: Box::new(Node::Lit(Literal::Float(1.))),
+					lhs: Box::new(Node::Lit(Literal::Integer(1))),
 					op: BinaryOp::Add,
-					rhs: Box::new(Node::Lit(Literal::Float(2.))),
+					rhs: Box::new(Node::Lit(Literal::Integer(2))),
 				}),
 				op: BinaryOp::Mul,
-				rhs: Box::new(Node::Lit(Literal::Float(3.))),
+				rhs: Box::new(Node::Lit(Literal::Integer(3))),
 			}),
 			op: BinaryOp::Sub,
 			rhs: Box::new(Node::BinOp {
-				lhs: Box::new(Node::Lit(Literal::Float(4.))),
+				lhs: Box::new(Node::Lit(Literal::Integer(4))),
 				op: BinaryOp::Pow,
-				rhs: Box::new(Node::Lit(Literal::Float(2.))),
+				rhs: Box::new(Node::Lit(Literal::Integer(2))),
 			}),
 		},
 		test_conditional_expr: "if (x+3, 0, 1)" => Node::Conditional{
 			condition: Box::new(Node::BinOp{
 				lhs: Box::new(Node::Var("x".to_string())),
 				op: BinaryOp::Add,
-				rhs: Box::new(Node::Lit(Literal::Float(3.))),
+				rhs: Box::new(Node::Lit(Literal::Integer(3))),
 			}),
-			if_block: Box::new(Node::Lit(Literal::Float(0.))),
-			else_block: Box::new(Node::Lit(Literal::Float(1.))),
+			if_block: Box::new(Node::Lit(Literal::Integer(0))),
+			else_block: Box::new(Node::Lit(Literal::Integer(1))),
 		}
 	}
 }
