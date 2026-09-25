@@ -91,12 +91,13 @@ impl Quaternion {
 		root_sum_of_squares(&[self.x, self.y, self.z])
 	}
 
-	/// Scales to unit magnitude, or `None` at zero, where no direction exists. An infinite quaternion points along its infinite parts.
+	/// Scales to unit magnitude, or `None` at zero, where no direction exists. Several infinite parts, whose relative sizes are unknown, give NaN parts.
 	pub fn normalized(self) -> Option<Self> {
-		let direction = if self.parts().iter().any(|part| part.is_infinite()) {
-			self.map(|part| if part.is_infinite() { part.signum() } else { 0. })
-		} else {
-			self
+		// A lone infinite part outweighs every finite one, so it alone sets the direction
+		let direction = match self.parts().iter().filter(|part| part.is_infinite()).count() {
+			0 => self,
+			1 => self.map(|part| if part.is_infinite() { part.signum() } else { 0. }),
+			_ => return Some(Self::splat(f64::NAN)),
 		};
 
 		// Dividing by a power of two near the largest part is exact and keeps a huge quaternion's norm finite

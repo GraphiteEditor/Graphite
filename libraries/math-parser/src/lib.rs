@@ -167,6 +167,21 @@ mod tests {
 	}
 
 	#[test]
+	fn several_infinite_parts_give_no_direction() {
+		// An infinity in two bases does not say which is larger, so the direction is an indeterminate form
+		for input in ["normalize(inf i + inf j)", "angle(inf i - inf k, i)", "rotor(pi, inf i + inf j)", "axis(inf i + inf j)", "project(1, inf i + inf j)", "ln(inf i + inf j)"] {
+			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::Indeterminate)), "expected `{input}` to be indeterminate");
+		}
+	}
+
+	#[test]
+	fn display_writes_the_nonzero_parts_with_their_bases() {
+		for (input, expected) in [("sqrt(-4)", "2i"), ("1 - 2i", "1-2i"), ("(1 + i) / 2", "0.5+0.5i"), ("2i + 3j", "2i+3j"), ("i * i", "-1")] {
+			assert_eq!(evaluate(input).unwrap().unwrap().to_string(), expected, "`{input}`");
+		}
+	}
+
+	#[test]
 	fn factorial_extends_through_the_gamma_function() {
 		// Compared relatively, since the reference values span hundreds of orders of magnitude
 		for (input, expected) in [
@@ -1074,8 +1089,11 @@ mod tests {
 		// Tiny, huge, and infinite values keep their directions
 		vector_normalize_huge: "normalize(1e308 + 1e308i + 1e308j + 1e308k)" => Quaternion::splat(0.5),
 		vector_normalize_infinite: "normalize(inf j)" => Quaternion::J,
+		vector_normalize_infinite_beside_finite: "normalize(5i - inf j)" => -Quaternion::J,
 		vector_angle_tiny: "angle(1e-200 i, 1e-200 j)" => std::f64::consts::FRAC_PI_2,
 		vector_angle_huge: "angle(1e200 i, 1e200 i + 1e200 j)" => std::f64::consts::FRAC_PI_4,
+		vector_angle_infinite: "angle(inf i, j)" => std::f64::consts::FRAC_PI_2,
+		vector_angle_infinite_beside_finite: "angle(inf i + 5j, i)" => 0.,
 		vector_project_tiny: "project(1e-200 j, 1e-200 j) / 1e-200" => Quaternion::J,
 		vector_project_huge: "project(1e200 j, 1e200 j) / 1e200" => Quaternion::J,
 		vector_reject_huge: "reject(1e200 i + 1e200 j, 1e200 j) / 1e200" => Quaternion::I,

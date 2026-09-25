@@ -270,7 +270,7 @@ impl std::fmt::Display for Number {
 		match self {
 			Number::Integer(integer) => integer.fmt(f),
 			Number::Real(real) => real.fmt(f),
-			Number::Complex(complex) => complex.fmt(f),
+			Number::Complex(complex) => Quaternion::from_complex(*complex).fmt(f),
 			Number::Quaternion(quaternion) => quaternion.fmt(f),
 		}
 	}
