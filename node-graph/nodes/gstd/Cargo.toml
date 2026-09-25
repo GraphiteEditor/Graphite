@@ -30,7 +30,6 @@ wasm = [
 ]
 image-compare = []
 vello = ["gpu"]
-resvg = []
 shader-nodes = ["raster-nodes/shader-nodes"]
 
 [dependencies]

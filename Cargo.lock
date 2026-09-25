@@ -2034,7 +2034,6 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
- "winit",
 ]
 
 [[package]]
@@ -5892,7 +5891,6 @@ dependencies = [
  "node-macro",
  "parley",
  "rand",
- "raster-types",
  "serde",
  "serde_json",
  "skrifa 0.42.1",
