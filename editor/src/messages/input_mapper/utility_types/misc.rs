@@ -52,7 +52,7 @@ impl KeyMappingEntries {
 				if matching_action_found {
 					// If the mapping accepts only norepeat then skip.
 					if mapping.input.is_no_repeat() && !input.is_no_repeat() {
-						// ToDo: by `return` rather than `continue` this will not fall back to another action is probably desirable?
+						// Using `return` rather than `continue` will avoid falling back to another action
 						return None;
 					}
 					return Some(mapping.action.clone());

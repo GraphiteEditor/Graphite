@@ -117,7 +117,7 @@ macro_rules! mapping {
 				}
 
 				let corresponding_list = match entry.input {
-					InputMapperMessage::KeyDown(key)| InputMapperMessage::KeyDownNoRepeat(key) => &mut key_down[key as usize],
+					InputMapperMessage::KeyDown(key) | InputMapperMessage::KeyDownNoRepeat(key) => &mut key_down[key as usize],
 					InputMapperMessage::KeyUp(key) | InputMapperMessage::KeyUpNoRepeat(key) => &mut key_up[key as usize],
 					InputMapperMessage::DoubleClick(key) => &mut double_click[key as usize],
 					InputMapperMessage::WheelScroll => &mut wheel_scroll,
