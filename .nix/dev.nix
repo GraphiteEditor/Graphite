@@ -22,7 +22,7 @@ let
         pkgs.lld
         pkgs.nodejs
         pkgs.binaryen
-        pkgs.wasm-bindgen-cli_0_2_127
+        pkgs.wasm-bindgen-cli_0_2_129
         pkgs.cargo-about
 
         pkgs.rustc

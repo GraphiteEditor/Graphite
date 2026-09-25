@@ -33,7 +33,7 @@ serde_json = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 cef = { workspace = true }
 bytemuck = { workspace = true, optional = true }
-ipc-channel = "0.22"
+ipc-channel = "0.23"
 
 # Linux-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -91,7 +91,7 @@ impl MmappedBytes {
 	/// later degrading to the `&[]` fallback in [`AsRef::as_ref`], which cannot return an error.
 	pub fn new(file: mmap_io::mmap::MemoryMappedFile) -> Result<Self> {
 		let len = file.len();
-		file.as_slice(0, len)
+		file.as_slice_bytes(0, len)
 			.map_err(|error| ContainerError::Backend(format!("mmap slice of {:?} failed: {error}", file.path())))?;
 		Ok(Self(file))
 	}
@@ -105,7 +105,7 @@ impl MmappedBytes {
 impl AsRef<[u8]> for MmappedBytes {
 	fn as_ref(&self) -> &[u8] {
 		let len = self.0.len();
-		match self.0.as_slice(0, len) {
+		match self.0.as_slice_bytes(0, len) {
 			Ok(slice) => slice,
 			Err(error) => {
 				log::error!("Failed to obtain mmap slice: {error}");

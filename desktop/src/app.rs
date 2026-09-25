@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;

@@ -1252,7 +1252,6 @@ impl ParsedNodeFn {
 				ident: ident.clone(),
 				colon_token: Some(Default::default()),
 				bounds,
-				eq_token: None,
 				default: None,
 			}));
 			self.input.ty = parse_quote!(#ident);
