@@ -218,11 +218,13 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 			peer,
 		};
 		let body = serde_json::to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
-		entry.set_source(
+		// Built rather than written: the chain is put in place as converted, floor and all at the origin.
+		entry.force_set_source(
 			key,
 			crate::SourceValue {
 				source: body,
 				timestamp: TimeStamp::ORIGIN,
+				deleted: false,
 			},
 		);
 	}

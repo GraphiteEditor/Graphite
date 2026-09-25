@@ -166,14 +166,14 @@ fn diff_resource_entry(id: ResourceId, from: &ResourceEntry, to: &ResourceEntry,
 		deltas.push(RegistryDelta::SetResourceHash { id, hash: to.hash });
 	}
 
-	for (key, _) in &from.sources {
+	for (key, _) in from.live_sources() {
 		if to.source(key).is_none() {
 			deltas.push(RegistryDelta::RemoveSource { id, key: *key });
 		}
 	}
 
 	// Compare source bodies only; the per-source timestamp is derived from the diff, not part of it.
-	for (key, to_source) in &to.sources {
+	for (key, to_source) in to.live_sources() {
 		if from.source(key).is_none_or(|from_source| from_source.source != to_source.source) {
 			deltas.push(RegistryDelta::AddSource {
 				id,

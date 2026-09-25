@@ -142,8 +142,8 @@ pub(crate) fn resources_value_equal(a: &ResourceStore, b: &ResourceStore) -> boo
 	a.iter().all(|(id, entry)| {
 		b.get(id).is_some_and(|other| {
 			entry.hash == other.hash
-				&& entry.sources.len() == other.sources.len()
-				&& entry.sources.iter().all(|(key, value)| other.source(key).is_some_and(|other_value| value.source == other_value.source))
+				&& entry.live_sources().count() == other.live_sources().count()
+				&& entry.live_sources().all(|(key, value)| other.source(key).is_some_and(|other_value| value.source == other_value.source))
 		})
 	})
 }

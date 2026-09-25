@@ -73,7 +73,7 @@ impl Registry {
 		let mut registry = graphene_resource::ResourceRegistry::new();
 
 		for (id, entry) in &self.resources {
-			for (_, source) in &entry.sources {
+			for (_, source) in entry.live_sources() {
 				let decoded: graphene_resource::DataSource = serde_json::from_value(source.source.clone()).map_err(|error| ConversionError::DeserializationError(error.to_string()))?;
 				registry.push_source_back(id, decoded);
 			}
