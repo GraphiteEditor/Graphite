@@ -233,7 +233,6 @@ impl GenericNameGen {
 					ident: format_ident!("T{}", i),
 					colon_token: Some(Default::default()),
 					bounds: Punctuated::from_iter([TypeParamBound::Verbatim(ty.clone())]),
-					eq_token: None,
 					default: None,
 				})
 			})

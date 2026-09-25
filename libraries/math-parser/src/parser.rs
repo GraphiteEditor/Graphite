@@ -65,7 +65,7 @@ impl Node {
 pub fn parser<'src, I, E>() -> impl Parser<'src, I, Node, E>
 where
 	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
-	E: extra::ParserExtra<'src, I>,
+	E: extra::ParserExtra<'src, I> + 'src,
 	E::Error: LabelError<'src, I, &'static str> + CustomError,
 {
 	recursive(|expr| {

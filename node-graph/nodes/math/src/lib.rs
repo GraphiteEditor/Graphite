@@ -12,7 +12,7 @@ use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::lexer::Constant;
 use math_parser::reducer::classify_reducer;
 use math_parser::value::Value;
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;

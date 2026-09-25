@@ -122,10 +122,10 @@ futures = "0.3"
 env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
-ctor = "0.2"
+ctor = "1.0"
 convert_case = "0.8"
 titlecase = "3.6"
-fancy-regex = "0.18.0"
+fancy-regex = "0.19.0"
 unicode-segmentation = "1.13.2"
 indoc = "2.0.5"
 derivative = "2.2"
@@ -143,10 +143,10 @@ wgpu = { version = "29.0", features = [
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
-wasm-bindgen = "=0.2.121" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, and `tools/cargo-run/src/requirements.rs`. We pin this version because wasm-bindgen upgrades may break various things.
+wasm-bindgen = "=0.2.129" # NOTICE: keep in sync with the `wasm-bindgen-cli` version pinned in `.github/workflows/build.yml`, `.devcontainer/devcontainer.json`, `.nix/dev.nix`, `.nix/pkgs/graphite.nix`, and `tools/cargo-run/src/requirements.rs`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
-js-sys = "=0.3.98"
-web-sys = { version = "=0.3.98", features = [
+js-sys = "=0.3.106"
+web-sys = { version = "=0.3.106", features = [
 	"Document",
 	"DomRect",
 	"Element",
@@ -172,24 +172,23 @@ tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-mult
 kurbo = { version = "0.13", features = ["serde"] }
 vello = "0.10"
 vello_encoding = "0.10"
-resvg = "0.47"
-usvg = "0.47"
+usvg = "0.48"
 simplecss = "0.2"
-parley = { version = "0.9", default-features = false, features = ["std"] }
-skrifa = "0.42"
+parley = { version = "0.11", default-features = false, features = ["std"] }
+skrifa = "0.47"
 polycool = "0.4"
 color = "0.3"
 # Linebender ecosystem (END)
-rand = { version = "0.9", default-features = false, features = ["std_rng"] }
-rand_chacha = "0.9"
+rand = { version = "0.10", default-features = false, features = ["std_rng"] }
+rand_chacha = "0.10"
 glam = { version = "0.32.1", default-features = false, features = [
 	"nostd-libm",
 	"scalar-math",
 	"bytemuck",
 ] }
-base64 = "0.22"
+base64 = "0.23"
 blake3 = "1.5"
-mmap-io = { version = "0.9", features = ["hugepages"] }
+mmap-io = { version = "1.0", features = ["hugepages"] }
 image = { version = "0.25", default-features = false, features = [
 	"png",
 	"jpeg",
@@ -206,10 +205,10 @@ image = { version = "0.25", default-features = false, features = [
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
-num-derive = "0.4"
+num-derive = "0.5"
 num-traits = { version = "0.2", default-features = false, features = ["libm"] }
-tsify = { version = "0.5", default-features = false, features = ["js"] }
-syn = { version = "2.0", default-features = false, features = [
+tsify = { version = "0.5.6", default-features = false, features = ["js"] }
+syn = { version = "3.0", default-features = false, features = [
 	"full",
 	"derive",
 	"parsing",
@@ -222,14 +221,14 @@ syn = { version = "2.0", default-features = false, features = [
 ] }
 lyon_geom = "1.0"
 delaunator = "1.0"
-petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
+petgraph = { version = "0.8", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }
-criterion = { version = "0.7", features = ["html_reports"] }
-gungraun = { version = "0.18" }
-ndarray = "0.16"
-strum = { version = "0.27", features = ["derive"] }
-dirs = "6.0"
+criterion = { version = "0.8", features = ["html_reports"] }
+gungraun = { version = "0.19" }
+ndarray = "0.17"
+strum = { version = "0.28", features = ["derive"] }
+dirs = "7.0"
 cef = "151"
 cef-dll-sys = "151"
 include_dir = "0.7"
@@ -237,13 +236,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 rfd = "0.17"
 open = "5.3"
-spin = "0.10"
+spin = "0.12"
 clap = "4.5"
 spirv-std = { version = "0.10.0-alpha.1", features = ["bytemuck"] }
 cargo-gpu-install = { version = "0.10.0-alpha.1", default-features = false }
 qrcodegen = "1.8"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
-scraper = "0.25"
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+scraper = "0.27"
 linesweeper = "0.4"
 smallvec = "1.13.2"
 zip = { version = "8", default-features = false }
