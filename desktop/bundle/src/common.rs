@@ -25,8 +25,6 @@ pub(crate) fn profile_path() -> PathBuf {
 }
 
 pub(crate) fn cef_path() -> PathBuf {
-	// Avoid incorrect warnings about an unused dependency (this crate sets the `CEF_PATH` environment variable used below)
-	use cef_dll_sys as _;
 	PathBuf::from(env!("CEF_PATH"))
 }
 

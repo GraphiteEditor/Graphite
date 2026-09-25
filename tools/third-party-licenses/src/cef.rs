@@ -5,6 +5,9 @@ use std::hash::Hash;
 use std::io::Read;
 use std::path::PathBuf;
 
+// Avoid incorrect warnings about an unused dependency (this crate sets `DEP_CEF_DLL_WRAPPER_CEF_DIR` which is used in `build.rs`)
+use cef_dll_sys as _;
+
 use crate::{Error, LicenceSource, LicenseEntry, Package};
 
 pub struct CefLicenseSource;
@@ -65,9 +68,6 @@ fn parse(html: &str) -> Vec<LicenseEntry> {
 }
 
 fn read() -> Result<String, Error> {
-	// Avoid incorrect warnings about an unused dependency (this crate sets the `CEF_PATH` environment variable used below)
-	use cef_dll_sys as _;
-
 	let cef_path = PathBuf::from(env!("CEF_PATH"));
 	let cef_credits = std::fs::read_dir(&cef_path)
 		.map_err(|e| Error::Io(e, format!("Failed to read CEF_PATH directory {}", cef_path.display())))?
