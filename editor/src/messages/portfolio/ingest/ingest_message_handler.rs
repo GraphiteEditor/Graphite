@@ -202,24 +202,12 @@ fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> O
 	}
 }
 
-// The viewBox preserves the full canvas rather than the tighter bounding box of the rendered content
+/// Determine the size of an SVG file (the viewBox is already applied by the SVG importer so can be ignored)
 fn svg_canvas(svg: &str) -> Option<(IVec2, IVec2)> {
-	usvg::roxmltree::Document::parse(svg)
-		.ok()
-		.and_then(|document| {
-			let numbers: Vec<f64> = document
-				.root_element()
-				.attribute("viewBox")?
-				.split(|character: char| character.is_ascii_whitespace() || character == ',')
-				.filter_map(|number| number.parse().ok())
-				.collect();
-			let [x, y, width, height, ..] = numbers[..] else { return None };
-			Some((IVec2::new(x.round() as i32, y.round() as i32), IVec2::new(width.round() as i32, height.round() as i32)))
-		})
-		.or_else(|| {
-			let size = usvg::Tree::from_str(svg, &usvg::Options::default()).ok()?.size();
-			Some((IVec2::ZERO, IVec2::new(size.width().round() as i32, size.height().round() as i32)))
-		})
+	usvg::Tree::from_str(&svg, &usvg::Options::default()).ok().map(|tree| {
+		let size = tree.size();
+		(glam::IVec2::ZERO, glam::IVec2::new(size.width().round() as i32, size.height().round() as i32))
+	})
 }
 
 #[cfg(test)]
