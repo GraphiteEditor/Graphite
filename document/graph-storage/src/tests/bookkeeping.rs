@@ -223,3 +223,74 @@ fn a_transaction_with_a_gap_is_not_contiguous_until_the_gap_fills() {
 	assert!(closed[0].contiguous);
 	assert_eq!(closed[0].ops.len(), 3);
 }
+
+/// Taking a hot transaction back removes its ops for good and re-derives what they touched from the
+/// snapshot and the other hot ops, so a concurrent write to the same entity survives; the ops never
+/// retire, and a late copy is dropped.
+#[test]
+fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(add_network(3)).expect("base");
+	host.document.working_registry = host.document.retired_snapshot.clone();
+
+	// A guest's write to the network and the host's own gesture on the same network, interleaved.
+	let guest_write = crate::HotOp {
+		op: RegistryDelta::ChangeNetworkAttribute {
+			id: NetworkId(3),
+			delta: AttributeDelta {
+				key: "guest".into(),
+				value: Some(serde_json::json!(1)),
+			},
+		},
+		timestamp: crate::TimeStamp { counter: 40, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	host.stage_ops([RegistryDelta::ChangeNetworkAttribute {
+		id: NetworkId(3),
+		delta: AttributeDelta {
+			key: "host".into(),
+			value: Some(serde_json::json!(1)),
+		},
+	}])
+	.expect("host op");
+	host.apply_hot_op(guest_write.clone()).expect("guest op");
+	host.stage_ops([add_network(9)]).expect("host op");
+	let own: Vec<crate::HotOpId> = host.hot_log().iter().filter(|hot_op| hot_op.timestamp.peer == PeerId(1)).map(crate::HotOp::id).collect();
+
+	let (ids, touched) = host.retract_transaction().expect("retract").expect("the host's transaction is hot");
+	assert_eq!(ids, own, "the whole open transaction is taken back");
+	assert!(touched.networks.contains(&NetworkId(3)) && touched.networks.contains(&NetworkId(9)));
+	assert_eq!(host.hot_log().len(), 1, "only the guest's op stays");
+	assert!(!host.registry().networks.contains_key(&NetworkId(9)));
+	let network = &host.registry().networks[&NetworkId(3)];
+	assert!(!network.attributes.contains_key("host"), "the host's write is gone");
+	assert!(network.attributes.contains_key("guest"), "the guest's concurrent write survives");
+	assert!(host.retract_transaction().expect("nothing left").is_none());
+
+	// A late copy of a retracted op is dropped, and nothing of it ever retires.
+	let late = crate::HotOp {
+		op: add_network(9),
+		timestamp: crate::TimeStamp { counter: 2, peer: PeerId(1) },
+		sequence: own[1].sequence,
+	};
+	host.replay_hot_op(late).expect("dropped, not an error");
+	assert_eq!(host.hot_log().len(), 1);
+	assert!(host.closed_transactions().is_empty());
+
+	// Another peer learns of the retraction from the marks alone.
+	let mut guest = Session::with_peer(PeerId(2));
+	guest.commit_op_for_test(add_network(3)).expect("base");
+	guest.document.working_registry = guest.document.retired_snapshot.clone();
+	guest
+		.apply_hot_op(crate::HotOp {
+			op: add_network(9),
+			timestamp: crate::TimeStamp { counter: 2, peer: PeerId(1) },
+			sequence: own[1].sequence,
+		})
+		.expect("the host's op reached the guest");
+	assert!(guest.registry().networks.contains_key(&NetworkId(9)));
+	let touched = guest.absorb_retracted_marks(host.retracted_marks());
+	assert!(touched.networks.contains(&NetworkId(9)));
+	assert!(!guest.registry().networks.contains_key(&NetworkId(9)));
+	assert!(guest.hot_log().is_empty());
+}

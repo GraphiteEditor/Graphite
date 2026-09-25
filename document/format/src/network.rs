@@ -52,7 +52,7 @@ impl<L: Layout> Gdd<L> {
 	/// Leaves the room. A host retires every closed transaction first, so what peers finished is in
 	/// history before the retirer goes away.
 	pub fn leave(&mut self) {
-		let closed = self.session.retirable(&self.session.closed_transactions());
+		let closed = self.session.closed_transactions();
 		if let Err(error) = self.retire_transactions(&closed) {
 			log::error!("Retiring before leaving failed: {error}");
 		}
@@ -183,6 +183,28 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
 		SyncTarget::absorb_retired_marks(&mut self.session, remote)?;
 		self.pending_persist.hot_log = true;
+		Ok(())
+	}
+
+	fn retracted_marks(&self) -> RetiredHotOps {
+		SyncTarget::retracted_marks(&self.session)
+	}
+
+	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
+		let touched = self.session.absorb_retracted_marks(remote);
+		if !touched.is_empty() {
+			self.remote_changes.touched.extend(touched);
+			self.pending_persist.hot_log = true;
+			self.pending_persist.snapshot = true;
+		}
+		Ok(())
+	}
+
+	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
+		let touched = self.session.retract_hot_ops(ops);
+		self.remote_changes.touched.extend(touched);
+		self.pending_persist.hot_log = true;
+		self.pending_persist.snapshot = true;
 		Ok(())
 	}
 

@@ -58,6 +58,9 @@ pub struct SyncPayload {
 	/// Which hot ops the history being handed over already covers, so the requester can recognize one
 	/// it is holding rather than re-entering it as live work.
 	pub retired: RetiredHotOps,
+	/// Which hot ops their authors took back, so the requester drops any it still holds.
+	#[serde(default)]
+	pub retracted: RetiredHotOps,
 }
 
 /// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`
@@ -79,6 +82,11 @@ pub enum BroadcastBody {
 		deltas: Vec<Delta>,
 		retires: Vec<HotOpId>,
 	},
+	/// Hot ops their author took back: they leave every hot log and never retire.
+	Retract(Vec<HotOpId>),
+	/// Everything a peer knows to have been taken back, re-announced on a membership change the way hot
+	/// ops are, so a peer that joined while a retraction was in flight still hears of it.
+	RetractedMarks(RetiredHotOps),
 }
 
 #[derive(Debug, thiserror::Error)]

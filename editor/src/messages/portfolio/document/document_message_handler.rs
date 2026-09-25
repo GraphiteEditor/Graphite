@@ -2554,6 +2554,14 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		// A step still hot is taken back and never becomes history; only a retired step moves the cursor.
+		if legacy_applied && self.history.retract_storage_transaction() {
+			self.history.note_undo(true);
+			return;
+		}
+		if legacy_applied {
+			self.history.note_undo(false);
+		}
 		if self.is_in_session() {
 			self.stage_session_undo(resource_storage);
 			return;
@@ -2565,9 +2573,11 @@ impl DocumentMessageHandler {
 		self.storage().is_some_and(|gdd| gdd.role().is_some())
 	}
 
-	/// In a session every op is already public, so an undo is a new forward edit: the restored snapshot
-	/// diffs against the last staged state into the inverse ops, broadcast like any other change.
+	/// In a session a retired step is public, so its undo is a new forward edit: the restored snapshot
+	/// diffs against the working registry into the inverse ops, broadcast like any other change. The same
+	/// stages a step again when it is redone after being taken back.
 	fn stage_session_undo(&mut self, resource_storage: &ResourceStorageMessageHandler) {
+		self.history.require_whole_document_stage();
 		self.commit_storage_snapshot(&resource_storage.resources_mut(), false);
 	}
 
@@ -2610,6 +2620,11 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		// A step that was taken back is staged afresh: its ops are gone from every hot log, so redo is a new edit.
+		if legacy_applied && self.history.take_undo_note() {
+			self.stage_session_undo(resource_storage);
+			return;
+		}
 		if self.is_in_session() {
 			self.stage_session_undo(resource_storage);
 			return;

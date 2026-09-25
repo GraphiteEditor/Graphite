@@ -279,6 +279,32 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Undo this peer's latest transaction while it is still hot: the ops leave the hot log here and, once
+	/// the retraction reaches them, on every peer, and they never retire. Returns whether there was a hot
+	/// transaction to take back; `false` means the step already retired and undo has to move the cursor.
+	/// What the ops named lands in the remote changes, so a mirror brings those entities into line with
+	/// whatever others wrote to them meanwhile.
+	pub fn retract_transaction(&mut self) -> Result<bool, Error> {
+		let Some((ids, touched)) = self.session.retract_transaction()? else {
+			return Ok(false);
+		};
+		self.own_last_staged_ms = None;
+		#[cfg(feature = "network")]
+		self.remote_changes.touched.extend(touched);
+		#[cfg(not(feature = "network"))]
+		let _ = touched;
+		self.rewrite_hot_log()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_retraction(&ids)?;
+		}
+		#[cfg(not(feature = "network"))]
+		let _ = ids;
+		Ok(true)
+	}
+
 	/// Retire every transaction the policy says is due at `now_ms`, on any monotonic millisecond clock the
 	/// caller keeps: closed transactions that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS),
 	/// once [`RETIRE_AFTER_TRANSACTIONS`](Self::RETIRE_AFTER_TRANSACTIONS) of them are waiting or the oldest
@@ -312,7 +338,6 @@ impl<L: Layout> Gdd<L> {
 		}
 		seen.retain(|marker, _| closed.iter().any(|transaction| transaction.ops.last() == Some(marker)));
 		self.transactions_seen = seen;
-		let due = self.session.retirable(&due);
 
 		if due.len() >= Self::RETIRE_AFTER_TRANSACTIONS || oldest_age >= Self::RETIRE_MAX_AGE_MS {
 			self.retire_transactions(&due)
@@ -327,7 +352,7 @@ impl<L: Layout> Gdd<L> {
 	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
 		self.end_transaction()?;
 		self.own_last_staged_ms = None;
-		let closed = self.session.retirable(&self.session.closed_transactions());
+		let closed = self.session.closed_transactions();
 		self.retire_transactions(&closed)
 	}
 

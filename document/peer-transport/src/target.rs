@@ -15,8 +15,12 @@ pub trait SyncTarget {
 
 	/// Highest hot-op counter retired per author.
 	fn retired_marks(&self) -> RetiredHotOps;
+	/// Which hot ops were taken back by their authors. See [`Session::retracted_marks`].
+	fn retracted_marks(&self) -> RetiredHotOps;
 	/// Take on a peer's retirement marks, dropping any hot op they show as already retired.
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError>;
+	/// Take on a peer's retractions, dropping what they cover from the hot log.
+	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError>;
 
 	/// Replace all state with the given retired state.
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;
@@ -25,6 +29,8 @@ pub trait SyncTarget {
 	/// them as later ops fill the gaps.
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError>;
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError>;
+	/// A peer took back hot ops of its own: drop them and re-derive what they touched.
+	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError>;
 	/// Make everything applied since the last flush durable. Called once per [`Replica::poll`](crate::Replica::poll),
 	/// so a target that rewrites whole files can do it once for a batch rather than once per packet.
 	fn flush(&mut self) -> Result<(), TargetError> {
@@ -111,6 +117,20 @@ impl SyncTarget for Session {
 
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
 		Session::absorb_retired_marks(self, remote)?;
+		Ok(())
+	}
+
+	fn retracted_marks(&self) -> RetiredHotOps {
+		Session::retracted_marks(self).clone()
+	}
+
+	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
+		Session::absorb_retracted_marks(self, remote);
+		Ok(())
+	}
+
+	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
+		Session::retract_hot_ops(self, ops);
 		Ok(())
 	}
 }

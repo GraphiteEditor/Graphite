@@ -35,6 +35,9 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
+	/// For each step on the legacy redo stack, whether undoing it took its hot transaction back rather
+	/// than moving the storage cursor, so redo knows to stage the step again instead of moving forward.
+	retracted_undos: Vec<bool>,
 }
 
 /// Why [`DocumentHistory::move_cursor`] produced no interface.
@@ -77,6 +80,7 @@ impl DocumentHistory {
 	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
 	pub fn clear_redo(&mut self) {
 		self.legacy_redo_stack.clear();
+		self.retracted_undos.clear();
 	}
 
 	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
@@ -125,6 +129,29 @@ impl DocumentHistory {
 		if let Err(error) = storage.end_transaction() {
 			log::error!("Closing the storage transaction failed: {error}");
 		}
+	}
+
+	/// Undo the latest storage transaction while it is still hot by taking it back, so it leaves every hot
+	/// log and never becomes a history step. `false` when the step already retired. No-op while unmounted.
+	pub fn retract_storage_transaction(&mut self) -> bool {
+		let Some(storage) = self.storage.as_mut() else { return false };
+		match storage.retract_transaction() {
+			Ok(retracted) => retracted,
+			Err(error) => {
+				log::error!("Taking the storage transaction back failed: {error}");
+				false
+			}
+		}
+	}
+
+	/// Record how the step just undone reached storage, paired with the legacy redo entry pushed for it.
+	pub fn note_undo(&mut self, retracted: bool) {
+		self.retracted_undos.push(retracted);
+	}
+
+	/// Whether the step about to be redone was taken back rather than cursor-undone.
+	pub fn take_undo_note(&mut self) -> bool {
+		self.retracted_undos.pop().unwrap_or(false)
 	}
 
 	/// Close this peer's open transaction and retire every closed one into durable Gdd history, so the

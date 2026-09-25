@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::{
@@ -18,6 +18,9 @@ pub struct Document {
 	/// of re-entering the log. Retirement discards the delta's link back to its hot op, leaving this the
 	/// only record. See [`RetiredHotOps`].
 	pub(crate) retired: RetiredHotOps,
+	/// Hot ops their author took back before they retired. They left every hot log and never enter
+	/// history, so a late copy is dropped rather than replayed. See [`Session::retract_transaction`].
+	pub(crate) retracted: RetiredHotOps,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it. Every field of a registry is last-writer-wins on a
@@ -54,6 +57,7 @@ impl Document {
 			history: History::new(),
 			hot_log: Vec::new(),
 			retired: RetiredHotOps::default(),
+			retracted: RetiredHotOps::default(),
 			head: None,
 			redo_stack: Vec::new(),
 			clock: LamportClock::new(peer),
@@ -103,6 +107,10 @@ impl Document {
 		if self.is_retired(hot_op.id()) {
 			return Ok(());
 		}
+		// Taken back by its author: it never happened, however late a copy turns up.
+		if self.retracted.covers(hot_op.id()) {
+			return Ok(());
+		}
 
 		// Identified by timestamp, so a re-announcement of one already held must not become a second copy.
 		if self.hot_log.iter().any(|held| held.timestamp == hot_op.timestamp) {
@@ -136,6 +144,33 @@ impl Document {
 		self.retired.absorb(remote);
 
 		self.drop_retired_hot_ops()
+	}
+
+	/// Take back hot ops: they leave the log for good and the working registry is re-derived without them,
+	/// the retired snapshot plus every remaining hot op, since the effect of an op that commutes cannot be
+	/// undone in place without knowing what else wrote its fields. Returns what the ops named, for a
+	/// mirror to bring back into line; ops not in the log are recorded and otherwise ignored.
+	pub(crate) fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> crate::Touched {
+		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
+		let (taken, kept): (Vec<HotOp>, Vec<HotOp>) = self.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
+		self.hot_log = kept;
+		self.retracted.extend(ids.iter().copied());
+
+		let mut touched = crate::Touched::default();
+		if taken.is_empty() {
+			return touched;
+		}
+		for hot_op in &taken {
+			touched.record(&hot_op.op);
+		}
+		self.working_registry = self.retired_snapshot.clone();
+		for hot_op in std::mem::take(&mut self.hot_log) {
+			// An op that depended on what was taken back cannot land; it stays in the log the way a deferred
+			// op does, for the referent to arrive again or for the retirer to hold it.
+			let _ = self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp);
+			self.hot_log.push(hot_op);
+		}
+		touched
 	}
 
 	/// Drop hot ops the retired snapshot already accounts for. A mark alone will not do: it can arrive
@@ -222,7 +257,7 @@ impl Document {
 				if live && registry.node_instances.contains_key(&id) {
 					return Err(CrdtError::NodeAlreadyExists(id));
 				}
-				touch_network(registry, node.network, timestamp, force)?;
+				touch_network(registry, node.network, timestamp, mode)?;
 				add(&mut registry.node_instances, &mut registry.removed_nodes, id, node, timestamp, force);
 			}
 			RegistryDelta::RemoveNode { id, snapshot } => {
@@ -231,14 +266,14 @@ impl Document {
 			RegistryDelta::SetNodeInputs { id, inputs } => {
 				for slot in &inputs {
 					if let NodeInput::Node { id: referenced, .. } = slot.input {
-						touch_node(registry, referenced, timestamp, force)?;
+						touch_node(registry, referenced, timestamp, mode)?;
 					}
 				}
 				let mut inputs = inputs;
 				for slot in &mut inputs {
 					stamp_slot(slot, timestamp);
 				}
-				write_node(registry, id, timestamp, force, |node| {
+				write_node(registry, id, timestamp, mode, |node| {
 					if force {
 						node.inputs = inputs;
 						node.inputs_timestamp = timestamp;
@@ -250,9 +285,9 @@ impl Document {
 			}
 			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
 				if let NodeInput::Node { id: referenced, .. } = new_input {
-					touch_node(registry, referenced, timestamp, force)?;
+					touch_node(registry, referenced, timestamp, mode)?;
 				}
-				write_node(registry, id, timestamp, force, |node| {
+				write_node(registry, id, timestamp, mode, |node| {
 					let Some(input) = slot_for_write(node, index as usize, timestamp, mode)? else { return Ok(()) };
 					if force || timestamp > input.timestamp {
 						input.input = new_input;
@@ -263,9 +298,9 @@ impl Document {
 			}
 			RegistryDelta::SetNodeImplementation { id, implementation } => {
 				if let Implementation::Network(network) = implementation {
-					touch_network(registry, network, timestamp, force)?;
+					touch_network(registry, network, timestamp, mode)?;
 				}
-				write_node(registry, id, timestamp, force, |node| {
+				write_node(registry, id, timestamp, mode, |node| {
 					if force || timestamp > node.implementation_timestamp {
 						node.implementation = implementation;
 						node.implementation_timestamp = timestamp;
@@ -274,13 +309,13 @@ impl Document {
 				})?;
 			}
 			RegistryDelta::ChangeNodeAttribute { id, delta } => {
-				write_node(registry, id, timestamp, force, |node| {
+				write_node(registry, id, timestamp, mode, |node| {
 					apply_attribute_delta(delta, timestamp, force, &mut node.attributes, node.attributes_timestamp);
 					Ok(())
 				})?;
 			}
 			RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => {
-				write_node(registry, id, timestamp, force, |node| {
+				write_node(registry, id, timestamp, mode, |node| {
 					let Some(input) = slot_for_write(node, index as usize, timestamp, mode)? else { return Ok(()) };
 					apply_attribute_delta(delta, timestamp, force, &mut input.attributes, input.attributes_timestamp);
 					Ok(())
@@ -288,9 +323,9 @@ impl Document {
 			}
 			RegistryDelta::SetNetworkExport { id, index, export } => {
 				if let Some(NodeInput::Node { id: referenced, .. }) = export {
-					touch_node(registry, referenced, timestamp, force)?;
+					touch_node(registry, referenced, timestamp, mode)?;
 				}
-				write_network(registry, id, timestamp, force, |net| {
+				write_network(registry, id, timestamp, mode, |net| {
 					let slot_idx = index as usize;
 					if slot_idx >= net.exports.len() {
 						if slot_idx >= MAX_EXPORT_SLOTS {
@@ -323,13 +358,13 @@ impl Document {
 				remove(&mut registry.networks, &mut registry.removed_networks, id, snapshot, timestamp, force);
 			}
 			RegistryDelta::ChangeNetworkAttribute { id, delta } => {
-				write_network(registry, id, timestamp, force, |net| {
+				write_network(registry, id, timestamp, mode, |net| {
 					apply_attribute_delta(delta, timestamp, force, &mut net.attributes, net.attributes_timestamp);
 					Ok(())
 				})?;
 			}
 			RegistryDelta::SetResourceHash { id, hash } => {
-				upsert_resource(registry, id, timestamp, force, |entry| {
+				upsert_resource(registry, id, timestamp, mode, |entry| {
 					if force || timestamp > entry.hash_timestamp {
 						entry.hash = hash;
 						entry.hash_timestamp = timestamp;
@@ -337,7 +372,7 @@ impl Document {
 				});
 			}
 			RegistryDelta::AddSource { id, key, source } => {
-				upsert_resource(registry, id, timestamp, force, |entry| {
+				upsert_resource(registry, id, timestamp, mode, |entry| {
 					let value = SourceValue { source, timestamp, deleted: false };
 					if force { entry.force_set_source(key, value) } else { entry.set_source(key, value) }
 				});
@@ -345,7 +380,7 @@ impl Document {
 			RegistryDelta::RemoveSource { id, key } => {
 				// An upsert like the other single-source ops: a removal for an entry never seen leaves the
 				// source's tombstone in a fresh entry, so the addition it answers is recognised as older.
-				upsert_resource(registry, id, timestamp, force, |entry| {
+				upsert_resource(registry, id, timestamp, mode, |entry| {
 					if force {
 						entry.force_remove_source(&key);
 					} else {
@@ -383,14 +418,12 @@ impl Document {
 	/// revives the entity from there.
 	pub(crate) fn compute_reverse_delta(&self, target: RegistryTarget, delta: &RegistryDelta) -> Result<RegistryDelta, CrdtError> {
 		let registry = self.registry_ref(target);
-		let node = |id: NodeId| {
-			registry
-				.node_instances
-				.get(&id)
-				.or_else(|| registry.removed_nodes.get(&id).map(|mark| &mark.content))
-				.ok_or(CrdtError::TargetNodeDoesNotExist(id))
-		};
-		let network = |id: NetworkId| registry.networks.get(&id).or_else(|| registry.removed_networks.get(&id).map(|mark| &mark.content));
+		// A write to an entity never seen lands on a placeholder, so its pre-value is the placeholder's: what
+		// the op wrote over, whether the addition has arrived or not.
+		let node =
+			|id: NodeId| -> Result<std::borrow::Cow<'_, Node>, CrdtError> { Ok(registry.node_or_removed(id).map_or_else(|| std::borrow::Cow::Owned(Node::placeholder()), std::borrow::Cow::Borrowed)) };
+		let unset = InputSlot::unset(TimeStamp::ORIGIN);
+		let network = |id: NetworkId| registry.network_or_removed(id);
 		let resource = |id: ResourceId| registry.resources.get(&id).or_else(|| registry.removed_resources.get(&id).map(|mark| &mark.content));
 		Ok(match delta {
 			RegistryDelta::AddNode { id, node } => RegistryDelta::RemoveNode { id: *id, snapshot: node.clone() },
@@ -401,7 +434,8 @@ impl Document {
 				implementation: node(id)?.implementation.clone(),
 			},
 			&RegistryDelta::ChangeNodeInput { id, index: input_idx, .. } => {
-				let slot = node(id)?.inputs().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
+				let node = node(id)?;
+				let slot = node.inputs().get(input_idx as usize).unwrap_or(&unset);
 				RegistryDelta::ChangeNodeInput {
 					id,
 					index: input_idx,
@@ -413,7 +447,8 @@ impl Document {
 				delta: reverse_attribute_delta(delta, node(id)?.attributes()),
 			},
 			&RegistryDelta::ChangeNodeInputAttribute { id, index, ref delta } => {
-				let input = node(id)?.inputs().get(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
+				let node = node(id)?;
+				let input = node.inputs().get(index as usize).unwrap_or(&unset);
 				RegistryDelta::ChangeNodeInputAttribute {
 					id,
 					index,
@@ -428,7 +463,8 @@ impl Document {
 			RegistryDelta::AddNetwork { id, network } => RegistryDelta::RemoveNetwork { id: *id, snapshot: network.clone() },
 			&RegistryDelta::RemoveNetwork { id, ref snapshot } => RegistryDelta::AddNetwork { id, network: snapshot.clone() },
 			&RegistryDelta::ChangeNetworkAttribute { id, ref delta } => {
-				let current = network(id).map(|net| &net.attributes).ok_or(CrdtError::NetworkDoesNotExist(id))?;
+				let empty = Attributes::new();
+				let current = network(id).map_or(&empty, |net| &net.attributes);
 				RegistryDelta::ChangeNetworkAttribute {
 					id,
 					delta: reverse_attribute_delta(delta, current),
@@ -492,11 +528,16 @@ pub(crate) trait Presence: Sized {
 	fn stamp_all(&mut self, at: TimeStamp);
 	/// Folds `other` in, keeping whichever value of each field is newer.
 	fn merge(&mut self, other: Self);
+	/// Dead content for an entity nothing has added yet, for writes to land on until an addition comes.
+	fn placeholder() -> Self;
 }
 
 impl Presence for Node {
 	fn presence(&self) -> TimeStamp {
 		self.presence
+	}
+	fn placeholder() -> Self {
+		Node::placeholder()
 	}
 	fn set_presence(&mut self, at: TimeStamp) {
 		self.presence = at;
@@ -529,6 +570,9 @@ impl Presence for Node {
 impl Presence for Network {
 	fn presence(&self) -> TimeStamp {
 		self.presence
+	}
+	fn placeholder() -> Self {
+		Network::default()
 	}
 	fn set_presence(&mut self, at: TimeStamp) {
 		self.presence = at;
@@ -563,6 +607,9 @@ impl Presence for Network {
 impl Presence for ResourceEntry {
 	fn presence(&self) -> TimeStamp {
 		self.presence
+	}
+	fn placeholder() -> Self {
+		ResourceEntry::default()
 	}
 	fn set_presence(&mut self, at: TimeStamp) {
 		self.presence = at;
@@ -683,16 +730,28 @@ fn content_mut<'a, K: Hash + Eq + Copy, T>(live: &'a mut HashMap<K, T>, dead: &'
 	}
 }
 
-/// Brings a removed entity back when its presence has grown past its removal.
+/// Brings a removed entity back when its presence has grown past its removal. A placeholder, holding
+/// writes to an entity nothing has added yet, stays dead whatever its presence.
 fn settle<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K) {
-	if dead.get(&id).is_some_and(|mark| mark.content.presence() > mark.at) {
+	if dead.get(&id).is_some_and(|mark| !mark.placeholder && mark.content.presence() > mark.at) {
 		let mark = dead.remove(&id).expect("checked above");
 		live.insert(id, mark.content);
 	}
 }
 
-/// Folds `content` into whatever is held under `id`, or holds it as new.
+/// Folds `content` into whatever is held under `id`, or holds it as new. Content is what an addition
+/// or a removal's snapshot carries, so it is proof the entity was added: a placeholder holding it
+/// stops being one.
 fn fold<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, content: T) {
+	if let Some(mark) = dead.get_mut(&id).filter(|mark| mark.placeholder) {
+		// The placeholder is nothing but the writes that arrived early: they land on the real content,
+		// newer where they are newer, as they would have had the addition come first.
+		let early = std::mem::replace(&mut mark.content, content);
+		mark.content.merge(early);
+		mark.placeholder = false;
+		settle(live, dead, id);
+		return;
+	}
 	match content_mut(live, dead, id) {
 		Some(existing) => {
 			existing.merge(content);
@@ -729,23 +788,39 @@ fn remove<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut
 	}
 	if live.get(&id).is_some_and(|content| force || at > content.presence()) {
 		let content = live.remove(&id).expect("checked above");
-		dead.insert(id, Tombstone { content, at });
+		dead.insert(id, Tombstone { content, at, placeholder: false });
 	}
 }
 
 /// A write at `at` to the entity under `id`, applied by `write` to its content wherever it sits. The
-/// write is evidence the entity exists at `at`, so it revives a removal older than that. An entity
-/// never seen is `missing()`, for the caller to defer the write until its addition arrives.
+/// write is evidence the entity exists at `at`, so it revives a removal older than that. A write to an
+/// entity never seen lands on a placeholder: a tombstone that stays dead until an addition folds into
+/// it, so the ops of a set land the same whichever order they arrive in and nothing is ever deferred.
+/// A fresh local edit cannot mean that, so for one the entity is `missing()`.
 fn write<K: Hash + Eq + Copy, T: Presence>(
 	live: &mut HashMap<K, T>,
 	dead: &mut HashMap<K, Tombstone<T>>,
 	id: K,
 	at: TimeStamp,
-	force: bool,
+	mode: ApplyMode,
 	missing: impl FnOnce() -> CrdtError,
 	write: impl FnOnce(&mut T) -> Result<(), CrdtError>,
 ) -> Result<(), CrdtError> {
-	let Some(content) = content_mut(live, dead, id) else { return Err(missing()) };
+	let force = mode == ApplyMode::Force;
+	if !live.contains_key(&id) && !dead.contains_key(&id) {
+		if mode == ApplyMode::Live {
+			return Err(missing());
+		}
+		dead.insert(
+			id,
+			Tombstone {
+				content: T::placeholder(),
+				at: TimeStamp::ORIGIN,
+				placeholder: true,
+			},
+		);
+	}
+	let content = content_mut(live, dead, id).expect("held above");
 	write(content)?;
 	if at > content.presence() {
 		content.set_presence(at);
@@ -757,28 +832,28 @@ fn write<K: Hash + Eq + Copy, T: Presence>(
 	Ok(())
 }
 
-fn write_node(registry: &mut Registry, id: NodeId, at: TimeStamp, force: bool, f: impl FnOnce(&mut Node) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
-	write(&mut registry.node_instances, &mut registry.removed_nodes, id, at, force, || CrdtError::TargetNodeDoesNotExist(id), f)
+fn write_node(registry: &mut Registry, id: NodeId, at: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut Node) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
+	write(&mut registry.node_instances, &mut registry.removed_nodes, id, at, mode, || CrdtError::TargetNodeDoesNotExist(id), f)
 }
 
-fn write_network(registry: &mut Registry, id: NetworkId, at: TimeStamp, force: bool, f: impl FnOnce(&mut Network) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
-	write(&mut registry.networks, &mut registry.removed_networks, id, at, force, || CrdtError::NetworkDoesNotExist(id), f)
+fn write_network(registry: &mut Registry, id: NetworkId, at: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut Network) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
+	write(&mut registry.networks, &mut registry.removed_networks, id, at, mode, || CrdtError::NetworkDoesNotExist(id), f)
 }
 
 /// A reference to a node is evidence it exists at `at`.
-fn touch_node(registry: &mut Registry, id: NodeId, at: TimeStamp, force: bool) -> Result<(), CrdtError> {
-	write_node(registry, id, at, force, |_| Ok(()))
+fn touch_node(registry: &mut Registry, id: NodeId, at: TimeStamp, mode: ApplyMode) -> Result<(), CrdtError> {
+	write_node(registry, id, at, mode, |_| Ok(()))
 }
 
 /// A reference to a network is evidence it exists at `at`.
-fn touch_network(registry: &mut Registry, id: NetworkId, at: TimeStamp, force: bool) -> Result<(), CrdtError> {
-	write_network(registry, id, at, force, |_| Ok(()))
+fn touch_network(registry: &mut Registry, id: NetworkId, at: TimeStamp, mode: ApplyMode) -> Result<(), CrdtError> {
+	write_network(registry, id, at, mode, |_| Ok(()))
 }
 
 /// Like [`write`] for a resource, except that an entry never seen is created first: the resource ops
 /// that write one field are upserts. The entry starts with every other field at the origin, so the
 /// write itself lands and an addition arriving later fills the rest in.
-fn upsert_resource(registry: &mut Registry, id: ResourceId, at: TimeStamp, force: bool, f: impl FnOnce(&mut ResourceEntry)) {
+fn upsert_resource(registry: &mut Registry, id: ResourceId, at: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut ResourceEntry)) {
 	if !registry.resources.contains_key(&id) && !registry.removed_resources.contains_key(&id) {
 		registry.resources.insert(
 			id,
@@ -789,7 +864,7 @@ fn upsert_resource(registry: &mut Registry, id: ResourceId, at: TimeStamp, force
 		);
 	}
 	let missing = || CrdtError::ResourceDoesNotExist(id);
-	write(&mut registry.resources, &mut registry.removed_resources, id, at, force, missing, |entry| {
+	write(&mut registry.resources, &mut registry.removed_resources, id, at, mode, missing, |entry| {
 		f(entry);
 		Ok(())
 	})

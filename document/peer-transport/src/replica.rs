@@ -148,10 +148,21 @@ impl Replica {
 		self.broadcast(BroadcastBody::HotOps(ops.to_vec()))
 	}
 
+	/// Take back hot ops of this peer's own, so every peer drops them. The ops have already left the
+	/// local log; this is what makes them leave the others.
+	pub fn broadcast_retraction(&mut self, ops: &[HotOpId]) -> Result<(), PacketError> {
+		if ops.is_empty() {
+			return Ok(());
+		}
+		self.resources_stale = true;
+		self.broadcast(BroadcastBody::Retract(ops.to_vec()))
+	}
+
 	/// Host only.
 	pub fn broadcast_retired(&mut self, deltas: &[Delta], retires: &[HotOpId]) -> Result<(), PacketError> {
 		debug_assert_eq!(self.role, Role::Host);
-		if deltas.is_empty() {
+		// A transaction of nothing but its marker retires with no delta, and the marker still has to go.
+		if deltas.is_empty() && retires.is_empty() {
 			return Ok(());
 		}
 
@@ -267,7 +278,14 @@ impl Replica {
 		let retired = target.retired_marks();
 		let unretired: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !retired.covers(hot_op.id())).collect();
 
-		self.broadcast_hot_ops(&unretired)
+		self.broadcast_hot_ops(&unretired)?;
+		// A retraction in flight when a peer joined never reached it, and nothing holds it to re-send, so the
+		// marks that record it go round again with the ops.
+		let retracted = target.retracted_marks();
+		if retracted.retired_up_to.is_empty() && retracted.retired_beyond.is_empty() {
+			return Ok(());
+		}
+		self.broadcast(BroadcastBody::RetractedMarks(retracted))
 	}
 
 	/// Retry ops held back for a missing referent. A later op can supply the entity an earlier one
@@ -385,6 +403,7 @@ impl Replica {
 					known_revs: target.known_revs(),
 					seen: self.seen_vector(),
 					retired: target.retired_marks(),
+					retracted: target.retracted_marks(),
 				};
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
 			}
@@ -401,6 +420,7 @@ impl Replica {
 					None => target.merge_remote(sync.deltas, &[])?,
 				}
 				target.absorb_retired_marks(&sync.retired)?;
+				target.absorb_retracted_marks(&sync.retracted)?;
 
 				self.deferred.extend(target.apply_remote_hot_ops(held)?);
 				self.deferred.extend(target.apply_remote_hot_ops(sync.hot_log)?);
@@ -543,6 +563,15 @@ impl Replica {
 			let applied = match broadcast.body {
 				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops).map(|deferred| self.deferred.extend(deferred)),
 				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires),
+				BroadcastBody::Retract(ops) => {
+					// A copy still waiting on a referent is taken back with the rest.
+					self.deferred.retain(|hot_op| !ops.contains(&hot_op.id()));
+					target.retract_hot_ops(&ops)
+				}
+				BroadcastBody::RetractedMarks(marks) => {
+					self.deferred.retain(|hot_op| !marks.covers(hot_op.id()));
+					target.absorb_retracted_marks(&marks)
+				}
 			};
 			if let Err(error) = applied {
 				log::error!("Applying a delivered broadcast: {error}");

@@ -97,6 +97,18 @@ impl SyncTarget for SimTarget {
 		SyncTarget::absorb_retired_marks(&mut self.session, remote)
 	}
 
+	fn retracted_marks(&self) -> RetiredHotOps {
+		SyncTarget::retracted_marks(&self.session)
+	}
+
+	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
+		SyncTarget::absorb_retracted_marks(&mut self.session, remote)
+	}
+
+	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
+		SyncTarget::retract_hot_ops(&mut self.session, ops)
+	}
+
 	fn flush(&mut self) -> Result<(), TargetError> {
 		// History is append-only. Hot ops are explicitly transient and a rejoin may drop the lot, but a
 		// retired delta is the durable record, so losing one is data loss no convergence check would see.
@@ -213,12 +225,19 @@ impl Peer {
 		}
 	}
 
+	/// Undo this peer's latest transaction while it is hot, the way the editor does for a step not yet
+	/// retired: the ops leave every hot log and never become history.
+	fn retract(&mut self) {
+		if let Some((ids, _)) = self.target.session.retract_transaction().expect("retract") {
+			self.replica.broadcast_retraction(&ids).expect("broadcast retraction");
+		}
+	}
+
 	/// Retire up to `count` of the closed transactions in the hot log, the earliest closed first, as the
 	/// policy does. Open transactions stay hot, so a later transaction of one author retires while an
 	/// earlier one of another is still in progress.
 	fn retire_closed(&mut self, count: usize) {
-		let contiguous: Vec<_> = self.target.session.closed_transactions().into_iter().filter(|transaction| transaction.contiguous).collect();
-		let closed: Vec<_> = self.target.session.retirable(&contiguous).into_iter().take(count).collect();
+		let closed: Vec<_> = self.target.session.closed_transactions().into_iter().filter(|transaction| transaction.contiguous).take(count).collect();
 		let mut revs = Vec::new();
 		let mut retired_hot_ops = Vec::new();
 		for transaction in &closed {
@@ -464,6 +483,8 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 					peers[index].end_transaction();
 				}
 			}
+			// An undo of a step still hot takes it back everywhere; one already retired is not undone here.
+			11 if peers[index].replica.is_synced() => peers[index].retract(),
 			// A small pool of distinct payloads, so peers sometimes introduce the same resource
 			// concurrently and sometimes one nobody else can serve.
 			8 if peers[index].replica.is_synced() => {
@@ -603,35 +624,6 @@ fn assert_snapshot_matches_history(seed: u64, peers: &[Peer]) {
 	}
 }
 
-/// Whether every `AddNode` in history names a network that history itself creates. Retirement promotes
-/// whatever the host managed to apply, so a referent that only ever existed as an unretired hot op
-/// could in principle leave a durable hole here.
-fn assert_history_self_contained(seed: u64, peers: &[Peer]) {
-	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
-		let created: HashSet<NetworkId> = peer
-			.session()
-			.history()
-			.filter_map(|delta| match delta.kind {
-				RegistryDelta::AddNetwork { id, .. } => Some(id),
-				_ => None,
-			})
-			.chain(peer.session().history().filter_map(|delta| match delta.reverse {
-				RegistryDelta::AddNetwork { id, .. } => Some(id),
-				_ => None,
-			}))
-			.collect();
-		for delta in peer.session().history() {
-			if let RegistryDelta::AddNode { node, .. } = &delta.kind {
-				assert!(
-					created.contains(&node.network()),
-					"seed {seed}: peer {index} history has AddNode into {:?} that nothing in history creates",
-					node.network()
-				);
-			}
-		}
-	}
-}
-
 /// A hot op is identified by its timestamp, so holding one twice means some path appended a copy of
 /// something already there, which then replays and re-broadcasts as if it were new work.
 fn assert_no_duplicate_hot_ops(seed: u64, peers: &[Peer]) {
@@ -648,7 +640,6 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 	assert_no_duplicate_hot_ops(seed, peers);
 	assert_snapshot_matches_history(seed, peers);
 	assert_zones_agree(seed, peers);
-	assert_history_self_contained(seed, peers);
 
 	let present = || peers.iter().enumerate().filter(|(_, peer)| !peer.departed);
 

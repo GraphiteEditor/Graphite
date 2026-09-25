@@ -34,6 +34,10 @@ pub struct Registry {
 pub struct Tombstone<T> {
 	pub content: T,
 	pub at: TimeStamp,
+	/// Nothing has added the entity yet: the content only holds writes that arrived ahead of the addition,
+	/// and the entity stays dead until one folds in. See [`Registry::removed_nodes`].
+	#[serde(default)]
+	pub placeholder: bool,
 }
 
 impl Registry {
@@ -53,7 +57,7 @@ impl Registry {
 	/// will not stay agreed.
 	pub fn removal_marks_equal(&self, other: &Self) -> bool {
 		fn same<K: std::hash::Hash + Eq, T>(a: &HashMap<K, Tombstone<T>>, b: &HashMap<K, Tombstone<T>>) -> bool {
-			a.len() == b.len() && a.iter().all(|(id, mark)| b.get(id).is_some_and(|other| other.at == mark.at))
+			a.len() == b.len() && a.iter().all(|(id, mark)| b.get(id).is_some_and(|other| other.at == mark.at && other.placeholder == mark.placeholder))
 		}
 		same(&self.removed_nodes, &other.removed_nodes) && same(&self.removed_networks, &other.removed_networks) && same(&self.removed_resources, &other.removed_resources)
 	}

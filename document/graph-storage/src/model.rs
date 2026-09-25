@@ -82,6 +82,12 @@ impl Node {
 		}
 	}
 
+	/// Dead content for a node nothing has added yet, so a write arriving ahead of the addition has
+	/// somewhere to land. Every field is at the origin, so the addition's values win when it comes.
+	pub(crate) fn placeholder() -> Self {
+		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(ResourceId::from(0)), 0)
+	}
+
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
 		Self {

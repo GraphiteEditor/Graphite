@@ -2,7 +2,7 @@
 use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
-use crate::{ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, Touched, UserId};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -288,6 +288,57 @@ impl Session {
 		Ok(())
 	}
 
+	/// Take back this peer's latest transaction while it is still hot: its ops since the previous marker,
+	/// closed or not. They leave the log here and, once the retraction reaches them, everywhere, and they
+	/// never retire, so an accidental gesture and its undo leave no step in history. `None` when there is
+	/// nothing hot to take back, or when the transaction has already retired somewhere this peer knows
+	/// of, which makes it an undo of a retired step instead. Returns the ids to send and what they named.
+	pub fn retract_transaction(&mut self) -> Result<Option<(Vec<HotOpId>, Touched)>, CrdtError> {
+		let peer = self.document.peer;
+		let mut own: Vec<&HotOp> = self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp.peer == peer).collect();
+		own.sort_by_key(|hot_op| hot_op.sequence);
+		// The latest transaction: everything after the previous marker, through a trailing marker if any.
+		let closed_before = match own.last() {
+			Some(last) if matches!(last.op, RegistryDelta::EndTransaction) => own.len() - 1,
+			Some(_) => own.len(),
+			None => return Ok(None),
+		};
+		let start = own[..closed_before]
+			.iter()
+			.rposition(|hot_op| matches!(hot_op.op, RegistryDelta::EndTransaction))
+			.map_or(0, |position| position + 1);
+		if own[start..].iter().all(|hot_op| matches!(hot_op.op, RegistryDelta::EndTransaction)) {
+			return Ok(None);
+		}
+		let ids: Vec<HotOpId> = own[start..].iter().map(|hot_op| hot_op.id()).collect();
+		if ids.iter().any(|&id| self.document.retired.covers(id)) {
+			return Ok(None);
+		}
+		let touched = self.retract_hot_ops(&ids);
+		Ok(Some((ids, touched)))
+	}
+
+	/// Take back hot ops another peer retracted. See [`retract_transaction`](Self::retract_transaction).
+	pub fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> Touched {
+		self.runtime_base = None;
+		self.document.retract_hot_ops(ids)
+	}
+
+	/// Which hot ops were taken back, for a peer catching up.
+	pub fn retracted_marks(&self) -> &RetiredHotOps {
+		&self.document.retracted
+	}
+
+	/// Take on a peer's retractions: whatever they cover that this log still holds is taken back here too.
+	pub fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Touched {
+		let held: Vec<HotOpId> = self.document.hot_log.iter().map(HotOp::id).filter(|&id| remote.covers(id)).collect();
+		self.document.retracted.absorb(remote);
+		if held.is_empty() {
+			return Touched::default();
+		}
+		self.retract_hot_ops(&held)
+	}
+
 	/// Which hot ops history already covers, for a peer catching up. See [`RetiredHotOps`].
 	pub fn retired_marks(&self) -> &RetiredHotOps {
 		&self.document.retired
@@ -444,29 +495,6 @@ impl Session {
 		closed
 	}
 
-	/// The subsequence of `closed` that can retire now, in order: a transaction is held back while it
-	/// refers to an entity the retired snapshot has never seen and no transaction ahead of it adds,
-	/// which is one still sitting in another author's open transaction. Applying it would land a write
-	/// on an unknown target, the one thing the registry defers rather than resolves.
-	pub fn retirable(&self, closed: &[ClosedTransaction]) -> Vec<ClosedTransaction> {
-		let snapshot = &self.document.retired_snapshot;
-		let mut nodes: HashSet<NodeId> = snapshot.node_instances.keys().chain(snapshot.removed_nodes.keys()).copied().collect();
-		let mut networks: HashSet<NetworkId> = snapshot.networks.keys().chain(snapshot.removed_networks.keys()).copied().collect();
-		let by_id: HashMap<HotOpId, &HotOp> = self.document.hot_log.iter().map(|hot_op| (hot_op.id(), hot_op)).collect();
-
-		let mut retirable = Vec::new();
-		for transaction in closed {
-			let mut nodes_after = nodes.clone();
-			let mut networks_after = networks.clone();
-			let ops = transaction.ops.iter().filter_map(|id| by_id.get(id)).map(|hot_op| &hot_op.op);
-			if ops.clone().all(|op| op_referents_known(op, &mut nodes_after, &mut networks_after)) {
-				nodes = nodes_after;
-				networks = networks_after;
-				retirable.push(transaction.clone());
-			}
-		}
-		retirable
-	}
 	/// Retire one closed transaction as one interaction: its ops become retired deltas in the author's
 	/// order, each keeping its authoring stamp, the marker commits nothing, and the last delta is marked as
 	/// the interaction's end. Returns the new revs.
@@ -948,43 +976,6 @@ pub enum CrdtError {
 	PeerRegistrationConflict(PeerId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
-}
-
-/// Whether every entity `op` writes to or refers to is in the sets, adding what the op itself brings into
-/// being. Mirrors the cases in which [`Document::apply_op_with`] errors on an entity never seen.
-fn op_referents_known(op: &RegistryDelta, nodes: &mut HashSet<NodeId>, networks: &mut HashSet<NetworkId>) -> bool {
-	let input_known = |input: &crate::NodeInput, nodes: &HashSet<NodeId>| match input {
-		crate::NodeInput::Node { id, .. } => nodes.contains(id),
-		_ => true,
-	};
-	match op {
-		RegistryDelta::AddNode { id, node } => {
-			let known = networks.contains(&node.network);
-			nodes.insert(*id);
-			known
-		}
-		RegistryDelta::RemoveNode { id, .. } => {
-			nodes.insert(*id);
-			true
-		}
-		RegistryDelta::SetNodeInputs { id, inputs } => nodes.contains(id) && inputs.iter().all(|slot| input_known(&slot.input, nodes)),
-		RegistryDelta::ChangeNodeInput { id, new_input, .. } => nodes.contains(id) && input_known(new_input, nodes),
-		RegistryDelta::SetNodeImplementation { id, implementation } => {
-			nodes.contains(id)
-				&& match implementation {
-					Implementation::Network(network) => networks.contains(network),
-					Implementation::ProtoNode(_) => true,
-				}
-		}
-		RegistryDelta::ChangeNodeAttribute { id, .. } | RegistryDelta::ChangeNodeInputAttribute { id, .. } => nodes.contains(id),
-		RegistryDelta::SetNetworkExport { id, export, .. } => networks.contains(id) && export.as_ref().is_none_or(|input| input_known(input, nodes)),
-		RegistryDelta::AddNetwork { id, .. } | RegistryDelta::RemoveNetwork { id, .. } => {
-			networks.insert(*id);
-			true
-		}
-		RegistryDelta::ChangeNetworkAttribute { id, .. } => networks.contains(id),
-		_ => true,
-	}
 }
 
 /// An author's closed transaction sitting in the hot log, as [`Session::closed_transactions`] lists them.
