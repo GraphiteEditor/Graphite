@@ -383,6 +383,7 @@ impl Replica {
 			epoch: self.epoch,
 			seq: self.seq,
 		};
+		log::info!("Join handshake: hello sent to {transport_peer:?} as {:?}", self.role);
 		self.transport.send(transport_peer, &hello)?;
 		Ok(())
 	}
@@ -390,6 +391,7 @@ impl Replica {
 	fn handle_packet(&mut self, from: TransportPeerId, packet: SyncPacket, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
 		match packet {
 			SyncPacket::Hello { peer, user, role, epoch, seq } => {
+				log::info!("Join handshake: hello from {peer:?} ({role:?}), synced {}", self.is_synced());
 				self.peers.insert(from, RemotePeer { peer, user, role });
 				self.anchor_delivered(peer, epoch, seq);
 
@@ -402,6 +404,7 @@ impl Replica {
 				self.resources_stale = true;
 
 				if role == Role::Host && !self.is_synced() {
+					log::info!("Join handshake: sync request sent to the host");
 					self.transport.send(from, &SyncPacket::SyncRequest { known_revs: target.known_revs() })?;
 				}
 			}
@@ -426,6 +429,7 @@ impl Replica {
 					return Ok(());
 				}
 				let shares_history = known_revs.iter().any(|&rev| target.contains_rev(rev));
+				log::info!("Join handshake: sync request from {from:?}, shares history {shares_history}");
 				let sync = SyncPayload {
 					registry: (!shares_history).then(|| target.retired_registry()),
 					deltas: target.deltas_unknown_to(&known_revs),
@@ -437,9 +441,11 @@ impl Replica {
 					retracted: target.retracted_marks(),
 					document_id: target.document_id(),
 				};
+				log::info!("Join handshake: sync answered with {} deltas and {} hot ops", sync.deltas.len(), sync.hot_log.len());
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
 			}
 			SyncPacket::Sync(sync) => {
+				log::info!("Join handshake: sync received with {} deltas, full registry {}", sync.deltas.len(), sync.registry.is_some());
 				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
 					return Ok(());
 				};

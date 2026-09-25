@@ -151,6 +151,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					for event in events {
 						match event {
 							Event::Synced => {
+								log::info!("Join handshake: synced, applying the host's state");
 								self.dirty.insert(document_id);
 								self.fit_after_sync.insert(document_id);
 							}
@@ -196,6 +197,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					if document.apply_remote_changes(responses) {
 						self.dirty.remove(&document_id);
 						if self.fit_after_sync.remove(&document_id) && Some(document_id) == active_document_id {
+							log::info!("Join handshake: the host's state is applied, fitting the viewport after the graph runs");
 							// The bounds come from the render, so the fit waits for the graph to run on the new document.
 							responses.add(DeferMessage::AfterGraphRun {
 								messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
