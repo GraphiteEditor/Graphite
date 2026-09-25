@@ -182,10 +182,12 @@ color = "0.3"
 # Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
-glam = { version = "0.32.1", default-features = false, features = [
+glam = { version = "0.33", default-features = false, features = [
 	"nostd-libm",
 	"scalar-math",
 	"bytemuck",
+	"debug-glam-assert",
+	"all-types",
 ] }
 base64 = "0.22"
 blake3 = "1.5"
@@ -239,8 +241,9 @@ rfd = "0.17"
 open = "5.3"
 spin = "0.10"
 clap = "4.5"
-spirv-std = { version = "0.10.0-alpha.1", features = ["bytemuck"] }
-cargo-gpu-install = { version = "0.10.0-alpha.1", default-features = false }
+# Git commit required for glam=0.33 support (TODO: use release when new version is published. Last publish was Apr 17)
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "e6394e08eb3356083b12f732a01906f8e49f7c4a", features = ["bytemuck"] }
+cargo-gpu-install = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "e6394e08eb3356083b12f732a01906f8e49f7c4a", default-features = false }
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"

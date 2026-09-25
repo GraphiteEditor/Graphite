@@ -85,7 +85,11 @@ impl RadiusHandle {
 					return;
 				};
 				let viewport = document.metadata().transform_to_viewport(layer);
-				let angle = viewport.inverse().transform_point2(mouse_position).angle_to(DVec2::X);
+				let vector = viewport.inverse().transform_point2(mouse_position);
+				if !(vector.length_squared() > 0.) {
+					return; // Cannot do anything if the cursor is exactly on the pivot.
+				}
+				let angle = vector.angle_to(DVec2::X);
 				let point_position = viewport.transform_point2(calculate_circle_point_position(angle, radius.abs()));
 				let center = viewport.transform_point2(DVec2::ZERO);
 

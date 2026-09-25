@@ -27,7 +27,7 @@ glam = ["dep:glam"]
 dyn-any-derive = { path = "derive", optional = true }
 
 # Optional dependencies
-glam = { version = "0.32.1", optional = true, default-features = false }
+glam = { version = "0.33", optional = true, default-features = false, features = ["all-types"] }
 reqwest = { version = "0.13", optional = true, default-features = false }
 
 [package.metadata.docs.rs]

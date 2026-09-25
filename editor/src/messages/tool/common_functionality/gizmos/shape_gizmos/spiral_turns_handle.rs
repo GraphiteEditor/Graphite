@@ -150,11 +150,16 @@ impl SpiralTurns {
 		let viewport = document.metadata().transform_to_viewport(layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		let angle_delta = viewport
-			.inverse()
-			.transform_vector2(input.mouse.position - center)
-			.angle_to(viewport.inverse().transform_vector2(self.previous_mouse_position - center))
-			.to_degrees();
+		let layer_vector = viewport.inverse().transform_vector2(input.mouse.position - center);
+		let mouse_vector = viewport.inverse().transform_vector2(self.previous_mouse_position - center);
+
+		// Cannot take angle to zero length vector
+		if !(layer_vector.length_squared() > 0. && mouse_vector.length_squared() > 0.) {
+			self.previous_mouse_position = input.mouse.position;
+			return;
+		}
+
+		let angle_delta = layer_vector.angle_to(mouse_vector).to_degrees();
 
 		// Skip update if angle calculation produced NaN or infinity (can happen when mouse is at center)
 		// Also skip very small angle changes to reduce jitter near center
