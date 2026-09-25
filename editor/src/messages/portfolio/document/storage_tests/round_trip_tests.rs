@@ -927,6 +927,12 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
 	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	// The step's declaration bytes are named by nothing in storage now, so garbage collection would drop
+	// them and a redo could not be served to peers; the step held for redo keeps them alive.
+	assert!(
+		editor.active_document().retracted_resource_hashes().next().is_some(),
+		"the retracted step names its declaration resource"
+	);
 
 	editor.handle_message(DocumentMessage::Redo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo restores the edit");

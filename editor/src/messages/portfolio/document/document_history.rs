@@ -174,6 +174,23 @@ impl DocumentHistory {
 		!self.legacy_redo_stack.is_empty()
 	}
 
+	/// The resource bytes the steps taken back still name, so garbage collection keeps them for a redo:
+	/// once taken back, nothing in the registry or history refers to them any more.
+	pub fn retracted_resource_hashes(&self) -> impl Iterator<Item = graph_craft::application_io::resource::ResourceHash> + '_ {
+		self.retracted_undos
+			.iter()
+			.filter_map(|note| match note {
+				UndoNote::Retracted(ops) => Some(ops),
+				_ => None,
+			})
+			.flatten()
+			.filter_map(|op| match op {
+				document_graph_storage::RegistryDelta::AddResource { entry, .. } => entry.hash,
+				document_graph_storage::RegistryDelta::SetResourceHash { hash, .. } => *hash,
+				_ => None,
+			})
+	}
+
 	/// Whether the next redo step is one storage undid on its own, taken back or dropped, so the caller can
 	/// decide how to redo before it moves the legacy stacks.
 	pub fn next_redo_is_storage_driven(&self) -> bool {

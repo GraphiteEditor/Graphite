@@ -3994,6 +3994,11 @@ impl DocumentMessageHandler {
 		self.resources.collect_garbage(&used_resources);
 	}
 
+	/// Resource bytes only a step taken back on undo still names; see [`DocumentHistory::retracted_resource_hashes`].
+	pub fn retracted_resource_hashes(&self) -> impl Iterator<Item = graph_craft::application_io::resource::ResourceHash> + '_ {
+		self.history.retracted_resource_hashes()
+	}
+
 	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
