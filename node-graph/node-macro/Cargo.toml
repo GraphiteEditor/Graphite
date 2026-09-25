@@ -25,8 +25,8 @@ convert_case = { workspace = true }
 strum = { workspace = true }
 indoc = { workspace = true }
 
-proc-macro-crate = "3.1.0"
-proc-macro-error2 = "2"
+proc-macro-crate = "3.1"
+proc-macro-error3 = "3.1"
 
 [dev-dependencies]
 core-types = { workspace = true }

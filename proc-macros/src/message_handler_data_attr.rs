@@ -20,7 +20,7 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 
 	// Extract the message type from the trait path
 	let trait_path = match &impl_block.trait_ {
-		Some((_, path, _)) => path,
+		Some((path, _)) => path,
 		None => return Err(syn::Error::new(Span::call_site(), "Expected trait implementation")),
 	};
 

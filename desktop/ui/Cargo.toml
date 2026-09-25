@@ -33,7 +33,7 @@ serde_json = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 cef = { workspace = true }
 bytemuck = { workspace = true, optional = true }
-ipc-channel = "0.22"
+ipc-channel = "0.23"
 
 # Linux-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -53,7 +53,7 @@ windows = { version = "0.62.2", features = [
 # Mac-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
-mach2 = { version = "0.4", optional = true }
+mach2 = { version = "0.7", optional = true }
 objc2 = { version = "0.6.1", default-features = false }
 objc2-foundation = { version = "0.3.2", default-features = false }
 objc2-app-kit = { version = "0.3.2", default-features = false }
