@@ -53,3 +53,36 @@ mod tests {
 		assert!("BwcHBwcHBwcHBwcHBwcHBw".parse::<SessionToken>().is_err());
 	}
 }
+
+impl SessionToken {
+	/// The token every copy of one document shares: derived from the document's id, so a copy edited
+	/// apart reconnects to the same room as the others by opening the same file, with no link to pass
+	/// around. Document ids are random 64-bit values, so the room is no more guessable than the id; the
+	/// mixing only spreads the id over the token's width.
+	pub fn for_document(document_id: u64) -> Self {
+		fn mix(mut value: u64) -> u64 {
+			value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
+			value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+			value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+			value ^ (value >> 31)
+		}
+		let mut bytes = [0u8; 16];
+		bytes[..8].copy_from_slice(&mix(document_id).to_le_bytes());
+		bytes[8..].copy_from_slice(&mix(document_id ^ 0x5A5A_5A5A_5A5A_5A5A).to_le_bytes());
+		Self(bytes)
+	}
+}
+
+#[cfg(test)]
+mod derived_token_tests {
+	use super::SessionToken;
+
+	/// Every copy of a document derives the same token, and different documents different ones.
+	#[test]
+	fn a_document_id_derives_one_token() {
+		assert_eq!(SessionToken::for_document(7), SessionToken::for_document(7));
+		assert_ne!(SessionToken::for_document(7), SessionToken::for_document(8));
+		let text = SessionToken::for_document(7).to_string();
+		assert_eq!(text.parse::<SessionToken>().expect("round trip"), SessionToken::for_document(7));
+	}
+}

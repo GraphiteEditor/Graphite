@@ -179,6 +179,10 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("Link")
 							.on_commit(|_| SyncMessage::Share.into())
 							.disabled(no_active_document),
+						MenuListEntry::new("Rejoin Live Session")
+							.label("Rejoin Live Session")
+							.on_commit(|_| SyncMessage::Rejoin.into())
+							.disabled(no_active_document),
 						MenuListEntry::new("Leave Live Session")
 							.label("Leave Live Session")
 							.on_commit(|_| SyncMessage::Leave.into())

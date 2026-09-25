@@ -5,10 +5,12 @@ use peer_transport::TransportPeerId;
 #[impl_message(Message, PortfolioMessage, Sync)]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SyncMessage {
-	/// Host the active document and hand the frontend a link for others to join.
+	/// Host the active document in the room every copy of it shares, and hand the frontend a link for others.
 	Share,
 	/// Open a new document that follows the session behind `token`.
 	Join { token: String },
+	/// Join the room the active document's copies share, with this copy and whatever it did while apart.
+	Rejoin,
 	/// Leave the active document's session.
 	Leave,
 	/// Per frame: apply what peers sent and answer their requests.

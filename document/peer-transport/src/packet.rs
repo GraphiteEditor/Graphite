@@ -67,6 +67,10 @@ pub struct SyncPayload {
 	/// Which hot ops their authors took back, so the requester drops any it still holds.
 	#[serde(default)]
 	pub retracted: RetiredHotOps,
+	/// The document's identity, so a peer that started from an empty document adopts it and can reconnect
+	/// to the same room by opening its own copy later.
+	#[serde(default)]
+	pub document_id: Option<u64>,
 }
 
 /// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`

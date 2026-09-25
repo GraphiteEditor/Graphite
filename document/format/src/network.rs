@@ -95,6 +95,15 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		self.session.peer()
 	}
 
+	fn document_id(&self) -> Option<u64> {
+		Some(self.manifest.document_id)
+	}
+
+	fn adopt_document_id(&mut self, document_id: u64) -> Result<(), TargetError> {
+		self.update_manifest(|manifest| manifest.document_id = document_id)?;
+		Ok(())
+	}
+
 	fn head(&self) -> Option<Rev> {
 		self.session.head_rev()
 	}

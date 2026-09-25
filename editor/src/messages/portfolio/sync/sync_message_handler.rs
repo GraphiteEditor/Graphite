@@ -1,4 +1,3 @@
-use crate::application::generate_uuid;
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::prelude::*;
@@ -49,7 +48,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					return;
 				}
 
-				let token = SessionToken(random_token_bytes());
+				// Every copy of the document derives the same token, so a copy edited apart can come back to the
+				// room by itself.
+				let token = SessionToken::for_document(gdd.manifest().document_id);
 				let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 				let user = UserId(gdd.session().peer().0);
 				gdd.share(room, user);
@@ -61,6 +62,24 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					title: "Live session started".into(),
 					description: format!("A link to join was copied to the clipboard.\n\nSession {token}"),
 				});
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				self.start_polling(responses);
+			}
+			SyncMessage::Rejoin => {
+				let Some(document_id) = active_document_id else { return };
+				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
+					log::warn!("Cannot rejoin a session before the working copy is mounted");
+					return;
+				};
+				if gdd.role().is_some() {
+					return;
+				}
+				// This copy keeps its own history and hot ops; the sync merges them with the host's line.
+				let token = SessionToken::for_document(gdd.manifest().document_id);
+				let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
+				let user = UserId(gdd.session().peer().0);
+				gdd.join(room, user);
+				responses.add(driver_future(document_id, driver));
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				self.start_polling(responses);
 			}
@@ -199,7 +218,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 		}
 	}
 
-	advertise_actions!(SyncMessageDiscriminant; Share, Leave);
+	advertise_actions!(SyncMessageDiscriminant; Share, Rejoin, Leave);
 }
 
 impl SyncMessageHandler {
@@ -241,13 +260,6 @@ fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPe
 		}
 	};
 	future.into()
-}
-
-fn random_token_bytes() -> [u8; 16] {
-	let mut bytes = [0; 16];
-	bytes[..8].copy_from_slice(&generate_uuid().to_le_bytes());
-	bytes[8..].copy_from_slice(&generate_uuid().to_le_bytes());
-	bytes
 }
 
 /// A monotonic-enough millisecond clock for the retirement policy, which only ever compares differences.

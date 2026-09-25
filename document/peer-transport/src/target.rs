@@ -6,6 +6,14 @@ pub type TargetError = Box<dyn std::error::Error>;
 /// The document state a `Replica` reads from and applies remote changes to.
 pub trait SyncTarget {
 	fn peer(&self) -> PeerId;
+	/// The identity of the document this target holds, if it has one; a session token is derived from it.
+	fn document_id(&self) -> Option<u64> {
+		None
+	}
+	/// Take on the host's document identity after a full sync, so this copy is the same document from now on.
+	fn adopt_document_id(&mut self, _document_id: u64) -> Result<(), TargetError> {
+		Ok(())
+	}
 	fn head(&self) -> Option<Rev>;
 	fn retired_registry(&self) -> Registry;
 	fn hot_log(&self) -> Vec<HotOp>;

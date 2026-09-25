@@ -435,6 +435,7 @@ impl Replica {
 					seen: self.seen_vector(),
 					retired: target.retired_marks(),
 					retracted: target.retracted_marks(),
+					document_id: target.document_id(),
 				};
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
 			}
@@ -446,9 +447,13 @@ impl Replica {
 				// kept and replayed back on top. They are the only copy of whatever never reached the host.
 				let held = if sync.registry.is_some() { target.hot_log() } else { Vec::new() };
 
+				let full = sync.registry.is_some();
 				match sync.registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
 					None => target.merge_remote(sync.deltas, &[], sync.head)?,
+				}
+				if full && let Some(document_id) = sync.document_id {
+					target.adopt_document_id(document_id)?;
 				}
 				target.absorb_retired_marks(&sync.retired)?;
 				target.absorb_retracted_marks(&sync.retracted)?;
