@@ -23,6 +23,9 @@ pub struct SyncMessageHandler {
 	polling: bool,
 	/// Documents whose registry changed remotely since their interface was last rebuilt.
 	dirty: HashSet<DocumentId>,
+	/// Documents that just took the host's state on: once their interface follows and the graph has run, the
+	/// viewport is fitted to the document, so a guest sees what it joined rather than an empty canvas.
+	fit_after_sync: HashSet<DocumentId>,
 	blocked_reason: HashMap<DocumentId, String>,
 }
 
@@ -128,7 +131,11 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 					for event in events {
 						match event {
-							Event::Synced | Event::Changed => {
+							Event::Synced => {
+								self.dirty.insert(document_id);
+								self.fit_after_sync.insert(document_id);
+							}
+							Event::Changed => {
 								self.dirty.insert(document_id);
 							}
 							Event::ResourceRequested { from, hash } => {
@@ -169,6 +176,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					// Stays dirty while a declaration the changes need is still on its way.
 					if document.apply_remote_changes(responses) {
 						self.dirty.remove(&document_id);
+						if self.fit_after_sync.remove(&document_id) && Some(document_id) == active_document_id {
+							// The bounds come from the render, so the fit waits for the graph to run on the new document.
+							responses.add(DeferMessage::AfterGraphRun {
+								messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+							});
+						}
 					}
 					// The registry names resources this peer may still have to fetch or resolve.
 					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
