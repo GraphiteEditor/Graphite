@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{AttributeDelta, Delta, History, MergeOutcome, Network, NetworkId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session};
+use crate::{AttributeDelta, Delta, History, MergeOutcome, Network, NetworkId, NodeId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session};
 
 fn set_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
@@ -398,4 +398,63 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 		.expect("merge the copies");
 	assert_eq!(guest.head_rev(), host.head_rev());
 	assert_eq!(guest.retired_registry(), host.retired_registry());
+}
+
+/// A transaction retires coarsened: of the writes to one field only the newest becomes a delta, a
+/// whole-list input write supersedes the slot writes before it, a write wiring an input to a node stays
+/// while what supersedes it wires elsewhere, and the fold is the one every op would have produced.
+#[test]
+fn a_transaction_retires_to_one_delta_per_field() {
+	let attribute = |value: u32| set_attribute("name", value);
+	let wire = |target: u64| RegistryDelta::ChangeNodeInput {
+		id: NodeId(1),
+		index: 0,
+		new_input: crate::NodeInput::Node { id: NodeId(target), index: 0 },
+	};
+	let value = |value: u32| RegistryDelta::ChangeNodeInput {
+		id: NodeId(1),
+		index: 1,
+		new_input: crate::NodeInput::Value {
+			value: serde_json::json!(value),
+			exposed: false,
+		},
+	};
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(add_network(3)).expect("network");
+	host.document.working_registry = host.document.retired_snapshot.clone();
+	let node = |id: u64| RegistryDelta::AddNode {
+		id: NodeId(id),
+		node: crate::Node::new(NetworkId(3), crate::Implementation::ProtoNode(ResourceId::from(7)), 2),
+	};
+	let ops = vec![node(1), node(2), node(4), attribute(1), value(1), attribute(2), wire(2), value(2), wire(4), attribute(3), value(3)];
+	let mut raw = host.clone();
+	raw.stage_ops(ops.clone()).expect("stage");
+	host.stage_ops(ops).expect("stage");
+	host.end_transaction().expect("close");
+	raw.end_transaction().expect("close");
+
+	let closed = host.closed_transactions();
+	assert_eq!(closed.len(), 1);
+	let coarsened = host.retire_transaction(&closed[0]).expect("retire");
+	let raw_ids: Vec<crate::HotOpId> = raw.hot_log().iter().map(crate::HotOp::id).collect();
+	let uncoarsened = raw.retire_hot_ops(&raw_ids).expect("retire raw");
+
+	assert_eq!(uncoarsened.len(), 12, "RegisterPeer, three additions and eight writes");
+	assert_eq!(
+		coarsened.len(),
+		8,
+		"RegisterPeer, three additions, the newest attribute, the newest value, and both wires: {coarsened:?}"
+	);
+	assert!(host.hot_log().is_empty());
+	assert!(host.retired_registry().value_equal(raw.retired_registry()), "the fold is unchanged");
+	assert!(host.registry().value_equal(host.retired_registry()), "the working registry, built from every op, agrees");
+	assert_eq!(host.retired_registry(), raw.retired_registry(), "stamps included: the survivor keeps its own");
+	let kinds: Vec<&RegistryDelta> = host.history().map(|delta| &delta.kind).collect();
+	assert!(kinds.iter().filter(|kind| matches!(kind, RegistryDelta::ChangeDocumentAttribute { .. })).count() == 1);
+	assert!(
+		kinds.iter().filter(|kind| matches!(kind, RegistryDelta::ChangeNodeInput { index: 0, .. })).count() == 2,
+		"the wire to node 2 stays as evidence node 2 exists"
+	);
+	assert!(kinds.iter().filter(|kind| matches!(kind, RegistryDelta::ChangeNodeInput { index: 1, .. })).count() == 1);
+	assert!(host.history().last().is_some_and(|delta| delta.is_interaction_end()));
 }

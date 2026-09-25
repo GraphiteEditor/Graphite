@@ -708,11 +708,13 @@ impl Session {
 		closed
 	}
 
-	/// Retire one closed transaction as one interaction: its ops become retired deltas in the author's
-	/// order, each keeping its authoring stamp, the marker commits nothing, and the last delta is marked as
-	/// the interaction's end. Returns the new revs.
+	/// Retire one closed transaction as one interaction, coarsened: of the writes to one field, only the
+	/// newest becomes a delta, since every field is last-writer-wins and the earlier ones have no effect
+	/// on the fold; structural ops and every write that is the transaction's newest to its field stay.
+	/// The marker commits nothing, the last delta is marked as the interaction's end, and every op of the
+	/// transaction is marked retired, dropped ones included. Returns the new revs.
 	pub fn retire_transaction(&mut self, transaction: &ClosedTransaction) -> Result<Vec<Rev>, CrdtError> {
-		let revs = self.retire_hot_ops(&transaction.ops)?;
+		let revs = self.retire_hot_ops_with(&transaction.ops, true)?;
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
 		}
@@ -731,11 +733,16 @@ impl Session {
 	///
 	/// Today: one retired delta per hot op. Coarsening is a future step.
 	pub fn retire_hot_ops(&mut self, ids: &[HotOpId]) -> Result<Vec<Rev>, CrdtError> {
+		self.retire_hot_ops_with(ids, false)
+	}
+
+	fn retire_hot_ops_with(&mut self, ids: &[HotOpId], coarsened: bool) -> Result<Vec<Rev>, CrdtError> {
 		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
 		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
 		self.document.hot_log = kept;
 		self.document.mark_retired(drained.iter().map(HotOp::id));
 
+		let drained = if coarsened { coarsen(drained) } else { drained };
 		let ops = drained
 			.into_iter()
 			.filter(|hot_op| !matches!(hot_op.op, RegistryDelta::EndTransaction))
@@ -1196,6 +1203,89 @@ pub enum CrdtError {
 	PeerRegistrationConflict(PeerId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
+}
+
+/// Which field of the registry a write lands on, for coarsening.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum FieldKey {
+	NodeInput(NodeId, u32),
+	NodeInputAttribute(NodeId, u32, String),
+	NodeAttribute(NodeId, String),
+	NodeImplementation(NodeId),
+	NodeInputs(NodeId),
+	NetworkExport(NetworkId, u32),
+	NetworkAttribute(NetworkId, String),
+	ResourceHash(ResourceId),
+	Source(ResourceId, crate::SourceKey),
+	DocumentAttribute(String),
+}
+
+/// The field a write lands on, `None` for an op that is not a plain field write.
+fn field_of(op: &RegistryDelta) -> Option<FieldKey> {
+	Some(match op {
+		RegistryDelta::ChangeNodeInput { id, index, .. } => FieldKey::NodeInput(*id, *index),
+		RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => FieldKey::NodeInputAttribute(*id, *index, delta.key.clone()),
+		RegistryDelta::ChangeNodeAttribute { id, delta } => FieldKey::NodeAttribute(*id, delta.key.clone()),
+		RegistryDelta::SetNodeImplementation { id, .. } => FieldKey::NodeImplementation(*id),
+		RegistryDelta::SetNodeInputs { id, .. } => FieldKey::NodeInputs(*id),
+		RegistryDelta::SetNetworkExport { id, index, .. } => FieldKey::NetworkExport(*id, *index),
+		RegistryDelta::ChangeNetworkAttribute { id, delta } => FieldKey::NetworkAttribute(*id, delta.key.clone()),
+		RegistryDelta::SetResourceHash { id, .. } => FieldKey::ResourceHash(*id),
+		RegistryDelta::AddSource { id, key, .. } | RegistryDelta::RemoveSource { id, key } => FieldKey::Source(*id, *key),
+		RegistryDelta::ChangeDocumentAttribute { delta } => FieldKey::DocumentAttribute(delta.key.clone()),
+		_ => return None,
+	})
+}
+
+/// What a write refers to beyond its own field: a node an input is wired to, or a network an
+/// implementation points at. A reference is evidence the target exists at the write's stamp, so a write
+/// that carries one only drops when the write superseding it carries the same.
+fn references_of(op: &RegistryDelta) -> Vec<u64> {
+	let of_input = |input: &crate::NodeInput| match input {
+		crate::NodeInput::Node { id, .. } => Some(id.0),
+		_ => None,
+	};
+	match op {
+		RegistryDelta::ChangeNodeInput { new_input, .. } => of_input(new_input).into_iter().collect(),
+		RegistryDelta::SetNodeInputs { inputs, .. } => inputs.iter().filter_map(|slot| of_input(&slot.input)).collect(),
+		RegistryDelta::SetNetworkExport { export, .. } => export.as_ref().and_then(of_input).into_iter().collect(),
+		RegistryDelta::SetNodeImplementation {
+			implementation: Implementation::Network(network),
+			..
+		} => vec![network.0],
+		_ => Vec::new(),
+	}
+}
+
+/// Coarsens one transaction's ops, in application order: a write to a field that a later write in the
+/// same transaction also lands on has no effect on the fold and is dropped, unless it refers to
+/// something the later write does not. A whole-list input write supersedes every earlier input write on
+/// its node. Structural ops stay.
+fn coarsen(ops: Vec<HotOp>) -> Vec<HotOp> {
+	let mut keep = vec![true; ops.len()];
+	let mut latest: HashMap<FieldKey, usize> = HashMap::new();
+	for (index, hot_op) in ops.iter().enumerate() {
+		let Some(field) = field_of(&hot_op.op) else { continue };
+		let references = references_of(&hot_op.op);
+		let supersedes = |earlier: &HotOp| references_of(&earlier.op).iter().all(|reference| references.contains(reference));
+
+		if let FieldKey::NodeInputs(id) = field {
+			latest.retain(|key, &mut earlier| {
+				let same_node = matches!(key, FieldKey::NodeInput(node, _) | FieldKey::NodeInputAttribute(node, _, _) | FieldKey::NodeInputs(node) if *node == id);
+				if same_node && supersedes(&ops[earlier]) {
+					keep[earlier] = false;
+					return false;
+				}
+				true
+			});
+		} else if let Some(&earlier) = latest.get(&field)
+			&& supersedes(&ops[earlier])
+		{
+			keep[earlier] = false;
+		}
+		latest.insert(field, index);
+	}
+	ops.into_iter().zip(keep).filter_map(|(hot_op, keep)| keep.then_some(hot_op)).collect()
 }
 
 /// An author's closed transaction sitting in the hot log, as [`Session::closed_transactions`] lists them.
