@@ -139,10 +139,14 @@ impl Document {
 	}
 
 	/// Drop hot ops the retired snapshot already accounts for. A mark alone will not do: it can arrive
-	/// ahead of the delta carrying the op into history, stranding its effect in the working registry.
+	/// ahead of the delta carrying the op into history, stranding its effect in the working registry. A
+	/// transaction marker is the exception: no delta ever carries it, so its mark is all there is.
 	fn drop_retired_hot_ops(&mut self) -> bool {
 		let before = self.hot_log.len();
-		self.hot_log.retain(|hot_op| !self.history.contains_timestamp(hot_op.timestamp));
+		self.hot_log.retain(|hot_op| {
+			let marker = matches!(hot_op.op, RegistryDelta::EndTransaction);
+			!(self.history.contains_timestamp(hot_op.timestamp) || (marker && self.retired.covers(hot_op.id())))
+		});
 
 		before != self.hot_log.len()
 	}
@@ -334,20 +338,19 @@ impl Document {
 			}
 			RegistryDelta::AddSource { id, key, source } => {
 				upsert_resource(registry, id, timestamp, force, |entry| {
-					let value = SourceValue { source, timestamp };
+					let value = SourceValue { source, timestamp, deleted: false };
 					if force { entry.force_set_source(key, value) } else { entry.set_source(key, value) }
 				});
 			}
 			RegistryDelta::RemoveSource { id, key } => {
-				// A source removal names nothing to create the entry from; one for an entry never seen is dropped.
-				let missing = || CrdtError::ResourceDoesNotExist(id);
-				let _ = write(&mut registry.resources, &mut registry.removed_resources, id, timestamp, force, missing, |entry| {
+				// An upsert like the other single-source ops: a removal for an entry never seen leaves the
+				// source's tombstone in a fresh entry, so the addition it answers is recognised as older.
+				upsert_resource(registry, id, timestamp, force, |entry| {
 					if force {
 						entry.force_remove_source(&key);
 					} else {
 						entry.remove_source(&key, timestamp);
 					}
-					Ok(())
 				});
 			}
 			RegistryDelta::AddResource { id, entry } => {
@@ -367,7 +370,7 @@ impl Document {
 				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes, TimeStamp::ORIGIN);
 			}
 			// Merge is a structural sync point only; it mutates no registry state.
-			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
+			RegistryDelta::Merge { .. } | RegistryDelta::EndTransaction | RegistryDelta::Other(_) => {}
 		}
 		Ok(())
 	}
@@ -474,6 +477,7 @@ impl Document {
 				RegistryDelta::AddResource { id, entry: snapshot }
 			}
 			RegistryDelta::Merge { extra_parents } => RegistryDelta::Merge { extra_parents: extra_parents.clone() },
+			RegistryDelta::EndTransaction => RegistryDelta::EndTransaction,
 			&RegistryDelta::Other(_) => RegistryDelta::Other(serde_json::Value::Null),
 		})
 	}
@@ -566,18 +570,14 @@ impl Presence for ResourceEntry {
 	fn stamp_all(&mut self, at: TimeStamp) {
 		self.presence = at;
 		self.hash_timestamp = at;
-		for (_, value) in &mut self.sources {
-			value.timestamp = at;
-		}
+		self.stamp_sources(at);
 	}
 	fn merge(&mut self, other: Self) {
 		if other.hash_timestamp > self.hash_timestamp {
 			self.hash = other.hash;
 			self.hash_timestamp = other.hash_timestamp;
 		}
-		for (key, value) in other.sources {
-			self.set_source(key, value);
-		}
+		self.merge_sources(other.sources, other.sources_timestamp);
 		self.presence = self.presence.max(other.presence);
 	}
 }

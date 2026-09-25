@@ -4,8 +4,8 @@
 //! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
 use document_graph_storage::{
-	AttributeDelta, Delta, HotOp, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId, RetiredHotOps, Rev,
-	Session, SourceKey, TimeStamp, UserId,
+	AttributeDelta, Delta, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId,
+	RetiredHotOps, Rev, Session, SourceKey, TimeStamp, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
@@ -133,6 +133,9 @@ struct Peer {
 	transport: TransportPeerId,
 	/// Gone for good, unlike a rejoin. Its document stops taking part and stops being asserted on.
 	departed: bool,
+	/// The sequence of the marker closing this peer's latest transaction, `NONE` before the first. Nothing
+	/// past it may ever retire.
+	last_closed: HotSequence,
 }
 
 impl Peer {
@@ -150,6 +153,7 @@ impl Peer {
 			user,
 			transport,
 			departed: false,
+			last_closed: HotSequence::NONE,
 		}
 	}
 
@@ -201,16 +205,31 @@ impl Peer {
 		self.retire_up_to(up_to);
 	}
 
-	/// Retire only part of the hot log, leaving newer ops live. A later op of one author can then retire
-	/// while an earlier one is still in flight, which is what puts entries above the retired prefix.
-	fn retire_prefix(&mut self, nth: usize) {
-		let mut timestamps: Vec<TimeStamp> = self.target.session.hot_log().iter().map(|hot_op| hot_op.timestamp).collect();
-		if timestamps.is_empty() {
+	/// Close this peer's open transaction, the way the editor does at an undo-step boundary.
+	fn end_transaction(&mut self) {
+		if let Some(marker) = self.target.session.end_transaction().expect("end transaction") {
+			self.last_closed = marker.sequence;
+			self.replica.broadcast_hot_ops(&[marker]).expect("broadcast");
+		}
+	}
+
+	/// Retire up to `count` of the closed transactions in the hot log, the earliest closed first, as the
+	/// policy does. Open transactions stay hot, so a later transaction of one author retires while an
+	/// earlier one of another is still in progress.
+	fn retire_closed(&mut self, count: usize) {
+		let contiguous: Vec<_> = self.target.session.closed_transactions().into_iter().filter(|transaction| transaction.contiguous).collect();
+		let closed: Vec<_> = self.target.session.retirable(&contiguous).into_iter().take(count).collect();
+		let mut revs = Vec::new();
+		let mut retired_hot_ops = Vec::new();
+		for transaction in &closed {
+			revs.extend(self.target.session.retire_transaction(transaction).expect("retire"));
+			retired_hot_ops.extend(transaction.ops.iter().copied());
+		}
+		if retired_hot_ops.is_empty() {
 			return;
 		}
-		timestamps.sort();
-
-		self.retire_up_to(timestamps[nth.min(timestamps.len() - 1)]);
+		let deltas: Vec<_> = revs.iter().filter_map(|&rev| self.target.session.delta(rev).cloned()).collect();
+		self.replica.broadcast_retired(&deltas, &retired_hot_ops).expect("broadcast retired");
 	}
 
 	fn retire_up_to(&mut self, up_to: TimeStamp) {
@@ -440,6 +459,10 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			0..=2 if peers[index].replica.is_synced() => {
 				let op = random_op(&mut network, &peers[index].target);
 				peers[index].stage(op);
+				// A gesture is a few ops long; closing it is what lets it retire.
+				if network.random_below(3) == 0 {
+					peers[index].end_transaction();
+				}
 			}
 			// A small pool of distinct payloads, so peers sometimes introduce the same resource
 			// concurrently and sometimes one nobody else can serve.
@@ -448,10 +471,12 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 				peers[index].stage_resource(bytes);
 			}
 			0..=2 | 8 => {}
-			// Mostly a partial retire, so the host's history lags its hot log the way a real one does.
+			// A few closed transactions at a time, so the host's history lags its hot log the way a real one
+			// does, and never an open one.
 			3 => {
-				let nth = network.random_below(4);
-				peers[0].retire_prefix(nth);
+				let count = 1 + network.random_below(4);
+				peers[0].retire_closed(count);
+				assert_open_transactions_stay_hot(seed, &peers);
 			}
 			4..=7 => {
 				network.step();
@@ -473,6 +498,14 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 	}
 
 	quiesce(&mut network, &mut peers);
+	for peer in peers.iter_mut().filter(|peer| !peer.departed) {
+		peer.end_transaction();
+	}
+	quiesce(&mut network, &mut peers);
+	peers[0].retire_closed(usize::MAX);
+	assert_open_transactions_stay_hot(seed, &peers);
+	quiesce(&mut network, &mut peers);
+	// What departed peers left open retires with everything else, so the end state is checked in full.
 	peers[0].retire();
 	quiesce(&mut network, &mut peers);
 
@@ -515,6 +548,29 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 /// orders, the working registry in arrival order and the snapshot in canonical history order, and
 /// structural ops carry no timestamp to arbitrate that, so whatever drops a hot op the snapshot now
 /// covers owes a refold. Compared by value, since a refold re-stamps what it replays.
+/// Nothing past an author's last closing marker is in any peer's retired marks: an open transaction stays
+/// hot however old it is and however many later ones from other authors retired around it.
+fn assert_open_transactions_stay_hot(seed: u64, peers: &[Peer]) {
+	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
+		let marks = peer.session().retired_marks();
+		for author in peers {
+			let through = marks.retired_up_to.get(&author.peer).copied().unwrap_or(HotSequence::NONE);
+			let beyond = marks
+				.retired_beyond
+				.get(&author.peer)
+				.and_then(|runs| runs.iter().map(|&(_, end)| end).max())
+				.unwrap_or(HotSequence::NONE);
+			assert!(
+				through <= author.last_closed && beyond <= author.last_closed,
+				"seed {seed}: peer {index} retired op {:?} of {:?} past its last closed transaction {:?}",
+				through.max(beyond),
+				author.peer,
+				author.last_closed
+			);
+		}
+	}
+}
+
 fn assert_zones_agree(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
 		if !peer.session().hot_log().is_empty() {

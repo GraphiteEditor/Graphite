@@ -98,6 +98,14 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// with the registry without rebuilding it.
 	#[cfg(feature = "network")]
 	pub(crate) remote_changes: network::RemoteChanges,
+	/// When each closed transaction was first seen here, by its marker, so the retirement policy can age
+	/// it. Not persisted: after a reopen everything pending is old enough.
+	pub(crate) transactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
+	/// When this peer last staged an op, so an open transaction the editor never closed can be closed
+	/// once it has gone quiet.
+	pub(crate) own_last_staged_ms: Option<f64>,
+	/// Whether an op of this peer's own was staged since the last policy tick.
+	pub(crate) own_staged_since_tick: bool,
 }
 
 /// Whole-file rewrites the sync path defers to the end of a poll, so one batch of remote packets costs
@@ -126,6 +134,9 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 			pending_persist: PendingPersist::default(),
 			#[cfg(feature = "network")]
 			remote_changes: network::RemoteChanges::default(),
+			transactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
 		}
 	}
 }
@@ -221,6 +232,9 @@ impl<L: Layout> Gdd<L> {
 			pending_persist: PendingPersist::default(),
 			#[cfg(feature = "network")]
 			remote_changes: network::RemoteChanges::default(),
+			transactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
 		})
 	}
 
@@ -250,6 +264,9 @@ impl<L: Layout> Gdd<L> {
 			pending_persist: PendingPersist::default(),
 			#[cfg(feature = "network")]
 			remote_changes: network::RemoteChanges::default(),
+			transactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
 		})
 	}
 }

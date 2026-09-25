@@ -117,9 +117,19 @@ impl DocumentHistory {
 		self.needs_whole_document_stage = true;
 	}
 
-	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
-	/// boundary (a new `StartTransaction`) and before undo/redo, so the per-`CommitTransaction` staging
-	/// coalesces into one interaction aligned with the legacy step. No-op while unmounted.
+	/// Close the open storage transaction at an undo-step boundary (a new `StartTransaction`), so the
+	/// per-`CommitTransaction` staging since the last boundary is one unit for retirement and undo, aligned
+	/// with the legacy step. Retirement itself follows the working copy's policy. No-op while unmounted.
+	pub fn end_storage_transaction(&mut self) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.end_transaction() {
+			log::error!("Closing the storage transaction failed: {error}");
+		}
+	}
+
+	/// Close this peer's open transaction and retire every closed one into durable Gdd history, so the
+	/// interaction being undone is in history. Called before undo/redo and after the first commit of a
+	/// newly mounted document. No-op while unmounted.
 	pub fn retire_storage_interaction(&mut self) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.retire_pending_interaction() {
@@ -129,8 +139,8 @@ impl DocumentHistory {
 
 	/// Stage a `CommitTransaction` into the `Gdd` working copy: the first commit writes the whole document,
 	/// every later one stages the `deltas` the store recorded. No-op while unmounted. Proto-node declaration
-	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
-	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
+	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are closed into one
+	/// transaction by [`end_storage_transaction`](Self::end_storage_transaction) at undo-step boundaries.
 	pub fn stage_snapshot(
 		&mut self,
 		deltas: &[EditorDelta],

@@ -276,19 +276,6 @@ impl Session {
 		self.document.replay_hot_op(hot_op)
 	}
 
-	/// The hot ops a `retire(up_to)` call would drain. Sent with the deltas for peers to drop exactly
-	/// these; the cutoff alone doesn't transfer, a lagging op can arrive below it afterwards.
-	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
-		self.document.hot_log[..self.retirement_prefix(up_to)].iter().map(HotOp::id).collect()
-	}
-
-	/// How much of the hot log `retire(up_to)` drains: everything through the last op stamped at or
-	/// before `up_to`. A prefix of the log rather than the ops under the cutoff, so retirement commits
-	/// them in the order the working registry applied them. An op stamped later that sits earlier in the log goes with the prefix.
-	fn retirement_prefix(&self, up_to: TimeStamp) -> usize {
-		self.document.hot_log.iter().rposition(|hot_op| hot_op.timestamp <= up_to).map_or(0, |last| last + 1)
-	}
-
 	/// Drop hot ops another peer has retired without retiring them locally. The registries need nothing:
 	/// each op's effect is a function of its timestamp, so the working registry holds the same fold with
 	/// or without the hot copy of an op whose delta has landed.
@@ -400,22 +387,128 @@ impl Session {
 		Ok(outcome)
 	}
 
-	/// Promote the hot-log prefix through the last op stamped at or before `up_to` into retired deltas,
-	/// each keeping the timestamp it was authored at. See [`retirement_prefix`](Self::retirement_prefix)
-	/// for why the prefix and not the ops under the cutoff.
-	///
-	/// Today: one retired delta per hot op. Coarsening is a future step.
-	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
-		// Hot-log order is causal, so the deltas commit in an order their references survive.
-		let prefix = self.retirement_prefix(up_to);
-		let drained: Vec<HotOp> = self.document.hot_log.drain(..prefix).collect();
-		self.document.mark_retired(drained.iter().map(HotOp::id));
+	/// Closes this peer's open transaction with a [`RegistryDelta::EndTransaction`] marker, so the retirer
+	/// can take the ops before it as one unit. `None` when nothing is open: an author's transaction is
+	/// open once it has an op past its last marker.
+	pub fn end_transaction(&mut self) -> Result<Option<HotOp>, CrdtError> {
+		let peer = self.document.peer;
+		let open = self
+			.document
+			.hot_log
+			.iter()
+			.rev()
+			.find(|hot_op| hot_op.timestamp.peer == peer)
+			.is_some_and(|hot_op| !matches!(hot_op.op, RegistryDelta::EndTransaction));
+		if !open {
+			return Ok(None);
+		}
+		Ok(self.stage_ops([RegistryDelta::EndTransaction])?.pop())
+	}
 
-		let revs = self.commit_ops_authored_at(drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp))), true)?;
+	/// Every author's closed transactions in the hot log, the earliest closed first. An author's ops past
+	/// its last marker are its open transaction and never appear here, whoever the author is, so a gesture
+	/// in progress stays hot while a later one from someone else retires: every op commutes, so the order
+	/// transactions retire in does not bear on the registry.
+	pub fn closed_transactions(&self) -> Vec<ClosedTransaction> {
+		let mut by_author: HashMap<PeerId, Vec<&HotOp>> = HashMap::new();
+		for hot_op in &self.document.hot_log {
+			by_author.entry(hot_op.timestamp.peer).or_default().push(hot_op);
+		}
 
+		let mut closed = Vec::new();
+		for (author, mut ops) in by_author {
+			ops.sort_by_key(|hot_op| hot_op.sequence);
+			let mut expected = self.document.retired.retired_up_to.get(&author).copied().unwrap_or(HotSequence::NONE).next();
+			let mut current = Vec::new();
+			let mut contiguous = true;
+			for hot_op in ops {
+				// An op retired past a gap is not in the log and not missing either.
+				while expected < hot_op.sequence && self.document.retired.covers(HotOpId { peer: author, sequence: expected }) {
+					expected = expected.next();
+				}
+				contiguous &= hot_op.sequence == expected;
+				expected = hot_op.sequence.next();
+				current.push(hot_op.id());
+				if matches!(hot_op.op, RegistryDelta::EndTransaction) {
+					closed.push(ClosedTransaction {
+						author,
+						ops: std::mem::take(&mut current),
+						closed_at: hot_op.timestamp,
+						contiguous,
+					});
+					contiguous = true;
+				}
+			}
+		}
+		closed.sort_by_key(|transaction| transaction.closed_at);
+		closed
+	}
+
+	/// The subsequence of `closed` that can retire now, in order: a transaction is held back while it
+	/// refers to an entity the retired snapshot has never seen and no transaction ahead of it adds,
+	/// which is one still sitting in another author's open transaction. Applying it would land a write
+	/// on an unknown target, the one thing the registry defers rather than resolves.
+	pub fn retirable(&self, closed: &[ClosedTransaction]) -> Vec<ClosedTransaction> {
+		let snapshot = &self.document.retired_snapshot;
+		let mut nodes: HashSet<NodeId> = snapshot.node_instances.keys().chain(snapshot.removed_nodes.keys()).copied().collect();
+		let mut networks: HashSet<NetworkId> = snapshot.networks.keys().chain(snapshot.removed_networks.keys()).copied().collect();
+		let by_id: HashMap<HotOpId, &HotOp> = self.document.hot_log.iter().map(|hot_op| (hot_op.id(), hot_op)).collect();
+
+		let mut retirable = Vec::new();
+		for transaction in closed {
+			let mut nodes_after = nodes.clone();
+			let mut networks_after = networks.clone();
+			let ops = transaction.ops.iter().filter_map(|id| by_id.get(id)).map(|hot_op| &hot_op.op);
+			if ops.clone().all(|op| op_referents_known(op, &mut nodes_after, &mut networks_after)) {
+				nodes = nodes_after;
+				networks = networks_after;
+				retirable.push(transaction.clone());
+			}
+		}
+		retirable
+	}
+	/// Retire one closed transaction as one interaction: its ops become retired deltas in the author's
+	/// order, each keeping its authoring stamp, the marker commits nothing, and the last delta is marked as
+	/// the interaction's end. Returns the new revs.
+	pub fn retire_transaction(&mut self, transaction: &ClosedTransaction) -> Result<Vec<Rev>, CrdtError> {
+		let revs = self.retire_hot_ops(&transaction.ops)?;
+		if let Some(&last) = revs.last() {
+			self.mark_interaction_end(last);
+		}
 		Ok(revs)
 	}
 
+	/// The hot ops stamped at or before `up_to`, which is what [`retire`](Self::retire) drains. Sent with
+	/// the deltas for peers to drop exactly these; the cutoff alone doesn't transfer, a lagging op can
+	/// arrive below it afterwards.
+	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
+		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
+	}
+
+	/// Promote the given hot ops into retired deltas, in hot-log order, each keeping the timestamp it was
+	/// authored at. Markers commit nothing. Ops not in the log are ignored.
+	///
+	/// Today: one retired delta per hot op. Coarsening is a future step.
+	pub fn retire_hot_ops(&mut self, ids: &[HotOpId]) -> Result<Vec<Rev>, CrdtError> {
+		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
+		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
+		self.document.hot_log = kept;
+		self.document.mark_retired(drained.iter().map(HotOp::id));
+
+		let ops = drained
+			.into_iter()
+			.filter(|hot_op| !matches!(hot_op.op, RegistryDelta::EndTransaction))
+			.map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
+		self.commit_ops_authored_at(ops, true)
+	}
+
+	/// Promote every hot op stamped at or before `up_to`, whatever its author and whether or not its
+	/// transaction is closed. For callers that own the whole log, tests mostly; a session retires by
+	/// [`retire_transaction`](Self::retire_transaction).
+	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
+		let ids = self.hot_ops_up_to(up_to);
+		self.retire_hot_ops(&ids)
+	}
 	/// Mark a retired delta as the end of a user interaction, so the undo cursor treats it as a checkpoint.
 	/// Called once per interaction by the editor-facing commit path (not by resource/internal commits).
 	pub fn mark_interaction_end(&mut self, rev: Rev) {
@@ -855,4 +948,54 @@ pub enum CrdtError {
 	PeerRegistrationConflict(PeerId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
+}
+
+/// Whether every entity `op` writes to or refers to is in the sets, adding what the op itself brings into
+/// being. Mirrors the cases in which [`Document::apply_op_with`] errors on an entity never seen.
+fn op_referents_known(op: &RegistryDelta, nodes: &mut HashSet<NodeId>, networks: &mut HashSet<NetworkId>) -> bool {
+	let input_known = |input: &crate::NodeInput, nodes: &HashSet<NodeId>| match input {
+		crate::NodeInput::Node { id, .. } => nodes.contains(id),
+		_ => true,
+	};
+	match op {
+		RegistryDelta::AddNode { id, node } => {
+			let known = networks.contains(&node.network);
+			nodes.insert(*id);
+			known
+		}
+		RegistryDelta::RemoveNode { id, .. } => {
+			nodes.insert(*id);
+			true
+		}
+		RegistryDelta::SetNodeInputs { id, inputs } => nodes.contains(id) && inputs.iter().all(|slot| input_known(&slot.input, nodes)),
+		RegistryDelta::ChangeNodeInput { id, new_input, .. } => nodes.contains(id) && input_known(new_input, nodes),
+		RegistryDelta::SetNodeImplementation { id, implementation } => {
+			nodes.contains(id)
+				&& match implementation {
+					Implementation::Network(network) => networks.contains(network),
+					Implementation::ProtoNode(_) => true,
+				}
+		}
+		RegistryDelta::ChangeNodeAttribute { id, .. } | RegistryDelta::ChangeNodeInputAttribute { id, .. } => nodes.contains(id),
+		RegistryDelta::SetNetworkExport { id, export, .. } => networks.contains(id) && export.as_ref().is_none_or(|input| input_known(input, nodes)),
+		RegistryDelta::AddNetwork { id, .. } | RegistryDelta::RemoveNetwork { id, .. } => {
+			networks.insert(*id);
+			true
+		}
+		RegistryDelta::ChangeNetworkAttribute { id, .. } => networks.contains(id),
+		_ => true,
+	}
+}
+
+/// An author's closed transaction sitting in the hot log, as [`Session::closed_transactions`] lists them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClosedTransaction {
+	pub author: PeerId,
+	/// Every op of the transaction in the author's order, the closing marker last.
+	pub ops: Vec<HotOpId>,
+	/// When the author closed it: the marker's stamp.
+	pub closed_at: TimeStamp,
+	/// Whether every op from the author's retired frontier through the marker is here. One with a gap is
+	/// waiting on a re-announcement; retiring it anyway commits what arrived.
+	pub contiguous: bool,
 }

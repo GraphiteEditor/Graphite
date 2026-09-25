@@ -716,8 +716,10 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	// Second autosave: again verifies the round-trip, and the edit must produce new retired history.
+	// Second autosave: again verifies the round-trip, and the edit, once its transaction is closed and
+	// retired, must produce new retired history. Retirement follows a policy rather than the commit.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
 		history_after_edit > history_after_open,

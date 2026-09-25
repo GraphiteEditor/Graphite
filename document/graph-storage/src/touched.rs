@@ -52,7 +52,7 @@ impl Touched {
 			RegistryDelta::AddResource { .. } | RegistryDelta::SetResourceHash { .. } | RegistryDelta::RemoveResource { .. } | RegistryDelta::AddSource { .. } | RegistryDelta::RemoveSource { .. } => {
 				self.resources = true;
 			}
-			RegistryDelta::RegisterPeer { .. } | RegistryDelta::ChangeDocumentAttribute { .. } | RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
+			RegistryDelta::RegisterPeer { .. } | RegistryDelta::ChangeDocumentAttribute { .. } | RegistryDelta::Merge { .. } | RegistryDelta::EndTransaction | RegistryDelta::Other(_) => {}
 		}
 	}
 

@@ -206,6 +206,9 @@ pub enum RegistryDelta {
 	Merge {
 		extra_parents: Vec<Rev>,
 	},
+	/// The last op of its author's transaction. Changes nothing; retirement takes an author's ops through
+	/// one of these as one unit and drops the marker itself. See [`Session::closed_transactions`](crate::Session::closed_transactions).
+	EndTransaction,
 	// Allow for future delta types without a model change
 	Other(serde_json::Value),
 }

@@ -120,11 +120,10 @@ fn a_batch_off_an_earlier_delta_is_sorted_into_place() {
 	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
 }
 
-/// Retirement takes a prefix of the hot log, in the order the working registry applied it, rather than
-/// every op under the cutoff. An op stamped later than the cutoff but applied earlier goes with the
-/// prefix, so the snapshot folds in the same order and the zones agree.
+/// Retirement takes the ops under the cutoff whatever order the log applied them in: every op commutes,
+/// so the snapshot folds to the working registry's values with a later-stamped op left hot.
 #[test]
-fn retirement_drains_a_hot_log_prefix_in_applied_order() {
+fn retirement_takes_the_ops_under_the_cutoff_in_any_applied_order() {
 	let mut host = Session::with_peer(PeerId(1));
 	// A guest's op stamped late sits first in the log, ahead of an op stamped earlier: the log is in
 	// arrival order, and stamps are the authors' clocks, not the arrival order.
@@ -138,14 +137,89 @@ fn retirement_drains_a_hot_log_prefix_in_applied_order() {
 		timestamp: crate::TimeStamp { counter: 20, peer: PeerId(3) },
 		sequence: crate::HotSequence(1),
 	};
-	host.apply_hot_op(late).expect("the late-stamped op lands first");
+	host.apply_hot_op(late.clone()).expect("the late-stamped op lands first");
 	host.apply_hot_op(own.clone()).expect("the earlier-stamped op lands second");
 
-	let would_retire = host.hot_ops_up_to(own.timestamp);
-	assert_eq!(would_retire.len(), 2, "the prefix through the earlier-stamped op includes the later-stamped op before it");
+	assert_eq!(host.hot_ops_up_to(own.timestamp).len(), 1, "only the op under the cutoff retires");
 
 	host.retire(own.timestamp).expect("retire");
+	assert_eq!(host.hot_log().len(), 1, "the later-stamped op stays hot");
+	assert!(!host.retired_registry().networks.contains_key(&NetworkId(9)));
+	assert!(host.registry().networks.contains_key(&NetworkId(9)));
+	assert!(host.retired_registry().attributes.get("x").is_some_and(|value| !value.deleted));
+
+	host.retire(late.timestamp).expect("retire the rest");
 	assert!(host.hot_log().is_empty());
 	assert!(host.registry().value_equal(host.retired_registry()));
-	assert!(host.retired_registry().networks.contains_key(&NetworkId(9)));
+}
+
+/// A transaction closes with a marker its author stages, and only closed transactions retire: an author's
+/// ops past its last marker stay hot however old they are, while a later transaction from someone else
+/// retires around them.
+#[test]
+fn only_closed_transactions_retire_and_an_open_one_stays_hot() {
+	let mut host = Session::with_peer(PeerId(1));
+	let guest_op = |counter: u64, sequence: u64, op: RegistryDelta| crate::HotOp {
+		op,
+		timestamp: crate::TimeStamp { counter, peer: PeerId(2) },
+		sequence: crate::HotSequence(sequence),
+	};
+
+	assert!(host.end_transaction().expect("nothing to close").is_none(), "no op of this peer is open");
+
+	// The guest opens a transaction and leaves it open, stamped earlier than everything the host does.
+	host.apply_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
+	host.apply_hot_op(guest_op(11, 2, set_attribute("guest", 1))).expect("guest op");
+
+	host.stage_ops([set_attribute("host", 1)]).expect("host op");
+	let marker = host.end_transaction().expect("close").expect("the host's transaction was open");
+	assert!(matches!(marker.op, RegistryDelta::EndTransaction));
+	assert!(host.end_transaction().expect("nothing more to close").is_none(), "closing twice stages nothing");
+
+	let closed = host.closed_transactions();
+	assert_eq!(closed.len(), 1, "the guest's open transaction is not listed: {closed:?}");
+	assert_eq!(closed[0].author, PeerId(1));
+	assert!(closed[0].contiguous);
+	assert_eq!(closed[0].ops.len(), 3, "RegisterPeer, the attribute write and the marker");
+
+	let revs = host.retire_transaction(&closed[0]).expect("retire");
+	assert_eq!(revs.len(), 2, "the marker commits no delta");
+	assert!(host.history().any(|delta| delta.id == revs[1] && delta.is_interaction_end()), "the transaction is one interaction");
+	assert_eq!(host.hot_log().len(), 2, "the guest's ops stay hot");
+	assert!(host.hot_log().iter().all(|hot_op| hot_op.timestamp.peer == PeerId(2)));
+	assert!(!host.retired_registry().networks.contains_key(&NetworkId(9)));
+	assert!(host.registry().networks.contains_key(&NetworkId(9)));
+
+	// The guest closes: its transaction retires after the host's although it is stamped before it.
+	host.apply_hot_op(guest_op(12, 3, RegistryDelta::EndTransaction)).expect("guest marker");
+	let closed = host.closed_transactions();
+	assert_eq!(closed.len(), 1);
+	assert_eq!(closed[0].author, PeerId(2));
+	host.retire_transaction(&closed[0]).expect("retire");
+	assert!(host.hot_log().is_empty());
+	assert!(host.registry().value_equal(host.retired_registry()));
+	assert!(host.document.history.extends_canonically(0), "retirement order is the parent chain, so history stays append-only");
+}
+
+/// A transaction with a gap in its author's run is listed as not contiguous, so the retirer can wait for
+/// the re-announcement, and closes normally once the gap fills.
+#[test]
+fn a_transaction_with_a_gap_is_not_contiguous_until_the_gap_fills() {
+	let mut host = Session::with_peer(PeerId(1));
+	let guest_op = |counter: u64, sequence: u64, op: RegistryDelta| crate::HotOp {
+		op,
+		timestamp: crate::TimeStamp { counter, peer: PeerId(2) },
+		sequence: crate::HotSequence(sequence),
+	};
+	host.apply_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
+	host.apply_hot_op(guest_op(12, 3, RegistryDelta::EndTransaction)).expect("guest marker, op 2 still in flight");
+
+	let closed = host.closed_transactions();
+	assert_eq!(closed.len(), 1);
+	assert!(!closed[0].contiguous);
+
+	host.apply_hot_op(guest_op(11, 2, set_attribute("guest", 1))).expect("the late op");
+	let closed = host.closed_transactions();
+	assert!(closed[0].contiguous);
+	assert_eq!(closed[0].ops.len(), 3);
 }

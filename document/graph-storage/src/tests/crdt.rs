@@ -570,7 +570,10 @@ fn remove_source_reverse_restores_prior() {
 	}
 
 	document.apply_op(RD::RemoveSource { id, key }, ts(5, 1)).unwrap();
-	assert!(document.working_registry.resources.get(&id).unwrap().sources.is_empty(), "source removed");
+	assert!(
+		document.working_registry.resources.get(&id).unwrap().live_sources().next().is_none(),
+		"source removed, a tombstone left"
+	);
 
 	// Applying the reverse restores the chain.
 	document.apply_op(reverse, ts(6, 1)).unwrap();
@@ -631,7 +634,15 @@ use crate::{ResourceEntry, ResourceStore, SourceValue};
 fn entry_with_source(priority: f64, peer: u64, body: serde_json::Value, hash: Option<ResourceHash>) -> ResourceEntry {
 	ResourceEntry {
 		presence: ts(1, peer),
-		sources: vec![(source_key(priority, peer), SourceValue { source: body, timestamp: ts(1, peer) })],
+		sources: vec![(
+			source_key(priority, peer),
+			SourceValue {
+				source: body,
+				timestamp: ts(1, peer),
+				deleted: false,
+			},
+		)],
+		sources_timestamp: TimeStamp::ORIGIN,
 		hash,
 		hash_timestamp: ts(1, peer),
 	}
@@ -682,6 +693,7 @@ fn compute_deltas_diffs_resources_and_round_trips() {
 		SourceValue {
 			source: serde_json::json!("url"),
 			timestamp: ts(1, 1),
+			deleted: false,
 		},
 	);
 	to.insert(kept, kept_entry);

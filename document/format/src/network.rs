@@ -49,7 +49,13 @@ impl<L: Layout> Gdd<L> {
 		self.network = Some(Replica::guest(transport, self.session.peer(), user));
 	}
 
+	/// Leaves the room. A host retires every closed transaction first, so what peers finished is in
+	/// history before the retirer goes away.
 	pub fn leave(&mut self) {
+		let closed = self.session.retirable(&self.session.closed_transactions());
+		if let Err(error) = self.retire_transactions(&closed) {
+			log::error!("Retiring before leaving failed: {error}");
+		}
 		if let Some(mut replica) = self.network.take() {
 			replica.leave();
 		}

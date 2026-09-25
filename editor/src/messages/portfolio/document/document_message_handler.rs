@@ -1355,7 +1355,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
-				self.retire_storage_interaction();
+				self.end_storage_transaction();
 
 				self.network_interface.start_transaction();
 				self.history.push_undo(self.network_interface.clone());
@@ -2037,6 +2037,11 @@ impl DocumentMessageHandler {
 		storage.set_byte_store(byte_store);
 		self.history.set_storage(storage, declarations);
 		self.refresh_resource_registry();
+	}
+
+	/// Close the open storage transaction at an undo-step boundary.
+	pub(crate) fn end_storage_transaction(&mut self) {
+		self.history.end_storage_transaction();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.

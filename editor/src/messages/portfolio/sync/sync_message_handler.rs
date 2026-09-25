@@ -102,6 +102,13 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			SyncMessage::Poll => {
 				let resources = resource_storage.resources_mut();
 				for (&document_id, document) in documents.iter_mut() {
+					// Retirement follows the working copy's policy on every document, in a session or not: closed
+					// transactions retire once enough have waited long enough, never on a gesture.
+					if let Some(gdd) = document.storage_mut()
+						&& let Err(error) = gdd.retire_due(now_ms())
+					{
+						log::error!("Retirement failed: {error}");
+					}
 					if document.storage().is_none_or(|gdd| gdd.role().is_none()) {
 						continue;
 					}
@@ -227,4 +234,19 @@ fn random_token_bytes() -> [u8; 16] {
 	bytes[..8].copy_from_slice(&generate_uuid().to_le_bytes());
 	bytes[8..].copy_from_slice(&generate_uuid().to_le_bytes());
 	bytes
+}
+
+/// A monotonic-enough millisecond clock for the retirement policy, which only ever compares differences.
+fn now_ms() -> f64 {
+	#[cfg(target_arch = "wasm32")]
+	{
+		js_sys::Date::now()
+	}
+	#[cfg(not(target_arch = "wasm32"))]
+	{
+		std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.map(|elapsed| elapsed.as_secs_f64() * 1000.)
+			.unwrap_or(0.)
+	}
 }

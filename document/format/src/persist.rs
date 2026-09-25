@@ -102,6 +102,9 @@ impl<L: Layout> Gdd<L> {
 	/// Every staged hot op takes this path, whether it came from a recorded batch, a whole-document diff or
 	/// a raw op: the frame that survives a crash, then the broadcast that reaches the room.
 	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
+		if hot_ops.iter().any(|hot_op| !matches!(hot_op.op, RegistryDelta::EndTransaction)) {
+			self.own_staged_since_tick = true;
+		}
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
@@ -110,17 +113,6 @@ impl<L: Layout> Gdd<L> {
 			replica.broadcast_hot_ops(hot_ops)?;
 		}
 		Ok(())
-	}
-
-	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last
-	/// delta as the interaction boundary), then re-snapshot the registry. One interaction is one undo unit,
-	/// so the caller invokes this at each undo-step boundary and before any undo/redo. A no-op when there
-	/// are no pending hot ops.
-	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
-		let Some(up_to) = self.session.hot_log().iter().map(|hot_op| hot_op.timestamp).max() else {
-			return Ok(Vec::new());
-		};
-		self.retire_inner(up_to, true)
 	}
 
 	/// Commit a runtime snapshot as one complete interaction: stage it, then immediately retire it into
@@ -152,18 +144,28 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Persist freshly-staged hot ops and immediately retire them into durable history. Appends each
-	/// hot frame (so a crash before retirement still recovers the work), then retires up to the last
-	/// staged timestamp, which drains exactly these ops and re-snapshots the registry. Returns the
-	/// retired `Rev`s. A no-op when nothing was staged.
+	/// Persist freshly-staged hot ops and immediately retire exactly them into durable history as one unit.
+	/// Appends each hot frame first, so a crash before retirement still recovers the work. Returns the
+	/// retired `Rev`s. A no-op when nothing was staged, and the ops stay hot on a peer that does not retire.
 	pub(crate) fn append_and_retire(&mut self, hot_ops: &[HotOp], interaction_end: bool) -> Result<Vec<Rev>, Error> {
-		let Some(last) = hot_ops.last() else { return Ok(Vec::new()) };
-
+		if hot_ops.is_empty() {
+			return Ok(Vec::new());
+		}
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
+		if !self.retires_locally() {
+			return Ok(Vec::new());
+		}
 
-		self.retire_inner(last.timestamp, interaction_end)
+		let ids: Vec<_> = hot_ops.iter().map(HotOp::id).collect();
+		let revs = self.session.retire_hot_ops(&ids)?;
+		// Marked before the history frames are written, so the boundary is on disk with them.
+		if interaction_end && let Some(&last) = revs.last() {
+			self.session.mark_interaction_end(last);
+		}
+		self.finish_retirement(&revs, &ids)?;
+		Ok(revs)
 	}
 
 	/// Encode the history deltas identified by `revs` and append them to the history file. `revs` comes
@@ -259,29 +261,108 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Working-copy checkpoint: promote hot ops with timestamp `≤ up_to` into retired deltas,
-	/// append them to the history file, rewrite the hot log with remaining (unretired) ops, and
-	/// re-snapshot the registry. Synchronous.
-	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
-		self.retire_inner(up_to, false)
+	/// How many closed transactions have to be waiting before they retire. Later retirement fuses more
+	/// of a gesture's ops into one delta and keeps more of what an undo can still rewind silently.
+	pub const RETIRE_AFTER_TRANSACTIONS: usize = 10;
+	/// How long a closed transaction sits before it may retire, so every peer has seen all of it.
+	pub const RETIRE_MIN_AGE_MS: f64 = 2_000.0;
+	/// How long anything waits at most: a quiet session still retires, and a transaction with a gap in
+	/// its author's run retires with what arrived.
+	pub const RETIRE_MAX_AGE_MS: f64 = 60_000.0;
+
+	/// Closes this peer's open transaction, if it has one, with a marker that reaches the room like any
+	/// other hot op. The editor calls this at each undo-step boundary.
+	pub fn end_transaction(&mut self) -> Result<(), Error> {
+		if let Some(marker) = self.session.end_transaction()? {
+			self.persist_staged(&[marker])?;
+		}
+		Ok(())
 	}
 
-	/// `interaction_end`: mark the batch's last delta as an interaction boundary (one undo unit) before its
-	/// history frame is written, so the marker persists on reopen without a later frame rewrite.
-	fn retire_inner(&mut self, up_to: TimeStamp, interaction_end: bool) -> Result<Vec<Rev>, Error> {
+	/// Retire every transaction the policy says is due at `now_ms`, on any monotonic millisecond clock the
+	/// caller keeps: closed transactions that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS),
+	/// once [`RETIRE_AFTER_TRANSACTIONS`](Self::RETIRE_AFTER_TRANSACTIONS) of them are waiting or the oldest
+	/// has waited [`RETIRE_MAX_AGE_MS`](Self::RETIRE_MAX_AGE_MS). An open transaction never retires, whoever
+	/// its author is. Called once a frame by the editor; a peer that does not retire only closes its own
+	/// transaction here once it has gone quiet for the minimum age.
+	pub fn retire_due(&mut self, now_ms: f64) -> Result<Vec<Rev>, Error> {
+		// A gesture the editor never closed, or one interrupted by a reopen, closes on its own once quiet.
+		if self.own_staged_since_tick {
+			self.own_staged_since_tick = false;
+			self.own_last_staged_ms = Some(now_ms);
+		} else if self.own_last_staged_ms.is_some_and(|last| now_ms - last >= Self::RETIRE_MIN_AGE_MS) {
+			self.end_transaction()?;
+			self.own_last_staged_ms = None;
+		}
 		if !self.retires_locally() {
 			return Ok(Vec::new());
 		}
 
-		#[cfg(feature = "network")]
-		let retired_hot_ops = self.session.hot_ops_up_to(up_to);
-		let new_revs = self.session.retire(up_to)?;
-
-		// Mark before `append_history_deltas` so the on-disk frame carries the boundary.
-		if interaction_end && let Some(&last) = new_revs.last() {
-			self.session.mark_interaction_end(last);
+		let closed = self.session.closed_transactions();
+		let mut seen = std::mem::take(&mut self.transactions_seen);
+		let mut due = Vec::new();
+		let mut oldest_age: f64 = 0.0;
+		for transaction in &closed {
+			let Some(&marker) = transaction.ops.last() else { continue };
+			let age = now_ms - *seen.entry(marker).or_insert(now_ms);
+			if age >= Self::RETIRE_MIN_AGE_MS && (transaction.contiguous || age >= Self::RETIRE_MAX_AGE_MS) {
+				due.push(transaction.clone());
+				oldest_age = oldest_age.max(age);
+			}
 		}
+		seen.retain(|marker, _| closed.iter().any(|transaction| transaction.ops.last() == Some(marker)));
+		self.transactions_seen = seen;
+		let due = self.session.retirable(&due);
 
+		if due.len() >= Self::RETIRE_AFTER_TRANSACTIONS || oldest_age >= Self::RETIRE_MAX_AGE_MS {
+			self.retire_transactions(&due)
+		} else {
+			Ok(Vec::new())
+		}
+	}
+
+	/// Close this peer's open transaction and retire every closed transaction, whoever its author is,
+	/// leaving other authors' open ones hot. The undo path takes this before moving the cursor, so the
+	/// interaction being undone is in history; a peer that does not retire only closes its own.
+	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
+		self.end_transaction()?;
+		self.own_last_staged_ms = None;
+		let closed = self.session.retirable(&self.session.closed_transactions());
+		self.retire_transactions(&closed)
+	}
+
+	/// Retire the given closed transactions, each as one interaction, in one history append and one
+	/// broadcast. A no-op for a peer that leaves retirement to the session host.
+	pub fn retire_transactions(&mut self, transactions: &[document_graph_storage::ClosedTransaction]) -> Result<Vec<Rev>, Error> {
+		if !self.retires_locally() || transactions.is_empty() {
+			return Ok(Vec::new());
+		}
+		let mut revs = Vec::new();
+		let mut retired_hot_ops = Vec::new();
+		for transaction in transactions {
+			revs.extend(self.session.retire_transaction(transaction)?);
+			retired_hot_ops.extend(transaction.ops.iter().copied());
+		}
+		self.finish_retirement(&revs, &retired_hot_ops)?;
+		Ok(revs)
+	}
+
+	/// Working-copy checkpoint over a timestamp: promote every hot op stamped at or before `up_to` into
+	/// retired deltas, whatever its author and whether or not its transaction is closed. For callers
+	/// that own the whole log; a session retires by [`retire_transactions`](Self::retire_transactions).
+	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
+		if !self.retires_locally() {
+			return Ok(Vec::new());
+		}
+		let retired_hot_ops = self.session.hot_ops_up_to(up_to);
+		let revs = self.session.retire(up_to)?;
+		self.finish_retirement(&revs, &retired_hot_ops)?;
+		Ok(revs)
+	}
+
+	/// What every retirement ends with: the published frontier moves, the deltas reach the history file,
+	/// the hot log and snapshot are rewritten, and the room hears about it.
+	fn finish_retirement(&mut self, new_revs: &[Rev], retired_hot_ops: &[document_graph_storage::HotOpId]) -> Result<(), Error> {
 		// In a session these deltas are about to reach peers, so the published frontier moves with them.
 		// Rewinding a commit peers already hold would diverge from them for good, with nothing on the wire
 		// to tell them, so undo past this point has to go through forward inverse ops instead. Set before
@@ -294,7 +375,7 @@ impl<L: Layout> Gdd<L> {
 		}
 
 		if !new_revs.is_empty() {
-			self.append_history_deltas(&new_revs)?;
+			self.append_history_deltas(new_revs)?;
 		}
 
 		self.rewrite_hot_log()?;
@@ -304,12 +385,13 @@ impl<L: Layout> Gdd<L> {
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
 			let deltas: Vec<_> = new_revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
-			replica.broadcast_retired(&deltas, &retired_hot_ops)?;
+			replica.broadcast_retired(&deltas, retired_hot_ops)?;
 		}
+		#[cfg(not(feature = "network"))]
+		let _ = retired_hot_ops;
 
-		Ok(new_revs)
+		Ok(())
 	}
-
 	/// Guests leave retirement to the session host and keep their hot ops until the host's retired
 	/// deltas arrive.
 	fn retires_locally(&self) -> bool {
