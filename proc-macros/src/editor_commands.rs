@@ -51,7 +51,7 @@ pub fn editor_commands_impl(attr: TokenStream, module: ItemMod) -> syn::Result<T
 		if let Some(receiver) = signature.receiver() {
 			return Err(Error::new(receiver.span(), "command functions take no `self`; they are pure `args… -> Message` translations"));
 		}
-		if !signature.generics.params.is_empty() || signature.asyncness.is_some() || signature.unsafety.is_some() {
+		if !signature.generics.params.is_empty() || signature.asyncness.is_some() || matches!(signature.safety, syn::Safety::Unsafe(_)) {
 			return Err(Error::new(signature.span(), "command functions must be plain non-generic, non-async, safe functions"));
 		}
 

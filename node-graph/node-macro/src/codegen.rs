@@ -898,7 +898,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 			#register_node_impl
 
-			#[cfg_attr(not(target_family = "wasm"), ctor)]
+			#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = gcore::ctor))]
 			fn register_metadata() {
 				let metadata = NodeMetadata {
 					display_name: #display_name,
@@ -1257,7 +1257,7 @@ fn generate_register_node_impl(
 		}
 	}
 	Ok(quote! {
-		#[cfg_attr(not(target_family = "wasm"), ctor)]
+		#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = gcore::ctor))]
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(

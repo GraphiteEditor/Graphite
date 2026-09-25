@@ -18,7 +18,7 @@ impl MergeByDistanceExt for Vector {
 
 		// TODO: We lose information on the winding order by using an undirected graph. Switch to a directed graph and fix the algorithm to handle that.
 		// Graph containing only short edges, referencing the data graph
-		let mut short_edges = UnGraphMap::new();
+		let mut short_edges = UnGraphMap::<_, _, rustc_hash::FxBuildHasher>::new();
 
 		for segment_id in self.segment_ids().iter().copied() {
 			let length = indices.segment_chord_length(segment_id);

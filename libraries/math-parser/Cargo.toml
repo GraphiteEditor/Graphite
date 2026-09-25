@@ -12,7 +12,7 @@ publish.workspace = true
 thiserror = "2.0"
 num-complex = "0.4"
 unicode-ident = "1.0"
-chumsky = { version = "0.10", default-features = false, features = ["std"] }
+chumsky = { version = "0.13", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 criterion = { workspace = true }

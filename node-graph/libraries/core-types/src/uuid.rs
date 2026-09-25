@@ -42,7 +42,7 @@ mod u64_string {
 
 mod uuid_generation {
 	use rand_chacha::ChaCha20Rng;
-	use rand_chacha::rand_core::{RngCore, SeedableRng};
+	use rand_chacha::rand_core::{Rng, SeedableRng};
 	use std::cell::Cell;
 	use std::sync::Mutex;
 
