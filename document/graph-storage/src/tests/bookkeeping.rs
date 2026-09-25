@@ -165,16 +165,16 @@ fn only_closed_transactions_retire_and_an_open_one_stays_hot() {
 		sequence: crate::HotSequence(sequence),
 	};
 
-	assert!(host.end_transaction().expect("nothing to close").is_none(), "no op of this peer is open");
+	assert!(host.end_transaction().expect("nothing to close").is_empty(), "no op of this peer is open");
 
 	// The guest opens a transaction and leaves it open, stamped earlier than everything the host does.
 	host.apply_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
 	host.apply_hot_op(guest_op(11, 2, set_attribute("guest", 1))).expect("guest op");
 
 	host.stage_ops([set_attribute("host", 1)]).expect("host op");
-	let marker = host.end_transaction().expect("close").expect("the host's transaction was open");
+	let marker = host.end_transaction().expect("close").pop().expect("the host's transaction was open");
 	assert!(matches!(marker.op, RegistryDelta::EndTransaction));
-	assert!(host.end_transaction().expect("nothing more to close").is_none(), "closing twice stages nothing");
+	assert!(host.end_transaction().expect("nothing more to close").is_empty(), "closing twice stages nothing");
 
 	let closed = host.closed_transactions();
 	assert_eq!(closed.len(), 1, "the guest's open transaction is not listed: {closed:?}");
@@ -324,4 +324,78 @@ fn an_undone_branch_is_kept_to_itself() {
 	assert!(matches!(outcome, MergeOutcome::FastForward(rev) if rev == kept), "{outcome:?}");
 	assert!(peer.retired_registry().attributes.get("kept").is_some_and(|value| !value.deleted));
 	assert!(!peer.retired_registry().attributes.contains_key("undone"), "the undone step never reached the peer");
+}
+
+/// Undoing a retired step in a session drops it out of the shared line: the later steps are minted again
+/// on its parent, the head moves, every peer that follows the move holds the same history and registry,
+/// a field a later step wrote keeps that value, and the dropped step comes back on redo as a copy on top.
+#[test]
+fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = host.head_rev().expect("rev");
+	host.mark_interaction_end(base);
+
+	// The guest's step, retired by the host: it writes its own key and one the host writes after it. A
+	// guest of its own, clock included, so its ops carry its authorship.
+	let mut guest = Session::load(PeerId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let guest_ops = [set_attribute("guest", 1), set_attribute("shared", 1)];
+	let hot = guest.stage_ops(guest_ops).expect("stage");
+	for hot_op in &hot {
+		host.apply_hot_op(hot_op.clone()).expect("the guest's ops reach the host");
+	}
+	let guest_ids: Vec<crate::HotOpId> = hot.iter().map(crate::HotOp::id).collect();
+	let revs = host.retire_hot_ops(&guest_ids).expect("retire");
+	let undone = *revs.last().expect("the guest's step");
+	host.mark_interaction_end(undone);
+	guest
+		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
+		.expect("merge");
+	guest.discard_hot_ops(&guest_ids).expect("discard");
+
+	// A later step by the host writes the shared key.
+	host.commit_op_for_test(set_attribute("shared", 2)).expect("later step");
+	let later = host.head_rev().expect("rev");
+	host.mark_interaction_end(later);
+	guest
+		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
+		.expect("merge");
+	assert_eq!(guest.head_rev(), host.head_rev());
+	assert_eq!(guest.latest_own_interaction(), Some(undone));
+
+	let (moved, touched) = host.drop_interaction(undone).expect("drop");
+	assert_eq!(moved.from, Some(later));
+	assert_eq!(moved.copies.len(), 1, "the later step is minted again");
+	assert_eq!(moved.copies[0].parent, Some(base), "the copy hangs off the dropped step's parent");
+	assert!(moved.copies[0].is_interaction_end(), "the copy keeps its interaction end");
+	assert!(touched.nodes.is_empty() && !touched.resources, "document attributes only");
+	let snapshot = host.retired_registry();
+	assert!(snapshot.attributes.get("guest").is_none_or(|value| value.deleted), "the dropped step's write is gone");
+	assert_eq!(
+		snapshot.attributes.get("shared").map(|value| &value.value),
+		Some(&serde_json::json!(2)),
+		"the later step's write stands"
+	);
+	assert!(host.delta(undone).is_some() && host.delta(later).is_some(), "the abandoned branch stays for a history panel");
+	assert!(host.registry().value_equal(host.retired_registry()));
+
+	guest.apply_head_move(&moved).expect("follow");
+	assert_eq!(guest.head_rev(), host.head_rev());
+	assert_eq!(guest.retired_registry(), host.retired_registry());
+	assert_eq!(guest.history().map(|delta| delta.id).collect::<Vec<_>>(), host.history().map(|delta| delta.id).collect::<Vec<_>>());
+	assert!(
+		matches!(guest.apply_head_move(&moved), Err(crate::CrdtError::CursorMismatch { .. })),
+		"a move only applies from where it started"
+	);
+
+	// Redo: the dropped step returns as a copy on top, its older stamp losing the shared key.
+	let restored = host.restore_interaction(undone).expect("restore");
+	assert_eq!(restored.len(), 3, "RegisterPeer and the two writes come back");
+	assert!(host.retired_registry().attributes.get("guest").is_some_and(|value| value.value == serde_json::json!(1)));
+	assert_eq!(host.retired_registry().attributes.get("shared").map(|value| &value.value), Some(&serde_json::json!(2)));
+	guest
+		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
+		.expect("merge the copies");
+	assert_eq!(guest.head_rev(), host.head_rev());
+	assert_eq!(guest.retired_registry(), host.retired_registry());
 }

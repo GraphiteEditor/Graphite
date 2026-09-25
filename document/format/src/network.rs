@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
+use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -147,13 +147,13 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(deferred)
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError> {
 		let incoming: HashSet<Rev> = deltas.iter().map(|delta| delta.id).collect();
 		let length_before = self.session.history_len();
 		for delta in &deltas {
 			self.remote_changes.touched.record(&delta.kind);
 		}
-		self.session.merge_remote(deltas, retires)?;
+		SyncTarget::merge_remote(&mut self.session, deltas, retires, head)?;
 
 		// Whatever a peer sent is shared by definition, so it sits behind the published frontier too: a
 		// guest must no more silently rewind the host's history than the host may rewind its own.
@@ -203,6 +203,41 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
 		let touched = self.session.retract_hot_ops(ops);
 		self.remote_changes.touched.extend(touched);
+		self.pending_persist.hot_log = true;
+		self.pending_persist.snapshot = true;
+		Ok(())
+	}
+
+	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
+		let (moved, touched) = self.session.drop_interaction(rev)?;
+		self.remote_changes.touched.extend(touched);
+		self.pending_persist.history = true;
+		self.pending_persist.hot_log = true;
+		self.pending_persist.snapshot = true;
+		Ok(moved)
+	}
+
+	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError> {
+		let revs = self.session.restore_interaction(rev)?;
+		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+		for delta in &deltas {
+			self.remote_changes.touched.record(&delta.kind);
+		}
+		if let Some(&last) = revs.last() {
+			self.session.publish_up_to(last);
+		}
+		self.pending_persist.history = true;
+		self.pending_persist.snapshot = true;
+		Ok(deltas)
+	}
+
+	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError> {
+		let touched = self.session.apply_head_move(moved)?;
+		self.remote_changes.touched.extend(touched);
+		if let Some(head) = self.session.head_rev() {
+			self.session.publish_up_to(head);
+		}
+		self.pending_persist.history = true;
 		self.pending_persist.hot_log = true;
 		self.pending_persist.snapshot = true;
 		Ok(())

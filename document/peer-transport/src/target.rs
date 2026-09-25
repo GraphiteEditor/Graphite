@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session};
+use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session};
 use std::collections::HashSet;
 
 pub type TargetError = Box<dyn std::error::Error>;
@@ -28,9 +28,17 @@ pub trait SyncTarget {
 	/// Returns the ops it could not apply, whose referents have not arrived yet; the caller retries
 	/// them as later ops fill the gaps.
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError>;
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError>;
+	/// Take the host's deltas on and follow its head, `head` being where the host is after them (the
+	/// batch's last delta when `None`). See [`Session::follow`].
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError>;
 	/// A peer took back hot ops of its own: drop them and re-derive what they touched.
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError>;
+	/// Host only: drop a retired interaction out of the shared line. See [`Session::drop_interaction`].
+	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError>;
+	/// Host only: mint a dropped interaction again on top of the line. See [`Session::restore_interaction`].
+	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError>;
+	/// Follow the host's cursor move. See [`Session::apply_head_move`].
+	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError>;
 	/// Make everything applied since the last flush durable. Called once per [`Replica::poll`](crate::Replica::poll),
 	/// so a target that rewrites whole files can do it once for a batch rather than once per packet.
 	fn flush(&mut self) -> Result<(), TargetError> {
@@ -104,9 +112,8 @@ impl SyncTarget for Session {
 		Ok(deferred)
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
-		// Hot ops stay until after the merge: a delta may target something a still-hot removal took away.
-		self.merge(deltas)?;
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError> {
+		self.follow(deltas, head)?;
 		self.discard_hot_ops(retires)?;
 		Ok(())
 	}
@@ -131,6 +138,21 @@ impl SyncTarget for Session {
 
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
 		Session::retract_hot_ops(self, ops);
+		Ok(())
+	}
+
+	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
+		let (moved, _) = Session::drop_interaction(self, rev)?;
+		Ok(moved)
+	}
+
+	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError> {
+		let revs = Session::restore_interaction(self, rev)?;
+		Ok(revs.into_iter().filter_map(|rev| self.delta(rev).cloned()).collect())
+	}
+
+	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError> {
+		Session::apply_head_move(self, moved)?;
 		Ok(())
 	}
 }

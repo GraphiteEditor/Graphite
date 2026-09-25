@@ -45,6 +45,11 @@ impl History {
 		history
 	}
 
+	/// Where `rev` sits in the file order, if it is here.
+	pub fn position(&self, rev: Rev) -> Option<usize> {
+		self.index.get(&rev).copied()
+	}
+
 	pub fn get(&self, rev: Rev) -> Option<&Delta> {
 		self.index.get(&rev).map(|&position| &self.deltas[position])
 	}

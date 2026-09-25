@@ -1,7 +1,7 @@
 use crate::packet::{Broadcast, BroadcastBody, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
 use crate::target::{SyncTarget, TargetError};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
-use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, ResourceHash, UserId};
+use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, ResourceHash, Rev, UserId};
 use std::collections::{HashMap, HashSet};
 
 pub enum Event {
@@ -39,7 +39,6 @@ struct RemotePeer {
 	peer: PeerId,
 	#[expect(dead_code, reason = "Read once peers are surfaced in the UI")]
 	user: UserId,
-	#[expect(dead_code, reason = "Read once host handover is implemented")]
 	role: Role,
 }
 
@@ -146,6 +145,22 @@ impl Replica {
 		self.resources_stale = true;
 
 		self.broadcast(BroadcastBody::HotOps(ops.to_vec()))
+	}
+
+	/// Ask the host to undo (`restore == false`) or redo (`restore == true`) this peer's retired interaction.
+	/// A host undoes its own directly with [`broadcast_head_move`](Self::broadcast_head_move).
+	pub fn request_undo(&mut self, rev: Rev, restore: bool) -> Result<(), PacketError> {
+		let Some((&host, _)) = self.peers.iter().find(|(_, remote)| remote.role == Role::Host) else {
+			return Ok(());
+		};
+		self.transport.send(host, &SyncPacket::UndoRequest { rev, restore })
+	}
+
+	/// Host only: tell the room the head moved, with the steps minted again under it.
+	pub fn broadcast_head_move(&mut self, moved: HeadMove) -> Result<(), PacketError> {
+		debug_assert_eq!(self.role, Role::Host);
+		self.resources_stale = true;
+		self.broadcast(BroadcastBody::HeadMove(moved))
 	}
 
 	/// Take back hot ops of this peer's own, so every peer drops them. The ops have already left the
@@ -390,6 +405,22 @@ impl Replica {
 					self.transport.send(from, &SyncPacket::SyncRequest { known_revs: target.known_revs() })?;
 				}
 			}
+			SyncPacket::UndoRequest { rev, restore } => {
+				if self.role != Role::Host {
+					return Ok(());
+				}
+				// Applying is best effort, as for any op: a request naming a step this host no longer has on its
+				// line is reported and dropped.
+				let outcome: Result<(), TargetError> = if restore {
+					target.restore_interaction(rev).and_then(|deltas| self.broadcast_retired(&deltas, &[]).map_err(TargetError::from))
+				} else {
+					target.drop_interaction(rev).and_then(|moved| self.broadcast_head_move(moved).map_err(TargetError::from))
+				};
+				match outcome {
+					Ok(()) => events.push(Event::Changed),
+					Err(error) => log::error!("Undo request for {rev:?} failed: {error}"),
+				}
+			}
 			SyncPacket::SyncRequest { known_revs } => {
 				if self.role != Role::Host {
 					return Ok(());
@@ -417,7 +448,7 @@ impl Replica {
 
 				match sync.registry {
 					Some(registry) => target.load(registry, sync.deltas, sync.head)?,
-					None => target.merge_remote(sync.deltas, &[])?,
+					None => target.merge_remote(sync.deltas, &[], sync.head)?,
 				}
 				target.absorb_retired_marks(&sync.retired)?;
 				target.absorb_retracted_marks(&sync.retracted)?;
@@ -562,7 +593,7 @@ impl Replica {
 			// is reported rather than abandoning the bookkeeping and the rest of the queue.
 			let applied = match broadcast.body {
 				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops).map(|deferred| self.deferred.extend(deferred)),
-				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires),
+				BroadcastBody::Deltas { deltas, retires } => target.merge_remote(deltas, &retires, None),
 				BroadcastBody::Retract(ops) => {
 					// A copy still waiting on a referent is taken back with the rest.
 					self.deferred.retain(|hot_op| !ops.contains(&hot_op.id()));
@@ -572,6 +603,7 @@ impl Replica {
 					self.deferred.retain(|hot_op| !marks.covers(hot_op.id()));
 					target.absorb_retracted_marks(&marks)
 				}
+				BroadcastBody::HeadMove(moved) => target.apply_head_move(&moved),
 			};
 			if let Err(error) = applied {
 				log::error!("Applying a delivered broadcast: {error}");

@@ -163,27 +163,34 @@ impl Document {
 		for hot_op in &taken {
 			touched.record(&hot_op.op);
 		}
-		self.working_registry = self.retired_snapshot.clone();
-		for hot_op in std::mem::take(&mut self.hot_log) {
-			// An op that depended on what was taken back cannot land; it stays in the log the way a deferred
-			// op does, for the referent to arrive again or for the retirer to hold it.
-			let _ = self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp);
-			self.hot_log.push(hot_op);
-		}
+		self.rebuild_working();
 		(touched, taken)
 	}
 
-	/// Drop hot ops the retired snapshot already accounts for. A mark alone will not do: it can arrive
-	/// ahead of the delta carrying the op into history, stranding its effect in the working registry. A
-	/// transaction marker is the exception: no delta ever carries it, so its mark is all there is.
+	/// Re-derive the working registry as the retired snapshot plus every hot op, after the snapshot or the
+	/// hot log changed in a way that cannot be applied in place: an op taken back, or the head moved.
+	/// O(N + L), for the rare paths only.
+	pub(crate) fn rebuild_working(&mut self) {
+		self.working_registry = self.retired_snapshot.clone();
+		for hot_op in std::mem::take(&mut self.hot_log) {
+			// Nothing is deferred any more, so this cannot fail on a referent; anything else is logged by
+			// the caller's tests rather than left to strand the op.
+			let _ = self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp);
+			self.hot_log.push(hot_op);
+		}
+	}
+
+	/// Drop hot ops history already covers. Marks travel with the deltas they cover, so a covered op's
+	/// delta is either here or on a branch the room walked away from, and in both cases the hot copy has
+	/// no effect left to contribute: the working registry is re-derived without it.
 	fn drop_retired_hot_ops(&mut self) -> bool {
 		let before = self.hot_log.len();
-		self.hot_log.retain(|hot_op| {
-			let marker = matches!(hot_op.op, RegistryDelta::EndTransaction);
-			!(self.history.contains_timestamp(hot_op.timestamp) || (marker && self.retired.covers(hot_op.id())))
-		});
-
-		before != self.hot_log.len()
+		self.hot_log.retain(|hot_op| !self.retired.covers(hot_op.id()));
+		let dropped = before != self.hot_log.len();
+		if dropped {
+			self.rebuild_working();
+		}
+		dropped
 	}
 
 	/// Apply a retired commit and record it in history.

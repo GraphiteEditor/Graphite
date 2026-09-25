@@ -35,10 +35,20 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
-	/// For each step on the legacy redo stack, the ops undoing it took back from the hot log, when it did
-	/// that rather than move the storage cursor, so redo stages exactly those again instead of moving
-	/// forward or diffing a snapshot that predates what peers wrote meanwhile.
-	retracted_undos: Vec<Option<Vec<document_graph_storage::RegistryDelta>>>,
+	/// For each step on the legacy redo stack, how storage undid it, so redo takes the matching way back
+	/// rather than diffing a snapshot that predates what peers wrote meanwhile.
+	retracted_undos: Vec<UndoNote>,
+}
+
+/// How storage undid a step, paired with the legacy redo entry pushed for it.
+#[derive(Clone, Debug)]
+pub enum UndoNote {
+	/// The step was still hot and its ops were taken back; redo stages them again.
+	Retracted(Vec<document_graph_storage::RegistryDelta>),
+	/// The step had retired in a session and was dropped out of the shared line; redo puts it back on top.
+	Dropped(document_graph_storage::Rev),
+	/// The storage cursor moved back over it; redo moves it forward.
+	Cursor,
 }
 
 /// Why [`DocumentHistory::move_cursor`] produced no interface.
@@ -164,20 +174,40 @@ impl DocumentHistory {
 		!self.legacy_redo_stack.is_empty()
 	}
 
-	/// The ops the next redo step was taken back with, without popping, so the caller can decide how to
-	/// redo before it moves the legacy stacks.
-	pub fn next_redo_is_retracted(&self) -> bool {
-		self.retracted_undos.last().is_some_and(|note| note.is_some())
+	/// Whether the next redo step is one storage undid on its own, taken back or dropped, so the caller can
+	/// decide how to redo before it moves the legacy stacks.
+	pub fn next_redo_is_storage_driven(&self) -> bool {
+		!matches!(self.retracted_undos.last(), None | Some(UndoNote::Cursor))
 	}
 
 	/// Record how the step just undone reached storage, paired with the legacy redo entry pushed for it.
-	pub fn note_undo(&mut self, retracted: Option<Vec<document_graph_storage::RegistryDelta>>) {
-		self.retracted_undos.push(retracted);
+	pub fn note_undo(&mut self, note: UndoNote) {
+		self.retracted_undos.push(note);
 	}
 
-	/// The ops the step about to be redone was taken back with, if it was, rather than cursor-undone.
-	pub fn take_undo_note(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
-		self.retracted_undos.pop().flatten()
+	/// How the step about to be redone was undone, cursor-undone when nothing was noted.
+	pub fn take_undo_note(&mut self) -> UndoNote {
+		self.retracted_undos.pop().unwrap_or(UndoNote::Cursor)
+	}
+
+	/// Undo this peer's latest retired step in a session; see [`document_format::Gdd::undo_retired_step`].
+	pub fn undo_retired_step(&mut self) -> Option<document_graph_storage::Rev> {
+		let storage = self.storage.as_mut()?;
+		match storage.undo_retired_step() {
+			Ok(rev) => rev,
+			Err(error) => {
+				log::error!("Undoing the retired step failed: {error}");
+				None
+			}
+		}
+	}
+
+	/// Redo a step dropped out of a session's line.
+	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.redo_retired_step(rev) {
+			log::error!("Redoing the dropped step failed: {error}");
+		}
 	}
 
 	/// Close this peer's open transaction and retire every closed one into durable Gdd history, so the

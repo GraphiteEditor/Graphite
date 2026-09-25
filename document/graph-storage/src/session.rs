@@ -326,6 +326,156 @@ impl Session {
 		self.document.retract_hot_ops(ids).0
 	}
 
+	/// The last delta of this peer's latest retired interaction on the line, if any: what an undo of a
+	/// retired step in a session names.
+	pub fn latest_own_interaction(&self) -> Option<Rev> {
+		let mut current = self.document.head?;
+		loop {
+			let delta = self.document.history.get(current)?;
+			if delta.is_interaction_end() && delta.author == self.document.peer {
+				return Some(current);
+			}
+			current = delta.parent?;
+		}
+	}
+
+	/// Undo a retired interaction in a session: drop it out of the shared line. The snapshot refolds to the
+	/// interaction's parent, the head moves to the interaction's parent, and the later steps
+	/// are minted again as copies on that parent, same author, stamp and kind, so every peer that follows
+	/// the move holds identical revs. The interaction and the originals stay as an abandoned branch. Since
+	/// every op commutes, the result is the fold of the line without the interaction: a field one of the
+	/// later steps wrote keeps that later value. Returns the move to broadcast and what the dropped ops
+	/// named. Only the retirer does this; a guest asks it to.
+	pub fn drop_interaction(&mut self, undone: Rev) -> Result<(HeadMove, Touched), CrdtError> {
+		let from = self.document.head;
+		let base = self.interaction_start_parent(undone).ok_or(CrdtError::NotUndoable(undone))?;
+
+		// The line from the head down to the interaction's parent, newest first.
+		let mut walked = Vec::new();
+		let mut current = from;
+		while current != Some(base) {
+			let rev = current.ok_or(CrdtError::NotFoundInHistory(undone))?;
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
+			if matches!(delta.kind, RegistryDelta::Merge { .. }) {
+				return Err(CrdtError::NotUndoable(undone));
+			}
+			current = delta.parent;
+			walked.push(delta);
+		}
+		let position = walked.iter().position(|delta| delta.id == undone).ok_or(CrdtError::NotFoundInHistory(undone))?;
+
+		// The snapshot has to be the fold of the line without the interaction. Walking back over the stored
+		// reverses would leave every field at the stamp of the op reverted, and the copies landing again with
+		// those same stamps would tie and lose, so the fold is taken from history at the new head instead.
+		self.document.head = Some(base);
+		self.document.retired_snapshot = self.snapshot_from_history()?;
+
+		let mut touched = Touched::default();
+		for delta in &walked[position..] {
+			touched.record(&delta.kind);
+		}
+
+		let mut copies = Vec::new();
+		for original in walked[..position].iter().rev() {
+			let revs = self.commit_ops_authored_at([(original.kind.clone(), Some(original.timestamp))], true)?;
+			if original.is_interaction_end()
+				&& let Some(&rev) = revs.last()
+			{
+				self.document.history.mark_interaction_end(rev, original.timestamp);
+			}
+			copies.extend(revs.iter().filter_map(|&rev| self.document.history.get(rev).cloned()));
+		}
+		// Two branches now: the file order is the canonical one, which every peer computes alike.
+		self.document.history.canonical_sort();
+
+		self.document.rebuild_working();
+		self.runtime_base = None;
+		Ok((
+			HeadMove {
+				from,
+				head: self.document.head,
+				copies,
+			},
+			touched,
+		))
+	}
+
+	/// Follow another peer's cursor move: refold the snapshot to where the copies start, take the copies on,
+	/// and put the head where the mover put it. Returns what the walked-over ops named. The move only
+	/// applies from the head it started at; anywhere else this peer has diverged and needs a resync.
+	pub fn apply_head_move(&mut self, moved: &HeadMove) -> Result<Touched, CrdtError> {
+		if self.document.head != moved.from {
+			return Err(CrdtError::CursorMismatch {
+				expected: moved.from,
+				found: self.document.head,
+			});
+		}
+		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
+
+		let mut walked = Vec::new();
+		let mut current = self.document.head;
+		while current != base {
+			let rev = current.ok_or(CrdtError::NothingToUndo)?;
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
+			current = delta.parent;
+			walked.push(delta);
+		}
+		let mut touched = Touched::default();
+		for delta in &walked {
+			touched.record(&delta.kind);
+		}
+		// The fold of the line without what was dropped, for the same reason `drop_interaction` takes it from
+		// history rather than walking back.
+		self.document.head = base;
+		self.document.retired_snapshot = self.snapshot_from_history()?;
+
+		for copy in &moved.copies {
+			if let Some(parent) = copy.parent
+				&& !self.document.history.contains(parent)
+			{
+				return Err(CrdtError::NotFoundInHistory(parent));
+			}
+			self.document.apply_op_with(RegistryTarget::Snapshot, copy.kind.clone(), copy.timestamp, ApplyMode::Idempotent)?;
+			self.document.history.push(copy.clone());
+			self.document.head = Some(copy.id);
+		}
+		if self.document.head != moved.head {
+			return Err(CrdtError::CursorMismatch {
+				expected: moved.head,
+				found: self.document.head,
+			});
+		}
+		self.document.redo_stack.clear();
+		self.document.history.canonical_sort();
+		self.document.rebuild_working();
+		self.runtime_base = None;
+		Ok(touched)
+	}
+
+	/// Redo a dropped interaction in a session: mint its ops again on top of the line, as one interaction.
+	/// Its writes carry their original stamps, so a field someone wrote since keeps the newer value.
+	/// Returns the new revs, for an ordinary retirement-style broadcast.
+	pub fn restore_interaction(&mut self, dropped: Rev) -> Result<Vec<Rev>, CrdtError> {
+		let base = self.interaction_start_parent(dropped).ok_or(CrdtError::NotUndoable(dropped))?;
+		let mut ops = Vec::new();
+		let mut current = Some(dropped);
+		while current != Some(base) {
+			let rev = current.ok_or(CrdtError::NothingToRedo)?;
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?;
+			current = delta.parent;
+			ops.push((delta.kind.clone(), Some(delta.timestamp)));
+		}
+		ops.reverse();
+		let revs = self.commit_ops_authored_at(ops, true)?;
+		if let Some(&last) = revs.last() {
+			self.mark_interaction_end(last);
+		}
+		self.document.history.canonical_sort();
+		self.document.rebuild_working();
+		self.runtime_base = None;
+		Ok(revs)
+	}
+
 	/// Which hot ops were taken back, for a peer catching up.
 	pub fn retracted_marks(&self) -> &RetiredHotOps {
 		&self.document.retracted
@@ -379,6 +529,65 @@ impl Session {
 
 	pub fn history_len(&self) -> usize {
 		self.document.history.len()
+	}
+
+	/// Take a retirer's deltas on and put the head where the retirer's is, minting nothing: a guest in a
+	/// session follows the host's line rather than merging with it. A batch that extends this head applies
+	/// in place; anything else, a line the host moved while this peer was away, refolds the snapshot to the
+	/// new head, and the old tip stays as an abandoned branch. `head` defaults to the batch's last delta.
+	pub fn follow(&mut self, incoming: Vec<Delta>, head: Option<Rev>) -> Result<MergeOutcome, CrdtError> {
+		let before = self.document.head;
+		let length_before = self.document.history.len();
+		let head = head.or_else(|| incoming.last().map(|delta| delta.id)).or(before);
+
+		for delta in incoming {
+			if self.document.history.contains(delta.id) {
+				continue;
+			}
+			for parent in delta.all_parents() {
+				if !self.document.history.contains(parent) {
+					return Err(CrdtError::NotFoundInHistory(parent));
+				}
+			}
+			self.document.history.push(delta);
+		}
+		if head == before && self.document.history.len() == length_before {
+			return Ok(MergeOutcome::NoOp);
+		}
+
+		// The new head extends this one when walking its parents back over the batch reaches this head.
+		let mut chain = Vec::new();
+		let mut current = head;
+		let extends = loop {
+			if current == before {
+				break true;
+			}
+			let Some(rev) = current else { break false };
+			let Some(delta) = self.document.history.get(rev) else { break false };
+			if self.document.history.position(rev).is_some_and(|position| position < length_before) {
+				break false;
+			}
+			chain.push(delta.clone());
+			current = delta.parent;
+		};
+
+		if extends {
+			for delta in chain.iter().rev() {
+				self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
+				self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
+			}
+			self.document.head = head;
+		} else {
+			self.document.head = head;
+			self.document.retired_snapshot = self.snapshot_from_history()?;
+			self.document.rebuild_working();
+			self.runtime_base = None;
+		}
+		if !self.document.history.extends_canonically(length_before) {
+			self.document.history.canonical_sort();
+		}
+		self.document.redo_stack.clear();
+		Ok(head.map_or(MergeOutcome::NoOp, MergeOutcome::FastForward))
 	}
 
 	/// Integrate `incoming` retired deltas (in causal order) from another peer. Moves `head` forward
@@ -441,9 +650,11 @@ impl Session {
 	}
 
 	/// Closes this peer's open transaction with a [`RegistryDelta::EndTransaction`] marker, so the retirer
-	/// can take the ops before it as one unit. `None` when nothing is open: an author's transaction is
+	/// can take the ops before it as one unit. Returns what was staged, the marker last: a peer whose
+	/// registration left the line, on a dropped step say, registers again ahead of it, and that op has
+	/// to reach the room too or its run has a gap. Empty when nothing is open: an author's transaction is
 	/// open once it has an op past its last marker.
-	pub fn end_transaction(&mut self) -> Result<Option<HotOp>, CrdtError> {
+	pub fn end_transaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
 		let peer = self.document.peer;
 		let open = self
 			.document
@@ -453,9 +664,9 @@ impl Session {
 			.find(|hot_op| hot_op.timestamp.peer == peer)
 			.is_some_and(|hot_op| !matches!(hot_op.op, RegistryDelta::EndTransaction));
 		if !open {
-			return Ok(None);
+			return Ok(Vec::new());
 		}
-		Ok(self.stage_ops([RegistryDelta::EndTransaction])?.pop())
+		self.stage_ops([RegistryDelta::EndTransaction])
 	}
 
 	/// Every author's closed transactions in the hot log, the earliest closed first. An author's ops past
@@ -972,6 +1183,10 @@ pub enum CrdtError {
 	NothingToUndo,
 	#[error("Nothing to redo")]
 	NothingToRedo,
+	#[error("Interaction {0} cannot be dropped: it is the base or spans a merge")]
+	NotUndoable(Rev),
+	#[error("Cursor is at {found:?}, the move expected {expected:?}")]
+	CursorMismatch { expected: Option<Rev>, found: Option<Rev> },
 	#[error("Node {0} already exists")]
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]
@@ -1005,4 +1220,13 @@ pub struct Retraction {
 	pub touched: Touched,
 	/// The ops themselves, marker aside, for a redo to stage afresh.
 	pub ops: Vec<RegistryDelta>,
+}
+
+/// A shared cursor move, as [`Session::drop_interaction`] produces it and [`Session::apply_head_move`]
+/// follows it: the head it started from, the head it ends at, and the steps minted again in between.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HeadMove {
+	pub from: Option<Rev>,
+	pub head: Option<Rev>,
+	pub copies: Vec<Delta>,
 }

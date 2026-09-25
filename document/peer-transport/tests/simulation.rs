@@ -4,7 +4,7 @@
 //! Inspect one run with `SEED=<n> GUESTS=<n> cargo test -p peer-transport --test simulation inspect_seed -- --ignored --nocapture`.
 
 use document_graph_storage::{
-	AttributeDelta, Delta, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId,
+	AttributeDelta, Delta, HeadMove, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId,
 	RetiredHotOps, Rev, Session, SourceKey, TimeStamp, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
@@ -85,8 +85,8 @@ impl SyncTarget for SimTarget {
 		SyncTarget::apply_remote_hot_ops(&mut self.session, ops)
 	}
 
-	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<(), TargetError> {
-		SyncTarget::merge_remote(&mut self.session, deltas, retires)
+	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError> {
+		SyncTarget::merge_remote(&mut self.session, deltas, retires, head)
 	}
 
 	fn retired_marks(&self) -> RetiredHotOps {
@@ -107,6 +107,18 @@ impl SyncTarget for SimTarget {
 
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
 		SyncTarget::retract_hot_ops(&mut self.session, ops)
+	}
+
+	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
+		SyncTarget::drop_interaction(&mut self.session, rev)
+	}
+
+	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError> {
+		SyncTarget::restore_interaction(&mut self.session, rev)
+	}
+
+	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError> {
+		SyncTarget::apply_head_move(&mut self.session, moved)
 	}
 
 	fn flush(&mut self) -> Result<(), TargetError> {
@@ -148,6 +160,8 @@ struct Peer {
 	/// The sequence of the marker closing this peer's latest transaction, `NONE` before the first. Nothing
 	/// past it may ever retire.
 	last_closed: HotSequence,
+	/// Retired interactions of this peer's own it undid, newest last, for a redo to name.
+	dropped: Vec<Rev>,
 }
 
 impl Peer {
@@ -166,6 +180,7 @@ impl Peer {
 			transport,
 			departed: false,
 			last_closed: HotSequence::NONE,
+			dropped: Vec::new(),
 		}
 	}
 
@@ -219,9 +234,10 @@ impl Peer {
 
 	/// Close this peer's open transaction, the way the editor does at an undo-step boundary.
 	fn end_transaction(&mut self) {
-		if let Some(marker) = self.target.session.end_transaction().expect("end transaction") {
+		let staged = self.target.session.end_transaction().expect("end transaction");
+		if let Some(marker) = staged.last() {
 			self.last_closed = marker.sequence;
-			self.replica.broadcast_hot_ops(&[marker]).expect("broadcast");
+			self.replica.broadcast_hot_ops(&staged).expect("broadcast");
 		}
 	}
 
@@ -230,6 +246,38 @@ impl Peer {
 	fn retract(&mut self) {
 		if let Some(retraction) = self.target.session.retract_transaction().expect("retract") {
 			self.replica.broadcast_retraction(&retraction.ids).expect("broadcast retraction");
+		}
+	}
+
+	/// Undo this peer's latest retired step, the way the editor does once a step is in history: the host
+	/// drops it out of the line itself, a guest asks the host to.
+	fn undo_retired(&mut self) {
+		let Some(rev) = self.target.session.latest_own_interaction() else { return };
+		if self.replica.role() == Role::Host {
+			match self.target.session.drop_interaction(rev) {
+				Ok((moved, _)) => self.replica.broadcast_head_move(moved).expect("broadcast head move"),
+				Err(document_graph_storage::CrdtError::NotUndoable(_)) => return,
+				Err(error) => panic!("drop: {error:?}"),
+			}
+		} else {
+			self.replica.request_undo(rev, false).expect("request undo");
+		}
+		self.dropped.push(rev);
+	}
+
+	/// Redo the step this peer undid last, as a copy on top of the line.
+	fn redo_retired(&mut self) {
+		let Some(rev) = self.dropped.pop() else { return };
+		if self.replica.role() == Role::Host {
+			let revs = match self.target.session.restore_interaction(rev) {
+				Ok(revs) => revs,
+				Err(document_graph_storage::CrdtError::NotUndoable(_)) => return,
+				Err(error) => panic!("restore: {error:?}"),
+			};
+			let deltas: Vec<_> = revs.iter().filter_map(|&rev| self.target.session.delta(rev).cloned()).collect();
+			self.replica.broadcast_retired(&deltas, &[]).expect("broadcast restored");
+		} else {
+			self.replica.request_undo(rev, true).expect("request redo");
 		}
 	}
 
@@ -483,8 +531,11 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 					peers[index].end_transaction();
 				}
 			}
-			// An undo of a step still hot takes it back everywhere; one already retired is not undone here.
+			// An undo of a step still hot takes it back everywhere.
 			11 if peers[index].replica.is_synced() => peers[index].retract(),
+			// An undo of a step already retired drops it out of the shared line, and a redo puts it back on top.
+			12 if peers[index].replica.is_synced() => peers[index].undo_retired(),
+			13 if peers[index].replica.is_synced() && !peers[index].dropped.is_empty() => peers[index].redo_retired(),
 			// A small pool of distinct payloads, so peers sometimes introduce the same resource
 			// concurrently and sometimes one nobody else can serve.
 			8 if peers[index].replica.is_synced() => {
@@ -592,6 +643,20 @@ fn assert_open_transactions_stay_hot(seed: u64, peers: &[Peer]) {
 	}
 }
 
+/// The revs on the head's ancestry, in file order.
+fn reachable_history(session: &Session) -> Vec<Rev> {
+	let mut reachable = HashSet::new();
+	let mut stack: Vec<Rev> = session.head_rev().into_iter().collect();
+	while let Some(rev) = stack.pop() {
+		if reachable.insert(rev)
+			&& let Some(delta) = session.delta(rev)
+		{
+			stack.extend(delta.all_parents());
+		}
+	}
+	session.history().map(|delta| delta.id).filter(|rev| reachable.contains(rev)).collect()
+}
+
 fn assert_zones_agree(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
 		if !peer.session().hot_log().is_empty() {
@@ -655,9 +720,11 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 	}
 
 	let host = &peers[0];
-	let host_history: Vec<_> = host.session().history().map(|delta| delta.id).collect();
+	// What a peer can reach from its head is what it holds in common with the room: a branch the cursor
+	// walked away from is only ever sent to peers that were there when it was live.
+	let host_history = reachable_history(host.session());
 	for (index, guest) in present().skip(1) {
-		let guest_history: Vec<_> = guest.session().history().map(|delta| delta.id).collect();
+		let guest_history = reachable_history(guest.session());
 		assert_eq!(guest_history, host_history, "seed {seed}: guest {index} history diverged");
 		assert_eq!(guest.session().head_rev(), host.session().head_rev(), "seed {seed}: guest {index} head diverged");
 		assert_eq!(guest.session().retired_registry(), host.session().retired_registry(), "seed {seed}: guest {index} registry diverged");

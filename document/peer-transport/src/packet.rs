@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, UserId};
+use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, UserId};
 use serde::{Deserialize, Serialize};
 
 /// The host is the single peer that retires hot ops.
@@ -36,6 +36,12 @@ pub enum SyncPacket {
 	},
 	Sync(Box<SyncPayload>),
 	Broadcast(Broadcast),
+	/// A guest asks the host to undo (`restore: false`) or redo (`restore: true`) one of its retired
+	/// interactions, named by its last delta. The host answers the room with a `HeadMove` or new deltas.
+	UndoRequest {
+		rev: Rev,
+		restore: bool,
+	},
 	ResourceRequest(Vec<ResourceHash>),
 	Resource {
 		hash: ResourceHash,
@@ -87,6 +93,8 @@ pub enum BroadcastBody {
 	/// Everything a peer knows to have been taken back, re-announced on a membership change the way hot
 	/// ops are, so a peer that joined while a retraction was in flight still hears of it.
 	RetractedMarks(RetiredHotOps),
+	/// The host dropped a retired interaction out of the line: every peer walks back and follows the head.
+	HeadMove(HeadMove),
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HotOp, RegistryDelta, Rev, TimeStamp};
+use document_graph_storage::{Delta, HotOp, RegistryDelta, Rev, TimeStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -273,9 +273,8 @@ impl<L: Layout> Gdd<L> {
 	/// Closes this peer's open transaction, if it has one, with a marker that reaches the room like any
 	/// other hot op. The editor calls this at each undo-step boundary.
 	pub fn end_transaction(&mut self) -> Result<(), Error> {
-		if let Some(marker) = self.session.end_transaction()? {
-			self.persist_staged(&[marker])?;
-		}
+		let staged = self.session.end_transaction()?;
+		self.persist_staged(&staged)?;
 		Ok(())
 	}
 
@@ -303,6 +302,61 @@ impl<L: Layout> Gdd<L> {
 		#[cfg(not(feature = "network"))]
 		let _ = ids;
 		Ok(Some(ops))
+	}
+
+	/// Undo this peer's latest retired step in a session, the one [`Session::latest_own_interaction`]
+	/// names. The retirer drops it out of the shared line itself and tells the room, and what the step
+	/// named lands in the remote changes for the mirror to follow; anyone else asks the retirer, and the
+	/// head move comes back through the poll like any remote change. `None` when this peer has no retired
+	/// step of its own on the line.
+	#[cfg(feature = "network")]
+	pub fn undo_retired_step(&mut self) -> Result<Option<Rev>, Error> {
+		let Some(rev) = self.session.latest_own_interaction() else {
+			return Ok(None);
+		};
+		if self.retires_locally() {
+			let (moved, touched) = self.session.drop_interaction(rev)?;
+			self.remote_changes.touched.extend(touched);
+			if let Some(head) = self.session.head_rev() {
+				self.session.publish_up_to(head);
+			}
+			self.rewrite_history()?;
+			self.rewrite_hot_log()?;
+			self.persist_registry_snapshot()?;
+			self.persist_session_state()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_head_move(moved)?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_undo(rev, false)?;
+		}
+		Ok(Some(rev))
+	}
+
+	/// Redo a step [`undo_retired_step`](Self::undo_retired_step) dropped: it comes back as a copy on top
+	/// of the line, by the retirer, directly or on request.
+	#[cfg(feature = "network")]
+	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let revs = self.session.restore_interaction(rev)?;
+			let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+			for delta in &deltas {
+				self.remote_changes.touched.record(&delta.kind);
+			}
+			if let Some(&last) = revs.last() {
+				self.session.publish_up_to(last);
+			}
+			self.rewrite_history()?;
+			self.rewrite_hot_log()?;
+			self.persist_registry_snapshot()?;
+			self.persist_session_state()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_retired(&deltas, &[])?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_undo(rev, true)?;
+		}
+		Ok(())
 	}
 
 	/// Stage ops a retraction took back, as a fresh transaction, noting what they name as a change for the

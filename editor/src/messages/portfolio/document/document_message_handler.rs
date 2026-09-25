@@ -1,4 +1,5 @@
 use super::document_diff::diff_networks;
+use super::document_history::UndoNote;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
@@ -413,8 +414,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, resource_storage, preferences.validate_storage_round_trip, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, resource_storage, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -2546,7 +2547,7 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		// A step still hot is taken back and never becomes history. The legacy snapshot is not installed: it
 		// predates whatever peers wrote in the meantime, so the interface keeps what it holds and follows the
 		// registry on just the entities the step named. Only a retired step moves the cursor.
@@ -2556,8 +2557,22 @@ impl DocumentMessageHandler {
 			if let Some(snapshot) = self.history.pop_undo() {
 				self.history.push_redo(snapshot);
 			}
-			self.history.note_undo(Some(ops));
+			self.history.note_undo(UndoNote::Retracted(ops));
 			self.follow_storage_changes(responses);
+			return;
+		}
+		// In a session a retired step is public: it is dropped out of the shared line, by the retirer or on
+		// request, and the room follows the head. Nothing else in a session may install a legacy snapshot.
+		if self.is_in_session() {
+			if self.history.has_undo_step()
+				&& let Some(rev) = self.history.undo_retired_step()
+			{
+				if let Some(snapshot) = self.history.pop_undo() {
+					self.history.push_redo(snapshot);
+				}
+				self.history.note_undo(UndoNote::Dropped(rev));
+				self.follow_storage_changes(responses);
+			}
 			return;
 		}
 
@@ -2568,11 +2583,7 @@ impl DocumentMessageHandler {
 			false
 		};
 		if legacy_applied {
-			self.history.note_undo(None);
-		}
-		if self.is_in_session() {
-			self.stage_session_undo(resource_storage);
-			return;
+			self.history.note_undo(UndoNote::Cursor);
 		}
 		self.drive_storage_undo_redo(legacy_applied, true, validate, responses);
 	}
@@ -2594,14 +2605,6 @@ impl DocumentMessageHandler {
 
 	fn is_in_session(&self) -> bool {
 		self.storage().is_some_and(|gdd| gdd.role().is_some())
-	}
-
-	/// In a session a retired step is public, so its undo is a new forward edit: the restored snapshot
-	/// diffs against the working registry into the inverse ops, broadcast like any other change. The same
-	/// stages a step again when it is redone after being taken back.
-	fn stage_session_undo(&mut self, resource_storage: &ResourceStorageMessageHandler) {
-		self.history.require_whole_document_stage();
-		self.commit_storage_snapshot(&resource_storage.resources_mut(), false);
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2635,17 +2638,22 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		// A step that was taken back is staged afresh from the ops themselves: they are gone from every hot log,
 		// so redo is a new edit, and the interface follows the registry on what they name, as for the undo.
-		if self.history.has_redo_step() && self.history.next_redo_is_retracted() {
+		if self.history.has_redo_step() && self.history.next_redo_is_storage_driven() {
 			if let Some(snapshot) = self.history.pop_redo() {
 				self.history.push_undo(snapshot);
 			}
-			if let Some(ops) = self.history.take_undo_note() {
-				self.history.restage_ops(ops);
+			match self.history.take_undo_note() {
+				UndoNote::Retracted(ops) => self.history.restage_ops(ops),
+				UndoNote::Dropped(rev) => self.history.redo_retired_step(rev),
+				UndoNote::Cursor => {}
 			}
 			self.follow_storage_changes(responses);
+			return;
+		}
+		if self.is_in_session() {
 			return;
 		}
 
@@ -2657,10 +2665,6 @@ impl DocumentMessageHandler {
 		};
 		if legacy_applied {
 			self.history.take_undo_note();
-		}
-		if self.is_in_session() {
-			self.stage_session_undo(resource_storage);
-			return;
 		}
 		self.drive_storage_undo_redo(legacy_applied, false, validate, responses);
 	}
