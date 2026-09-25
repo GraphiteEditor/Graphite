@@ -5,10 +5,10 @@ license.workspace = true
 authors.workspace = true
 edition.workspace = true
 repository.workspace = true
-readme.workspace = true
 homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+readme = "./README.md"
 
 [features]
 default = ["gpu", "shader-nodes", "web"]
