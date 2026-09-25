@@ -121,6 +121,76 @@ mod tests {
 	}
 
 	#[test]
+	fn piecewise_syntax_errors() {
+		for input in ["{}", "{1 if 1,}", "{1, 2}", "{1 if 1 if 2}", "otherwise", "{1 if 1, 2 otherwise} if 1"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+
+		// A misplaced keyword is told where it belongs
+		for (input, expected) in [
+			("x if 1", "`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`"),
+			("{1 if 1 otherwise}", "`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`"),
+			("{1 otherwise, 2 otherwise}", "A piecewise has at most one `otherwise` case"),
+			("where", "`where` is a reserved word, so it can't be a name"),
+		] {
+			let error = evaluate(input).unwrap_err().to_string();
+			assert!(error.starts_with(expected), "`{input}` gave the error `{error}`");
+		}
+	}
+
+	#[test]
+	fn piecewise_reads_like_cases_notation() {
+		struct X(f64);
+		impl context::ValueProvider for X {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				(name == "x").then(|| Value::from_f64(self.0))
+			}
+		}
+		let eval = |source: &str, x: f64| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(X(x), context::NothingMap));
+
+		// A comparison chain is one condition
+		for (x, expected) in [(-1., 0.), (0.5, 0.5), (2., 1.)] {
+			assert_eq!(eval("{0 if x < 0, x if 0 <= x < 1, 1 otherwise}", x).unwrap().as_real(), Some(expected));
+		}
+
+		// Both cases hold at zero, so one inequality must be written strict
+		assert_eq!(eval("{x if x >= 0, -x if x <= 0}", -3.).unwrap().as_real(), Some(3.));
+		assert!(matches!(eval("{x if x >= 0, -x if x <= 0}", 0.), Err(EvalError::OverlappingCases)));
+	}
+
+	#[test]
+	fn keywords_are_never_names() {
+		struct Bindings;
+		impl context::ValueProvider for Bindings {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				matches!(name, "if" | "otherwise" | "where" | "iff").then(|| Value::from_f64(5.))
+			}
+		}
+		let context = EvalContext::new(Bindings, context::NothingMap);
+
+		// A host binding cannot claim a keyword, while a name that merely begins with one is ordinary
+		for input in ["if + 1", "otherwise + 1", "where + 1"] {
+			assert!(ast::Node::try_parse_from_str(input).is_err(), "expected `{input}` to be a parse error");
+		}
+		assert_eq!(ast::Node::try_parse_from_str("iff + 1").unwrap().eval(&context).unwrap().as_real(), Some(6.));
+
+		// The `\` prefix asks for a builtin, so `\if` is a name, to the bar classifier as well
+		assert!(matches!(evaluate("|\\if|").unwrap(), Err(EvalError::MissingValue(name)) if name == "\\if"));
+	}
+
+	#[test]
+	fn piecewise_cases_are_disjoint() {
+		// Two holding cases are an error even where their values agree, as is no holding case without `otherwise`
+		assert!(matches!(evaluate("{0 if 0 >= 0, 0 if 0 <= 0}").unwrap(), Err(EvalError::OverlappingCases)));
+		assert!(matches!(evaluate("{1 if 1 < 0, 2 if 1 > 5}").unwrap(), Err(EvalError::NoCaseHolds)));
+
+		// Every condition is evaluated, so one that fails fails the whole expression even beside a holding case
+		assert!(matches!(evaluate("{1 if 1, 2 if 2}").unwrap(), Err(EvalError::NotATruthValue)));
+		assert!(matches!(evaluate("{1 if 1, 2 if 0/0 == 0}").unwrap(), Err(EvalError::Indeterminate)));
+		assert!(matches!(evaluate("{1 if 1, 2 if 1, 3 if 0/0 == 0}").unwrap(), Err(EvalError::Indeterminate)));
+	}
+
+	#[test]
 	fn comparison_chains_stay_in_one_direction() {
 		for input in ["1 < 2 > 1", "1 < 2 != 3", "1 == 2 != 2"] {
 			let error = evaluate(input).unwrap_err().to_string();
@@ -132,7 +202,7 @@ mod tests {
 	#[test]
 	fn logic_requires_truth_values() {
 		// A logical operand must be exactly 0 or 1, so a general number becomes a truth value only through a comparison
-		for input in ["!5", "2 && 1", "0.5 || 0", "if(3, 1, 0)", "1 && i", "if(sqrt(-1), 1, 2)"] {
+		for input in ["!5", "2 && 1", "0.5 || 0", "{1 if 3, 0 otherwise}", "1 && i", "{1 if sqrt(-1), 2 otherwise}"] {
 			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::NotATruthValue)), "expected `{input}` to need a truth value");
 		}
 	}
@@ -169,7 +239,14 @@ mod tests {
 	#[test]
 	fn several_infinite_parts_give_no_direction() {
 		// An infinity in two bases does not say which is larger, so the direction is an indeterminate form
-		for input in ["normalize(inf i + inf j)", "angle(inf i - inf k, i)", "rotor(pi, inf i + inf j)", "axis(inf i + inf j)", "project(1, inf i + inf j)", "ln(inf i + inf j)"] {
+		for input in [
+			"normalize(inf i + inf j)",
+			"angle(inf i - inf k, i)",
+			"rotor(pi, inf i + inf j)",
+			"axis(inf i + inf j)",
+			"project(1, inf i + inf j)",
+			"ln(inf i + inf j)",
+		] {
 			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::Indeterminate)), "expected `{input}` to be indeterminate");
 		}
 	}
@@ -273,7 +350,7 @@ mod tests {
 		assert!(matches!(eval("x + 1"), Err(EvalError::NotANumber(name)) if name == "x"));
 		assert!(matches!(eval("x(2)"), Err(EvalError::NotANumber(name)) if name == "x"));
 		assert!(matches!(eval("f(1)"), Err(EvalError::NotANumber(name)) if name == "f"));
-		assert_eq!(eval("if(1, 2, x)").unwrap().as_real(), Some(2.));
+		assert_eq!(eval("{2 if 1, x otherwise}").unwrap().as_real(), Some(2.));
 
 		// A host's signed zero is plain zero, like every other value
 		assert_eq!(eval("1/z").unwrap().as_real(), Some(f64::INFINITY));
@@ -568,7 +645,7 @@ mod tests {
 		constant_e: "e" => std::f64::consts::E,
 		constant_phi: "phi" => 1.61803398875,
 		constant_tau: "tau" => 2. * std::f64::consts::PI,
-		constant_infinity: "if(inf == ∞, inf, 0)" => f64::INFINITY,
+		constant_infinity: "{inf if inf == ∞, 0 otherwise}" => f64::INFINITY,
 		multiply_pi: "2 * pi" => 2. * std::f64::consts::PI,
 		add_e_constant: "e + 1" => std::f64::consts::E + 1.,
 		multiply_phi_constant: "phi * 2" => 1.61803398875 * 2.,
@@ -614,26 +691,26 @@ mod tests {
 		inverse_hyperbolic_asech: "asech(1)" => 1f64.acosh(),
 		inverse_hyperbolic_acoth: "acoth(2)" => 0.5f64.atanh(),
 
-		// Basic if statements
-		if_true_condition: "if(1,5,3)" => 5.,
-		if_false_condition: "if(0, 5, 3)" => 3.,
+		// Basic piecewise cases
+		piecewise_true_condition: "{5 if 1, 3 otherwise}" => 5.,
+		piecewise_false_condition: "{5 if 0, 3 otherwise}" => 3.,
 
 		// Arithmetic conditions
-		if_arithmetic_true: "if(2+2-4, 1 , 0)" => 0.,
-		if_arithmetic_false: "if(3*2-5, 1, 0)" => 1.,
+		piecewise_arithmetic_true: "{1 if 2+2-4, 0 otherwise}" => 0.,
+		piecewise_arithmetic_false: "{1 if 3*2-5, 0 otherwise}" => 1.,
 
 		// Nested arithmetic
-		if_complex_arithmetic: "if((5+3)*(2-1) > 0, 10, 20)" => 10.,
-		if_with_division: "if(8/4-2 == 0, 15, 25)" => 15.,
-		if_with_division_ne: "if(8/4-2 ≠ 0, 15, 25)" => 25.,
+		piecewise_complex_arithmetic: "{10 if (5+3)*(2-1) > 0, 20 otherwise}" => 10.,
+		piecewise_with_division: "{15 if 8/4-2 == 0, 25 otherwise}" => 15.,
+		piecewise_with_division_ne: "{15 if 8/4-2 ≠ 0, 25 otherwise}" => 25.,
 
 		// Constants in conditions
-		if_with_pi: "if(pi > 3, 1, 0)" => 1.,
-		if_with_e: "if(e < 3, 1, 0)" => 1.,
+		piecewise_with_pi: "{1 if pi > 3, 0 otherwise}" => 1.,
+		piecewise_with_e: "{1 if e < 3, 0 otherwise}" => 1.,
 
 		// Functions in conditions
-		if_with_sqrt: "if(sqrt(16) == 4, 1, 0)" => 1.,
-		if_with_sin: "if(sin(pi) == 0.0, 1, 0)" => 0.,
+		piecewise_with_sqrt: "{1 if sqrt(16) == 4, 0 otherwise}" => 1.,
+		piecewise_with_sin: "{1 if sin(pi) == 0.0, 0 otherwise}" => 0.,
 
 		// Logical NOT (prefix !)
 		logical_not_zero: "!0" => 1.,
@@ -649,13 +726,29 @@ mod tests {
 		root_square: "root(9, 2)" => 3.,
 		root_cube: "root(8, 3)" => 2.,
 
-		// Nested if statements
-		nested_if: "if(1, if(0, 1, 2), 3)" => 2.,
-		nested_if_complex: "if(2-2 == 0, if(1, 5, 6), if(1, 7, 8))" => 5.,
+		// Nested piecewise cases
+		nested_piecewise: "{{1 if 0, 2 otherwise} if 1, 3 otherwise}" => 2.,
+		nested_piecewise_complex: "{{5 if 1, 6 otherwise} if 2-2 == 0, {7 if 1, 8 otherwise} otherwise}" => 5.,
 
 		// Mixed operations in conditions and blocks
-		if_complex_condition: "if(sqrt(16) + sin(pi) < 5, 2*pi, 3*e)" => 2. * std::f64::consts::PI,
-		if_complex_blocks: "if(1, 2*sqrt(16) + sin(pi/2), 3*cos(0) + 4)" => 9.,
+		piecewise_complex_condition: "{2*pi if sqrt(16) + sin(pi) < 5, 3*e otherwise}" => 2. * std::f64::consts::PI,
+		piecewise_complex_blocks: "{2*sqrt(16) + sin(pi/2) if 1, 3*cos(0) + 4 otherwise}" => 9.,
+
+		// Cases are unordered, so `otherwise` may stand anywhere, and only the holding case's value is evaluated
+		piecewise_sign: "{-1 if -3 < 0, 0 if -3 == 0, 1 if -3 > 0}" => -1.,
+		piecewise_otherwise_first: "{1 otherwise, 2 if 1 > 2}" => 1.,
+		piecewise_only_otherwise: "{4 otherwise}" => 4.,
+		piecewise_skips_other_values: "{1 if 1, 0/0 otherwise}" => 1.,
+		piecewise_vector_value: "{3i + 4j if 1, 0 otherwise}" => Quaternion::new(0., 3., 4., 0.),
+
+		// A piecewise is an operand like a parenthesized expression
+		piecewise_implicit_multiplication: "2{3 if 1, 4 otherwise}" => 6.,
+		piecewise_power: "{3 if 1, 4 otherwise}^2" => 9.,
+		piecewise_bars_after_if: "|{-1 if |-2| > 1, 2 otherwise}|" => 1.,
+		piecewise_negated: "-{1 if 1, 2 otherwise}" => -1.,
+		piecewise_as_argument: "max({1 if 1, 2 otherwise}, 7)" => 7.,
+		piecewise_before_magnitude: "{2 if 1, 3 otherwise}|-3|" => 6.,
+		piecewise_multiline: "{\n\t1 if 0,\n\t2 otherwise\n}" => 2.,
 
 		// Mapping helpers
 		mapping_trunc: "trunc(3.7)" => 3.,
@@ -686,8 +779,8 @@ mod tests {
 		alias_multiplication_sign: "3 × 4" => 12.,
 		alias_dot_operator: "3 ⋅ 4" => 12.,
 		alias_division_sign: "8 ÷ 2" => 4.,
-		alias_logical_and: "if(1 ∧ 1, 2, 3)" => 2.,
-		alias_logical_or: "if(0 ∨ 1, 2, 3)" => 2.,
+		alias_logical_and: "{2 if 1 ∧ 1, 3 otherwise}" => 2.,
+		alias_logical_or: "{2 if 0 ∨ 1, 3 otherwise}" => 2.,
 		alias_logical_not: "¬0" => 1.,
 
 		// Variadic generalizations and statistics
@@ -772,21 +865,21 @@ mod tests {
 		trig_atan2_axis: "atan2(1, 0)" => std::f64::consts::FRAC_PI_2,
 
 		// Comparison operators combined with logical AND
-		comparison_operators: "if(1 <= 2 && 1 ≤ 2 && 2 >= 1 && 2 ≥ 1, 1., 0.)" => 1.,
+		comparison_operators: "{1. if 1 <= 2 && 1 ≤ 2 && 2 >= 1 && 2 ≥ 1, 0. otherwise}" => 1.,
 
 		// Logical AND / OR
-		logical_and_true: "if(1 <= 2 && 2 < 3, 1., 0.)" => 1.,
-		logical_and_false: "if(1 <= 2 && 3 < 2, 1., 0.)" => 0.,
-		logical_or_true_left: "if(1 > 2 || 2 < 3, 1., 0.)" => 1.,
-		logical_or_true_right: "if(2 < 1 || 2 < 3, 1., 0.)" => 1.,
-		logical_or_false: "if(1 > 2 || 3 < 2, 1., 0.)" => 0.,
-		logical_precedence_and_over_or: "if(0 == 1 || 1 == 1 && 0 == 0, 1., 0.)" => 1.,
+		logical_and_true: "{1. if 1 <= 2 && 2 < 3, 0. otherwise}" => 1.,
+		logical_and_false: "{1. if 1 <= 2 && 3 < 2, 0. otherwise}" => 0.,
+		logical_or_true_left: "{1. if 1 > 2 || 2 < 3, 0. otherwise}" => 1.,
+		logical_or_true_right: "{1. if 2 < 1 || 2 < 3, 0. otherwise}" => 1.,
+		logical_or_false: "{1. if 1 > 2 || 3 < 2, 0. otherwise}" => 0.,
+		logical_precedence_and_over_or: "{1. if 0 == 1 || 1 == 1 && 0 == 0, 0. otherwise}" => 1.,
 
 		// Edge cases
-		if_zero: "if(0.0, 1, 2)" => 2.,
+		piecewise_zero: "{1 if 0.0, 2 otherwise}" => 2.,
 
 		// Complex nested expressions
-		if_nested_expr: "if((sqrt(16) + 2) * (sin(pi) + 1) > 5, 3 + 4 * 2, 5 - 2 / 1)" => 11.,
+		piecewise_nested_expr: "{3 + 4 * 2 if (sqrt(16) + 2) * (sin(pi) + 1) > 5, 5 - 2 / 1 otherwise}" => 11.,
 
 		// Overflow-safe evaluation
 		factorial_overflows_to_infinity: "171!" => f64::INFINITY,
@@ -948,8 +1041,8 @@ mod tests {
 		magnitude_as_two_argument_log: "log(|-100|, |-10|)" => 2.,
 		magnitude_of_call: "|max(-3, -5)|" => 3.,
 		magnitude_of_call_with_magnitude_argument: "|log(|-100|)|" => 2.,
-		magnitude_of_conditional: "|if(1, -2, 3)|" => 2.,
-		magnitude_in_conditional: "if(|-1| == 1, |-7|, 0)" => 7.,
+		magnitude_of_piecewise: "|{-2 if 1, 3 otherwise}|" => 2.,
+		magnitude_in_piecewise: "{|-7| if |-1| == 1, 0 otherwise}" => 7.,
 
 		// Nested magnitude bars, spaced and unspaced, including runs of three bars
 		magnitude_nested_closing_spaced: "|1 - |2 - 5| |" => 2.,
@@ -988,7 +1081,7 @@ mod tests {
 		or_inside_after_and: "1 && |0 || 1|" => 1.,
 		or_after_and_inside: "|1 && 0| || 1" => 1.,
 		or_after_comparison_of_magnitude: "|3 - 5| > 1 || 0" => 1.,
-		or_as_condition: "if(0 || 1, |-2|, |-3|)" => 2.,
+		or_as_condition: "{|-2| if 0 || 1, |-3| otherwise}" => 2.,
 		not_of_magnitude: "!|0|" => 1.,
 		not_of_magnitude_then_or: "!|0| || 0" => 1.,
 		not_inside_magnitude: "|!0|" => 1.,

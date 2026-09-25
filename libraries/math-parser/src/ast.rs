@@ -86,9 +86,16 @@ pub enum Node {
 		first: Box<Node>,
 		rest: Vec<(BinaryOp, Node)>,
 	},
-	Conditional {
-		condition: Box<Node>,
-		if_block: Box<Node>,
-		else_block: Box<Node>,
+	/// The cases of math's `cases` notation, `{a if cond, b otherwise}`: disjoint conditions in no meaningful order, with `otherwise` holding when none of them do.
+	Piecewise {
+		cases: Vec<Case>,
+		otherwise: Option<Box<Node>>,
 	},
+}
+
+/// One case of a piecewise, the value it takes where its condition holds.
+#[derive(Debug, PartialEq)]
+pub struct Case {
+	pub value: Node,
+	pub condition: Node,
 }
