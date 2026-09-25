@@ -15,6 +15,7 @@ pub fn report(event: &Event) {
 	match event {
 		Event::PeerJoined { peer, user } => println!("peer {peer:?} joined as {user:?}"),
 		Event::PeerLeft { peer } => println!("peer {peer:?} left"),
+		Event::RoleChanged { role } => println!("role is now {role:?}"),
 		Event::Synced => println!("synced"),
 		Event::Changed => println!("document changed"),
 		Event::ResourceReceived { hash, bytes } => println!("received resource {hash} ({} bytes)", bytes.len()),

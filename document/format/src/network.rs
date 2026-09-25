@@ -208,6 +208,29 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
+	fn merge_divergent(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<Vec<Delta>, TargetError> {
+		let length_before = self.session.history_len();
+		for delta in &deltas {
+			self.remote_changes.touched.record(&delta.kind);
+		}
+		let absorbed = SyncTarget::merge_divergent(&mut self.session, deltas, retires)?;
+		if let Some(head) = self.session.head_rev() {
+			self.session.publish_up_to(head);
+		}
+
+		// The absorbed deltas and the merge joining them are the batch; a sort that moved earlier deltas
+		// after them rewrites the file.
+		let absorbed_ids: HashSet<Rev> = absorbed.iter().map(|delta| delta.id).collect();
+		let tail: Vec<Rev> = self.session.history().skip(length_before).map(|delta| delta.id).collect();
+		match tail.iter().all(|rev| absorbed_ids.contains(rev)) {
+			true => self.append_history_deltas(&tail)?,
+			false => self.pending_persist.history = true,
+		}
+		self.pending_persist.hot_log |= !retires.is_empty();
+		self.pending_persist.snapshot = true;
+		Ok(absorbed)
+	}
+
 	fn retired_marks(&self) -> RetiredHotOps {
 		SyncTarget::retired_marks(&self.session)
 	}

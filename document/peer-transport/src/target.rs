@@ -39,6 +39,10 @@ pub trait SyncTarget {
 	/// Take the host's deltas on and follow its head, `head` being where the host is after them (the
 	/// batch's last delta when `None`). See [`Session::follow`].
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError>;
+	/// Host only: take a peer's deltas on, and where its line diverged from this one, join the two heads
+	/// with a merge delta rather than follow it. Returns what the room has yet to see, the deltas absorbed
+	/// and the merge, for the host to broadcast so every guest follows to the joined head.
+	fn merge_divergent(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<Vec<Delta>, TargetError>;
 	/// A peer took back hot ops of its own: drop them and re-derive what they touched.
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError>;
 	/// Host only: drop a retired interaction out of the shared line. See [`Session::drop_interaction`].
@@ -124,6 +128,16 @@ impl SyncTarget for Session {
 		self.follow(deltas, head)?;
 		self.discard_hot_ops(retires)?;
 		Ok(())
+	}
+
+	fn merge_divergent(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<Vec<Delta>, TargetError> {
+		let mut absorbed: Vec<Delta> = deltas.iter().filter(|delta| !self.contains_rev(delta.id)).cloned().collect();
+		let outcome = self.merge(deltas)?;
+		self.discard_hot_ops(retires)?;
+		if let document_graph_storage::MergeOutcome::Merged(rev) = outcome {
+			absorbed.extend(self.delta(rev).cloned());
+		}
+		Ok(absorbed)
 	}
 
 	fn retired_marks(&self) -> RetiredHotOps {

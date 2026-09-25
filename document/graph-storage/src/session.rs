@@ -567,6 +567,11 @@ impl Session {
 			if self.document.history.position(rev).is_some_and(|position| position < length_before) {
 				break false;
 			}
+			// A merge joins a line this chain does not walk, one this peer may hold as a branch it walked away
+			// from, so the snapshot has to be folded from the new head's whole ancestry.
+			if delta.all_parents().count() > 1 {
+				break false;
+			}
 			chain.push(delta.clone());
 			current = delta.parent;
 		};
@@ -645,6 +650,15 @@ impl Session {
 			}
 		};
 		self.document.head = outcome.head();
+
+		// A merge joins a line whose deltas may already sit in history as a branch this peer walked away
+		// from, and applying the batch once did not bring their effects into the snapshot; a batch sorted in
+		// ahead of the tail likewise. The fold of the new head's ancestry is the snapshot either way.
+		if !extends || matches!(outcome, MergeOutcome::Merged(_)) {
+			self.document.retired_snapshot = self.snapshot_from_history()?;
+			self.document.rebuild_working();
+			self.runtime_base = None;
+		}
 
 		Ok(outcome)
 	}
@@ -1261,7 +1275,11 @@ fn references_of(op: &RegistryDelta) -> Vec<u64> {
 /// same transaction also lands on has no effect on the fold and is dropped, unless it refers to
 /// something the later write does not. A whole-list input write supersedes every earlier input write on
 /// its node. Structural ops stay.
-fn coarsen(ops: Vec<HotOp>) -> Vec<HotOp> {
+fn coarsen(mut ops: Vec<HotOp>) -> Vec<HotOp> {
+	// The newest write is the newest by stamp, which is the author's order. The hot log holds an author's
+	// ops in arrival order, and a re-announcement after a lapsed link delivers later ones first; taking the
+	// log's order for time would keep an older write and retire a value the working registry never showed.
+	ops.sort_by_key(|hot_op| hot_op.timestamp);
 	let mut keep = vec![true; ops.len()];
 	let mut latest: HashMap<FieldKey, usize> = HashMap::new();
 	for (index, hot_op) in ops.iter().enumerate() {

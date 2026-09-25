@@ -78,6 +78,16 @@ impl SyncTarget for SimTarget {
 	}
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
+		if self.session.history().next().is_some() {
+			log::debug!(
+				"seed {}: peer {:?} takes a full sync over {} retired deltas of its own (head {:?}), {} incoming",
+				self.seed,
+				self.session.peer(),
+				self.session.history().count(),
+				self.session.head_rev(),
+				history.len()
+			);
+		}
 		SyncTarget::load(&mut self.session, registry, history, head)
 	}
 
@@ -86,7 +96,32 @@ impl SyncTarget for SimTarget {
 	}
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError> {
-		SyncTarget::merge_remote(&mut self.session, deltas, retires, head)
+		let before = self.session.history().count();
+		let result = SyncTarget::merge_remote(&mut self.session, deltas.clone(), retires, head);
+		log::debug!(
+			"seed {}: peer {:?} merged {} deltas (head {head:?}, {} retires): history {before} -> {}, head {:?}, {result:?}",
+			self.seed,
+			self.session.peer(),
+			deltas.len(),
+			retires.len(),
+			self.session.history().count(),
+			self.session.head_rev()
+		);
+		result
+	}
+
+	fn merge_divergent(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<Vec<Delta>, TargetError> {
+		let before = self.session.history().count();
+		let result = SyncTarget::merge_divergent(&mut self.session, deltas, retires);
+		log::debug!(
+			"seed {}: host {:?} merged a divergent line: history {before} -> {}, head {:?}, minted {:?}",
+			self.seed,
+			self.session.peer(),
+			self.session.history().count(),
+			self.session.head_rev(),
+			result.as_ref().map(|deltas| deltas.len())
+		);
+		result
 	}
 
 	fn retired_marks(&self) -> RetiredHotOps {
@@ -187,12 +222,13 @@ impl Peer {
 
 	/// Drop off the room, keeping the document. The editor rebuilds the `Replica` on a reconnect but
 	/// reuses the `Gdd`'s persisted `PeerId`, so protocol state resets while document state does not.
+	/// A reconnect never assumes a role, host included: whoever hosts by now greets it as a guest.
 	fn rejoin(&mut self, network: &mut MockNetwork) {
 		network.disconnect(self.transport);
 
 		let endpoint = network.endpoint();
 		self.transport = endpoint.id();
-		self.replica = Replica::guest(endpoint, self.peer, self.user);
+		self.replica = Replica::connect(endpoint, self.peer, self.user);
 		network.connect(self.transport);
 	}
 
@@ -310,7 +346,22 @@ impl Peer {
 
 	fn poll(&mut self) -> Vec<Event> {
 		let flushes_before = self.target.flushes;
+		let state = |peer: &Self| {
+			let hot: Vec<String> = peer
+				.target
+				.session
+				.hot_log()
+				.iter()
+				.map(|op| format!("{}:{}#{}", op.timestamp.peer.0, op.timestamp.counter, op.sequence.0))
+				.collect();
+			(peer.replica.role(), peer.replica.is_synced(), peer.target.session.history().count(), hot)
+		};
+		let before = state(self);
 		let events = self.replica.poll(&mut self.target);
+		let after = state(self);
+		if before != after {
+			log::debug!("peer {:?}: (role, synced, history, hot) {before:?} -> {after:?}", self.peer);
+		}
 		assert_eq!(self.target.flushes, flushes_before + 1, "poll must flush the target exactly once");
 		events
 	}
@@ -485,17 +536,29 @@ fn random_op(network: &mut MockNetwork, target: &SimTarget) -> RegistryDelta {
 	}
 }
 
-fn present_guests(peers: &[Peer]) -> usize {
-	peers.iter().skip(1).filter(|peer| !peer.departed).count()
+fn present_peers(peers: &[Peer]) -> usize {
+	peers.iter().filter(|peer| !peer.departed).count()
+}
+
+/// The present peer holding the host role, which moves when a host leaves.
+fn present_host(peers: &[Peer]) -> Option<usize> {
+	peers.iter().position(|peer| !peer.departed && peer.replica.role() == Role::Host)
 }
 
 /// Run until nothing is in flight and no peer reports progress. Resource transfers need several
-/// rounds (request out, bytes back), so this is not a fixed number of passes.
+/// rounds (request out, bytes back), so this is not a fixed number of passes. A room that went idle
+/// without a host has its grace period elapse, the way the editor's clock does, and settles again.
 fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) {
 	for _ in 0..1000 {
 		network.deliver_all();
 		let events: usize = peers.iter_mut().filter(|peer| !peer.departed).map(|peer| peer.poll().len()).sum();
 		if events == 0 && network.pending() == 0 {
+			if present_host(peers).is_none() {
+				let decided = peers.iter_mut().filter(|peer| !peer.departed).filter_map(|peer| peer.replica.decide_role()).count();
+				if decided > 0 {
+					continue;
+				}
+			}
 			return;
 		}
 	}
@@ -547,23 +610,31 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			// A few closed transactions at a time, so the host's history lags its hot log the way a real one
 			// does, and never an open one.
 			3 => {
-				let count = 1 + network.random_below(4);
-				peers[0].retire_closed(count);
-				assert_open_transactions_stay_hot(seed, &peers);
+				if let Some(host) = present_host(&peers) {
+					let count = 1 + network.random_below(4);
+					peers[host].retire_closed(count);
+					assert_open_transactions_stay_hot(seed, &peers);
+				}
 			}
 			4..=7 => {
 				network.step();
 			}
-			// The host cannot hand over, so only guests drop and come back.
-			9 if index > 0 => peers[index].rejoin(&mut network),
-			9 => {
+			// Anyone drops and comes back, the host included: the room elects a new one while it is away
+			// and greets it back as a guest.
+			9 => peers[index].rejoin(&mut network),
+			// Keep one peer around, so the room stays a room.
+			10 if present_peers(&peers) > 1 => peers[index].depart(&mut network),
+			11 => {
 				let endpoint = network.endpoint();
 				let id = endpoint.id();
 				peers.push(Peer::new(endpoint, Role::Guest, peers.len() as u64 + 1, seed));
 				network.connect(id);
 			}
-			// Keep one guest around, so the room stays a room.
-			10 if index > 0 && present_guests(&peers) > 1 => peers[index].depart(&mut network),
+			// The grace period elapses on a peer still undecided. The period outlasts any hello in flight, so
+			// it only elapses here once nothing is.
+			12 if network.pending() == 0 => {
+				peers[index].replica.decide_role();
+			}
 			_ => {
 				peers[index].poll();
 			}
@@ -575,11 +646,23 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 		peer.end_transaction();
 	}
 	quiesce(&mut network, &mut peers);
-	peers[0].retire_closed(usize::MAX);
+	let host = present_host(&peers).unwrap_or_else(|| {
+		panic!(
+			"seed {seed}: an idle room has no host: {:?}",
+			peers.iter().map(|peer| (peer.peer, peer.departed, peer.replica.role(), peer.replica.is_synced())).collect::<Vec<_>>()
+		)
+	});
+	peers[host].retire_closed(usize::MAX);
 	assert_open_transactions_stay_hot(seed, &peers);
 	quiesce(&mut network, &mut peers);
 	// What departed peers left open retires with everything else, so the end state is checked in full.
-	peers[0].retire();
+	let host = present_host(&peers).unwrap_or_else(|| {
+		panic!(
+			"seed {seed}: an idle room has no host: {:?}",
+			peers.iter().map(|peer| (peer.peer, peer.departed, peer.replica.role(), peer.replica.is_synced())).collect::<Vec<_>>()
+		)
+	});
+	peers[host].retire();
 	quiesce(&mut network, &mut peers);
 
 	(network, peers)
@@ -591,6 +674,9 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 		return;
 	}
 	for (index, peer) in peers.iter().enumerate() {
+		for line in peer.replica.describe_held() {
+			eprintln!("HELD {index} {line}");
+		}
 		eprintln!(
 			"DUMP {index} {:?} departed {} synced {} held {} pending_resources {} history {} hot {:?} retired {:?}",
 			peer.peer,
@@ -720,11 +806,18 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		}
 	}
 
-	let host = &peers[0];
+	// One host, whoever it is by now, and nobody left undecided once the room is idle.
+	let hosts: Vec<usize> = present().filter(|(_, peer)| peer.replica.role() == Role::Host).map(|(index, _)| index).collect();
+	assert_eq!(hosts.len(), 1, "seed {seed}: the room has hosts {hosts:?}");
+	for (index, peer) in present() {
+		assert_ne!(peer.replica.role(), Role::Undecided, "seed {seed}: peer {index} is still undecided");
+		assert!(peer.replica.is_synced(), "seed {seed}: peer {index} never synced");
+	}
+	let host = &peers[hosts[0]];
 	// What a peer can reach from its head is what it holds in common with the room: a branch the cursor
 	// walked away from is only ever sent to peers that were there when it was live.
 	let host_history = reachable_history(host.session());
-	for (index, guest) in present().skip(1) {
+	for (index, guest) in present().filter(|(index, _)| *index != hosts[0]) {
 		let guest_history = reachable_history(guest.session());
 		assert_eq!(guest_history, host_history, "seed {seed}: guest {index} history diverged");
 		assert_eq!(guest.session().head_rev(), host.session().head_rev(), "seed {seed}: guest {index} head diverged");
@@ -756,7 +849,7 @@ fn peers_converge_under_random_interleavings() {
 	for seed in 0..seeds {
 		let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
 		{
-			let registry = peers[0].session().retired_registry();
+			let registry = peers[present_host(&peers).expect("an idle room has a host")].session().retired_registry();
 			TOTAL_NODES.fetch_add(registry.node_instances.len(), Ordering::Relaxed);
 			let wired = registry
 				.node_instances
@@ -839,6 +932,7 @@ fn inspect_seed() {
 	for (index, peer) in peers.iter().enumerate() {
 		eprintln!("=== peer {index} head {:?}", peer.session().head_rev());
 		eprintln!("registry {}", serde_json::to_string(peer.session().retired_registry()).unwrap());
+		eprintln!("working {}", serde_json::to_string(peer.session().registry()).unwrap());
 		eprintln!("hot log {:?}", peer.session().hot_log());
 		eprintln!("resources {:?}", peer.target.resources.keys().collect::<Vec<_>>());
 		for delta in peer.session().history() {
@@ -1002,13 +1096,10 @@ fn undecided_peers_settle_on_a_host_and_the_rest_sync() {
 			peer
 		})
 		.collect();
+	// Hellos alone decide nothing; the grace period elapsing on both (which `quiesce` stands in for once
+	// the room is idle without a host) has only the lower id take the role.
 	quiesce(&mut network, &mut peers);
-	assert!(peers.iter().all(|peer| peer.replica.role() == Role::Undecided), "hellos alone decide nothing");
-
-	// The grace period passes on both; only the lower id takes the role.
-	assert_eq!(peers[1].replica.decide_role(), None, "the higher id waits for the lower one");
-	assert_eq!(peers[0].replica.decide_role(), Some(Role::Host));
-	quiesce(&mut network, &mut peers);
+	assert_eq!(peers[0].replica.role(), Role::Host);
 	assert_eq!(peers[1].replica.role(), Role::Guest);
 	assert!(peers[1].replica.is_synced(), "the host's hello prompted a sync");
 
@@ -1027,4 +1118,78 @@ fn undecided_peers_settle_on_a_host_and_the_rest_sync() {
 	assert_eq!(peers[2].replica.role(), Role::Guest, "a host is there, so the newcomer is its guest");
 	assert!(peers[2].replica.is_synced());
 	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)));
+}
+
+/// The host leaves a room of two synced guests and one that was greeted but never synced. The lowest
+/// synced id takes the role over and keeps retiring the line; the unsynced one steps aside and syncs
+/// from the new host; the old host comes back as a guest of the new one.
+#[test]
+fn the_host_leaving_hands_the_role_to_the_lowest_synced_guest() {
+	let mut network = MockNetwork::new(0);
+	let mut peers: Vec<Peer> = (0..3)
+		.map(|index| {
+			let endpoint = network.endpoint();
+			let id = endpoint.id();
+			let role = if index == 0 { Role::Host } else { Role::Guest };
+			let peer = Peer::new(endpoint, role, index as u64 + 1, 0);
+			network.connect(id);
+			peer
+		})
+		.collect();
+	quiesce(&mut network, &mut peers);
+
+	peers[0].stage(RegistryDelta::AddNetwork {
+		id: NetworkId(1),
+		network: Network::default(),
+	});
+	peers[0].end_transaction();
+	quiesce(&mut network, &mut peers);
+	peers[0].retire_closed(usize::MAX);
+	quiesce(&mut network, &mut peers);
+	let first = peers[0].session().history().count();
+	assert!(first > 0, "the host retired the step");
+	assert!(peers.iter().all(|peer| peer.session().history().count() == first), "the room shares the retired step");
+
+	// A fourth peer hears the host's greeting and asks for a sync, and the host leaves before answering.
+	let endpoint = network.endpoint();
+	let late = endpoint.id();
+	peers.push(Peer::new(endpoint, Role::Undecided, 4, 0));
+	network.connect(late);
+	for peer in peers.iter_mut() {
+		peer.poll();
+	}
+	network.deliver_to(late);
+	peers[3].poll();
+	assert_eq!(peers[3].replica.role(), Role::Guest, "greeted by the host");
+	assert!(!peers[3].replica.is_synced(), "not synced yet");
+	peers[0].depart(&mut network);
+	quiesce(&mut network, &mut peers);
+
+	assert_eq!(peers[1].replica.role(), Role::Host, "the lowest synced guest takes over");
+	assert_eq!(peers[2].replica.role(), Role::Guest);
+	assert_eq!(peers[3].replica.role(), Role::Guest, "the unsynced guest stepped aside and was greeted by the new host");
+	assert!(peers[3].replica.is_synced(), "and synced from it");
+	assert_eq!(peers[3].session().history().count(), first);
+
+	// The new host retires the line on.
+	peers[2].stage(RegistryDelta::AddNetwork {
+		id: NetworkId(2),
+		network: Network::default(),
+	});
+	peers[2].end_transaction();
+	quiesce(&mut network, &mut peers);
+	peers[1].retire_closed(usize::MAX);
+	quiesce(&mut network, &mut peers);
+	let second = peers[1].session().history().count();
+	assert!(second > first, "the new host retired the guest's step");
+	assert!(peers.iter().skip(1).all(|peer| peer.session().history().count() == second), "and everyone present has it");
+
+	// The old host returns, and is a guest of the new one with the step it missed.
+	peers[0].departed = false;
+	peers[0].rejoin(&mut network);
+	quiesce(&mut network, &mut peers);
+	assert_eq!(peers[0].replica.role(), Role::Guest, "a returning host is a guest of whoever hosts now");
+	assert_eq!(peers[1].replica.role(), Role::Host, "the host role stayed put");
+	assert_eq!(peers[0].session().history().count(), second, "with the step it missed");
+	assert_converged(0, &peers);
 }

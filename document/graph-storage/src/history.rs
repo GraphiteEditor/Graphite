@@ -210,6 +210,11 @@ impl History {
 				next_sample_distance *= 2;
 			}
 		}
+		// The root always: two copies of one document share it however far their lines have diverged, so
+		// a peer answering the sample can tell a divergent copy from a stranger and merge rather than replace.
+		if samples.last() != Some(&current) {
+			samples.push(current);
+		}
 
 		samples
 	}

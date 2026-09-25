@@ -400,6 +400,33 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 }
 
+/// An author's ops can reach the retirer out of order, the later ones first through a re-announcement
+/// after a lapsed link. Coarsening keeps the newest write by stamp, not by position in the log, so the
+/// retired delta carries the value every working registry shows.
+#[test]
+fn a_transaction_that_arrived_out_of_order_retires_to_its_newest_write() {
+	let mut author = Session::with_peer(PeerId(2));
+	author.stage_ops(vec![set_attribute("name", 1), set_attribute("name", 2)]).expect("stage");
+	author.end_transaction().expect("close");
+	let ops = author.hot_log().to_vec();
+
+	let mut in_order = Session::with_peer(PeerId(1));
+	let mut reversed = Session::with_peer(PeerId(1));
+	for hot_op in &ops {
+		in_order.replay_hot_op(hot_op.clone()).expect("replay");
+	}
+	for hot_op in ops.iter().rev() {
+		reversed.replay_hot_op(hot_op.clone()).expect("replay");
+	}
+	for host in [&mut in_order, &mut reversed] {
+		let closed = host.closed_transactions();
+		assert_eq!(closed.len(), 1);
+		host.retire_transaction(&closed[0]).expect("retire");
+		assert!(host.registry().value_equal(host.retired_registry()), "the retired value is the one the working registry showed");
+	}
+	assert_eq!(reversed.retired_registry(), in_order.retired_registry(), "arrival order decides nothing");
+}
+
 /// A transaction retires coarsened: of the writes to one field only the newest becomes a delta, a
 /// whole-list input write supersedes the slot writes before it, a write wiring an input to a node stays
 /// while what supersedes it wires elsewhere, and the fold is the one every op would have produced.
@@ -457,4 +484,35 @@ fn a_transaction_retires_to_one_delta_per_field() {
 	);
 	assert!(kinds.iter().filter(|kind| matches!(kind, RegistryDelta::ChangeNodeInput { index: 1, .. })).count() == 1);
 	assert!(host.history().last().is_some_and(|delta| delta.is_interaction_end()));
+}
+
+/// A merge delta joins a line this peer holds as a branch it walked away from. Following it as a plain
+/// extension of the line would leave that branch's effects out of the snapshot, so the snapshot is
+/// folded from the joined head's whole ancestry instead, and matches the host's.
+#[test]
+fn following_a_merge_refolds_the_branch_it_joins() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(add_network(1)).expect("root");
+	let mut guest = Session::with_peer(PeerId(2));
+	let root: Vec<crate::Delta> = host.history().cloned().collect();
+	guest.follow(root, host.head_rev()).expect("follow the root");
+
+	// The guest retires a step of its own while apart, then follows the host's line, which leaves it behind.
+	guest.commit_op_for_test(add_network(2)).expect("own step");
+	let own: Vec<crate::Delta> = guest.history().filter(|delta| delta.author == PeerId(2)).cloned().collect();
+	host.commit_op_for_test(add_network(3)).expect("host step");
+	let line: Vec<crate::Delta> = host.history().cloned().collect();
+	guest.follow(line, host.head_rev()).expect("follow the host");
+	assert!(!guest.retired_registry().networks.contains_key(&NetworkId(2)), "the guest's own step is off the line");
+
+	// The host merges the guest's step and the guest follows to the joined head.
+	host.merge(own).expect("merge");
+	let merged: Vec<crate::Delta> = host.history().cloned().collect();
+	guest.follow(merged, host.head_rev()).expect("follow the merge");
+
+	let fold = guest.snapshot_from_history().expect("fold");
+	assert_eq!(guest.retired_registry(), &fold, "the snapshot is the fold of the joined head's ancestry");
+	assert!(guest.retired_registry().networks.contains_key(&NetworkId(2)), "the branch is back on the line");
+	assert_eq!(guest.retired_registry(), host.retired_registry());
+	assert!(guest.registry().value_equal(guest.retired_registry()));
 }

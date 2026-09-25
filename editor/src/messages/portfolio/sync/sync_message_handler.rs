@@ -137,15 +137,19 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					if document.storage().is_none_or(|gdd| gdd.role().is_none()) {
 						continue;
 					}
-					// A document connected without knowing who hosts takes the role itself once no host has greeted
-					// it for the grace period.
-					if self.undecided_since.get(&document_id).is_some_and(|since| now_ms() - since >= ROLE_GRACE_MS)
-						&& let Some(gdd) = document.storage_mut()
-						&& gdd.role() == Some(peer_transport::Role::Undecided)
-						&& gdd.decide_role().is_some()
-					{
+					// A document without a host, connected that way or left that way by a host that went before
+					// syncing it, takes the role itself once no host has greeted it for the grace period.
+					if document.storage().is_some_and(|gdd| gdd.role() == Some(peer_transport::Role::Undecided)) {
+						let since = *self.undecided_since.entry(document_id).or_insert_with(now_ms);
+						if now_ms() - since >= ROLE_GRACE_MS
+							&& let Some(gdd) = document.storage_mut()
+							&& gdd.decide_role().is_some()
+						{
+							self.undecided_since.remove(&document_id);
+							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+						}
+					} else {
 						self.undecided_since.remove(&document_id);
-						responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 					}
 					// Each movement reaches peers as it happens: what the interface recorded since the last
 					// frame is staged, and so broadcast, ahead of this frame's poll.
@@ -179,6 +183,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 								log::debug!("Received resource {hash} ({} bytes)", bytes.len());
 								document.cache_declaration_bytes(hash, &bytes);
 								self.dirty.insert(document_id);
+							}
+							Event::RoleChanged { role } => {
+								log::info!("Session role is now {role:?}");
+								responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 							}
 							Event::PeerJoined { .. } | Event::PeerLeft { .. } => responses.add(PortfolioMessage::UpdateOpenDocumentsList),
 						}
