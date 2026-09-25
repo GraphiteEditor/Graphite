@@ -117,7 +117,10 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vec
 			.or(start_point)
 	};
 
-	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
+	required_handle
+		.map(|handle| handle - anchor_position)
+		.filter(|vector| vector.length_squared() > 0.)
+		.map(|vector| -vector.angle_to(DVec2::X))
 }
 
 pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
@@ -269,7 +272,12 @@ pub fn rotate_bounds(
 	let angle = {
 		let start_offset = drag_start - bounds.center_of_transformation;
 		let end_offset = mouse_position - bounds.center_of_transformation;
-		start_offset.angle_to(end_offset)
+		if start_offset.length_squared() > 0. && end_offset.length_squared() > 0. {
+			start_offset.angle_to(end_offset)
+		} else {
+			warn!("Unable to rotate bounds due to zero offset");
+			return;
+		}
 	};
 
 	let snapped_angle = if snap_angle {
@@ -609,5 +617,31 @@ pub fn nudge_resize_bounds(min: DVec2, max: DVec2, delta: DVec2, tilt: f64, resi
 		min: new_min,
 		max: new_max,
 		transform,
+	}
+}
+
+pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool {
+	let to_handle1 = handle1 - point;
+	let to_handle2 = handle2 - point;
+	if to_handle1.length_squared() > 0. && to_handle2.length_squared() > 0. {
+		// Take the angle to the negated other handle in the range `[-π, +π]`.
+		let angle = to_handle2.angle_to(-to_handle1);
+		angle.abs().abs() < 1e-6
+	} else {
+		// If one of the handles has no length then always colinear
+		true
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn is_almost_colinear_test() {
+		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::X, DVec2::X));
+		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::Y, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::NEG_X, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::ZERO, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO));
 	}
 }

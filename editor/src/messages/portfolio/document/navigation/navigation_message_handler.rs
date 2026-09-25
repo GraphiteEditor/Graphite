@@ -422,7 +422,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 							let half_viewport = viewport.center_in_viewport_space().into_dvec2();
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
 							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
-							let angle = start_offset.angle_to(end_offset);
+							// It is illegal to take angles to zero vectors (in this case just use unsnapped angle)
+							let angle = if start_offset.length_squared() > 0. && end_offset.length_squared() > 0. {
+								start_offset.angle_to(end_offset)
+							} else {
+								0.
+							};
 
 							tilt_raw_not_snapped + angle
 						};

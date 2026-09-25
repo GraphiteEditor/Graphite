@@ -2249,11 +2249,11 @@ async fn tangent_on_path(
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
 			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
 		}
-		if tangent == DVec2::ZERO {
-			return 0.;
+		if tangent.length_squared() > 0. {
+			-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
+		} else {
+			0.
 		}
-
-		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
 	});
 
 	Item::new_from_element(if radians { angle } else { angle.to_degrees() })

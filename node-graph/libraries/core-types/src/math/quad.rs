@@ -84,18 +84,28 @@ impl Quad {
 		]
 	}
 
-	/// Expand a quad by a certain amount on all sides.
+	/// Try to expand a quad by a certain amount on all sides. Returns None if one of the sides has no length.
+	///
+	/// Not currently very optimized
+	pub fn try_inflate(&self, offset: f64) -> Option<Quad> {
+		let offset = |index_before, index, index_after| {
+			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];
+			let [line_in, line_out] = [(point - point_before).try_normalize()?, (point_after - point).try_normalize()?];
+			let angle = line_in.angle_to(-line_out);
+			let offset_length = offset / (std::f64::consts::FRAC_PI_2 - angle / 2.).cos();
+			Some(point + (line_in.perp() + line_out.perp()).try_normalize()? * offset_length)
+		};
+		Some(Self([offset(3, 0, 1)?, offset(0, 1, 2)?, offset(1, 2, 3)?, offset(2, 3, 0)?]))
+	}
+
+	/// Expand a quad by a certain amount on all sides. Returns the original if it is not possible to inflate.
 	///
 	/// Not currently very optimized
 	pub fn inflate(&self, offset: f64) -> Quad {
-		let offset = |index_before, index, index_after| {
-			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];
-			let [line_in, line_out] = [point - point_before, point_after - point];
-			let angle = line_in.angle_to(-line_out);
-			let offset_length = offset / (std::f64::consts::FRAC_PI_2 - angle / 2.).cos();
-			point + (line_in.perp().normalize_or_zero() + line_out.perp().normalize_or_zero()).normalize_or_zero() * offset_length
-		};
-		Self([offset(3, 0, 1), offset(0, 1, 2), offset(1, 2, 3), offset(2, 3, 0)])
+		self.try_inflate(offset).unwrap_or_else(|| {
+			log::warn!("Failed to inflate quad, returning origional");
+			*self
+		})
 	}
 
 	/// Does this quad contain a point
@@ -161,6 +171,10 @@ mod tests {
 			(DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::ZERO, DVec2::ONE])).inflate(0.5),
 			DAffine2::from_scale(DVec2::new(-1., 1.)) * Quad::from_box([DVec2::splat(-0.5), DVec2::splat(1.5)])
 		));
+
+		// Quads with 0 width or height cannot be inflated
+		assert!(Quad::from_box([DVec2::ZERO, DVec2::X]).try_inflate(0.5).is_none());
+		assert!(Quad::from_point(DVec2::X).try_inflate(0.5).is_none());
 	}
 	#[test]
 	fn quad_contains() {

@@ -1028,7 +1028,7 @@ impl Fsm for SelectToolFsmState {
 						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 					}
 
-					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
+					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align && mouse_position.distance_squared(tool_data.drag_start) > 0. {
 						let mouse_position = mouse_position - tool_data.drag_start;
 						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 						let angle = -mouse_position.angle_to(DVec2::X);
