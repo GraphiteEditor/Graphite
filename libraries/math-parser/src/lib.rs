@@ -34,7 +34,7 @@ mod tests {
 	#[test]
 	fn malformed_juxtaposed_numbers_fail_to_parse() {
 		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication)
-		for input in ["1.5.5", "1..", ".5.5", "1...5", "1.. .5"] {
+		for input in ["1.5.5", "1..", ".5.5", "1...5"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -1382,21 +1382,53 @@ mod tests {
 		// A number's decimal point still lexes beside a range, and whitespace around `..` is free
 		assert_eq!(evaluate("(1.5..2.5) 0.5").unwrap().unwrap().as_real(), Some(2.));
 		assert_eq!(evaluate("(1 .. 3) 0.5").unwrap().unwrap().as_real(), Some(2.));
+		assert_eq!(evaluate("(0 .. .5) 1").unwrap().unwrap().as_real(), Some(0.5));
 		assert_eq!(evaluate("(-1..1) 0.75").unwrap().unwrap().as_real(), Some(0.5));
 
-		// A singular range has no interior to test or clamp against, while its application still stands
-		for input in ["inside(5, 5..5)", "inside(0, 0..0)", "clamp(1, 3..3)", "remap(1, 2..2, 0..1)"] {
-			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SingularRange)), "`{input}`");
-		}
+		// A flat range holds only its one value on the flat axis, while remapping from it has no parameter to carry
+		let inside = |input: &str| evaluate(input).unwrap().unwrap().as_bool();
+		assert_eq!(inside("inside(5, 5..5)"), Some(true));
+		assert_eq!(inside("inside(4, 5..5)"), Some(false));
+		assert_eq!(inside("inside(0, 0..0)"), Some(true));
+		assert_eq!(evaluate("clamp(1, 3..3)").unwrap().unwrap().as_real(), Some(3.));
 		assert_eq!(evaluate("(5..5) 0.5").unwrap().unwrap().as_real(), Some(5.));
+		assert!(matches!(evaluate("remap(2, 2..2, 0..10)").unwrap(), Err(EvalError::FlatRemapSource)));
+		assert!(matches!(evaluate("remap(0.5i + 0.5k, 0..(i + k), 0..(2i + 2j + 2k))").unwrap(), Err(EvalError::FlatRemapSource)));
+		assert!(matches!(evaluate("inside(1, [i, 2i])").unwrap(), Err(EvalError::SingularRange)));
 		assert!(matches!(evaluate("inside(1)").unwrap(), Err(EvalError::TypeError)));
 
-		// The axes a range spans come from its corners, so `0..1` and `I` agree entry for entry yet test different parts
-		assert_eq!(evaluate("inside(2i, 0..1)").unwrap().unwrap().as_bool(), Some(true));
-		assert_eq!(evaluate("inside(2i, I)").unwrap().unwrap().as_bool(), Some(false));
-		assert_eq!(evaluate("inside(0.5i, 0..1i)").unwrap().unwrap().as_bool(), Some(true));
-		assert_eq!(evaluate("inside(0.5i + 3j, 0..1i)").unwrap().unwrap().as_bool(), Some(true));
-		assert_eq!(evaluate("inside(0.5i + 3j, 0..(i + j))").unwrap().unwrap().as_bool(), Some(false));
+		// A box spans its corners' rung, so a part they share is flat and admits only their value there
+		assert_eq!(inside("inside(0.5i + 0.5k, 0..(i + k))"), Some(true));
+		assert_eq!(inside("inside(0.5i + 3j + 0.5k, 0..(i + k))"), Some(false));
+		assert_eq!(inside("inside(0.5i + 2j, (2j)..(i + 2j))"), Some(true));
+		assert_eq!(inside("inside(0.5i + 3j, (2j)..(i + 2j))"), Some(false));
+		assert_eq!(inside("inside(0.5 + 0.5k, 0..(1 + i + k))"), Some(true));
+		assert_eq!(inside("inside(0.5 + 0.5j + 0.5k, 0..(1 + i + k))"), Some(false));
+		assert_eq!(inside("inside(0.5i + 0.5k, rotation(pi/2) (0..(i + k)))"), Some(false));
+		assert_eq!(inside("inside(0.5j + 0.5k + 5, rotation(pi/2, i) (0..(i + j)) + 5k)"), Some(false));
+		assert_eq!(inside("inside(0.5j + 5.5k + 5, rotation(pi/2, i) (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(evaluate("clamp(0.5i + 3j + 0.5k, 0..(i + k))").unwrap().unwrap(), Object::from(Quaternion::new(0., 0.5, 0., 0.5)));
+		assert_eq!(inside("inside(1.5i + 2j, scale(3i + 2j))"), Some(true));
+		assert_eq!(inside("inside(1.5i + 2j + k, scale(3i + 2j))"), Some(false));
+
+		// Parts outside the rung pass through, so `0..1` and `I` agree entry for entry yet test different parts
+		assert_eq!(inside("inside(2i, 0..1)"), Some(true));
+		assert_eq!(inside("inside(2i, I)"), Some(false));
+		assert_eq!(inside("inside(0.5i, 0..1i)"), Some(true));
+		assert_eq!(inside("inside(0.5i + 3j, 0..1i)"), Some(true));
+		assert_eq!(inside("inside(0.5i + 3j, 0..(i + j))"), Some(false));
+
+		// A region's parameters are its inner map's, so an outer map or a translation adds no axes to a box
+		assert_eq!(inside("inside(2i, I (0..1))"), Some(true));
+		assert_eq!(inside("inside(0.5i + 0.5j + 5k, scale(2) (0..(i + j)))"), Some(true));
+		assert_eq!(inside("inside(0.5i + 0.5j, (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(inside("inside(0.5i + 5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(true));
+		assert_eq!(inside("inside(0.5i - 5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(true));
+		assert_eq!(inside("inside(0.5i + 5j + 1.5k, rotation(pi/2, i) (0..(i + j)))"), Some(false));
+		assert_eq!(
+			evaluate("clamp(0.5i + 0.5j + 5k, scale(2) (0..(i + j)))").unwrap().unwrap(),
+			Object::from(Quaternion::new(0., 0.5, 0.5, 5.))
+		);
 
 		// A range reads as a Transform when its corners leave the weight and `z` alone
 		let affine = |input: &str| evaluate(input).unwrap().unwrap().into_matrix().unwrap().as_affine2();

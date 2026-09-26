@@ -11,8 +11,8 @@ pub struct Matrix {
 	/// Each row weights the input's parts into one output part, so the row `i` in the `x` slot passes the input's `x` through.
 	pub rows: [Quaternion; 4],
 	pub translation: Quaternion,
-	/// The parts the map is built to act on, which `inside` and `clamp` constrain while the rest pass through: a range's corners'
-	/// parts, a literal's count, or every part a builtin touches.
+	/// The parameter parts the map spans as a region, which `inside` and `clamp` constrain while the rest pass through: a range's
+	/// rung, a literal's count, a composition's inner map's, or every part a builtin touches.
 	pub axes: [bool; 4],
 }
 
@@ -48,14 +48,18 @@ impl Matrix {
 		Some(Self::from_rows(columns)?.transposed())
 	}
 
-	/// The range `a..b`: on each part either corner has, the map sending parameter `0` to `a` and `1` to `b`, so vector corners make a
-	/// box, with the other parts untouched. Corners with no parts span the weight, so `0..0` is singular like every `a..a`.
+	/// The range `a..b`: on each part of the corners' join rung, the map sending parameter `0` to `a` and `1` to `b`, so vector corners
+	/// make a box, with the other parts untouched. A part the corners share is flat, so `0..(i + k)` is the square where `j` is 0.
 	pub fn range(a: Quaternion, b: Quaternion) -> Self {
 		let (a, b) = (a.parts(), b.parts());
-		let mut axes: [bool; 4] = std::array::from_fn(|axis| a[axis] != 0. || b[axis] != 0.);
-		if axes == [false; 4] {
-			axes[0] = true;
-		}
+
+		// The join rung spans the weight if either corner has one, and the vector parts up to the last either has, with `0..0` a real range
+		let has_part = |axis: usize| a[axis] != 0. || b[axis] != 0.;
+		let last_vector_axis = (1..4).rev().find(|&axis| has_part(axis));
+		let axes = std::array::from_fn(|axis| match axis {
+			0 => has_part(0) || last_vector_axis.is_none(),
+			_ => last_vector_axis.is_some_and(|last| axis <= last),
+		});
 
 		let mut range = Self { axes, ..Self::IDENTITY };
 		let mut translation = [0.; 4];
@@ -71,17 +75,52 @@ impl Matrix {
 		range
 	}
 
-	/// The map as a region, acting on the axes it spans while every other part passes through, so a padded literal's zero rows
-	/// leave a parallelogram `[u, v]` invertible.
-	pub fn region(self) -> Self {
-		let mut region = self;
-		let mut translation = self.translation.parts();
-		for axis in (0..4).filter(|&axis| !self.axes[axis]) {
-			region.rows[axis] = Self::IDENTITY.rows[axis];
-			translation[axis] = 0.;
+	/// The image of one parameter axis, a column of the linear part.
+	fn column(self, axis: usize) -> [f64; 4] {
+		self.rows.map(|row| row.parts()[axis])
+	}
+
+	fn with_column(mut self, axis: usize, column: [f64; 4]) -> Self {
+		for (row, entry) in self.rows.iter_mut().zip(column) {
+			let mut parts = row.parts();
+			parts[axis] = entry;
+			*row = Quaternion::from_parts(parts);
 		}
-		region.translation = Quaternion::from_parts(translation);
-		region
+		self
+	}
+
+	/// The map as a region, where each parameter axis it leaves unspanned and unused passes its own part through, so a padded literal
+	/// like `[u, v]` leaves the parts off its parallelogram alone.
+	pub fn region(self) -> Self {
+		(0..4)
+			.filter(|&axis| !self.axes[axis] && self.column(axis) == [0.; 4])
+			.fold(self, |region, axis| region.with_column(axis, unit(axis)))
+	}
+
+	/// The region with every parameter axis it leaves unused given a direction off the others, its own where it can, so it inverts
+	/// unless singular for another reason, and which spanned axes were flat. A point lies on the region only at a parameter of 0 there.
+	pub fn invertible_region(self) -> (Self, [bool; 4]) {
+		let used = |axis: usize| self.column(axis) != [0.; 4];
+		let flat = std::array::from_fn(|axis| self.axes[axis] && !used(axis));
+
+		// An orthonormal basis of the region's extent, which each unused axis extends with the basis direction furthest from it
+		let mut extent = (0..4).filter(|&axis| used(axis)).fold(Vec::new(), |mut extent, axis| {
+			extent.extend(orthogonal_part(self.column(axis), &extent).map(|(direction, _)| direction));
+			extent
+		});
+		let mut region = self;
+		for axis in (0..4).filter(|&axis| !used(axis)) {
+			let candidates = std::iter::once(axis).chain((0..4).filter(|&index| index != axis));
+			let furthest = candidates
+				.filter_map(|index| orthogonal_part(unit(index), &extent))
+				.reduce(|furthest, candidate| if candidate.1 > furthest.1 { candidate } else { furthest });
+			if let Some((direction, _)) = furthest {
+				region = region.with_column(axis, direction);
+				extent.push(direction);
+			}
+		}
+
+		(region, flat)
 	}
 
 	/// Whether the translation is zero, leaving a linear map.
@@ -103,11 +142,10 @@ impl Matrix {
 		}
 	}
 
-	/// The map with the translation `t` added, acting also on the parts `t` has.
+	/// The map with the translation `t` added.
 	pub fn translated(self, t: Quaternion) -> Self {
 		Self {
 			translation: self.translation + t,
-			axes: joined(self.axes, Self::axes_of(t)),
 			..self
 		}
 	}
@@ -126,7 +164,8 @@ impl Matrix {
 		Quaternion::from_parts(self.rows.map(|row| inner(row, p))) + self.translation
 	}
 
-	/// The composition `self ∘ other`, applying `other` first: `(M₁ M₂, M₁ c₂ + c₁)`.
+	/// The composition `self ∘ other`, applying `other` first: `(M₁ M₂, M₁ c₂ + c₁)`. Its parameters are those of `other`, so it spans
+	/// `other`'s axes, as a rotated box spans the box's.
 	pub fn compose(self, other: Self) -> Self {
 		let rows = self.rows.map(|row| {
 			let weights = row.parts();
@@ -137,11 +176,7 @@ impl Matrix {
 			combined
 		});
 		let translation = Quaternion::from_parts(self.rows.map(|row| inner(row, other.translation))) + self.translation;
-		Self {
-			rows,
-			translation,
-			axes: joined(self.axes, other.axes),
-		}
+		Self { rows, translation, axes: other.axes }
 	}
 
 	/// The determinant of the linear part.
@@ -321,6 +356,25 @@ fn inner(row: Quaternion, p: Quaternion) -> f64 {
 /// The axes either map acts on, as a map built from both does.
 fn joined(a: [bool; 4], b: [bool; 4]) -> [bool; 4] {
 	std::array::from_fn(|axis| a[axis] || b[axis])
+}
+
+/// The basis direction of one part.
+fn unit(axis: usize) -> [f64; 4] {
+	std::array::from_fn(|part| if part == axis { 1. } else { 0. })
+}
+
+/// The part of `vector` orthogonal to the orthonormal `basis`, normalized, and its length relative to the vector's scale, or `None`
+/// when nothing remains.
+fn orthogonal_part(vector: [f64; 4], basis: &[[f64; 4]]) -> Option<([f64; 4], f64)> {
+	let scale = power_of_two_scale(vector.into_iter());
+	let mut remainder = vector.map(|part| part / scale);
+	for direction in basis {
+		let projection: f64 = remainder.iter().zip(direction).map(|(part, direction)| part * direction).sum();
+		remainder = std::array::from_fn(|part| remainder[part] - projection * direction[part]);
+	}
+
+	let length = remainder.iter().map(|part| part * part).sum::<f64>().sqrt();
+	(length > 0.).then(|| (remainder.map(|part| part / length), length))
 }
 
 /// The signed minor of the entry at `row`, `column`.

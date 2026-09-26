@@ -40,6 +40,9 @@ pub enum EvalError {
 	#[error("A singular range has no interior")]
 	SingularRange,
 
+	#[error("Remapping from a flat range is ambiguous, since a value lies at every position along its flat side")]
+	FlatRemapSource,
+
 	#[error("Only a matrix without translation has a transpose")]
 	AffineTranspose,
 
@@ -125,12 +128,7 @@ fn holding_case<'a, T, V: ValueProvider, F: FunctionProvider>(context: &EvalCont
 fn matrix_binary_op(lhs: Object, op: BinaryOp, rhs: Object) -> Result<Matrix, EvalError> {
 	use BinaryOp as Op;
 	match (lhs, op, rhs) {
-		(Object::Value(Value::Number(q)), Op::Mul, Object::Matrix(b)) => {
-			// A real scales every part alike, so the product acts on the same parts as the matrix it scales
-			let q = q.to_quaternion();
-			let product = Matrix::left_multiplication(q).compose(*b);
-			settle_matrix(if q.is_real() { Matrix { axes: b.axes, ..product } } else { product })
-		}
+		(Object::Value(Value::Number(q)), Op::Mul, Object::Matrix(b)) => settle_matrix(Matrix::left_multiplication(q.to_quaternion()).compose(*b)),
 		(Object::Matrix(a), Op::Mul, Object::Matrix(b)) => settle_matrix(a.compose(*b)),
 		(lhs, Op::Div, Object::Matrix(b)) => matrix_binary_op(lhs, Op::Mul, Object::from(b.inverse().ok_or(EvalError::SingularMatrix)?)),
 		(Object::Matrix(a), Op::Add, Object::Matrix(b)) => settle_matrix(*a + *b),
