@@ -307,6 +307,10 @@ mod tests {
 				rhs: Box::new(Syntax::Var("pi".to_string())),
 			}),
 		},
+		test_product_chain_stays_flat: "2 * 3 / 4" => Syntax::Product {
+			first: Box::new(Syntax::Lit(Literal::Integer(2))),
+			rest: vec![(BinaryOp::Mul, Syntax::Lit(Literal::Integer(3))), (BinaryOp::Div, Syntax::Lit(Literal::Integer(4)))],
+		},
 		test_range_above_comparison: "0..1 == I" => Syntax::BinOp {
 			lhs: Box::new(Syntax::Range {
 				from: Box::new(Syntax::Lit(Literal::Integer(0))),

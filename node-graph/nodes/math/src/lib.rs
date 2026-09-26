@@ -2223,8 +2223,12 @@ mod test {
 		assert_eq!(f([shear, scale], "/", DAffine2::IDENTITY), shear * scale.inverse());
 		assert_eq!(f([shear, scale], "mean", DAffine2::IDENTITY).translation, DVec2::new(2.5, 2.));
 		assert_eq!(f([shear, scale], "count", 0.), 2.);
+		assert_eq!(f([shear, scale], "det(A)", 0.), 1.);
 		assert_eq!(f([shear, scale], "min", DAffine2::IDENTITY), DAffine2::IDENTITY);
 		assert_eq!(f([shear, scale], "a", DAffine2::IDENTITY), DAffine2::IDENTITY);
+
+		// A sum of Transforms doubles the weight row, so it reads as no Transform and the output falls back to its default
+		assert_eq!(f([shear, scale], "+", DAffine2::IDENTITY), DAffine2::IDENTITY);
 	}
 
 	#[test]

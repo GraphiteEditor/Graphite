@@ -1317,6 +1317,14 @@ mod tests {
 		matrix_dot_of_product: "[1] 3i conj(2i)" => 6.,
 		matrix_over_value_then_factor: "scale(3) / 2 i" => Complex::new(0., 1.5),
 		matrix_applies_before_division: "(I + 4i) 2i / 2" => Complex::new(0., 5.),
+		value_before_matrix_in_product: "2 [1;i] 3" => Complex::new(0., 6.),
+		value_over_matrix_then_factor: "2 / I 3" => 6.,
+		matrix_over_matrix_then_value: "I / [1;i;j;k] (2i)" => Complex::new(0., 2.),
+
+		// A product of values alone folds left whatever its length
+		product_folds_left: "8 / 2 / 2" => 2.,
+		product_alternates_operators: "2 * 3 / 4 * 5" => 7.5,
+		product_within_sums: "2 * 3 * 4 - 5 * 6 / 3" => 14.,
 
 		// Sums attach a translation, which `A 0` reads back
 		matrix_translation: "(I + 5i + 4j) 0" => Quaternion::new(0., 5., 4., 0.),
@@ -1412,6 +1420,8 @@ mod tests {
 		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
 		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
 		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
+		remap_extrapolates: "remap(3, 0..2, 0..1)" => 1.5,
+		remap_passes_uncovered_parts: "remap(0.5 + 3i, 0..1, 0..10)" => Complex::new(5., 3.),
 		remap_to_infinity: "remap(0.5, 0..1, inf..inf)" => f64::INFINITY,
 		within_huge_box: "within(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
 		within_tiny_box: "within(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
@@ -1820,11 +1830,16 @@ mod tests {
 					})),
 					// A binding shadows the identity like any constant
 					"I" => Some(Matrix::ZERO),
+					"N" => Some(Matrix::IDENTITY.translated(Quaternion::splat(f64::NAN))),
 					_ => None,
 				}
 			}
 		}
 		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(Bindings, context::NothingMap));
+
+		// A NaN from a host matrix is an error naming its source, like a NaN value
+		assert!(matches!(eval("N"), Err(EvalError::NotANumber(name)) if name == "N"));
+		assert!(matches!(eval("N i"), Err(EvalError::NotANumber(name)) if name == "N"));
 
 		// `X` maps the plane, leaving the weight and `z` untouched
 		assert_eq!(eval("X (2i + 2j)").unwrap(), Object::from(Quaternion::new(0., 8., 6., 0.)));
