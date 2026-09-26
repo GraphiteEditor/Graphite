@@ -1,5 +1,5 @@
-//! Tooltips render a subset of Markdown: `code` spans, `**bold**`, and `*italic*`, where a backslash makes a following backslash,
-//! asterisk, or backtick literal. Text from outside the editor goes through these so it shows exactly as written.
+//! Tooltips render a subset of Markdown: `code` spans, fenced code blocks, `**bold**`, and `*italic*`, where a backslash makes a
+//! following backslash, asterisk, or backtick literal. Text from outside the editor goes through these so it shows exactly as written.
 
 /// Escapes text so its backslashes, asterisks, and backticks show as themselves rather than as formatting.
 pub fn escape_markdown(text: &str) -> String {
@@ -30,6 +30,19 @@ pub fn markdown_code_span(text: &str) -> String {
 	format!("{fence}{padding}{text}{padding}{fence}")
 }
 
+/// Wraps text in a fenced code block that nothing inside can close, as in CommonMark: the fence outruns every run of backticks within.
+/// The fences are lines of their own, so the block goes at the start of a line.
+pub fn markdown_code_block(text: &str) -> String {
+	if text.is_empty() {
+		return String::new();
+	}
+
+	let longest_run = text.split(|character| character != '`').map(str::len).max().unwrap_or_default();
+	let fence = "`".repeat(longest_run.max(2) + 1);
+
+	format!("{fence}\n{text}\n{fence}")
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -53,5 +66,13 @@ mod tests {
 		assert_eq!(markdown_code_span("a\\"), "`a\\`", "a backslash is literal inside a span");
 		assert_eq!(markdown_code_span("**<i>**"), "`**<i>**`");
 		assert_eq!(markdown_code_span(""), "");
+	}
+
+	#[test]
+	fn code_blocks_contain_anything() {
+		assert_eq!(markdown_code_block("x\n^"), "```\nx\n^\n```");
+		assert_eq!(markdown_code_block("```\n**<i>**"), "````\n```\n**<i>**\n````");
+		assert_eq!(markdown_code_block("`"), "```\n`\n```");
+		assert_eq!(markdown_code_block(""), "");
 	}
 }

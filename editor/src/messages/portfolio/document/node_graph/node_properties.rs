@@ -2,7 +2,7 @@
 
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
-use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
+use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_block, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -466,8 +466,7 @@ fn math_expression_error(expression: &str, accepts_reducers: bool) -> Option<Str
 		let Some(span) = message.span() else { return prose };
 		let indent = " ".repeat(expression.get(..span.start).map_or(0, |text| text.chars().count()));
 		let carets = "^".repeat(expression.get(span.start..span.end).map_or(0, |text| text.chars().count()).max(1));
-		let lines = [expression.to_string(), format!("{indent}{carets}"), format!("{indent}error here")];
-		format!("{prose}\n{}", lines.iter().map(|line| markdown_code_span(line)).collect::<Vec<_>>().join("\n"))
+		format!("{prose}\n{}", markdown_code_block(&format!("{expression}\n{indent}{carets}\n{indent}error here")))
 	});
 	Some(messages.collect::<Vec<_>>().join("\n"))
 }
@@ -3781,15 +3780,15 @@ mod tests {
 
 	#[test]
 	fn math_expression_errors_quote_the_expression_safely() {
-		// The expression's own text sits in a code span it can't close, while the message's own code keeps its formatting, and the
-		// expression repeats below with labeled carets under the error's span
-		assert_eq!(math_expression_error("`abc", false).as_deref(), Some("`` `abc `` is not recognized\n`` `abc ``\n`^^^^`\n`error here`"));
+		// The expression's own text sits in code it can't close, while the message's own code keeps its formatting, and the expression
+		// repeats in a block below with labeled carets under the error's span
+		assert_eq!(math_expression_error("`abc", false).as_deref(), Some("`` `abc `` is not recognized\n```\n`abc\n^^^^\nerror here\n```"));
 		assert_eq!(
 			math_expression_error("7 % 3", false).as_deref(),
-			Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`\n`7 % 3`\n`  ^`\n`  error here`")
+			Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`\n```\n7 % 3\n  ^\n  error here\n```")
 		);
-		assert!(math_expression_error("(1", false).unwrap().ends_with("\n`(1`\n`  ^`\n`  error here`"));
-		assert!(math_expression_error("πx @ 2", false).unwrap().ends_with("\n`πx @ 2`\n`   ^`\n`   error here`"));
+		assert!(math_expression_error("(1", false).unwrap().ends_with("\n(1\n  ^\n  error here\n```"));
+		assert!(math_expression_error("πx @ 2", false).unwrap().ends_with("\nπx @ 2\n   ^\n   error here\n```"));
 		assert!(!math_expression_error("sin(I)", false).unwrap().contains('^'), "a sort error has no place to point at");
 
 		// Prose quoting a token like `*` is escaped, so it can't pair with another into italics

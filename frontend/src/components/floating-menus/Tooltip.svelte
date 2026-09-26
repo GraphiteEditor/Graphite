@@ -7,8 +7,8 @@
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { EditorWrapper, LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	// Marks where each code span goes while the prose around it is formatted, which HTML-escaped text can't hold since it has no `<`
-	const CODE_SPAN_PLACEHOLDER = "<>";
+	// Marks where each code span or block goes while the prose around it is formatted, which HTML-escaped text can't hold since it has no `<`
+	const CODE_PLACEHOLDER = "<>";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const editor = getContext<EditorWrapper>("editor");
@@ -36,14 +36,14 @@
 		return text;
 	}
 
-	// Renders the tooltip subset of Markdown: `code` spans, **bold**, and *italic*, where a backslash makes a following backslash, asterisk,
-	// or backtick literal. The text is HTML-escaped before anything else and a code span's content is never formatted, so no text yields other markup.
+	// Renders the tooltip subset of Markdown: `code` spans, fenced code blocks, **bold**, and *italic*, where a backslash makes a following
+	// backslash, asterisk, or backtick literal. The text is HTML-escaped before anything else and code is never formatted, so no text yields other markup.
 	function parseMarkdown(markdown: string | undefined): string | undefined {
 		if (!markdown) return undefined;
 
 		const escaped = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 
-		const codeSpans: string[] = [];
+		const codeElements: string[] = [];
 		let text = "";
 		let index = 0;
 		while (index < escaped.length) {
@@ -54,10 +54,26 @@
 				continue;
 			}
 
-			// A run of backticks opens a code span that only a run of the same length closes, as in CommonMark
 			if (escaped[index] === "`") {
 				const fenceEnd = endOfBacktickRun(escaped, index);
 				const fenceLength = fenceEnd - index;
+
+				// A run of three or more backticks alone on a line opens a code block that only a line of at least as many closes, as in CommonMark
+				const atLineStart = index === 0 || escaped[index - 1] === "\n";
+				if (atLineStart && fenceLength >= 3 && escaped[fenceEnd] === "\n") {
+					const contentStart = fenceEnd + 1;
+					const { contentEnd, blockEnd } = endOfCodeBlock(escaped, contentStart, fenceLength);
+
+					// The fence lines are the block's edges, so the line break before the block isn't a blank line above it
+					if (text.endsWith("\n")) text = text.slice(0, -1);
+
+					codeElements.push(`<pre><code>${escaped.slice(contentStart, contentEnd)}</code></pre>`);
+					text += CODE_PLACEHOLDER;
+					index = blockEnd;
+					continue;
+				}
+
+				// Otherwise the run opens a code span that only a run of the same length closes
 				const closing = nextBacktickRunOfLength(escaped, fenceEnd, fenceLength);
 				if (closing === undefined) {
 					text += escaped.slice(index, fenceEnd);
@@ -69,8 +85,8 @@
 				let code = escaped.slice(fenceEnd, closing);
 				if (code.startsWith(" ") && code.endsWith(" ") && /[^ ]/.test(code)) code = code.slice(1, -1);
 
-				codeSpans.push(`<code>${code}</code>`);
-				text += CODE_SPAN_PLACEHOLDER;
+				codeElements.push(`<code>${code}</code>`);
+				text += CODE_PLACEHOLDER;
 				index = closing + fenceLength;
 				continue;
 			}
@@ -79,7 +95,7 @@
 			index += 1;
 		}
 
-		let codeSpanIndex = 0;
+		let codeElementIndex = 0;
 		return (
 			text
 				// .split("\n")
@@ -92,9 +108,19 @@
 				.replace(/\*\*((?:(?!\*\*).)+)\*\*/g, "<strong>$1</strong>")
 				// Italic
 				.replace(/\*([^*]+)\*/g, "<em>$1</em>")
-				// Code spans
-				.replaceAll(CODE_SPAN_PLACEHOLDER, () => codeSpans[codeSpanIndex++])
+				// Code spans and blocks
+				.replaceAll(CODE_PLACEHOLDER, () => codeElements[codeElementIndex++])
 		);
+	}
+
+	// The end of a code block's content from `from`, and of the closing line of at least `fenceLength` backticks after it, or the text's end when none closes it
+	function endOfCodeBlock(text: string, from: number, fenceLength: number): { contentEnd: number; blockEnd: number } {
+		const closingLine = new RegExp(`^\`{${fenceLength},}$`, "gm");
+		closingLine.lastIndex = from;
+		const closing = closingLine.exec(text);
+		if (!closing) return { contentEnd: text.length, blockEnd: text.length };
+
+		return { contentEnd: Math.max(from, closing.index - 1), blockEnd: Math.min(closing.index + closing[0].length + 1, text.length) };
 	}
 
 	// The index just past the run of backticks starting at `start`
