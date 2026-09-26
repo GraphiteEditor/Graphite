@@ -261,7 +261,7 @@ impl ValueNode {
 			},
 			ValueNode::Apply { matrix, value } => value_of_matrix(context, MatrixValueCase::Apply(matrix, value)),
 			ValueNode::OfMatrix { function, matrix } => value_of_matrix(context, MatrixValueCase::OfMatrix(*function, matrix)),
-			ValueNode::OfMatrices { function, value, matrices } => value_of_matrix(context, MatrixValueCase::OfMatrices(*function, value, matrices)),
+			ValueNode::OfValueAndRegions { function, value, regions } => value_of_matrix(context, MatrixValueCase::OfValueAndRegions(*function, value, regions)),
 			ValueNode::MatrixComparison { matrices, distinct } => value_of_matrix(context, MatrixValueCase::Comparison(matrices, *distinct)),
 		}
 	}
@@ -271,7 +271,7 @@ impl ValueNode {
 enum MatrixValueCase<'a> {
 	Apply(&'a MatrixNode, &'a ValueNode),
 	OfMatrix(MatrixToValue, &'a MatrixNode),
-	OfMatrices(ValueOfRegions, &'a ValueNode, &'a [MatrixNode]),
+	OfValueAndRegions(ValueOfRegions, &'a ValueNode, &'a [MatrixNode]),
 	Comparison(&'a [MatrixNode], bool),
 }
 
@@ -286,18 +286,18 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<
 			settle(Value::from(matrix.apply(value.to_quaternion())))
 		}
 		MatrixValueCase::OfMatrix(function, matrix) => settle(function(matrix.eval(context)?)),
-		MatrixValueCase::OfMatrices(function, value, matrices) => {
+		MatrixValueCase::OfValueAndRegions(function, value, regions) => {
 			let value = value.eval(context)?;
 
 			// A range literal is kept by its corners, which may be infinite where no matrix can hold them
-			let regions = matrices
+			let regions = regions
 				.iter()
-				.map(|matrix| match matrix {
+				.map(|region| match region {
 					MatrixNode::Range { from, to } => {
 						let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
 						Ok(Region::Range(from.to_quaternion(), to.to_quaternion()))
 					}
-					matrix => matrix.eval(context).map(Region::Map),
+					region => region.eval(context).map(Region::Map),
 				})
 				.collect::<Result<Vec<Region>, EvalError>>()?;
 			settle(function(value, &regions)?)

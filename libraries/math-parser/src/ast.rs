@@ -158,10 +158,10 @@ pub enum ValueNode {
 		matrix: Box<MatrixNode>,
 	},
 	/// A function of a value and regions with a value result, like `inside(p, R)`.
-	OfMatrices {
+	OfValueAndRegions {
 		function: ValueOfRegions,
 		value: Box<ValueNode>,
-		matrices: Vec<MatrixNode>,
+		regions: Vec<MatrixNode>,
 	},
 	/// A chain of `==`, or of `!=`, over matrices, pointwise.
 	MatrixComparison {
