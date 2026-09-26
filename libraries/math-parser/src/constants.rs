@@ -181,7 +181,7 @@ fn projection(a: Quaternion, b: Quaternion) -> Option<Quaternion> {
 }
 
 /// The mean of `count` numbers given as their `N` parts, each part averaged on its own over its [`power_of_two_scale`] so its sum cannot overflow.
-fn mean_of<const N: usize>(numbers: impl Iterator<Item = [f64; N]> + Clone, count: usize) -> [f64; N] {
+pub(crate) fn mean_of<const N: usize>(numbers: impl Iterator<Item = [f64; N]> + Clone, count: usize) -> [f64; N] {
 	array::from_fn(|index| {
 		let parts = numbers.clone().map(|parts| parts[index]);
 		let scale = power_of_two_scale(parts.clone());
@@ -808,7 +808,10 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 
 		// Matrix functions
 		"det" => Builtin::OfMatrix(|matrix| Value::from_f64(matrix.determinant())),
-		"linear" => Builtin::MatrixOfMatrix(|matrix| Matrix::linear(matrix.rows)),
+		"linear" => Builtin::MatrixOfMatrix(|matrix| Matrix {
+			translation: Quaternion::ZERO,
+			..matrix
+		}),
 		// The image of the origin, `A 0`
 		"translation" => Builtin::OfMatrix(|matrix| Value::from(matrix.translation)),
 

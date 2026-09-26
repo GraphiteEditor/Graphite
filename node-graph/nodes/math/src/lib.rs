@@ -238,7 +238,10 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	let (value, attributes) = value.into_parts();
 
 	let x = value.into_object();
-	let result = output(parsed.parse(fx.element()).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
+
+	// The default `x` passes any input through, including a Transform, which an expression names `X`
+	let source = if x.as_matrix().is_some() && fx.element().trim() == "x" { "X" } else { fx.element() };
+	let result = output(parsed.parse(source).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
 
 	Item::from_parts(result, attributes)
 }
@@ -2196,7 +2199,8 @@ mod test {
 		}
 		let shear = DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::new(5., 4.));
 
-		// A Transform binds as `X`, and a matrix result reads back as one
+		// A Transform binds as `X`, and a matrix result reads back as one, so the default `x` passes it through
+		assert_eq!(fx(shear, "x", shear), shear);
 		assert_eq!(fx(shear, "X (2i + 2j)", DVec2::ZERO), DVec2::new(8., 6.));
 		assert_eq!(fx(shear, "X^-1 X", shear), DAffine2::IDENTITY);
 		assert_eq!(fx(shear, "linear(X) + 1i", DAffine2::IDENTITY), DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::X));

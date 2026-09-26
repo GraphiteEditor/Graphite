@@ -125,7 +125,12 @@ fn holding_case<'a, T, V: ValueProvider, F: FunctionProvider>(context: &EvalCont
 fn matrix_binary_op(lhs: Object, op: BinaryOp, rhs: Object) -> Result<Matrix, EvalError> {
 	use BinaryOp as Op;
 	match (lhs, op, rhs) {
-		(Object::Value(Value::Number(q)), Op::Mul, Object::Matrix(b)) => settle_matrix(Matrix::left_multiplication(q.to_quaternion()).compose(*b)),
+		(Object::Value(Value::Number(q)), Op::Mul, Object::Matrix(b)) => {
+			// A real scales every part alike, so the product acts on the same parts as the matrix it scales
+			let q = q.to_quaternion();
+			let product = Matrix::left_multiplication(q).compose(*b);
+			settle_matrix(if q.is_real() { Matrix { axes: b.axes, ..product } } else { product })
+		}
 		(Object::Matrix(a), Op::Mul, Object::Matrix(b)) => settle_matrix(a.compose(*b)),
 		(lhs, Op::Div, Object::Matrix(b)) => matrix_binary_op(lhs, Op::Mul, Object::from(b.inverse().ok_or(EvalError::SingularMatrix)?)),
 		(Object::Matrix(a), Op::Add, Object::Matrix(b)) => settle_matrix(*a + *b),
@@ -134,12 +139,12 @@ fn matrix_binary_op(lhs: Object, op: BinaryOp, rhs: Object) -> Result<Matrix, Ev
 		(Object::Matrix(a), Op::Sub, Object::Value(Value::Number(t))) => settle_matrix(a.translated(-t.to_quaternion())),
 		(Object::Value(Value::Number(t)), Op::Sub, Object::Matrix(a)) => settle_matrix((-*a).translated(t.to_quaternion())),
 		(Object::Matrix(a), Op::Pow, Object::Value(Value::Number(exponent))) => {
-			// A whole exponent is a composition power, a negative one of the inverse
-			let whole = exponent
-				.as_real()
-				.filter(|real| real.fract() == 0. && real.abs() < i64::MAX as f64)
-				.ok_or(EvalError::OperatorTypeError)?;
-			settle_matrix(a.power(whole as i64).ok_or(EvalError::SingularMatrix)?)
+			// A whole exponent is a composition power, a negative one of the inverse, with an integer read exactly past 2^53
+			let whole = match exponent {
+				Number::Integer(integer) => integer,
+				real => real.as_real().filter(|real| real.fract() == 0. && real.abs() < i64::MAX as f64).ok_or(EvalError::OperatorTypeError)? as i64,
+			};
+			settle_matrix(a.power(whole).ok_or(EvalError::SingularMatrix)?)
 		}
 		_ => Err(EvalError::OperatorTypeError),
 	}
