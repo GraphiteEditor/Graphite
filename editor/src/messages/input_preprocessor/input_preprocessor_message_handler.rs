@@ -47,16 +47,18 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.keyboard.set(key as usize);
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
+				} else {
+					responses.add(InputMapperMessage::KeyDown(key));
 				}
-				responses.add(InputMapperMessage::KeyDown(key));
 			}
 			InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.unset(key as usize);
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
+				} else {
+					responses.add(InputMapperMessage::KeyUp(key));
 				}
-				responses.add(InputMapperMessage::KeyUp(key));
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
@@ -298,5 +300,32 @@ mod test {
 		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
 		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
 		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
+	}
+
+	#[test]
+	/// Only one of `InputMapperMessage::KeyDownNoRepeat` and `InputMapperMessage::KeyDown` is sent
+	fn process_key_repeats() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+
+		let key = Key::KeyA;
+
+		for i in 0..5 {
+			let key_repeat = i == 0;
+			let modifier_keys = ModifierKeys::empty();
+			let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
+
+			let mut responses = VecDeque::new();
+
+			let context = InputPreprocessorMessageContext {
+				viewport: &ViewportMessageHandler::default(),
+			};
+			input_preprocessor.process_message(message, &mut responses, context);
+
+			assert_eq!(
+				responses.pop_front(),
+				Some(if key_repeat { InputMapperMessage::KeyDown(key) } else { InputMapperMessage::KeyDownNoRepeat(key) }.into())
+			);
+			assert!(responses.is_empty()); // No more respoonses
+		}
 	}
 }

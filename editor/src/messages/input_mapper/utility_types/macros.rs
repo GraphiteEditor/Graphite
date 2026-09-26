@@ -88,20 +88,6 @@ macro_rules! entry {
 				canonical: $canonical,
 				disabled: $disabled,
 			},
-			MappingEntry {
-				action: $action_dispatch.into(),
-				input: InputMapperMessage::KeyDownNoRepeat(Key::$refresh),
-				modifiers: modifiers!(),
-				canonical: $canonical,
-				disabled: $disabled,
-			},
-			MappingEntry {
-				action: $action_dispatch.into(),
-				input: InputMapperMessage::KeyUpNoRepeat(Key::$refresh),
-				modifiers: modifiers!(),
-				canonical: $canonical,
-				disabled: $disabled,
-			},
 			)*
 		]]
 	};
@@ -116,8 +102,6 @@ macro_rules! mapping {
 	[$($entry:expr_2021),* $(,)?] => {{
 		let mut key_up = KeyMappingEntries::key_array();
 		let mut key_down = KeyMappingEntries::key_array();
-		let mut key_up_no_repeat = KeyMappingEntries::key_array();
-		let mut key_down_no_repeat = KeyMappingEntries::key_array();
 		let mut double_click = KeyMappingEntries::mouse_buttons_arrays();
 		let mut wheel_scroll = KeyMappingEntries::new();
 		let mut pointer_move = KeyMappingEntries::new();
@@ -133,10 +117,8 @@ macro_rules! mapping {
 				}
 
 				let corresponding_list = match entry.input {
-					InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
-					InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
-					InputMapperMessage::KeyDownNoRepeat(key) => &mut key_down_no_repeat[key as usize],
-					InputMapperMessage::KeyUpNoRepeat(key) => &mut key_up_no_repeat[key as usize],
+					InputMapperMessage::KeyDown(key) | InputMapperMessage::KeyDownNoRepeat(key) => &mut key_down[key as usize],
+					InputMapperMessage::KeyUp(key) | InputMapperMessage::KeyUpNoRepeat(key) => &mut key_up[key as usize],
 					InputMapperMessage::DoubleClick(key) => &mut double_click[key as usize],
 					InputMapperMessage::WheelScroll => &mut wheel_scroll,
 					InputMapperMessage::PointerMove => &mut pointer_move,
@@ -148,7 +130,7 @@ macro_rules! mapping {
 		}
 		)*
 
-		(key_up, key_down, key_up_no_repeat, key_down_no_repeat, double_click, wheel_scroll, pointer_move, pointer_shake)
+		(key_up, key_down, double_click, wheel_scroll, pointer_move, pointer_shake)
 	}};
 }
 

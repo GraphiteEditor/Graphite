@@ -9,8 +9,6 @@ use core::time::Duration;
 pub struct Mapping {
 	pub key_up: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub key_down: [KeyMappingEntries; NUMBER_OF_KEYS],
-	pub key_up_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
-	pub key_down_no_repeat: [KeyMappingEntries; NUMBER_OF_KEYS],
 	pub double_click: [KeyMappingEntries; NUMBER_OF_MOUSE_BUTTONS],
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
@@ -26,15 +24,13 @@ impl Default for Mapping {
 impl Mapping {
 	pub fn match_input_message(&self, message: InputMapperMessage, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
 		let list = self.associated_entries(&message);
-		list.match_mapping(keyboard_state, actions)
+		list.match_mapping(keyboard_state, actions, &message)
 	}
 
 	fn associated_entries(&self, message: &InputMapperMessage) -> &KeyMappingEntries {
 		match message {
-			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
-			InputMapperMessage::KeyUp(key) => &self.key_up[*key as usize],
-			InputMapperMessage::KeyDownNoRepeat(key) => &self.key_down_no_repeat[*key as usize],
-			InputMapperMessage::KeyUpNoRepeat(key) => &self.key_up_no_repeat[*key as usize],
+			InputMapperMessage::KeyDown(key) | InputMapperMessage::KeyDownNoRepeat(key) => &self.key_down[*key as usize],
+			InputMapperMessage::KeyUp(key) | InputMapperMessage::KeyUpNoRepeat(key) => &self.key_up[*key as usize],
 			InputMapperMessage::DoubleClick(key) => &self.double_click[*key as usize],
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
@@ -47,13 +43,18 @@ impl Mapping {
 pub struct KeyMappingEntries(pub Vec<MappingEntry>);
 
 impl KeyMappingEntries {
-	pub fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList) -> Option<Message> {
+	pub fn match_mapping(&self, keyboard_state: &KeyStates, actions: ActionList, input: &InputMapperMessage) -> Option<Message> {
 		for mapping in self.0.iter() {
 			// Skip this entry if any of the required modifiers are missing
 			if all_required_modifiers_pressed(keyboard_state, &mapping.modifiers) {
 				// Search for the action in the list of available actions to see if it's currently available to activate
 				let matching_action_found = actions.iter().flatten().any(|action| mapping.action.to_discriminant() == *action);
 				if matching_action_found {
+					// If the mapping accepts only norepeat then skip.
+					if mapping.input.is_no_repeat() && !input.is_no_repeat() {
+						// Using `return` rather than `continue` will avoid falling back to another action
+						return None;
+					}
 					return Some(mapping.action.clone());
 				}
 			}
