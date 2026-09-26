@@ -788,6 +788,11 @@ mod tests {
 		logical_not_one: "!1" => 0.,
 		logical_not_expression: "!(2 - 2)" => 1.,
 
+		// NOT binds as tightly as a sign, before a product, a comparison, or `&&`
+		logical_not_before_product: "!0 * 0" => 0.,
+		logical_not_before_comparison: "!0 < 5" => 1.,
+		logical_not_before_and: "!0 && 0" => 0.,
+
 		// Log / exp / pow / root
 		log_ln: "ln(e)" => 1.,
 		log_log10: "log(100)" => 2.,
