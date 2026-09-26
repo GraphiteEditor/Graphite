@@ -1,5 +1,6 @@
-use super::{NodeNetworkInterface, NodeNetworkMetadata};
+use super::{InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use std::collections::{HashMap, HashSet};
 
 impl NodeNetworkInterface {
 	/// Checks the structural invariants between the document network and its parallel metadata tree at every nesting level.
@@ -9,8 +10,47 @@ impl NodeNetworkInterface {
 	pub fn validate_invariants(&self) -> Vec<String> {
 		let mut violations = Vec::new();
 		validate_network(self.document_network(), &self.network_metadata, &mut Vec::new(), 0, &mut violations);
+		self.validate_outward_wires(&mut Vec::new(), &mut violations);
 		violations
 	}
+
+	/// A loaded outward wire cache must match a fresh computation from the network.
+	fn validate_outward_wires(&self, path: &mut Vec<NodeId>, violations: &mut Vec<String>) {
+		let Some(network) = self.nested_network(path) else { return };
+
+		if let Some(computed) = self.compute_outward_wires(path)
+			&& let Some(network_metadata) = self.network_metadata(path)
+		{
+			network_metadata.transient_metadata.outward_wires.with_loaded(|cached| {
+				let outputs: HashSet<_> = cached.keys().chain(computed.keys()).collect();
+				for output in outputs {
+					let (cached_inputs, computed_inputs) = (cached.get(output), computed.get(output));
+					if cached_inputs.map(|inputs| wire_counts(inputs)) != computed_inputs.map(|inputs| wire_counts(inputs)) {
+						violations.push(format!(
+							"Outward wires of {output:?} in network {path:?} are cached as {cached_inputs:?} but the network holds {computed_inputs:?}"
+						));
+					}
+				}
+			});
+		}
+
+		for (node_id, node) in &network.nodes {
+			if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+				path.push(*node_id);
+				self.validate_outward_wires(path, violations);
+				path.pop();
+			}
+		}
+	}
+}
+
+/// How many times each input appears, since the cache lists an output's consumers in no particular order.
+fn wire_counts(inputs: &[InputConnector]) -> HashMap<InputConnector, usize> {
+	let mut counts = HashMap::new();
+	for input in inputs {
+		*counts.entry(*input).or_insert(0) += 1;
+	}
+	counts
 }
 
 fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: usize, violations: &mut Vec<String>) {
