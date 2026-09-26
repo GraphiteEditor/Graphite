@@ -23,6 +23,8 @@ pub enum Token<'src> {
 
 	LParen,
 	RParen,
+	LBrace,
+	RBrace,
 	Comma,
 	Plus,
 	Minus,
@@ -40,6 +42,9 @@ pub enum Token<'src> {
 	EqEq,
 
 	If,
+	Otherwise,
+	/// Reserved for `where` bindings, so the parser never matches it yet and no host binding can claim the name first.
+	Where,
 
 	/// An unrecognized character; the parser never matches this, forcing a parse error rather than silently truncating the input.
 	Error,
@@ -60,6 +65,8 @@ impl<'src> fmt::Display for Token<'src> {
 
 			Token::LParen => f.write_str("("),
 			Token::RParen => f.write_str(")"),
+			Token::LBrace => f.write_str("{"),
+			Token::RBrace => f.write_str("}"),
 			Token::Comma => f.write_str(","),
 			Token::Plus => f.write_str("+"),
 			Token::Minus => f.write_str("-"),
@@ -76,6 +83,8 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::EqEq => f.write_str("=="),
 
 			Token::If => f.write_str("if"),
+			Token::Otherwise => f.write_str("otherwise"),
+			Token::Where => f.write_str("where"),
 
 			Token::Error => f.write_str("<error>"),
 		}
@@ -164,9 +173,19 @@ enum Bar {
 	Or,
 }
 
-/// Whether a character ends an operand: a name, a number, a closing parenthesis, or the `∞` literal.
+/// The token of a reserved word, which is never a name, whoever would bind it.
+fn keyword(word: &str) -> Option<Token<'static>> {
+	match word {
+		"if" => Some(Token::If),
+		"otherwise" => Some(Token::Otherwise),
+		"where" => Some(Token::Where),
+		_ => None,
+	}
+}
+
+/// Whether a character ends an operand: a name, a number, a closing parenthesis or brace, or the `∞` literal.
 fn ends_operand(c: char) -> bool {
-	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '∞')
+	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | '∞')
 }
 
 /// Reads every `|` in the source up front, since each depends on what precedes it: a bar opens a magnitude where an operand
@@ -207,6 +226,17 @@ fn classify_bars(input: &str) -> Vec<(usize, Bar)> {
 			}
 			// Whitespace changes nothing, and neither does `!`, a postfix factorial after an operand or a prefix not before one
 			c if c.is_whitespace() || c == '!' => {}
+			// A name ends an operand, but a keyword like `if` comes before one
+			c if c == '\\' || unicode_ident::is_xid_start(c) => {
+				let mut end = position + c.len_utf8();
+				while let Some(&(next_position, next)) = chars.peek()
+					&& unicode_ident::is_xid_continue(next)
+				{
+					end = next_position + next.len_utf8();
+					chars.next();
+				}
+				after_operand = keyword(&input[position..end]).is_none();
+			}
 			c => after_operand = ends_operand(c),
 		}
 	}
@@ -394,6 +424,8 @@ impl<'a> Lexer<'a> {
 
 			'(' => LParen,
 			')' => RParen,
+			'{' => LBrace,
+			'}' => RBrace,
 			',' => Comma,
 			'+' => Plus,
 			'-' => Minus,
@@ -477,8 +509,8 @@ impl<'a> Lexer<'a> {
 				let body = self.consume_identifier_body(ch);
 				let ident = &self.input[start..self.pos];
 
-				if ident == "if" {
-					If
+				if let Some(keyword) = keyword(ident) {
+					keyword
 				} else if unicode_ident::is_xid_start(ch) {
 					// A name is a Unicode identifier, as in Rust, so any script's letters may spell one
 					Ident(ident)
@@ -561,8 +593,10 @@ impl<'src> Input<'src> for Lexer<'src> {
 	}
 
 	#[inline]
-	unsafe fn span(_this: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
-		(*range.start..*range.end).into()
+	unsafe fn span(this: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
+		// The cursor rests after the previous token, so the whitespace before the first token is left out
+		let start = *range.end - this.input[*range.start..*range.end].trim_start().len();
+		(start..*range.end).into()
 	}
 }
 

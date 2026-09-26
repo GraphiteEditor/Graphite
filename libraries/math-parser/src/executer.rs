@@ -25,6 +25,12 @@ pub enum EvalError {
 	#[error("Indeterminate result, like `0/0` or `∞ - ∞`")]
 	Indeterminate,
 
+	#[error("More than one piecewise case holds, where the cases must be disjoint")]
+	OverlappingCases,
+
+	#[error("No piecewise case holds, and there is no `otherwise` case")]
+	NoCaseHolds,
+
 	#[error("Value of {0} is not a number")]
 	NotANumber(String),
 }
@@ -152,11 +158,29 @@ impl Node {
 					Err(EvalError::MissingFunction(name.to_string()))
 				}
 			}
-			Node::Conditional { condition, if_block, else_block } => {
-				let Value::Number(number) = condition.eval(context)?;
-				let Some(condition) = number.as_bool() else { return Err(EvalError::NotATruthValue) };
+			Node::Piecewise { cases, otherwise } => {
+				// Every condition is evaluated and must be a truth value, and at most one may hold since the cases are unordered
+				let mut holding = None;
+				let mut overlapping = false;
+				for case in cases {
+					let Value::Number(condition) = case.condition.eval(context)?;
+					match condition.as_bool() {
+						Some(false) => {}
+						Some(true) if holding.is_none() => holding = Some(&case.value),
+						Some(true) => overlapping = true,
+						None => return Err(EvalError::NotATruthValue),
+					}
+				}
+				if overlapping {
+					return Err(EvalError::OverlappingCases);
+				}
 
-				if condition { if_block.eval(context) } else { else_block.eval(context) }
+				// Only the chosen value is evaluated, so an error in any other case's value is never raised
+				match (holding, otherwise) {
+					(Some(value), _) => value.eval(context),
+					(None, Some(otherwise)) => otherwise.eval(context),
+					(None, None) => Err(EvalError::NoCaseHolds),
+				}
 			}
 		}
 	}

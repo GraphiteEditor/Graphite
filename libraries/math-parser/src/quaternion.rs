@@ -1,4 +1,4 @@
-use crate::value::{Complex, part_product, power_of_two_scale, rescaled_product};
+use crate::value::{Complex, fmt_real, part_product, power_of_two_scale, rescaled_product};
 use std::fmt;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
@@ -91,12 +91,13 @@ impl Quaternion {
 		root_sum_of_squares(&[self.x, self.y, self.z])
 	}
 
-	/// Scales to unit magnitude, or `None` at zero, where no direction exists. An infinite quaternion points along its infinite parts.
+	/// Scales to unit magnitude, or `None` at zero, where no direction exists. Several infinite parts, whose relative sizes are unknown, give NaN parts.
 	pub fn normalized(self) -> Option<Self> {
-		let direction = if self.parts().iter().any(|part| part.is_infinite()) {
-			self.map(|part| if part.is_infinite() { part.signum() } else { 0. })
-		} else {
-			self
+		// A lone infinite part outweighs every finite one, so it alone sets the direction
+		let direction = match self.parts().iter().filter(|part| part.is_infinite()).count() {
+			0 => self,
+			1 => self.map(|part| if part.is_infinite() { part.signum() } else { 0. }),
+			_ => return Some(Self::splat(f64::NAN)),
 		};
 
 		// Dividing by a power of two near the largest part is exact and keeps a huge quaternion's norm finite
@@ -214,7 +215,8 @@ impl fmt::Display for Quaternion {
 			if written && part.is_sign_positive() {
 				f.write_str("+")?;
 			}
-			write!(f, "{part}{basis}")?;
+			fmt_real(part, f)?;
+			f.write_str(basis)?;
 			written = true;
 		}
 

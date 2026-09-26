@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Literal, Node, UnaryOp};
+use crate::ast::{BinaryOp, Case, Literal, Node, UnaryOp};
 use crate::lexer::{Lexer, Span, Token};
 use chumsky::error::{EmptyErr, LabelError};
 use chumsky::input::ValueInput;
@@ -54,6 +54,9 @@ impl Node {
 					.into_iter()
 					.map(|e| match e.found() {
 						Some(Token::Percent) => format!("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at {}", e.span()),
+						Some(Token::If) => format!("`if` joins a case's value to its condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span()),
+						Some(Token::Otherwise) => format!("`otherwise` ends the one case with no condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span()),
+						Some(Token::Where) => format!("`where` is a reserved word, so it can't be a name, at {}", e.span()),
 						_ => format!("{e} at {}", e.span()),
 					})
 					.collect(),
@@ -76,15 +79,26 @@ where
 
 		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
 
-		let if_expr = just(Token::If).ignore_then(args.clone()).try_map(|args: Vec<Node>, span| {
-			let [condition, if_block, else_block] = <[Node; 3]>::try_from(args).map_err(|_| LabelError::<I, _>::expected_found(["3 arguments in if(condition, a, b)"], None, span))?;
-
-			Ok(Node::Conditional {
-				condition: Box::new(condition),
-				if_block: Box::new(if_block),
-				else_block: Box::new(else_block),
-			})
-		});
+		// Each case is a value then its condition, except the one `otherwise` case, which may stand anywhere since case order means nothing
+		let case = expr.clone().then(choice((just(Token::If).ignore_then(expr.clone()).map(Some), just(Token::Otherwise).map(|_| None))));
+		let piecewise = case
+			.separated_by(just(Token::Comma))
+			.at_least(1)
+			.collect::<Vec<(Node, Option<Node>)>>()
+			.delimited_by(just(Token::LBrace), just(Token::RBrace))
+			// Emitted rather than failed, since a failure at the atom's start would be relabeled as a missing atom
+			.validate(|written_cases, extra, emitter| {
+				let mut cases = Vec::new();
+				let mut otherwise = None;
+				for (value, condition) in written_cases {
+					match condition {
+						Some(condition) => cases.push(Case { value, condition }),
+						None if otherwise.is_none() => otherwise = Some(Box::new(value)),
+						None => emitter.emit(CustomError::custom(extra.span(), "A piecewise has at most one `otherwise` case")),
+					}
+				}
+				Node::Piecewise { cases, otherwise }
+			});
 
 		let ident = select! {Token::Ident(s) => s}.labelled("ident");
 
@@ -100,7 +114,7 @@ where
 			expr: Box::new(expr),
 		});
 
-		let atom = choice((constant, if_expr, call_or_var, parens, magnitude)).labelled("atom");
+		let atom = choice((constant, piecewise, call_or_var, parens, magnitude)).labelled("atom");
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
@@ -273,14 +287,20 @@ mod tests {
 				rhs: Box::new(Node::Lit(Literal::Integer(2))),
 			}),
 		},
-		test_conditional_expr: "if (x+3, 0, 1)" => Node::Conditional{
-			condition: Box::new(Node::BinOp{
-				lhs: Box::new(Node::Var("x".to_string())),
-				op: BinaryOp::Add,
-				rhs: Box::new(Node::Lit(Literal::Integer(3))),
-			}),
-			if_block: Box::new(Node::Lit(Literal::Integer(0))),
-			else_block: Box::new(Node::Lit(Literal::Integer(1))),
+		test_piecewise_expr: "{0 otherwise, x + 3 if x < 0}" => Node::Piecewise {
+			cases: vec![Case {
+				value: Node::BinOp {
+					lhs: Box::new(Node::Var("x".to_string())),
+					op: BinaryOp::Add,
+					rhs: Box::new(Node::Lit(Literal::Integer(3))),
+				},
+				condition: Node::BinOp {
+					lhs: Box::new(Node::Var("x".to_string())),
+					op: BinaryOp::Lt,
+					rhs: Box::new(Node::Lit(Literal::Integer(0))),
+				},
+			}],
+			otherwise: Some(Box::new(Node::Lit(Literal::Integer(0)))),
 		}
 	}
 }

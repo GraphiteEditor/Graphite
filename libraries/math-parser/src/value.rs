@@ -265,12 +265,21 @@ impl PartialEq for Number {
 	}
 }
 
+/// Writes a real as the language spells it, with `∞` for an infinity rather than Rust's `inf`.
+pub(crate) fn fmt_real(real: f64, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+	if real.is_infinite() {
+		f.pad(if real > 0. { "∞" } else { "-∞" })
+	} else {
+		std::fmt::Display::fmt(&real, f)
+	}
+}
+
 impl std::fmt::Display for Number {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			Number::Integer(integer) => integer.fmt(f),
-			Number::Real(real) => real.fmt(f),
-			Number::Complex(complex) => complex.fmt(f),
+			Number::Real(real) => fmt_real(*real, f),
+			Number::Complex(complex) => Quaternion::from_complex(*complex).fmt(f),
 			Number::Quaternion(quaternion) => quaternion.fmt(f),
 		}
 	}
