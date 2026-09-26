@@ -75,6 +75,12 @@ impl<L: Layout> Gdd<L> {
 		if let Err(error) = self.persist_session_state() {
 			log::error!("Persisting the session state before leaving failed: {error}");
 		}
+		self.disconnect();
+	}
+
+	/// Drops the connection but keeps the document shared, for a transport that went down: a reopen
+	/// reconnects on its own, and the Session panel offers to reconnect now.
+	pub fn disconnect(&mut self) {
 		let closed = self.session.closed_transactions();
 		if let Err(error) = self.retire_transactions(&closed) {
 			log::error!("Retiring before leaving failed: {error}");

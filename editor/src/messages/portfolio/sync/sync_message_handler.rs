@@ -98,8 +98,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					gdd.join(room, UserId(preferences.user_id));
 					announce_name(gdd, &preferences.user_name);
 
-					responses.add(driver_future(document_id, driver));
 					self.attach(document_id, incoming, responses);
+					responses.add(driver_future(document_id, self.connections, driver));
 					refresh_session_views(responses);
 					self.start_polling(responses);
 				} else if gdd.is_shared() && gdd.role().is_none() {
@@ -117,9 +117,35 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				self.last_cursor.remove(&document_id);
 				refresh_session_views(responses);
 			}
-			SyncMessage::Disconnected { document_id } => {
+			SyncMessage::Fork => {
+				let Some(document_id) = active_document_id else { return };
+				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
+					return;
+				};
+				// The room is derived from the manifest's document id, so a fresh id is a fresh room. A guest
+				// already rewrites the id when it joins, and the working copy's directory is keyed by the editor's
+				// own id, so nothing moves on disk.
+				gdd.leave();
+				self.incoming.remove(&document_id);
+				self.last_cursor.remove(&document_id);
+				if let Err(error) = gdd.update_manifest(|manifest| manifest.document_id = crate::application::generate_uuid()) {
+					log::error!("Forking the session failed: {error}");
+					refresh_session_views(responses);
+					return;
+				}
+				let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
+				responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
+				responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
+				self.start_polling(responses);
+			}
+			SyncMessage::Disconnected { document_id, generation } => {
+				if self.incoming.get(&document_id).is_none_or(|(current, _)| *current != generation) {
+					return;
+				}
+				// The transport went down under a document that meant to stay in its room: it stays shared, so
+				// the panel shows it disconnected and offers to reconnect, and a reopen reconnects on its own.
 				if let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) {
-					gdd.leave();
+					gdd.disconnect();
 				}
 				self.incoming.remove(&document_id);
 				self.last_cursor.remove(&document_id);
@@ -340,8 +366,8 @@ impl SyncMessageHandler {
 		}
 		announce_name(gdd, &preferences.user_name);
 		self.undecided_since.insert(document_id, now_ms());
-		responses.add(driver_future(document_id, driver));
 		self.attach(document_id, incoming, responses);
+		responses.add(driver_future(document_id, self.connections, driver));
 		refresh_session_views(responses);
 		self.start_polling(responses);
 		Some(token)
@@ -381,12 +407,12 @@ impl SyncMessageHandler {
 	}
 }
 
-fn driver_future(document_id: DocumentId, driver: peer_transport::MessageLoopFuture) -> Message {
+fn driver_future(document_id: DocumentId, generation: u32, driver: peer_transport::MessageLoopFuture) -> Message {
 	let future = async move {
 		if let Err(error) = driver.await {
 			log::warn!("Session transport for {document_id:?} ended: {error}");
 		}
-		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Disconnected { document_id }))
+		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Disconnected { document_id, generation }))
 	};
 	future.into()
 }
@@ -476,6 +502,11 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 				LayoutGroup::row(vec![
 					TextButton::new("Reconnect").icon("Link").emphasized(true).on_commit(|_| SyncMessage::Share.into()).widget_instance(),
 					TextButton::new("Stop Sharing").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
+					TextButton::new("Fork")
+						.tooltip_label("Fork the session")
+						.tooltip_description("Leave this room and host the document as a new session with its own link. The others keep the room they are in.")
+						.on_commit(|_| SyncMessage::Fork.into())
+						.widget_instance(),
 				]),
 			]);
 		}
@@ -522,6 +553,11 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 				.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_token.clone() }.into())
 				.widget_instance(),
 			TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
+			TextButton::new("Fork")
+				.tooltip_label("Fork the session")
+				.tooltip_description("Leave this room and host the document as a new session with its own link. The others keep the room they are in.")
+				.on_commit(|_| SyncMessage::Fork.into())
+				.widget_instance(),
 		]),
 		heading(&format!("Peers ({})", peers.len() + 1)),
 		peer_row(&if user_name.is_empty() { "You".to_string() } else { format!("{user_name} (you)") }, role),

@@ -12,6 +12,9 @@ pub enum SyncMessage {
 	Join { token: String },
 	/// Disconnect the active document from its room; editing goes on alone until the next share.
 	Leave,
+	/// Leave the room and host the active document as a new session with its own link, keeping its content and
+	/// history; the others keep the room they are in.
+	Fork,
 	/// Send the Session panel's layout for the active document.
 	RefreshPanel,
 	/// Draw the other peers' cursors over the active document; the overlay provider registered with the tools.
@@ -23,8 +26,9 @@ pub enum SyncMessage {
 	Wake { document_id: DocumentId, generation: u32 },
 	/// A document's working copy mounted; attaches it to a pending join.
 	StorageMounted { document_id: DocumentId },
-	/// The transport loop of a document's session ended.
-	Disconnected { document_id: DocumentId },
+	/// The transport loop of a document's session ended. `generation` names the connection it drove, so the end of
+	/// a connection the document already left, or replaced by a fork, is nothing to act on.
+	Disconnected { document_id: DocumentId, generation: u32 },
 	/// A declaration a remote change names was already on hand and was read from the byte store to be
 	/// decoded; `None` when the store turned out not to hold it after all.
 	DeclarationLoaded { document_id: DocumentId, hash: ResourceHash, bytes: Option<Vec<u8>> },
