@@ -126,20 +126,35 @@ fn holding_case<'a, T, V: ValueProvider, F: FunctionProvider>(context: &EvalCont
 	Ok(holding)
 }
 
+/// An operand of a matrix operation, holding a matrix on the stack since the operation consumes it at once.
+enum Operand {
+	Value(Value),
+	Matrix(Matrix),
+}
+
+impl Node {
+	fn operand<V: ValueProvider, F: FunctionProvider>(&self, context: &EvalContext<V, F>) -> Result<Operand, EvalError> {
+		match self {
+			Node::Value(value) => value.eval(context).map(Operand::Value),
+			Node::Matrix(matrix) => matrix.eval(context).map(Operand::Matrix),
+		}
+	}
+}
+
 /// An operation with a matrix result: a value on the left acts as `L_q`, matrices compose, sums are pointwise or attach a
 /// value as translation, division is times-inverse, and powers are whole.
-fn matrix_binary_op(lhs: Object, op: BinaryOp, rhs: Object) -> Result<Matrix, EvalError> {
+fn matrix_binary_op(lhs: Operand, op: BinaryOp, rhs: Operand) -> Result<Matrix, EvalError> {
 	use BinaryOp as Op;
 	match (lhs, op, rhs) {
-		(Object::Value(Value::Number(q)), Op::Mul, Object::Matrix(b)) => settle_matrix(Matrix::left_multiplication(q.to_quaternion()).compose(*b)),
-		(Object::Matrix(a), Op::Mul, Object::Matrix(b)) => settle_matrix(a.compose(*b)),
-		(lhs, Op::Div, Object::Matrix(b)) => matrix_binary_op(lhs, Op::Mul, Object::from(b.inverse().ok_or(EvalError::SingularMatrix)?)),
-		(Object::Matrix(a), Op::Add, Object::Matrix(b)) => settle_matrix(*a + *b),
-		(Object::Matrix(a), Op::Sub, Object::Matrix(b)) => settle_matrix(*a - *b),
-		(Object::Matrix(a), Op::Add, Object::Value(Value::Number(t))) | (Object::Value(Value::Number(t)), Op::Add, Object::Matrix(a)) => settle_matrix(a.translated(t.to_quaternion())),
-		(Object::Matrix(a), Op::Sub, Object::Value(Value::Number(t))) => settle_matrix(a.translated(-t.to_quaternion())),
-		(Object::Value(Value::Number(t)), Op::Sub, Object::Matrix(a)) => settle_matrix((-*a).translated(t.to_quaternion())),
-		(Object::Matrix(a), Op::Pow, Object::Value(Value::Number(exponent))) => {
+		(Operand::Value(Value::Number(q)), Op::Mul, Operand::Matrix(b)) => settle_matrix(Matrix::left_multiplication(q.to_quaternion()).compose(b)),
+		(Operand::Matrix(a), Op::Mul, Operand::Matrix(b)) => settle_matrix(a.compose(b)),
+		(lhs, Op::Div, Operand::Matrix(b)) => matrix_binary_op(lhs, Op::Mul, Operand::Matrix(b.inverse().ok_or(EvalError::SingularMatrix)?)),
+		(Operand::Matrix(a), Op::Add, Operand::Matrix(b)) => settle_matrix(a + b),
+		(Operand::Matrix(a), Op::Sub, Operand::Matrix(b)) => settle_matrix(a - b),
+		(Operand::Matrix(a), Op::Add, Operand::Value(Value::Number(t))) | (Operand::Value(Value::Number(t)), Op::Add, Operand::Matrix(a)) => settle_matrix(a.translated(t.to_quaternion())),
+		(Operand::Matrix(a), Op::Sub, Operand::Value(Value::Number(t))) => settle_matrix(a.translated(-t.to_quaternion())),
+		(Operand::Value(Value::Number(t)), Op::Sub, Operand::Matrix(a)) => settle_matrix((-a).translated(t.to_quaternion())),
+		(Operand::Matrix(a), Op::Pow, Operand::Value(Value::Number(exponent))) => {
 			// A whole exponent is a composition power, a negative one of the inverse, with an integer read exactly past 2^53
 			let whole = match exponent {
 				Number::Integer(integer) => integer,
@@ -289,21 +304,37 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<
 		MatrixValueCase::OfValueAndRegions(function, value, regions) => {
 			let value = value.eval(context)?;
 
-			// A range literal is kept by its corners, which may be infinite where no matrix can hold them
-			let regions = regions
-				.iter()
-				.map(|region| match region {
+			// The range functions take at most two regions, checked as the expression is parsed, so they land in a stack buffer, and a
+			// range literal is kept by its corners, which may be infinite where no matrix can hold them
+			let mut slots = [Region::Range(Number::Integer(0), Number::Integer(0)); 2];
+			if regions.len() > slots.len() {
+				return Err(EvalError::TypeError);
+			}
+			for (slot, region) in slots.iter_mut().zip(regions) {
+				*slot = match region {
 					MatrixNode::Range { from, to } => {
 						let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
-						Ok(Region::Range(from, to))
+						Region::Range(from, to)
 					}
-					region => region.eval(context).map(Region::Map),
-				})
-				.collect::<Result<Vec<Region>, EvalError>>()?;
-			settle(function(value, &regions)?)
+					region => Region::Map(region.eval(context)?),
+				};
+			}
+			settle(function(value, &slots[..regions.len()])?)
 		}
 		MatrixValueCase::Comparison(matrices, distinct) => {
-			let matrices = matrices.iter().map(|matrix| matrix.eval(context)).collect::<Result<Vec<Matrix>, EvalError>>()?;
+			// A chain lands in a stack buffer when it fits, the usual case
+			let mut stack_matrices = [Matrix::ZERO; 4];
+			let heap_matrices: Vec<Matrix>;
+			let matrices: &[Matrix] = if matrices.len() <= stack_matrices.len() {
+				for (slot, matrix) in stack_matrices.iter_mut().zip(matrices) {
+					*slot = matrix.eval(context)?;
+				}
+				&stack_matrices[..matrices.len()]
+			} else {
+				heap_matrices = matrices.iter().map(|matrix| matrix.eval(context)).collect::<Result<Vec<Matrix>, EvalError>>()?;
+				&heap_matrices
+			};
+
 			let holds = if distinct {
 				matrices.iter().enumerate().all(|(index, a)| matrices[index + 1..].iter().all(|b| !a.same_entries(*b)))
 			} else {
@@ -339,15 +370,22 @@ impl MatrixNode {
 				settle_matrix(matrix.ok_or(EvalError::TypeError)?)
 			}
 			MatrixNode::FromValues { function, arguments } => {
-				let values = arguments.iter().map(|argument| argument.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
-				settle_matrix(function(&values).ok_or(EvalError::TypeError)?)
+				// The builders take at most three arguments, checked as the expression is parsed, so they land in a stack buffer
+				let mut values = [Value::from_i64(0); 3];
+				if arguments.len() > values.len() {
+					return Err(EvalError::TypeError);
+				}
+				for (slot, argument) in values.iter_mut().zip(arguments) {
+					*slot = argument.eval(context)?;
+				}
+				settle_matrix(function(&values[..arguments.len()]).ok_or(EvalError::TypeError)?)
 			}
 			MatrixNode::Range { from, to } => {
 				let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
 				settle_matrix(Matrix::range(from.to_quaternion(), to.to_quaternion()))
 			}
 			MatrixNode::OfMatrix { function, matrix } => settle_matrix(function(matrix.eval(context)?)),
-			MatrixNode::BinOp { lhs, op, rhs } => matrix_binary_op(lhs.eval(context)?, *op, rhs.eval(context)?),
+			MatrixNode::BinOp { lhs, op, rhs } => matrix_binary_op(lhs.operand(context)?, *op, rhs.operand(context)?),
 			MatrixNode::UnaryOp { expr, op } => {
 				let matrix = expr.eval(context)?;
 				match op {

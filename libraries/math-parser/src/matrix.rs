@@ -110,19 +110,24 @@ impl Matrix {
 		let flat = std::array::from_fn(|axis| self.axes[axis] && !used(axis));
 
 		// An orthonormal basis of the region's extent, which each unused axis extends with the basis direction furthest from it
-		let mut extent = (0..4).filter(|&axis| used(axis)).fold(Vec::new(), |mut extent, axis| {
-			extent.extend(orthogonal_part(self.column(axis), &extent).map(|(direction, _)| direction));
-			extent
-		});
+		let mut extent = [[0.; 4]; 4];
+		let mut extent_count = 0;
+		for axis in (0..4).filter(|&axis| used(axis)) {
+			if let Some((direction, _)) = orthogonal_part(self.column(axis), &extent[..extent_count]) {
+				extent[extent_count] = direction;
+				extent_count += 1;
+			}
+		}
 		let mut region = self;
 		for axis in (0..4).filter(|&axis| !used(axis)) {
 			let candidates = std::iter::once(axis).chain((0..4).filter(|&index| index != axis));
 			let furthest = candidates
-				.filter_map(|index| orthogonal_part(unit(index), &extent))
+				.filter_map(|index| orthogonal_part(unit(index), &extent[..extent_count]))
 				.reduce(|furthest, candidate| if candidate.1 > furthest.1 { candidate } else { furthest });
 			if let Some((direction, _)) = furthest {
 				region = region.with_column(axis, direction);
-				extent.push(direction);
+				extent[extent_count] = direction;
+				extent_count += 1;
 			}
 		}
 
