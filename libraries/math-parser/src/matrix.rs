@@ -11,7 +11,7 @@ pub struct Matrix {
 	/// Each row weights the input's parts into one output part, so the row `i` in the `x` slot passes the input's `x` through.
 	pub rows: [Quaternion; 4],
 	pub translation: Quaternion,
-	/// The parameter parts the map spans as a region, which `inside` and `clamp` constrain while the rest pass through: a range's
+	/// The parameter parts the map spans as a region, which `inside` and `clamp` bound by `0..1` while holding the rest at 0: a range's
 	/// rung, a literal's count, a composition's inner map's, or every part a builtin touches.
 	pub axes: [bool; 4],
 }
@@ -70,7 +70,7 @@ impl Matrix {
 
 	/// The axes a range spans, its corners' join rung: the weight if either corner has one, and the vector parts up to the last either
 	/// has, with `0..0` a range of the weight.
-	pub fn range_axes(a: Quaternion, b: Quaternion) -> [bool; 4] {
+	fn range_axes(a: Quaternion, b: Quaternion) -> [bool; 4] {
 		let (a, b) = (a.parts(), b.parts());
 		let has_part = |axis: usize| a[axis] != 0. || b[axis] != 0.;
 		let last_vector_axis = (1..4).rev().find(|&axis| has_part(axis));

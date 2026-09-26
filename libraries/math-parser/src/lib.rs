@@ -1215,7 +1215,7 @@ mod tests {
 		// A real is a quaternion with zero vector parts, so as a bound it holds a vector's parts to zero
 		quaternion_max_with_zero: "max(2i - 3j, 0)" => Complex::new(0., 2.),
 		quaternion_max_with_real: "max(0.5i + 2j, 1)" => Quaternion::new(1., 0.5, 2., 0.),
-		quaternion_clamp_spans_the_weight_alone: "clamp(3 + 3i, 1..2)" => Complex::new(2., 3.),
+		quaternion_clamp_moves_other_parts_into_the_range: "clamp(3 + 3i, 1..2)" => 2.,
 
 		// Vector functions: the dot product spans all four parts, the cross product only the vector parts
 		vector_dot: "dot(3i + 4j, i)" => 3.,
@@ -1342,8 +1342,9 @@ mod tests {
 
 		// A map keeps the axes it acts on through its linear part and a real scale factor
 		matrix_linear_keeps_axes: "linear((i + j)..(3i + 3j))" => Matrix::range(Quaternion::ZERO, Quaternion::new(0., 2., 2., 0.)),
-		inside_linear_part_of_range: "inside(5 + i, linear(0..(2i + 2j)))" => 1.,
-		inside_scaled_range: "inside(1.5 + 7i, 2 (0..1))" => 1.,
+		linear_part_of_range_keeps_its_axes: "inside(0.5 + i, linear(0..(2i + 2j)))" => 0.,
+		inside_scaled_range: "inside(1.5, 2 (0..1))" => 1.,
+		scaled_range_keeps_its_axes: "inside(1.5 + 0.5i, 2 (0..1))" => 0.,
 		outside_left_multiplication: "inside(3, matrix(2))" => 0.,
 
 		// Comparisons are pointwise, a piecewise may take matrix values, and `\I` reaches the identity past any binding
@@ -1373,17 +1374,17 @@ mod tests {
 		inside_range: "inside(0.5, 0..1)" => 1.,
 		inside_range_boundary: "inside(1, 0..1)" => 1.,
 		outside_range: "inside(1.5, 0..1)" => 0.,
-		inside_range_ignores_other_parts: "inside(0.5 + 7i, 0..1)" => 1.,
+		outside_range_off_its_axis: "inside(0.5 + 7i, 0..1)" => 0.,
 		inside_box: "inside(2i + 3j, 0..(4i + 4j))" => 1.,
 		outside_box_on_one_axis: "inside(2i + 5j, 0..(4i + 4j))" => 0.,
-		inside_box_ignores_the_weight: "inside(9 + 2i + 3j, 0..(4i + 4j))" => 1.,
+		outside_box_off_its_axes: "inside(9 + 2i + 3j, 0..(4i + 4j))" => 0.,
 		inside_rotated_box: "inside(0.1i + 0.5j, rotation(pi/4) (0..(i + j)))" => 1.,
 		outside_rotated_box: "inside(0.9i + 0.5j, rotation(pi/4) (0..(i + j)))" => 0.,
 		inside_parallelogram: "inside(2i + j, [2i, i + j] + i)" => 1.,
 		outside_parallelogram: "inside(i + j, [2i, i + j] + i)" => 0.,
 		clamp_to_range: "clamp(1.5, 0..1)" => 1.,
 		clamp_within_range: "clamp(0.25, 0..1)" => 0.25,
-		clamp_leaves_other_parts: "clamp(-3 + 7i, 0..1)" => Complex::new(0., 7.),
+		clamp_moves_other_parts_into_the_range: "clamp(-3 + 7i, 0..1)" => 0.,
 		clamp_to_box: "clamp(2i + 3j, 0..(i + j))" => Quaternion::new(0., 1., 1., 0.),
 		clamp_within_box: "clamp(0.5i, 0..(i + j))" => Complex::new(0., 0.5),
 		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
@@ -1458,29 +1459,35 @@ mod tests {
 		assert_eq!(inside("inside(0.5 + 0.5k, 0..(1 + i + k))"), Some(true));
 		assert_eq!(inside("inside(0.5 + 0.5j + 0.5k, 0..(1 + i + k))"), Some(false));
 		assert_eq!(inside("inside(0.5i + 0.5k, rotation(pi/2) (0..(i + k)))"), Some(false));
-		assert_eq!(inside("inside(0.5j + 0.5k + 5, rotation(pi/2, i) (0..(i + j)) + 5k)"), Some(false));
-		assert_eq!(inside("inside(0.5j + 5.5k + 5, rotation(pi/2, i) (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(inside("inside(-0.5i + 0.5j + 5k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(inside("inside(-0.5i + 0.5j + 4k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(false));
 		assert_eq!(evaluate("clamp(0.5i + 3j + 0.5k, 0..(i + k))").unwrap().unwrap(), Object::from(Quaternion::new(0., 0.5, 0., 0.5)));
 		assert_eq!(inside("inside(1.5i + 2j, scale(3i + 2j))"), Some(true));
 		assert_eq!(inside("inside(1.5i + 2j + k, scale(3i + 2j))"), Some(false));
 
-		// Parts outside the rung pass through, so `0..1` and `I` agree entry for entry yet test different parts
-		assert_eq!(inside("inside(2i, 0..1)"), Some(true));
+		// A box holds only the points between its corners on every part, so a part neither corner has must be 0, and a box whose
+		// height shrinks to nothing holds just the points on its base
+		assert_eq!(inside("inside(2i, 0..1)"), Some(false));
 		assert_eq!(inside("inside(2i, I)"), Some(false));
+		assert_eq!(inside("inside(0.5 + 0.5i + 0.5j + 0.5k, I)"), Some(true));
 		assert_eq!(inside("inside(0.5i, 0..1i)"), Some(true));
-		assert_eq!(inside("inside(0.5i + 3j, 0..1i)"), Some(true));
-		assert_eq!(inside("inside(0.5i + 3j, 0..(i + j))"), Some(false));
+		assert_eq!(inside("inside(0.5i + 3j, 0..1i)"), Some(false));
+		assert_eq!(inside("inside(2i, 0..(3i + 0j))"), Some(true));
+		assert_eq!(inside("inside(2i + 5j, 0..(3i + 0j))"), Some(false));
+		assert_eq!(inside("inside(2i + 5j, 0..(3i + 1e-300j))"), Some(false));
+		assert_eq!(evaluate("clamp(2i + 5j, 0..3i)").unwrap().unwrap(), Object::from(Complex::new(0., 2.)));
 
 		// A region's parameters are its inner map's, so an outer map or a translation adds no axes to a box
-		assert_eq!(inside("inside(2i, I (0..1))"), Some(true));
-		assert_eq!(inside("inside(0.5i + 0.5j + 5k, scale(2) (0..(i + j)))"), Some(true));
-		assert_eq!(inside("inside(0.5i + 0.5j, (0..(i + j)) + 5k)"), Some(true));
-		assert_eq!(inside("inside(0.5i + 5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(true));
-		assert_eq!(inside("inside(0.5i - 5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(true));
-		assert_eq!(inside("inside(0.5i + 5j + 1.5k, rotation(pi/2, i) (0..(i + j)))"), Some(false));
+		assert_eq!(inside("inside(0.5, I (0..1))"), Some(true));
+		assert_eq!(inside("inside(2i, I (0..1))"), Some(false));
+		assert_eq!(inside("inside(0.5i + 0.5j, scale(2) (0..(i + j)))"), Some(true));
+		assert_eq!(inside("inside(0.5i + 0.5j + 0.5k, scale(2) (0..(i + j)))"), Some(false));
+		assert_eq!(inside("inside(0.5i + 0.5j + 5k, (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(inside("inside(0.5i + 0.5j + 5.5k, (0..(i + j)) + 5k)"), Some(false));
+		assert_eq!(inside("inside(0.5i - 0.5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(false));
 		assert_eq!(
 			evaluate("clamp(0.5i + 0.5j + 5k, scale(2) (0..(i + j)))").unwrap().unwrap(),
-			Object::from(Quaternion::new(0., 0.5, 0.5, 5.))
+			Object::from(Quaternion::new(0., 0.5, 0.5, 0.))
 		);
 
 		// A range reads as a Transform when its corners leave the weight and `z` alone

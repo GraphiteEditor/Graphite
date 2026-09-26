@@ -859,8 +859,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			},
 		},
 
-		// Range functions read a range literal by its corners, which may be infinite, like `inside(x, 0..inf)` for `x >= 0`, and undo
-		// any other region to its parameter, which only the axes it spans constrain, a flat one to 0
+		// Range functions treat a region as exactly the points it holds: a range literal's, between its corners on every part, which may be
+		// infinite, like `inside(x, 0..inf)` for `x >= 0`, and any other region's, with a parameter in `0..1` where it extends and 0 elsewhere
 		"inside" => Builtin::OfValueAndRegions {
 			regions: 1,
 			function: |p, regions| {
@@ -869,14 +869,13 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 				let p = p.to_quaternion().parts();
 
 				if let Region::Range(a, b) = *region {
-					let spanned = Matrix::range_axes(a, b);
 					let (a, b) = (a.parts(), b.parts());
-					return Ok(Value::from_bool((0..4).all(|axis| !spanned[axis] || (a[axis].min(b[axis])..=a[axis].max(b[axis])).contains(&p[axis]))));
+					return Ok(Value::from_bool((0..4).all(|axis| (a[axis].min(b[axis])..=a[axis].max(b[axis])).contains(&p[axis]))));
 				}
 
 				let range = region.matrix();
-				let RangeParameter { parameter, flat, .. } = range_parameter(range, Quaternion::from_parts(p))?;
-				let within = |axis: usize, part: f64| if flat[axis] { part == 0. } else { !range.axes[axis] || (0. ..=1.).contains(&part) };
+				let RangeParameter { parameter, extends, .. } = range_parameter(range, Quaternion::from_parts(p))?;
+				let within = |axis: usize, part: f64| if extends[axis] { (0. ..=1.).contains(&part) } else { part == 0. };
 				Ok(Value::from_bool(parameter.parts().into_iter().enumerate().all(|(axis, part)| within(axis, part))))
 			},
 		},
@@ -889,24 +888,13 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 				let parts = number.to_quaternion().parts();
 
 				let clamped = if let Region::Range(a, b) = *region {
-					let spanned = Matrix::range_axes(a, b);
 					let (a, b) = (a.parts(), b.parts());
-					Quaternion::from_parts(array::from_fn(|axis| {
-						if spanned[axis] {
-							parts[axis].clamp(a[axis].min(b[axis]), a[axis].max(b[axis]))
-						} else {
-							parts[axis]
-						}
-					}))
+					Quaternion::from_parts(array::from_fn(|axis| parts[axis].clamp(a[axis].min(b[axis]), a[axis].max(b[axis]))))
 				} else {
 					let range = region.matrix();
-					let RangeParameter { parameter, region, flat } = range_parameter(range, Quaternion::from_parts(parts))?;
+					let RangeParameter { parameter, region, extends, .. } = range_parameter(range, Quaternion::from_parts(parts))?;
 					let parameter_parts = parameter.parts();
-					let clamped = Quaternion::from_parts(array::from_fn(|axis| match (flat[axis], range.axes[axis]) {
-						(true, _) => 0.,
-						(false, true) => parameter_parts[axis].clamp(0., 1.),
-						(false, false) => parameter_parts[axis],
-					}));
+					let clamped = Quaternion::from_parts(array::from_fn(|axis| if extends[axis] { parameter_parts[axis].clamp(0., 1.) } else { 0. }));
 					if clamped == parameter { Quaternion::from_parts(parts) } else { region.apply(clamped) }
 				};
 
@@ -933,11 +921,13 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 	})
 }
 
-/// Where a value lies against a range: its parameter `R⁻¹ p`, the invertible region that maps the parameter back, and which axes are flat.
+/// Where a value lies against a range: its parameter `R⁻¹ p`, the invertible region that maps the parameter back, and the axes the
+/// range extends along, on each other of which the parameter measures how far the value lies off the range.
 struct RangeParameter {
 	parameter: Quaternion,
 	region: Matrix,
-	/// The spanned axes with no extent, on which the parameter measures how far the value lies off the range.
+	extends: [bool; 4],
+	/// The spanned axes with no extent.
 	flat: [bool; 4],
 }
 
@@ -951,5 +941,7 @@ fn range_parameter(range: Matrix, p: Quaternion) -> Result<RangeParameter, EvalE
 	if Number::Quaternion(parameter).is_nan() {
 		return Err(EvalError::Indeterminate);
 	}
-	Ok(RangeParameter { parameter, region, flat })
+
+	let extends = array::from_fn(|axis| range.axes[axis] && !flat[axis]);
+	Ok(RangeParameter { parameter, region, extends, flat })
 }
