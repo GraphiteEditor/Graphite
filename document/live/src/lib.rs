@@ -6,6 +6,7 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout, ResourceProxy};
 use document_graph_storage::{PeerId, UserId};
+use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::document::NodeNetwork;
 use peer_transport::{Room, SyncTarget};
 
@@ -71,6 +72,13 @@ impl LiveDocument {
 	/// Synced and holding every resource the document references, so `network` can be built and run.
 	pub fn is_ready(&self) -> bool {
 		self.is_synced() && SyncTarget::missing_resources(&self.gdd).is_empty()
+	}
+
+	/// Resources the document references whose bytes no peer has sent yet; `is_ready` waits on them.
+	pub fn missing_resources(&self) -> Vec<ResourceHash> {
+		let mut missing: Vec<ResourceHash> = SyncTarget::missing_resources(&self.gdd).into_iter().collect();
+		missing.sort_unstable();
+		missing
 	}
 
 	/// Apply whatever peers sent since the last call and answer their resource requests. Call it regularly.

@@ -3,6 +3,7 @@
 
 use crate::{compile_graph, create_executor, editor_api, export};
 use document_live::{Event, LiveDocument};
+use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::UVec2;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig};
@@ -34,6 +35,7 @@ pub async fn run(live: LiveDocument) -> Result<(), Box<dyn Error>> {
 		blitter: None,
 		executor: None,
 		dirty: false,
+		waiting: Vec::new(),
 	};
 	tokio::task::block_in_place(|| event_loop.run_app(viewer))?;
 	Ok(())
@@ -49,6 +51,8 @@ struct Viewer {
 	blitter: Option<TextureBlitter>,
 	executor: Option<DynamicExecutor>,
 	dirty: bool,
+	/// What `is_ready` last waited on, logged when it changes so a resource nobody serves is visible.
+	waiting: Vec<ResourceHash>,
 }
 
 impl Viewer {
@@ -186,8 +190,23 @@ impl ApplicationHandler for Viewer {
 			if matches!(event, Event::Synced | Event::Changed | Event::ResourceReceived { .. }) {
 				self.dirty = true;
 			}
-			if let Event::Synced = event {
-				log::info!("Synced with the session");
+			match &event {
+				Event::Synced => log::info!("Synced with the session"),
+				Event::ResourceReceived { hash, bytes } => log::info!("Received resource {hash} ({} bytes)", bytes.len()),
+				_ => {}
+			}
+		}
+		if self.dirty && self.live.is_synced() {
+			let waiting = self.live.missing_resources();
+			if waiting != self.waiting {
+				if !waiting.is_empty() {
+					log::info!(
+						"Waiting for {} resources no peer has sent yet: {}",
+						waiting.len(),
+						waiting.iter().map(|hash| hash.to_string()).collect::<Vec<_>>().join(", ")
+					);
+				}
+				self.waiting = waiting;
 			}
 		}
 		if self.dirty && self.live.is_ready() {
