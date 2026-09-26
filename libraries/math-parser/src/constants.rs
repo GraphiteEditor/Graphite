@@ -1,10 +1,13 @@
 use crate::ast::BinaryOp;
+use crate::executer::EvalError;
+use crate::matrix::{Matrix, Region};
 use crate::quaternion::Quaternion;
 use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, part_product, power_of_two_scale};
 use num_complex::ComplexFloat;
 use std::array;
 use std::cmp::Ordering;
 use std::f64::consts::{LN_2, PI, TAU};
+use std::ops::RangeInclusive;
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
@@ -179,7 +182,7 @@ fn projection(a: Quaternion, b: Quaternion) -> Option<Quaternion> {
 }
 
 /// The mean of `count` numbers given as their `N` parts, each part averaged on its own over its [`power_of_two_scale`] so its sum cannot overflow.
-fn mean_of<const N: usize>(numbers: impl Iterator<Item = [f64; N]> + Clone, count: usize) -> [f64; N] {
+pub(crate) fn mean_of<const N: usize>(numbers: impl Iterator<Item = [f64; N]> + Clone, count: usize) -> [f64; N] {
 	array::from_fn(|index| {
 		let parts = numbers.clone().map(|parts| parts[index]);
 		let scale = power_of_two_scale(parts.clone());
@@ -227,15 +230,6 @@ fn lerp(a: f64, b: f64, t: f64) -> f64 {
 		return a * (1. - t) + b * t;
 	}
 	a + difference * t
-}
-
-/// The fraction of the way `value` lies from `a` to `b`, halving every operand first (which keeps the ratio) when a difference of finite ones would overflow.
-fn inverse_lerp(value: f64, a: f64, b: f64) -> f64 {
-	let (numerator, denominator) = (value - a, b - a);
-	if (numerator.is_infinite() || denominator.is_infinite()) && [value, a, b].iter().all(|operand| operand.is_finite()) {
-		return (value / 2. - a / 2.) / (b / 2. - a / 2.);
-	}
-	numerator / denominator
 }
 
 /// Computes the greatest common divisor of two nonnegative integers by the Euclidean algorithm.
@@ -366,25 +360,51 @@ pub fn suffixed_function(name: &str) -> Option<(BuiltinFunction, f64)> {
 	}
 	let base = suffix.parse::<f64>().ok().filter(|base| base.is_finite())?;
 
-	Some((builtin_function(function)?.function, base))
+	match builtin_function(function)? {
+		Builtin::Values { function, .. } => Some((function, base)),
+		_ => None,
+	}
 }
 
-/// A built-in math function and whether it's variadic.
-#[derive(Clone, Copy)]
-pub struct Builtin {
-	pub function: BuiltinFunction,
-	/// Takes any count of arguments, like `min(a, b, c)`, which makes its name usable as a lone reducer token.
-	pub variadic: bool,
+/// A built-in function of a matrix with a value result, like `det`.
+pub type MatrixToValue = fn(Matrix) -> Value;
+/// A built-in function of a matrix with a matrix result, like `linear`.
+pub type MatrixToMatrix = fn(Matrix) -> Matrix;
+/// A built-in function building a matrix from values, like `rotation`.
+pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
+/// A built-in function of a value and regions with a value result, like `inside`.
+pub type ValueOfRegions = fn(Value, &[Region]) -> Result<Value, EvalError>;
+
+/// A built-in math function, by the sorts it takes and gives. Those taking matrices have their argument counts checked as the
+/// expression is parsed.
+#[derive(Clone)]
+pub enum Builtin {
+	Values {
+		function: BuiltinFunction,
+		/// Takes any count of arguments, like `min(a, b, c)`, which makes its name usable as a lone reducer token.
+		variadic: bool,
+	},
+	OfMatrix(MatrixToValue),
+	MatrixOfMatrix(MatrixToMatrix),
+	MatrixOfValues {
+		function: ValuesToMatrix,
+		arity: RangeInclusive<usize>,
+	},
+	/// A value, then `regions` regions.
+	OfValueAndRegions {
+		function: ValueOfRegions,
+		regions: usize,
+	},
 }
 
 /// Defines a built-in function taking a particular count of arguments, or a few like `log(x)` and `log(x, base)`.
 fn fixed_arity(function: BuiltinFunction) -> Builtin {
-	Builtin { function, variadic: false }
+	Builtin::Values { function, variadic: false }
 }
 
 /// Defines a built-in function taking any count of arguments.
 fn variadic(function: BuiltinFunction) -> Builtin {
-	Builtin { function, variadic: true }
+	Builtin::Values { function, variadic: true }
 }
 
 /// Looks up a built-in math function by name, holding a plain function pointer so dispatch avoids hashing and dynamic allocation.
@@ -526,17 +546,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			// Otherwise `x - floor(x / m) m` with a per-part floor lands in the cell spanned by `m` and its rotations `im`, `jm`, `km`
 			let quotient = x.binary_op(BinaryOp::Div, *modulus)?.map_parts(f64::floor);
 			x.binary_op(BinaryOp::Sub, quotient.binary_op(BinaryOp::Mul, *modulus)?).map(Value::Number)
-		}),
-
-		"clamp" => fixed_arity(|values| {
-			let [Value::Number(x), Value::Number(min), Value::Number(max)] = values else { return None };
-			// The bounds apply in turn, so the upper one wins where they cross
-			let real_clamp = || {
-				let at_least = if min.real_ordering(*x)? == Ordering::Greater { min } else { x };
-				Some(if max.real_ordering(*at_least)? == Ordering::Less { *max } else { *at_least })
-			};
-			let quaternion_clamp = || Number::Quaternion(x.to_quaternion().zip(min.to_quaternion(), f64::max).zip(max.to_quaternion(), f64::min));
-			Some(Value::Number(real_clamp().unwrap_or_else(quaternion_clamp)))
 		}),
 
 		// Variadic, exact over reals and otherwise part by part
@@ -683,11 +692,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			a.binary_op(BinaryOp::Add, step).map(Value::Number)
 		}),
 
-		"remap" => fixed_arity(|values| {
-			let [value, in_a, in_b, out_a, out_b] = reals(values)?;
-			Some(Value::from_f64(lerp(out_a, out_b, inverse_lerp(value, in_a, in_b))))
-		}),
-
 		// Spherical interpolation between unit quaternions, `a (a⁻¹ b)^t`, along the shorter arc since `q` and `-q` are one rotation
 		"slerp" => fixed_arity(|values| {
 			let [Value::Number(a), Value::Number(b), Value::Number(t)] = values else { return None };
@@ -811,6 +815,133 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			}))
 		}),
 
+		// Matrix functions
+		"det" => Builtin::OfMatrix(|matrix| Value::from_f64(matrix.determinant())),
+		"linear" => Builtin::MatrixOfMatrix(|matrix| Matrix {
+			translation: Quaternion::ZERO,
+			..matrix
+		}),
+		// The image of the origin, `A 0`
+		"translation" => Builtin::OfMatrix(|matrix| Value::from(matrix.translation)),
+
+		// Left multiplication by the value, `L_q`
+		"matrix" => Builtin::MatrixOfValues {
+			arity: 1..=1,
+			function: |values| {
+				let [q] = quaternions(values)?;
+				Some(Matrix::left_multiplication(q))
+			},
+		},
+
+		"rotation" => Builtin::MatrixOfValues {
+			arity: 1..=2,
+			function: |values| {
+				let (values, axis) = with_axis(values, 1)?;
+				let [angle] = reals(values)?;
+				Some(Matrix::rotation(rotor(angle, axis)?, axis))
+			},
+		},
+
+		"scale" => Builtin::MatrixOfValues {
+			arity: 1..=1,
+			function: |values| {
+				let [q] = quaternions(values)?;
+				Some(Matrix::scale(q))
+			},
+		},
+
+		"shear" => Builtin::MatrixOfValues {
+			arity: 3..=3,
+			function: |values| {
+				let [along, by, factor] = values else { return None };
+				let [along, by] = quaternions(&[*along, *by])?;
+				Some(Matrix::shear(along, by, factor.as_real()?))
+			},
+		},
+
+		// Range functions treat a region as exactly the points it holds: a range literal's, between its corners on every part, which may be
+		// infinite, like `inside(x, 0..inf)` for `x >= 0`, and any other region's, with a parameter in `0..1` where it extends and 0 elsewhere
+		"inside" => Builtin::OfValueAndRegions {
+			regions: 1,
+			function: |p, regions| {
+				let [region] = regions else { return Err(EvalError::TypeError) };
+				let Value::Number(p) = p;
+				let p = p.to_quaternion().parts();
+
+				if let Region::Range(a, b) = *region {
+					let (a, b) = (a.parts(), b.parts());
+					return Ok(Value::from_bool((0..4).all(|axis| (a[axis].min(b[axis])..=a[axis].max(b[axis])).contains(&p[axis]))));
+				}
+
+				let range = region.matrix();
+				let RangeParameter { parameter, extends, .. } = range_parameter(range, Quaternion::from_parts(p))?;
+				let within = |axis: usize, part: f64| if extends[axis] { (0. ..=1.).contains(&part) } else { part == 0. };
+				Ok(Value::from_bool(parameter.parts().into_iter().enumerate().all(|(axis, part)| within(axis, part))))
+			},
+		},
+
+		"clamp" => Builtin::OfValueAndRegions {
+			regions: 1,
+			function: |x, regions| {
+				let [region] = regions else { return Err(EvalError::TypeError) };
+				let Value::Number(number) = x;
+				let parts = number.to_quaternion().parts();
+
+				let clamped = if let Region::Range(a, b) = *region {
+					let (a, b) = (a.parts(), b.parts());
+					Quaternion::from_parts(array::from_fn(|axis| parts[axis].clamp(a[axis].min(b[axis]), a[axis].max(b[axis]))))
+				} else {
+					let range = region.matrix();
+					let RangeParameter { parameter, region, extends, .. } = range_parameter(range, Quaternion::from_parts(parts))?;
+					let parameter_parts = parameter.parts();
+					let clamped = Quaternion::from_parts(array::from_fn(|axis| if extends[axis] { parameter_parts[axis].clamp(0., 1.) } else { 0. }));
+					if clamped == parameter { Quaternion::from_parts(parts) } else { region.apply(clamped) }
+				};
+
+				// A value already within the range is itself, keeping an integer's exact storage
+				Ok(if clamped.parts() == parts { x } else { Value::from(clamped) })
+			},
+		},
+
+		// From one range to another, `B A⁻¹ x`, where a flat axis of `A` leaves the parameter undefined
+		"remap" => Builtin::OfValueAndRegions {
+			regions: 2,
+			function: |x, regions| {
+				let [from, to] = regions else { return Err(EvalError::TypeError) };
+				let Value::Number(x) = x;
+				let RangeParameter { parameter, flat, .. } = range_parameter(from.matrix(), x.to_quaternion())?;
+				if flat.contains(&true) {
+					return Err(EvalError::FlatRemapSource);
+				}
+				Ok(Value::from(to.matrix().region().apply(parameter)))
+			},
+		},
+
 		_ => return None,
 	})
+}
+
+/// Where a value lies against a range: its parameter `R⁻¹ p`, the invertible region that maps the parameter back, and the axes the
+/// range extends along, on each other of which the parameter measures how far the value lies off the range.
+struct RangeParameter {
+	parameter: Quaternion,
+	region: Matrix,
+	extends: [bool; 4],
+	/// The spanned axes with no extent.
+	flat: [bool; 4],
+}
+
+fn range_parameter(range: Matrix, p: Quaternion) -> Result<RangeParameter, EvalError> {
+	if !range.is_finite() {
+		return Err(EvalError::Indeterminate);
+	}
+
+	let (region, flat) = range.invertible_region();
+	let parameter = region.inverse().ok_or(EvalError::SingularRange)?.apply(p);
+	if Number::Quaternion(parameter).is_nan() {
+		return Err(EvalError::Indeterminate);
+	}
+
+	let extends = array::from_fn(|axis| range.axes[axis] && !flat[axis]);
+	Ok(RangeParameter { parameter, region, extends, flat })
 }
