@@ -40,6 +40,21 @@ mod tests {
 	}
 
 	#[test]
+	fn a_number_before_euler_multiplies_unless_an_exponent_follows() {
+		// The `e` of scientific notation needs a digit after it or after its sign, so `2e` reaches Euler's number like `2pi` reaches pi
+		let real = |input: &str| evaluate(input).unwrap().unwrap().as_real().unwrap();
+		let e = std::f64::consts::E;
+		assert_eq!(real("2e"), 2. * e);
+		assert_eq!(real("2e^2"), 2. * e * e);
+		assert_eq!(real("2e - 1"), 2. * e - 1.);
+		assert_eq!(real("2e-pi"), 2. * e - std::f64::consts::PI);
+		assert_eq!(real("2exp(1)"), 2. * e);
+		assert_eq!(real("2e-1"), 0.2);
+		assert_eq!(real("2E+1"), 20.);
+		assert_eq!(real("2.5e3"), 2500.);
+	}
+
+	#[test]
 	fn unrecognized_characters_fail_to_parse() {
 		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix
 		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3", "\\", "2 \\ 3", "\\2", "\\_foo"] {

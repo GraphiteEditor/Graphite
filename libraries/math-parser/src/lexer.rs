@@ -362,16 +362,15 @@ impl<'a> Lexer<'a> {
 			got_digit |= self.consume_digits().0 > 0;
 		}
 
-		if got_digit && matches!(self.peek(), Some('e' | 'E')) {
+		// The `e` of scientific notation needs a digit after it or after its sign, and otherwise names Euler's number
+		let after_exponent_sign = self.input[self.pos..].strip_prefix(['e', 'E']).map(|rest| rest.strip_prefix(['+', '-']).unwrap_or(rest));
+		if got_digit && after_exponent_sign.is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit())) {
 			self.bump();
 			plain_integer = false;
 			if matches!(self.peek(), Some('+' | '-')) {
 				self.bump();
 			}
-			if self.consume_digits().0 == 0 {
-				self.pos = start_pos;
-				return None;
-			}
+			self.consume_digits();
 		}
 
 		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1.5.5`, `1.5 5`), so reject rather than letting it parse as implicit multiplication
