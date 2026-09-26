@@ -25,6 +25,9 @@ pub enum Token<'src> {
 	RParen,
 	LBrace,
 	RBrace,
+	LBracket,
+	RBracket,
+	Semicolon,
 	Comma,
 	Plus,
 	Minus,
@@ -33,6 +36,8 @@ pub enum Token<'src> {
 	Star,
 	Slash,
 	Caret,
+	/// The postfix transpose `^T`, one token since no power by a matrix is valid.
+	Transpose,
 
 	Lt,
 	Le,
@@ -67,6 +72,9 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::RParen => f.write_str(")"),
 			Token::LBrace => f.write_str("{"),
 			Token::RBrace => f.write_str("}"),
+			Token::LBracket => f.write_str("["),
+			Token::RBracket => f.write_str("]"),
+			Token::Semicolon => f.write_str(";"),
 			Token::Comma => f.write_str(","),
 			Token::Plus => f.write_str("+"),
 			Token::Minus => f.write_str("-"),
@@ -74,6 +82,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Star => f.write_str("*"),
 			Token::Slash => f.write_str("/"),
 			Token::Caret => f.write_str("^"),
+			Token::Transpose => f.write_str("^T"),
 
 			Token::Lt => f.write_str("<"),
 			Token::Le => f.write_str("<="),
@@ -183,9 +192,19 @@ fn keyword(word: &str) -> Option<Token<'static>> {
 	}
 }
 
-/// Whether a character ends an operand: a name, a number, a closing parenthesis or brace, or the `∞` literal.
+/// Whether a name is a matrix's by the case rule: an uppercase-initial identifier, read after the `\` prefix.
+#[inline]
+pub fn names_matrix(name: &str) -> bool {
+	let name = name.strip_prefix('\\').unwrap_or(name);
+	match name.as_bytes().first() {
+		Some(byte) if byte.is_ascii() => byte.is_ascii_uppercase(),
+		_ => name.starts_with(char::is_uppercase),
+	}
+}
+
+/// Whether a character ends an operand: a name, a number, a closing parenthesis, brace, or bracket, or the `∞` literal.
 fn ends_operand(c: char) -> bool {
-	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | '∞')
+	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | ']' | '∞')
 }
 
 /// Reads every `|` in the source up front, since each depends on what precedes it: a bar opens a magnitude where an operand
@@ -426,13 +445,24 @@ impl<'a> Lexer<'a> {
 			')' => RParen,
 			'{' => LBrace,
 			'}' => RBrace,
+			'[' => LBracket,
+			']' => RBracket,
+			';' => Semicolon,
 			',' => Comma,
 			'+' => Plus,
 			'-' => Minus,
 			'*' => Star,
 			'%' => Percent,
 			'/' => Slash,
-			'^' => Caret,
+			// `^T` is the transpose where the `T` stands alone
+			'^' => {
+				if self.peek() == Some('T') && !self.input[self.pos + 1..].starts_with(unicode_ident::is_xid_continue) {
+					self.bump();
+					Transpose
+				} else {
+					Caret
+				}
+			}
 			'≠' => Neq,
 
 			// A symbol can't be a name, so unlike `inf`, no binding can shadow `∞`

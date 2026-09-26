@@ -1,4 +1,5 @@
 use crate::ast::BinaryOp;
+use crate::matrix::Matrix;
 use crate::quaternion::Quaternion;
 use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, part_product, power_of_two_scale};
 use num_complex::ComplexFloat;
@@ -366,25 +367,40 @@ pub fn suffixed_function(name: &str) -> Option<(BuiltinFunction, f64)> {
 	}
 	let base = suffix.parse::<f64>().ok().filter(|base| base.is_finite())?;
 
-	Some((builtin_function(function)?.function, base))
+	match builtin_function(function)? {
+		Builtin::Values { function, .. } => Some((function, base)),
+		_ => None,
+	}
 }
 
-/// A built-in math function and whether it's variadic.
+/// A built-in function of a matrix with a value result, like `det`.
+pub type MatrixToValue = fn(Matrix) -> Value;
+/// A built-in function of a matrix with a matrix result, like `linear`.
+pub type MatrixToMatrix = fn(Matrix) -> Matrix;
+/// A built-in function building a matrix from values, like `rotation`.
+pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
+
+/// A built-in math function, by the sorts it takes and gives.
 #[derive(Clone, Copy)]
-pub struct Builtin {
-	pub function: BuiltinFunction,
-	/// Takes any count of arguments, like `min(a, b, c)`, which makes its name usable as a lone reducer token.
-	pub variadic: bool,
+pub enum Builtin {
+	Values {
+		function: BuiltinFunction,
+		/// Takes any count of arguments, like `min(a, b, c)`, which makes its name usable as a lone reducer token.
+		variadic: bool,
+	},
+	OfMatrix(MatrixToValue),
+	MatrixOfMatrix(MatrixToMatrix),
+	MatrixOfValues(ValuesToMatrix),
 }
 
 /// Defines a built-in function taking a particular count of arguments, or a few like `log(x)` and `log(x, base)`.
 fn fixed_arity(function: BuiltinFunction) -> Builtin {
-	Builtin { function, variadic: false }
+	Builtin::Values { function, variadic: false }
 }
 
 /// Defines a built-in function taking any count of arguments.
 fn variadic(function: BuiltinFunction) -> Builtin {
-	Builtin { function, variadic: true }
+	Builtin::Values { function, variadic: true }
 }
 
 /// Looks up a built-in math function by name, holding a plain function pointer so dispatch avoids hashing and dynamic allocation.
@@ -809,6 +825,35 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 				Number::Quaternion(quaternion) => Number::Quaternion(quaternion.conj()),
 				real => *real,
 			}))
+		}),
+
+		// Matrix functions
+		"det" => Builtin::OfMatrix(|matrix| Value::from_f64(matrix.determinant())),
+		"linear" => Builtin::MatrixOfMatrix(|matrix| Matrix::linear(matrix.rows)),
+		// The image of the origin, `A 0`
+		"translation" => Builtin::OfMatrix(|matrix| Value::from(matrix.translation)),
+
+		// Left multiplication by the value, `L_q`
+		"matrix" => Builtin::MatrixOfValues(|values| {
+			let [q] = quaternions(values)?;
+			Some(Matrix::left_multiplication(q))
+		}),
+
+		"rotation" => Builtin::MatrixOfValues(|values| {
+			let (values, axis) = with_axis(values, 1)?;
+			let [angle] = reals(values)?;
+			Some(Matrix::rotation(rotor(angle, axis)?))
+		}),
+
+		"scale" => Builtin::MatrixOfValues(|values| {
+			let [q] = quaternions(values)?;
+			Some(Matrix::scale(q))
+		}),
+
+		"shear" => Builtin::MatrixOfValues(|values| {
+			let [along, by, factor] = values else { return None };
+			let [along, by] = quaternions(&[*along, *by])?;
+			Some(Matrix::shear(along, by, factor.as_real()?))
 		}),
 
 		_ => return None,

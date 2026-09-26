@@ -1,3 +1,4 @@
+use crate::constants::{MatrixToMatrix, MatrixToValue, ValuesToMatrix};
 use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,40 +63,140 @@ pub enum UnaryOp {
 	Not,
 	/// The magnitude bars `|x|`: absolute value on the reals, extending to the Euclidean magnitude.
 	Magnitude,
+	/// The postfix `A^T`, swapping a linear matrix's rows and columns.
+	Transpose,
 }
 
+/// The tree as written, before each subexpression's sort is read from its spelling.
 #[derive(Debug, PartialEq)]
-pub enum Node {
+pub enum Syntax {
 	Lit(Literal),
 	Var(String),
 	FnCall {
 		name: String,
-		expr: Vec<Node>,
+		expr: Vec<Syntax>,
 	},
 	BinOp {
-		lhs: Box<Node>,
+		lhs: Box<Syntax>,
 		op: BinaryOp,
-		rhs: Box<Node>,
+		rhs: Box<Syntax>,
 	},
 	UnaryOp {
-		expr: Box<Node>,
+		expr: Box<Syntax>,
 		op: UnaryOp,
 	},
 	/// A chain of two or more comparisons like `a < b < c`, each operator paired with the operand after it: one predicate over each adjacent pair, or over every pair for `!=`.
 	Comparison {
-		first: Box<Node>,
-		rest: Vec<(BinaryOp, Node)>,
+		first: Box<Syntax>,
+		rest: Vec<(BinaryOp, Syntax)>,
 	},
 	/// The cases of math's `cases` notation, `{a if cond, b otherwise}`: disjoint conditions in no meaningful order, with `otherwise` holding when none of them do.
 	Piecewise {
 		cases: Vec<Case>,
-		otherwise: Option<Box<Node>>,
+		otherwise: Option<Box<Syntax>>,
+	},
+	/// A matrix literal of up to four whole values: rows like `[a;b]`, or columns like `[a,b]`, the images of the basis directions.
+	Matrix {
+		entries: Vec<Syntax>,
+		by_rows: bool,
 	},
 }
 
 /// One case of a piecewise, the value it takes where its condition holds.
 #[derive(Debug, PartialEq)]
 pub struct Case {
-	pub value: Node,
-	pub condition: Node,
+	pub value: Syntax,
+	pub condition: Syntax,
+}
+
+/// A parsed expression, whose every subexpression has the sort its spelling fixes: a value or a matrix.
+#[derive(Debug)]
+pub enum Node {
+	Value(ValueNode),
+	Matrix(MatrixNode),
+}
+
+/// A subexpression evaluating to a value.
+#[derive(Debug)]
+pub enum ValueNode {
+	Lit(Literal),
+	Var(String),
+	FnCall {
+		name: String,
+		expr: Vec<ValueNode>,
+	},
+	BinOp {
+		lhs: Box<ValueNode>,
+		op: BinaryOp,
+		rhs: Box<ValueNode>,
+	},
+	UnaryOp {
+		expr: Box<ValueNode>,
+		op: UnaryOp,
+	},
+	Comparison {
+		first: Box<ValueNode>,
+		rest: Vec<(BinaryOp, ValueNode)>,
+	},
+	Piecewise {
+		cases: Vec<SortedCase<ValueNode>>,
+		otherwise: Option<Box<ValueNode>>,
+	},
+	/// A matrix applied to a value, `M v`.
+	Apply {
+		matrix: Box<MatrixNode>,
+		value: Box<ValueNode>,
+	},
+	/// A function of a matrix with a value result, like `det(A)`.
+	OfMatrix {
+		function: MatrixToValue,
+		matrix: Box<MatrixNode>,
+	},
+	/// A chain of `==`, or of `!=`, over matrices, pointwise.
+	MatrixComparison {
+		matrices: Vec<MatrixNode>,
+		distinct: bool,
+	},
+}
+
+/// A subexpression evaluating to a matrix.
+#[derive(Debug)]
+pub enum MatrixNode {
+	Var(String),
+	Literal {
+		entries: Vec<ValueNode>,
+		by_rows: bool,
+	},
+	/// A function building a matrix from values, like `rotation(angle)`.
+	FromValues {
+		function: ValuesToMatrix,
+		arguments: Vec<ValueNode>,
+	},
+	/// A function of a matrix with a matrix result, like `linear(A)`.
+	OfMatrix {
+		function: MatrixToMatrix,
+		matrix: Box<MatrixNode>,
+	},
+	/// An operation with a matrix result: composition, a value acting on a matrix, sums, translation attached, division, or a power.
+	BinOp {
+		lhs: Box<Node>,
+		op: BinaryOp,
+		rhs: Box<Node>,
+	},
+	/// Negation, the identity `+`, or the transpose.
+	UnaryOp {
+		expr: Box<MatrixNode>,
+		op: UnaryOp,
+	},
+	Piecewise {
+		cases: Vec<SortedCase<MatrixNode>>,
+		otherwise: Option<Box<MatrixNode>>,
+	},
+}
+
+/// One case of a sorted piecewise, whose condition is a value whatever the sort of its cases.
+#[derive(Debug)]
+pub struct SortedCase<T> {
+	pub value: T,
+	pub condition: ValueNode,
 }

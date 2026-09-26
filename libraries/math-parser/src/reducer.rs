@@ -1,5 +1,5 @@
 use crate::ast::BinaryOp;
-use crate::constants::{BuiltinFunction, builtin_function};
+use crate::constants::{Builtin, BuiltinFunction, builtin_function};
 use crate::context::ValueProvider;
 use crate::lexer::{Lexer, Token};
 use crate::value::{Number, Value};
@@ -51,7 +51,10 @@ pub fn classify_reducer(source: &str, bindings: impl ValueProvider) -> Option<Re
 				None if bindings.get_value(name).is_some() => return None,
 				None => name,
 			};
-			Reducer::Function(builtin_function(bare_name).filter(|builtin| builtin.variadic)?.function)
+			match builtin_function(bare_name)? {
+				Builtin::Values { function, variadic: true } => Reducer::Function(function),
+				_ => return None,
+			}
 		}
 		_ => return None,
 	})
