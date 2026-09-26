@@ -8,15 +8,15 @@ rust-version.workspace = true
 publish.workspace = true
 
 [features]
-desktop = ["dep:cef-dll-sys", "dep:scraper"]
+desktop = ["dep:cef-dll-sys", "dep:scraper", "dep:lzma-rust2"]
 
 [dependencies]
 # Workspace dependencies
 serde = { workspace = true }
 serde_json = { workspace = true }
-lzma-rust2 = { workspace = true }
 thiserror = { workspace = true }
 
 # Optional workspace dependencies
 cef-dll-sys = { workspace = true, optional = true }
 scraper = { workspace = true, optional = true }
+lzma-rust2 = { workspace = true, optional = true }

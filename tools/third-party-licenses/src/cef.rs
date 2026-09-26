@@ -5,6 +5,9 @@ use std::hash::Hash;
 use std::io::Read;
 use std::path::PathBuf;
 
+// Avoid incorrect warnings about an unused dependency (this crate sets `DEP_CEF_DLL_WRAPPER_CEF_DIR` which is used in `build.rs`)
+use cef_dll_sys as _;
+
 use crate::{Error, LicenceSource, LicenseEntry, Package};
 
 pub struct CefLicenseSource;
