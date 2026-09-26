@@ -188,11 +188,24 @@ where
 		// Juxtaposed factors like `2pi` or `2sqrt(4)` multiply implicitly at the same precedence as `*` and `/`.
 		// The implicit operand is a `pow`, not a full unary, so `2 -3` stays a subtraction; the lexer rejects a number right after another number (`10 000` is not `10*000`).
 		let implicit_mul = pow.map(|rhs| (BinaryOp::Mul, rhs));
-		let product = unary.clone().foldl(choice((mul_op.then(unary), implicit_mul)).repeated(), |lhs, (op, rhs)| Syntax::BinOp {
-			lhs: Box::new(lhs),
-			op,
-			rhs: Box::new(rhs),
-		});
+		let product = unary
+			.clone()
+			.then(choice((mul_op.then(unary), implicit_mul)).repeated().collect::<Vec<_>>())
+			.map(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>)| {
+				// Two factors group only one way, while a longer chain is grouped by the sort pass, which knows the matrices
+				if rest.len() <= 1 {
+					return match rest.pop() {
+						Some((op, second)) => Syntax::BinOp {
+							lhs: Box::new(first),
+							op,
+							rhs: Box::new(second),
+						},
+						None => first,
+					};
+				}
+
+				Syntax::Product { first: Box::new(first), rest }
+			});
 
 		let add = product.clone().foldl(add_op.then(product).repeated(), |lhs, (op, rhs)| Syntax::BinOp {
 			lhs: Box::new(lhs),

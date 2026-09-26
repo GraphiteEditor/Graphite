@@ -90,6 +90,12 @@ pub enum Syntax {
 		first: Box<Syntax>,
 		rest: Vec<(BinaryOp, Syntax)>,
 	},
+	/// A chain of three or more factors joined by `*`, `/`, or juxtaposition, each operator paired with the factor after it, grouped once
+	/// sorted since a matrix applies to every factor after it.
+	Product {
+		first: Box<Syntax>,
+		rest: Vec<(BinaryOp, Syntax)>,
+	},
 	/// The cases of math's `cases` notation, `{a if cond, b otherwise}`: disjoint conditions in no meaningful order, with `otherwise` holding when none of them do.
 	Piecewise {
 		cases: Vec<Case>,
