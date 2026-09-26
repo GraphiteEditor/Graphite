@@ -304,22 +304,30 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<
 		MatrixValueCase::OfValueAndRegions(function, value, regions) => {
 			let value = value.eval(context)?;
 
-			// The range functions take at most two regions, checked as the expression is parsed, so they land in a stack buffer, and a
-			// range literal is kept by its corners, which may be infinite where no matrix can hold them
-			let mut slots = [Region::Range(Number::Integer(0), Number::Integer(0)); 2];
-			if regions.len() > slots.len() {
-				return Err(EvalError::TypeError);
-			}
-			for (slot, region) in slots.iter_mut().zip(regions) {
-				*slot = match region {
+			// A range literal is kept by its corners, which may be infinite where no matrix can hold them
+			let region_of = |region: &MatrixNode| -> Result<Region, EvalError> {
+				match region {
 					MatrixNode::Range { from, to } => {
 						let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
-						Region::Range(from, to)
+						Ok(Region::Range(from, to))
 					}
-					region => Region::Map(region.eval(context)?),
-				};
-			}
-			settle(function(value, &slots[..regions.len()])?)
+					region => region.eval(context).map(Region::Map),
+				}
+			};
+
+			// The range functions take at most two regions as parsed, which land in a stack buffer, while a longer list a host built goes to the heap
+			let mut stack_regions = [Region::Range(Number::Integer(0), Number::Integer(0)); 2];
+			let heap_regions: Vec<Region>;
+			let regions: &[Region] = if regions.len() <= stack_regions.len() {
+				for (slot, region) in stack_regions.iter_mut().zip(regions) {
+					*slot = region_of(region)?;
+				}
+				&stack_regions[..regions.len()]
+			} else {
+				heap_regions = regions.iter().map(region_of).collect::<Result<Vec<Region>, EvalError>>()?;
+				&heap_regions
+			};
+			settle(function(value, regions)?)
 		}
 		MatrixValueCase::Comparison(matrices, distinct) => {
 			// A chain lands in a stack buffer when it fits, the usual case
@@ -370,15 +378,19 @@ impl MatrixNode {
 				settle_matrix(matrix.ok_or(EvalError::TypeError)?)
 			}
 			MatrixNode::FromValues { function, arguments } => {
-				// The builders take at most three arguments, checked as the expression is parsed, so they land in a stack buffer
-				let mut values = [Value::from_i64(0); 3];
-				if arguments.len() > values.len() {
-					return Err(EvalError::TypeError);
-				}
-				for (slot, argument) in values.iter_mut().zip(arguments) {
-					*slot = argument.eval(context)?;
-				}
-				settle_matrix(function(&values[..arguments.len()]).ok_or(EvalError::TypeError)?)
+				// The builders take at most three arguments as parsed, which land in a stack buffer, while a longer list a host built goes to the heap
+				let mut stack_values = [Value::from_i64(0); 3];
+				let heap_values: Vec<Value>;
+				let values: &[Value] = if arguments.len() <= stack_values.len() {
+					for (slot, argument) in stack_values.iter_mut().zip(arguments) {
+						*slot = argument.eval(context)?;
+					}
+					&stack_values[..arguments.len()]
+				} else {
+					heap_values = arguments.iter().map(|argument| argument.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
+					&heap_values
+				};
+				settle_matrix(function(values).ok_or(EvalError::TypeError)?)
 			}
 			MatrixNode::Range { from, to } => {
 				let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
