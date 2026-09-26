@@ -10,7 +10,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::data_transfer::{DataTransferSendBuilder, TypeHint};
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
@@ -340,10 +340,17 @@ impl App {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { content });
 			}
 			DesktopFrontendMessage::PointerLock => {
-				self.input_state.lock_pointer();
-				if let Some(window) = &self.window {
-					window.start_pointer_lock();
+				let locked = self.window.as_ref().is_some_and(|window| window.start_pointer_lock());
+				if locked {
+					self.input_state.lock_pointer();
 				}
+			}
+			DesktopFrontendMessage::PointerUnlock { x, y } => {
+				let destination = self.input_state.window_position(x, y);
+				self.unlock_pointer(destination);
+			}
+			DesktopFrontendMessage::UpdateSoftwareCursor { visible, x, y } => {
+				self.input_state.set_software_cursor(visible.then_some((x, y)));
 			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::Exit);
@@ -532,6 +539,23 @@ impl App {
 			}
 		}
 	}
+
+	fn unlock_pointer(&mut self, destination: Option<PhysicalPosition<f64>>) {
+		let Some(position) = self.input_state.unlock_pointer(destination) else {
+			return;
+		};
+
+		if let Some(window) = &self.window {
+			// Wayland only honors this while the pointer is locked, so place the cursor before releasing the grab
+			if destination.is_some() && window.has_focus() {
+				window.set_cursor_position(position);
+			}
+			window.end_pointer_lock();
+		}
+
+		self.ui
+			.send(UiCommand::Input(InputEvent::pointer().position(position).moved().modifiers(self.input_state.modifiers()).build()));
+	}
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -568,14 +592,9 @@ impl ApplicationHandler for App {
 			button,
 			..
 		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
-			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
+			&& self.input_state.pointer_locked()
 		{
-			if let Some(window) = &self.window {
-				window.end_pointer_lock();
-			}
-			self.ui.send(UiCommand::Input(
-				InputEvent::pointer().position(pointer_lock_position).moved().modifiers(self.input_state.modifiers()).build(),
-			));
+			self.unlock_pointer(None);
 		}
 
 		self.input_state.process(
@@ -702,6 +721,9 @@ impl ApplicationHandler for App {
 		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
 		{
+			// Device deltas are physical pixels; the transform layer works in logical units
+			let scale = self.input_state.viewport_scale();
+			let (x, y) = if scale != 0. { (x / scale, y / scale) } else { (x, y) };
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
 			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 		}
