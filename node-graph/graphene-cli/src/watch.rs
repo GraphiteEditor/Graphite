@@ -104,23 +104,33 @@ impl Viewer {
 			Err(error) => return log::error!("Compile failed: {error}"),
 		};
 		match create_executor(proto) {
-			Ok(executor) => self.executor = Some(executor),
+			Ok(executor) => {
+				log::info!("Document compiled");
+				self.executor = Some(executor);
+			}
 			Err(error) => log::error!("Executor creation failed: {error}"),
 		}
 	}
 
 	fn draw(&mut self) -> Result<(), Box<dyn Error>> {
-		let (Some(window), Some((surface, config)), Some(blitter), Some(executor)) = (&self.window, &self.surface, &self.blitter, &self.executor) else {
+		let (Some(window), Some((surface, config)), Some(blitter)) = (&self.window, &self.surface, &self.blitter) else {
 			return Ok(());
 		};
 
-		let mut render_config = RenderConfig {
-			export_format: ExportFormat::Raster,
-			scale: 1.,
-			..Default::default()
+		// The document is rendered once it is on hand and compiled; until then the window still presents
+		// its background, since a Wayland surface that never commits a buffer is never shown at all.
+		let frame = match &self.executor {
+			Some(executor) => {
+				let mut render_config = RenderConfig {
+					export_format: ExportFormat::Raster,
+					scale: 1.,
+					..Default::default()
+				};
+				render_config.viewport.resolution = UVec2::new(config.width, config.height);
+				Some(self.runtime.block_on(export::render_texture(executor, render_config))?)
+			}
+			None => None,
 		};
-		render_config.viewport.resolution = UVec2::new(config.width, config.height);
-		let frame = self.runtime.block_on(export::render_texture(executor, render_config))?;
 
 		let context = self.wgpu_executor().context();
 		let surface_texture = match surface.get_current_texture(&context.queue) {
@@ -129,7 +139,6 @@ impl Viewer {
 			other => return Err(format!("surface unavailable: {other:?}").into()),
 		};
 		let target = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let source = frame.create_view(&wgpu::TextureViewDescriptor::default());
 
 		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("live view") });
 		encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -148,7 +157,10 @@ impl Viewer {
 			timestamp_writes: None,
 			multiview_mask: None,
 		});
-		blitter.copy(&context.device, &mut encoder, &source, &target);
+		if let Some(frame) = &frame {
+			let source = frame.create_view(&wgpu::TextureViewDescriptor::default());
+			blitter.copy(&context.device, &mut encoder, &source, &target);
+		}
 
 		surface_texture.queue.submit([encoder.finish()]);
 		window.pre_present_notify();
@@ -164,6 +176,7 @@ impl ApplicationHandler for Viewer {
 			.with_surface_size(winit::dpi::LogicalSize::new(800, 600));
 		let window: Arc<dyn Window> = event_loop.create_window(attributes).expect("create window").into();
 		self.create_surface(&window);
+		window.request_redraw();
 		self.window = Some(window);
 		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + POLL_INTERVAL));
 	}
@@ -172,6 +185,9 @@ impl ApplicationHandler for Viewer {
 		for event in self.runtime.block_on(self.live.poll()) {
 			if matches!(event, Event::Synced | Event::Changed | Event::ResourceReceived { .. }) {
 				self.dirty = true;
+			}
+			if let Event::Synced = event {
+				log::info!("Synced with the session");
 			}
 		}
 		if self.dirty && self.live.is_ready() {
