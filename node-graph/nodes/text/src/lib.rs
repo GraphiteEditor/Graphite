@@ -819,11 +819,11 @@ fn string_capitalization(
 	let result = if use_joiner {
 		match capitalization {
 			// Simple case mappings that preserve the string's existing structure
-			StringCapitalization::LowerCase => input.to_lowercase(),
-			StringCapitalization::UpperCase => input.to_uppercase(),
+			StringCapitalization::LowerCase => Converter::new().set_pattern(Pattern::Lowercase).set_delimiter(joiner).convert(input),
+			StringCapitalization::UpperCase => Converter::new().set_pattern(Pattern::Uppercase).set_delimiter(joiner).convert(input),
 
 			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
-			StringCapitalization::CapitalCase => Converter::new().set_pattern(Pattern::Capital).set_delimiter(joiner).convert(&input),
+			StringCapitalization::CapitalCase => Converter::new().set_pattern(Pattern::Capital).set_delimiter(joiner).convert(input),
 			StringCapitalization::HeadlineCase => {
 				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
 				// then apply the titlecase crate for smart capitalization (lowercasing short words like "of", "the", etc.),
@@ -1022,8 +1022,8 @@ mod tests {
 		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", SentenceCase, None), "Alice was_beginning to_getvery tired");
 		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", CamelCase, None), "alice Was_Beginning To_Getvery Tired");
 
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", LowerCase, Some(":")), "alice was_beginning to_getvery tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", UpperCase, Some(":")), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", LowerCase, Some(":")), "alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", UpperCase, Some(":")), "ALICE:W:AS:BE:GINNING:TO:GET:VERY:TIRED");
 		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", CapitalCase, Some(":")), "Alice:W:As:Be:Ginning:To:Get:Very:Tired");
 		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
 		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
