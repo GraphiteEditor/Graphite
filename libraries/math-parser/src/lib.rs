@@ -1362,10 +1362,10 @@ mod tests {
 
 		// A map keeps the axes it acts on through its linear part and a real scale factor
 		matrix_linear_keeps_axes: "linear((i + j)..(3i + 3j))" => Matrix::range(Quaternion::ZERO, Quaternion::new(0., 2., 2., 0.)),
-		linear_part_of_range_keeps_its_axes: "inside(0.5 + i, linear(0..(2i + 2j)))" => 0.,
-		inside_scaled_range: "inside(1.5, 2 (0..1))" => 1.,
-		scaled_range_keeps_its_axes: "inside(1.5 + 0.5i, 2 (0..1))" => 0.,
-		outside_left_multiplication: "inside(3, matrix(2))" => 0.,
+		linear_part_of_range_keeps_its_axes: "within(0.5 + i, linear(0..(2i + 2j)))" => 0.,
+		within_scaled_range: "within(1.5, 2 (0..1))" => 1.,
+		scaled_range_keeps_its_axes: "within(1.5 + 0.5i, 2 (0..1))" => 0.,
+		outside_left_multiplication: "within(3, matrix(2))" => 0.,
 
 		// Comparisons are pointwise, a piecewise may take matrix values, and `\I` reaches the identity past any binding
 		matrix_equality: "I == [1;i;j;k]" => 1.,
@@ -1390,18 +1390,18 @@ mod tests {
 		range_composes_with_a_rotation: "(rotation(pi/2) (0..(2i + 2j))) (i + j)" => Quaternion::new(0., -2., 2., 0.),
 		range_shifted_by_a_translation: "((0..(i + j)) + 5i) (i + j)" => Quaternion::new(0., 6., 1., 0.),
 
-		// Insideness, clamping, and remapping read the range's parameter on the axes it spans, boundary included
-		inside_range: "inside(0.5, 0..1)" => 1.,
-		inside_range_boundary: "inside(1, 0..1)" => 1.,
-		outside_range: "inside(1.5, 0..1)" => 0.,
-		outside_range_off_its_axis: "inside(0.5 + 7i, 0..1)" => 0.,
-		inside_box: "inside(2i + 3j, 0..(4i + 4j))" => 1.,
-		outside_box_on_one_axis: "inside(2i + 5j, 0..(4i + 4j))" => 0.,
-		outside_box_off_its_axes: "inside(9 + 2i + 3j, 0..(4i + 4j))" => 0.,
-		inside_rotated_box: "inside(0.1i + 0.5j, rotation(pi/4) (0..(i + j)))" => 1.,
-		outside_rotated_box: "inside(0.9i + 0.5j, rotation(pi/4) (0..(i + j)))" => 0.,
-		inside_parallelogram: "inside(2i + j, [2i, i + j] + i)" => 1.,
-		outside_parallelogram: "inside(i + j, [2i, i + j] + i)" => 0.,
+		// Membership, clamping, and remapping read the range's parameter on the axes it spans, boundary included
+		within_range: "within(0.5, 0..1)" => 1.,
+		within_range_boundary: "within(1, 0..1)" => 1.,
+		outside_range: "within(1.5, 0..1)" => 0.,
+		outside_range_off_its_axis: "within(0.5 + 7i, 0..1)" => 0.,
+		within_box: "within(2i + 3j, 0..(4i + 4j))" => 1.,
+		outside_box_on_one_axis: "within(2i + 5j, 0..(4i + 4j))" => 0.,
+		outside_box_off_its_axes: "within(9 + 2i + 3j, 0..(4i + 4j))" => 0.,
+		within_rotated_box: "within(0.1i + 0.5j, rotation(pi/4) (0..(i + j)))" => 1.,
+		outside_rotated_box: "within(0.9i + 0.5j, rotation(pi/4) (0..(i + j)))" => 0.,
+		within_parallelogram: "within(2i + j, [2i, i + j] + i)" => 1.,
+		outside_parallelogram: "within(i + j, [2i, i + j] + i)" => 0.,
 		clamp_to_range: "clamp(1.5, 0..1)" => 1.,
 		clamp_within_range: "clamp(0.25, 0..1)" => 0.25,
 		clamp_moves_other_parts_into_the_range: "clamp(-3 + 7i, 0..1)" => 0.,
@@ -1411,8 +1411,8 @@ mod tests {
 		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
 		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
 		remap_to_infinity: "remap(0.5, 0..1, inf..inf)" => f64::INFINITY,
-		inside_huge_box: "inside(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
-		inside_tiny_box: "inside(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
+		within_huge_box: "within(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
+		within_tiny_box: "within(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
 		remap_from_huge_box: "remap(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k), 0..(i + j + k))" => Complex::new(0., 0.5),
 	}
 
@@ -1422,8 +1422,8 @@ mod tests {
 		let message = |input: &str| evaluate(input).unwrap_err().to_string();
 		assert_eq!(message("I..1"), "A matrix stands where a value is needed");
 		assert_eq!(message("sin(0..1)"), "A matrix stands where a value is needed");
-		assert_eq!(message("inside(0..1, 0..1)"), "A matrix stands where a value is needed");
-		assert_eq!(message("inside(1, 2)"), "A value stands where a matrix is needed");
+		assert_eq!(message("within(0..1, 0..1)"), "A matrix stands where a value is needed");
+		assert_eq!(message("within(1, 2)"), "A value stands where a matrix is needed");
 		assert_eq!(message("0..1 < 2"), "The operator has no meaning for a matrix");
 		assert!(evaluate("0..1..2").is_err());
 
@@ -1434,19 +1434,19 @@ mod tests {
 		assert_eq!(evaluate("(-1..1) 0.75").unwrap().unwrap().as_real(), Some(0.5));
 
 		// A flat range holds only its one value on the flat axis, while remapping from it has no parameter to carry
-		let inside = |input: &str| evaluate(input).unwrap().unwrap().as_bool();
-		assert_eq!(inside("inside(5, 5..5)"), Some(true));
-		assert_eq!(inside("inside(4, 5..5)"), Some(false));
-		assert_eq!(inside("inside(0, 0..0)"), Some(true));
+		let within = |input: &str| evaluate(input).unwrap().unwrap().as_bool();
+		assert_eq!(within("within(5, 5..5)"), Some(true));
+		assert_eq!(within("within(4, 5..5)"), Some(false));
+		assert_eq!(within("within(0, 0..0)"), Some(true));
 		assert_eq!(evaluate("clamp(1, 3..3)").unwrap().unwrap().as_real(), Some(3.));
 		assert_eq!(evaluate("(5..5) 0.5").unwrap().unwrap().as_real(), Some(5.));
 		assert!(matches!(evaluate("remap(2, 2..2, 0..10)").unwrap(), Err(EvalError::FlatRemapSource)));
 		assert!(matches!(evaluate("remap(0.5i + 0.5k, 0..(i + k), 0..(2i + 2j + 2k))").unwrap(), Err(EvalError::FlatRemapSource)));
-		assert!(matches!(evaluate("inside(1, [i, 2i])").unwrap(), Err(EvalError::SingularRange)));
+		assert!(matches!(evaluate("within(1, [i, 2i])").unwrap(), Err(EvalError::SingularRange)));
 
 		// Matrix builtins check their argument counts as the expression is parsed
 		for input in [
-			"inside(1)",
+			"within(1)",
 			"clamp(1, 0..1, 0..1)",
 			"remap(1, 0..1)",
 			"rotation()",
@@ -1459,53 +1459,53 @@ mod tests {
 		}
 
 		// A range literal's corners bound it directly, so they may be infinite, while other regions with infinite entries have no inverse
-		assert_eq!(inside("inside(5i, 0..(inf i))"), Some(true));
-		assert_eq!(inside("inside(-5i, 0..(inf i))"), Some(false));
-		assert_eq!(inside("inside(1e300, 0..inf)"), Some(true));
-		assert_eq!(inside("inside(-1, 0..inf)"), Some(false));
-		assert_eq!(inside("inside(inf, 0..inf)"), Some(true));
-		assert_eq!(inside("inside(-7, -inf..inf)"), Some(true));
+		assert_eq!(within("within(5i, 0..(inf i))"), Some(true));
+		assert_eq!(within("within(-5i, 0..(inf i))"), Some(false));
+		assert_eq!(within("within(1e300, 0..inf)"), Some(true));
+		assert_eq!(within("within(-1, 0..inf)"), Some(false));
+		assert_eq!(within("within(inf, 0..inf)"), Some(true));
+		assert_eq!(within("within(-7, -inf..inf)"), Some(true));
 		assert_eq!(evaluate("clamp(-3, 0..inf)").unwrap().unwrap().as_real(), Some(0.));
 		assert_eq!(evaluate("clamp(5, 0..inf)").unwrap().unwrap().as_real(), Some(5.));
 		assert_eq!(evaluate("clamp(5, -inf..0)").unwrap().unwrap().as_real(), Some(0.));
 		assert_eq!(evaluate("clamp(0.3, 0.1..0.2)").unwrap().unwrap().as_real(), Some(0.2));
-		assert!(matches!(evaluate("inside(1, 2 (0..inf))").unwrap(), Err(EvalError::Indeterminate)));
+		assert!(matches!(evaluate("within(1, 2 (0..inf))").unwrap(), Err(EvalError::Indeterminate)));
 		assert!(matches!(evaluate("remap(1, 0..inf, 0..1)").unwrap(), Err(EvalError::Indeterminate)));
 
 		// A box spans its corners' rung, so a part they share is flat and admits only their value there
-		assert_eq!(inside("inside(0.5i + 0.5k, 0..(i + k))"), Some(true));
-		assert_eq!(inside("inside(0.5i + 3j + 0.5k, 0..(i + k))"), Some(false));
-		assert_eq!(inside("inside(0.5i + 2j, (2j)..(i + 2j))"), Some(true));
-		assert_eq!(inside("inside(0.5i + 3j, (2j)..(i + 2j))"), Some(false));
-		assert_eq!(inside("inside(0.5 + 0.5k, 0..(1 + i + k))"), Some(true));
-		assert_eq!(inside("inside(0.5 + 0.5j + 0.5k, 0..(1 + i + k))"), Some(false));
-		assert_eq!(inside("inside(0.5i + 0.5k, rotation(pi/2) (0..(i + k)))"), Some(false));
-		assert_eq!(inside("inside(-0.5i + 0.5j + 5k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(true));
-		assert_eq!(inside("inside(-0.5i + 0.5j + 4k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5k, 0..(i + k))"), Some(true));
+		assert_eq!(within("within(0.5i + 3j + 0.5k, 0..(i + k))"), Some(false));
+		assert_eq!(within("within(0.5i + 2j, (2j)..(i + 2j))"), Some(true));
+		assert_eq!(within("within(0.5i + 3j, (2j)..(i + 2j))"), Some(false));
+		assert_eq!(within("within(0.5 + 0.5k, 0..(1 + i + k))"), Some(true));
+		assert_eq!(within("within(0.5 + 0.5j + 0.5k, 0..(1 + i + k))"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5k, rotation(pi/2) (0..(i + k)))"), Some(false));
+		assert_eq!(within("within(-0.5i + 0.5j + 5k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(within("within(-0.5i + 0.5j + 4k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(false));
 		assert_eq!(evaluate("clamp(0.5i + 3j + 0.5k, 0..(i + k))").unwrap().unwrap(), Object::from(Quaternion::new(0., 0.5, 0., 0.5)));
-		assert_eq!(inside("inside(1.5i + 2j, scale(3i + 2j))"), Some(true));
-		assert_eq!(inside("inside(1.5i + 2j + k, scale(3i + 2j))"), Some(false));
+		assert_eq!(within("within(1.5i + 2j, scale(3i + 2j))"), Some(true));
+		assert_eq!(within("within(1.5i + 2j + k, scale(3i + 2j))"), Some(false));
 
 		// A box holds only the points between its corners on every part, so a part neither corner has must be 0, and a box whose
 		// height shrinks to nothing holds just the points on its base
-		assert_eq!(inside("inside(2i, 0..1)"), Some(false));
-		assert_eq!(inside("inside(2i, I)"), Some(false));
-		assert_eq!(inside("inside(0.5 + 0.5i + 0.5j + 0.5k, I)"), Some(true));
-		assert_eq!(inside("inside(0.5i, 0..1i)"), Some(true));
-		assert_eq!(inside("inside(0.5i + 3j, 0..1i)"), Some(false));
-		assert_eq!(inside("inside(2i, 0..(3i + 0j))"), Some(true));
-		assert_eq!(inside("inside(2i + 5j, 0..(3i + 0j))"), Some(false));
-		assert_eq!(inside("inside(2i + 5j, 0..(3i + 1e-300j))"), Some(false));
+		assert_eq!(within("within(2i, 0..1)"), Some(false));
+		assert_eq!(within("within(2i, I)"), Some(false));
+		assert_eq!(within("within(0.5 + 0.5i + 0.5j + 0.5k, I)"), Some(true));
+		assert_eq!(within("within(0.5i, 0..1i)"), Some(true));
+		assert_eq!(within("within(0.5i + 3j, 0..1i)"), Some(false));
+		assert_eq!(within("within(2i, 0..(3i + 0j))"), Some(true));
+		assert_eq!(within("within(2i + 5j, 0..(3i + 0j))"), Some(false));
+		assert_eq!(within("within(2i + 5j, 0..(3i + 1e-300j))"), Some(false));
 		assert_eq!(evaluate("clamp(2i + 5j, 0..3i)").unwrap().unwrap(), Object::from(Complex::new(0., 2.)));
 
 		// A region's parameters are its inner map's, so an outer map or a translation adds no axes to a box
-		assert_eq!(inside("inside(0.5, I (0..1))"), Some(true));
-		assert_eq!(inside("inside(2i, I (0..1))"), Some(false));
-		assert_eq!(inside("inside(0.5i + 0.5j, scale(2) (0..(i + j)))"), Some(true));
-		assert_eq!(inside("inside(0.5i + 0.5j + 0.5k, scale(2) (0..(i + j)))"), Some(false));
-		assert_eq!(inside("inside(0.5i + 0.5j + 5k, (0..(i + j)) + 5k)"), Some(true));
-		assert_eq!(inside("inside(0.5i + 0.5j + 5.5k, (0..(i + j)) + 5k)"), Some(false));
-		assert_eq!(inside("inside(0.5i - 0.5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(false));
+		assert_eq!(within("within(0.5, I (0..1))"), Some(true));
+		assert_eq!(within("within(2i, I (0..1))"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5j, scale(2) (0..(i + j)))"), Some(true));
+		assert_eq!(within("within(0.5i + 0.5j + 0.5k, scale(2) (0..(i + j)))"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5j + 5k, (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(within("within(0.5i + 0.5j + 5.5k, (0..(i + j)) + 5k)"), Some(false));
+		assert_eq!(within("within(0.5i - 0.5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(false));
 		assert_eq!(
 			evaluate("clamp(0.5i + 0.5j + 5k, scale(2) (0..(i + j)))").unwrap().unwrap(),
 			Object::from(Quaternion::new(0., 0.5, 0.5, 0.))

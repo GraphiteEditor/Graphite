@@ -11,7 +11,7 @@ pub struct Matrix {
 	/// Each row weights the input's parts into one output part, so the row `i` in the `x` slot passes the input's `x` through.
 	pub rows: [Quaternion; 4],
 	pub translation: Quaternion,
-	/// The parameter parts the map spans as a region, which `inside` and `clamp` bound by `0..1` while holding the rest at 0: a range's
+	/// The parameter parts the map spans as a region, which `within` and `clamp` bound by `0..1` while holding the rest at 0: a range's
 	/// rung, a literal's count, a composition's inner map's, or every part a builtin touches.
 	pub axes: [bool; 4],
 }
@@ -463,7 +463,7 @@ impl fmt::Display for Matrix {
 	}
 }
 
-/// A region for `inside`, `clamp`, and `remap`: a range literal kept by its corners, which may be infinite where no matrix can hold
+/// A region for `within`, `clamp`, and `remap`: a range literal kept by its corners, which may be infinite where no matrix can hold
 /// them, or any other map.
 #[derive(Debug, Clone, Copy)]
 pub enum Region {

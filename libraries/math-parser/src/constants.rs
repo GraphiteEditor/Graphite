@@ -372,7 +372,7 @@ pub type MatrixToValue = fn(Matrix) -> Value;
 pub type MatrixToMatrix = fn(Matrix) -> Matrix;
 /// A built-in function building a matrix from values, like `rotation`.
 pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
-/// A built-in function of a value and regions with a value result, like `inside`.
+/// A built-in function of a value and regions with a value result, like `within`.
 pub type ValueOfRegions = fn(Value, &[Region]) -> Result<Value, EvalError>;
 
 /// A built-in math function, by the sorts it takes and gives. Those taking matrices have their argument counts checked as the
@@ -860,8 +860,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		},
 
 		// Range functions treat a region as exactly the points it holds: a range literal's, between its corners on every part, which may be
-		// infinite, like `inside(x, 0..inf)` for `x >= 0`, and any other region's, with a parameter in `0..1` where it extends and 0 elsewhere
-		"inside" => Builtin::OfValueAndRegions {
+		// infinite, like `within(x, 0..inf)` for `x >= 0`, and any other region's, with a parameter in `0..1` where it extends and 0 elsewhere
+		"within" => Builtin::OfValueAndRegions {
 			regions: 1,
 			function: |p, regions| {
 				let [region] = regions else { return Err(EvalError::TypeError) };

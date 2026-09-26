@@ -163,7 +163,7 @@ pub enum ValueNode {
 		function: MatrixToValue,
 		matrix: Box<MatrixNode>,
 	},
-	/// A function of a value and regions with a value result, like `inside(p, R)`.
+	/// A function of a value and regions with a value result, like `within(p, R)`.
 	OfValueAndRegions {
 		function: ValueOfRegions,
 		value: Box<ValueNode>,

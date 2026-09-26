@@ -94,7 +94,7 @@ fn one(arguments: Vec<Node>) -> Result<Node, SortError> {
 }
 
 /// A call's sort follows the builtin's, a matrix's name applying it to its one argument, and any other name taking values alone.
-/// A range function like `inside(p, R)` takes a value and then matrices.
+/// A range function like `within(p, R)` takes a value and then matrices.
 fn call(name: String, arguments: Vec<Syntax>, functions: &dyn FunctionProvider) -> Result<Node, SortError> {
 	let arguments = arguments.into_iter().map(|argument| sorted(argument, functions)).collect::<Result<Vec<Node>, SortError>>()?;
 	let (prefixed, bare_name) = match name.strip_prefix('\\') {
