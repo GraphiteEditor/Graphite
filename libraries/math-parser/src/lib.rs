@@ -1701,9 +1701,12 @@ mod tests {
 		assert_eq!(evaluate_i64("gcd(2^126, 6)"), Some(2));
 		assert!(evaluate("gcd(2^127, 2)").unwrap().is_err());
 
-		// A reversed range clamps to its own ends
+		// A reversed range clamps to its own ends, and the ends order exactly past the reals' limit
 		assert_eq!(evaluate_i64("clamp(15, 10..0)"), Some(10));
 		assert_eq!(evaluate_i64("clamp(-5, 10..0)"), Some(0));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0..2^53)"), Some(1 << 53));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0..(2^53 + 2))"), Some((1 << 53) + 1));
+		assert_eq!(evaluate_i64("clamp(-2^53 - 1, (-2^53)..0)"), Some(-(1 << 53)));
 
 		// A fractional quotient, a power, and a factorial past integer storage continue in the reals
 		assert_eq!(evaluate("7 / 2").unwrap().unwrap().as_real(), Some(3.5));

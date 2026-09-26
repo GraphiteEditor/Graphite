@@ -295,7 +295,7 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<
 				.map(|region| match region {
 					MatrixNode::Range { from, to } => {
 						let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
-						Ok(Region::Range(from.to_quaternion(), to.to_quaternion()))
+						Ok(Region::Range(from, to))
 					}
 					region => region.eval(context).map(Region::Map),
 				})

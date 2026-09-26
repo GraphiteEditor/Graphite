@@ -869,7 +869,7 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 				let p = p.to_quaternion().parts();
 
 				if let Region::Range(a, b) = *region {
-					let (a, b) = (a.parts(), b.parts());
+					let (a, b) = (a.to_quaternion().parts(), b.to_quaternion().parts());
 					return Ok(Value::from_bool((0..4).all(|axis| (a[axis].min(b[axis])..=a[axis].max(b[axis])).contains(&p[axis]))));
 				}
 
@@ -884,22 +884,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			regions: 1,
 			function: |x, regions| {
 				let [region] = regions else { return Err(EvalError::TypeError) };
-				let Value::Number(number) = x;
-				let parts = number.to_quaternion().parts();
-
-				let clamped = if let Region::Range(a, b) = *region {
-					let (a, b) = (a.parts(), b.parts());
-					Quaternion::from_parts(array::from_fn(|axis| parts[axis].clamp(a[axis].min(b[axis]), a[axis].max(b[axis]))))
-				} else {
-					let range = region.matrix();
-					let RangeParameter { parameter, region, extends, .. } = range_parameter(range, Quaternion::from_parts(parts))?;
-					let parameter_parts = parameter.parts();
-					let clamped = Quaternion::from_parts(array::from_fn(|axis| if extends[axis] { parameter_parts[axis].clamp(0., 1.) } else { 0. }));
-					if clamped == parameter { Quaternion::from_parts(parts) } else { region.apply(clamped) }
-				};
-
-				// A value already within the range is itself, keeping an integer's exact storage
-				Ok(if clamped.parts() == parts { x } else { Value::from(clamped) })
+				let Value::Number(x) = x;
+				Ok(Value::Number(clamp_to_region(x, *region)?))
 			},
 		},
 
@@ -919,6 +905,35 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 
 		_ => return None,
 	})
+}
+
+/// Clamps a value into a region: on each part between a range literal's corners, ordered exactly for reals so an integer past a
+/// matrix's precision keeps its storage, and for any other region on its parameter, `0..1` where it extends and 0 elsewhere, mapped
+/// back. A value already within the region is itself.
+fn clamp_to_region(x: Number, region: Region) -> Result<Number, EvalError> {
+	match region {
+		Region::Range(a, b) if x.as_real().is_some() && a.as_real().is_some() && b.as_real().is_some() => {
+			let (low, high) = if a.real_ordering(b) == Some(Ordering::Greater) { (b, a) } else { (a, b) };
+			Ok(if x.real_ordering(low) == Some(Ordering::Less) {
+				low
+			} else if x.real_ordering(high) == Some(Ordering::Greater) {
+				high
+			} else {
+				x
+			})
+		}
+		Region::Range(a, b) => {
+			let (a, b, parts) = (a.to_quaternion().parts(), b.to_quaternion().parts(), x.to_quaternion().parts());
+			let clamped = array::from_fn(|axis| parts[axis].clamp(a[axis].min(b[axis]), a[axis].max(b[axis])));
+			Ok(if clamped == parts { x } else { Number::Quaternion(Quaternion::from_parts(clamped)) })
+		}
+		Region::Map(range) => {
+			let RangeParameter { parameter, region, extends, .. } = range_parameter(range, x.to_quaternion())?;
+			let parameter_parts = parameter.parts();
+			let clamped = Quaternion::from_parts(array::from_fn(|axis| if extends[axis] { parameter_parts[axis].clamp(0., 1.) } else { 0. }));
+			Ok(if clamped == parameter { x } else { Number::Quaternion(region.apply(clamped)) })
+		}
+	}
 }
 
 /// Where a value lies against a range: its parameter `R⁻¹ p`, the invertible region that maps the parameter back, and the axes the

@@ -463,11 +463,11 @@ impl fmt::Display for Matrix {
 	}
 }
 
-/// A region for `within`, `clamp`, and `remap`: a range literal kept by its corners, which may be infinite where no matrix can hold
-/// them, or any other map.
+/// A region for `within`, `clamp`, and `remap`: a range literal kept by its corners as written, which may be integers past a
+/// matrix's exactness or infinite where no matrix can hold them, or any other map.
 #[derive(Debug, Clone, Copy)]
 pub enum Region {
-	Range(Quaternion, Quaternion),
+	Range(Number, Number),
 	Map(Matrix),
 }
 
@@ -475,7 +475,7 @@ impl Region {
 	/// The region as a map, which for a range with an infinite corner holds infinite or indeterminate entries.
 	pub fn matrix(self) -> Matrix {
 		match self {
-			Region::Range(a, b) => Matrix::range(a, b),
+			Region::Range(a, b) => Matrix::range(a.to_quaternion(), b.to_quaternion()),
 			Region::Map(matrix) => matrix,
 		}
 	}
