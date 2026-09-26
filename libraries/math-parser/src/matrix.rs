@@ -59,7 +59,8 @@ impl Matrix {
 		for (axis, spanned) in axes.into_iter().enumerate() {
 			if spanned {
 				let mut row = [0.; 4];
-				row[axis] = b[axis] - a[axis];
+				// Equal corners are flat even at infinity, where their difference is NaN
+				row[axis] = if a[axis] == b[axis] { 0. } else { b[axis] - a[axis] };
 				range.rows[axis] = Quaternion::from_parts(row);
 				translation[axis] = a[axis];
 			}

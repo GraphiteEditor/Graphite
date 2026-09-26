@@ -132,10 +132,10 @@ fn call(name: String, arguments: Vec<Syntax>, functions: &dyn FunctionProvider) 
 				return Err(INVALID_ARGUMENTS);
 			}
 			let mut arguments = arguments.into_iter();
-			Node::Value(ValueNode::OfMatrices {
+			Node::Value(ValueNode::OfValueAndRegions {
 				function,
 				value: Box::new(value(arguments.next().ok_or(INVALID_ARGUMENTS)?)?),
-				matrices: arguments.map(matrix).collect::<Result<Vec<MatrixNode>, SortError>>()?,
+				regions: arguments.map(matrix).collect::<Result<Vec<MatrixNode>, SortError>>()?,
 			})
 		}
 		_ => Node::Value(ValueNode::FnCall { name, expr: values(arguments)? }),

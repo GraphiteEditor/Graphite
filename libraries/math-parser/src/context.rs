@@ -16,11 +16,9 @@ pub trait ValueProvider {
 pub trait FunctionProvider {
 	fn run_function(&self, name: &str, args: &[Value]) -> Option<Value>;
 
-	/// Whether the host supplies a function of this name, read when parsing, since the host's function shadows any builtin of the
-	/// same name and gives a value where the builtin might give a matrix.
-	fn provides(&self, _name: &str) -> bool {
-		false
-	}
+	/// Whether the host supplies a function of this name, true for every name `run_function` answers. It is read when parsing, since
+	/// the host's function shadows any builtin of the same name and gives a value where the builtin might give a matrix.
+	fn provides(&self, name: &str) -> bool;
 }
 
 #[derive(Default)]
@@ -65,6 +63,10 @@ impl DerefMut for ValueMap {
 impl FunctionProvider for NothingMap {
 	fn run_function(&self, _: &str, _: &[Value]) -> Option<Value> {
 		None
+	}
+
+	fn provides(&self, _: &str) -> bool {
+		false
 	}
 }
 

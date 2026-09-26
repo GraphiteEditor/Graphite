@@ -379,6 +379,9 @@ mod tests {
 			fn run_function(&self, name: &str, _: &[Value]) -> Option<Value> {
 				(name == "f").then(|| Value::from_f64(f64::NAN))
 			}
+			fn provides(&self, name: &str) -> bool {
+				name == "f"
+			}
 		}
 		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(Host, Host));
 
@@ -492,6 +495,9 @@ mod tests {
 		impl context::FunctionProvider for DoublingSin {
 			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
 				(name == "sin").then(|| Value::from_f64(2. * args[0].as_real().unwrap()))
+			}
+			fn provides(&self, name: &str) -> bool {
+				name == "sin"
 			}
 		}
 		let eval = |source: &str| {
@@ -1390,6 +1396,7 @@ mod tests {
 		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
 		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
 		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
+		remap_to_infinity: "remap(0.5, 0..1, inf..inf)" => f64::INFINITY,
 		inside_huge_box: "inside(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
 		inside_tiny_box: "inside(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
 		remap_from_huge_box: "remap(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k), 0..(i + j + k))" => Complex::new(0., 0.5),
