@@ -2,6 +2,7 @@ use crate::ast::{BinaryOp, Case, Literal, Node, Syntax, UnaryOp};
 use crate::context::{FunctionProvider, NothingMap};
 use crate::lexer::{Lexer, Span, Token};
 use crate::sort::sorted;
+use chumsky::cache::{Cache, Cached};
 use chumsky::error::{EmptyErr, LabelError};
 use chumsky::input::ValueInput;
 use chumsky::{Parser, prelude::*};
@@ -53,14 +54,42 @@ impl Node {
 	}
 }
 
+/// The parser with zero-cost errors, built once per thread, since building the combinator tree costs as much as parsing a short
+/// expression, and cached across input lifetimes by chumsky's cache.
+struct FastParser;
+
+impl Cached for FastParser {
+	type Parser<'src> = Boxed<'src, 'src, Lexer<'src>, Syntax, extra::Default>;
+
+	fn make_parser<'src>(self) -> <Self as Cached>::Parser<'src> {
+		parser().boxed()
+	}
+}
+
+/// The parser with rich errors, likewise built once per thread.
+struct RichParser;
+
+impl Cached for RichParser {
+	type Parser<'src> = Boxed<'src, 'src, Lexer<'src>, Syntax, extra::Err<Rich<'src, Token<'src>, Span>>>;
+
+	fn make_parser<'src>(self) -> <Self as Cached>::Parser<'src> {
+		parser().boxed()
+	}
+}
+
+thread_local! {
+	static FAST_PARSER: Cache<FastParser> = Cache::new(FastParser);
+	static RICH_PARSER: Cache<RichParser> = Cache::new(RichParser);
+}
+
 /// Parses the source as written, before its sorts are read.
 fn parse(src: &str) -> Result<Syntax, ParseError> {
 	// Parse with zero-cost errors first (several times faster), then re-parse invalid input with rich errors to build the messages
-	if let Ok(ast) = parser::<Lexer, extra::Default>().parse(Lexer::new(src)).into_result() {
+	if let Ok(ast) = FAST_PARSER.with(|cache| cache.get().parse(Lexer::new(src)).into_result()) {
 		return Ok(ast);
 	}
 
-	match parser::<Lexer, extra::Err<Rich<Token, Span>>>().parse(Lexer::new(src)).into_result() {
+	match RICH_PARSER.with(|cache| cache.get().parse(Lexer::new(src)).into_result()) {
 		Ok(ast) => Ok(ast),
 		Err(parse_errs) => Err(ParseError(
 			parse_errs
