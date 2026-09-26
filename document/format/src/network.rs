@@ -92,9 +92,25 @@ impl<L: Layout> Gdd<L> {
 		self.network.as_ref().is_none_or(Replica::is_synced)
 	}
 
+	/// Announce this peer's display name to the room; a no-op when it has not changed or nobody is connected.
+	pub fn set_name(&mut self, name: &str) -> Result<(), Error> {
+		if let Some(replica) = &mut self.network {
+			replica.set_name(name)?;
+		}
+		Ok(())
+	}
+
+	/// Send this peer's pointer position in document space, `None` when it left the viewport.
+	pub fn send_cursor(&mut self, position: Option<[f64; 2]>) -> Result<(), Error> {
+		if let Some(replica) = &mut self.network {
+			replica.send_cursor(position)?;
+		}
+		Ok(())
+	}
+
 	/// The other peers in the room; empty when the document is not connected.
 	pub fn peers(&self) -> Vec<peer_transport::RemotePeer> {
-		self.network.as_ref().map(|replica| replica.peers().copied().collect()).unwrap_or_default()
+		self.network.as_ref().map(|replica| replica.peers().cloned().collect()).unwrap_or_default()
 	}
 
 	/// Record that the runtime was rebuilt from the registry, so the next staged diff is taken against it.

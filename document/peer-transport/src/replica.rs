@@ -17,6 +17,14 @@ pub enum Event {
 	RoleChanged {
 		role: Role,
 	},
+	/// A peer's display name arrived or changed.
+	ProfileChanged {
+		peer: PeerId,
+	},
+	/// A peer's pointer moved, or left the viewport.
+	CursorMoved {
+		peer: PeerId,
+	},
 	/// The guest has applied the host's state.
 	Synced,
 	/// Remote ops changed the target.
@@ -41,11 +49,15 @@ pub enum ReplicaError {
 }
 
 /// A peer in the room as its last hello described it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RemotePeer {
 	pub peer: PeerId,
 	pub user: UserId,
 	pub role: Role,
+	/// The display name it announced; empty until its profile arrives.
+	pub name: String,
+	/// Its pointer in document space, `None` when it is not over the viewport.
+	pub cursor: Option<[f64; 2]>,
 }
 
 /// How far one peer's broadcasts have been delivered here.
@@ -71,6 +83,8 @@ pub struct Replica {
 	role: Role,
 	peer: PeerId,
 	user: UserId,
+	/// This peer's display name, sent with every hello and on change.
+	name: String,
 	peers: HashMap<TransportPeerId, RemotePeer>,
 	/// The role each link was last greeted with, so a peer whose hello arrives after this one's role
 	/// changed is greeted again rather than left believing the old role.
@@ -240,6 +254,7 @@ impl Replica {
 			role,
 			peer,
 			user,
+			name: String::new(),
 			peers: HashMap::new(),
 			greeted: HashMap::new(),
 			sync,
@@ -262,6 +277,28 @@ impl Replica {
 
 	pub fn is_synced(&self) -> bool {
 		matches!(self.sync, SyncState::Synced)
+	}
+
+	/// The display name this peer announces. Sent to everyone in the room when it changes, and with every
+	/// hello, so a newcomer learns it at once.
+	pub fn set_name(&mut self, name: &str) -> Result<(), PacketError> {
+		if self.name == name {
+			return Ok(());
+		}
+		self.name = name.to_string();
+		if self.peers.is_empty() {
+			return Ok(());
+		}
+		self.transport.broadcast_except(None, &SyncPacket::Profile { name: self.name.clone() })
+	}
+
+	/// Tell the room where this peer's pointer is in document space, `None` once it left the viewport. The
+	/// caller coalesces: one call per frame at most, and none when nothing moved.
+	pub fn send_cursor(&mut self, position: Option<[f64; 2]>) -> Result<(), PacketError> {
+		if self.peers.is_empty() {
+			return Ok(());
+		}
+		self.transport.broadcast_except(None, &SyncPacket::Cursor { position })
 	}
 
 	/// The other peers in the room, in no particular order.
@@ -572,6 +609,9 @@ impl Replica {
 		log::info!("Join handshake: hello sent to {transport_peer:?} as {:?}", self.role);
 		self.transport.send(transport_peer, &hello)?;
 		self.greeted.insert(transport_peer, self.role);
+		if !self.name.is_empty() {
+			self.transport.send(transport_peer, &SyncPacket::Profile { name: self.name.clone() })?;
+		}
 		Ok(())
 	}
 
@@ -582,7 +622,18 @@ impl Replica {
 				// A peer greeting again over the same link and incarnation is announcing a role, not arriving:
 				// anchoring its progress again would strand broadcasts of its still waiting on their dependencies.
 				let known = self.peers.contains_key(&from) && self.delivered.get(&peer).is_some_and(|progress| progress.epoch == epoch);
-				self.peers.insert(from, RemotePeer { peer, user, role });
+				// A re-greeting keeps the presence the link already announced.
+				let presence = self.peers.remove(&from);
+				self.peers.insert(
+					from,
+					RemotePeer {
+						peer,
+						user,
+						role,
+						name: presence.as_ref().map(|remote| remote.name.clone()).unwrap_or_default(),
+						cursor: presence.and_then(|remote| remote.cursor),
+					},
+				);
 				if !known {
 					self.anchor_delivered(peer, epoch, seq);
 
@@ -742,6 +793,23 @@ impl Replica {
 							self.deliver_held(target, events)?;
 						}
 					}
+				}
+			}
+			SyncPacket::Profile { name } => {
+				// Presence from a link that has not said hello has nobody to belong to yet.
+				if let Some(remote) = self.peers.get_mut(&from)
+					&& remote.name != name
+				{
+					remote.name = name;
+					events.push(Event::ProfileChanged { peer: remote.peer });
+				}
+			}
+			SyncPacket::Cursor { position } => {
+				if let Some(remote) = self.peers.get_mut(&from)
+					&& remote.cursor != position
+				{
+					remote.cursor = position;
+					events.push(Event::CursorMoved { peer: remote.peer });
 				}
 			}
 			SyncPacket::ResourceRequest(hashes) => {

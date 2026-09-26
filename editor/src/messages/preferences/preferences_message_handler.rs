@@ -26,6 +26,10 @@ pub struct PreferencesMessageHandler {
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
 	pub show_storage_preferences: bool,
+	/// Who this person is across documents and devices, drawn once and kept; `0` until then.
+	pub user_id: u64,
+	/// The display name peers see in a live session; empty means unnamed.
+	pub user_name: String,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
 }
@@ -72,6 +76,8 @@ impl Default for PreferencesMessageHandler {
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
 			show_storage_preferences: false,
+			user_id: 0,
+			user_name: String::new(),
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
@@ -87,6 +93,9 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
 				*self = preferences;
+				if self.user_id == 0 {
+					self.user_id = crate::application::generate_uuid();
+				}
 
 				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PreferencesMessage::ModifyLayout {
@@ -148,6 +157,10 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			PreferencesMessage::ToggleShowStoragePreferences => {
 				self.show_storage_preferences = !self.show_storage_preferences;
 				responses.add(MenuBarMessage::SendLayout);
+			}
+			PreferencesMessage::UserName { name } => {
+				self.user_name = name.trim().to_string();
+				responses.add(SyncMessage::RefreshPanel);
 			}
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {

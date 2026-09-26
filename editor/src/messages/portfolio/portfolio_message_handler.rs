@@ -124,6 +124,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					documents: &mut self.documents,
 					active_document_id: self.active_document_id,
 					resource_storage,
+					preferences,
+					ipp,
+					viewport,
 				};
 				self.sync.process_message(message, responses, context);
 			}

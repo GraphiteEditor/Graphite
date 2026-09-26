@@ -51,6 +51,16 @@ pub enum SyncPacket {
 		#[serde(with = "serde_bytes")]
 		bytes: Vec<u8>,
 	},
+	/// Who the sender is, for display. Sent to a peer after the hello and to everyone when it changes; the
+	/// newest wins. Presence like this is never history, so it stays outside the causal broadcast.
+	Profile {
+		name: String,
+	},
+	/// Where the sender's pointer is in document space, `None` when it left the viewport. Sent at most once
+	/// a frame and identified by the link it arrives on, so it carries nothing but the position.
+	Cursor {
+		position: Option<[f64; 2]>,
+	},
 }
 
 /// The host's answer to a `SyncRequest`. `registry` is only sent when the host recognized none of

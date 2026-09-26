@@ -1,12 +1,15 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
-use document_graph_storage::UserId;
+use crate::messages::viewport::Position;
+use document_graph_storage::{PeerId, UserId};
+use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
-use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, Role, Room, SessionToken, SyncTarget};
+use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, RemotePeer, Role, Room, SessionToken, SyncTarget};
 use std::collections::HashSet;
 
 #[derive(ExtractField)]
@@ -14,6 +17,9 @@ pub struct SyncMessageContext<'a> {
 	pub documents: &'a mut HashMap<DocumentId, DocumentMessageHandler>,
 	pub active_document_id: Option<DocumentId>,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
+	pub preferences: &'a PreferencesMessageHandler,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 /// Drives every document's collaborative session: attaches transports, polls them once per frame and as
@@ -37,6 +43,8 @@ pub struct SyncMessageHandler {
 	blocked_reason: HashMap<DocumentId, String>,
 	/// Declarations being read from the byte store to be decoded, so a document waiting on them asks once.
 	decoding: HashSet<(DocumentId, ResourceHash)>,
+	/// The pointer position last sent for each connected document, so one is sent only when it moved.
+	last_cursor: HashMap<DocumentId, Option<[f64; 2]>>,
 }
 
 #[message_handler_data]
@@ -46,6 +54,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			documents,
 			active_document_id,
 			resource_storage,
+			preferences,
+			ipp,
+			viewport,
 		} = context;
 
 		match message {
@@ -60,7 +71,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				}
 
 				let document_id = active_document_id.expect("checked above");
-				let Some(token) = self.connect_document(document_id, gdd, responses) else { return };
+				let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
 				// The panel shows the link; the clipboard gets it too, so sharing stays one step.
 				responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
 				responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
@@ -84,8 +95,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if let Some(token) = self.pending_join.take() {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 					let incoming = room.incoming();
-					let user = UserId(gdd.session().peer().0);
-					gdd.join(room, user);
+					gdd.join(room, UserId(preferences.user_id));
+					announce_name(gdd, &preferences.user_name);
 
 					responses.add(driver_future(document_id, driver));
 					self.attach(document_id, incoming, responses);
@@ -93,7 +104,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					self.start_polling(responses);
 				} else if gdd.is_shared() && gdd.role().is_none() {
 					// The document was in its room when it was last persisted: a reload rejoins on its own.
-					self.connect_document(document_id, gdd, responses);
+					self.connect_document(document_id, gdd, preferences, responses);
 				}
 			}
 			SyncMessage::Leave => {
@@ -103,6 +114,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				gdd.leave();
 				self.incoming.remove(&document_id);
+				self.last_cursor.remove(&document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::Disconnected { document_id } => {
@@ -110,10 +122,11 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					gdd.leave();
 				}
 				self.incoming.remove(&document_id);
+				self.last_cursor.remove(&document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::RefreshPanel => {
-				let layout = session_panel_layout(documents, active_document_id);
+				let layout = session_panel_layout(documents, active_document_id, &preferences.user_name);
 				responses.add(LayoutMessage::SendLayout {
 					layout,
 					layout_target: LayoutTarget::SessionPanel,
@@ -160,7 +173,19 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					// Each movement reaches peers as it happens: what the interface recorded since the last
 					// frame is staged, and so broadcast, ahead of this frame's poll.
 					document.stage_pending_edits(&resources);
+					// Presence rides outside the causal broadcast: the name whenever it changed, and the pointer
+					// over the active document once per frame when it moved, `None` for every other document.
+					let cursor = (Some(document_id) == active_document_id).then(|| cursor_in_document(document, ipp, viewport)).flatten();
 					let Some(gdd) = document.storage_mut() else { continue };
+					announce_name(gdd, &preferences.user_name);
+					if self.last_cursor.get(&document_id) != Some(&cursor) {
+						match gdd.send_cursor(cursor) {
+							Ok(()) => {
+								self.last_cursor.insert(document_id, cursor);
+							}
+							Err(error) => log::warn!("Sending the pointer position failed: {error}"),
+						}
+					}
 
 					let events = gdd.poll_peers();
 					// Taken every poll rather than on an event: a full sync a hello triggers can replace the
@@ -195,7 +220,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 								log::info!("Session role is now {role:?}");
 								refresh_session_views(responses);
 							}
-							Event::PeerJoined { .. } | Event::PeerLeft { .. } => responses.add(PortfolioMessage::UpdateOpenDocumentsList),
+							Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
+							Event::CursorMoved { .. } => {
+								if Some(document_id) == active_document_id {
+									responses.add(OverlaysMessage::Draw);
+								}
+							}
 						}
 					}
 				}
@@ -256,6 +286,20 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					self.arm(document_id, responses);
 				}
 			}
+			SyncMessage::DrawPresence { context: mut overlay_context } => {
+				let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else { return };
+				let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return };
+				let to_viewport = document.metadata().document_to_viewport;
+				for remote in gdd.peers() {
+					let Some([x, y]) = remote.cursor else { continue };
+					let position = to_viewport.transform_point2(DVec2::new(x, y));
+					let color = peer_color(remote.peer);
+					let arrow = CURSOR_ARROW.map(|[dx, dy]| position + DVec2::new(dx, dy));
+					overlay_context.polygon(&arrow, Some("#ffffff"), Some(&color));
+					let label = DAffine2::from_translation(position + DVec2::new(14., 18.));
+					overlay_context.text(&display_name(&remote), "#ffffff", Some(&color), label, 3., [Pivot::Start, Pivot::Start]);
+				}
+			}
 			SyncMessage::DeclarationLoaded { document_id, hash, bytes } => {
 				let Some(bytes) = bytes else {
 					// Stays in `decoding` so it is not asked for again every frame; the document waits on it.
@@ -286,15 +330,15 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 impl SyncMessageHandler {
 	/// Connect `document_id`'s working copy to the room every copy of the document shares, and hand the
 	/// frontend the link. Returns the token, `None` when the connection could not be set up.
-	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut document_format::GddV1, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
+	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut document_format::GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
 		let token = SessionToken::for_document(gdd.manifest().document_id);
 		let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 		let incoming = room.incoming();
-		let user = UserId(gdd.session().peer().0);
-		if let Err(error) = gdd.connect(room, user) {
+		if let Err(error) = gdd.connect(room, UserId(preferences.user_id)) {
 			log::error!("Connecting to the session failed: {error}");
 			return None;
 		}
+		announce_name(gdd, &preferences.user_name);
 		self.undecided_since.insert(document_id, now_ms());
 		responses.add(driver_future(document_id, driver));
 		self.attach(document_id, incoming, responses);
@@ -401,9 +445,20 @@ fn refresh_session_views(responses: &mut VecDeque<Message>) {
 
 /// The Session panel for the active document: its state in words, the join link, the peers, and the actions
 /// that apply in that state.
-fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>) -> Layout {
+fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, user_name: &str) -> Layout {
 	let heading = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).bold(true).widget_instance()]);
 	let note = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).multiline(true).widget_instance()]);
+	// The name is a preference, so it is the same in every session and asked for once.
+	let name_row = || {
+		LayoutGroup::row(vec![
+			TextLabel::new("Your name").table_align(true).min_width(80).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new(user_name)
+				.placeholder("Anonymous")
+				.on_update(|input: &TextInput| PreferencesMessage::UserName { name: input.value.clone() }.into())
+				.widget_instance(),
+		])
+	};
 
 	let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else {
 		return Layout(vec![note("Open a document to share it.")]);
@@ -415,6 +470,7 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 	let Some(role) = gdd.role() else {
 		if gdd.is_shared() {
 			return Layout(vec![
+				name_row(),
 				heading("Disconnected"),
 				note("The document is shared but not in its room right now. It reconnects when it is reopened."),
 				LayoutGroup::row(vec![
@@ -424,6 +480,7 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			]);
 		}
 		return Layout(vec![
+			name_row(),
 			heading("Not shared"),
 			note("Share this document to edit it live with others. Everyone who opens the link works on the same document."),
 			LayoutGroup::row(vec![
@@ -448,6 +505,7 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 	peers.sort_by_key(|remote| remote.peer);
 
 	let mut groups = vec![
+		name_row(),
 		heading(state),
 		LayoutGroup::row(vec![
 			TextLabel::new(token)
@@ -466,9 +524,9 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
 		]),
 		heading(&format!("Peers ({})", peers.len() + 1)),
-		peer_row("You", role),
+		peer_row(&if user_name.is_empty() { "You".to_string() } else { format!("{user_name} (you)") }, role),
 	];
-	groups.extend(peers.iter().map(|remote| peer_row(&format!("Peer {:06x}", remote.peer.0 & 0xFF_FFFF), remote.role)));
+	groups.extend(peers.iter().map(|remote| peer_row(&display_name(remote), remote.role)));
 	Layout(groups)
 }
 
@@ -483,4 +541,55 @@ fn peer_row(name: &str, role: Role) -> LayoutGroup {
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		TextLabel::new(role).disabled(true).widget_instance(),
 	])
+}
+
+/// Draws the other peers' cursors; registered on every document with the tools, and a no-op outside a session.
+pub const PRESENCE_OVERLAY_PROVIDER: OverlayProvider = |context| SyncMessage::DrawPresence { context }.into();
+
+/// A pointer arrow in logical pixels, tip at the origin.
+const CURSOR_ARROW: [[f64; 2]; 7] = [[0., 0.], [0., 15.], [4., 11.5], [7., 17.5], [9.5, 16.5], [6.5, 10.5], [11., 10.5]];
+
+/// Tell the room this peer's display name; a no-op when it has not changed.
+fn announce_name(gdd: &mut document_format::GddV1, name: &str) {
+	if let Err(error) = gdd.set_name(name) {
+		log::warn!("Announcing the display name failed: {error}");
+	}
+}
+
+/// The pointer in document space while it is over the viewport, rounded so jitter below a hundredth of a
+/// unit sends nothing.
+fn cursor_in_document(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<[f64; 2]> {
+	let mouse = ipp.mouse.position;
+	let size = viewport.size();
+	if mouse.x < 0. || mouse.y < 0. || mouse.x > size.x() || mouse.y > size.y() {
+		return None;
+	}
+	let position = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
+	Some([(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.])
+}
+
+fn display_name(remote: &RemotePeer) -> String {
+	match remote.name.is_empty() {
+		true => format!("Peer {:06x}", remote.peer.0 & 0xFF_FFFF),
+		false => remote.name.clone(),
+	}
+}
+
+/// A colour for a peer derived from its id, so every peer sees the same one without anything on the wire.
+fn peer_color(peer: PeerId) -> String {
+	let hue = (peer.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) % 360;
+	let (h, s, l): (f64, f64, f64) = (hue as f64 / 60., 0.65, 0.5);
+	let c = (1. - (2. * l - 1.).abs()) * s;
+	let x = c * (1. - (h % 2. - 1.).abs());
+	let m = l - c / 2.;
+	let (r, g, b) = match h as u32 {
+		0 => (c, x, 0.),
+		1 => (x, c, 0.),
+		2 => (0., c, x),
+		3 => (0., x, c),
+		4 => (x, 0., c),
+		_ => (c, 0., x),
+	};
+	let channel = |value: f64| ((value + m) * 255.).round() as u8;
+	format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b))
 }
