@@ -74,6 +74,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if gdd.role().is_some() {
 					return;
 				}
+				// Guests learn the name from the registry.
+				document.stage_name_attribute();
+				let Some(gdd) = document.storage_mut() else { return };
 
 				let document_id = active_document_id.expect("checked above");
 				let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
@@ -131,9 +134,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			}
 			SyncMessage::Fork => {
 				let Some(document_id) = active_document_id else { return };
-				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
-					return;
-				};
+				let Some(document) = documents.get_mut(&document_id) else { return };
+				document.stage_name_attribute();
+				let Some(gdd) = document.storage_mut() else { return };
 				// The room is derived from the manifest's document id, so a fresh id is a fresh room. A guest
 				// already rewrites the id when it joins, and the working copy's directory is keyed by the editor's
 				// own id, so nothing moves on disk.
@@ -329,6 +332,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					// Stays dirty while a declaration the changes need is still on its way.
 					if document.apply_remote_changes(responses) {
 						self.dirty.remove(&document_id);
+						if document.adopt_name_from_storage() {
+							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+						}
 						if self.fit_after_sync.remove(&document_id) && Some(document_id) == active_document_id {
 							log::info!("Join handshake: the host's state is applied, fitting the viewport after the graph runs");
 							// The bounds come from the render, so the fit waits for the graph to run on the new document.
@@ -581,11 +587,6 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 				TextLabel::new("Share this document to edit it live with others. Everyone who opens the link works on the same document.")
 					.multiline(true)
 					.widget_instance(),
-				TextInput::new("")
-					.placeholder("Paste a session link to join it")
-					.tooltip_description("Opens the shared document in a new tab, following the session behind the link.")
-					.on_update(|input: &TextInput| SyncMessage::Join { token: input.value.clone() }.into())
-					.widget_instance(),
 			]),
 		),
 		Some(role) => {
@@ -615,6 +616,17 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 		}
 	};
 	let mut groups = vec![name_row(), cursors_row(), heading(state), LayoutGroup::row(actions), detail];
+	if gdd.role().is_none() && !gdd.is_shared() {
+		groups.push(LayoutGroup::row(vec![
+			TextLabel::new("Join a session").table_align(true).min_width(90).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextInput::new("")
+				.placeholder("Paste a link")
+				.tooltip_description("Opens the shared document in a new tab, following the session behind the link.")
+				.on_update(|input: &TextInput| SyncMessage::Join { token: input.value.clone() }.into())
+				.widget_instance(),
+		]));
+	}
 
 	if gdd.role().is_some() {
 		let mut peers = gdd.peers();

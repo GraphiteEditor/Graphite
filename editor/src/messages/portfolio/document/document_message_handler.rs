@@ -34,6 +34,9 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use document_graph_storage::Declarations;
+
+/// The document attribute holding the document's name, so a session shares it and a rename reaches every peer.
+pub const DOCUMENT_NAME_ATTRIBUTE: &str = "name";
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{ResourceId, ResourceStorage};
 use graph_craft::application_io::wgpu_available;
@@ -950,6 +953,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.path = None;
 				self.set_save_state(false);
 				self.set_auto_save_state(false);
+				self.stage_name_attribute();
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
@@ -2022,6 +2026,46 @@ impl DocumentMessageHandler {
 	/// The network the node graph shows, from the document network down.
 	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
 		&self.breadcrumb_network_path
+	}
+
+	/// Write the document's name into its registry as a document attribute, so peers in a session see it and a
+	/// rename reaches them; a no-op without a working copy or when the registry already holds this name.
+	pub fn stage_name_attribute(&mut self) {
+		let name = self.name.clone();
+		let Some(gdd) = self.storage_mut() else { return };
+		if gdd
+			.registry()
+			.attributes
+			.get(DOCUMENT_NAME_ATTRIBUTE)
+			.is_some_and(|value| !value.deleted && value.value.as_str() == Some(name.as_str()))
+		{
+			return;
+		}
+		let delta = document_graph_storage::AttributeDelta {
+			key: DOCUMENT_NAME_ATTRIBUTE.to_string(),
+			value: Some(serde_json::Value::String(name)),
+		};
+		if let Err(error) = gdd.stage_ops([document_graph_storage::RegistryDelta::ChangeDocumentAttribute { delta }]) {
+			log::error!("Staging the document name failed: {error}");
+		}
+	}
+
+	/// Take the name the registry holds, after peers changed it. Returns whether the name changed.
+	pub fn adopt_name_from_storage(&mut self) -> bool {
+		let Some(name) = self
+			.storage()
+			.and_then(|gdd| gdd.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE))
+			.filter(|value| !value.deleted)
+			.and_then(|value| value.value.as_str())
+			.map(str::to_string)
+		else {
+			return false;
+		};
+		if name == self.name {
+			return false;
+		}
+		self.name = name;
+		true
 	}
 
 	pub fn selection_network_path(&self) -> &[NodeId] {

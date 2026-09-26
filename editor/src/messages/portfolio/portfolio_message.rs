@@ -89,6 +89,9 @@ pub enum PortfolioMessage {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		content: Vec<u8>,
+		/// Give the copy a document id of its own, so everyone opening the same distributed file, a demo artwork
+		/// say, does not share one session room.
+		fresh_identity: bool,
 	},
 	/// Delivers a document built asynchronously from a `.gdd` archive (registry → runtime, working copy
 	/// mounted) into the portfolio. Travels once like [`DocumentStorageMounted`](Self::DocumentStorageMounted).

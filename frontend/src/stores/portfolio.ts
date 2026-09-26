@@ -85,7 +85,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
-			editor.ingestPicked(data.filename, "", await response.bytes(), "Open");
+			editor.ingestPicked(data.filename, "", await response.bytes(), "OpenDemo");
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {

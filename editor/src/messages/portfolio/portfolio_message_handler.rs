@@ -530,6 +530,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_name,
 				document_path,
 				content,
+				fresh_identity,
 			} => {
 				let document_id = DocumentId(generate_uuid());
 
@@ -542,6 +543,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_name,
 					document_path,
 					content,
+					fresh_identity,
 					resource_storage.resources_mut(),
 					preferences.validate_storage_round_trip,
 				));

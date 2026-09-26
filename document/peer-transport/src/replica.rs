@@ -737,7 +737,11 @@ impl Replica {
 					(true, Some(registry)) => target.load(registry, sync.deltas, sync.head)?,
 					_ => target.merge_remote(sync.deltas, &[], sync.head)?,
 				}
-				if full && let Some(document_id) = sync.document_id {
+				// The room is the document's: a copy that joined by link takes the id whatever state it brought, or its
+				// own link would name a room nobody else is in.
+				if let Some(document_id) = sync.document_id
+					&& target.document_id() != Some(document_id)
+				{
 					target.adopt_document_id(document_id)?;
 				}
 				target.absorb_retired_marks(&sync.retired)?;

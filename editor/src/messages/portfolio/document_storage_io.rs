@@ -71,18 +71,20 @@ pub(super) async fn build_or_open_working_copy(
 
 /// `FutureMessage` that opens a `.gdd` archive into a document, delivered via
 /// [`PortfolioMessage::GddDocumentLoaded`]. See [`build_document_from_gdd`] for the build itself.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn open_gdd_document(
 	working_copy_root: Option<std::path::PathBuf>,
 	document_id: DocumentId,
 	document_name: Option<String>,
 	document_path: Option<std::path::PathBuf>,
 	content: Vec<u8>,
+	fresh_identity: bool,
 	store_handle: ResourcesHandle,
 	validate: bool,
 ) -> Message {
 	let path = working_copy_root.map(|root| root.join(format!("{:x}", document_id.0)));
 
-	let document = build_document_from_gdd(path.as_deref(), &content, &store_handle, document_id, validate).await;
+	let document = build_document_from_gdd(path.as_deref(), &content, &store_handle, document_id, fresh_identity, validate).await;
 	Message::Portfolio(PortfolioMessage::GddDocumentLoaded {
 		document_id,
 		document_name,
@@ -94,7 +96,14 @@ pub(super) async fn open_gdd_document(
 /// Core of the `.gdd` open: archive -> working copy -> `Gdd` -> runtime interface. The registry build is
 /// authoritative; the embedded legacy blob is the soak oracle and the fallback if the build fails.
 /// Returns `None` only if neither the build nor the legacy fallback worked.
-async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8], store_handle: &ResourcesHandle, document_id: DocumentId, validate: bool) -> Option<DocumentMessageHandler> {
+async fn build_document_from_gdd(
+	path: Option<&std::path::Path>,
+	content: &[u8],
+	store_handle: &ResourcesHandle,
+	document_id: DocumentId,
+	fresh_identity: bool,
+	validate: bool,
+) -> Option<DocumentMessageHandler> {
 	let (container, _exists) = match build_per_document_container(path).await {
 		Ok(result) => result,
 		Err(error) => {
@@ -103,13 +112,17 @@ async fn build_document_from_gdd(path: Option<&std::path::Path>, content: &[u8],
 		}
 	};
 
-	let gdd = match GddV1::open_from_archive(content, container, GddV1Layout).await {
+	let mut gdd = match GddV1::open_from_archive(content, container, GddV1Layout).await {
 		Ok(gdd) => gdd,
 		Err(error) => {
 			log::error!("Opening .gdd for {document_id:?}: failed to open archive: {error}");
 			return None;
 		}
 	};
+	// The session room is derived from the manifest's id, so a copy of a distributed file gets its own.
+	if fresh_identity && let Err(error) = gdd.update_manifest(|manifest| manifest.document_id = crate::application::generate_uuid()) {
+		log::error!("Opening .gdd for {document_id:?}: failed to give the copy its own id: {error}");
+	}
 
 	// Extract archived resource bytes into the global cache so declarations + runtime resolve.
 	match gdd.resource_hashes().await {
