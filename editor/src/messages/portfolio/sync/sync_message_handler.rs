@@ -80,7 +80,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				self.start_polling(responses);
 			}
 			SyncMessage::Join { token } => {
-				let token = match token.parse::<SessionToken>() {
+				if token.trim().is_empty() {
+					return;
+				}
+				let token = match session_token_in(&token).parse::<SessionToken>() {
 					Ok(token) => token,
 					Err(error) => {
 						log::warn!("Ignoring session link: {error}");
@@ -554,7 +557,16 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 					.on_commit(|_| SyncMessage::Share.into())
 					.widget_instance(),
 			],
-			note("Share this document to edit it live with others. Everyone who opens the link works on the same document."),
+			LayoutGroup::column(vec![
+				TextLabel::new("Share this document to edit it live with others. Everyone who opens the link works on the same document.")
+					.multiline(true)
+					.widget_instance(),
+				TextInput::new("")
+					.placeholder("Paste a session link to join it")
+					.tooltip_description("Opens the shared document in a new tab, following the session behind the link.")
+					.on_update(|input: &TextInput| SyncMessage::Join { token: input.value.clone() }.into())
+					.widget_instance(),
+			]),
 		),
 		Some(role) => {
 			let live = role == Role::Host || (role == Role::Guest && gdd.is_synced());
@@ -729,4 +741,13 @@ fn peer_color(peer: PeerId) -> String {
 	};
 	let channel = |value: f64| ((value + m) * 255.).round() as u8;
 	format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b))
+}
+
+/// The session token in a pasted link, or the text itself when it is a bare token.
+fn session_token_in(text: &str) -> &str {
+	let text = text.trim();
+	match text.split_once("session=") {
+		Some((_, rest)) => rest.split(['&', '#', ' ']).next().unwrap_or(""),
+		None => text,
+	}
 }

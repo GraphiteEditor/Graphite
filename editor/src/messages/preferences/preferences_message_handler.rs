@@ -27,6 +27,9 @@ pub struct PreferencesMessageHandler {
 	pub save_as_gdd: bool,
 	pub show_storage_preferences: bool,
 	/// Who this person is across documents and devices, drawn once and kept; `0` until then.
+	/// Kept as a decimal string in the preferences file: a 64-bit number does not survive the browser's JSON store.
+	#[serde(with = "u64_as_string")]
+	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
 	pub user_id: u64,
 	/// The display name peers see in a live session; empty means unnamed.
 	pub user_name: String,
@@ -181,4 +184,27 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 
 	advertise_actions!(PreferencesMessageDiscriminant;
 	);
+}
+
+/// A `u64` written as a decimal string, since the preferences pass through JSON in the browser, where a
+/// number this wide loses precision or, as a BigInt, cannot be written at all. Reads a number too.
+mod u64_as_string {
+	use serde::{Deserialize, Deserializer, Serializer};
+
+	pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.serialize_str(&value.to_string())
+	}
+
+	pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+		#[derive(Deserialize)]
+		#[serde(untagged)]
+		enum Stored {
+			Text(String),
+			Number(u64),
+		}
+		match Stored::deserialize(deserializer)? {
+			Stored::Text(text) => text.parse().map_err(serde::de::Error::custom),
+			Stored::Number(number) => Ok(number),
+		}
+	}
 }
