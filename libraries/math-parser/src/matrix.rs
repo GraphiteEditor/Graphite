@@ -1,5 +1,6 @@
+use crate::constants::mean_of;
 use crate::quaternion::Quaternion;
-use crate::value::{Number, part_product};
+use crate::value::{Number, part_product, power_of_two_scale};
 use std::fmt;
 use std::ops::{Add, Neg, Sub};
 
@@ -151,14 +152,25 @@ impl Matrix {
 
 	/// The inverse map, or `None` for a singular one: `(M⁻¹, -M⁻¹ c)`.
 	pub fn inverse(self) -> Option<Self> {
-		let entries = self.entries();
-		let determinant = self.determinant();
+		// Rows then columns are divided by powers of two near their largest entries, which is exact, so the cofactors of huge or tiny
+		// entries stay in range, then the scales are divided back out
+		let mut entries = self.entries();
+		let row_scales = entries.map(|row| power_of_two_scale(row.into_iter()));
+		for (row, scale) in entries.iter_mut().zip(row_scales) {
+			*row = row.map(|entry| entry / scale);
+		}
+		let column_scales: [f64; 4] = std::array::from_fn(|column| power_of_two_scale(entries.iter().map(|row| row[column])));
+		for row in entries.iter_mut() {
+			*row = std::array::from_fn(|column| row[column] / column_scales[column]);
+		}
+
+		let determinant: f64 = (0..4).map(|column| cofactor(entries, 0, column) * entries[0][column]).sum();
 		if determinant == 0. {
 			return None;
 		}
 
 		// The adjugate over the determinant, whose entries are the transposed cofactors
-		let rows = std::array::from_fn(|row| Quaternion::from_parts(std::array::from_fn(|column| cofactor(entries, column, row) / determinant)));
+		let rows = std::array::from_fn(|row| Quaternion::from_parts(std::array::from_fn(|column| cofactor(entries, column, row) / determinant / column_scales[row] / row_scales[column])));
 		let linear = Self::linear(rows);
 		Some(Self {
 			rows,
@@ -184,14 +196,10 @@ impl Matrix {
 		Some(result)
 	}
 
-	/// Left multiplication by `q` as a matrix, `L_q p = q p`, the value's own action in the matrix sort. A real scales every part
-	/// alike, adding no axes to a map, while a vector part mixes all four.
+	/// Left multiplication by `q` as a matrix, `L_q p = q p`, the value's own action in the matrix sort.
 	pub fn left_multiplication(q: Quaternion) -> Self {
 		let Quaternion { w, x, y, z } = q;
-		Self {
-			axes: if q.is_real() { [false; 4] } else { ALL_AXES },
-			..Self::linear([Quaternion::new(w, -x, -y, -z), Quaternion::new(x, w, -z, y), Quaternion::new(y, z, w, -x), Quaternion::new(z, -y, x, w)])
-		}
+		Self::linear([Quaternion::new(w, -x, -y, -z), Quaternion::new(x, w, -z, y), Quaternion::new(y, z, w, -x), Quaternion::new(z, -y, x, w)])
 	}
 
 	/// The rotation a unit rotor performs about `axis`, leaving the weight alone, with the axes it does not turn kept exact.
@@ -230,9 +238,23 @@ impl Matrix {
 			..Self::IDENTITY
 		};
 		for (row, along) in matrix.rows.iter_mut().zip(along.parts()) {
-			*row = *row + by.map(|by| factor * along * by);
+			*row = *row + by.map(|by| part_product(part_product(factor, along, false), by, false));
 		}
 		matrix
+	}
+
+	/// The pointwise mean, each entry averaged on its own scale as the mean of values is, so huge entries cannot overflow the sum.
+	pub fn mean(matrices: &[Self]) -> Option<Self> {
+		let count = matrices.len();
+		if count == 0 {
+			return None;
+		}
+
+		Some(Self {
+			rows: std::array::from_fn(|row| Quaternion::from_parts(mean_of(matrices.iter().map(|matrix| matrix.rows[row].parts()), count))),
+			translation: Quaternion::from_parts(mean_of(matrices.iter().map(|matrix| matrix.translation.parts()), count)),
+			axes: matrices.iter().fold([false; 4], |axes, matrix| joined(axes, matrix.axes)),
+		})
 	}
 
 	/// Applies a function to every entry, the translation included.

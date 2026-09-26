@@ -570,6 +570,9 @@ mod tests {
 			Object::Matrix(matrix) => matrix.rows.iter().chain([&matrix.translation]).flat_map(|row| row.parts()).collect::<Vec<f64>>(),
 		};
 		assert!(actual.as_matrix().is_some() == expected.as_matrix().is_some(), "`{input}`: expected {expected}, got {actual}");
+		if let (Some(actual), Some(expected)) = (actual.as_matrix(), expected.as_matrix()) {
+			assert_eq!(actual.axes, expected.axes, "`{input}`: the axes the matrix acts on");
+		}
 		for (index, (actual, expected)) in entries(&actual).into_iter().zip(entries(&expected)).enumerate() {
 			if actual.is_infinite() || expected.is_infinite() {
 				assert!(actual == expected, "`{input}` → part {index}: expected {expected:?}, got {actual:?}");
@@ -1303,6 +1306,19 @@ mod tests {
 		matrix_componentwise_product: "scale(3i + 2j) (5i + 7j)" => Quaternion::new(0., 15., 14., 0.),
 		matrix_componentwise_quotient: "scale(3i + 2j + k)^-1 (6i + 4j)" => Quaternion::new(0., 2., 2., 0.),
 		matrix_shear: "shear(i, j, 0.5) (2j)" => Quaternion::new(0., 1., 2., 0.),
+		matrix_shear_infinite: "shear(i, j, inf) (2j)" => Quaternion::new(0., f64::INFINITY, 2., 0.),
+		matrix_shear_infinite_leaves_other_axes: "shear(i, j, inf) i" => Complex::new(0., 1.),
+
+		// Inverses scale their entries first, so a huge or tiny map inverts, and a whole power reads its exponent exactly
+		matrix_inverse_of_huge_scale: "scale(1e103)^-1 (1e103 i)" => Complex::new(0., 1.),
+		matrix_inverse_of_tiny_scale: "scale(1e-110)^-1 (1e-110 i)" => Complex::new(0., 1.),
+		matrix_power_past_exact_reals: "(-I)^(2^53 + 1) i" => Complex::new(0., -1.),
+
+		// A map keeps the axes it acts on through its linear part and a real scale factor
+		matrix_linear_keeps_axes: "linear((i + j)..(3i + 3j))" => Matrix::range(Quaternion::ZERO, Quaternion::new(0., 2., 2., 0.)),
+		inside_linear_part_of_range: "inside(5 + i, linear(0..(2i + 2j)))" => 1.,
+		inside_scaled_range: "inside(1.5 + 7i, 2 (0..1))" => 1.,
+		outside_left_multiplication: "inside(3, matrix(2))" => 0.,
 
 		// Comparisons are pointwise, a piecewise may take matrix values, and `\I` reaches the identity past any binding
 		matrix_equality: "I == [1;i;j;k]" => 1.,
@@ -1347,6 +1363,9 @@ mod tests {
 		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
 		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
 		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
+		inside_huge_box: "inside(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
+		inside_tiny_box: "inside(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
+		remap_from_huge_box: "remap(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k), 0..(i + j + k))" => Complex::new(0., 0.5),
 	}
 
 	#[test]

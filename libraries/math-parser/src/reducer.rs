@@ -31,10 +31,7 @@ pub enum Reducer {
 /// order or a product of values.
 fn matrix_function(name: &str) -> Option<MatrixFunction> {
 	match name {
-		"mean" => Some(|matrices| {
-			let sum = matrices.iter().copied().reduce(|accumulated, matrix| accumulated + matrix)?;
-			settle_matrix(sum.map(|entry| entry / matrices.len() as f64)).ok().map(Object::from)
-		}),
+		"mean" => Some(|matrices| settle_matrix(Matrix::mean(matrices)?).ok().map(Object::from)),
 		"count" => Some(|matrices| Some(Object::from(Value::from_i64(matrices.len() as i64)))),
 		_ => None,
 	}
@@ -358,6 +355,8 @@ mod tests {
 		assert_eq!(reduce("+", &[scale, scale]).unwrap().into_matrix().unwrap().rows[1], Quaternion::new(0., 4., 0., 0.));
 		assert_eq!(reduce("-", &[scale, scale]).unwrap().into_matrix().unwrap().rows[1], Quaternion::ZERO);
 		assert_eq!(reduce("mean", &[scale, Matrix::IDENTITY]).unwrap().into_matrix().unwrap().rows[1], Quaternion::new(0., 1.5, 0., 0.));
+		let huge = Matrix::scale(Quaternion::new(1e308, 0., 0., 0.));
+		assert_eq!(reduce("mean", &[huge, huge]).unwrap(), Object::from(huge));
 		assert_eq!(reduce("count", &[scale, shift]), Some(Object::from(Value::from_i64(2))));
 
 		// An empty list yields the identity element where there is one, and a singular divisor has no inverse
