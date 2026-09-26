@@ -445,7 +445,8 @@ pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, 
 }
 
 /// Why a math expression fails to parse, as tooltip Markdown, or `None` when it parses. Where the node applies a lone operator or
-/// function name like `+` or `min` across its items, that counts as valid too.
+/// function name like `+` or `min` across its items, that counts as valid too. An error at a place in the expression repeats the
+/// expression with carets under that place, as a compiler does.
 fn math_expression_error(expression: &str, accepts_reducers: bool) -> Option<String> {
 	// A blank expression is unfinished rather than wrong, so it goes unflagged like any empty field
 	if expression.trim().is_empty() || (accepts_reducers && math_parser::reducer::classify_reducer(expression, math_parser::context::NothingMap).is_some()) {
@@ -459,7 +460,14 @@ fn math_expression_error(expression: &str, accepts_reducers: bool) -> Option<Str
 			MessagePart::Text(text) => escape_markdown(text),
 			MessagePart::Code(code) => markdown_code_span(code),
 		});
-		parts.collect::<String>()
+		let prose = parts.collect::<String>();
+
+		// The carets and their label line up under the expression's characters, with one caret where the span is empty, like at the end of the input
+		let Some(span) = message.span() else { return prose };
+		let indent = " ".repeat(expression.get(..span.start).map_or(0, |text| text.chars().count()));
+		let carets = "^".repeat(expression.get(span.start..span.end).map_or(0, |text| text.chars().count()).max(1));
+		let lines = [expression.to_string(), format!("{indent}{carets}"), format!("{indent}error here")];
+		format!("{prose}\n{}", lines.iter().map(|line| markdown_code_span(line)).collect::<Vec<_>>().join("\n"))
 	});
 	Some(messages.collect::<Vec<_>>().join("\n"))
 }
@@ -3773,15 +3781,20 @@ mod tests {
 
 	#[test]
 	fn math_expression_errors_quote_the_expression_safely() {
-		// The expression's own text sits in a code span it can't close, while the message's own code keeps its formatting
-		assert_eq!(math_expression_error("`abc", false).as_deref(), Some("`` `abc `` is not recognized, at 0..4"));
+		// The expression's own text sits in a code span it can't close, while the message's own code keeps its formatting, and the
+		// expression repeats below with labeled carets under the error's span
+		assert_eq!(math_expression_error("`abc", false).as_deref(), Some("`` `abc `` is not recognized\n`` `abc ``\n`^^^^`\n`error here`"));
 		assert_eq!(
 			math_expression_error("7 % 3", false).as_deref(),
-			Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at 2..3")
+			Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`\n`7 % 3`\n`  ^`\n`  error here`")
 		);
+		assert!(math_expression_error("(1", false).unwrap().ends_with("\n`(1`\n`  ^`\n`  error here`"));
+		assert!(math_expression_error("πx @ 2", false).unwrap().ends_with("\n`πx @ 2`\n`   ^`\n`   error here`"));
+		assert!(!math_expression_error("sin(I)", false).unwrap().contains('^'), "a sort error has no place to point at");
 
 		// Prose quoting a token like `*` is escaped, so it can't pair with another into italics
 		let error = math_expression_error("2 * * 3", false).unwrap();
-		assert!(error.contains("\\*") && !error.replace("\\*", "").contains('*'), "{error}");
+		let prose = error.lines().next().unwrap();
+		assert!(prose.contains("\\*") && !prose.replace("\\*", "").contains('*'), "{error}");
 	}
 }

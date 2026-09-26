@@ -95,20 +95,19 @@ mod tests {
 			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
 		}
 
-		// The quoted source is a part of its own, so a host can render it safely whatever it holds, backticks included
+		// The quoted source is a part of its own, so a host can render it safely whatever it holds, backticks included, and the span
+		// stands apart from the prose, which a sort error has none of
 		use parser::MessagePart::{Code, Text};
-		let parts = |input: &str| ast::Node::try_parse_from_str(input).unwrap_err().messages()[0].parts().to_vec();
-		assert_eq!(parts("`abc"), vec![Code("`abc".into()), Text(" is not recognized, at 0..4".into())]);
+		let message = |input: &str| ast::Node::try_parse_from_str(input).unwrap_err().messages()[0].clone();
+		assert_eq!(message("`abc").parts(), [Code("`abc".into()), Text(" is not recognized".into())]);
+		assert_eq!(message("`abc").span(), Some(0..4));
 		assert_eq!(
-			parts("7 % 3"),
-			vec![
-				Code("%".into()),
-				Text(" is reserved for percentages, so the remainder is written ".into()),
-				Code("mod(a, b)".into()),
-				Text(", at 2..3".into())
-			]
+			message("7 % 3").parts(),
+			[Code("%".into()), Text(" is reserved for percentages, so the remainder is written ".into()), Code("mod(a, b)".into()),]
 		);
-		assert_eq!(parts("sin(I)"), vec![Text("A matrix stands where a value is needed".into())]);
+		assert_eq!(message("7 % 3").span(), Some(2..3));
+		assert_eq!(message("sin(I)").parts(), [Text("A matrix stands where a value is needed".into())]);
+		assert_eq!(message("sin(I)").span(), None);
 	}
 
 	#[test]
@@ -254,7 +253,7 @@ mod tests {
 		for input in ["1 < 2 > 1", "1 < 2 != 3", "1 == 2 != 2"] {
 			let error = evaluate(input).unwrap_err().to_string();
 			let expected = "A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`";
-			assert_eq!(error, format!("{expected} at 0..{}", input.len()), "`{input}`");
+			assert_eq!(error, format!("{expected}, at 0..{}", input.len()), "`{input}`");
 		}
 	}
 
