@@ -815,14 +815,11 @@ fn string_capitalization(
 	let joiner = joiner.element().clone();
 	let input = std::mem::take(string.element_mut());
 
-	// When the joiner is enabled, apply word-level casing and optionally reconnect words with the selected joiner
+	// When the joiner is enabled, apply word-level casing and reconnect words with the selected joiner
 	let result = if use_joiner {
 		match capitalization {
-			// Simple case mappings that preserve the string's existing structure
 			StringCapitalization::LowerCase => Converter::new().set_pattern(Pattern::Lowercase).set_delimiter(joiner).convert(input),
 			StringCapitalization::UpperCase => Converter::new().set_pattern(Pattern::Uppercase).set_delimiter(joiner).convert(input),
-
-			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
 			StringCapitalization::CapitalCase => Converter::new().set_pattern(Pattern::Capital).set_delimiter(joiner).convert(input),
 			StringCapitalization::HeadlineCase => {
 				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
