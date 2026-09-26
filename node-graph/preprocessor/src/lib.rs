@@ -47,23 +47,19 @@ impl Preprocessor {
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
-			let identifier = match &mut node.implementation {
+			match &mut node.implementation {
 				DocumentNodeImplementation::Network(nested) => {
 					self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
 					continue;
 				}
-				DocumentNodeImplementation::ProtoNode(identifier) => Some(&*identifier),
-				DocumentNodeImplementation::Extract => None,
+				_ => {}
 			};
-
-			let is_resource_node = identifier == Some(&platform_application_io::resource::IDENTIFIER);
-			let is_eval_curve_node = identifier == Some(&graphene_core::animation::eval_curve::IDENTIFIER);
 
 			for input in node.inputs.iter_mut() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
 
 				let node_id = match &**tagged_value {
-					TaggedValue::Resource(resource_id) if !is_resource_node => {
+					TaggedValue::Resource(resource_id) => {
 						let resource_id = *resource_id;
 						let Some(hash) = resolve_resource(resource_id) else {
 							return Err(PreprocessorError::ResourceNotFound(resource_id));
@@ -83,7 +79,7 @@ impl Preprocessor {
 							id
 						})
 					}
-					TaggedValue::AnimationCurve(curve) if !is_eval_curve_node => {
+					TaggedValue::AnimationCurve(curve) => {
 						let id = NodeId::new();
 						let curve_node = DocumentNode {
 							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
