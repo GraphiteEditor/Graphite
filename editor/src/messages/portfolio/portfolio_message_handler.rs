@@ -5,7 +5,7 @@ use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
+use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState, SessionStatus};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -600,6 +600,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								name,
 								resources: None,
 								path: document_path,
+								session: None,
 								is_saved: document_is_saved,
 							};
 							self.document_ids.retain(|id| id != &document_id);
@@ -955,6 +956,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
 				responses.add(ToolMessage::InitTools);
+				responses.add(SyncMessage::RefreshPanel);
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(EventMessage::ToolAbort);
@@ -1384,6 +1386,11 @@ impl PortfolioMessageHandler {
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
 				resources: Some(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()).collect::<Vec<_>>().into_boxed_slice()),
+				session: document.storage().and_then(|gdd| match (gdd.role().is_some(), gdd.is_shared()) {
+					(true, _) => Some(SessionStatus::Connected),
+					(false, true) => Some(SessionStatus::Disconnected),
+					(false, false) => None,
+				}),
 			})
 		} else {
 			self.unloaded_documents.get(&document_id).cloned()

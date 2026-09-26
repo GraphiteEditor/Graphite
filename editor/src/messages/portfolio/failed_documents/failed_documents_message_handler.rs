@@ -238,6 +238,7 @@ mod tests {
 				resources: None,
 				path: None,
 				is_saved: true,
+				session: None,
 			};
 			handler.record_failure(DocumentId(id), info, "content".to_string());
 		}

@@ -101,6 +101,7 @@
 		--color-f-white: #fff;
 		--color-error-red: #d6536e;
 		--color-warning-yellow: #d5aa43;
+		--color-session-green: #5fbf6a;
 
 		--color-data-general: #cfcfcf;
 		--color-data-general-dim: #8a8a8a;

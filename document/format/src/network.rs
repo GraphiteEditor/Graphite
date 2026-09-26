@@ -92,6 +92,11 @@ impl<L: Layout> Gdd<L> {
 		self.network.as_ref().is_none_or(Replica::is_synced)
 	}
 
+	/// The other peers in the room; empty when the document is not connected.
+	pub fn peers(&self) -> Vec<peer_transport::RemotePeer> {
+		self.network.as_ref().map(|replica| replica.peers().copied().collect()).unwrap_or_default()
+	}
+
 	/// Record that the runtime was rebuilt from the registry, so the next staged diff is taken against it.
 	pub fn mark_runtime_current(&mut self) {
 		self.session.mark_runtime_current();

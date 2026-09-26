@@ -11,6 +11,8 @@ pub enum SyncMessage {
 	Join { token: String },
 	/// Disconnect the active document from its room; editing goes on alone until the next share.
 	Leave,
+	/// Send the Session panel's layout for the active document.
+	RefreshPanel,
 	/// Per frame: apply what peers sent and answer their requests.
 	Poll,
 	/// A packet arrived for a document's room: poll it now rather than at the next frame. `generation`

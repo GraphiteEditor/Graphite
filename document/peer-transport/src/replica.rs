@@ -40,11 +40,12 @@ pub enum ReplicaError {
 	Target(#[from] TargetError),
 }
 
-struct RemotePeer {
-	peer: PeerId,
-	#[expect(dead_code, reason = "Read once peers are surfaced in the UI")]
-	user: UserId,
-	role: Role,
+/// A peer in the room as its last hello described it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RemotePeer {
+	pub peer: PeerId,
+	pub user: UserId,
+	pub role: Role,
 }
 
 /// How far one peer's broadcasts have been delivered here.
@@ -261,6 +262,11 @@ impl Replica {
 
 	pub fn is_synced(&self) -> bool {
 		matches!(self.sync, SyncState::Synced)
+	}
+
+	/// The other peers in the room, in no particular order.
+	pub fn peers(&self) -> impl Iterator<Item = &RemotePeer> + '_ {
+		self.peers.values()
 	}
 
 	/// Broadcasts waiting on causal dependencies. Non-zero in an idle room means a stuck delivery.

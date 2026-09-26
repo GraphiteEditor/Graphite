@@ -1,10 +1,12 @@
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use document_graph_storage::UserId;
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
-use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, Room, SessionToken, SyncTarget};
+use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, Role, Room, SessionToken, SyncTarget};
 use std::collections::HashSet;
 
 #[derive(ExtractField)]
@@ -59,12 +61,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 
 				let document_id = active_document_id.expect("checked above");
 				let Some(token) = self.connect_document(document_id, gdd, responses) else { return };
+				// The panel shows the link; the clipboard gets it too, so sharing stays one step.
 				responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
-				responses.add(DialogMessage::DisplayDialogError {
-					title: "Live session started".into(),
-					description: format!("A link to join was copied to the clipboard.\n\nSession {token}"),
-				});
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
 				self.start_polling(responses);
 			}
 			SyncMessage::Join { token } => {
@@ -90,7 +89,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 
 					responses.add(driver_future(document_id, driver));
 					self.attach(document_id, incoming, responses);
-					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+					refresh_session_views(responses);
 					self.start_polling(responses);
 				} else if gdd.is_shared() && gdd.role().is_none() {
 					// The document was in its room when it was last persisted: a reload rejoins on its own.
@@ -104,14 +103,21 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				gdd.leave();
 				self.incoming.remove(&document_id);
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				refresh_session_views(responses);
 			}
 			SyncMessage::Disconnected { document_id } => {
 				if let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) {
 					gdd.leave();
 				}
 				self.incoming.remove(&document_id);
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				refresh_session_views(responses);
+			}
+			SyncMessage::RefreshPanel => {
+				let layout = session_panel_layout(documents, active_document_id);
+				responses.add(LayoutMessage::SendLayout {
+					layout,
+					layout_target: LayoutTarget::SessionPanel,
+				});
 			}
 			SyncMessage::Poll | SyncMessage::Wake { .. } => {
 				// A wake names the connection it was armed for; one from a connection since left is nothing to act on.
@@ -146,7 +152,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 							&& gdd.decide_role().is_some()
 						{
 							self.undecided_since.remove(&document_id);
-							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+							refresh_session_views(responses);
 						}
 					} else {
 						self.undecided_since.remove(&document_id);
@@ -168,6 +174,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 						match event {
 							Event::Synced => {
 								log::info!("Join handshake: synced, applying the host's state");
+								refresh_session_views(responses);
 								self.dirty.insert(document_id);
 								self.fit_after_sync.insert(document_id);
 							}
@@ -186,7 +193,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 							}
 							Event::RoleChanged { role } => {
 								log::info!("Session role is now {role:?}");
-								responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+								refresh_session_views(responses);
 							}
 							Event::PeerJoined { .. } | Event::PeerLeft { .. } => responses.add(PortfolioMessage::UpdateOpenDocumentsList),
 						}
@@ -291,7 +298,7 @@ impl SyncMessageHandler {
 		self.undecided_since.insert(document_id, now_ms());
 		responses.add(driver_future(document_id, driver));
 		self.attach(document_id, incoming, responses);
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		refresh_session_views(responses);
 		self.start_polling(responses);
 		Some(token)
 	}
@@ -384,4 +391,96 @@ fn now_ms() -> f64 {
 			.map(|elapsed| elapsed.as_secs_f64() * 1000.)
 			.unwrap_or(0.)
 	}
+}
+
+/// The session state changed: the document tabs show it as a circle and the Session panel in full.
+fn refresh_session_views(responses: &mut VecDeque<Message>) {
+	responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+	responses.add(SyncMessage::RefreshPanel);
+}
+
+/// The Session panel for the active document: its state in words, the join link, the peers, and the actions
+/// that apply in that state.
+fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>) -> Layout {
+	let heading = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).bold(true).widget_instance()]);
+	let note = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).multiline(true).widget_instance()]);
+
+	let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else {
+		return Layout(vec![note("Open a document to share it.")]);
+	};
+	let Some(gdd) = document.storage() else {
+		return Layout(vec![note("The document's working copy is still being mounted.")]);
+	};
+
+	let Some(role) = gdd.role() else {
+		if gdd.is_shared() {
+			return Layout(vec![
+				heading("Disconnected"),
+				note("The document is shared but not in its room right now. It reconnects when it is reopened."),
+				LayoutGroup::row(vec![
+					TextButton::new("Reconnect").icon("Link").emphasized(true).on_commit(|_| SyncMessage::Share.into()).widget_instance(),
+					TextButton::new("Stop Sharing").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
+				]),
+			]);
+		}
+		return Layout(vec![
+			heading("Not shared"),
+			note("Share this document to edit it live with others. Everyone who opens the link works on the same document."),
+			LayoutGroup::row(vec![
+				TextButton::new("Share Live Session")
+					.icon("Link")
+					.emphasized(true)
+					.on_commit(|_| SyncMessage::Share.into())
+					.widget_instance(),
+			]),
+		]);
+	};
+
+	let state = match role {
+		Role::Host => "Hosting",
+		Role::Guest if gdd.is_synced() => "Guest",
+		Role::Guest => "Joining, waiting for the host's state",
+		Role::Undecided => "Connected, waiting for a host",
+	};
+	let token = SessionToken::for_document(gdd.manifest().document_id).to_string();
+	let copy_token = token.clone();
+	let mut peers = gdd.peers();
+	peers.sort_by_key(|remote| remote.peer);
+
+	let mut groups = vec![
+		heading(state),
+		LayoutGroup::row(vec![
+			TextLabel::new(token)
+				.monospace(true)
+				.selectable(true)
+				.tooltip_label("Session")
+				.tooltip_description("Opening the editor with this session in the link joins the room.")
+				.widget_instance(),
+		]),
+		LayoutGroup::row(vec![
+			TextButton::new("Copy Link")
+				.icon("Copy")
+				.emphasized(true)
+				.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_token.clone() }.into())
+				.widget_instance(),
+			TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
+		]),
+		heading(&format!("Peers ({})", peers.len() + 1)),
+		peer_row("You", role),
+	];
+	groups.extend(peers.iter().map(|remote| peer_row(&format!("Peer {:06x}", remote.peer.0 & 0xFF_FFFF), remote.role)));
+	Layout(groups)
+}
+
+fn peer_row(name: &str, role: Role) -> LayoutGroup {
+	let role = match role {
+		Role::Host => "Host",
+		Role::Guest => "Guest",
+		Role::Undecided => "Deciding",
+	};
+	LayoutGroup::row(vec![
+		TextLabel::new(name).min_width(120).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		TextLabel::new(role).disabled(true).widget_instance(),
+	])
 }

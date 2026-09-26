@@ -11,6 +11,8 @@ pub enum PanelType {
 	Layers,
 	Properties,
 	Data,
+	/// The live session of the active document: its state, the join link, the peers, and the sharing actions.
+	Session,
 }
 
 impl From<String> for PanelType {
@@ -21,6 +23,7 @@ impl From<String> for PanelType {
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
 			"Data" => PanelType::Data,
+			"Session" => PanelType::Session,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}
@@ -28,7 +31,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Properties, PanelType::Data]
+		&[PanelType::Layers, PanelType::Properties, PanelType::Data, PanelType::Session]
 	}
 }
 
@@ -315,9 +318,9 @@ impl WorkspacePanelLayout {
 
 		// Determine which root child column to insert into and at which position
 		let (root_child_index, insert_at_end) = match panel_type {
-			PanelType::Data => (0, true),        // Left column, after document
-			PanelType::Properties => (1, false), // Right column, at top
-			PanelType::Layers => (1, true),      // Right column, at bottom
+			PanelType::Data => (0, true),                             // Left column, after document
+			PanelType::Properties | PanelType::Session => (1, false), // Right column, at top
+			PanelType::Layers => (1, true),                           // Right column, at bottom
 			_ => (1, true),
 		};
 
@@ -402,7 +405,7 @@ impl Default for WorkspacePanelLayout {
 									subdivision: PanelLayoutSubdivision::PanelGroup {
 										id: PanelGroupId(1),
 										state: PanelGroupState {
-											tabs: vec![PanelType::Properties],
+											tabs: vec![PanelType::Properties, PanelType::Session],
 											active_tab_index: 0,
 										},
 									},

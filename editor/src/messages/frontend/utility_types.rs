@@ -17,6 +17,18 @@ pub struct DocumentInfo {
 	#[serde(default)]
 	pub path: Option<PathBuf>,
 	pub is_saved: bool,
+	/// The document's live session, `None` when it is not shared.
+	#[serde(default)]
+	pub session: Option<SessionStatus>,
+}
+
+/// Whether a shared document is in its room right now.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SessionStatus {
+	Connected,
+	/// Shared, but the transport is down or the document is not mounted yet; it reconnects on mount.
+	Disconnected,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints, from_wasm_abi))]

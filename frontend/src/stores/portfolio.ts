@@ -37,6 +37,7 @@ const { subscribe, update } = store;
 export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
 export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
 export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
+export const sessionPanelLayout = makeLayoutStore("sessionPanelLayout");
 export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
 export const layersPanelControlBarRightLayout = makeLayoutStore("layersPanelControlBarRightLayout");
 export const layersPanelBottomBarLayout = makeLayoutStore("layersPanelBottomBarLayout");
@@ -145,6 +146,11 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(dataPanelLayout, data);
 	});
 
+	subscriptions.subscribeLayoutUpdate("SessionPanel", async (data) => {
+		await tick();
+		patchLayoutStore(sessionPanelLayout, data);
+	});
+
 	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", async (data) => {
 		await tick();
 		patchLayoutStore(layersPanelControlBarLeftLayout, data);
@@ -192,6 +198,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
+	subscriptions.unsubscribeLayoutUpdate("SessionPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");

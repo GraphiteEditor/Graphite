@@ -20,7 +20,7 @@ mod editor_commands {
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-	use editor::messages::portfolio::utility_types::PanelGroupId;
+	use editor::messages::portfolio::utility_types::{PanelGroupId, PanelType};
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
 	use graph_craft::document::NodeId;
@@ -268,6 +268,11 @@ mod editor_commands {
 			tab_index,
 		}
 		.into()
+	}
+
+	/// Bring a panel to the front, restoring it to its default position first when it is closed
+	fn focus_panel(panel_type: PanelType) -> Message {
+		WorkspaceMessage::FocusPanel { panel_type }.into()
 	}
 
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
