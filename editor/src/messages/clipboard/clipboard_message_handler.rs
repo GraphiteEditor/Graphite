@@ -62,21 +62,18 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					responses.add(ClipboardMessage::CopyLayers);
 				}
 			}
-			ClipboardMessage::Write { content } => {
-				let text = match content {
-					ClipboardContent::Svg(_) => {
-						log::error!("SVG copying is not yet supported");
-						return;
-					}
-					ClipboardContent::Image { .. } => {
-						log::error!("Image copying is not yet supported");
-						return;
-					}
-					ClipboardContent::Graphite(graphite) => format!("{CLIPBOARD_PREFIX}{graphite}"),
-					ClipboardContent::Text(text) => text,
-				};
-				responses.add(FrontendMessage::TriggerClipboardWrite { content: text });
-			}
+			ClipboardMessage::Write { content } => match content {
+				ClipboardContent::Image { .. } => {
+					log::error!("Image copying is not yet supported");
+				}
+				ClipboardContent::Graphite(graphite) => {
+					let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
+					responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
+				}
+				ClipboardContent::Text(graphite_json) => {
+					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string: None, graphite_json });
+				}
+			},
 
 			ClipboardMessage::CopyLayers => {
 				if current_tool == &ToolType::Path {
@@ -503,13 +500,21 @@ mod test {
 	}
 
 	/// Copies the layer selection and returns the written clipboard payload.
-	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> String {
-		editor
-			.handle_message(ClipboardMessage::CopyLayers)
-			.await
+	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> (Option<String>, String) {
+		editor.eval_graph().await.expect("graph should render");
+
+		// Avoiding another graph execution in the same runtime pass as the clipboard
+		// request by not using EditorTestUtils here.
+		editor.editor.handle_message(ClipboardMessage::CopyLayers);
+		editor.runtime.run().await;
+
+		let mut messages = VecDeque::new();
+		editor.editor.poll_node_graph_evaluation(&mut messages).expect("clipboard copy should complete");
+		messages
 			.into_iter()
+			.flat_map(|message| editor.editor.handle_message(message))
 			.find_map(|message| match message {
-				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+				FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json } => Some((svg_string, graphite_json)),
 				_ => None,
 			})
 			.expect("copying layers should write a payload to the clipboard")
@@ -533,7 +538,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers().await;
 
 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		let (svg_string, clipboard) = copy_layers_to_clipboard(&mut editor).await;
 		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
@@ -545,6 +550,12 @@ mod test {
 		for i in 0..=2 {
 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
+
+		assert!(
+			svg_string
+				.as_deref()
+				.is_some_and(|svg| svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>"))
+		);
 	}
 
 	#[cfg_attr(miri, ignore)]
@@ -561,7 +572,7 @@ mod test {
 		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
-		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		let (svg_string, clipboard) = copy_layers_to_clipboard(&mut editor).await;
 		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
@@ -573,6 +584,12 @@ mod test {
 		for i in 0..=2 {
 			assert_eq!(layers_before_copy[i], layers_after_copy[i + 1]);
 		}
+
+		assert!(
+			svg_string
+				.as_deref()
+				.is_some_and(|svg| svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>"))
+		);
 	}
 
 	#[cfg_attr(miri, ignore)]
@@ -598,7 +615,7 @@ mod test {
 				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 			})
 			.await;
-		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		let (svg_string, clipboard) = copy_layers_to_clipboard(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
 		editor.draw_rect(0., 800., 12., 200.).await;
 		paste_from_clipboard(&mut editor, &clipboard).await;
@@ -610,6 +627,11 @@ mod test {
 		assert_eq!(layers_after_copy.len(), 6);
 
 		assert_eq!(layers_after_copy[5], shape_id);
+		assert!(
+			svg_string
+				.as_deref()
+				.is_some_and(|svg| svg.starts_with("<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:graphite=\"https://graphite.art\"") && svg.ends_with("</svg>"))
+		);
 	}
 
 	/// A pasted `graphite:` payload re-registers the resources it carries into the active document.

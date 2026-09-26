@@ -57,7 +57,8 @@ pub enum DesktopFrontendMessage {
 	},
 	ClipboardRead,
 	ClipboardWrite {
-		content: String,
+		svg_string: Option<String>,
+		graphite_json: String,
 	},
 	PointerLock,
 	WindowClose,
