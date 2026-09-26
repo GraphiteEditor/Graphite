@@ -169,12 +169,20 @@ impl SweepAngleGizmo {
 
 		let bold_radius = final_point.distance(center);
 
-		let angle = initial_vector.angle_to(final_vector).to_degrees();
-		let display_angle = viewport
-			.inverse()
-			.transform_point2(final_point)
-			.angle_to(viewport.inverse().transform_point2(initial_point))
-			.to_degrees();
+		let angle = if initial_vector.length_squared() > 0. && final_vector.length_squared() > 0. {
+			initial_vector.angle_to(final_vector).to_degrees()
+		} else {
+			warn!("Cannot take angle for sweep gizmo");
+			return;
+		};
+		let initial_point_layer = viewport.inverse().transform_point2(initial_point);
+		let final_point_layer = viewport.inverse().transform_point2(final_point);
+		let display_angle = if initial_point_layer.length_squared() > 0. && final_point_layer.length_squared() > 0. {
+			final_point_layer.angle_to(initial_point_layer).to_degrees()
+		} else {
+			warn!("Cannot take angle for sweep gizmo");
+			return;
+		};
 
 		let text = format!("{}°", format_rounded(display_angle, 2));
 		const FONT_SIZE: f64 = 12.;
@@ -195,11 +203,13 @@ impl SweepAngleGizmo {
 		};
 
 		let viewport = document.metadata().transform_to_viewport(layer);
-		let angle_delta = viewport
-			.inverse()
-			.transform_point2(self.previous_mouse_position)
-			.angle_to(viewport.inverse().transform_point2(input.mouse.position))
-			.to_degrees();
+		let layer_previous_mouse = viewport.inverse().transform_point2(self.previous_mouse_position);
+		let layer_mouse = viewport.inverse().transform_point2(input.mouse.position);
+		let angle_delta = if layer_previous_mouse.length_squared() > 0. && layer_mouse.length_squared() > 0. {
+			layer_previous_mouse.angle_to(layer_mouse).to_degrees()
+		} else {
+			return;
+		};
 		let angle = self.total_angle_delta + angle_delta;
 
 		let Some(node_id) = graph_modification_utils::get_arc_id(layer, &document.network_interface) else {

@@ -450,27 +450,21 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	let in_segment = bezpath1.segments().last()?;
 	let out_segment = bezpath2.segments().next()?;
 
-	let in_tangent = pathseg_tangent(in_segment, 1.);
-	let out_tangent = pathseg_tangent(out_segment, 0.);
+	let in_tangent_normalized = pathseg_tangent(in_segment, 1.).try_normalize()?;
+	let out_tangent_normalized = pathseg_tangent(out_segment, 0.).try_normalize()?;
 
-	if in_tangent == DVec2::ZERO || out_tangent == DVec2::ZERO {
-		// Avoid panic from normalizing zero vectors
-		// TODO: Besides returning None, is there a more appropriate way to handle this?
-		return None;
-	}
-
-	let angle = (in_tangent * -1.).angle_to(out_tangent).abs();
+	let angle = (in_tangent_normalized * -1.).angle_to(out_tangent_normalized).abs();
 
 	if angle.to_degrees() < miter_limit {
 		return None;
 	}
 
 	let p1 = in_segment.end();
-	let p2 = point_to_dvec2(p1) + in_tangent.normalize();
+	let p2 = point_to_dvec2(p1) + in_tangent_normalized;
 	let line1 = Line::new(p1, dvec2_to_point(p2));
 
 	let p1 = out_segment.start();
-	let p2 = point_to_dvec2(p1) + out_tangent.normalize();
+	let p2 = point_to_dvec2(p1) + out_tangent_normalized;
 	let line2 = Line::new(p1, dvec2_to_point(p2));
 
 	// If we don't find the intersection point to draw the miter join, we instead default to a bevel join.
@@ -512,12 +506,17 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	let center_to_left = left - center;
 
 	let in_segment = bezpath1.segments().last();
-	let in_tangent = in_segment.map(|in_segment| pathseg_tangent(in_segment, 1.));
+	let in_tangent = in_segment.and_then(|in_segment| pathseg_tangent(in_segment, 1.).try_normalize());
 
-	let mut angle = center_to_right.angle_to(center_to_left) / 2.;
+	let mut angle = if center_to_right.length_squared() > 0. && center_to_left.length_squared() > 0. {
+		center_to_right.angle_to(center_to_left) / 2.
+	} else {
+		warn!("round line join with zero length vectors");
+		0.
+	};
 	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-	if in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > FRAC_PI_2 {
+	if arc_point.distance_squared(left) > 0. && in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > FRAC_PI_2 {
 		angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 		arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 	}

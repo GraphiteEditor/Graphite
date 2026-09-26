@@ -303,12 +303,11 @@ impl SelectedEdges {
 
 /// Aligns the mouse position to the closest axis. The `axis_constraint`, if nonzero, is a unit vector along which dragging is constrained (e.g. the compass rose's local axis direction).
 pub fn axis_align_drag(axis_align: bool, axis_constraint: DVec2, position: DVec2, start: DVec2) -> DVec2 {
+	let mouse_position = position - start;
 	// An explicit axis constraint (the compass rose's local axis) takes priority over the screen-space angle snapping
 	if axis_constraint != DVec2::ZERO {
-		let mouse_position = position - start;
 		start + axis_constraint * mouse_position.dot(axis_constraint)
-	} else if axis_align {
-		let mouse_position = position - start;
+	} else if axis_align && mouse_position.length_squared() > 0. {
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 		let angle = -mouse_position.angle_to(DVec2::X);
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;

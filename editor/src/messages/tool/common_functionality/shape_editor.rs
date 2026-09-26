@@ -1150,14 +1150,20 @@ impl ShapeState {
 				let other_handles = if matches!(point, ManipulatorPointId::Anchor(_)) {
 					point.get_handle_pair(&vector)
 				} else {
+					let Some(anchor) = point.get_anchor_position(&vector) else { continue };
+					let Some(orig_handle_pos) = point.get_position(&vector) else { continue };
+
 					point.get_all_connected_handles(&vector).and_then(|handles| {
 						let mut non_colinear_handles = handles.iter().filter(|&handle| !is_handle_colinear(*handle)).clone().collect::<Vec<_>>();
 
+						// Skip handles with no position or with the same position as the anchor
+						non_colinear_handles.retain(|&handle| {
+							let Some(handle) = handle.to_manipulator_point().get_position(&vector) else { return false };
+							(handle - anchor).length_squared() > 0.
+						});
+
 						// Sort these by angle from the current handle
 						non_colinear_handles.sort_by(|&handle_a, &handle_b| {
-							let anchor = point.get_anchor_position(&vector).expect("No anchor position for handle");
-							let orig_handle_pos = point.get_position(&vector).expect("No handle position");
-
 							let a_pos = handle_a.to_manipulator_point().get_position(&vector).expect("No handle position");
 							let b_pos = handle_b.to_manipulator_point().get_position(&vector).expect("No handle position");
 
@@ -1929,12 +1935,19 @@ impl ShapeState {
 				}
 
 				if let Some(other_handles) = point.get_all_connected_handles(&vector) {
+					let Some(anchor) = point.get_anchor_position(&vector) else { continue };
+					let Some(orig_handle_pos) = point.get_position(&vector) else { continue };
+
 					// Find the next closest handle in the clockwise sense
 					let mut candidates = other_handles.clone();
-					candidates.sort_by(|&handle_a, &handle_b| {
-						let anchor = point.get_anchor_position(&vector).expect("No anchor position for handle");
-						let orig_handle_pos = point.get_position(&vector).expect("No handle position");
 
+					// Skip handles with no position or with the same position as the anchor
+					candidates.retain(|&handle| {
+						let Some(handle) = handle.to_manipulator_point().get_position(&vector) else { return false };
+						(handle - anchor).length_squared() > 0.
+					});
+
+					candidates.sort_by(|&handle_a, &handle_b| {
 						let a_pos = handle_a.to_manipulator_point().get_position(&vector).expect("No handle position");
 						let b_pos = handle_b.to_manipulator_point().get_position(&vector).expect("No handle position");
 
