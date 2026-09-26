@@ -14,21 +14,21 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 	editorWrapper = editor;
 	portfolioStore = portfolio;
 
-	subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
-		await saveEditorPreferences(data.preferences);
-	});
+	// Run persistence operations in request order
+	let tail: Promise<void> = Promise.resolve();
+	const enqueue = (operation: () => Promise<void>): Promise<void> => {
+		const next = tail.then(operation);
+		tail = next.catch(() => undefined);
+		return next;
+	};
 
-	subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", async () => {
-		await loadEditorPreferences(editor);
-	});
+	subscriptions.subscribeFrontendMessage("TriggerSavePreferences", (data) => enqueue(() => saveEditorPreferences(data.preferences)));
 
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteState", async (data) => {
-		await writePersistedState(data.state);
-	});
+	subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", () => enqueue(() => loadEditorPreferences(editor)));
 
-	subscriptions.subscribeFrontendMessage("TriggerPersistenceReadState", async () => {
-		await readPersistedState(editor);
-	});
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteState", (data) => enqueue(() => writePersistedState(data.state)));
+
+	subscriptions.subscribeFrontendMessage("TriggerPersistenceReadState", () => enqueue(() => readPersistedState(editor)));
 
 	subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch

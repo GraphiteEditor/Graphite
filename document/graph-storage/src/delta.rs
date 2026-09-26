@@ -218,7 +218,7 @@ fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) ->
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Attributes, ExportSlot, Network, Node, NodeInput, TimeStamp};
+	use crate::{Attributes, ExportSlot, Network, Node, NodeInput, TimeStamp, Value};
 
 	#[test]
 	fn test_compute_deltas_empty() {
@@ -304,11 +304,7 @@ mod tests {
 		from.networks.insert(NetworkId(0), Network::default());
 
 		let mut to = from.clone();
-		to.networks
-			.get_mut(&NetworkId(0))
-			.unwrap()
-			.attributes
-			.set("ui::nav::width", serde_json::json!(640.0), TimeStamp::ORIGIN);
+		to.networks.get_mut(&NetworkId(0)).unwrap().attributes.set("ui::nav::width", Value::Float(640.), TimeStamp::ORIGIN);
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1, "a changed per-network attribute must emit one delta");
@@ -341,8 +337,8 @@ mod tests {
 		let stamp = |counter: u64| TimeStamp { counter, peer: crate::PeerId(0) };
 		node.attributes.insert(
 			"test".to_string(),
-			crate::Value {
-				value: serde_json::json!("old"),
+			crate::AttributeValue {
+				value: Value::Str("old".into()),
 				timestamp: stamp(0),
 			},
 		);
@@ -351,8 +347,8 @@ mod tests {
 		let mut to = from.clone();
 		to.node_instances.get_mut(&NodeId(42)).unwrap().attributes.insert(
 			"test".to_string(),
-			crate::Value {
-				value: serde_json::json!("new"),
+			crate::AttributeValue {
+				value: Value::Str("new".into()),
 				timestamp: stamp(1),
 			},
 		);
@@ -376,8 +372,8 @@ mod tests {
 		let mut to = from.clone();
 		to.attributes.insert(
 			"doc::test_attribute".to_string(),
-			crate::Value {
-				value: serde_json::json!("value"),
+			crate::AttributeValue {
+				value: Value::Str("value".into()),
 				timestamp: stamp(1),
 			},
 		);

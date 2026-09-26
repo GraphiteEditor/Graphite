@@ -4,7 +4,7 @@ use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
-use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp};
+use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
 use document_graph_storage::{convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::NodeId;
@@ -168,7 +168,7 @@ impl EditorDelta {
 					id: context.resolver.node_id(network_path, *node_id),
 					delta: AttributeDelta {
 						key: node_attr::VISIBLE.to_string(),
-						value: (!visible).then_some(serde_json::Value::Bool(false)),
+						value: (!visible).then_some(Value::Bool(false)),
 					},
 				});
 			}
@@ -279,7 +279,7 @@ impl EditorDelta {
 				let delta = match change {
 					NetworkMetadataChange::Reference(reference) => AttributeDelta {
 						key: node_attr::ui::REFERENCE.to_string(),
-						value: reference.clone().map(serde_json::Value::String),
+						value: reference.clone().map(Value::Str),
 					},
 					NetworkMetadataChange::PinnedOrder(order) => {
 						let stored: Vec<_> = order.iter().map(|node_id| context.resolver.node_id(network_path, *node_id)).collect();
@@ -301,8 +301,8 @@ impl EditorDelta {
 	}
 }
 
-fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<serde_json::Value, ConversionError> {
-	serde_json::to_value(value).map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
+fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<Value, ConversionError> {
+	document_graph_storage::to_value(value).map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
 }
 
 /// The attribute writes one metadata field makes, as the whole-document encoder would write them.
@@ -310,11 +310,11 @@ fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<serd
 /// A field set back to its unset value clears the attribute, since absence is how that encoder spells
 /// unset. Clearing rather than writing a sentinel keeps the two paths producing the same registry.
 fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMetadataChange) -> Result<Vec<RegistryDelta>, ConversionError> {
-	let node_attribute = |key: &str, value: Option<serde_json::Value>| RegistryDelta::ChangeNodeAttribute {
+	let node_attribute = |key: &str, value: Option<Value>| RegistryDelta::ChangeNodeAttribute {
 		id: global_id,
 		delta: AttributeDelta { key: key.to_string(), value },
 	};
-	let input_attribute = |key: &str, index: usize, value: Option<serde_json::Value>| {
+	let input_attribute = |key: &str, index: usize, value: Option<Value>| {
 		Ok::<_, ConversionError>(RegistryDelta::ChangeNodeInputAttribute {
 			id: global_id,
 			index: index.try_into().map_err(|_| ConversionError::IndexOverflow(index))?,
@@ -323,8 +323,8 @@ fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMet
 	};
 
 	// The empty string is the runtime's own sentinel for an unset name
-	let flag = |value: bool| value.then_some(serde_json::Value::Bool(true));
-	let non_empty = |value: &str| (!value.is_empty()).then(|| serde_json::Value::String(value.to_string()));
+	let flag = |value: bool| value.then_some(Value::Bool(true));
+	let non_empty = |value: &str| (!value.is_empty()).then(|| Value::Str(value.to_string()));
 	Ok(match change {
 		NodeMetadataChange::NodeType(node_type) => {
 			let position = position_from_runtime(node_type);
@@ -490,7 +490,7 @@ fn construct_metadata_snapshot(
 			nested_path.push(id);
 			let network_id = resolver.network_id(&nested_path);
 
-			let target = network_metadata.persistent_metadata.reference.clone().map(serde_json::Value::String);
+			let target = network_metadata.persistent_metadata.reference.clone().map(Value::Str);
 			// Read through the batch rather than the pre-batch registry: a `ReplaceNode` earlier in this
 			// batch rebuilds the network without a reference, so comparing against the old state would
 			// suppress the write and leave the rebuilt network missing it.
@@ -819,8 +819,10 @@ impl NodeMetadataSource for InputMetadataSource<'_> {
 		self.persistent(input_index)?.widget_override.as_deref()
 	}
 
-	fn input_data(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> HashMap<String, serde_json::Value> {
-		self.persistent(input_index).map(|metadata| metadata.input_data.clone()).unwrap_or_default()
+	fn input_data(&self, _network_path: &[NodeId], _local_id: NodeId, input_index: usize) -> HashMap<String, Value> {
+		self.persistent(input_index)
+			.map(|metadata| metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
+			.unwrap_or_default()
 	}
 }
 
@@ -910,10 +912,10 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 			.and_then(|input| input.persistent_metadata.widget_override.as_deref())
 	}
 
-	fn input_data(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, serde_json::Value> {
+	fn input_data(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, Value> {
 		self.metadata_for(metadata_path, node_id)
 			.and_then(|metadata| metadata.input_metadata.get(input_index))
-			.map(|input| input.persistent_metadata.input_data.clone())
+			.map(|input| input.persistent_metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
 			.unwrap_or_default()
 	}
 

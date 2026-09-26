@@ -72,15 +72,17 @@ Library import (how `.gdd` files reference each other and surface library nodes)
 All metadata that is not structural lives in a single `Attributes` bucket per node, per input, and at the document level. That covers node positions, display names, `call_argument` overrides, visibility, `context_features`, locked/pinned flags, input type hints, and reflection metadata.
 
 ```rs
-pub struct Value {
-    pub value: serde_json::Value,
+pub struct AttributeValue {
+    pub value: Value,
     pub timestamp: TimeStamp,
 }
 
-pub type Attributes = BTreeMap<String, Value>;
+pub type Attributes = BTreeMap<String, AttributeValue>;
 ```
 
 Keys carry a namespace where one applies, mostly the `ui::*` editor-metadata keys (`ui::position`, `ui::display_name`, and so on). Compute fields use bare keys (`call_argument`, `context_features`, `original_node_id`). Values are JSON, and the per-value `TimeStamp` drives LWW on concurrent edits.
+
+`Value` mirrors `serde_json::Value` (null, bool, integer, float, string, array, object). In JSON it serializes untagged, exactly like `serde_json::Value`; in binary codecs each variant carries a tag, so the type-erased leaves survive a codec that is not self-describing. Every other type-erased slot in the format (`NodeInput::Value`, resource source bodies, `RegistryDelta::Other`) uses the same type.
 
 Type-erasure exists for migrations: storage data can be transformed without keeping old Rust struct shapes alive just to deserialize them.
 
@@ -103,18 +105,18 @@ pub enum RegistryDelta {
     RegisterPeer            { peer: PeerId, user: UserId },             // self-inverse; see below
     // Resources (incl. proto-node declarations):
     SetResourceHash { id: ResourceId, hash: Option<ResourceHash> },     // LWW on the resolved hash
-    AddSource       { id: ResourceId, key: SourceKey, source: serde_json::Value },  // insert/LWW entry in the source chain
+    AddSource       { id: ResourceId, key: SourceKey, source: Value },  // insert/LWW entry in the source chain
     RemoveSource    { id: ResourceId, key: SourceKey },
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
     Merge           { extra_parents: Vec<Rev> },                        // joins divergent tips; registry no-op
-    Other(serde_json::Value),                                           // forward-compatible escape hatch
+    Other(Value),                                                      // forward-compatible escape hatch
 }
 
 /// `value: None` is the removal case. Timestamp lives on the wrapping `Delta`.
 pub struct AttributeDelta {
     pub key: String,
-    pub value: Option<serde_json::Value>,
+    pub value: Option<Value>,
 }
 ```
 
@@ -264,8 +266,8 @@ Arrows mean "depends on". The editor uses `Session` from `document-graph-storage
 A document contains:
 
 - `manifest.json` is always JSON, the bootstrap file. It carries the magic identifier `"gdd"` (the `format` field), a single `u32` `format_version`, a `document_id`, the editor and stdlib versions, and the per-payload codec table (`codecs`). It deliberately omits per-peer state: the saving peer's `PeerId` and the history cursor live in the session payload, not the manifest, so they travel with the local view rather than the shared document.
-- `registry.{json,bin}` is the serialized `Registry`. The codec is fixed per payload and recorded in the manifest (JSON for inspectable, MessagePack for compact, and binary must be self-describing, as the codec rationale explains). Export reuses the working copy's recorded codecs rather than re-encoding.
-- `history.{jsonl,frames}` is the serialized retired delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed MessagePack frames, the prefix guarding against a torn final frame from a crash.
+- `registry.{json,bin}` is the serialized `Registry`. The codec is fixed per payload and recorded in the manifest (JSON for inspectable, postcard for compact, as the codec rationale explains). Export reuses the working copy's recorded codecs rather than re-encoding.
+- `history.{jsonl,frames}` is the serialized retired delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed postcard frames, the prefix guarding against a torn final frame from a crash.
 - `hot-log.{jsonl,frames}` is the un-retired hot ops, persisted as a sidecar for crash recovery and GC'd at retirement.
 - `session.{json,bin}` is per-peer local state: this peer's `PeerId`, the history cursor (`head_rev`), the redo stack, `last_broadcast_rev`, and view settings. It is local-view state, not part of the shared document.
 - `resources/<hash>` is embedded resource bytes, keyed by `ResourceHash`.
@@ -273,15 +275,15 @@ A document contains:
 The folder backend stores these as plain files on disk, and an archive codec packs the same named entries into a single file.
 
 ```
-            my-doc.gdd/
-            ├── manifest.json
-            ├── registry.json
-            ├── history.jsonl
-            ├── hot-log.jsonl
-            ├── session.json
-            └── resources/
-                ├── 7f3a...
-                └── 2c91...
+my-doc.gdd/
+├── manifest.json
+├── registry.json
+├── history.jsonl
+├── hot-log.jsonl
+├── session.json
+└── resources/
+    ├── 7f3a...
+    └── 2c91...
 ```
 
 The `Gdd` handle owns the loaded bytes and exposes them as zero-copy slices. On the folder backend, reads are direct mmap references, while loading from an archive decompresses once on open into an in-memory backend. The working copy is mutated continuously (autosave), and `export(dest, format, options, byte_store)` produces a separate artifact through an `ExportFormat` (`Folder`/`Zip`/`Xz`) without mutating the handle.
@@ -302,20 +304,20 @@ pub struct ResourceEntry {
 }
 
 pub struct SourceKey   { pub priority: Priority, pub peer: PeerId }  // fractional priority + peer tiebreak
-pub struct SourceValue { pub source: serde_json::Value, pub timestamp: TimeStamp }
+pub struct SourceValue { pub source: Value, pub timestamp: TimeStamp }
 ```
 
 A node references a resource by `ResourceId`. The entry maps it to a chain of `DataSource`s tried in order (`Embedded` bytes by hash, `FilePath`, `Url`, `Font`) plus the resolved `ResourceHash`. The chain is an **ordered LWW-element-set** keyed by `SourceKey`: each key carries a fractional `Priority` so a peer can insert between two sources without renumbering, and concurrent insertions at the same priority get distinct keys via the `PeerId` tiebreak. Distinct-key adds (the normal cross-peer case) therefore all survive. A same-key add versus remove resolves by LWW on the per-`Delta` timestamp rather than add-wins, so there are no tombstones, and causal delivery linearizes an add and its later removal. The `hash` is **LWW** (content-derived, so concurrent resolves agree by construction).
 
-Each `DataSource` is stored as `serde_json::Value` rather than a typed enum, with the same motivation as the `Attributes` bucket: type-erasure lets migrations restructure variants without keeping old enum shapes alive. `DataSource` stays typed at the runtime layer, and conversion happens at the serialization boundary. Unknown variants are a hard error on load.
+Each `DataSource` is stored as `Value` rather than a typed enum, with the same motivation as the `Attributes` bucket: type-erasure lets migrations restructure variants without keeping old enum shapes alive. `DataSource` stays typed at the runtime layer, and conversion happens at the serialization boundary. Unknown variants are a hard error on load.
 
-**Declarations as resources.** `Implementation::ProtoNode(ResourceId)` references a declaration resource. `from_runtime` serializes each `ProtoNode` through a self-describing `serde_json::Value` (MessagePack-encoded, via `encode_declaration`), hashes the bytes, derives the `ResourceId` from that hash, and registers a `DataSource::Embedded` entry, with the bytes going to the caller's byte store. (Deriving the ID from the hash is a deterministic bootstrap. A future stable well-known-ID table would let the ID denote the function.) `to_runtime` resolves declarations back via a `Declarations` map (`ResourceId` to `ProtoNode`) that the caller builds from its byte store. The self-describing form keeps `ProtoNode`'s serde aliases working so the on-disk shape stays migratable.
+**Declarations as resources.** `Implementation::ProtoNode(ResourceId)` references a declaration resource. `from_runtime` serializes each `ProtoNode` through a self-describing `serde_json::Value` stored as a postcard-encoded `Value` (via `encode_declaration`), hashes the bytes, derives the `ResourceId` from that hash, and registers a `DataSource::Embedded` entry, with the bytes going to the caller's byte store. (Deriving the ID from the hash is a deterministic bootstrap. A future stable well-known-ID table would let the ID denote the function.) `to_runtime` resolves declarations back via a `Declarations` map (`ResourceId` to `ProtoNode`) that the caller builds from its byte store. The self-describing form keeps `ProtoNode`'s serde aliases working so the on-disk shape stays migratable.
 
-A `NodeInput::Value` stores its `TaggedValue` as a self-describing `serde_json::Value` (the same type-erasure as `Attributes` and `DataSource`), so the `TaggedValue` serde aliases keep working and the on-disk shape stays migratable. Legacy documents with inline image `TaggedValue`s have those values extracted into resources at load time, and new saves never embed inline image blobs in `NodeInput::Value`.
+A `NodeInput::Value` stores its `TaggedValue` as a `Value` (the same type-erasure as `Attributes` and `DataSource`), so the `TaggedValue` serde aliases keep working and the on-disk shape stays migratable. Legacy documents with inline image `TaggedValue`s have those values extracted into resources at load time, and new saves never embed inline image blobs in `NodeInput::Value`.
 
 ## Migrations
 
-Migrations run on the type-erased `Registry`, after deserialization and before `to_runtime`. The pipeline reads the format version from the manifest, deserializes the registry with attributes as raw `serde_json::Value`, applies registered migrations scoped to the version range, and hands the result to `to_runtime`.
+Migrations run on the type-erased `Registry`, after deserialization and before `to_runtime`. The pipeline reads the format version from the manifest, deserializes the registry with attributes as raw `Value`, applies registered migrations scoped to the version range, and hands the result to `to_runtime`.
 
 Migrations live in a dedicated crate so they are usable both from the editor and from a CLI for batch upgrades. A single global format version is used initially, and per-library versioning is a future extension.
 
@@ -364,7 +366,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 # Drawbacks
 
 - **Diffing two full `Registry`s on every autosave is O(N) in document size.** This is the interim cost of treating storage as a serialization layer derived from the runtime. It is currently triggered at autosave boundaries (`commit_storage_snapshot`) rather than per gesture, and addressed long-term by computing deltas directly on runtime mutations.
-- **Attributes as `serde_json::Value` carry per-value overhead.** This is mitigable with a typed fast path for hot keys without changing the design. They also force a self-describing codec, ruling out the most compact binary formats.
+- **Attributes as `Value` carry per-value overhead.** This is mitigable with a typed fast path for hot keys without changing the design.
 - **Single global format version is a sharp edge** when libraries diverge: a breaking change in one library bumps the version for documents that do not use it.
 - **`RemoveNode` is non-durable under concurrency.** Any concurrent reference to a removed node revives it from history.
 
@@ -384,7 +386,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **`.gdd` vs. reusing `.graphite`.** A distinct extension makes migration unambiguous and prevents older Graphite versions from trying to open a new-format file.
 
-**One self-describing binary codec (MessagePack).** The persisted bodies (the registry, the history of deltas, and the `ProtoNode` declaration resources) serialize as their typed Rust shapes, but each carries type-erased `serde_json::Value` leaves: attribute values, `NodeInput::Value` payloads, and resource source bodies. Those leaves need a self-describing codec to deserialize and to keep the serde-alias migration path alive, which forces the same requirement on the whole payload. MessagePack provides that at a few percent size cost. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
+**One binary codec (postcard) with tagged type-erased leaves.** The persisted bodies (the registry, the history of deltas, and the `ProtoNode` declaration resources) serialize as their typed Rust shapes: varint variant indices, positional fields, no names. Each carries type-erased leaves (attribute values, `NodeInput::Value` payloads, resource source bodies) as `Value`, a tagged mirror of `serde_json::Value`, so the leaves stay self-describing and the serde-alias migration path (through `serde_json::Value`) stays alive without forcing a self-describing codec on the whole payload. Variant order is part of the format: reordering an enum changes its tags. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
 
 **Source chain as a sorted `Vec` vs. `BTreeMap`.** `SourceKey` is a struct, so a `BTreeMap`-keyed chain cannot serialize to JSON (string keys only). A sorted `Vec` of pairs keeps the same ordering and per-key LWW semantics losslessly across every codec.
 

@@ -1,7 +1,7 @@
 //! End-to-end storage round-trip tests: drive real edits through the editor, push the document
 //! through a fresh in-memory `Gdd` (stage → retire → persist), reopen from the same container, and
 //! assert the reopened document matches. Exercises the full persistence pipeline (conversion,
-//! MessagePack codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
+//! postcard codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
 //! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
 
 use document_container::AnyContainer;

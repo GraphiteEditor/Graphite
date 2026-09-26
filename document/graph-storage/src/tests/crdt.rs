@@ -4,7 +4,7 @@ use graph_craft::concrete;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 
 use crate::InputSlot;
-use crate::{Delta, Document, HotOp, Network, NetworkId, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, RegistryDelta, RegistryTarget, Session, TimeStamp};
+use crate::{Delta, Document, HotOp, Network, NetworkId, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, RegistryDelta, RegistryTarget, Session, TimeStamp, Value};
 
 fn fresh_document(peer: PeerId) -> Document {
 	Session::with_peer(peer).document
@@ -161,7 +161,7 @@ fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
 		delta: crate::AttributeDelta {
 			key: key.to_string(),
-			value: Some(serde_json::json!(value)),
+			value: Some(Value::Int(value.into())),
 		},
 	}
 }
@@ -455,7 +455,7 @@ fn concurrent_source_adds_at_distinct_priorities_both_survive() {
 			RD::AddSource {
 				id,
 				key: source_key(0.5, 1),
-				source: serde_json::json!("embedded"),
+				source: Value::Str("embedded".into()),
 			},
 			ts(1, 1),
 		)
@@ -465,7 +465,7 @@ fn concurrent_source_adds_at_distinct_priorities_both_survive() {
 			RD::AddSource {
 				id,
 				key: source_key(0.75, 2),
-				source: serde_json::json!("url"),
+				source: Value::Str("url".into()),
 			},
 			ts(1, 2),
 		)
@@ -475,7 +475,7 @@ fn concurrent_source_adds_at_distinct_priorities_both_survive() {
 	assert_eq!(entry.sources.len(), 2, "both concurrent additions survive");
 	// The chain iterates in priority order.
 	let bodies: Vec<_> = entry.sources.iter().map(|(_, v)| v.source.clone()).collect();
-	assert_eq!(bodies, vec![serde_json::json!("embedded"), serde_json::json!("url")]);
+	assert_eq!(bodies, vec![Value::Str("embedded".into()), Value::Str("url".into())]);
 }
 
 /// Re-adding the same source key is LWW on its timestamp: a later write wins, an earlier one is ignored.
@@ -490,7 +490,7 @@ fn same_source_key_is_last_writer_wins() {
 			RD::AddSource {
 				id,
 				key,
-				source: serde_json::json!("old"),
+				source: Value::Str("old".into()),
 			},
 			ts(5, 1),
 		)
@@ -501,7 +501,7 @@ fn same_source_key_is_last_writer_wins() {
 			RD::AddSource {
 				id,
 				key,
-				source: serde_json::json!("stale"),
+				source: Value::Str("stale".into()),
 			},
 			ts(2, 1),
 		)
@@ -512,14 +512,14 @@ fn same_source_key_is_last_writer_wins() {
 			RD::AddSource {
 				id,
 				key,
-				source: serde_json::json!("new"),
+				source: Value::Str("new".into()),
 			},
 			ts(9, 1),
 		)
 		.unwrap();
 
 	let entry = document.working_registry.resources.get(&id).unwrap();
-	assert_eq!(entry.source(&key).unwrap().source, serde_json::json!("new"));
+	assert_eq!(entry.source(&key).unwrap().source, Value::Str("new".into()));
 }
 
 /// SetResourceHash is LWW on the hash; a later resolve wins, an earlier one is ignored.
@@ -551,14 +551,14 @@ fn remove_source_reverse_restores_prior() {
 		RD::AddSource {
 			id,
 			key,
-			source: serde_json::json!("kept"),
+			source: Value::Str("kept".into()),
 		},
 	);
 
 	// Compute the reverse while the body is still present, then apply the removal.
 	let reverse = document.compute_reverse_delta(RegistryTarget::Working, &RD::RemoveSource { id, key }).unwrap();
 	match &reverse {
-		RD::AddSource { source, .. } => assert_eq!(*source, serde_json::json!("kept"), "reverse of removal re-adds the body"),
+		RD::AddSource { source, .. } => assert_eq!(*source, Value::Str("kept".into()), "reverse of removal re-adds the body"),
 		other => panic!("expected AddSource reverse, got {other:?}"),
 	}
 
@@ -567,7 +567,7 @@ fn remove_source_reverse_restores_prior() {
 
 	// Applying the reverse restores the chain.
 	document.apply_op(reverse, ts(6, 1)).unwrap();
-	assert_eq!(document.working_registry.resources.get(&id).unwrap().source(&key).unwrap().source, serde_json::json!("kept"));
+	assert_eq!(document.working_registry.resources.get(&id).unwrap().source(&key).unwrap().source, Value::Str("kept".into()));
 }
 
 /// AddSource on a fresh slot reverses to a RemoveSource; on an occupied slot it restores the prior body.
@@ -584,7 +584,7 @@ fn add_source_reverse_depends_on_prior_state() {
 			&RD::AddSource {
 				id,
 				key,
-				source: serde_json::json!("first"),
+				source: Value::Str("first".into()),
 			},
 		)
 		.unwrap();
@@ -596,7 +596,7 @@ fn add_source_reverse_depends_on_prior_state() {
 			RD::AddSource {
 				id,
 				key,
-				source: serde_json::json!("existing"),
+				source: Value::Str("existing".into()),
 			},
 			ts(1, 1),
 		)
@@ -607,12 +607,12 @@ fn add_source_reverse_depends_on_prior_state() {
 			&RD::AddSource {
 				id,
 				key,
-				source: serde_json::json!("overwrite"),
+				source: Value::Str("overwrite".into()),
 			},
 		)
 		.unwrap();
 	match reverse_overwrite {
-		RD::AddSource { source, .. } => assert_eq!(source, serde_json::json!("existing"), "reverse restores prior body"),
+		RD::AddSource { source, .. } => assert_eq!(source, Value::Str("existing".into()), "reverse restores prior body"),
 		other => panic!("expected AddSource reverse, got {other:?}"),
 	}
 }
@@ -621,7 +621,7 @@ fn add_source_reverse_depends_on_prior_state() {
 
 use crate::{ResourceEntry, ResourceStore, SourceValue};
 
-fn entry_with_source(priority: f64, peer: u64, body: serde_json::Value, hash: Option<ResourceHash>) -> ResourceEntry {
+fn entry_with_source(priority: f64, peer: u64, body: Value, hash: Option<ResourceHash>) -> ResourceEntry {
 	ResourceEntry {
 		sources: vec![(source_key(priority, peer), SourceValue { source: body, timestamp: ts(1, peer) })],
 		hash,
@@ -640,10 +640,10 @@ fn compute_deltas_ignores_unchanged_resources() {
 	let hash = ResourceHash::from(&b"img"[..]);
 
 	let mut from = ResourceStore::new();
-	from.insert(id, entry_with_source(0.0, 1, serde_json::json!("embedded"), Some(hash)));
+	from.insert(id, entry_with_source(0.0, 1, Value::Str("embedded".into()), Some(hash)));
 	// Same value, different timestamps: must not count as a change.
 	let mut to = ResourceStore::new();
-	let mut to_entry = entry_with_source(0.0, 1, serde_json::json!("embedded"), Some(hash));
+	let mut to_entry = entry_with_source(0.0, 1, Value::Str("embedded".into()), Some(hash));
 	to_entry.hash_timestamp = ts(99, 2);
 	to_entry.sources.iter_mut().for_each(|(_, v)| v.timestamp = ts(99, 2));
 	to.insert(id, to_entry);
@@ -663,22 +663,22 @@ fn compute_deltas_diffs_resources_and_round_trips() {
 	let hash_new = ResourceHash::from(&b"new"[..]);
 
 	let mut from = ResourceStore::new();
-	from.insert(kept, entry_with_source(0.0, 1, serde_json::json!("embedded"), Some(hash_old)));
-	from.insert(removed, entry_with_source(0.0, 1, serde_json::json!("gone"), None));
+	from.insert(kept, entry_with_source(0.0, 1, Value::Str("embedded".into()), Some(hash_old)));
+	from.insert(removed, entry_with_source(0.0, 1, Value::Str("gone".into()), None));
 
 	let mut to = ResourceStore::new();
 	// `kept`: hash changes and a second source is added.
-	let mut kept_entry = entry_with_source(0.0, 1, serde_json::json!("embedded"), Some(hash_new));
+	let mut kept_entry = entry_with_source(0.0, 1, Value::Str("embedded".into()), Some(hash_new));
 	kept_entry.set_source(
 		source_key(1.0, 1),
 		SourceValue {
-			source: serde_json::json!("url"),
+			source: Value::Str("url".into()),
 			timestamp: ts(1, 1),
 		},
 	);
 	to.insert(kept, kept_entry);
 	// `added`: brand new resource.
-	to.insert(added, entry_with_source(0.0, 1, serde_json::json!("fresh"), None));
+	to.insert(added, entry_with_source(0.0, 1, Value::Str("fresh".into()), None));
 
 	let deltas = crate::delta::compute_deltas(&registry_with_resources(from.clone()), &registry_with_resources(to.clone()));
 
@@ -811,7 +811,7 @@ fn embed_resource_sources_preserves_unretired_hot_ops() {
 /// ordered (`BTreeMap`): a hash-randomized map would give the same logical delta different `Rev`s.
 #[test]
 fn add_node_rev_is_independent_of_attribute_insertion_order() {
-	use crate::{AttributesWrite, Implementation, Value};
+	use crate::{AttributeValue, AttributesWrite, Implementation};
 
 	let keys = ["ui::position", "ui::display_name", "ui::locked", "ui::pinned", "call_argument", "context_features"];
 
@@ -821,12 +821,12 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	let make_node = |insertion_order: &[&str]| {
 		let mut attributes = crate::Attributes::new();
 		for &key in insertion_order {
-			attributes.set(key, serde_json::json!(key), TimeStamp::ORIGIN);
+			attributes.set(key, Value::Str(key.to_string()), TimeStamp::ORIGIN);
 		}
 
 		let mut input_attributes = crate::Attributes::new();
 		for &key in insertion_order {
-			input_attributes.insert(key.to_string(), Value::new(serde_json::json!(key), TimeStamp::ORIGIN));
+			input_attributes.insert(key.to_string(), AttributeValue::new(Value::Str(key.to_string()), TimeStamp::ORIGIN));
 		}
 
 		let inputs = vec![InputSlot {
