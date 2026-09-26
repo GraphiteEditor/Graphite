@@ -45,6 +45,8 @@ pub struct SyncMessageHandler {
 	decoding: HashSet<(DocumentId, ResourceHash)>,
 	/// The pointer position last sent for each connected document, so one is sent only when it moved.
 	last_cursor: HashMap<DocumentId, Option<[f64; 2]>>,
+	/// When each document whose transport went down is next to be reconnected.
+	reconnect_at: HashMap<DocumentId, f64>,
 }
 
 #[message_handler_data]
@@ -118,6 +120,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				gdd.leave();
 				self.incoming.remove(&document_id);
 				self.last_cursor.remove(&document_id);
+				self.reconnect_at.remove(&document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::Fork => {
@@ -149,13 +152,14 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				// the panel shows it disconnected and offers to reconnect, and a reopen reconnects on its own.
 				if let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) {
 					gdd.disconnect();
+					self.reconnect_at.insert(document_id, now_ms() + RECONNECT_AFTER_MS);
 				}
 				self.incoming.remove(&document_id);
 				self.last_cursor.remove(&document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::RefreshPanel => {
-				let layout = session_panel_layout(documents, active_document_id, &preferences.user_name);
+				let layout = session_panel_layout(documents, active_document_id, preferences);
 				responses.add(LayoutMessage::SendLayout {
 					layout,
 					layout_target: LayoutTarget::SessionPanel,
@@ -181,6 +185,16 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 						&& let Err(error) = gdd.retire_due(now_ms(), idle)
 					{
 						log::error!("Retirement failed: {error}");
+					}
+					// A document whose transport went down tries again after a pause, for as long as it is meant to be shared.
+					if self.reconnect_at.get(&document_id).is_some_and(|&due| now_ms() >= due)
+						&& let Some(gdd) = document.storage_mut()
+					{
+						self.reconnect_at.remove(&document_id);
+						if gdd.is_shared() && gdd.role().is_none() {
+							log::info!("Reconnecting {document_id:?} to its session");
+							self.connect_document(document_id, gdd, preferences, responses);
+						}
 					}
 					if document.storage().is_none_or(|gdd| gdd.role().is_none()) {
 						continue;
@@ -316,6 +330,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				}
 			}
 			SyncMessage::DrawPresence { context: mut overlay_context } => {
+				if !preferences.show_remote_cursors {
+					return;
+				}
 				let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else { return };
 				let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return };
 				let to_viewport = document.metadata().document_to_viewport;
@@ -369,6 +386,7 @@ impl SyncMessageHandler {
 		}
 		announce_name(gdd, &preferences.user_name);
 		self.undecided_since.insert(document_id, now_ms());
+		self.reconnect_at.remove(&document_id);
 		self.attach(document_id, incoming, responses);
 		responses.add(driver_future(document_id, self.connections, driver));
 		refresh_session_views(responses);
@@ -474,17 +492,30 @@ fn refresh_session_views(responses: &mut VecDeque<Message>) {
 
 /// The Session panel for the active document: its state in words, the join link, the peers, and the actions
 /// that apply in that state.
-fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, user_name: &str) -> Layout {
+fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, preferences: &PreferencesMessageHandler) -> Layout {
 	let heading = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).bold(true).widget_instance()]);
 	let note = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).multiline(true).widget_instance()]);
-	// The name is a preference, so it is the same in every session and asked for once.
+	let user_name = preferences.user_name.as_str();
+	// The name and the cursor switch are preferences, so they are the same in every session and asked for once.
 	let name_row = || {
 		LayoutGroup::row(vec![
-			TextLabel::new("Your name").table_align(true).min_width(80).widget_instance(),
+			TextLabel::new("Your name").table_align(true).min_width(90).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(user_name)
-				.placeholder("Anonymous")
+				.placeholder(anonymous_name(UserId(preferences.user_id)))
 				.on_update(|input: &TextInput| PreferencesMessage::UserName { name: input.value.clone() }.into())
+				.widget_instance(),
+		])
+	};
+	let cursors_row = || {
+		let checkbox_id = CheckboxId::new();
+		LayoutGroup::row(vec![
+			TextLabel::new("Show cursors").table_align(true).min_width(90).for_checkbox(checkbox_id).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			CheckboxInput::new(preferences.show_remote_cursors)
+				.tooltip_description("Draw the other peers' pointers over the document.")
+				.on_update(|checkbox: &CheckboxInput| PreferencesMessage::ShowRemoteCursors { enabled: checkbox.checked }.into())
+				.for_label(checkbox_id)
 				.widget_instance(),
 		])
 	};
@@ -493,93 +524,83 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 		return Layout(vec![note("Open a document to share it.")]);
 	};
 	let Some(gdd) = document.storage() else {
-		return Layout(vec![note("The document's working copy is still being mounted.")]);
+		return Layout(vec![name_row(), cursors_row(), note("The document's working copy is still being mounted.")]);
 	};
 
-	let Some(role) = gdd.role() else {
-		if gdd.is_shared() {
-			return Layout(vec![
-				name_row(),
-				heading("Disconnected"),
-				note("The document is shared but not in its room right now. It reconnects when it is reopened."),
-				LayoutGroup::row(vec![
-					TextButton::new("Reconnect").icon("Link").emphasized(true).on_commit(|_| SyncMessage::Share.into()).widget_instance(),
-					TextButton::new("Stop Sharing").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
-					TextButton::new("Fork")
-						.tooltip_label("Fork the session")
-						.tooltip_description("Leave this room and host the document as a new session with its own link. The others keep the room they are in.")
-						.on_commit(|_| SyncMessage::Fork.into())
-						.widget_instance(),
-				]),
-			]);
-		}
-		return Layout(vec![
-			name_row(),
-			heading("Not shared"),
-			note("Share this document to edit it live with others. Everyone who opens the link works on the same document."),
-			LayoutGroup::row(vec![
+	let fork = || {
+		TextButton::new("Fork")
+			.tooltip_label("Fork the session")
+			.tooltip_description("Leave this room and host the document as a new session with its own link. The others keep the room they are in.")
+			.on_commit(|_| SyncMessage::Fork.into())
+			.widget_instance()
+	};
+	// The same shape in every state: the state, the actions that apply in it, then the detail.
+	let (state, actions, detail) = match gdd.role() {
+		None if gdd.is_shared() => (
+			"Disconnected, reconnecting",
+			vec![
+				TextButton::new("Reconnect").icon("Link").emphasized(true).on_commit(|_| SyncMessage::Share.into()).widget_instance(),
+				TextButton::new("Stop Sharing").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
+				fork(),
+			],
+			note("The connection to the session was lost. The editor keeps trying to reconnect, and the document stays editable meanwhile."),
+		),
+		None => (
+			"Not shared",
+			vec![
 				TextButton::new("Share Live Session")
 					.icon("Link")
 					.emphasized(true)
 					.on_commit(|_| SyncMessage::Share.into())
 					.widget_instance(),
-			]),
-		]);
+			],
+			note("Share this document to edit it live with others. Everyone who opens the link works on the same document."),
+		),
+		Some(role) => {
+			let live = role == Role::Host || (role == Role::Guest && gdd.is_synced());
+			let token = SessionToken::for_document(gdd.manifest().document_id).to_string();
+			let copy_token = token.clone();
+			(
+				if live { "Live session" } else { "Connecting" },
+				vec![
+					TextButton::new("Copy Link")
+						.icon("Copy")
+						.emphasized(true)
+						.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_token.clone() }.into())
+						.widget_instance(),
+					TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
+					fork(),
+				],
+				LayoutGroup::row(vec![
+					TextLabel::new(token)
+						.monospace(true)
+						.selectable(true)
+						.tooltip_label("Session")
+						.tooltip_description("Opening the editor with this session in the link joins the room.")
+						.widget_instance(),
+				]),
+			)
+		}
 	};
+	let mut groups = vec![name_row(), cursors_row(), heading(state), LayoutGroup::row(actions), detail];
 
-	let state = match role {
-		Role::Host => "Hosting",
-		Role::Guest if gdd.is_synced() => "Guest",
-		Role::Guest => "Joining, waiting for the host's state",
-		Role::Undecided => "Connected, waiting for a host",
-	};
-	let token = SessionToken::for_document(gdd.manifest().document_id).to_string();
-	let copy_token = token.clone();
-	let mut peers = gdd.peers();
-	peers.sort_by_key(|remote| remote.peer);
-
-	let mut groups = vec![
-		name_row(),
-		heading(state),
-		LayoutGroup::row(vec![
-			TextLabel::new(token)
-				.monospace(true)
-				.selectable(true)
-				.tooltip_label("Session")
-				.tooltip_description("Opening the editor with this session in the link joins the room.")
-				.widget_instance(),
-		]),
-		LayoutGroup::row(vec![
-			TextButton::new("Copy Link")
-				.icon("Copy")
-				.emphasized(true)
-				.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_token.clone() }.into())
-				.widget_instance(),
-			TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
-			TextButton::new("Fork")
-				.tooltip_label("Fork the session")
-				.tooltip_description("Leave this room and host the document as a new session with its own link. The others keep the room they are in.")
-				.on_commit(|_| SyncMessage::Fork.into())
-				.widget_instance(),
-		]),
-		heading(&format!("Peers ({})", peers.len() + 1)),
-		peer_row(&if user_name.is_empty() { "You".to_string() } else { format!("{user_name} (you)") }, role),
-	];
-	groups.extend(peers.iter().map(|remote| peer_row(&display_name(remote), remote.role)));
+	if gdd.role().is_some() {
+		let mut peers = gdd.peers();
+		peers.sort_by_key(|remote| remote.peer);
+		groups.push(heading(&format!("In the session ({})", peers.len() + 1)));
+		let me = match user_name.is_empty() {
+			true => anonymous_name(UserId(preferences.user_id)),
+			false => user_name.to_string(),
+		};
+		groups.push(peer_row(&format!("{me} (you)"), user_name.is_empty()));
+		groups.extend(peers.iter().map(|remote| peer_row(&display_name(remote), remote.name.is_empty())));
+	}
 	Layout(groups)
 }
 
-fn peer_row(name: &str, role: Role) -> LayoutGroup {
-	let role = match role {
-		Role::Host => "Host",
-		Role::Guest => "Guest",
-		Role::Undecided => "Deciding",
-	};
-	LayoutGroup::row(vec![
-		TextLabel::new(name).min_width(120).widget_instance(),
-		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-		TextLabel::new(role).disabled(true).widget_instance(),
-	])
+/// One peer in the list; an anonymous one shows its stand-in name in italics.
+fn peer_row(name: &str, anonymous: bool) -> LayoutGroup {
+	LayoutGroup::row(vec![TextLabel::new(name).italic(anonymous).widget_instance()])
 }
 
 /// Draws the other peers' cursors; registered on every document with the tools, and a no-op outside a session.
@@ -609,10 +630,87 @@ fn cursor_in_document(document: &DocumentMessageHandler, ipp: &InputPreprocessor
 
 fn display_name(remote: &RemotePeer) -> String {
 	match remote.name.is_empty() {
-		true => format!("Peer {:06x}", remote.peer.0 & 0xFF_FFFF),
+		true => anonymous_name(remote.user),
 		false => remote.name.clone(),
 	}
 }
+
+/// A stand-in for a person who has not given a name, the same on every device of theirs and everywhere
+/// in the room, since it comes from the user id alone.
+fn anonymous_name(user: UserId) -> String {
+	let index = (user.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as usize % ANONYMOUS_ANIMALS.len();
+	format!("Anonymous {}", ANONYMOUS_ANIMALS[index])
+}
+
+const ANONYMOUS_ANIMALS: [&str; 64] = [
+	"Alligator",
+	"Anteater",
+	"Armadillo",
+	"Axolotl",
+	"Badger",
+	"Bat",
+	"Beaver",
+	"Buffalo",
+	"Camel",
+	"Capybara",
+	"Chameleon",
+	"Cheetah",
+	"Chinchilla",
+	"Chipmunk",
+	"Cormorant",
+	"Coyote",
+	"Crow",
+	"Dingo",
+	"Dolphin",
+	"Duck",
+	"Elephant",
+	"Ferret",
+	"Fox",
+	"Frog",
+	"Giraffe",
+	"Gopher",
+	"Grizzly",
+	"Hedgehog",
+	"Heron",
+	"Hippo",
+	"Hyena",
+	"Ibex",
+	"Iguana",
+	"Jackal",
+	"Jaguar",
+	"Kangaroo",
+	"Koala",
+	"Kraken",
+	"Lemur",
+	"Leopard",
+	"Liger",
+	"Llama",
+	"Manatee",
+	"Mink",
+	"Monkey",
+	"Moose",
+	"Narwhal",
+	"Nyan Cat",
+	"Orangutan",
+	"Otter",
+	"Panda",
+	"Penguin",
+	"Platypus",
+	"Python",
+	"Quagga",
+	"Rabbit",
+	"Raccoon",
+	"Rhino",
+	"Sheep",
+	"Shrew",
+	"Skunk",
+	"Squirrel",
+	"Tiger",
+	"Turtle",
+];
+
+/// How long a document whose transport went down waits before it tries its room again.
+const RECONNECT_AFTER_MS: f64 = 3_000.;
 
 /// A colour for a peer derived from its id, so every peer sees the same one without anything on the wire.
 fn peer_color(peer: PeerId) -> String {

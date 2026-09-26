@@ -458,7 +458,9 @@
 							<button
 								class="session"
 								class:disconnected={tabLabel.session === "Disconnected"}
-								title={tabLabel.session === "Connected" ? "In a live session. Click to open the Session panel." : "Shared but disconnected. Click to open the Session panel."}
+								title={tabLabel.session === "Connected"
+									? "In a live session. Click to open the Session panel."
+									: "Disconnected from the session, reconnecting. Click to open the Session panel."}
 								data-session-button
 								on:pointerdown|stopPropagation
 								on:click|stopPropagation={() => sessionAction?.(tabIndex)}
@@ -609,8 +611,9 @@
 
 						.session {
 							flex: 0 0 auto;
-							width: 8px;
-							height: 8px;
+							align-self: center;
+							width: 6px;
+							height: 6px;
 							margin-left: 6px;
 							padding: 0;
 							border: none;
@@ -619,7 +622,7 @@
 							cursor: pointer;
 
 							&.disconnected {
-								background: var(--color-warning-yellow);
+								background: var(--color-error-red);
 							}
 
 							&:hover {
