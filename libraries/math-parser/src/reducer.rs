@@ -6,6 +6,7 @@ use crate::lexer::{Lexer, Token};
 use crate::matrix::Matrix;
 use crate::object::Object;
 use crate::value::{Number, Value};
+use std::cmp::Ordering;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
@@ -111,11 +112,7 @@ impl Reducer {
 				iter.try_fold(first, |accumulated, item| item.binary_op(*op, accumulated)).map(Value::Number)
 			}
 
-			// A chain over zero or one items is true, since no pair exists to fail the relation
-			Reducer::ChainAdjacent(op) => {
-				let satisfied = numbers.clone().zip(numbers.skip(1)).all(|(lhs, rhs)| lhs.binary_op(*op, rhs).and_then(Number::as_bool) == Some(true));
-				Some(Value::from_bool(satisfied))
-			}
+			Reducer::ChainAdjacent(op) => chain_holds(*op, numbers).map(Value::from_bool),
 
 			// Canonical form stores each value one way (and NaN is already rejected), so equal items share a key and hashing finds a repeat in O(n)
 			Reducer::ChainDistinct => {
@@ -164,6 +161,37 @@ impl Reducer {
 			Reducer::FoldRight(_) | Reducer::ChainAdjacent(_) | Reducer::ChainDistinct => None,
 		}
 	}
+}
+
+/// Whether every adjacent pair of items satisfies the chain's relation: true over zero or one items, since no pair exists to fail
+/// it, and `None` when any item has no order, since every pair is checked. Its own function keeps the loop's frame small.
+#[inline(never)]
+fn chain_holds(op: BinaryOp, numbers: impl Iterator<Item = Number>) -> Option<bool> {
+	let mut satisfied = true;
+	let mut previous = None;
+	for number in numbers {
+		if let Some(previous) = previous {
+			satisfied &= adjacent_holds(op, previous, number)?;
+		}
+		previous = Some(number);
+	}
+	Some(satisfied)
+}
+
+/// Whether two adjacent items of a comparison chain satisfy its relation, or `None` when one has a vector part and so no order.
+fn adjacent_holds(op: BinaryOp, lhs: Number, rhs: Number) -> Option<bool> {
+	if op == BinaryOp::Eq {
+		return Some(lhs == rhs);
+	}
+
+	let ordering = lhs.real_ordering(rhs)?;
+	Some(match op {
+		BinaryOp::Lt => ordering == Ordering::Less,
+		BinaryOp::Leq => ordering != Ordering::Greater,
+		BinaryOp::Gt => ordering == Ordering::Greater,
+		BinaryOp::Geq => ordering != Ordering::Less,
+		_ => return None,
+	})
 }
 
 /// A canonical number's storage as hashable bits, which equal numbers share.
@@ -342,6 +370,19 @@ mod tests {
 
 		assert_eq!(reduce("min"), Some(Value::from_i64(-2)));
 		assert_eq!(reduce(">"), Some(Value::from_bool(true)));
+	}
+
+	#[test]
+	fn orderings_reject_vector_items() {
+		// A vector has no order, so an ordered chain over one is ill-formed rather than false, while equality compares any items
+		let reduce = |source: &str, items: &[Value]| classify_reducer(source, NothingMap).unwrap().evaluate(items);
+		let vectors = [Value::from(Quaternion::J), Value::from(Quaternion::K)];
+		for source in ["<", "<=", ">", ">="] {
+			assert_eq!(reduce(source, &vectors), None, "`{source}`");
+			assert_eq!(reduce(source, &[Value::from_f64(1.), Value::from(Quaternion::J), Value::from_f64(3.)]), None, "`{source}`");
+		}
+		assert_eq!(reduce("==", &vectors), Some(Value::from_bool(false)));
+		assert_eq!(reduce("==", &[Value::from(Quaternion::J), Value::from(Quaternion::J)]), Some(Value::from_bool(true)));
 	}
 
 	#[test]
