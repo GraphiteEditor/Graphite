@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{NetworkId, PeerId, Rev};
+use document_graph_storage::{NetworkId, PeerId, Rev, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -34,9 +34,9 @@ pub struct SessionState {
 	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
 	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
 	#[serde(default)]
-	pub view_settings: BTreeMap<String, serde_json::Value>,
+	pub view_settings: BTreeMap<String, Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by the stable storage [`NetworkId`].
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
-	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, serde_json::Value>>,
+	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
 }

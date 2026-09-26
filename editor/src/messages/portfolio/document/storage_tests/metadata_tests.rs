@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 
-use document_graph_storage::{NodeMetadataSource, PeerId, Registry};
+use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
 use super::test_support::{load_demo, node_paths};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
@@ -342,26 +342,14 @@ fn document_settings_round_trip() {
 	let mut restored = DocumentMessageHandler::default();
 	restored.apply_stored_document_settings(&view_settings);
 
-	assert_eq!(serde_json::to_value(restored.render_mode).unwrap(), serde_json::to_value(document.render_mode).unwrap(), "render_mode");
+	assert_eq!(to_value(&restored.render_mode).unwrap(), to_value(&document.render_mode).unwrap(), "render_mode");
+	assert_eq!(to_value(&restored.rulers_visible).unwrap(), to_value(&document.rulers_visible).unwrap(), "rulers_visible");
+	assert_eq!(to_value(&restored.document_ptz).unwrap(), to_value(&document.document_ptz).unwrap(), "document_ptz");
 	assert_eq!(
-		serde_json::to_value(restored.rulers_visible).unwrap(),
-		serde_json::to_value(document.rulers_visible).unwrap(),
-		"rulers_visible"
-	);
-	assert_eq!(
-		serde_json::to_value(restored.document_ptz).unwrap(),
-		serde_json::to_value(document.document_ptz).unwrap(),
-		"document_ptz"
-	);
-	assert_eq!(
-		serde_json::to_value(restored.overlays_visibility_settings).unwrap(),
-		serde_json::to_value(document.overlays_visibility_settings).unwrap(),
+		to_value(&restored.overlays_visibility_settings).unwrap(),
+		to_value(&document.overlays_visibility_settings).unwrap(),
 		"overlays"
 	);
-	assert_eq!(
-		serde_json::to_value(restored.snapping_state).unwrap(),
-		serde_json::to_value(document.snapping_state).unwrap(),
-		"snapping_state"
-	);
-	assert_eq!(serde_json::to_value(restored.collapsed).unwrap(), serde_json::to_value(document.collapsed).unwrap(), "collapsed");
+	assert_eq!(to_value(&restored.snapping_state).unwrap(), to_value(&document.snapping_state).unwrap(), "snapping_state");
+	assert_eq!(to_value(&restored.collapsed).unwrap(), to_value(&document.collapsed).unwrap(), "collapsed");
 }

@@ -216,7 +216,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Replace the per-peer view settings and persist them to `session.json`. Called by the editor when
 	/// the viewport or a document-level toggle changes; never enters the registry, history, or CRDT.
-	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, serde_json::Value>) -> Result<(), Error> {
+	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>) -> Result<(), Error> {
 		self.view_settings = view_settings;
 		self.persist_session_state()
 	}
@@ -232,7 +232,7 @@ impl<L: Layout> Gdd<L> {
 	/// enters the registry, history, or CRDT.
 	pub fn set_network_view_settings(
 		&mut self,
-		network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+		network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 	) -> Result<(), Error> {
 		self.network_view_settings = network_view_settings;
 		self.persist_session_state()

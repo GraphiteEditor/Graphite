@@ -392,7 +392,7 @@ fn export_carries_resources() {
 #[test]
 fn embed_all_resources_materializes_link_only_resource() {
 	use document_format::{ExportFormat, ExportOptions};
-	use document_graph_storage::{NoMetadata, Value};
+	use document_graph_storage::{NoMetadata, to_value};
 	use graph_craft::application_io::resource::ResourceStorage;
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
@@ -444,8 +444,8 @@ fn embed_all_resources_materializes_link_only_resource() {
 
 		let entry = reopened.registry().resources.get(&id).expect("resource entry survived export");
 		assert_eq!(entry.hash, Some(hash));
-		let embedded = Value::from(serde_json::to_value(DataSource::Embedded).unwrap());
-		let url = Value::from(serde_json::to_value(DataSource::Url("https://example.com/r.bin".parse().unwrap())).unwrap());
+		let embedded = to_value(&DataSource::Embedded).unwrap();
+		let url = to_value(&DataSource::Url("https://example.com/r.bin".parse().unwrap())).unwrap();
 		let chain: Vec<_> = entry.sources.iter().map(|(_, value)| value.source.clone()).collect();
 		assert_eq!(chain, vec![embedded, url], "Embedded leads the chain, URL kept as fallback");
 	});

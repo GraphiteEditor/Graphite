@@ -2070,7 +2070,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// The per-peer view settings that ride along with either kind of staging.
-	fn storage_view_settings(&self) -> std::collections::BTreeMap<String, serde_json::Value> {
+	fn storage_view_settings(&self) -> std::collections::BTreeMap<String, document_graph_storage::Value> {
 		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
 
 		DocumentSettings {
@@ -2085,11 +2085,11 @@ impl DocumentMessageHandler {
 	}
 
 	/// Restore `view_settings` map into the document.
-	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
+	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, document_graph_storage::Value>) {
 		use document_graph_storage::attr::session::doc;
 
-		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
-			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())
+		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, document_graph_storage::Value>, key: &str) -> Option<T> {
+			view_settings.get(key).and_then(|value| document_graph_storage::from_value(value).ok())
 		}
 
 		if let Some(value) = decode(view_settings, doc::PTZ) {

@@ -77,10 +77,10 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) manifest: Manifest,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
-	pub(crate) view_settings: std::collections::BTreeMap<String, serde_json::Value>,
+	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
-	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -257,13 +257,13 @@ impl<L: Layout> Gdd<L> {
 
 	/// The per-peer view settings read from `session.json` (PTZ, rulers, overlays, snapping, collapse).
 	/// Opaque `ui::doc::*` blobs; the editor decodes them. Empty for a fresh document.
-	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, serde_json::Value> {
+	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, document_graph_storage::Value> {
 		&self.view_settings
 	}
 
 	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
 	/// [`NetworkId`](document_graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
-	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
+	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>> {
 		&self.network_view_settings
 	}
 

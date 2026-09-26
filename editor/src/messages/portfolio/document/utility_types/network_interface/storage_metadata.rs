@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
-use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value};
+use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
 use glam::IVec2;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
@@ -126,14 +126,14 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 impl DocumentSettings<'_> {
 	/// Serialize the per-peer view settings into the `ui::doc::*`-keyed map persisted in `session.json`
 	/// (via `Gdd::set_view_settings`). A field that fails to serialize is skipped, not fatal.
-	pub fn to_view_map(&self) -> BTreeMap<String, serde_json::Value> {
+	pub fn to_view_map(&self) -> BTreeMap<String, Value> {
 		let entries = [
-			(session::doc::PTZ, serde_json::to_value(self.document_ptz)),
-			(session::doc::RENDER_MODE, serde_json::to_value(self.render_mode)),
-			(session::doc::OVERLAYS, serde_json::to_value(self.overlays_visibility)),
-			(session::doc::RULERS_VISIBLE, serde_json::to_value(self.rulers_visible)),
-			(session::doc::SNAPPING, serde_json::to_value(self.snapping_state)),
-			(session::doc::COLLAPSED, serde_json::to_value(self.collapsed)),
+			(session::doc::PTZ, to_value(self.document_ptz)),
+			(session::doc::RENDER_MODE, to_value(self.render_mode)),
+			(session::doc::OVERLAYS, to_value(self.overlays_visibility)),
+			(session::doc::RULERS_VISIBLE, to_value(&self.rulers_visible)),
+			(session::doc::SNAPPING, to_value(self.snapping_state)),
+			(session::doc::COLLAPSED, to_value(self.collapsed)),
 		];
 
 		entries
@@ -203,7 +203,7 @@ pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> Has
 pub fn collect_network_view_settings(
 	interface: &NodeNetworkInterface,
 	network_ids: &HashMap<Vec<NodeId>, document_graph_storage::NetworkId>,
-) -> BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, serde_json::Value>> {
+) -> BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, Value>> {
 	let mut out = BTreeMap::new();
 
 	for (network_path, &network_id) in network_ids {
@@ -217,24 +217,24 @@ pub fn collect_network_view_settings(
 		// of `session.json` (the `if !settings.is_empty()` guard below skips it entirely).
 		let mut settings = BTreeMap::new();
 		if navigation.node_graph_ptz != default_navigation.node_graph_ptz
-			&& let Ok(value) = serde_json::to_value(navigation.node_graph_ptz)
+			&& let Ok(value) = to_value(&navigation.node_graph_ptz)
 		{
 			settings.insert(session::network::NAV_PTZ.to_string(), value);
 		}
 		if navigation.node_graph_to_viewport != default_navigation.node_graph_to_viewport
-			&& let Ok(value) = serde_json::to_value(navigation.node_graph_to_viewport)
+			&& let Ok(value) = to_value(&navigation.node_graph_to_viewport)
 		{
 			settings.insert(session::network::NAV_TRANSFORM.to_string(), value);
 		}
 		if navigation.node_graph_width != default_navigation.node_graph_width
-			&& let Ok(value) = serde_json::to_value(navigation.node_graph_width)
+			&& let Ok(value) = to_value(&navigation.node_graph_width)
 		{
 			settings.insert(session::network::NAV_WIDTH.to_string(), value);
 		}
 
 		// Skip the inert `Previewing::No` default so a network that has never been previewed stays empty.
 		if !matches!(network_metadata.persistent_metadata.previewing, Previewing::No)
-			&& let Ok(value) = serde_json::to_value(network_metadata.persistent_metadata.previewing)
+			&& let Ok(value) = to_value(&network_metadata.persistent_metadata.previewing)
 		{
 			settings.insert(session::network::PREVIEWING.to_string(), value);
 		}
@@ -254,7 +254,7 @@ pub fn collect_network_view_settings(
 pub fn apply_network_view_settings(
 	interface: &mut NodeNetworkInterface,
 	network_ids: &HashMap<Vec<NodeId>, document_graph_storage::NetworkId>,
-	network_view_settings: &BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, serde_json::Value>>,
+	network_view_settings: &BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, Value>>,
 ) {
 	for (network_path, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
@@ -263,23 +263,23 @@ pub fn apply_network_view_settings(
 		};
 
 		if let Some(value) = settings.get(session::network::NAV_PTZ)
-			&& let Ok(ptz) = serde_json::from_value::<PTZ>(value.clone())
+			&& let Ok(ptz) = from_value::<PTZ>(value)
 		{
 			navigation.node_graph_ptz = ptz;
 		}
 		if let Some(value) = settings.get(session::network::NAV_TRANSFORM)
-			&& let Ok(transform) = serde_json::from_value(value.clone())
+			&& let Ok(transform) = from_value(value)
 		{
 			navigation.node_graph_to_viewport = transform;
 		}
 		if let Some(value) = settings.get(session::network::NAV_WIDTH)
-			&& let Ok(width) = serde_json::from_value(value.clone())
+			&& let Ok(width) = from_value(value)
 		{
 			navigation.node_graph_width = width;
 		}
 
 		if let Some(value) = settings.get(session::network::PREVIEWING)
-			&& let Ok(previewing) = serde_json::from_value::<Previewing>(value.clone())
+			&& let Ok(previewing) = from_value::<Previewing>(value)
 			&& let Some(mut network) = interface.network_mut(network_path)
 		{
 			network.set_previewing(previewing);

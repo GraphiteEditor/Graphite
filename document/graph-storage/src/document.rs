@@ -43,8 +43,9 @@ impl Document {
 	/// truncated; the counter is shared across peers and persisted with the document.
 	pub fn next_node_id(&mut self) -> NodeId {
 		self.next_node_counter += 1;
-		let bytes = postcard::to_stdvec(&(self.peer, self.next_node_counter)).expect("(PeerId, counter) must serialize");
-		let digest = blake3::hash(&bytes);
+		let mut hasher = blake3::Hasher::new();
+		postcard::to_io(&(self.peer, self.next_node_counter), &mut hasher).expect("(PeerId, counter) must serialize");
+		let digest = hasher.finalize();
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
 		NodeId(u64::from_le_bytes(truncated))
