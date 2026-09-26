@@ -28,7 +28,7 @@ type ParsedSource = Option<(String, Option<Arc<ast::Node>>)>;
 pub struct ParseCache(Arc<Mutex<ParsedSource>>);
 
 impl ParseCache {
-	/// The parse tree of `source`, or `None` for an invalid expression.
+	/// The parse tree of `source`, or `None` for an invalid math expression.
 	fn parse(&self, source: &str) -> Option<Arc<ast::Node>> {
 		// A lock poisoned by a panic elsewhere still guards a usable cache
 		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
@@ -41,7 +41,7 @@ impl ParseCache {
 		let tree = match ast::Node::try_parse_from_str(source) {
 			Ok(tree) => Some(Arc::new(tree)),
 			Err(error) => {
-				warn!("Invalid expression: `{source}`\n{error}");
+				warn!("Invalid math expression: `{source}`\n{error}");
 				None
 			}
 		};
@@ -222,6 +222,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`, or of `X` for a Transform.
 	#[name("f(x) =")]
 	#[default("x")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression")]
 	fx: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
@@ -296,6 +297,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression_or_reducer")]
 	f: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
