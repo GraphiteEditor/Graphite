@@ -1015,18 +1015,20 @@ mod tests {
 			.into_element()
 		}
 
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", LowerCase, None), "alice was_beginning to_getvery tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", UpperCase, None), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", CapitalCase, None), "Alice WAs_BeGinning To_GetVery TIRED");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", HeadlineCase, None), "Alice wAs_BeGinning to_getVery TIRED");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", SentenceCase, None), "Alice was_beginning to_getvery tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", CamelCase, None), "alice Was_Beginning To_Getvery Tired");
+		let sample_str = "Alice wAs_BeGinning to_getVery TIRED";
 
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", LowerCase, Some(":")), "alice:w:as:be:ginning:to:get:very:tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", UpperCase, Some(":")), "ALICE:W:AS:BE:GINNING:TO:GET:VERY:TIRED");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", CapitalCase, Some(":")), "Alice:W:As:Be:Ginning:To:Get:Very:Tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
-		assert_eq!(run("Alice wAs_BeGinning to_getVery TIRED", CamelCase, Some(":")), "alice:W:As:Be:Ginning:To:Get:Very:Tired");
+		assert_eq!(run(sample_str, LowerCase, None), "alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, UpperCase, None), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run(sample_str, CapitalCase, None), "Alice WAs_BeGinning To_GetVery TIRED");
+		assert_eq!(run(sample_str, HeadlineCase, None), "Alice wAs_BeGinning to_getVery TIRED");
+		assert_eq!(run(sample_str, SentenceCase, None), "Alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, CamelCase, None), "alice Was_Beginning To_Getvery Tired");
+
+		assert_eq!(run(sample_str, LowerCase, Some(":")), "alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run(sample_str, UpperCase, Some(":")), "ALICE:W:AS:BE:GINNING:TO:GET:VERY:TIRED");
+		assert_eq!(run(sample_str, CapitalCase, Some(":")), "Alice:W:As:Be:Ginning:To:Get:Very:Tired");
+		assert_eq!(run(sample_str, HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
+		assert_eq!(run(sample_str, SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run(sample_str, CamelCase, Some(":")), "alice:W:As:Be:Ginning:To:Get:Very:Tired");
 	}
 }
