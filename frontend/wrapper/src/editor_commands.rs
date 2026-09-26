@@ -7,6 +7,8 @@
 use crate::editor_wrapper::EditorWrapper;
 use graphite_proc_macros::editor_commands;
 use serde::{Deserialize, Serialize};
+#[cfg(target_family = "wasm")]
+use tsify::Ts;
 use tsify::Tsify;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::prelude::*;
@@ -118,7 +120,7 @@ mod editor_commands {
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
-	fn widget_value_update(layout_target: LayoutTarget, widget_id: u64, value: Any, resend_widget: bool) -> Message {
+	fn widget_value_update(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>, resend_widget: bool) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let update = LayoutMessage::WidgetValueUpdate {
 			layout_target,
@@ -135,7 +137,7 @@ mod editor_commands {
 	}
 
 	/// Commit the value of a given UI widget to the history
-	fn widget_value_commit(layout_target: LayoutTarget, widget_id: u64, value: Any) -> Message {
+	fn widget_value_commit(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>) -> Message {
 		LayoutMessage::WidgetValueCommit {
 			layout_target,
 			widget_id: WidgetId(widget_id),
@@ -145,7 +147,7 @@ mod editor_commands {
 	}
 
 	/// Update the value of a given UI widget, and commit it to the history
-	fn widget_value_commit_and_update(layout_target: LayoutTarget, widget_id: u64, value: Any, resend_widget: bool) -> Message {
+	fn widget_value_commit_and_update(layout_target: Ts<LayoutTarget>, widget_id: u64, value: Ts<Any>, resend_widget: bool) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let mut messages: Vec<Message> = vec![
 			LayoutMessage::WidgetValueCommit {
@@ -171,13 +173,13 @@ mod editor_commands {
 	}
 
 	/// Fire a widget's drag-drop action (e.g. when a draggable item is dropped on a button)
-	fn widget_value_drag_drop(layout_target: LayoutTarget, widget_id: u64) -> Message {
+	fn widget_value_drag_drop(layout_target: Ts<LayoutTarget>, widget_id: u64) -> Message {
 		let widget_id = WidgetId(widget_id);
 		LayoutMessage::WidgetValueDragDrop { layout_target, widget_id }.into()
 	}
 
 	/// Hand a file dropped on a UI widget to the widget's file drop callback
-	fn widget_value_file_drop(layout_target: LayoutTarget, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
+	fn widget_value_file_drop(layout_target: Ts<LayoutTarget>, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
 		let widget_id = WidgetId(widget_id);
 		let file = DroppedFile { name, mime_type, data };
 		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
@@ -257,7 +259,7 @@ mod editor_commands {
 		.into()
 	}
 
-	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
+	fn split_panel_group(target_group: u64, direction: Ts<DockingSplitDirection>, tabs: Vec<Ts<PanelType>>, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
@@ -437,7 +439,7 @@ mod editor_commands {
 	}
 
 	/// Update primary color from sRGB bytes (the wire format at the JS boundary).
-	fn update_primary_color(color: SRGBA8) -> Message {
+	fn update_primary_color(color: Ts<SRGBA8>) -> Message {
 		ToolMessage::SelectWorkingColor {
 			color: Color::from(color),
 			primary: true,
@@ -446,7 +448,7 @@ mod editor_commands {
 	}
 
 	/// Update secondary color from sRGB bytes (the wire format at the JS boundary).
-	fn update_secondary_color(color: SRGBA8) -> Message {
+	fn update_secondary_color(color: Ts<SRGBA8>) -> Message {
 		ToolMessage::SelectWorkingColor {
 			color: Color::from(color),
 			primary: false,
@@ -455,7 +457,7 @@ mod editor_commands {
 	}
 
 	/// Initialize the Rust color picker handler with a starting value (used when the frontend `<ColorPicker />` opens).
-	fn open_color_picker(initial_value: FillChoiceSRGBA8, allow_none: bool, disabled: bool) -> Message {
+	fn open_color_picker(initial_value: Ts<FillChoiceSRGBA8>, allow_none: bool, disabled: bool) -> Message {
 		ColorPickerMessage::Open {
 			initial_value: FillChoice::from(&initial_value.0),
 			allow_none,
@@ -470,7 +472,7 @@ mod editor_commands {
 	}
 
 	/// Update the color of the currently-edited gradient stop, from sRGB bytes (the wire format at the JS boundary).
-	fn update_gradient_stop_color(color: SRGBA8) -> Message {
+	fn update_gradient_stop_color(color: Ts<SRGBA8>) -> Message {
 		GradientToolMessage::UpdateStopColor { color: Color::from(color) }.into()
 	}
 
@@ -597,12 +599,12 @@ mod editor_commands {
 	}
 
 	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
-	fn save_rasterized_export(name: String, file_type: FileType, width: u32, height: u32, data: Vec<u8>) -> Message {
+	fn save_rasterized_export(name: String, file_type: Ts<FileType>, width: u32, height: u32, data: Vec<u8>) -> Message {
 		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
 	}
 
 	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
-	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: Ts<IngestAction>) -> Message {
 		IngestMessage::Ingest {
 			data,
 			action,
@@ -709,7 +711,6 @@ mod editor_commands {
 
 #[cfg(feature = "editor")]
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct FillChoiceSRGBA8(
 	/// Concrete wasm boundary form of the generic [`FillChoice`], since a `#[wasm_bindgen]` argument's TS declaration names its type without the generic's argument.
 	#[tsify(type = "FillChoice<SRGBA8>")]
@@ -719,7 +720,6 @@ pub struct FillChoiceSRGBA8(
 pub type FillChoiceSRGBA8 = Any;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Tsify)]
-#[tsify(from_wasm_abi)]
 pub struct Any(#[tsify(type = "any")] serde_json::Value);
 impl Any {
 	#[cfg(feature = "editor")]
@@ -744,6 +744,6 @@ editor_proxy_types! {
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
-	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
+	PanelType = editor::messages::portfolio::utility_types::PanelType;
 	SRGBA8 = graphene_std::color::SRGBA8;
 }

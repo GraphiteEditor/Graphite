@@ -14,7 +14,7 @@ pub struct DocumentInfo {
 	pub is_saved: bool,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PersistedState {
 	pub documents: Vec<DocumentInfo>,
@@ -42,7 +42,7 @@ pub enum MouseCursorIcon {
 	Rotate,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FileType {
 	#[default]

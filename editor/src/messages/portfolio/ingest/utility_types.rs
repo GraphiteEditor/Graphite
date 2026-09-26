@@ -13,7 +13,7 @@ use std::path::Path;
 const SNIFFED_TEXT_LENGTH: usize = 4096;
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 pub enum IngestAction {
 	Open,
 	Import,

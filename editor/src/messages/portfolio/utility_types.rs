@@ -3,7 +3,7 @@ const DOCUMENT_PANEL_SHARE: f64 = 0.8;
 /// Proportional share for each side when neither (or both) contain the document panel.
 const EQUAL_PANEL_SHARE: f64 = 0.5;
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(PartialEq, Eq, Hash, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PanelType {
 	Welcome,
@@ -39,7 +39,7 @@ impl PanelType {
 pub struct PanelGroupId(pub u64);
 
 /// Which edge of a panel group to split on when docking a dragged panel.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DockingSplitDirection {
 	Left,
