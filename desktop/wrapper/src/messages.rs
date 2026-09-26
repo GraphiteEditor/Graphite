@@ -70,6 +70,15 @@ pub enum DesktopFrontendMessage {
 		content: String,
 	},
 	PointerLock,
+	PointerUnlock {
+		x: f64,
+		y: f64,
+	},
+	UpdateSoftwareCursor {
+		visible: bool,
+		x: f64,
+		y: f64,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,

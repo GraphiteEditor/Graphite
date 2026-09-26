@@ -4,6 +4,7 @@
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import SoftwareCursor from "/src/components/panels/SoftwareCursor.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
@@ -18,7 +19,7 @@
 	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
-	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
+	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived, setSoftwareCursor } from "/src/utility-functions/viewports";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
@@ -74,6 +75,29 @@
 	let cursorEyedropperPreviewColorChoice = "";
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
+
+	let softwareCursorVisible = false;
+	let softwareCursorX = 0;
+	let softwareCursorY = 0;
+
+	function handleSoftwareCursorWebMove(e: PointerEvent) {
+		if (!softwareCursorVisible || !isWeb || window.document.pointerLockElement !== viewport) return;
+		const dx = e.movementX;
+		const dy = e.movementY;
+		if (dx === 0 && dy === 0) return;
+		try {
+			editor.appWindowPointerLockMove(dx, dy);
+		} catch {
+			// The wrapper may not be ready yet
+		}
+	}
+
+	function handleSoftwareCursorPointerLockChange() {
+		if (isWeb && softwareCursorVisible && window.document.pointerLockElement !== viewport) {
+			editor.onKeyDown("Escape", 0, false);
+			editor.onKeyUp("Escape", 0, false);
+		}
+	}
 
 	// Gradient stop color picker
 	let gradientStopPickerColor: SRGBA8 | undefined = undefined;
@@ -520,6 +544,34 @@
 			updateMouseCursor(data.cursor);
 		});
 
+		// Software cursor that wraps the pointer around the viewport during G/R/S transforms
+		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
+			// The browser only grants a lock during a user activation, so request it before the `await`
+			if (isWeb && viewport) {
+				if (data.visible) {
+					try {
+						Promise.resolve(viewport.requestPointerLock?.()).catch(() => undefined);
+					} catch {
+						// The absolute pointer position drives the transform if the lock is refused
+					}
+				} else if (window.document.pointerLockElement === viewport) {
+					// Unlike the desktop, browsers return the pointer to where the lock began, so the wrapped position can't be kept
+					window.document.exitPointerLock();
+				}
+			}
+
+			await tick();
+
+			softwareCursorVisible = data.visible;
+			softwareCursorX = data.x;
+			softwareCursorY = data.y;
+			// Hit-testing reports events where this cursor is drawn
+			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
+		});
+
+		window.addEventListener("pointermove", handleSoftwareCursorWebMove);
+		window.document.addEventListener("pointerlockchange", handleSoftwareCursorPointerLockChange);
+
 		// Text entry
 		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
@@ -567,6 +619,8 @@
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
+		window.removeEventListener("pointermove", handleSoftwareCursorWebMove);
+		window.document.removeEventListener("pointerlockchange", handleSoftwareCursorPointerLockChange);
 		cleanupInputField(editor);
 
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");
@@ -575,6 +629,7 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
 		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
+		subscriptions.unsubscribeFrontendMessage("UpdateSoftwareCursor");
 		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
@@ -659,6 +714,7 @@
 							y={cursorTop}
 						/>
 					{/if}
+					<SoftwareCursor visible={softwareCursorVisible} x={softwareCursorX} y={softwareCursorY} />
 					<div
 						style:left={gradientStopPickerPosition ? `${gradientStopPickerPosition?.x}px` : undefined}
 						style:top={gradientStopPickerPosition ? `${gradientStopPickerPosition?.y}px` : undefined}

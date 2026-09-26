@@ -6,6 +6,7 @@ import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
+import { softwareCursorClientPosition } from "/src/utility-functions/viewports";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const BUTTON_LEFT = 0;
@@ -113,8 +114,15 @@ function isObserveOnly(e: MouseEvent): boolean {
 	return import.meta.env.MODE === "native" && e.getModifierState("NumLock");
 }
 
+// A locked pointer stays frozen where the lock began, so report events at the software cursor
+function pointerEventPosition(e: MouseEvent): { x: number; y: number } {
+	const softwareCursor = inPointerLock ? softwareCursorClientPosition() : undefined;
+	return softwareCursor ?? { x: e.clientX, y: e.clientY };
+}
+
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
+	if (inPointerLock) return;
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
@@ -166,7 +174,8 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
+		const { x, y } = pointerEventPosition(e);
+		editor.onMouseDown(x, y, e.buttons, modifiers, ...pointerAttributes(e));
 	}
 }
 
@@ -184,7 +193,8 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	if (isObserveOnly(e) || textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
+	const { x, y } = pointerEventPosition(e);
+	editor.onMouseUp(x, y, e.buttons, modifiers, ...pointerAttributes(e));
 }
 
 // Mouse events

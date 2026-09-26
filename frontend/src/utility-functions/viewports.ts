@@ -10,6 +10,21 @@ export function markFirstArtworkReceived(): void {
 	firstArtworkEverReceived = true;
 }
 
+// Software cursor position in viewport coordinates during G/R/S transforms
+let softwareCursor = { visible: false, x: 0, y: 0 };
+
+export function setSoftwareCursor(cursor: { visible: boolean; x: number; y: number }): void {
+	softwareCursor = cursor;
+}
+
+// Window position of the software cursor, or `undefined` while it isn't shown
+export function softwareCursorClientPosition(): { x: number; y: number } | undefined {
+	if (!softwareCursor.visible) return undefined;
+
+	const bounds = window.document.querySelector("[data-viewport-container]")?.getBoundingClientRect();
+	return { x: (bounds?.left || 0) + softwareCursor.x, y: (bounds?.top || 0) + softwareCursor.y };
+}
+
 export function setupViewportResizeObserver(editor: EditorWrapper): () => void {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
 	if (viewports.length <= 0) return () => {};
