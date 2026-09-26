@@ -66,6 +66,23 @@ trait ExpressionValue: Copy + Default {
 	fn into_object(self) -> Object;
 	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool or a matrix read as a Number.
 	fn from_object(object: &Object) -> Option<Self>;
+	/// Gathers a list of this type as the items of its sort.
+	fn items(items: impl Iterator<Item = Self>) -> Items;
+}
+
+/// The items of the "Math f(…)" node's list, of one sort throughout, bound positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
+enum Items {
+	Values(Vec<Value>),
+	Matrices(Vec<Matrix>),
+}
+
+impl Items {
+	fn len(&self) -> usize {
+		match self {
+			Self::Values(values) => values.len(),
+			Self::Matrices(matrices) => matrices.len(),
+		}
+	}
 }
 
 /// A node item type that is a value in the expression language, so a list of them binds positionally.
@@ -81,6 +98,9 @@ impl<T: ExpressionItem> ExpressionValue for T {
 	}
 	fn from_object(object: &Object) -> Option<Self> {
 		T::from_value(object.as_value()?)
+	}
+	fn items(items: impl Iterator<Item = Self>) -> Items {
+		Items::Values(items.map(T::into_value).collect())
 	}
 }
 
@@ -145,13 +165,17 @@ impl ExpressionItem for DVec2 {
 	}
 }
 
+/// A transform as the `i, j` block with its translation.
+fn transform_matrix(transform: DAffine2) -> Matrix {
+	Matrix::from(Affine2 {
+		linear: Linear2(transform.matrix2.to_cols_array_2d()),
+		translation: transform.translation.to_array(),
+	})
+}
+
 impl ExpressionValue for DAffine2 {
-	// The `i, j` block with its translation
 	fn into_object(self) -> Object {
-		Object::from(Matrix::from(Affine2 {
-			linear: Linear2(self.matrix2.to_cols_array_2d()),
-			translation: self.translation.to_array(),
-		}))
+		Object::from(transform_matrix(self))
 	}
 
 	// A map of the plane leaving the weight and `z` alone, which no other matrix fits
@@ -161,6 +185,10 @@ impl ExpressionValue for DAffine2 {
 			translation,
 		} = object.as_matrix()?.as_affine2()?;
 		Some(DAffine2::from_mat2_translation(DMat2::from_cols_array_2d(&columns), DVec2::from_array(translation)))
+	}
+
+	fn items(items: impl Iterator<Item = Self>) -> Items {
+		Items::Matrices(items.map(transform_matrix).collect())
 	}
 }
 
@@ -215,49 +243,61 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	Item::from_parts(result, attributes)
 }
 
-/// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on.
+/// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on, or `A`, `B`, `C` for matrices.
 struct PositionalMathContext {
-	items: Vec<Value>,
+	items: Items,
+}
+
+/// The position a single-letter name of the given case binds, `a` or `A` being the first.
+fn position(name: &str, is_letter_case: fn(&char) -> bool) -> Option<usize> {
+	let mut characters = name.chars();
+	let letter = characters.next()?;
+	(characters.next().is_none() && is_letter_case(&letter)).then(|| (letter.to_ascii_lowercase() as u8 - b'a') as usize)
 }
 
 impl ValueProvider for PositionalMathContext {
 	fn get_value(&self, name: &str) -> Option<Value> {
-		let mut characters = name.chars();
-		let letter = characters.next()?;
-		if characters.next().is_some() || !letter.is_ascii_lowercase() {
-			return None;
-		}
+		let Items::Values(items) = &self.items else { return None };
 
 		// A wired item shadows the constant spelled by its letter (`e` as the fifth item, `i` as the ninth), which stay reachable
 		// as `\e` and `\i`; an unwired letter reads as its default of 0, except that a constant's letter stays the constant
-		let index = (letter as u8 - b'a') as usize;
-		match self.items.get(index) {
+		match items.get(position(name, char::is_ascii_lowercase)?) {
 			Some(item) => Some(*item),
 			None if Constant::from_name(name).is_some() => None,
 			None => Some(Value::from_i64(0)),
 		}
 	}
+
+	fn get_matrix(&self, name: &str) -> Option<Matrix> {
+		let Items::Matrices(items) = &self.items else { return None };
+
+		// Likewise `I` as the ninth item shadows the identity, and an unwired letter reads as a Transform's default, the identity
+		Some(items.get(position(name, char::is_ascii_uppercase)?).copied().unwrap_or(Matrix::IDENTITY))
+	}
 }
 
-/// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
+/// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, and a Vec2 takes the X and Y of a vector like `3i + 4j`. Boolean items read as 0 or 1 and Vec2 items as such vectors.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, `+` and `-` add entry by entry, and `count` counts.
 #[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
-fn math_f<T: ExpressionItem, U: ExpressionValue>(
+fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>,
-		List<i64>, List<i64>, List<i64>, List<i64>,
-		List<bool>, List<bool>, List<bool>, List<bool>,
-		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
 	)]
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
 	f: Item<String>,
 	/// The type the result is read as.
-	#[implementations(f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2)]
+	#[implementations(
+		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+	)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
 	output_type: Item<U>,
@@ -267,16 +307,21 @@ fn math_f<T: ExpressionItem, U: ExpressionValue>(
 	let _ = output_type;
 
 	let expression = f.element();
-	let items: Vec<Value> = values.iter_element_values().map(|&value| value.into_value()).collect();
-	let bindings = PositionalMathContext { items };
+	let bindings = PositionalMathContext {
+		items: T::items(values.iter_element_values().copied()),
+	};
 
 	// A lone operator or variadic function name applies across all items rather than parsing as an expression
 	if let Some(reducer) = classify_reducer(expression, &bindings) {
-		let Some(result) = reducer.evaluate(&bindings.items) else {
+		let result = match &bindings.items {
+			Items::Values(values) => reducer.evaluate(values).map(Object::Value),
+			Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
+		};
+		let Some(result) = result else {
 			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
 			return Item::new_from_element(U::default());
 		};
-		return Item::new_from_element(output(Some(Object::Value(result))));
+		return Item::new_from_element(output(Some(result)));
 	}
 
 	let result = output(parsed.parse(expression).and_then(|expression| evaluate_expression(&expression, bindings)));
@@ -2161,6 +2206,21 @@ mod test {
 		// A value, or a matrix touching the weight, is no Transform, so the output falls back to its default
 		assert_eq!(fx(shear, "X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
 		assert_eq!(fx(shear, "[1;i] + X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
+
+		// A Transform list binds as `A`, `B`, `C`, and a lone operator composes, averages, or counts across it
+		let scale = DAffine2::from_scale(DVec2::splat(2.));
+		fn f<U: ExpressionValue>(items: [DAffine2; 2], expression: &str, output_type: U) -> U {
+			let items: List<DAffine2> = items.into_iter().map(Item::new_from_element).collect();
+			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).into_element()
+		}
+		assert_eq!(f([shear, scale], "A B", DAffine2::IDENTITY), shear * scale);
+		assert_eq!(f([shear, scale], "A C", DAffine2::IDENTITY), shear);
+		assert_eq!(f([shear, scale], "*", DAffine2::IDENTITY), shear * scale);
+		assert_eq!(f([shear, scale], "/", DAffine2::IDENTITY), shear * scale.inverse());
+		assert_eq!(f([shear, scale], "mean", DAffine2::IDENTITY).translation, DVec2::new(2.5, 2.));
+		assert_eq!(f([shear, scale], "count", 0.), 2.);
+		assert_eq!(f([shear, scale], "min", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		assert_eq!(f([shear, scale], "a", DAffine2::IDENTITY), DAffine2::IDENTITY);
 	}
 
 	#[test]
