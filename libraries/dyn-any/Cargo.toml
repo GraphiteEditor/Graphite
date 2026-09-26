@@ -10,6 +10,9 @@ documentation = "https://docs.rs/dyn-any"
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/dyn-any"
 readme = "./README.md"
 
+[lints]
+workspace = true
+
 [features]
 default = ["std", "large-atomics"]
 std = ["alloc", "rc", "glam/default"]
