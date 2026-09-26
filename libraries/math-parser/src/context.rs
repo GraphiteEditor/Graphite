@@ -1,3 +1,4 @@
+use crate::matrix::Matrix;
 use crate::value::Value;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -5,6 +6,11 @@ use std::ops::{Deref, DerefMut};
 //TODO: editor integration, implement these traits for whatever is needed, maybe merge them if needed
 pub trait ValueProvider {
 	fn get_value(&self, name: &str) -> Option<Value>;
+
+	/// The matrix bound to an uppercase-initial name, which the case rule reserves for matrices.
+	fn get_matrix(&self, _name: &str) -> Option<Matrix> {
+		None
+	}
 }
 
 pub trait FunctionProvider {
@@ -19,6 +25,10 @@ pub struct NothingMap;
 impl<V: ValueProvider> ValueProvider for &V {
 	fn get_value(&self, name: &str) -> Option<Value> {
 		(**self).get_value(name)
+	}
+
+	fn get_matrix(&self, name: &str) -> Option<Matrix> {
+		(**self).get_matrix(name)
 	}
 }
 
@@ -73,6 +83,10 @@ impl<V: ValueProvider, F: FunctionProvider> EvalContext<V, F> {
 
 	pub fn get_value(&self, name: &str) -> Option<Value> {
 		self.values.get_value(name)
+	}
+
+	pub fn get_matrix(&self, name: &str) -> Option<Matrix> {
+		self.values.get_matrix(name)
 	}
 
 	pub fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
