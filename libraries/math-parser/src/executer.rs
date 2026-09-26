@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Literal, MatrixNode, Node, SortedCase, UnaryOp, ValueNode};
-use crate::constants::{Builtin, MatrixToValue, builtin_function, suffixed_function};
+use crate::constants::{Builtin, MatrixToValue, ValueOfMatrices, builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::lexer::Constant;
 use crate::matrix::Matrix;
@@ -36,6 +36,9 @@ pub enum EvalError {
 
 	#[error("A singular matrix has no inverse")]
 	SingularMatrix,
+
+	#[error("A singular range has no interior")]
+	SingularRange,
 
 	#[error("Only a matrix without translation has a transpose")]
 	AffineTranspose,
@@ -127,18 +130,9 @@ fn matrix_binary_op(lhs: Object, op: BinaryOp, rhs: Object) -> Result<Matrix, Ev
 		(lhs, Op::Div, Object::Matrix(b)) => matrix_binary_op(lhs, Op::Mul, Object::from(b.inverse().ok_or(EvalError::SingularMatrix)?)),
 		(Object::Matrix(a), Op::Add, Object::Matrix(b)) => settle_matrix(*a + *b),
 		(Object::Matrix(a), Op::Sub, Object::Matrix(b)) => settle_matrix(*a - *b),
-		(Object::Matrix(a), Op::Add, Object::Value(Value::Number(t))) | (Object::Value(Value::Number(t)), Op::Add, Object::Matrix(a)) => settle_matrix(Matrix {
-			translation: a.translation + t.to_quaternion(),
-			..*a
-		}),
-		(Object::Matrix(a), Op::Sub, Object::Value(Value::Number(t))) => settle_matrix(Matrix {
-			translation: a.translation - t.to_quaternion(),
-			..*a
-		}),
-		(Object::Value(Value::Number(t)), Op::Sub, Object::Matrix(a)) => settle_matrix(Matrix {
-			translation: t.to_quaternion() - a.translation,
-			..-*a
-		}),
+		(Object::Matrix(a), Op::Add, Object::Value(Value::Number(t))) | (Object::Value(Value::Number(t)), Op::Add, Object::Matrix(a)) => settle_matrix(a.translated(t.to_quaternion())),
+		(Object::Matrix(a), Op::Sub, Object::Value(Value::Number(t))) => settle_matrix(a.translated(-t.to_quaternion())),
+		(Object::Value(Value::Number(t)), Op::Sub, Object::Matrix(a)) => settle_matrix((-*a).translated(t.to_quaternion())),
 		(Object::Matrix(a), Op::Pow, Object::Value(Value::Number(exponent))) => {
 			// A whole exponent is a composition power, a negative one of the inverse
 			let whole = exponent
@@ -258,6 +252,7 @@ impl ValueNode {
 			},
 			ValueNode::Apply { matrix, value } => value_of_matrix(context, MatrixValueCase::Apply(matrix, value)),
 			ValueNode::OfMatrix { function, matrix } => value_of_matrix(context, MatrixValueCase::OfMatrix(*function, matrix)),
+			ValueNode::OfMatrices { function, value, matrices } => value_of_matrix(context, MatrixValueCase::OfMatrices(*function, value, matrices)),
 			ValueNode::MatrixComparison { matrices, distinct } => value_of_matrix(context, MatrixValueCase::Comparison(matrices, *distinct)),
 		}
 	}
@@ -267,6 +262,7 @@ impl ValueNode {
 enum MatrixValueCase<'a> {
 	Apply(&'a MatrixNode, &'a ValueNode),
 	OfMatrix(MatrixToValue, &'a MatrixNode),
+	OfMatrices(ValueOfMatrices, &'a ValueNode, &'a [MatrixNode]),
 	Comparison(&'a [MatrixNode], bool),
 }
 
@@ -281,12 +277,17 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<
 			settle(Value::from(matrix.apply(value.to_quaternion())))
 		}
 		MatrixValueCase::OfMatrix(function, matrix) => settle(function(matrix.eval(context)?)),
+		MatrixValueCase::OfMatrices(function, value, matrices) => {
+			let value = value.eval(context)?;
+			let matrices = matrices.iter().map(|matrix| matrix.eval(context)).collect::<Result<Vec<Matrix>, EvalError>>()?;
+			settle(function(value, &matrices)?)
+		}
 		MatrixValueCase::Comparison(matrices, distinct) => {
 			let matrices = matrices.iter().map(|matrix| matrix.eval(context)).collect::<Result<Vec<Matrix>, EvalError>>()?;
 			let holds = if distinct {
-				matrices.iter().enumerate().all(|(index, a)| matrices[index + 1..].iter().all(|b| a != b))
+				matrices.iter().enumerate().all(|(index, a)| matrices[index + 1..].iter().all(|b| !a.same_entries(*b)))
 			} else {
-				matrices.windows(2).all(|pair| pair[0] == pair[1])
+				matrices.windows(2).all(|pair| pair[0].same_entries(pair[1]))
 			};
 			Ok(Value::from_bool(holds))
 		}
@@ -320,6 +321,10 @@ impl MatrixNode {
 			MatrixNode::FromValues { function, arguments } => {
 				let values = arguments.iter().map(|argument| argument.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
 				settle_matrix(function(&values).ok_or(EvalError::TypeError)?)
+			}
+			MatrixNode::Range { from, to } => {
+				let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
+				settle_matrix(Matrix::range(from.to_quaternion(), to.to_quaternion()))
 			}
 			MatrixNode::OfMatrix { function, matrix } => settle_matrix(function(matrix.eval(context)?)),
 			MatrixNode::BinOp { lhs, op, rhs } => matrix_binary_op(lhs.eval(context)?, *op, rhs.eval(context)?),

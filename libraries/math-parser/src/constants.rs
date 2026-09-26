@@ -1,4 +1,5 @@
 use crate::ast::BinaryOp;
+use crate::executer::EvalError;
 use crate::matrix::Matrix;
 use crate::quaternion::Quaternion;
 use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, part_product, power_of_two_scale};
@@ -230,15 +231,6 @@ fn lerp(a: f64, b: f64, t: f64) -> f64 {
 	a + difference * t
 }
 
-/// The fraction of the way `value` lies from `a` to `b`, halving every operand first (which keeps the ratio) when a difference of finite ones would overflow.
-fn inverse_lerp(value: f64, a: f64, b: f64) -> f64 {
-	let (numerator, denominator) = (value - a, b - a);
-	if (numerator.is_infinite() || denominator.is_infinite()) && [value, a, b].iter().all(|operand| operand.is_finite()) {
-		return (value / 2. - a / 2.) / (b / 2. - a / 2.);
-	}
-	numerator / denominator
-}
-
 /// Computes the greatest common divisor of two nonnegative integers by the Euclidean algorithm.
 pub fn gcd(a: u128, b: u128) -> u128 {
 	let (mut a, mut b) = (a, b);
@@ -379,6 +371,8 @@ pub type MatrixToValue = fn(Matrix) -> Value;
 pub type MatrixToMatrix = fn(Matrix) -> Matrix;
 /// A built-in function building a matrix from values, like `rotation`.
 pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
+/// A built-in function of a value and matrices with a value result, like `inside`.
+pub type ValueOfMatrices = fn(Value, &[Matrix]) -> Result<Value, EvalError>;
 
 /// A built-in math function, by the sorts it takes and gives.
 #[derive(Clone, Copy)]
@@ -391,6 +385,7 @@ pub enum Builtin {
 	OfMatrix(MatrixToValue),
 	MatrixOfMatrix(MatrixToMatrix),
 	MatrixOfValues(ValuesToMatrix),
+	OfValueAndMatrices(ValueOfMatrices),
 }
 
 /// Defines a built-in function taking a particular count of arguments, or a few like `log(x)` and `log(x, base)`.
@@ -544,17 +539,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			x.binary_op(BinaryOp::Sub, quotient.binary_op(BinaryOp::Mul, *modulus)?).map(Value::Number)
 		}),
 
-		"clamp" => fixed_arity(|values| {
-			let [Value::Number(x), Value::Number(min), Value::Number(max)] = values else { return None };
-			// The bounds apply in turn, so the upper one wins where they cross
-			let real_clamp = || {
-				let at_least = if min.real_ordering(*x)? == Ordering::Greater { min } else { x };
-				Some(if max.real_ordering(*at_least)? == Ordering::Less { *max } else { *at_least })
-			};
-			let quaternion_clamp = || Number::Quaternion(x.to_quaternion().zip(min.to_quaternion(), f64::max).zip(max.to_quaternion(), f64::min));
-			Some(Value::Number(real_clamp().unwrap_or_else(quaternion_clamp)))
-		}),
-
 		// Variadic, exact over reals and otherwise part by part
 		"min" => variadic(|values| extremum(values, Ordering::Less).or_else(|| zipping(values, f64::min))),
 		"max" => variadic(|values| extremum(values, Ordering::Greater).or_else(|| zipping(values, f64::max))),
@@ -699,11 +683,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			a.binary_op(BinaryOp::Add, step).map(Value::Number)
 		}),
 
-		"remap" => fixed_arity(|values| {
-			let [value, in_a, in_b, out_a, out_b] = reals(values)?;
-			Some(Value::from_f64(lerp(out_a, out_b, inverse_lerp(value, in_a, in_b))))
-		}),
-
 		// Spherical interpolation between unit quaternions, `a (a⁻¹ b)^t`, along the shorter arc since `q` and `-q` are one rotation
 		"slerp" => fixed_arity(|values| {
 			let [Value::Number(a), Value::Number(b), Value::Number(t)] = values else { return None };
@@ -842,7 +821,7 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"rotation" => Builtin::MatrixOfValues(|values| {
 			let (values, axis) = with_axis(values, 1)?;
 			let [angle] = reals(values)?;
-			Some(Matrix::rotation(rotor(angle, axis)?))
+			Some(Matrix::rotation(rotor(angle, axis)?, axis))
 		}),
 
 		"scale" => Builtin::MatrixOfValues(|values| {
@@ -856,6 +835,42 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(Matrix::shear(along, by, factor.as_real()?))
 		}),
 
+		// Range functions, each undoing the range to reach its parameter, which only the axes the range spans constrain
+		"inside" => Builtin::OfValueAndMatrices(|p, matrices| {
+			let [range] = matrices else { return Err(EvalError::TypeError) };
+			let parameter = range_parameter(range.region(), p)?;
+			Ok(Value::from_bool(
+				range.axes.into_iter().zip(parameter.parts()).all(|(spanned, part)| !spanned || (0. ..=1.).contains(&part)),
+			))
+		}),
+
+		"clamp" => Builtin::OfValueAndMatrices(|x, matrices| {
+			let [range] = matrices else { return Err(EvalError::TypeError) };
+			let region = range.region();
+			let parameter = range_parameter(region, x)?;
+			let parts = parameter.parts();
+			let clamped = Quaternion::from_parts(array::from_fn(|axis| if range.axes[axis] { parts[axis].clamp(0., 1.) } else { parts[axis] }));
+
+			// A value already within the range is itself, spared the round trip through the parameter
+			Ok(if clamped == parameter { x } else { Value::from(region.apply(clamped)) })
+		}),
+
+		// From one range to another, `B A⁻¹ x`
+		"remap" => Builtin::OfValueAndMatrices(|x, matrices| {
+			let [from, to] = matrices else { return Err(EvalError::TypeError) };
+			Ok(Value::from(to.region().apply(range_parameter(from.region(), x)?)))
+		}),
+
 		_ => return None,
 	})
+}
+
+/// The parameter `R⁻¹ p` whose image under the region is `p`, which a singular range, having no interior, lacks.
+fn range_parameter(region: Matrix, p: Value) -> Result<Quaternion, EvalError> {
+	let Value::Number(p) = p;
+	let parameter = region.inverse().ok_or(EvalError::SingularRange)?.apply(p.to_quaternion());
+	if Number::Quaternion(parameter).is_nan() {
+		return Err(EvalError::Indeterminate);
+	}
+	Ok(parameter)
 }

@@ -194,10 +194,19 @@ where
 			rhs: Box::new(rhs),
 		});
 
+		// A range binds looser than arithmetic, so `0..2pi` reaches `2π`, and tighter than comparison
+		let range = add.clone().then(just(Token::DotDot).ignore_then(add).or_not()).map(|(from, to)| match to {
+			Some(to) => Syntax::Range {
+				from: Box::new(from),
+				to: Box::new(to),
+			},
+			None => from,
+		});
+
 		// A chain like `0 <= x < 1` is one predicate over its adjacent pairs, not an implicit `(0 <= x) < 1` (which is only read that way when its parentheses are written out), and must read in one direction
-		let cmp = add
+		let cmp = range
 			.clone()
-			.then(cmp_op.then(add).repeated().collect::<Vec<_>>())
+			.then(cmp_op.then(range).repeated().collect::<Vec<_>>())
 			.try_map(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>), span| {
 				// A lone comparison is an ordinary binary operation
 				if rest.len() <= 1 {
@@ -267,6 +276,25 @@ mod tests {
 		test_matrix_columns: "[i,j]" => Syntax::Matrix {
 			entries: vec![Syntax::Var("i".to_string()), Syntax::Var("j".to_string())],
 			by_rows: false,
+		},
+		test_range_below_arithmetic: "-1..2pi" => Syntax::Range {
+			from: Box::new(Syntax::UnaryOp {
+				op: UnaryOp::Neg,
+				expr: Box::new(Syntax::Lit(Literal::Integer(1))),
+			}),
+			to: Box::new(Syntax::BinOp {
+				lhs: Box::new(Syntax::Lit(Literal::Integer(2))),
+				op: BinaryOp::Mul,
+				rhs: Box::new(Syntax::Var("pi".to_string())),
+			}),
+		},
+		test_range_above_comparison: "0..1 == I" => Syntax::BinOp {
+			lhs: Box::new(Syntax::Range {
+				from: Box::new(Syntax::Lit(Literal::Integer(0))),
+				to: Box::new(Syntax::Lit(Literal::Integer(1))),
+			}),
+			op: BinaryOp::Eq,
+			rhs: Box::new(Syntax::Var("I".to_string())),
 		},
 		test_transpose_then_inverse: "A^T^-1" => Syntax::BinOp {
 			lhs: Box::new(Syntax::UnaryOp {

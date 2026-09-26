@@ -29,6 +29,8 @@ pub enum Token<'src> {
 	RBracket,
 	Semicolon,
 	Comma,
+	/// The range `a..b`.
+	DotDot,
 	Plus,
 	Minus,
 	/// Reserved for percentages, so the parser never matches it and its error points a C-style remainder to `mod(a, b)`.
@@ -76,6 +78,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::RBracket => f.write_str("]"),
 			Token::Semicolon => f.write_str(";"),
 			Token::Comma => f.write_str(","),
+			Token::DotDot => f.write_str(".."),
 			Token::Plus => f.write_str("+"),
 			Token::Minus => f.write_str("-"),
 			Token::Percent => f.write_str("%"),
@@ -245,6 +248,8 @@ fn classify_bars(input: &str) -> Vec<(usize, Bar)> {
 			}
 			// Whitespace changes nothing, and neither does `!`, a postfix factorial after an operand or a prefix not before one
 			c if c.is_whitespace() || c == '!' => {}
+			// The range `..` is an operator, unlike a number's decimal point
+			'.' if chars.next_if(|(_, next)| *next == '.').is_some() => after_operand = false,
 			// A name ends an operand, but a keyword like `if` comes before one
 			c if c == '\\' || unicode_ident::is_xid_start(c) => {
 				let mut end = position + c.len_utf8();
@@ -350,7 +355,8 @@ impl<'a> Lexer<'a> {
 		let mut got_digit = int_digits > 0;
 		let mut plain_integer = true;
 
-		if self.peek() == Some('.') {
+		// A decimal point belongs to the number unless it begins a range's `..`
+		if self.peek() == Some('.') && !self.input[self.pos..].starts_with("..") {
 			self.bump();
 			plain_integer = false;
 			got_digit |= self.consume_digits().0 > 0;
@@ -368,9 +374,10 @@ impl<'a> Lexer<'a> {
 			}
 		}
 
-		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication
+		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1.5.5`, `1.5 5`), so reject rather than letting it parse as implicit multiplication
 		let leading_dot = self.input[start_pos..].starts_with('.');
-		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.follows_number_literal(start_pos) || (leading_dot && self.follows_operand(start_pos)) {
+		let glued = self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) && !self.input[self.pos..].starts_with("..");
+		if !got_digit || glued || self.follows_number_literal(start_pos) || (leading_dot && self.follows_operand(start_pos)) {
 			self.pos = start_pos;
 			return None;
 		}
@@ -464,6 +471,10 @@ impl<'a> Lexer<'a> {
 				}
 			}
 			'≠' => Neq,
+			'.' if self.peek() == Some('.') => {
+				self.bump();
+				DotDot
+			}
 
 			// A symbol can't be a name, so unlike `inf`, no binding can shadow `∞`
 			'∞' => Float(f64::INFINITY),
