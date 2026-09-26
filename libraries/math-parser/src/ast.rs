@@ -1,4 +1,4 @@
-use crate::constants::{MatrixToMatrix, MatrixToValue, ValueOfMatrices, ValuesToMatrix};
+use crate::constants::{MatrixToMatrix, MatrixToValue, ValueOfRegions, ValuesToMatrix};
 use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -157,9 +157,9 @@ pub enum ValueNode {
 		function: MatrixToValue,
 		matrix: Box<MatrixNode>,
 	},
-	/// A function of a value and matrices with a value result, like `inside(p, R)`.
+	/// A function of a value and regions with a value result, like `inside(p, R)`.
 	OfMatrices {
-		function: ValueOfMatrices,
+		function: ValueOfRegions,
 		value: Box<ValueNode>,
 		matrices: Vec<MatrixNode>,
 	},

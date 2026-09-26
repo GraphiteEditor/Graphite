@@ -1,12 +1,13 @@
 use crate::ast::BinaryOp;
 use crate::executer::EvalError;
-use crate::matrix::Matrix;
+use crate::matrix::{Matrix, Region};
 use crate::quaternion::Quaternion;
 use crate::value::{Complex, Number, Value, complex_divide, complex_log_gamma, part_product, power_of_two_scale};
 use num_complex::ComplexFloat;
 use std::array;
 use std::cmp::Ordering;
 use std::f64::consts::{LN_2, PI, TAU};
+use std::ops::RangeInclusive;
 
 pub type BuiltinFunction = fn(&[Value]) -> Option<Value>;
 
@@ -371,11 +372,12 @@ pub type MatrixToValue = fn(Matrix) -> Value;
 pub type MatrixToMatrix = fn(Matrix) -> Matrix;
 /// A built-in function building a matrix from values, like `rotation`.
 pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
-/// A built-in function of a value and matrices with a value result, like `inside`.
-pub type ValueOfMatrices = fn(Value, &[Matrix]) -> Result<Value, EvalError>;
+/// A built-in function of a value and regions with a value result, like `inside`.
+pub type ValueOfRegions = fn(Value, &[Region]) -> Result<Value, EvalError>;
 
-/// A built-in math function, by the sorts it takes and gives.
-#[derive(Clone, Copy)]
+/// A built-in math function, by the sorts it takes and gives. Those taking matrices have their argument counts checked as the
+/// expression is parsed.
+#[derive(Clone)]
 pub enum Builtin {
 	Values {
 		function: BuiltinFunction,
@@ -384,8 +386,15 @@ pub enum Builtin {
 	},
 	OfMatrix(MatrixToValue),
 	MatrixOfMatrix(MatrixToMatrix),
-	MatrixOfValues(ValuesToMatrix),
-	OfValueAndMatrices(ValueOfMatrices),
+	MatrixOfValues {
+		function: ValuesToMatrix,
+		arity: RangeInclusive<usize>,
+	},
+	/// A value, then `regions` regions.
+	OfValueAndRegions {
+		function: ValueOfRegions,
+		regions: usize,
+	},
 }
 
 /// Defines a built-in function taking a particular count of arguments, or a few like `log(x)` and `log(x, base)`.
@@ -816,59 +825,109 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"translation" => Builtin::OfMatrix(|matrix| Value::from(matrix.translation)),
 
 		// Left multiplication by the value, `L_q`
-		"matrix" => Builtin::MatrixOfValues(|values| {
-			let [q] = quaternions(values)?;
-			Some(Matrix::left_multiplication(q))
-		}),
+		"matrix" => Builtin::MatrixOfValues {
+			arity: 1..=1,
+			function: |values| {
+				let [q] = quaternions(values)?;
+				Some(Matrix::left_multiplication(q))
+			},
+		},
 
-		"rotation" => Builtin::MatrixOfValues(|values| {
-			let (values, axis) = with_axis(values, 1)?;
-			let [angle] = reals(values)?;
-			Some(Matrix::rotation(rotor(angle, axis)?, axis))
-		}),
+		"rotation" => Builtin::MatrixOfValues {
+			arity: 1..=2,
+			function: |values| {
+				let (values, axis) = with_axis(values, 1)?;
+				let [angle] = reals(values)?;
+				Some(Matrix::rotation(rotor(angle, axis)?, axis))
+			},
+		},
 
-		"scale" => Builtin::MatrixOfValues(|values| {
-			let [q] = quaternions(values)?;
-			Some(Matrix::scale(q))
-		}),
+		"scale" => Builtin::MatrixOfValues {
+			arity: 1..=1,
+			function: |values| {
+				let [q] = quaternions(values)?;
+				Some(Matrix::scale(q))
+			},
+		},
 
-		"shear" => Builtin::MatrixOfValues(|values| {
-			let [along, by, factor] = values else { return None };
-			let [along, by] = quaternions(&[*along, *by])?;
-			Some(Matrix::shear(along, by, factor.as_real()?))
-		}),
+		"shear" => Builtin::MatrixOfValues {
+			arity: 3..=3,
+			function: |values| {
+				let [along, by, factor] = values else { return None };
+				let [along, by] = quaternions(&[*along, *by])?;
+				Some(Matrix::shear(along, by, factor.as_real()?))
+			},
+		},
 
-		// Range functions, each undoing the range to reach its parameter, which only the axes the range spans constrain, a flat one to 0
-		"inside" => Builtin::OfValueAndMatrices(|p, matrices| {
-			let [range] = matrices else { return Err(EvalError::TypeError) };
-			let RangeParameter { parameter, flat, .. } = range_parameter(*range, p)?;
-			let within = |axis: usize, part: f64| if flat[axis] { part == 0. } else { !range.axes[axis] || (0. ..=1.).contains(&part) };
-			Ok(Value::from_bool(parameter.parts().into_iter().enumerate().all(|(axis, part)| within(axis, part))))
-		}),
+		// Range functions read a range literal by its corners, which may be infinite, like `inside(x, 0..inf)` for `x >= 0`, and undo
+		// any other region to its parameter, which only the axes it spans constrain, a flat one to 0
+		"inside" => Builtin::OfValueAndRegions {
+			regions: 1,
+			function: |p, regions| {
+				let [region] = regions else { return Err(EvalError::TypeError) };
+				let Value::Number(p) = p;
+				let p = p.to_quaternion().parts();
 
-		"clamp" => Builtin::OfValueAndMatrices(|x, matrices| {
-			let [range] = matrices else { return Err(EvalError::TypeError) };
-			let RangeParameter { parameter, region, flat } = range_parameter(*range, x)?;
-			let parts = parameter.parts();
-			let clamped = Quaternion::from_parts(array::from_fn(|axis| match (flat[axis], range.axes[axis]) {
-				(true, _) => 0.,
-				(false, true) => parts[axis].clamp(0., 1.),
-				(false, false) => parts[axis],
-			}));
+				if let Region::Range(a, b) = *region {
+					let spanned = Matrix::range_axes(a, b);
+					let (a, b) = (a.parts(), b.parts());
+					return Ok(Value::from_bool((0..4).all(|axis| !spanned[axis] || (a[axis].min(b[axis])..=a[axis].max(b[axis])).contains(&p[axis]))));
+				}
 
-			// A value already within the range is itself, spared the round trip through the parameter
-			Ok(if clamped == parameter { x } else { Value::from(region.apply(clamped)) })
-		}),
+				let range = region.matrix();
+				let RangeParameter { parameter, flat, .. } = range_parameter(range, Quaternion::from_parts(p))?;
+				let within = |axis: usize, part: f64| if flat[axis] { part == 0. } else { !range.axes[axis] || (0. ..=1.).contains(&part) };
+				Ok(Value::from_bool(parameter.parts().into_iter().enumerate().all(|(axis, part)| within(axis, part))))
+			},
+		},
+
+		"clamp" => Builtin::OfValueAndRegions {
+			regions: 1,
+			function: |x, regions| {
+				let [region] = regions else { return Err(EvalError::TypeError) };
+				let Value::Number(number) = x;
+				let parts = number.to_quaternion().parts();
+
+				let clamped = if let Region::Range(a, b) = *region {
+					let spanned = Matrix::range_axes(a, b);
+					let (a, b) = (a.parts(), b.parts());
+					Quaternion::from_parts(array::from_fn(|axis| {
+						if spanned[axis] {
+							parts[axis].clamp(a[axis].min(b[axis]), a[axis].max(b[axis]))
+						} else {
+							parts[axis]
+						}
+					}))
+				} else {
+					let range = region.matrix();
+					let RangeParameter { parameter, region, flat } = range_parameter(range, Quaternion::from_parts(parts))?;
+					let parameter_parts = parameter.parts();
+					let clamped = Quaternion::from_parts(array::from_fn(|axis| match (flat[axis], range.axes[axis]) {
+						(true, _) => 0.,
+						(false, true) => parameter_parts[axis].clamp(0., 1.),
+						(false, false) => parameter_parts[axis],
+					}));
+					if clamped == parameter { Quaternion::from_parts(parts) } else { region.apply(clamped) }
+				};
+
+				// A value already within the range is itself, keeping an integer's exact storage
+				Ok(if clamped.parts() == parts { x } else { Value::from(clamped) })
+			},
+		},
 
 		// From one range to another, `B A⁻¹ x`, where a flat axis of `A` leaves the parameter undefined
-		"remap" => Builtin::OfValueAndMatrices(|x, matrices| {
-			let [from, to] = matrices else { return Err(EvalError::TypeError) };
-			let RangeParameter { parameter, flat, .. } = range_parameter(*from, x)?;
-			if flat.contains(&true) {
-				return Err(EvalError::FlatRemapSource);
-			}
-			Ok(Value::from(to.region().apply(parameter)))
-		}),
+		"remap" => Builtin::OfValueAndRegions {
+			regions: 2,
+			function: |x, regions| {
+				let [from, to] = regions else { return Err(EvalError::TypeError) };
+				let Value::Number(x) = x;
+				let RangeParameter { parameter, flat, .. } = range_parameter(from.matrix(), x.to_quaternion())?;
+				if flat.contains(&true) {
+					return Err(EvalError::FlatRemapSource);
+				}
+				Ok(Value::from(to.matrix().region().apply(parameter)))
+			},
+		},
 
 		_ => return None,
 	})
@@ -882,10 +941,13 @@ struct RangeParameter {
 	flat: [bool; 4],
 }
 
-fn range_parameter(range: Matrix, p: Value) -> Result<RangeParameter, EvalError> {
-	let Value::Number(p) = p;
+fn range_parameter(range: Matrix, p: Quaternion) -> Result<RangeParameter, EvalError> {
+	if !range.is_finite() {
+		return Err(EvalError::Indeterminate);
+	}
+
 	let (region, flat) = range.invertible_region();
-	let parameter = region.inverse().ok_or(EvalError::SingularRange)?.apply(p.to_quaternion());
+	let parameter = region.inverse().ok_or(EvalError::SingularRange)?.apply(p);
 	if Number::Quaternion(parameter).is_nan() {
 		return Err(EvalError::Indeterminate);
 	}

@@ -1,8 +1,8 @@
 use crate::ast::{BinaryOp, Literal, MatrixNode, Node, SortedCase, UnaryOp, ValueNode};
-use crate::constants::{Builtin, MatrixToValue, ValueOfMatrices, builtin_function, suffixed_function};
+use crate::constants::{Builtin, MatrixToValue, ValueOfRegions, builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::lexer::Constant;
-use crate::matrix::Matrix;
+use crate::matrix::{Matrix, Region};
 use crate::object::Object;
 use crate::quaternion::Quaternion;
 use crate::value::{Number, Value};
@@ -36,6 +36,9 @@ pub enum EvalError {
 
 	#[error("A singular matrix has no inverse")]
 	SingularMatrix,
+
+	#[error("A matrix power must be a whole number")]
+	FractionalMatrixPower,
 
 	#[error("A singular range has no interior")]
 	SingularRange,
@@ -140,7 +143,10 @@ fn matrix_binary_op(lhs: Object, op: BinaryOp, rhs: Object) -> Result<Matrix, Ev
 			// A whole exponent is a composition power, a negative one of the inverse, with an integer read exactly past 2^53
 			let whole = match exponent {
 				Number::Integer(integer) => integer,
-				real => real.as_real().filter(|real| real.fract() == 0. && real.abs() < i64::MAX as f64).ok_or(EvalError::OperatorTypeError)? as i64,
+				real => real
+					.as_real()
+					.filter(|real| real.fract() == 0. && real.abs() < i64::MAX as f64)
+					.ok_or(EvalError::FractionalMatrixPower)? as i64,
 			};
 			settle_matrix(a.power(whole).ok_or(EvalError::SingularMatrix)?)
 		}
@@ -265,7 +271,7 @@ impl ValueNode {
 enum MatrixValueCase<'a> {
 	Apply(&'a MatrixNode, &'a ValueNode),
 	OfMatrix(MatrixToValue, &'a MatrixNode),
-	OfMatrices(ValueOfMatrices, &'a ValueNode, &'a [MatrixNode]),
+	OfMatrices(ValueOfRegions, &'a ValueNode, &'a [MatrixNode]),
 	Comparison(&'a [MatrixNode], bool),
 }
 
@@ -282,8 +288,19 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(context: &EvalContext<
 		MatrixValueCase::OfMatrix(function, matrix) => settle(function(matrix.eval(context)?)),
 		MatrixValueCase::OfMatrices(function, value, matrices) => {
 			let value = value.eval(context)?;
-			let matrices = matrices.iter().map(|matrix| matrix.eval(context)).collect::<Result<Vec<Matrix>, EvalError>>()?;
-			settle(function(value, &matrices)?)
+
+			// A range literal is kept by its corners, which may be infinite where no matrix can hold them
+			let regions = matrices
+				.iter()
+				.map(|matrix| match matrix {
+					MatrixNode::Range { from, to } => {
+						let (Value::Number(from), Value::Number(to)) = (from.eval(context)?, to.eval(context)?);
+						Ok(Region::Range(from.to_quaternion(), to.to_quaternion()))
+					}
+					matrix => matrix.eval(context).map(Region::Map),
+				})
+				.collect::<Result<Vec<Region>, EvalError>>()?;
+			settle(function(value, &regions)?)
 		}
 		MatrixValueCase::Comparison(matrices, distinct) => {
 			let matrices = matrices.iter().map(|matrix| matrix.eval(context)).collect::<Result<Vec<Matrix>, EvalError>>()?;
