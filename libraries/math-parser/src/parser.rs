@@ -3,7 +3,7 @@ use crate::context::{FunctionProvider, NothingMap};
 use crate::lexer::{LexError, Lexer, Span, Token};
 use crate::sort::sorted;
 use chumsky::cache::{Cache, Cached};
-use chumsky::error::{EmptyErr, LabelError};
+use chumsky::error::{EmptyErr, LabelError, RichReason};
 use chumsky::input::ValueInput;
 use chumsky::{Parser, prelude::*};
 use std::fmt;
@@ -57,7 +57,12 @@ impl ErrorMessage {
 
 	/// A message written with its code between backticks, which only the language's own wording uses, never the source text.
 	fn from_prose(prose: &str) -> Self {
-		let parts = prose.split('`').enumerate().filter(|(_, part)| !part.is_empty());
+		Self::with_code_between(prose, '`')
+	}
+
+	/// A message whose code sits between a quote character that no code within can hold.
+	fn with_code_between(message: &str, quote: char) -> Self {
+		let parts = message.split(quote).enumerate().filter(|(_, part)| !part.is_empty());
 		let parts = parts
 			.map(|(index, part)| {
 				if index % 2 == 0 {
@@ -182,17 +187,16 @@ fn parse(src: &str) -> Result<Syntax, ParseError> {
 						let parts = std::iter::once(MessagePart::Code(text.to_string())).chain(reason.parts).collect();
 						ErrorMessage { parts, span: None }.at(e.span())
 					}
-					// Chumsky's own messages begin in lowercase, like "found ... expected ...", and quote tokens without backticks
-					_ => {
-						let message = e.to_string();
-						let mut characters = message.chars();
-						let sentence_case: String = characters.next().into_iter().flat_map(char::to_uppercase).chain(characters).collect();
-						ErrorMessage {
-							parts: vec![MessagePart::Text(sentence_case)],
-							span: None,
+					_ => match e.reason() {
+						RichReason::Custom(message) => ErrorMessage::from_prose(message).at(e.span()),
+						// Chumsky's own wording is "found ... expected ..." in lowercase, without a comma, with its tokens between single quotes
+						RichReason::ExpectedFound { .. } => {
+							let message = e.to_string().replacen(" expected ", ", expected ", 1);
+							let mut characters = message.chars();
+							let sentence_case: String = characters.next().into_iter().flat_map(char::to_uppercase).chain(characters).collect();
+							ErrorMessage::with_code_between(&sentence_case, '\'').at(e.span())
 						}
-						.at(e.span())
-					}
+					},
 				})
 				.collect(),
 		)),

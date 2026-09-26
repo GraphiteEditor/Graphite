@@ -3791,9 +3791,9 @@ mod tests {
 		assert!(math_expression_error("πx @ 2", false).unwrap().ends_with("\nπx @ 2\n   ^\n   error here\n```"));
 		assert!(!math_expression_error("sin(I)", false).unwrap().contains('^'), "a sort error has no place to point at");
 
-		// Prose quoting a token like `*` is escaped, so it can't pair with another into italics
+		// A quoted token like `*` is a code span, so it can't pair with another into italics
 		let error = math_expression_error("2 * * 3", false).unwrap();
 		let prose = error.lines().next().unwrap();
-		assert!(prose.contains("\\*") && !prose.replace("\\*", "").contains('*'), "{error}");
+		assert!(prose.starts_with("Found `*`, expected ") && !prose.split('`').step_by(2).any(|text| text.contains('*')), "{error}");
 	}
 }

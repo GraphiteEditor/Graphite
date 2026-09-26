@@ -108,6 +108,25 @@ mod tests {
 		assert_eq!(message("7 % 3").span(), Some(2..3));
 		assert_eq!(message("sin(I)").parts(), [Text("A matrix stands where a value is needed".into())]);
 		assert_eq!(message("sin(I)").span(), None);
+
+		// The tokens the parser library quotes are code too, as is the code a custom message writes between backticks
+		assert_eq!(evaluate("2 +").unwrap_err().to_string(), "Found `+`, expected `&&`, `||`, or end of input, at 2..3");
+		assert_eq!(
+			message("2 +").parts(),
+			[
+				Text("Found ".into()),
+				Code("+".into()),
+				Text(", expected ".into()),
+				Code("&&".into()),
+				Text(", ".into()),
+				Code("||".into()),
+				Text(", or end of input".into())
+			]
+		);
+		assert_eq!(
+			message("{1 if x, 2 otherwise, 3 otherwise}").parts(),
+			[Text("A piecewise has at most one ".into()), Code("otherwise".into()), Text(" case".into())]
+		);
 	}
 
 	#[test]
