@@ -8,7 +8,7 @@
 //! construction. The only operation that introduces out-of-order deltas is [`merge`](History::merge),
 //! which re-sorts the combined set into the canonical order to restore the invariant.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{AttributesWrite, CrdtError, Delta, Rev, TimeStamp};
 
@@ -39,6 +39,11 @@ impl History {
 		self.index.contains_key(&rev)
 	}
 
+	/// Whether history holds a delta authored at `timestamp`.
+	pub fn contains_timestamp(&self, timestamp: TimeStamp) -> bool {
+		self.deltas.iter().any(|delta| delta.timestamp == timestamp)
+	}
+
 	pub fn len(&self) -> usize {
 		self.deltas.len()
 	}
@@ -64,22 +69,12 @@ impl History {
 		self.deltas.iter()
 	}
 
-	/// Absorb `incoming` (dedup by `Rev`) and canonically re-sort the whole combined history.
-	///
-	/// The sort is deterministic (topological, ties broken by `Rev`), so two peers that absorb the same
-	/// delta set produce byte-identical history, not merely two different valid orderings. This is the
-	/// history-convergence mechanism: arrival order is erased. Callers update the registry separately
-	/// (LWW apply is commutative, so the registry converges regardless of order).
-	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) {
-		for delta in incoming {
-			self.push(delta);
-		}
-		self.canonical_sort();
-	}
-
 	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
 	/// children, and among deltas whose parents are all emitted the lowest `Rev` goes first. O(V + E).
-	fn canonical_sort(&mut self) {
+	///
+	/// Deterministic: two peers that absorb the same delta set end up with byte-identical history, not two
+	/// different valid orderings. Arrival order is erased.
+	pub fn canonical_sort(&mut self) {
 		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
 		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());
 		let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
@@ -117,6 +112,51 @@ impl History {
 				self.deltas.push(delta);
 			}
 		}
+	}
+
+	/// `roots` and everything reachable from them through all parent links. Unknown roots are skipped.
+	pub fn ancestors(&self, roots: impl IntoIterator<Item = Rev>) -> HashSet<Rev> {
+		let mut seen = HashSet::new();
+		let mut stack: Vec<Rev> = roots.into_iter().filter(|rev| self.contains(*rev)).collect();
+		while let Some(rev) = stack.pop() {
+			if !seen.insert(rev) {
+				continue;
+			}
+			if let Some(delta) = self.get(rev) {
+				stack.extend(delta.all_parents());
+			}
+		}
+		seen
+	}
+
+	pub fn is_ancestor(&self, ancestor: Rev, descendant: Rev) -> bool {
+		self.ancestors([descendant]).contains(&ancestor)
+	}
+
+	/// `tip` plus the revs at first-parent distance 1, 2, 4, 8, ... behind it. Sent to a remote peer
+	/// so it can locate the divergence point within a factor of two of the true distance.
+	pub fn sample_chain(&self, tip: Rev) -> Vec<Rev> {
+		let mut samples = vec![tip];
+		let mut current = tip;
+		let mut distance = 0;
+		let mut next_sample_distance = 1;
+
+		while let Some(parent) = self.get(current).and_then(|delta| delta.parent) {
+			current = parent;
+			distance += 1;
+			if distance == next_sample_distance {
+				samples.push(current);
+				next_sample_distance *= 2;
+			}
+		}
+
+		samples
+	}
+
+	/// Every delta not reachable from the `known` revs the remote peer reported, in topological order.
+	pub fn deltas_unknown_to(&self, known: impl IntoIterator<Item = Rev>) -> Vec<&Delta> {
+		let known = self.ancestors(known);
+		self.deltas.iter().filter(|delta| !known.contains(&delta.id)).collect()
 	}
 
 	/// The current tips: revs that no other delta lists as a parent (the divergent heads). A linear

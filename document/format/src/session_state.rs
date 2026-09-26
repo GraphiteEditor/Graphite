@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{NetworkId, PeerId, Rev};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -39,4 +39,9 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, serde_json::Value>>,
+	/// How many hot ops this peer has authored, feeding [`document_graph_storage::HotOp::sequence`]. A
+	/// reopen continues the run instead of reusing a spent sequence. Appended last: a positional codec
+	/// decodes these fields in declaration order.
+	#[serde(default)]
+	pub next_hot_sequence: HotSequence,
 }

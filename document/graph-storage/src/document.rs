@@ -1,6 +1,6 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
-	apply_attribute_delta, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, RetiredHotOps,
+	Rev, SourceValue, TimeStamp, apply_attribute_delta, reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -11,6 +11,10 @@ pub struct Document {
 	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
 	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
 	pub(crate) hot_log: Vec<HotOp>,
+	/// Which hot ops history already covers, so one arriving after its own retirement is dropped instead
+	/// of re-entering the log. Retirement discards the delta's link back to its hot op, leaving this the
+	/// only record. See [`RetiredHotOps`].
+	pub(crate) retired: RetiredHotOps,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it, stamping fields at the fresh `T_retire`. Kept equal
@@ -36,6 +40,11 @@ pub struct Document {
 	/// peer is calling; collision avoidance comes from hashing `(self.peer, counter)`, so two peers
 	/// reading the same counter still produce distinct IDs.
 	pub(crate) next_node_counter: u64,
+	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
+	pub(crate) next_hot_sequence: HotSequence,
+	/// Set while the registries are still folded from an older history. A failed refold is retried; the
+	/// derived state does not stay behind the history it comes from.
+	pub(crate) refold_owed: bool,
 }
 
 impl Document {
@@ -66,24 +75,12 @@ impl Document {
 		self.revert_delta(target, delta)
 	}
 
-	/// Search every delta reachable from `head` (following all parents, including a merge's
-	/// `extra_parents`) for the first matching `predicate`, breadth-first. Resurrection needs full
-	/// ancestry reachability, so a node added only on a merged-in branch is still found.
+	/// The last match in canonical history order, over everything reachable from `head` or any tip. Not a
+	/// walk from `head`: peers sit on different merge revs, and resurrection must pick the same delta.
 	fn find_in_ancestry(&self, predicate: impl Fn(&Delta) -> bool) -> Option<Delta> {
-		let mut queue: std::collections::VecDeque<Rev> = self.head.into_iter().collect();
-		let mut seen: std::collections::HashSet<Rev> = self.head.into_iter().collect();
-		while let Some(rev) = queue.pop_front() {
-			let Some(delta) = self.history.get(rev) else { continue };
-			if predicate(delta) {
-				return Some(delta.clone());
-			}
-			for parent in delta.all_parents() {
-				if seen.insert(parent) {
-					queue.push_back(parent);
-				}
-			}
-		}
-		None
+		let reachable = self.history.ancestors(self.head.into_iter().chain(self.history.tips()));
+
+		self.history.iter().filter(|delta| reachable.contains(&delta.id) && predicate(delta)).last().cloned()
 	}
 
 	/// Apply a delta's `reverse` as the new forward op (silent-zone undo). Force-applied: structural
@@ -99,9 +96,10 @@ impl Document {
 		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
-	/// Apply a live broadcast op. Updates the registry via LWW and appends to the hot log.
-	/// Doesn't touch history or `head` — hot ops are transient.
-	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
+	/// Apply a locally staged op: LWW into the registry, append to the hot log, leave history and `head`
+	/// alone. Crate-private because it skips the retirement check an op off the wire needs; staging must
+	/// not have a covered sequence silently drop local work. Outside callers use [`Session::apply_hot_op`].
+	pub(crate) fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
 		self.apply_op(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())
@@ -111,9 +109,53 @@ impl Document {
 	/// re-applying an op whose effect is already reflected in the registry is a no-op rather
 	/// than an error.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
+		// Already in retired history; re-adding it would leave an entry no retirement will ever name.
+		if self.is_retired(hot_op.id()) {
+			return Ok(());
+		}
+
+		// Identified by timestamp, so a re-announcement of one already held must not become a second copy.
+		if self.hot_log.iter().any(|held| held.timestamp == hot_op.timestamp) {
+			return Ok(());
+		}
+
+		// Replaying our own ops is what carries the sequence counter across a reload.
+		if hot_op.timestamp.peer == self.peer {
+			self.next_hot_sequence = self.next_hot_sequence.max(hot_op.sequence);
+		}
+
 		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
 		self.hot_log.push(hot_op);
 		Ok(())
+	}
+
+	/// Whether this hot op has already been promoted into history.
+	pub(crate) fn is_retired(&self, id: HotOpId) -> bool {
+		self.retired.covers(id)
+	}
+
+	/// Record newly retired hot ops, dropping any the hot log still holds.
+	pub(crate) fn mark_retired(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
+		self.retired.extend(retired);
+
+		self.drop_retired_hot_ops();
+	}
+
+	/// Take on a peer's retirement marks as well as this peer's. Returns whether a hot op was dropped,
+	/// which owes the caller a refold.
+	pub(crate) fn absorb_retired(&mut self, remote: &RetiredHotOps) -> bool {
+		self.retired.absorb(remote);
+
+		self.drop_retired_hot_ops()
+	}
+
+	/// Drop hot ops the retired snapshot already accounts for. A mark alone will not do: it can arrive
+	/// ahead of the delta carrying the op into history, stranding its effect in the working registry.
+	fn drop_retired_hot_ops(&mut self) -> bool {
+		let before = self.hot_log.len();
+		self.hot_log.retain(|hot_op| !self.history.contains_timestamp(hot_op.timestamp));
+
+		before != self.hot_log.len()
 	}
 
 	/// Apply a retired commit. Idempotent on structural ops (AddNode/AddNetwork on existing
@@ -315,7 +357,7 @@ impl Document {
 	/// Resurrect (from history) any nodes/networks an op references that were concurrently removed, so
 	/// the op applies against a consistent registry. Cascading: a node's owning network is restored
 	/// before the node. No-op for ops that reference nothing absent.
-	fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
+	pub(crate) fn ensure_referenced_exist(&mut self, target: RegistryTarget, op: &RegistryDelta) -> Result<(), CrdtError> {
 		match op {
 			RegistryDelta::AddNode { node, .. } => self.ensure_network_exists(target, node.network())?,
 			RegistryDelta::ChangeNodeInput { id, new_input, .. } => {
@@ -354,17 +396,51 @@ impl Document {
 	}
 
 	fn ensure_node_exists(&mut self, target: RegistryTarget, node_id: NodeId) -> Result<(), CrdtError> {
-		if !self.registry_ref(target).node_instances.contains_key(&node_id) {
-			self.restore_node_from_history(target, node_id)?;
+		if self.registry_ref(target).node_instances.contains_key(&node_id) {
+			return Ok(());
 		}
-		Ok(())
+		let removal = self.hot_log_node_removal(target, node_id);
+		match removal {
+			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
+			None => self.restore_node_from_history(target, node_id),
+		}
+	}
+
+	/// The most recent hot removal of a network, for reviving it in the working zone. `None` for the
+	/// snapshot, which stays a function of history alone.
+	fn hot_log_removal(&self, target: RegistryTarget, network_id: NetworkId) -> Option<(RegistryDelta, TimeStamp)> {
+		if target != RegistryTarget::Working {
+			return None;
+		}
+
+		self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
+			RegistryDelta::RemoveNetwork { id, snapshot } if *id == network_id => Some((RegistryDelta::AddNetwork { id: *id, network: snapshot.clone() }, hot_op.timestamp)),
+			_ => None,
+		})
+	}
+
+	/// The node equivalent of [`hot_log_removal`](Self::hot_log_removal).
+	fn hot_log_node_removal(&self, target: RegistryTarget, node_id: NodeId) -> Option<(RegistryDelta, TimeStamp)> {
+		if target != RegistryTarget::Working {
+			return None;
+		}
+
+		self.hot_log.iter().rev().find_map(|hot_op| match &hot_op.op {
+			RegistryDelta::RemoveNode { id, snapshot } if *id == node_id => Some((RegistryDelta::AddNode { id: *id, node: snapshot.clone() }, hot_op.timestamp)),
+			_ => None,
+		})
 	}
 
 	fn ensure_network_exists(&mut self, target: RegistryTarget, network_id: NetworkId) -> Result<(), CrdtError> {
-		if !self.registry_ref(target).networks.contains_key(&network_id) {
-			self.restore_network_from_history(target, network_id)?;
+		if self.registry_ref(target).networks.contains_key(&network_id) {
+			return Ok(());
 		}
-		Ok(())
+		// The hot log is peer-local, so reviving retired state from it would make it peer-dependent.
+		let removal = self.hot_log_removal(target, network_id);
+		match removal {
+			Some((revive, timestamp)) => self.apply_op_with(target, revive, timestamp, ApplyMode::Force),
+			None => self.restore_network_from_history(target, network_id),
+		}
 	}
 
 	/// Compute the inverse of `delta` against the registry named by `target`. Retirement passes

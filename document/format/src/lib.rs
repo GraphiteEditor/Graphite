@@ -161,6 +161,8 @@ impl<L: Layout> Gdd<L> {
 		if let Some(rev) = session_state.last_broadcast_rev {
 			session.publish_up_to(rev);
 		}
+		// Every arm must continue this peer's authored-op count too.
+		session.restore_hot_sequence(session_state.next_hot_sequence);
 
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 
