@@ -3,13 +3,15 @@ use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
 use math_parser::lexer::Constant;
+use math_parser::matrix::{Affine2, Linear2, Matrix};
+use math_parser::object::Object;
 use math_parser::reducer::classify_reducer;
 use math_parser::value::{Value, Vector2, Vector3};
 use rand::{Rng, SeedableRng};
@@ -49,9 +51,9 @@ impl ParseCache {
 }
 
 /// Evaluates a parsed expression with the given variable bindings, logging and returning `None` on failure.
-fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Option<Value> {
+fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Option<Object> {
 	match expression.eval(&EvalContext::new(provider, NothingMap)) {
-		Ok(value) => Some(value),
+		Ok(object) => Some(object),
 		Err(error) => {
 			warn!("Expression evaluation error: {error:?}");
 			None
@@ -59,12 +61,27 @@ fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> 
 	}
 }
 
-/// Converts a node item type to and from the values the expression evaluator runs in.
+/// Converts a node item type to and from the objects, values or matrices, the expression evaluator runs on.
 trait ExpressionValue: Copy + Default {
+	fn into_object(self) -> Object;
+	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool or a matrix read as a Number.
+	fn from_object(object: &Object) -> Option<Self>;
+}
+
+/// A node item type that is a value in the expression language, so a list of them binds positionally.
+trait ExpressionItem: Copy + Default {
 	/// Binds this value into the expression language, exactly for an integer.
 	fn into_value(self) -> Value;
-	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool.
 	fn from_value(value: &Value) -> Option<Self>;
+}
+
+impl<T: ExpressionItem> ExpressionValue for T {
+	fn into_object(self) -> Object {
+		Object::Value(self.into_value())
+	}
+	fn from_object(object: &Object) -> Option<Self> {
+		T::from_value(object.as_value()?)
+	}
 }
 
 /// The value's real part alone, the only part a scalar type has, keeping an integer's exact storage.
@@ -72,7 +89,7 @@ fn real_part(value: &Value) -> Value {
 	if value.as_real().is_some() { *value } else { Value::from_f64(value.as_particle3().w) }
 }
 
-impl ExpressionValue for f64 {
+impl ExpressionItem for f64 {
 	fn into_value(self) -> Value {
 		Value::from_f64(self)
 	}
@@ -82,19 +99,19 @@ impl ExpressionValue for f64 {
 }
 
 /// Reads an expression's result into the node's output type, warning and falling back to the type's default when it does not fit.
-fn output<T: ExpressionValue>(result: Option<Value>) -> T {
+fn output<T: ExpressionValue>(result: Option<Object>) -> T {
 	result
-		.and_then(|value| {
-			let output = T::from_value(&value);
+		.and_then(|object| {
+			let output = T::from_object(&object);
 			if output.is_none() {
-				warn!("The expression's result {value} does not fit the output type");
+				warn!("The expression's result {object} does not fit the output type");
 			}
 			output
 		})
 		.unwrap_or_default()
 }
 
-impl ExpressionValue for i64 {
+impl ExpressionItem for i64 {
 	fn into_value(self) -> Value {
 		Value::from_i64(self)
 	}
@@ -105,7 +122,7 @@ impl ExpressionValue for i64 {
 	}
 }
 
-impl ExpressionValue for bool {
+impl ExpressionItem for bool {
 	fn into_value(self) -> Value {
 		Value::from_bool(self)
 	}
@@ -116,7 +133,7 @@ impl ExpressionValue for bool {
 	}
 }
 
-impl ExpressionValue for DVec2 {
+impl ExpressionItem for DVec2 {
 	fn into_value(self) -> Value {
 		Value::from(Vector2(self.to_array()))
 	}
@@ -128,33 +145,60 @@ impl ExpressionValue for DVec2 {
 	}
 }
 
-/// Supplies the value of `x` for the "Math f(x)" node's expression.
+impl ExpressionValue for DAffine2 {
+	// The `i, j` block with its translation
+	fn into_object(self) -> Object {
+		Object::from(Matrix::from(Affine2 {
+			linear: Linear2(self.matrix2.to_cols_array_2d()),
+			translation: self.translation.to_array(),
+		}))
+	}
+
+	// A map of the plane leaving the weight and `z` alone, which no other matrix fits
+	fn from_object(object: &Object) -> Option<Self> {
+		let Affine2 {
+			linear: Linear2(columns),
+			translation,
+		} = object.as_matrix()?.as_affine2()?;
+		Some(DAffine2::from_mat2_translation(DMat2::from_cols_array_2d(&columns), DVec2::from_array(translation)))
+	}
+}
+
+/// Supplies the value of `x`, or the matrix of `X`, for the "Math f(x)" node's expression.
 struct SingleVariableMathContext {
-	x: Value,
+	x: Object,
 }
 
 impl ValueProvider for SingleVariableMathContext {
 	fn get_value(&self, name: &str) -> Option<Value> {
 		// Bound by exact spelling, per the language's rule that a binding shadows the builtin of exactly its spelling
-		(name == "x").then_some(self.x)
+		(name == "x").then(|| self.x.as_value().copied()).flatten()
+	}
+
+	fn get_matrix(&self, name: &str) -> Option<Matrix> {
+		(name == "X").then(|| self.x.as_matrix().copied()).flatten()
 	}
 }
 
-/// Evaluates a math expression written in terms of the single variable `x`, which carries the input value.
+/// Evaluates a math expression written in terms of the single variable `x`, which carries the input value, or `X` when the input is a Transform.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, and a Vec2 takes the X and Y of a vector like `3i + 4j`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
 #[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"))]
 fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
-	#[implementations(f64, f64, f64, f64, i64, i64, i64, i64, bool, bool, bool, bool, DVec2, DVec2, DVec2, DVec2)]
+	#[implementations(
+		f64, f64, f64, f64, f64, i64, i64, i64, i64, i64, bool, bool, bool, bool, bool, DVec2, DVec2, DVec2, DVec2, DVec2, DAffine2, DAffine2, DAffine2, DAffine2, DAffine2
+	)]
 	value: Item<T>,
-	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`.
+	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`, or of `X` for a Transform.
 	#[name("f(x) =")]
 	#[default("x")]
 	fx: Item<String>,
 	/// The type the result is read as.
-	#[implementations(f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2, f64, i64, bool, DVec2)]
+	#[implementations(
+		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+	)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
 	output_type: Item<U>,
@@ -165,7 +209,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 
 	let (value, attributes) = value.into_parts();
 
-	let x = value.into_value();
+	let x = value.into_object();
 	let result = output(parsed.parse(fx.element()).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
 
 	Item::from_parts(result, attributes)
@@ -199,7 +243,7 @@ impl ValueProvider for PositionalMathContext {
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, and a Vec2 takes the X and Y of a vector like `3i + 4j`. Boolean items read as 0 or 1 and Vec2 items as such vectors.
 #[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
-fn math_f<T: ExpressionValue, U: ExpressionValue>(
+fn math_f<T: ExpressionItem, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
 	#[implementations(
@@ -232,7 +276,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
 			return Item::new_from_element(U::default());
 		};
-		return Item::new_from_element(output(Some(result)));
+		return Item::new_from_element(output(Some(Object::Value(result))));
 	}
 
 	let result = output(parsed.parse(expression).and_then(|expression| evaluate_expression(&expression, bindings)));
@@ -2091,6 +2135,32 @@ mod test {
 		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).into_element());
 		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).into_element());
 		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).into_element());
+	}
+
+	#[test]
+	fn test_transform_items() {
+		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> U {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(output_type),
+			)
+			.into_element()
+		}
+		let shear = DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::new(5., 4.));
+
+		// A Transform binds as `X`, and a matrix result reads back as one
+		assert_eq!(fx(shear, "X (2i + 2j)", DVec2::ZERO), DVec2::new(8., 6.));
+		assert_eq!(fx(shear, "X^-1 X", shear), DAffine2::IDENTITY);
+		assert_eq!(fx(shear, "linear(X) + 1i", DAffine2::IDENTITY), DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::X));
+		assert_eq!(fx(2., "rotation(pi/2) + x i", DAffine2::IDENTITY).translation, DVec2::new(2., 0.));
+		assert_eq!(fx(shear, "det(X)", 0.), 1.);
+
+		// A value, or a matrix touching the weight, is no Transform, so the output falls back to its default
+		assert_eq!(fx(shear, "X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		assert_eq!(fx(shear, "[1;i] + X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
 	}
 
 	#[test]
