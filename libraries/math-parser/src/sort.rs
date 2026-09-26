@@ -29,6 +29,7 @@ pub fn sorted(syntax: Syntax, functions: &dyn FunctionProvider) -> Result<Node, 
 		Syntax::Var(name) => Node::Value(ValueNode::Var(name)),
 		Syntax::FnCall { name, expr } => call(name, expr, functions)?,
 		Syntax::BinOp { lhs, op, rhs } => binary(sorted(*lhs, functions)?, op, sorted(*rhs, functions)?)?,
+		Syntax::Product { first, rest } => product(sorted(*first, functions)?, &mut rest.into_iter(), functions)?,
 		Syntax::UnaryOp { expr, op } => match (sorted(*expr, functions)?, op) {
 			(Node::Value(_), UnaryOp::Transpose) => return Err(VALUE_AS_MATRIX),
 			(Node::Value(expr), op) => Node::Value(ValueNode::UnaryOp { expr: Box::new(expr), op }),
@@ -159,11 +160,7 @@ fn binary(lhs: Node, op: BinaryOp, rhs: Node) -> Result<Node, SortError> {
 		// Division is times-inverse, so a matrix over a value applies to the value's reciprocal
 		(Node::Matrix(matrix), Op::Div, Node::Value(value)) => Node::Value(ValueNode::Apply {
 			matrix: Box::new(matrix),
-			value: Box::new(ValueNode::BinOp {
-				lhs: Box::new(ValueNode::Lit(Literal::Integer(1))),
-				op: Op::Div,
-				rhs: Box::new(value),
-			}),
+			value: Box::new(reciprocal(value)),
 		}),
 		(Node::Matrix(lhs), Op::Eq | Op::Neq, Node::Matrix(rhs)) => Node::Value(ValueNode::MatrixComparison {
 			matrices: vec![lhs, rhs],
@@ -178,6 +175,35 @@ fn binary(lhs: Node, op: BinaryOp, rhs: Node) -> Result<Node, SortError> {
 		}),
 		_ => return Err(NO_MATRIX_OPERATOR),
 	})
+}
+
+fn reciprocal(value: ValueNode) -> ValueNode {
+	ValueNode::BinOp {
+		lhs: Box::new(ValueNode::Lit(Literal::Integer(1))),
+		op: BinaryOp::Div,
+		rhs: Box::new(value),
+	}
+}
+
+/// A product folds left, except that a matrix meeting a value applies to the whole rest of the product, so `M 2 v` is `M (2 v)`
+/// as in linear algebra rather than `(M 2) v`.
+fn product(first: Node, rest: &mut std::vec::IntoIter<(BinaryOp, Syntax)>, functions: &dyn FunctionProvider) -> Result<Node, SortError> {
+	let mut accumulated = first;
+
+	while let Some((op, factor)) = rest.next() {
+		accumulated = match (accumulated, sorted(factor, functions)?) {
+			(Node::Matrix(matrix), Node::Value(factor)) => {
+				// Dividing by a value applies the matrix to its reciprocal times the rest, so `M / v w` is `M (v⁻¹ w)`
+				let factor = if op == BinaryOp::Div { reciprocal(factor) } else { factor };
+
+				let argument = product(Node::Value(factor), rest, functions)?;
+				return binary(Node::Matrix(matrix), BinaryOp::Mul, argument);
+			}
+			(accumulated, factor) => binary(accumulated, op, factor)?,
+		};
+	}
+
+	Ok(accumulated)
 }
 
 /// A piecewise takes the sort of its cases, which must agree, under conditions that are values.

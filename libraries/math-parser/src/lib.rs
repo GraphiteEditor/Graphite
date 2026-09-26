@@ -1302,6 +1302,15 @@ mod tests {
 		matrix_zero_entry_beside_infinity: "[1] (inf i)" => 0.,
 		matrix_infinite_part_passes: "[i] (inf i)" => f64::INFINITY,
 
+		// A matrix applies to the whole product after it, unless parentheses give it one factor
+		matrix_applies_to_rest_of_product: "[1;i] 2 i" => Quaternion::new(0., 0., 2., 0.),
+		matrix_applies_to_parenthesized_factor: "([1;i] 2) i" => -2.,
+		matrix_scales_rest_of_product: "scale(3) 2 i" => Complex::new(0., 6.),
+		matrix_applies_through_matrix: "(scale(3) 2 scale(5)) i" => Complex::new(0., 30.),
+		matrix_dot_of_product: "[1] 3i conj(2i)" => 6.,
+		matrix_over_value_then_factor: "scale(3) / 2 i" => Complex::new(0., 1.5),
+		matrix_applies_before_division: "(I + 4i) 2i / 2" => Complex::new(0., 5.),
+
 		// Sums attach a translation, which `A 0` reads back
 		matrix_translation: "(I + 5i + 4j) 0" => Quaternion::new(0., 5., 4., 0.),
 		matrix_translation_first: "(5i + I + 4j) 0" => Quaternion::new(0., 5., 4., 0.),
