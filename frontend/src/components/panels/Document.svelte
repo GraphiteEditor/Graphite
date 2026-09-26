@@ -12,6 +12,7 @@
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
+	import { softwareCursor, setSoftwareCursor } from "/src/stores/software-cursor";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
@@ -19,7 +20,7 @@
 	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
-	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived, setSoftwareCursor } from "/src/utility-functions/viewports";
+	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
 	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
@@ -76,12 +77,8 @@
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
 
-	let softwareCursorVisible = false;
-	let softwareCursorX = 0;
-	let softwareCursorY = 0;
-
 	function handleSoftwareCursorWebMove(e: PointerEvent) {
-		if (!softwareCursorVisible || !isWeb || window.document.pointerLockElement !== viewport) return;
+		if (!$softwareCursor.visible || !isWeb || window.document.pointerLockElement !== viewport) return;
 		const dx = e.movementX;
 		const dy = e.movementY;
 		if (dx === 0 && dy === 0) return;
@@ -93,7 +90,7 @@
 	}
 
 	function handleSoftwareCursorPointerLockChange() {
-		if (isWeb && softwareCursorVisible && window.document.pointerLockElement !== viewport) {
+		if (isWeb && $softwareCursor.visible && window.document.pointerLockElement !== viewport) {
 			editor.onKeyDown("Escape", 0, false);
 			editor.onKeyUp("Escape", 0, false);
 		}
@@ -562,9 +559,6 @@
 
 			await tick();
 
-			softwareCursorVisible = data.visible;
-			softwareCursorX = data.x;
-			softwareCursorY = data.y;
 			// Hit-testing reports events where this cursor is drawn
 			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
 		});
@@ -714,7 +708,7 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<SoftwareCursor visible={softwareCursorVisible} x={softwareCursorX} y={softwareCursorY} />
+					<SoftwareCursor visible={$softwareCursor.visible} x={$softwareCursor.x} y={$softwareCursor.y} />
 					<div
 						style:left={gradientStopPickerPosition ? `${gradientStopPickerPosition?.x}px` : undefined}
 						style:top={gradientStopPickerPosition ? `${gradientStopPickerPosition?.y}px` : undefined}

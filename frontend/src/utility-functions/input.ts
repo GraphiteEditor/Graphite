@@ -3,10 +3,10 @@ import type { DialogStore } from "/src/stores/dialog";
 import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
+import { softwareCursorClientPosition } from "/src/stores/software-cursor";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
-import { softwareCursorClientPosition } from "/src/utility-functions/viewports";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const BUTTON_LEFT = 0;

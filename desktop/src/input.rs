@@ -128,6 +128,11 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
+				// A locked pointer only reports the frozen or warp-back OS location, so the editor follows the locked deltas instead
+				if self.pointer_locked() {
+					return;
+				}
+
 				let route = match self.pointer_state {
 					PointerState::Hover { .. } => {
 						let next = self.route(*position);
