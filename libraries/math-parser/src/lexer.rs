@@ -593,8 +593,10 @@ impl<'src> Input<'src> for Lexer<'src> {
 	}
 
 	#[inline]
-	unsafe fn span(_this: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
-		(*range.start..*range.end).into()
+	unsafe fn span(this: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
+		// The cursor rests after the previous token, so the whitespace before the first token is left out
+		let start = *range.end - this.input[*range.start..*range.end].trim_start().len();
+		(start..*range.end).into()
 	}
 }
 

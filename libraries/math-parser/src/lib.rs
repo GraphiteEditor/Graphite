@@ -53,6 +53,14 @@ mod tests {
 	}
 
 	#[test]
+	fn error_spans_begin_at_the_token() {
+		for (input, expected) in [("2 %", "at 2..3"), ("x  if 1", "at 3..5")] {
+			let error = evaluate(input).unwrap_err().to_string();
+			assert!(error.ends_with(expected), "`{input}` gave the error `{error}`");
+		}
+	}
+
+	#[test]
 	fn not_sign_is_prefix_only() {
 		// `¬` spells only the prefix logical not, so it must not stand in for `!` in its postfix factorial role
 		for input in ["5¬", "5¬3", "(2 + 3)¬", "3¬¬"] {
@@ -253,7 +261,16 @@ mod tests {
 
 	#[test]
 	fn display_writes_the_nonzero_parts_with_their_bases() {
-		for (input, expected) in [("sqrt(-4)", "2i"), ("1 - 2i", "1-2i"), ("(1 + i) / 2", "0.5+0.5i"), ("2i + 3j", "2i+3j"), ("i * i", "-1")] {
+		for (input, expected) in [
+			("sqrt(-4)", "2i"),
+			("1 - 2i", "1-2i"),
+			("(1 + i) / 2", "0.5+0.5i"),
+			("2i + 3j", "2i+3j"),
+			("i * i", "-1"),
+			("1/0", "∞"),
+			("-inf i", "-∞i"),
+			("1 + inf i", "1+∞i"),
+		] {
 			assert_eq!(evaluate(input).unwrap().unwrap().to_string(), expected, "`{input}`");
 		}
 	}

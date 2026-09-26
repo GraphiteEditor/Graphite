@@ -1,4 +1,4 @@
-use crate::value::{Complex, part_product, power_of_two_scale, rescaled_product};
+use crate::value::{Complex, fmt_real, part_product, power_of_two_scale, rescaled_product};
 use std::fmt;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
@@ -215,7 +215,8 @@ impl fmt::Display for Quaternion {
 			if written && part.is_sign_positive() {
 				f.write_str("+")?;
 			}
-			write!(f, "{part}{basis}")?;
+			fmt_real(part, f)?;
+			f.write_str(basis)?;
 			written = true;
 		}
 
