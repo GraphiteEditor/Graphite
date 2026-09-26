@@ -51,15 +51,8 @@ impl Matrix {
 	/// The range `a..b`: on each part of the corners' join rung, the map sending parameter `0` to `a` and `1` to `b`, so vector corners
 	/// make a box, with the other parts untouched. A part the corners share is flat, so `0..(i + k)` is the square where `j` is 0.
 	pub fn range(a: Quaternion, b: Quaternion) -> Self {
+		let axes = Self::range_axes(a, b);
 		let (a, b) = (a.parts(), b.parts());
-
-		// The join rung spans the weight if either corner has one, and the vector parts up to the last either has, with `0..0` a real range
-		let has_part = |axis: usize| a[axis] != 0. || b[axis] != 0.;
-		let last_vector_axis = (1..4).rev().find(|&axis| has_part(axis));
-		let axes = std::array::from_fn(|axis| match axis {
-			0 => has_part(0) || last_vector_axis.is_none(),
-			_ => last_vector_axis.is_some_and(|last| axis <= last),
-		});
 
 		let mut range = Self { axes, ..Self::IDENTITY };
 		let mut translation = [0.; 4];
@@ -73,6 +66,18 @@ impl Matrix {
 		}
 		range.translation = Quaternion::from_parts(translation);
 		range
+	}
+
+	/// The axes a range spans, its corners' join rung: the weight if either corner has one, and the vector parts up to the last either
+	/// has, with `0..0` a range of the weight.
+	pub fn range_axes(a: Quaternion, b: Quaternion) -> [bool; 4] {
+		let (a, b) = (a.parts(), b.parts());
+		let has_part = |axis: usize| a[axis] != 0. || b[axis] != 0.;
+		let last_vector_axis = (1..4).rev().find(|&axis| has_part(axis));
+		std::array::from_fn(|axis| match axis {
+			0 => has_part(0) || last_vector_axis.is_none(),
+			_ => last_vector_axis.is_some_and(|last| axis <= last),
+		})
 	}
 
 	/// The image of one parameter axis, a column of the linear part.
@@ -306,6 +311,11 @@ impl Matrix {
 		self.rows.iter().chain([&self.translation]).any(|row| row.parts().iter().any(|part| part.is_nan()))
 	}
 
+	/// Whether every entry is finite, as an inverse needs to be exact rather than dividing by infinity into zeros.
+	pub fn is_finite(self) -> bool {
+		self.rows.iter().chain([&self.translation]).all(|row| row.parts().iter().all(|part| part.is_finite()))
+	}
+
 	/// Whether the weight passes through untouched and never leaks into position, as in every Graphite transform.
 	fn is_geometric(self) -> bool {
 		self.rows[0] == Quaternion::ONE && self.rows[1..].iter().all(|row| row.w == 0.) && self.translation.w == 0.
@@ -448,6 +458,24 @@ impl fmt::Display for Matrix {
 			}
 		} else {
 			Ok(())
+		}
+	}
+}
+
+/// A region for `inside`, `clamp`, and `remap`: a range literal kept by its corners, which may be infinite where no matrix can hold
+/// them, or any other map.
+#[derive(Debug, Clone, Copy)]
+pub enum Region {
+	Range(Quaternion, Quaternion),
+	Map(Matrix),
+}
+
+impl Region {
+	/// The region as a map, which for a range with an infinite corner holds infinite or indeterminate entries.
+	pub fn matrix(self) -> Matrix {
+		match self {
+			Region::Range(a, b) => Matrix::range(a, b),
+			Region::Map(matrix) => matrix,
 		}
 	}
 }

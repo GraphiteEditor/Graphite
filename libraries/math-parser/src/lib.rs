@@ -507,6 +507,31 @@ mod tests {
 	}
 
 	#[test]
+	fn host_functions_shadow_matrix_builtins_when_parsing() {
+		// A host function gives a value, so a host parsing with its functions reads a call of that name as one, not the builtin
+		struct Halving;
+		impl context::FunctionProvider for Halving {
+			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+				(name == "clamp").then(|| Value::from_f64(args[0].as_real().unwrap_or_default() / 2.))
+			}
+			fn provides(&self, name: &str) -> bool {
+				name == "clamp"
+			}
+		}
+		let eval = |source: &str| {
+			ast::Node::try_parse_with_functions(source, &Halving)
+				.unwrap()
+				.eval(&EvalContext::new(context::NothingMap, Halving))
+				.unwrap()
+				.as_real()
+		};
+
+		assert_eq!(eval("clamp(8)"), Some(4.));
+		assert_eq!(eval("\\clamp(8, 0..5)"), Some(5.));
+		assert!(ast::Node::try_parse_from_str("clamp(8)").is_err(), "without the host, `clamp` is the builtin");
+	}
+
+	#[test]
 	fn rename_identifiers_is_token_exact() {
 		let a_to_x = |name: &str| name.eq_ignore_ascii_case("a").then(|| "x".to_string());
 
@@ -1291,6 +1316,7 @@ mod tests {
 		matrix_over_value: "I / 2" => 0.5,
 		value_over_matrix: "(2 / I) 3" => 6.,
 		matrix_transpose: "[1;i]^T" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
+		matrix_transpose_spaced: "[1;i] ^ T" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
 		matrix_transpose_then_inverse: "[1;2i;3j;k]^T^-1 (2i + 3j)" => Quaternion::new(0., 1., 1., 0.),
 		matrix_determinant: "det([1;2i;3j;k])" => 6.,
 		matrix_determinant_of_padded_literal: "det([2i;3j])" => 0.,
@@ -1395,7 +1421,34 @@ mod tests {
 		assert!(matches!(evaluate("remap(2, 2..2, 0..10)").unwrap(), Err(EvalError::FlatRemapSource)));
 		assert!(matches!(evaluate("remap(0.5i + 0.5k, 0..(i + k), 0..(2i + 2j + 2k))").unwrap(), Err(EvalError::FlatRemapSource)));
 		assert!(matches!(evaluate("inside(1, [i, 2i])").unwrap(), Err(EvalError::SingularRange)));
-		assert!(matches!(evaluate("inside(1)").unwrap(), Err(EvalError::TypeError)));
+
+		// Matrix builtins check their argument counts as the expression is parsed
+		for input in [
+			"inside(1)",
+			"clamp(1, 0..1, 0..1)",
+			"remap(1, 0..1)",
+			"rotation()",
+			"rotation(1, k, 2)",
+			"shear(i, j)",
+			"scale()",
+			"matrix(1, 2)",
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), "Invalid arguments for function call", "`{input}`");
+		}
+
+		// A range literal's corners bound it directly, so they may be infinite, while other regions with infinite entries have no inverse
+		assert_eq!(inside("inside(5i, 0..(inf i))"), Some(true));
+		assert_eq!(inside("inside(-5i, 0..(inf i))"), Some(false));
+		assert_eq!(inside("inside(1e300, 0..inf)"), Some(true));
+		assert_eq!(inside("inside(-1, 0..inf)"), Some(false));
+		assert_eq!(inside("inside(inf, 0..inf)"), Some(true));
+		assert_eq!(inside("inside(-7, -inf..inf)"), Some(true));
+		assert_eq!(evaluate("clamp(-3, 0..inf)").unwrap().unwrap().as_real(), Some(0.));
+		assert_eq!(evaluate("clamp(5, 0..inf)").unwrap().unwrap().as_real(), Some(5.));
+		assert_eq!(evaluate("clamp(5, -inf..0)").unwrap().unwrap().as_real(), Some(0.));
+		assert_eq!(evaluate("clamp(0.3, 0.1..0.2)").unwrap().unwrap().as_real(), Some(0.2));
+		assert!(matches!(evaluate("inside(1, 2 (0..inf))").unwrap(), Err(EvalError::Indeterminate)));
+		assert!(matches!(evaluate("remap(1, 0..inf, 0..1)").unwrap(), Err(EvalError::Indeterminate)));
 
 		// A box spans its corners' rung, so a part they share is flat and admits only their value there
 		assert_eq!(inside("inside(0.5i + 0.5k, 0..(i + k))"), Some(true));
@@ -1672,7 +1725,10 @@ mod tests {
 		assert_eq!(message("I(1, 2)"), "Invalid arguments for function call");
 
 		// A fractional power, the inverse of a padded literal (whose zero rows make it singular), and the transpose of a translated matrix fail at evaluation
-		assert!(matches!(evaluate("I^0.5").unwrap(), Err(EvalError::OperatorTypeError)));
+		for input in ["I^0.5", "I^inf", "I^i"] {
+			let error = evaluate(input).unwrap().unwrap_err();
+			assert_eq!(error.to_string(), "A matrix power must be a whole number", "`{input}`");
+		}
 		for input in ["[i;j]^-1", "I / [i;j]", "[i;j]^-2"] {
 			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SingularMatrix)), "expected `{input}` to be singular");
 		}

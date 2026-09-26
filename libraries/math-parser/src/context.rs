@@ -15,6 +15,12 @@ pub trait ValueProvider {
 
 pub trait FunctionProvider {
 	fn run_function(&self, name: &str, args: &[Value]) -> Option<Value>;
+
+	/// Whether the host supplies a function of this name, read when parsing, since the host's function shadows any builtin of the
+	/// same name and gives a value where the builtin might give a matrix.
+	fn provides(&self, _name: &str) -> bool {
+		false
+	}
 }
 
 #[derive(Default)]

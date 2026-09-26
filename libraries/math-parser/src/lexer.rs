@@ -465,10 +465,12 @@ impl<'a> Lexer<'a> {
 			'*' => Star,
 			'%' => Percent,
 			'/' => Slash,
-			// `^T` is the transpose where the `T` stands alone
+			// `^T` is the transpose where the `T` stands alone, spaces between or not
 			'^' => {
-				if self.peek() == Some('T') && !self.input[self.pos + 1..].starts_with(unicode_ident::is_xid_continue) {
-					self.bump();
+				let rest = &self.input[self.pos..];
+				let after_spaces = rest.trim_start();
+				if after_spaces.starts_with('T') && !after_spaces[1..].starts_with(unicode_ident::is_xid_continue) {
+					self.pos += rest.len() - after_spaces.len() + 1;
 					Transpose
 				} else {
 					Caret

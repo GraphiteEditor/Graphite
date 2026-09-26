@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, Case, Literal, Node, Syntax, UnaryOp};
+use crate::context::{FunctionProvider, NothingMap};
 use crate::lexer::{Lexer, Span, Token};
 use crate::sort::sorted;
 use chumsky::error::{EmptyErr, LabelError};
@@ -43,7 +44,12 @@ impl<'src> CustomError for Rich<'src, Token<'src>, Span> {
 
 impl Node {
 	pub fn try_parse_from_str(src: &str) -> Result<Node, ParseError> {
-		sorted(parse(src)?).map_err(|error| ParseError(vec![error.to_string()]))
+		Self::try_parse_with_functions(src, &NothingMap)
+	}
+
+	/// Parses the source for a host that supplies functions, which shadow any builtin of the same name.
+	pub fn try_parse_with_functions(src: &str, functions: &impl FunctionProvider) -> Result<Node, ParseError> {
+		sorted(parse(src)?, functions).map_err(|error| ParseError(vec![error.to_string()]))
 	}
 }
 
