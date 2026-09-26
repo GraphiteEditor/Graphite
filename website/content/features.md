@@ -168,6 +168,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Desktop app <a href="/#desktop-first-and-web-ready">release candidates</a> RC2-6</span>
 		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 58" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
+			<span>Scalar/vector math evaluator</span>
+		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Physical measurement units</span>
@@ -175,6 +179,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Context menus throughout the editor</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
+			<span>Timeline panel for animation curves</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
@@ -187,10 +195,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 65" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Text-on-path tool support</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Timeline panel for animation curves</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />

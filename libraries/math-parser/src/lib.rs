@@ -77,6 +77,38 @@ mod tests {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.ends_with(expected), "`{input}` gave the error `{error}`");
 		}
+
+		// Every message is in sentence case, including the parser library's own "found ... expected ..." phrasing
+		for input in ["2 +", "(1", "[1;i"] {
+			let error = evaluate(input).unwrap_err().to_string();
+			assert!(error.starts_with(char::is_uppercase), "`{input}` gave the error `{error}`");
+		}
+
+		// Source the lexer can't read is quoted with the reason
+		for (input, expected) in [
+			("x @ 2", "`@` is not part of the expression language, at 2..3"),
+			("#foo", "`#foo` is not part of the expression language, at 0..4"),
+			("1.5.5", "`1.5.5` is not a valid number, at 0..5"),
+			("10 000", "`000` can't follow another number, so write them as one or put `*` between them, at 3..6"),
+			("x.5", "`.5` needs its leading zero after an operand, like `0.5`, at 1..3"),
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
+		}
+
+		// The quoted source is a part of its own, so a host can render it safely whatever it holds, backticks included
+		use parser::MessagePart::{Code, Text};
+		let parts = |input: &str| ast::Node::try_parse_from_str(input).unwrap_err().messages()[0].parts().to_vec();
+		assert_eq!(parts("`abc"), vec![Code("`abc".into()), Text(" is not part of the expression language, at 0..4".into())]);
+		assert_eq!(
+			parts("7 % 3"),
+			vec![
+				Code("%".into()),
+				Text(" is reserved for percentages, so the remainder is written ".into()),
+				Code("mod(a, b)".into()),
+				Text(", at 2..3".into())
+			]
+		);
+		assert_eq!(parts("sin(I)"), vec![Text("A matrix stands where a value is needed".into())]);
 	}
 
 	#[test]

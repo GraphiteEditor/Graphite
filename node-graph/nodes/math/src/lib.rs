@@ -222,6 +222,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`, or of `X` for a Transform.
 	#[name("f(x) =")]
 	#[default("x")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression")]
 	fx: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
@@ -296,6 +297,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
 	#[name("f(…) =")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression_or_reducer")]
 	f: Item<String>,
 	/// The type the result is read as.
 	#[implementations(

@@ -2,6 +2,7 @@
 
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
+use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -40,6 +41,7 @@ use graphene_std::vector::style::{
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{Artboard, Graphic, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
+use math_parser::parser::MessagePart;
 use std::path::PathBuf;
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -413,6 +415,53 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 		])
 	}
 	widgets
+}
+
+/// A math expression's text field, with a warning icon in the assist area giving the error in its tooltip while the expression fails to parse.
+pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, accepts_reducers: bool) -> Vec<WidgetInstance> {
+	let Some(TaggedValue::String(expression)) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
+		return text_widget(parameter_widgets_info);
+	};
+	let Some(error) = math_expression_error(expression, accepts_reducers) else {
+		return text_widget(parameter_widgets_info);
+	};
+
+	// The 12px icon is padded to a checkbox's 16px so the field still lines up with the rows around it
+	parameter_widgets_info.blank_assist = false;
+	let mut widgets = start_widgets(&parameter_widgets_info);
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		IconLabel::new("Warning").tooltip_label("Invalid Expression").tooltip_description(error).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		TextInput::new(expression.clone())
+			.on_update(parameter_widgets_info.update_value(|x: &TextInput| TaggedValue::String(x.value.clone())))
+			.on_commit(commit_value)
+			.widget_instance(),
+	]);
+	widgets
+}
+
+/// Why a math expression fails to parse, as tooltip Markdown, or `None` when it parses. Where the node applies a lone operator or
+/// function name like `+` or `min` across its items, that counts as valid too.
+fn math_expression_error(expression: &str, accepts_reducers: bool) -> Option<String> {
+	// A blank expression is unfinished rather than wrong, so it goes unflagged like any empty field
+	if expression.trim().is_empty() || (accepts_reducers && math_parser::reducer::classify_reducer(expression, math_parser::context::NothingMap).is_some()) {
+		return None;
+	}
+	let error = math_parser::ast::Node::try_parse_from_str(expression).err()?;
+
+	// The quoted code may be the expression's own text, so it goes in a span nothing inside can close, and the prose is escaped
+	let messages = error.messages().iter().map(|message| {
+		let parts = message.parts().iter().map(|part| match part {
+			MessagePart::Text(text) => escape_markdown(text),
+			MessagePart::Code(code) => markdown_code_span(code),
+		});
+		parts.collect::<String>()
+	});
+	Some(messages.collect::<Vec<_>>().join("\n"))
 }
 
 pub fn text_area_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
@@ -3709,5 +3758,30 @@ mod tests {
 		// The element of a stored value and of the row that accepts it agree, which is what selects the dropdown entry
 		assert_eq!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(i64)));
 		assert_ne!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(f64)));
+	}
+
+	#[test]
+	fn math_expressions_are_flagged_only_when_they_fail_to_parse() {
+		for (expression, accepts_reducers) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true)] {
+			assert_eq!(math_expression_error(expression, accepts_reducers), None, "`{expression}`");
+		}
+
+		assert!(math_expression_error("2 +", false).is_some());
+		assert!(math_expression_error("+", false).is_some(), "a lone reducer is an error where the node applies none");
+		assert_eq!(math_expression_error("sin(I)", true).as_deref(), Some("A matrix stands where a value is needed"));
+	}
+
+	#[test]
+	fn math_expression_errors_quote_the_expression_safely() {
+		// The expression's own text sits in a code span it can't close, while the message's own code keeps its formatting
+		assert_eq!(math_expression_error("`abc", false).as_deref(), Some("`` `abc `` is not part of the expression language, at 0..4"));
+		assert_eq!(
+			math_expression_error("7 % 3", false).as_deref(),
+			Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at 2..3")
+		);
+
+		// Prose quoting a token like `*` is escaped, so it can't pair with another into italics
+		let error = math_expression_error("2 * * 3", false).unwrap();
+		assert!(error.contains("\\*") && !error.replace("\\*", "").contains('*'), "{error}");
 	}
 }

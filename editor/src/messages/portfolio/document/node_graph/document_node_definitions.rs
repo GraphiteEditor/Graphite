@@ -1466,6 +1466,22 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context)))])),
 	);
 	map.insert(
+		// A math expression, flagged with a warning icon while it fails to parse
+		"math_expression".to_string(),
+		Box::new(|node_id, index, context| {
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![LayoutGroup::row(node_properties::math_expression_widget(info, false))])
+		}),
+	);
+	map.insert(
+		// Like `math_expression`, where a lone reducer token like `+` or `min` applied across the node's items is also valid
+		"math_expression_or_reducer".to_string(),
+		Box::new(|node_id, index, context| {
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![LayoutGroup::row(node_properties::math_expression_widget(info, true))])
+		}),
+	);
+	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
 			// Lazily load the font catalog (like the Text tool) so the dropdown has entries

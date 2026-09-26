@@ -7,6 +7,9 @@
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { EditorWrapper, LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
+	// Marks where each code span goes while the prose around it is formatted, which HTML-escaped text can't hold since it has no `<`
+	const CODE_SPAN_PLACEHOLDER = "<>";
+
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const editor = getContext<EditorWrapper>("editor");
 
@@ -33,11 +36,50 @@
 		return text;
 	}
 
+	// Renders the tooltip subset of Markdown: `code` spans, **bold**, and *italic*, where a backslash makes a following backslash, asterisk,
+	// or backtick literal. The text is HTML-escaped before anything else and a code span's content is never formatted, so no text yields other markup.
 	function parseMarkdown(markdown: string | undefined): string | undefined {
 		if (!markdown) return undefined;
 
-		let text = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+		const escaped = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 
+		const codeSpans: string[] = [];
+		let text = "";
+		let index = 0;
+		while (index < escaped.length) {
+			// A backslash makes a following backslash, asterisk, or backtick literal, written as an entity that no formatting matches
+			if (escaped[index] === "\\" && ["\\", "*", "`"].includes(escaped[index + 1])) {
+				text += `&#${escaped.charCodeAt(index + 1)};`;
+				index += 2;
+				continue;
+			}
+
+			// A run of backticks opens a code span that only a run of the same length closes, as in CommonMark
+			if (escaped[index] === "`") {
+				const fenceEnd = endOfBacktickRun(escaped, index);
+				const fenceLength = fenceEnd - index;
+				const closing = nextBacktickRunOfLength(escaped, fenceEnd, fenceLength);
+				if (closing === undefined) {
+					text += escaped.slice(index, fenceEnd);
+					index = fenceEnd;
+					continue;
+				}
+
+				// One space is trimmed from each end when both have one, so a span can begin or end with a backtick
+				let code = escaped.slice(fenceEnd, closing);
+				if (code.startsWith(" ") && code.endsWith(" ") && /[^ ]/.test(code)) code = code.slice(1, -1);
+
+				codeSpans.push(`<code>${code}</code>`);
+				text += CODE_SPAN_PLACEHOLDER;
+				index = closing + fenceLength;
+				continue;
+			}
+
+			text += escaped[index];
+			index += 1;
+		}
+
+		let codeSpanIndex = 0;
 		return (
 			text
 				// .split("\n")
@@ -50,9 +92,27 @@
 				.replace(/\*\*((?:(?!\*\*).)+)\*\*/g, "<strong>$1</strong>")
 				// Italic
 				.replace(/\*([^*]+)\*/g, "<em>$1</em>")
-				// Backticks
-				.replace(/`([^`]+)`/g, "<code>$1</code>")
+				// Code spans
+				.replaceAll(CODE_SPAN_PLACEHOLDER, () => codeSpans[codeSpanIndex++])
 		);
+	}
+
+	// The index just past the run of backticks starting at `start`
+	function endOfBacktickRun(text: string, start: number): number {
+		let end = start;
+		while (text[end] === "`") end += 1;
+		return end;
+	}
+
+	// The start of the next run of exactly `length` backticks at or after `from`, skipping longer and shorter runs
+	function nextBacktickRunOfLength(text: string, from: number, length: number): number | undefined {
+		let start = text.indexOf("`", from);
+		while (start !== -1) {
+			const end = endOfBacktickRun(text, start);
+			if (end - start === length) return start;
+			start = text.indexOf("`", end);
+		}
+		return undefined;
 	}
 </script>
 

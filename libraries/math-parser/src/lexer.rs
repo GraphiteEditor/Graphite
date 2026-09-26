@@ -53,8 +53,21 @@ pub enum Token<'src> {
 	/// Reserved for `where` bindings, so the parser never matches it yet and no host binding can claim the name first.
 	Where,
 
-	/// An unrecognized character; the parser never matches this, forcing a parse error rather than silently truncating the input.
-	Error,
+	/// Source that is no token, which the parser never matches, forcing a parse error rather than silently truncating the input.
+	Error(LexError),
+}
+
+/// Why a stretch of source is no token, so its parse error can say what's wrong.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LexError {
+	/// A character or name the language doesn't use, like `@`.
+	Unrecognized,
+	/// A number that can't be read, like `1.5.5`.
+	MalformedNumber,
+	/// A number right after another, like the second in `10 000`, which would otherwise silently multiply.
+	NumberAfterNumber,
+	/// A number without its leading zero right after an operand, like `x.5`.
+	LeadingDotAfterOperand,
 }
 
 impl<'src> fmt::Display for Token<'src> {
@@ -98,7 +111,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Otherwise => f.write_str("otherwise"),
 			Token::Where => f.write_str("where"),
 
-			Token::Error => f.write_str("<error>"),
+			Token::Error(_) => f.write_str("<error>"),
 		}
 	}
 }
@@ -354,7 +367,7 @@ impl<'a> Lexer<'a> {
 			.is_some_and(|c| ends_operand(c) || (c == '|' && self.bar_at(preceding.len() - 1) == Some(Bar::Close)))
 	}
 
-	fn lex_number(&mut self) -> Option<Token<'a>> {
+	fn lex_number(&mut self) -> Result<Token<'a>, LexError> {
 		let start_pos = self.pos;
 		let (int_digits, int_value) = self.consume_digits();
 		let mut got_digit = int_digits > 0;
@@ -381,24 +394,33 @@ impl<'a> Lexer<'a> {
 		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1.5.5`, `1.5 5`), so reject rather than letting it parse as implicit multiplication
 		let leading_dot = self.input[start_pos..].starts_with('.');
 		let glued = self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) && !self.input[self.pos..].starts_with("..");
-		if !got_digit || glued || self.follows_number_literal(start_pos) || (leading_dot && self.follows_operand(start_pos)) {
+		let error = if !got_digit || glued {
+			Some(LexError::MalformedNumber)
+		} else if self.follows_number_literal(start_pos) {
+			Some(LexError::NumberAfterNumber)
+		} else if leading_dot && self.follows_operand(start_pos) {
+			Some(LexError::LeadingDotAfterOperand)
+		} else {
+			None
+		};
+		if let Some(error) = error {
 			self.pos = start_pos;
-			return None;
+			return Err(error);
 		}
 
 		// A whole number is kept exact while it fits integer storage (18 digits always do), and the accumulation is exact up
 		// to 15 digits; longer whole literals and fractional ones get std's correctly-rounded parsing
 		let literal = &self.input[start_pos..self.pos];
 		if plain_integer && int_digits <= 15 {
-			return Some(Token::Integer(int_value as i64));
+			return Ok(Token::Integer(int_value as i64));
 		}
 		if plain_integer && let Ok(integer) = literal.parse::<i64>() {
-			return Some(Token::Integer(integer));
+			return Ok(Token::Integer(integer));
 		}
 
 		// A literal spelled as a real, like `2.0` or `1e3`, still names a whole number, so it takes integer storage while it fits
-		let float = literal.parse::<f64>().ok()?;
-		Some(match Number::real_or_integer(float) {
+		let float = literal.parse::<f64>().map_err(|_| LexError::MalformedNumber)?;
+		Ok(match Number::real_or_integer(float) {
 			Number::Integer(integer) => Token::Integer(integer),
 			_ => Token::Float(float),
 		})
@@ -439,7 +461,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					AndAnd
 				} else {
-					Error
+					Error(LexError::Unrecognized)
 				}
 			}
 			'|' => match self.bar_at(start) {
@@ -449,7 +471,7 @@ impl<'a> Lexer<'a> {
 				}
 				Some(Bar::Open) => BarOpen,
 				Some(Bar::Close) => BarClose,
-				None => Error,
+				None => Error(LexError::Unrecognized),
 			},
 
 			'(' => LParen,
@@ -527,16 +549,16 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					Error
+					Error(LexError::Unrecognized)
 				}
 			}
 
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
 				match self.lex_number() {
-					Some(number) => number,
+					Ok(number) => number,
 					// Consume the whole malformed numeric run so the error span covers it and lexing makes forward progress
-					None => {
+					Err(error) => {
 						self.pos = start;
 						let mut prev = '\0';
 						while let Some(c) = self.peek() {
@@ -547,7 +569,7 @@ impl<'a> Lexer<'a> {
 							prev = c;
 							self.bump();
 						}
-						Error
+						Error(error)
 					}
 				}
 			}
@@ -567,7 +589,7 @@ impl<'a> Lexer<'a> {
 				} else {
 					// Digits, combining marks, invisible formatting characters, and symbols never begin a name, which also
 					// leaves `#`, `$`, `~`, and `@` free to become namespace prefixes once a host scope needs them
-					Error
+					Error(LexError::Unrecognized)
 				}
 			}
 		};
@@ -593,7 +615,7 @@ pub fn rename_identifiers(source: &str, mut rename: impl FnMut(&str) -> Option<S
 
 	while let Some(token) = lexer.next_token() {
 		match token {
-			Token::Error => return None,
+			Token::Error(_) => return None,
 			Token::Ident(name) => {
 				if let Some(new_name) = rename(name) {
 					// An `Ident` always borrows directly from the source, so its span is recoverable by pointer offset

@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Case, Literal, Node, Syntax, UnaryOp};
 use crate::context::{FunctionProvider, NothingMap};
-use crate::lexer::{Lexer, Span, Token};
+use crate::lexer::{LexError, Lexer, Span, Token};
 use crate::sort::sorted;
 use chumsky::error::{EmptyErr, LabelError};
 use chumsky::input::ValueInput;
@@ -9,7 +9,13 @@ use std::fmt;
 
 /// One message per parse failure, each tagged with its byte range in the source expression.
 #[derive(Debug)]
-pub struct ParseError(Vec<String>);
+pub struct ParseError(Vec<ErrorMessage>);
+
+impl ParseError {
+	pub fn messages(&self) -> &[ErrorMessage] {
+		&self.0
+	}
+}
 
 impl fmt::Display for ParseError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -18,6 +24,52 @@ impl fmt::Display for ParseError {
 				writeln!(f)?;
 			}
 			write!(f, "{error}")?;
+		}
+		Ok(())
+	}
+}
+
+/// A parse failure's message as prose and the code it quotes, so a host can render the code, which may be the user's own source, safely apart.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorMessage(Vec<MessagePart>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MessagePart {
+	Text(String),
+	/// Code the message quotes, like a keyword, an example, or the offending source text.
+	Code(String),
+}
+
+impl ErrorMessage {
+	pub fn parts(&self) -> &[MessagePart] {
+		&self.0
+	}
+
+	/// A message written with its code between backticks, which only the language's own wording uses, never the source text.
+	fn from_prose(prose: &str) -> Self {
+		let parts = prose.split('`').enumerate().filter(|(_, part)| !part.is_empty());
+		Self(
+			parts
+				.map(|(index, part)| {
+					if index % 2 == 0 {
+						MessagePart::Text(part.to_string())
+					} else {
+						MessagePart::Code(part.to_string())
+					}
+				})
+				.collect(),
+		)
+	}
+}
+
+// Code goes between backticks, the plain-text convention
+impl fmt::Display for ErrorMessage {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		for part in &self.0 {
+			match part {
+				MessagePart::Text(text) => f.write_str(text)?,
+				MessagePart::Code(code) => write!(f, "`{code}`")?,
+			}
 		}
 		Ok(())
 	}
@@ -49,7 +101,7 @@ impl Node {
 
 	/// Parses the source for a host that supplies functions, which shadow any builtin of the same name.
 	pub fn try_parse_with_functions(src: &str, functions: &impl FunctionProvider) -> Result<Node, ParseError> {
-		sorted(parse(src)?, functions).map_err(|error| ParseError(vec![error.to_string()]))
+		sorted(parse(src)?, functions).map_err(|error| ParseError(vec![ErrorMessage::from_prose(&error.to_string())]))
 	}
 }
 
@@ -66,11 +118,29 @@ fn parse(src: &str) -> Result<Syntax, ParseError> {
 			parse_errs
 				.into_iter()
 				.map(|e| match e.found() {
-					Some(Token::Percent) => format!("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at {}", e.span()),
-					Some(Token::If) => format!("`if` joins a case's value to its condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span()),
-					Some(Token::Otherwise) => format!("`otherwise` ends the one case with no condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span()),
-					Some(Token::Where) => format!("`where` is a reserved word, so it can't be a name, at {}", e.span()),
-					_ => format!("{e} at {}", e.span()),
+					Some(Token::Percent) => ErrorMessage::from_prose(&format!("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at {}", e.span())),
+					Some(Token::If) => ErrorMessage::from_prose(&format!("`if` joins a case's value to its condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span())),
+					Some(Token::Otherwise) => ErrorMessage::from_prose(&format!("`otherwise` ends the one case with no condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span())),
+					Some(Token::Where) => ErrorMessage::from_prose(&format!("`where` is a reserved word, so it can't be a name, at {}", e.span())),
+					// The offending source is quoted as its own part, since it may hold anything, backticks included
+					Some(Token::Error(error)) => {
+						let text = src.get(e.span().start..e.span().end).unwrap_or_default();
+						let reason = match error {
+							LexError::Unrecognized => "is not part of the expression language",
+							LexError::MalformedNumber => "is not a valid number",
+							LexError::NumberAfterNumber => "can't follow another number, so write them as one or put `*` between them",
+							LexError::LeadingDotAfterOperand => "needs its leading zero after an operand, like `0.5`",
+						};
+						let ErrorMessage(reason) = ErrorMessage::from_prose(&format!(" {reason}, at {}", e.span()));
+						ErrorMessage(std::iter::once(MessagePart::Code(text.to_string())).chain(reason).collect())
+					}
+					// Chumsky's own messages begin in lowercase, like "found ... expected ...", and quote tokens without backticks
+					_ => {
+						let message = e.to_string();
+						let mut characters = message.chars();
+						let sentence_case: String = characters.next().into_iter().flat_map(char::to_uppercase).chain(characters).collect();
+						ErrorMessage(vec![MessagePart::Text(format!("{sentence_case} at {}", e.span()))])
+					}
 				})
 				.collect(),
 		)),
