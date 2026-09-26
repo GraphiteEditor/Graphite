@@ -479,6 +479,18 @@ impl Region {
 			Region::Map(matrix) => matrix,
 		}
 	}
+
+	/// The region's scale: the largest finite magnitude among a range's corners' parts, or among a map's spanned columns and translation.
+	pub fn scale(self) -> f64 {
+		match self {
+			Region::Range(a, b) => largest_finite(a.to_quaternion().parts().into_iter().chain(b.to_quaternion().parts())),
+			Region::Map(matrix) => largest_finite((0..4).filter(|&axis| matrix.axes[axis]).flat_map(|axis| matrix.column(axis)).chain(matrix.translation.parts())),
+		}
+	}
+}
+
+fn largest_finite(parts: impl Iterator<Item = f64>) -> f64 {
+	parts.filter(|part| part.is_finite()).fold(0., |largest, part| largest.max(part.abs()))
 }
 
 /// A linear map of the plane as its columns, the images of `i` and `j`, like glam's `from_cols`.

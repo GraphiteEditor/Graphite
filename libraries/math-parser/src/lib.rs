@@ -1524,6 +1524,31 @@ mod tests {
 	}
 
 	#[test]
+	fn within_tolerates_a_hair_of_float_error() {
+		let within = |input: &str| evaluate(input).unwrap().unwrap().as_bool();
+
+		// A point a billionth of the region's scale off an edge or a flat side is within, and one further off is not
+		assert_eq!(within("within(1 + 1e-12, 0..1)"), Some(true));
+		assert_eq!(within("within(-1e-12, 0..1)"), Some(true));
+		assert_eq!(within("within(1 + 1e-7, 0..1)"), Some(false));
+		assert_eq!(within("within(1e4 + 1e-6, 0..1e4)"), Some(true));
+		assert_eq!(within("within(0.5i + 1e-12 j, 0..(i + k))"), Some(true));
+		assert_eq!(within("within(0.5i + 1e-6 j, 0..(i + k))"), Some(false));
+		assert_eq!(within("within(1.5i + 2j + 1e-12 k, scale(3i + 2j))"), Some(true));
+		assert_eq!(within("within(1.5i + 2j + 1e-6 k, scale(3i + 2j))"), Some(false));
+
+		// So a point computed onto a rotated region's edge, or a rotated point landing beside a flat side, counts
+		assert_eq!(within("within(0.5i + 0.5j, rotation(pi/4))"), Some(true));
+		assert_eq!(within("within(rotate(i, pi), (-i)..0)"), Some(true));
+
+		// The scale is the corners' or the map's magnitude, so a region at the origin with no extent is exact
+		assert_eq!(within("within(1e16 + 1e6, 0..1e16)"), Some(true));
+		assert_eq!(within("within(1e16 + 1e8, 0..1e16)"), Some(false));
+		assert_eq!(within("within(1e-300, 0..0)"), Some(false));
+		assert_eq!(within("within(-1e-20, 0..inf)"), Some(false));
+	}
+
+	#[test]
 	fn vector_functions_without_a_direction_are_errors() {
 		// A zero vector has no direction to normalize, measure an angle from, rotate about, or project onto
 		for input in ["normalize(0)", "angle(0, i)", "axis(1)", "rotate(i, 1, 0)", "rotor(1, 0)", "project(i, 0)", "reflect(i, 0)"] {

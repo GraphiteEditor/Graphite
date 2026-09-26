@@ -866,17 +866,15 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			function: |p, regions| {
 				let [region] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(p) = p;
-				let p = p.to_quaternion().parts();
-
-				if let Region::Range(a, b) = *region {
-					let (a, b) = (a.to_quaternion().parts(), b.to_quaternion().parts());
-					return Ok(Value::from_bool((0..4).all(|axis| (a[axis].min(b[axis])..=a[axis].max(b[axis])).contains(&p[axis]))));
+				let clamped = clamp_to_region(p, *region)?;
+				if clamped == p {
+					return Ok(Value::from_bool(true));
 				}
 
-				let range = region.matrix();
-				let RangeParameter { parameter, extends, .. } = range_parameter(range, Quaternion::from_parts(p))?;
-				let within = |axis: usize, part: f64| if extends[axis] { (0. ..=1.).contains(&part) } else { part == 0. };
-				Ok(Value::from_bool(parameter.parts().into_iter().enumerate().all(|(axis, part)| within(axis, part))))
+				// A value is within the region when clamping moves it by no more than the tolerance on any part
+				let tolerance = WITHIN_TOLERANCE * region.scale();
+				let moved = clamped.binary_op(BinaryOp::Sub, p).ok_or(EvalError::OperatorTypeError)?;
+				Ok(Value::from_bool(moved.to_quaternion().parts().iter().all(|part| part.abs() <= tolerance)))
 			},
 		},
 
@@ -906,6 +904,10 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		_ => return None,
 	})
 }
+
+/// How far outside a region a value may lie and still be within it, as a fraction of the region's scale, so a point that float
+/// arithmetic put a hair off an edge or a flat side counts.
+const WITHIN_TOLERANCE: f64 = 1e-9;
 
 /// Clamps a value into a region: on each part between a range literal's corners, ordered exactly for reals so an integer past a
 /// matrix's precision keeps its storage, and for any other region on its parameter, `0..1` where it extends and 0 elsewhere, mapped
