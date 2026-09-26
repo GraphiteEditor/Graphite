@@ -210,6 +210,11 @@ pub enum NodeInput {
 		tagged_value: MemoHash<TaggedValue>,
 		exposed: bool,
 	},
+	/// A reference to an [`AnimationCurve`](core_types::animation::AnimationCurve) on the timeline.
+	/// Gets converted into an AnimationCurve node during graph compilation.
+	Timeline {
+		curve_id: u64,
+	},
 
 	// TODO: Remove import_type and get type from parent node input
 	/// Input that is provided by the import from the parent network to this document node network.
@@ -286,6 +291,7 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
+			NodeInput::Timeline { .. } => false,
 			NodeInput::Import { .. } => true,
 			NodeInput::Inline(_) => false,
 			NodeInput::Scope(_) => false,
@@ -297,6 +303,7 @@ impl NodeInput {
 		match self {
 			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
+			NodeInput::Timeline { .. } => concrete!(f64),
 			// Stored import types are normalized to their structural form once at document migration
 			NodeInput::Import { import_type, .. } => import_type.clone(),
 			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
@@ -958,6 +965,14 @@ impl NodeNetwork {
 			return;
 		};
 
+		Self::replace_timeline_inputs_with_nodes(
+			&mut inner_network.exports,
+			&mut inner_network.nodes,
+			node.original_location.path.as_ref().unwrap_or(&vec![]),
+			gen_id,
+			map_ids,
+			id,
+		);
 		// Replace value and reflection imports with value nodes, added inside nested network
 		Self::replace_value_inputs_with_nodes(
 			&mut inner_network.exports,
@@ -1008,6 +1023,7 @@ impl NodeNetwork {
 							*import_index = parent_input_index;
 						}
 						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
+						NodeInput::Timeline { .. } => unreachable!("Value inputs should have been replaced with animation curve nodes"),
 						NodeInput::Inline(_) => (),
 						NodeInput::Scope(_) => unreachable!("Scope inputs should have been resolved by resolve_scope_inputs_recursive before flattening"),
 						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
@@ -1043,6 +1059,44 @@ impl NodeNetwork {
 			}
 
 			self.replace_network_outputs(&NodeInput::node(id, i), export);
+		}
+	}
+
+	fn replace_timeline_inputs_with_nodes(
+		inputs: &mut [NodeInput],
+		collection: &mut FxHashMap<NodeId, DocumentNode>,
+		path: &[NodeId],
+		gen_id: impl Fn() -> NodeId + Copy,
+		map_ids: impl Fn(NodeId, NodeId) -> NodeId + Copy,
+		id: NodeId,
+	) {
+		for input in inputs {
+			let NodeInput::Timeline { curve_id } = *input else { continue };
+
+			let curve_node_id = gen_id();
+			let merged_node_id = map_ids(id, curve_node_id);
+			let mut original_location = OriginalLocation {
+				path: Some(path.to_vec()),
+				dependants: vec![vec![id]],
+				..Default::default()
+			};
+			if let Some(path) = &mut original_location.path {
+				path.push(curve_node_id);
+			}
+
+			collection.insert(
+				merged_node_id,
+				DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::U64(curve_id), false)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::animation_curve::IDENTIFIER),
+					original_location,
+					..Default::default()
+				},
+			);
+			*input = NodeInput::Node {
+				node_id: merged_node_id,
+				output_index: 0,
+			};
 		}
 	}
 

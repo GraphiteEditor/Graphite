@@ -1,4 +1,6 @@
 use core_types::list::{Item, List};
+use core_types::animation::{AnimationCurve, Keyframe};
+
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
@@ -25,6 +27,18 @@ pub enum RealTimeMode {
 pub enum AnimationTimeMode {
 	AnimationTime,
 	FrameNumber,
+}
+
+/// Evaluate the value of an animation curve with the given time
+#[node_macro::node(category("Animation"))]
+fn animation_curve(ctx: impl Ctx + ExtractAnimationTime, curve_id: u64) -> f64 {
+	let time = ctx.try_animation_time().unwrap_or_default();
+
+	let mut curve = AnimationCurve::new();
+	curve.push_keyframe(Keyframe::new_linear(DVec2::new(0.0, 0.0), None));
+	curve.push_keyframe(Keyframe::new_constant(DVec2::new(1.0, 1.0), None));
+
+	curve.evaluate(time)
 }
 
 /// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
