@@ -1,10 +1,16 @@
 use crate::ast::BinaryOp;
 use crate::constants::{Builtin, BuiltinFunction, builtin_function};
 use crate::context::ValueProvider;
+use crate::executer::settle_matrix;
 use crate::lexer::{Lexer, Token};
+use crate::matrix::Matrix;
+use crate::object::Object;
 use crate::value::{Number, Value};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
+
+/// A variadic function's action across a matrix list, which `mean` and `count` alone have.
+pub type MatrixFunction = fn(&[Matrix]) -> Option<Object>;
 
 /// How a lone reducer token combines the items it is applied across.
 #[derive(Clone, Copy)]
@@ -18,7 +24,20 @@ pub enum Reducer {
 	/// A single n-ary predicate asserting that every pair of items is distinct, like `a != b != c`.
 	ChainDistinct,
 	/// A single call of a variadic function over all items, like `min(a, b, c)`.
-	Function(BuiltinFunction),
+	Function { function: BuiltinFunction, over_matrices: Option<MatrixFunction> },
+}
+
+/// The action of a variadic function across matrices: the mean is pointwise and the count counts, while the others need an
+/// order or a product of values.
+fn matrix_function(name: &str) -> Option<MatrixFunction> {
+	match name {
+		"mean" => Some(|matrices| {
+			let sum = matrices.iter().copied().reduce(|accumulated, matrix| accumulated + matrix)?;
+			settle_matrix(sum.map(|entry| entry / matrices.len() as f64)).ok().map(Object::from)
+		}),
+		"count" => Some(|matrices| Some(Object::from(Value::from_i64(matrices.len() as i64)))),
+		_ => None,
+	}
 }
 
 /// Classifies an input string as a lone reducer token, or `None` when it should instead be parsed as a full expression.
@@ -52,7 +71,10 @@ pub fn classify_reducer(source: &str, bindings: impl ValueProvider) -> Option<Re
 				None => name,
 			};
 			match builtin_function(bare_name)? {
-				Builtin::Values { function, variadic: true } => Reducer::Function(function),
+				Builtin::Values { function, variadic: true } => Reducer::Function {
+					function,
+					over_matrices: matrix_function(bare_name),
+				},
 				_ => return None,
 			}
 		}
@@ -101,10 +123,44 @@ impl Reducer {
 			}
 
 			// Builtins read any complex or quaternion storage as having a vector part, which a host's item may lack
-			Reducer::Function(function) if items.iter().any(|Value::Number(number)| matches!(number, Number::Complex(_) | Number::Quaternion(_))) => {
+			Reducer::Function { function, .. } if items.iter().any(|Value::Number(number)| matches!(number, Number::Complex(_) | Number::Quaternion(_))) => {
 				function(&numbers.map(Value::Number).collect::<Vec<_>>())
 			}
-			Reducer::Function(function) => function(items),
+			Reducer::Function { function, .. } => function(items),
+		}
+	}
+
+	/// Evaluates this reducer across matrices: `*` and `/` compose in list order, `+`, `-`, and `mean` are pointwise, and `count`
+	/// counts. Any other reducer is `None`, like a NaN item or a fold of an empty list under `-` or `/`.
+	pub fn evaluate_matrices(&self, items: &[Matrix]) -> Option<Object> {
+		if items.iter().any(|matrix| matrix.is_nan()) {
+			return None;
+		}
+
+		match self {
+			Reducer::FoldLeft(op) => {
+				let mut iter = items.iter().copied();
+				let Some(first) = iter.next() else {
+					return match op {
+						BinaryOp::Add => Some(Object::from(Matrix::ZERO)),
+						BinaryOp::Mul => Some(Object::from(Matrix::IDENTITY)),
+						_ => None,
+					};
+				};
+				let combined = iter.try_fold(first, |accumulated, matrix| {
+					settle_matrix(match op {
+						BinaryOp::Add => accumulated + matrix,
+						BinaryOp::Sub => accumulated - matrix,
+						BinaryOp::Mul => accumulated.compose(matrix),
+						BinaryOp::Div => accumulated.compose(matrix.inverse()?),
+						_ => return None,
+					})
+					.ok()
+				})?;
+				Some(Object::from(combined))
+			}
+			Reducer::Function { over_matrices, .. } => over_matrices.and_then(|function| function(items)),
+			Reducer::FoldRight(_) | Reducer::ChainAdjacent(_) | Reducer::ChainDistinct => None,
 		}
 	}
 }
@@ -285,5 +341,38 @@ mod tests {
 		for source in ["min", "count", "+", "<"] {
 			assert_eq!(run(source, &[f64::NAN, 1.]), None, "`{source}`");
 		}
+	}
+
+	#[test]
+	fn matrix_lists_compose_sum_average_and_count() {
+		let reduce = |source: &str, items: &[Matrix]| classify_reducer(source, NothingMap).unwrap().evaluate_matrices(items);
+		let scale = Matrix::scale(Quaternion::new(2., 0., 0., 0.));
+		let shift = Matrix::IDENTITY.translated(Quaternion::I);
+
+		// Products compose in list order, so the shift lands before the scale doubles it
+		assert_eq!(reduce("*", &[scale, shift]).unwrap().into_matrix().unwrap().translation, Quaternion::new(0., 2., 0., 0.));
+		assert_eq!(reduce("*", &[shift, scale]).unwrap().into_matrix().unwrap().translation, Quaternion::I);
+		assert_eq!(reduce("/", &[scale, scale]).unwrap(), Object::from(Matrix { axes: scale.axes, ..Matrix::IDENTITY }));
+
+		// Sums and the mean are pointwise, and the count is a value
+		assert_eq!(reduce("+", &[scale, scale]).unwrap().into_matrix().unwrap().rows[1], Quaternion::new(0., 4., 0., 0.));
+		assert_eq!(reduce("-", &[scale, scale]).unwrap().into_matrix().unwrap().rows[1], Quaternion::ZERO);
+		assert_eq!(reduce("mean", &[scale, Matrix::IDENTITY]).unwrap().into_matrix().unwrap().rows[1], Quaternion::new(0., 1.5, 0., 0.));
+		assert_eq!(reduce("count", &[scale, shift]), Some(Object::from(Value::from_i64(2))));
+
+		// An empty list yields the identity element where there is one, and a singular divisor has no inverse
+		assert_eq!(reduce("*", &[]), Some(Object::from(Matrix::IDENTITY)));
+		assert_eq!(reduce("+", &[]), Some(Object::from(Matrix::ZERO)));
+		assert_eq!(reduce("count", &[]), Some(Object::from(Value::from_i64(0))));
+		for source in ["-", "/", "mean"] {
+			assert_eq!(reduce(source, &[]), None, "`{source}`");
+		}
+		assert_eq!(reduce("/", &[scale, Matrix::ZERO]), None);
+
+		// Matrices have no order, power, or extremum, and a NaN item is rejected
+		for source in ["<", "==", "!=", "^", "&&", "min", "max", "median", "xor"] {
+			assert_eq!(reduce(source, &[scale, shift]), None, "`{source}`");
+		}
+		assert_eq!(reduce("+", &[scale, Matrix::IDENTITY.translated(Quaternion::splat(f64::NAN))]), None);
 	}
 }

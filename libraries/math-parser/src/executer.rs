@@ -60,7 +60,7 @@ fn settle(value: Value) -> Result<Value, EvalError> {
 }
 
 /// Settles a matrix result like [`settle`] does a value, with signed zeros made plain zero.
-fn settle_matrix(matrix: Matrix) -> Result<Matrix, EvalError> {
+pub(crate) fn settle_matrix(matrix: Matrix) -> Result<Matrix, EvalError> {
 	if matrix.is_nan() {
 		return Err(EvalError::Indeterminate);
 	}
