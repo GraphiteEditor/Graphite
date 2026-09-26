@@ -338,6 +338,11 @@ impl<'a> Lexer<'a> {
 	fn follows_operand(&self, literal_start: usize) -> bool {
 		let mut preceding = self.input[..literal_start].trim_end();
 
+		// A range's `..` set apart by whitespace is an operator, while `1...5` stays ambiguous
+		if preceding.ends_with("..") && preceding.len() < literal_start {
+			return false;
+		}
+
 		// A `!` run is postfix factorial only when an operand precedes it, otherwise it's a prefix logical not
 		while let Some(rest) = preceding.strip_suffix('!') {
 			preceding = rest.trim_end();

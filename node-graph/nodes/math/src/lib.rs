@@ -281,7 +281,7 @@ impl ValueProvider for PositionalMathContext {
 
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, `+` and `-` add entry by entry, and `count` counts.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
 #[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
 fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,

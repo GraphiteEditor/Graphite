@@ -97,6 +97,11 @@ impl Reducer {
 			Reducer::FoldLeft(op) => {
 				let mut iter = numbers;
 				let Some(first) = iter.next() else { return op.identity_element() };
+
+				// A lone item meets no operator, so logic checks it is a truth value here
+				if matches!(op, BinaryOp::And | BinaryOp::Or) {
+					first.as_bool()?;
+				}
 				iter.try_fold(first, |accumulated, item| accumulated.binary_op(*op, item)).map(Value::Number)
 			}
 
@@ -136,6 +141,14 @@ impl Reducer {
 
 		match self {
 			Reducer::FoldLeft(op) => {
+				let combine: fn(Matrix, Matrix) -> Option<Matrix> = match op {
+					BinaryOp::Add => |a, b| Some(a + b),
+					BinaryOp::Sub => |a, b| Some(a - b),
+					BinaryOp::Mul => |a, b| Some(a.compose(b)),
+					BinaryOp::Div => |a, b| Some(a.compose(b.inverse()?)),
+					_ => return None,
+				};
+
 				let mut iter = items.iter().copied();
 				let Some(first) = iter.next() else {
 					return match op {
@@ -144,16 +157,7 @@ impl Reducer {
 						_ => None,
 					};
 				};
-				let combined = iter.try_fold(first, |accumulated, matrix| {
-					settle_matrix(match op {
-						BinaryOp::Add => accumulated + matrix,
-						BinaryOp::Sub => accumulated - matrix,
-						BinaryOp::Mul => accumulated.compose(matrix),
-						BinaryOp::Div => accumulated.compose(matrix.inverse()?),
-						_ => return None,
-					})
-					.ok()
-				})?;
+				let combined = iter.try_fold(first, |accumulated, matrix| settle_matrix(combine(accumulated, matrix)?).ok())?;
 				Some(Object::from(combined))
 			}
 			Reducer::Function { over_matrices, .. } => over_matrices.and_then(|function| function(items)),
@@ -265,6 +269,14 @@ mod tests {
 	}
 
 	#[test]
+	fn logic_checks_a_lone_item_is_a_truth_value() {
+		assert_eq!(run("&&", &[1.]), Some(1.));
+		assert_eq!(run("||", &[0.]), Some(0.));
+		assert_eq!(run("&&", &[5.]), None);
+		assert_eq!(run("||", &[0.5]), None);
+	}
+
+	#[test]
 	fn chains_are_single_predicates() {
 		assert_eq!(run("<", &[1., 2., 3.]), Some(1.));
 		assert_eq!(run("<", &[3., 5., 2.]), Some(0.));
@@ -368,9 +380,12 @@ mod tests {
 		}
 		assert_eq!(reduce("/", &[scale, Matrix::ZERO]), None);
 
-		// Matrices have no order, power, or extremum, and a NaN item is rejected
+		// Matrices have no order, power, extremum, or truth, even alone, and a NaN item is rejected
 		for source in ["<", "==", "!=", "^", "&&", "min", "max", "median", "xor"] {
 			assert_eq!(reduce(source, &[scale, shift]), None, "`{source}`");
+		}
+		for source in ["&&", "||"] {
+			assert_eq!(reduce(source, &[scale]), None, "`{source}`");
 		}
 		assert_eq!(reduce("+", &[scale, Matrix::IDENTITY.translated(Quaternion::splat(f64::NAN))]), None);
 	}

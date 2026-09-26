@@ -838,42 +838,56 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(Matrix::shear(along, by, factor.as_real()?))
 		}),
 
-		// Range functions, each undoing the range to reach its parameter, which only the axes the range spans constrain
+		// Range functions, each undoing the range to reach its parameter, which only the axes the range spans constrain, a flat one to 0
 		"inside" => Builtin::OfValueAndMatrices(|p, matrices| {
 			let [range] = matrices else { return Err(EvalError::TypeError) };
-			let parameter = range_parameter(range.region(), p)?;
-			Ok(Value::from_bool(
-				range.axes.into_iter().zip(parameter.parts()).all(|(spanned, part)| !spanned || (0. ..=1.).contains(&part)),
-			))
+			let RangeParameter { parameter, flat, .. } = range_parameter(*range, p)?;
+			let within = |axis: usize, part: f64| if flat[axis] { part == 0. } else { !range.axes[axis] || (0. ..=1.).contains(&part) };
+			Ok(Value::from_bool(parameter.parts().into_iter().enumerate().all(|(axis, part)| within(axis, part))))
 		}),
 
 		"clamp" => Builtin::OfValueAndMatrices(|x, matrices| {
 			let [range] = matrices else { return Err(EvalError::TypeError) };
-			let region = range.region();
-			let parameter = range_parameter(region, x)?;
+			let RangeParameter { parameter, region, flat } = range_parameter(*range, x)?;
 			let parts = parameter.parts();
-			let clamped = Quaternion::from_parts(array::from_fn(|axis| if range.axes[axis] { parts[axis].clamp(0., 1.) } else { parts[axis] }));
+			let clamped = Quaternion::from_parts(array::from_fn(|axis| match (flat[axis], range.axes[axis]) {
+				(true, _) => 0.,
+				(false, true) => parts[axis].clamp(0., 1.),
+				(false, false) => parts[axis],
+			}));
 
 			// A value already within the range is itself, spared the round trip through the parameter
 			Ok(if clamped == parameter { x } else { Value::from(region.apply(clamped)) })
 		}),
 
-		// From one range to another, `B A⁻¹ x`
+		// From one range to another, `B A⁻¹ x`, where a flat axis of `A` leaves the parameter undefined
 		"remap" => Builtin::OfValueAndMatrices(|x, matrices| {
 			let [from, to] = matrices else { return Err(EvalError::TypeError) };
-			Ok(Value::from(to.region().apply(range_parameter(from.region(), x)?)))
+			let RangeParameter { parameter, flat, .. } = range_parameter(*from, x)?;
+			if flat.contains(&true) {
+				return Err(EvalError::FlatRemapSource);
+			}
+			Ok(Value::from(to.region().apply(parameter)))
 		}),
 
 		_ => return None,
 	})
 }
 
-/// The parameter `R⁻¹ p` whose image under the region is `p`, which a singular range, having no interior, lacks.
-fn range_parameter(region: Matrix, p: Value) -> Result<Quaternion, EvalError> {
+/// Where a value lies against a range: its parameter `R⁻¹ p`, the invertible region that maps the parameter back, and which axes are flat.
+struct RangeParameter {
+	parameter: Quaternion,
+	region: Matrix,
+	/// The spanned axes with no extent, on which the parameter measures how far the value lies off the range.
+	flat: [bool; 4],
+}
+
+fn range_parameter(range: Matrix, p: Value) -> Result<RangeParameter, EvalError> {
 	let Value::Number(p) = p;
+	let (region, flat) = range.invertible_region();
 	let parameter = region.inverse().ok_or(EvalError::SingularRange)?.apply(p.to_quaternion());
 	if Number::Quaternion(parameter).is_nan() {
 		return Err(EvalError::Indeterminate);
 	}
-	Ok(parameter)
+	Ok(RangeParameter { parameter, region, flat })
 }
