@@ -127,7 +127,11 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 	// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
 	const inGraphOverlay = get(documentStore).graphViewOverlayOpen;
-	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
+	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) {
+		// Over the node graph the position is still worth knowing, for the pointer other peers see, so it goes to the backend as a hover that reaches no tool
+		if (inGraphOverlay && !inFloatingMenu && e.target instanceof Element && e.target.closest("[data-node-graph]")) editor.onPointerHover(e.clientX, e.clientY);
+		return;
+	}
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);

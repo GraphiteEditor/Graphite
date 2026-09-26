@@ -341,6 +341,12 @@ mod editor_commands {
 		InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }.into()
 	}
 
+	/// The pointer moved over GUI covering the canvas, such as the node graph: the position is recorded for presence, and no tool hears of it
+	fn on_pointer_hover(x: f64, y: f64) -> Message {
+		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(0, (x, y).into());
+		InputPreprocessorMessage::PointerHover { editor_mouse_state }.into()
+	}
+
 	/// Mouse scrolling within the screenspace bounds of the viewport
 	fn on_wheel_scroll(x: f64, y: f64, mouse_keys: u8, wheel_delta_x: f64, wheel_delta_y: f64, wheel_delta_z: f64, modifiers: u8) -> Message {
 		let mut editor_mouse_state = EditorPointerState::from_keys_and_editor_position(mouse_keys, (x, y).into());
