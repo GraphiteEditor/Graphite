@@ -1,9 +1,9 @@
+use super::cache::BrushCache;
 use super::consts::{LUT_SIZE, LUT_T_MAX, LUT_V_MAX, RIDGE_GAIN, SIGMA_CUTOFF};
 use super::convert::Convert;
 use super::kernel::{Kernel, KernelCache};
 use super::region::{Crop, Region};
 use super::stroke::{Edge, StyledStroke};
-use brush_types::BrushCache;
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transform::Footprint;
