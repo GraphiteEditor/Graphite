@@ -34,7 +34,7 @@ mod tests {
 	#[test]
 	fn malformed_juxtaposed_numbers_fail_to_parse() {
 		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication)
-		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+		for input in ["1.5.5", "1..", ".5.5", "1...5", "1.. .5"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -403,8 +403,6 @@ mod tests {
 			("rms(1e-320)", 1e-320),
 			("lerp(-1e308, 1e308, 0.5)", 0.),
 			("lerp(-1e308, 1e308, 1)", 1e308),
-			("remap(0, -1e308, 1e308, 0, 1)", 0.5),
-			("remap(0.5, 0, 1, -1e308, 1e308)", 0.),
 		] {
 			assert_eq!(evaluate(input).unwrap().unwrap().as_real(), Some(expected), "`{input}`");
 		}
@@ -844,7 +842,7 @@ mod tests {
 		statistics_rms_quaternion: "rms(3j, 4k)" => 12.5_f64.sqrt(),
 		logical_xor_odd_parity: "xor(1, 1, 1)" => 1.,
 		logical_xor_even_parity: "xor(1, 0, 1)" => 0.,
-		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
+		mapping_remap: "remap(5, 0..10, 0..100)" => 50.,
 
 		// GCD / LCM
 		gcd_simple: "gcd(24, 18)" => 6.,
@@ -1165,7 +1163,7 @@ mod tests {
 		quaternion_floor_componentwise: "floor(1.5i + 2.5j)" => Quaternion::new(0., 1., 2., 0.),
 		quaternion_snap_componentwise: "snap(0.4 + 1.6j - 2.8k, 2)" => Quaternion::new(0., 0., 2., -2.),
 		quaternion_min_componentwise: "min(1 + 5j, 3 + 2j)" => Quaternion::new(1., 0., 2., 0.),
-		quaternion_clamp_componentwise: "clamp(5i - 5j, -i - j, i + j)" => Quaternion::new(0., 1., -1., 0.),
+		quaternion_clamp_componentwise: "clamp(5i - 5j, (-i - j)..(i + j))" => Quaternion::new(0., 1., -1., 0.),
 		quaternion_lerp: "lerp(2i, 4j, 0.5)" => Quaternion::new(0., 1., 2., 0.),
 		quaternion_mean_pointwise: "mean(2i, 4j)" => Quaternion::new(0., 1., 2., 0.),
 		quaternion_abs_per_part: "abs(-1 - 2i + 3j - 4k)" => Quaternion::new(1., 2., 3., 4.),
@@ -1174,7 +1172,7 @@ mod tests {
 		// A real is a quaternion with zero vector parts, so as a bound it holds a vector's parts to zero
 		quaternion_max_with_zero: "max(2i - 3j, 0)" => Complex::new(0., 2.),
 		quaternion_max_with_real: "max(0.5i + 2j, 1)" => Quaternion::new(1., 0.5, 2., 0.),
-		quaternion_clamp_by_reals: "clamp(3i, 1, 2)" => 1.,
+		quaternion_clamp_spans_the_weight_alone: "clamp(3 + 3i, 1..2)" => Complex::new(2., 3.),
 
 		// Vector functions: the dot product spans all four parts, the cross product only the vector parts
 		vector_dot: "dot(3i + 4j, i)" => 3.,
@@ -1230,9 +1228,9 @@ mod tests {
 
 		// Matrix literals build rows or columns, landing on the rung their count names
 		matrix_identity_literal: "[1;i;j;k]" => Matrix::IDENTITY,
-		matrix_short_rows_pad: "[i;j]" => Matrix::linear([Quaternion::ZERO, Quaternion::I, Quaternion::J, Quaternion::ZERO]),
-		matrix_one_row_is_the_weight: "[3i + 4j]" => Matrix::linear([Quaternion::new(0., 3., 4., 0.), Quaternion::ZERO, Quaternion::ZERO, Quaternion::ZERO]),
-		matrix_columns_transpose_rows: "[1,i]" => Matrix::linear([Quaternion::I, Quaternion::J, Quaternion::ZERO, Quaternion::ZERO]),
+		matrix_short_rows_pad: "[i;j]" => Matrix::from_rows(&[Quaternion::I, Quaternion::J]).unwrap(),
+		matrix_one_row_is_the_weight: "[3i + 4j]" => Matrix::from_rows(&[Quaternion::new(0., 3., 4., 0.)]).unwrap(),
+		matrix_columns_transpose_rows: "[1,i]" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
 		matrix_swizzle: "[k;j;i] (1i + 2j + 3k)" => Quaternion::new(0., 3., 2., 1.),
 		matrix_real_part: "[1] (3 + 4i)" => 3.,
 		matrix_coefficient: "[j] (1i + 2j + 3k)" => 2.,
@@ -1274,7 +1272,7 @@ mod tests {
 		matrix_over_matrix: "(I + 5i) / (I + 5i)" => Matrix::IDENTITY,
 		matrix_over_value: "I / 2" => 0.5,
 		value_over_matrix: "(2 / I) 3" => 6.,
-		matrix_transpose: "[1;i]^T" => Matrix::linear([Quaternion::I, Quaternion::J, Quaternion::ZERO, Quaternion::ZERO]),
+		matrix_transpose: "[1;i]^T" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
 		matrix_transpose_then_inverse: "[1;2i;3j;k]^T^-1 (2i + 3j)" => Quaternion::new(0., 1., 1., 0.),
 		matrix_determinant: "det([1;2i;3j;k])" => 6.,
 		matrix_determinant_of_padded_literal: "det([2i;3j])" => 0.,
@@ -1298,6 +1296,84 @@ mod tests {
 		matrix_distinct_chain: "I != [i;j] != [1]" => 1.,
 		matrix_in_piecewise: "{I if 1, [i;j] otherwise} k" => Quaternion::K,
 		matrix_builtin_identity_prefix: "\\I k" => Quaternion::K,
+
+		// A range sends parameter 0 to its first corner and 1 to its second on the parts the corners have, leaving the others untouched
+		range_application: "(0..10) 0.5" => 5.,
+		range_reversed: "(10..0) 0.25" => 7.5,
+		range_reaches_past_products: "(0..2pi) 0.5" => std::f64::consts::PI,
+		range_unit_is_identity: "0..1 == I" => 1.,
+		range_normalization: "(2..4)^-1 (3)" => 0.5,
+		range_leaves_other_parts: "(0..10) (0.5 + 3i)" => Complex::new(5., 3.),
+		box_scales_its_axes: "(0..(3i + 4j)) (0.5i + 0.5j)" => Quaternion::new(0., 1.5, 2., 0.),
+		box_leaves_the_weight: "(0..(3i + 4j)) (1 + 0.5i)" => Complex::new(1., 1.5),
+		box_from_a_corner: "((2i + 2j)..(4i + 6j)) (0.5i + 0.5j)" => Quaternion::new(0., 3., 4., 0.),
+		box_over_every_axis: "(0..(5 + 6i + 7j + 8k)) (1 + i + j + k)" => Quaternion::new(5., 6., 7., 8.),
+		box_parameter_is_per_axis: "(0..(5 + 6i + 7j + 8k)) 1" => 5.,
+		range_composes_with_a_rotation: "(rotation(pi/2) (0..(2i + 2j))) (i + j)" => Quaternion::new(0., -2., 2., 0.),
+		range_shifted_by_a_translation: "((0..(i + j)) + 5i) (i + j)" => Quaternion::new(0., 6., 1., 0.),
+
+		// Insideness, clamping, and remapping read the range's parameter on the axes it spans, boundary included
+		inside_range: "inside(0.5, 0..1)" => 1.,
+		inside_range_boundary: "inside(1, 0..1)" => 1.,
+		outside_range: "inside(1.5, 0..1)" => 0.,
+		inside_range_ignores_other_parts: "inside(0.5 + 7i, 0..1)" => 1.,
+		inside_box: "inside(2i + 3j, 0..(4i + 4j))" => 1.,
+		outside_box_on_one_axis: "inside(2i + 5j, 0..(4i + 4j))" => 0.,
+		inside_box_ignores_the_weight: "inside(9 + 2i + 3j, 0..(4i + 4j))" => 1.,
+		inside_rotated_box: "inside(0.1i + 0.5j, rotation(pi/4) (0..(i + j)))" => 1.,
+		outside_rotated_box: "inside(0.9i + 0.5j, rotation(pi/4) (0..(i + j)))" => 0.,
+		inside_parallelogram: "inside(2i + j, [2i, i + j] + i)" => 1.,
+		outside_parallelogram: "inside(i + j, [2i, i + j] + i)" => 0.,
+		clamp_to_range: "clamp(1.5, 0..1)" => 1.,
+		clamp_within_range: "clamp(0.25, 0..1)" => 0.25,
+		clamp_leaves_other_parts: "clamp(-3 + 7i, 0..1)" => Complex::new(0., 7.),
+		clamp_to_box: "clamp(2i + 3j, 0..(i + j))" => Quaternion::new(0., 1., 1., 0.),
+		clamp_within_box: "clamp(0.5i, 0..(i + j))" => Complex::new(0., 0.5),
+		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
+		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
+		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
+	}
+
+	#[test]
+	fn range_syntax() {
+		// A range's corners are values, a range is a matrix, and a range cannot chain
+		let message = |input: &str| evaluate(input).unwrap_err().to_string();
+		assert_eq!(message("I..1"), "A matrix stands where a value is needed");
+		assert_eq!(message("sin(0..1)"), "A matrix stands where a value is needed");
+		assert_eq!(message("inside(0..1, 0..1)"), "A matrix stands where a value is needed");
+		assert_eq!(message("inside(1, 2)"), "A value stands where a matrix is needed");
+		assert_eq!(message("0..1 < 2"), "The operator has no meaning for a matrix");
+		assert!(evaluate("0..1..2").is_err());
+
+		// A number's decimal point still lexes beside a range, and whitespace around `..` is free
+		assert_eq!(evaluate("(1.5..2.5) 0.5").unwrap().unwrap().as_real(), Some(2.));
+		assert_eq!(evaluate("(1 .. 3) 0.5").unwrap().unwrap().as_real(), Some(2.));
+		assert_eq!(evaluate("(-1..1) 0.75").unwrap().unwrap().as_real(), Some(0.5));
+
+		// A singular range has no interior to test or clamp against, while its application still stands
+		for input in ["inside(5, 5..5)", "inside(0, 0..0)", "clamp(1, 3..3)", "remap(1, 2..2, 0..1)"] {
+			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SingularRange)), "`{input}`");
+		}
+		assert_eq!(evaluate("(5..5) 0.5").unwrap().unwrap().as_real(), Some(5.));
+		assert!(matches!(evaluate("inside(1)").unwrap(), Err(EvalError::TypeError)));
+
+		// The axes a range spans come from its corners, so `0..1` and `I` agree entry for entry yet test different parts
+		assert_eq!(evaluate("inside(2i, 0..1)").unwrap().unwrap().as_bool(), Some(true));
+		assert_eq!(evaluate("inside(2i, I)").unwrap().unwrap().as_bool(), Some(false));
+		assert_eq!(evaluate("inside(0.5i, 0..1i)").unwrap().unwrap().as_bool(), Some(true));
+		assert_eq!(evaluate("inside(0.5i + 3j, 0..1i)").unwrap().unwrap().as_bool(), Some(true));
+		assert_eq!(evaluate("inside(0.5i + 3j, 0..(i + j))").unwrap().unwrap().as_bool(), Some(false));
+
+		// A range reads as a Transform when its corners leave the weight and `z` alone
+		let affine = |input: &str| evaluate(input).unwrap().unwrap().into_matrix().unwrap().as_affine2();
+		assert_eq!(
+			affine("(i + j)..(3i + 4j)"),
+			Some(Affine2 {
+				linear: Linear2([[2., 0.], [0., 3.]]),
+				translation: [1., 1.]
+			})
+		);
+		assert_eq!(affine("0..10"), None);
 	}
 
 	#[test]
@@ -1463,7 +1539,7 @@ mod tests {
 		// Selection and rounding return the integer itself, and a literal spelled as a real is the same whole number
 		assert_eq!(evaluate_i64("max(2^53 + 1, 2^53)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("min(2^53 + 1, 2^53 + 2)"), Some((1_i64 << 53) + 1));
-		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0, 2^60)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0..2^60)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("floor(2^53 + 1)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("snap(2^53 + 1, 1)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("snap(2^60 + 3, 2)"), Some((1_i64 << 60) + 4));
@@ -1478,8 +1554,9 @@ mod tests {
 		assert_eq!(evaluate_i64("gcd(2^126, 6)"), Some(2));
 		assert!(evaluate("gcd(2^127, 2)").unwrap().is_err());
 
-		// Crossed bounds settle on the upper one
-		assert_eq!(evaluate_i64("clamp(5, 10, 0)"), Some(0));
+		// A reversed range clamps to its own ends
+		assert_eq!(evaluate_i64("clamp(15, 10..0)"), Some(10));
+		assert_eq!(evaluate_i64("clamp(-5, 10..0)"), Some(0));
 
 		// A fractional quotient, a power, and a factorial past integer storage continue in the reals
 		assert_eq!(evaluate("7 / 2").unwrap().unwrap().as_real(), Some(3.5));
@@ -1609,6 +1686,8 @@ mod tests {
 			("I + 5i", "[1;1i;1j;1k] + 5i"),
 			("I - 5i", "[1;1i;1j;1k] + (-5i)"),
 			("I + 5i + 4j", "[1;1i;1j;1k] + (5i+4j)"),
+			("2..4", "[2;1i;1j;1k] + 2"),
+			("0..(3i + 4j)", "[1;3i;4j;1k]"),
 		] {
 			assert_eq!(evaluate(input).unwrap().unwrap().to_string(), expected, "`{input}`");
 		}

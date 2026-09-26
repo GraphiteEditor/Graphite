@@ -10,27 +10,36 @@ pub struct Matrix {
 	/// Each row weights the input's parts into one output part, so the row `i` in the `x` slot passes the input's `x` through.
 	pub rows: [Quaternion; 4],
 	pub translation: Quaternion,
+	/// The parts the map is built to act on, which `inside` and `clamp` constrain while the rest pass through: a range's corners'
+	/// parts, a literal's count, or every part a builtin touches.
+	pub axes: [bool; 4],
 }
 
 const ZERO: Quaternion = Quaternion::ZERO;
+const ALL_AXES: [bool; 4] = [true; 4];
 
 impl Matrix {
 	pub const IDENTITY: Self = Self::linear([Quaternion::ONE, Quaternion::I, Quaternion::J, Quaternion::K]);
 	pub const ZERO: Self = Self::linear([ZERO; 4]);
 
 	pub const fn linear(rows: [Quaternion; 4]) -> Self {
-		Self { rows, translation: ZERO }
+		Self {
+			rows,
+			translation: ZERO,
+			axes: ALL_AXES,
+		}
 	}
 
 	/// The row literal `[a;b;c]`, whose rows land on the parts of the rung their count names: `w` alone, `x, y`, `x, y, z`, or all four.
 	pub fn from_rows(rows: &[Quaternion]) -> Option<Self> {
-		Some(Self::linear(match *rows {
-			[a] => [a, ZERO, ZERO, ZERO],
-			[a, b] => [ZERO, a, b, ZERO],
-			[a, b, c] => [ZERO, a, b, c],
-			[a, b, c, d] => [a, b, c, d],
+		let (rows, axes) = match *rows {
+			[a] => ([a, ZERO, ZERO, ZERO], [true, false, false, false]),
+			[a, b] => ([ZERO, a, b, ZERO], [false, true, true, false]),
+			[a, b, c] => ([ZERO, a, b, c], [false, true, true, true]),
+			[a, b, c, d] => ([a, b, c, d], ALL_AXES),
 			_ => return None,
-		}))
+		};
+		Some(Self { axes, ..Self::linear(rows) })
 	}
 
 	/// The column literal `[a,b,c]`, whose columns are the images of the basis directions of the rung their count names.
@@ -38,9 +47,50 @@ impl Matrix {
 		Some(Self::from_rows(columns)?.transposed())
 	}
 
+	/// The range `a..b`: on each part either corner has, the map sending parameter `0` to `a` and `1` to `b`, so vector corners make a
+	/// box, with the other parts untouched. Corners with no parts span the weight, so `0..0` is singular like every `a..a`.
+	pub fn range(a: Quaternion, b: Quaternion) -> Self {
+		let (a, b) = (a.parts(), b.parts());
+		let mut axes: [bool; 4] = std::array::from_fn(|axis| a[axis] != 0. || b[axis] != 0.);
+		if axes == [false; 4] {
+			axes[0] = true;
+		}
+
+		let mut range = Self { axes, ..Self::IDENTITY };
+		let mut translation = [0.; 4];
+		for (axis, spanned) in axes.into_iter().enumerate() {
+			if spanned {
+				let mut row = [0.; 4];
+				row[axis] = b[axis] - a[axis];
+				range.rows[axis] = Quaternion::from_parts(row);
+				translation[axis] = a[axis];
+			}
+		}
+		range.translation = Quaternion::from_parts(translation);
+		range
+	}
+
+	/// The map as a region, acting on the axes it spans while every other part passes through, so a padded literal's zero rows
+	/// leave a parallelogram `[u, v]` invertible.
+	pub fn region(self) -> Self {
+		let mut region = self;
+		let mut translation = self.translation.parts();
+		for axis in (0..4).filter(|&axis| !self.axes[axis]) {
+			region.rows[axis] = Self::IDENTITY.rows[axis];
+			translation[axis] = 0.;
+		}
+		region.translation = Quaternion::from_parts(translation);
+		region
+	}
+
 	/// Whether the translation is zero, leaving a linear map.
 	pub fn is_linear(self) -> bool {
 		self.translation == ZERO
+	}
+
+	/// Whether the two maps agree entry for entry, whatever axes each was built to act on.
+	pub fn same_entries(self, other: Self) -> bool {
+		self.rows == other.rows && self.translation == other.translation
 	}
 
 	/// The linear part with its rows and columns swapped, keeping the translation.
@@ -48,8 +98,22 @@ impl Matrix {
 		let entries = self.entries();
 		Self {
 			rows: std::array::from_fn(|row| Quaternion::from_parts(std::array::from_fn(|column| entries[column][row]))),
-			translation: self.translation,
+			..self
 		}
+	}
+
+	/// The map with the translation `t` added, acting also on the parts `t` has.
+	pub fn translated(self, t: Quaternion) -> Self {
+		Self {
+			translation: self.translation + t,
+			axes: joined(self.axes, Self::axes_of(t)),
+			..self
+		}
+	}
+
+	/// The parts a value has, as the axes a map built from it acts on.
+	fn axes_of(q: Quaternion) -> [bool; 4] {
+		q.parts().map(|part| part != 0.)
 	}
 
 	fn entries(self) -> [[f64; 4]; 4] {
@@ -72,7 +136,11 @@ impl Matrix {
 			combined
 		});
 		let translation = Quaternion::from_parts(self.rows.map(|row| inner(row, other.translation))) + self.translation;
-		Self { rows, translation }
+		Self {
+			rows,
+			translation,
+			axes: joined(self.axes, other.axes),
+		}
 	}
 
 	/// The determinant of the linear part.
@@ -95,6 +163,7 @@ impl Matrix {
 		Some(Self {
 			rows,
 			translation: -Quaternion::from_parts(linear.rows.map(|row| inner(row, self.translation))),
+			..self
 		})
 	}
 
@@ -102,7 +171,7 @@ impl Matrix {
 	pub fn power(self, exponent: i64) -> Option<Self> {
 		let mut base = if exponent < 0 { self.inverse()? } else { self };
 		let mut remaining = exponent.unsigned_abs();
-		let mut result = Self::IDENTITY;
+		let mut result = Self { axes: self.axes, ..Self::IDENTITY };
 		while remaining > 0 {
 			if remaining & 1 == 1 {
 				result = result.compose(base);
@@ -115,36 +184,51 @@ impl Matrix {
 		Some(result)
 	}
 
-	/// Left multiplication by `q` as a matrix, `L_q p = q p`, the value's own action in the matrix sort.
+	/// Left multiplication by `q` as a matrix, `L_q p = q p`, the value's own action in the matrix sort. A real scales every part
+	/// alike, adding no axes to a map, while a vector part mixes all four.
 	pub fn left_multiplication(q: Quaternion) -> Self {
 		let Quaternion { w, x, y, z } = q;
-		Self::linear([Quaternion::new(w, -x, -y, -z), Quaternion::new(x, w, -z, y), Quaternion::new(y, z, w, -x), Quaternion::new(z, -y, x, w)])
+		Self {
+			axes: if q.is_real() { [false; 4] } else { ALL_AXES },
+			..Self::linear([Quaternion::new(w, -x, -y, -z), Quaternion::new(x, w, -z, y), Quaternion::new(y, z, w, -x), Quaternion::new(z, -y, x, w)])
+		}
 	}
 
-	/// The rotation a unit rotor performs, leaving the weight alone, with the axes it does not turn kept exact.
-	pub fn rotation(rotor: Quaternion) -> Self {
+	/// The rotation a unit rotor performs about `axis`, leaving the weight alone, with the axes it does not turn kept exact.
+	pub fn rotation(rotor: Quaternion, axis: Quaternion) -> Self {
 		let Quaternion { w, x, y, z } = rotor;
-		Self::linear([
-			Quaternion::ONE,
-			Quaternion::new(0., 1. - 2. * (y * y + z * z), 2. * (x * y - w * z), 2. * (x * z + w * y)),
-			Quaternion::new(0., 2. * (x * y + w * z), 1. - 2. * (x * x + z * z), 2. * (y * z - w * x)),
-			Quaternion::new(0., 2. * (x * z - w * y), 2. * (y * z + w * x), 1. - 2. * (x * x + y * y)),
-		])
+		let [_, along_x, along_y, along_z] = Self::axes_of(axis);
+		Self {
+			// The plane of rotation, all of space unless the axis is a basis direction, whose own part stays put
+			axes: [false, along_y || along_z, along_x || along_z, along_x || along_y],
+			..Self::linear([
+				Quaternion::ONE,
+				Quaternion::new(0., 1. - 2. * (y * y + z * z), 2. * (x * y - w * z), 2. * (x * z + w * y)),
+				Quaternion::new(0., 2. * (x * y + w * z), 1. - 2. * (x * x + z * z), 2. * (y * z - w * x)),
+				Quaternion::new(0., 2. * (x * z - w * y), 2. * (y * z + w * x), 1. - 2. * (x * x + y * y)),
+			])
+		}
 	}
 
 	/// Scales each axis by the weight plus that axis's part of `q`, so a real scales uniformly, leaving the weight alone.
 	pub fn scale(q: Quaternion) -> Self {
-		Self::linear([
-			Quaternion::ONE,
-			Quaternion::new(0., q.w + q.x, 0., 0.),
-			Quaternion::new(0., 0., q.w + q.y, 0.),
-			Quaternion::new(0., 0., 0., q.w + q.z),
-		])
+		Self {
+			axes: [false, true, true, true],
+			..Self::linear([
+				Quaternion::ONE,
+				Quaternion::new(0., q.w + q.x, 0., 0.),
+				Quaternion::new(0., 0., q.w + q.y, 0.),
+				Quaternion::new(0., 0., 0., q.w + q.z),
+			])
+		}
 	}
 
 	/// Displaces the `along` coordinate by `factor` times the `by` coordinate: the identity plus `factor` times their outer product.
 	pub fn shear(along: Quaternion, by: Quaternion, factor: f64) -> Self {
-		let mut matrix = Self::IDENTITY;
+		let mut matrix = Self {
+			axes: joined(Self::axes_of(along), Self::axes_of(by)),
+			..Self::IDENTITY
+		};
 		for (row, along) in matrix.rows.iter_mut().zip(along.parts()) {
 			*row = *row + by.map(|by| factor * along * by);
 		}
@@ -156,6 +240,7 @@ impl Matrix {
 		Self {
 			rows: self.rows.map(|row| row.map(&function)),
 			translation: self.translation.map(&function),
+			..self
 		}
 	}
 
@@ -211,6 +296,11 @@ fn inner(row: Quaternion, p: Quaternion) -> f64 {
 	row.parts().into_iter().zip(p.parts()).map(|(weight, part)| part_product(weight, part, false)).sum()
 }
 
+/// The axes either map acts on, as a map built from both does.
+fn joined(a: [bool; 4], b: [bool; 4]) -> [bool; 4] {
+	std::array::from_fn(|axis| a[axis] || b[axis])
+}
+
 /// The signed minor of the entry at `row`, `column`.
 fn cofactor(entries: [[f64; 4]; 4], row: usize, column: usize) -> f64 {
 	let mut minor = [[0.; 3]; 3];
@@ -230,6 +320,7 @@ impl Add for Matrix {
 		Self {
 			rows: std::array::from_fn(|index| self.rows[index] + other.rows[index]),
 			translation: self.translation + other.translation,
+			axes: joined(self.axes, other.axes),
 		}
 	}
 }
@@ -322,6 +413,7 @@ impl From<Affine3> for Matrix {
 				Quaternion::new(0., i[2], j[2], k[2]),
 			],
 			translation: Quaternion::new(0., x, y, z),
+			axes: [false, true, true, true],
 		}
 	}
 }
@@ -339,10 +431,13 @@ impl From<Affine2> for Matrix {
 			translation: [x, y],
 		}: Affine2,
 	) -> Self {
-		Self::from(Affine3 {
-			linear: Linear3([[i[0], i[1], 0.], [j[0], j[1], 0.], [0., 0., 1.]]),
-			translation: [x, y, 0.],
-		})
+		Self {
+			axes: [false, true, true, false],
+			..Self::from(Affine3 {
+				linear: Linear3([[i[0], i[1], 0.], [j[0], j[1], 0.], [0., 0., 1.]]),
+				translation: [x, y, 0.],
+			})
+		}
 	}
 }
 

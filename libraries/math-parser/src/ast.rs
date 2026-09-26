@@ -1,4 +1,4 @@
-use crate::constants::{MatrixToMatrix, MatrixToValue, ValuesToMatrix};
+use crate::constants::{MatrixToMatrix, MatrixToValue, ValueOfMatrices, ValuesToMatrix};
 use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +100,11 @@ pub enum Syntax {
 		entries: Vec<Syntax>,
 		by_rows: bool,
 	},
+	/// The range `a..b`, the map sending parameter `0` to `a` and `1` to `b`, which vector corners make a box.
+	Range {
+		from: Box<Syntax>,
+		to: Box<Syntax>,
+	},
 }
 
 /// One case of a piecewise, the value it takes where its condition holds.
@@ -152,6 +157,12 @@ pub enum ValueNode {
 		function: MatrixToValue,
 		matrix: Box<MatrixNode>,
 	},
+	/// A function of a value and matrices with a value result, like `inside(p, R)`.
+	OfMatrices {
+		function: ValueOfMatrices,
+		value: Box<ValueNode>,
+		matrices: Vec<MatrixNode>,
+	},
 	/// A chain of `==`, or of `!=`, over matrices, pointwise.
 	MatrixComparison {
 		matrices: Vec<MatrixNode>,
@@ -171,6 +182,11 @@ pub enum MatrixNode {
 	FromValues {
 		function: ValuesToMatrix,
 		arguments: Vec<ValueNode>,
+	},
+	/// The range `a..b`.
+	Range {
+		from: Box<ValueNode>,
+		to: Box<ValueNode>,
 	},
 	/// A function of a matrix with a matrix result, like `linear(A)`.
 	OfMatrix {

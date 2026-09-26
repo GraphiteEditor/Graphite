@@ -58,6 +58,10 @@ pub fn sorted(syntax: Syntax) -> Result<Node, SortError> {
 			entries: entries.into_iter().map(|entry| value(sorted(entry)?)).collect::<Result<Vec<ValueNode>, SortError>>()?,
 			by_rows,
 		}),
+		Syntax::Range { from, to } => Node::Matrix(MatrixNode::Range {
+			from: Box::new(value(sorted(*from)?)?),
+			to: Box::new(value(sorted(*to)?)?),
+		}),
 	})
 }
 
@@ -84,6 +88,7 @@ fn one(arguments: Vec<Node>) -> Result<Node, SortError> {
 }
 
 /// A call's sort follows the builtin's, a matrix's name applying it to its one argument, and any other name taking values alone.
+/// A range function like `inside(p, R)` takes a value and then matrices.
 fn call(name: String, arguments: Vec<Syntax>) -> Result<Node, SortError> {
 	let arguments = arguments.into_iter().map(sorted).collect::<Result<Vec<Node>, SortError>>()?;
 	let bare_name = name.strip_prefix('\\').unwrap_or(&name);
@@ -106,6 +111,14 @@ fn call(name: String, arguments: Vec<Syntax>) -> Result<Node, SortError> {
 			function,
 			arguments: values(arguments)?,
 		}),
+		Some(Builtin::OfValueAndMatrices(function)) => {
+			let mut arguments = arguments.into_iter();
+			Node::Value(ValueNode::OfMatrices {
+				function,
+				value: Box::new(value(arguments.next().ok_or(INVALID_ARGUMENTS)?)?),
+				matrices: arguments.map(matrix).collect::<Result<Vec<MatrixNode>, SortError>>()?,
+			})
+		}
 		_ => Node::Value(ValueNode::FnCall { name, expr: values(arguments)? }),
 	})
 }
