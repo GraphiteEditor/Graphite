@@ -90,8 +90,8 @@ pub enum Syntax {
 		first: Box<Syntax>,
 		rest: Vec<(BinaryOp, Syntax)>,
 	},
-	/// A chain of three or more factors joined by `*`, `/`, or juxtaposition, each operator paired with the factor after it, grouped once
-	/// sorted since a matrix applies to every factor after it.
+	/// A chain of three or more factors joined by `*`, `/`, or juxtaposition, each operator paired with the factor after it, left flat for
+	/// the sort pass to group, since a matrix applies to every factor after it.
 	Product {
 		first: Box<Syntax>,
 		rest: Vec<(BinaryOp, Syntax)>,
