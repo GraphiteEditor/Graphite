@@ -106,8 +106,8 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Send this peer's pointer position in document space, `None` when it left the viewport.
-	pub fn send_cursor(&mut self, position: Option<[f64; 2]>) -> Result<(), Error> {
+	/// Send this peer's pointer position, `None` when it left the viewport.
+	pub fn send_cursor(&mut self, position: Option<peer_transport::CursorPosition>) -> Result<(), Error> {
 		if let Some(replica) = &mut self.network {
 			replica.send_cursor(position)?;
 		}

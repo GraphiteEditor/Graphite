@@ -454,19 +454,19 @@
 						{#if tabLabel.unsaved}
 							<TextLabel classes={{ hidden: editingNameTabIndex === tabIndex }}>*</TextLabel>
 						{/if}
-						{#if tabLabel.session}
-							<button
-								class="session"
-								class:disconnected={tabLabel.session === "Disconnected"}
-								title={tabLabel.session === "Connected"
-									? "In a live session. Click to open the Session panel."
-									: "Disconnected from the session, reconnecting. Click to open the Session panel."}
-								data-session-button
-								on:pointerdown|stopPropagation
-								on:click|stopPropagation={() => sessionAction?.(tabIndex)}
-							></button>
-						{/if}
 					</LayoutRow>
+					{#if tabLabel.session}
+						<button
+							class="session"
+							class:disconnected={tabLabel.session === "Disconnected"}
+							title={tabLabel.session === "Connected"
+								? "In a live session. Click to open the Session panel."
+								: "Disconnected from the session, reconnecting. Click to open the Session panel."}
+							data-session-button
+							on:pointerdown|stopPropagation
+							on:click|stopPropagation={() => sessionAction?.(tabIndex)}
+						></button>
+					{/if}
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -608,31 +608,36 @@
 						.text-label.hidden {
 							visibility: hidden;
 						}
-
-						.session {
-							flex: 0 0 auto;
-							align-self: center;
-							width: 6px;
-							height: 6px;
-							margin-left: 6px;
-							padding: 0;
-							border: none;
-							border-radius: 50%;
-							background: var(--color-session-green);
-							cursor: pointer;
-
-							&.disconnected {
-								background: var(--color-error-red);
-							}
-
-							&:hover {
-								box-shadow: 0 0 0 2px var(--color-5-dullgray);
-							}
-						}
 					}
 
 					.icon-button {
 						margin-left: 8px;
+					}
+
+					// The live-session circle sits between the name and the close button, tight against both.
+					.session {
+						flex: 0 0 auto;
+						align-self: center;
+						width: 6px;
+						height: 6px;
+						margin-left: 4px;
+						padding: 0;
+						border: none;
+						border-radius: 50%;
+						background: var(--color-session-green);
+						cursor: pointer;
+
+						&.disconnected {
+							background: var(--color-error-red);
+						}
+
+						&:hover {
+							box-shadow: 0 0 0 2px var(--color-5-dullgray);
+						}
+
+						& + .icon-button {
+							margin-left: 4px;
+						}
 					}
 
 					& + .tab {

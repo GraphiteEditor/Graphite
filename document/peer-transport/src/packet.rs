@@ -56,10 +56,10 @@ pub enum SyncPacket {
 	Profile {
 		name: String,
 	},
-	/// Where the sender's pointer is in document space, `None` when it left the viewport. Sent at most once
-	/// a frame and identified by the link it arrives on, so it carries nothing but the position.
+	/// Where the sender's pointer is, `None` when it left the viewport. Sent at most once a frame and identified
+	/// by the link it arrives on, so it carries nothing but the position and the space it is in.
 	Cursor {
-		position: Option<[f64; 2]>,
+		position: Option<CursorPosition>,
 	},
 }
 
@@ -130,4 +130,19 @@ impl SyncPacket {
 	pub fn decode(bytes: &[u8]) -> Result<Self, PacketError> {
 		Ok(rmp_serde::from_slice(bytes)?)
 	}
+}
+
+/// A peer's pointer: where, and in which of the editor's spaces, so it is drawn only where it means something.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CursorPosition {
+	pub position: [f64; 2],
+	pub space: CursorSpace,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum CursorSpace {
+	/// Document coordinates over the canvas.
+	Document,
+	/// Node-graph coordinates of the network at this path of node ids, from the document network down.
+	Graph { network: Vec<u64> },
 }

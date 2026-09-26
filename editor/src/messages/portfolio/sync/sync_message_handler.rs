@@ -1,5 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendRemoteCursor;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::portfolio::utility_types::PanelType;
@@ -9,7 +10,7 @@ use crate::messages::viewport::Position;
 use document_graph_storage::{PeerId, UserId};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
-use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, RemotePeer, Role, Room, SessionToken, SyncTarget};
+use peer_transport::{CursorPosition, CursorSpace, DEFAULT_SIGNALING_SERVER, Event, Incoming, RemotePeer, Role, Room, SessionToken, SyncTarget};
 use std::collections::HashSet;
 
 #[derive(ExtractField)]
@@ -44,7 +45,9 @@ pub struct SyncMessageHandler {
 	/// Declarations being read from the byte store to be decoded, so a document waiting on them asks once.
 	decoding: HashSet<(DocumentId, ResourceHash)>,
 	/// The pointer position last sent for each connected document, so one is sent only when it moved.
-	last_cursor: HashMap<DocumentId, Option<[f64; 2]>>,
+	last_cursor: HashMap<DocumentId, Option<CursorPosition>>,
+	/// The other peers' pointers over the node graph as last sent to the frontend.
+	graph_cursors: Vec<FrontendRemoteCursor>,
 	/// When each document whose transport went down is next to be reconnected.
 	reconnect_at: HashMap<DocumentId, f64>,
 }
@@ -221,11 +224,11 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					document.stage_pending_edits(&resources);
 					// Presence rides outside the causal broadcast: the name whenever it changed, and the pointer
 					// over the active document once per frame when it moved, `None` for every other document.
-					let cursor = (Some(document_id) == active_document_id).then(|| cursor_in_document(document, ipp, viewport)).flatten();
+					let cursor = (Some(document_id) == active_document_id).then(|| cursor_position(document, ipp, viewport)).flatten();
 					let Some(gdd) = document.storage_mut() else { continue };
 					announce_name(gdd, &preferences.user_name);
 					if self.last_cursor.get(&document_id) != Some(&cursor) {
-						match gdd.send_cursor(cursor) {
+						match gdd.send_cursor(cursor.clone()) {
 							Ok(()) => {
 								self.last_cursor.insert(document_id, cursor);
 							}
@@ -274,6 +277,17 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 							}
 						}
 					}
+				}
+
+				// The other peers' pointers over the node graph go to the frontend as viewport points, like the box
+				// selection, whenever they change; the canvas overlay draws the ones over the document.
+				let graph_cursors = active_document_id
+					.and_then(|id| documents.get(&id))
+					.map(|document| graph_cursors(document, preferences))
+					.unwrap_or_default();
+				if graph_cursors != self.graph_cursors {
+					self.graph_cursors = graph_cursors.clone();
+					responses.add(FrontendMessage::UpdateNodeGraphCursors { cursors: graph_cursors });
 				}
 
 				// Apply only once every referenced resource is in the app cache, and never underneath an
@@ -333,15 +347,21 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				}
 			}
 			SyncMessage::DrawPresence { context: mut overlay_context } => {
-				if !preferences.show_remote_cursors {
+				let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else { return };
+				if !preferences.show_remote_cursors || document.is_graph_overlay_open() {
 					return;
 				}
-				let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else { return };
 				let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return };
 				let to_viewport = document.metadata().document_to_viewport;
 				for remote in gdd.peers() {
-					let Some([x, y]) = remote.cursor else { continue };
-					let position = to_viewport.transform_point2(DVec2::new(x, y));
+					let Some(CursorPosition {
+						position: [x, y],
+						space: CursorSpace::Document,
+					}) = &remote.cursor
+					else {
+						continue;
+					};
+					let position = to_viewport.transform_point2(DVec2::new(*x, *y));
 					let color = peer_color(remote.peer);
 					let arrow = CURSOR_ARROW.map(|[dx, dy]| position + DVec2::new(dx, dy));
 					overlay_context.polygon(&arrow, Some("#ffffff"), Some(&color));
@@ -628,16 +648,64 @@ fn announce_name(gdd: &mut document_format::GddV1, name: &str) {
 	}
 }
 
-/// The pointer in document space while it is over the viewport, rounded so jitter below a hundredth of a
-/// unit sends nothing.
-fn cursor_in_document(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<[f64; 2]> {
+/// The pointer while it is over the viewport, in the space it is over: the node graph's network when the
+/// graph is open, the document otherwise. Rounded so jitter below a hundredth of a unit sends nothing.
+fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<CursorPosition> {
 	let mouse = ipp.mouse.position;
 	let size = viewport.size();
 	if mouse.x < 0. || mouse.y < 0. || mouse.x > size.x() || mouse.y > size.y() {
 		return None;
 	}
-	let position = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-	Some([(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.])
+	let (to_viewport, space) = match document.is_graph_overlay_open() {
+		true => (graph_to_viewport(document)?, CursorSpace::Graph { network: shown_network(document) }),
+		false => (document.metadata().document_to_viewport, CursorSpace::Document),
+	};
+	let position = to_viewport.inverse().transform_point2(mouse);
+	Some(CursorPosition {
+		position: [(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.],
+		space,
+	})
+}
+
+/// The other peers' pointers over the network the node graph shows, in viewport pixels for the frontend.
+fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
+	if !preferences.show_remote_cursors || !document.is_graph_overlay_open() {
+		return Vec::new();
+	}
+	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
+	let Some(to_viewport) = graph_to_viewport(document) else { return Vec::new() };
+	let shown = shown_network(document);
+	gdd.peers()
+		.iter()
+		.filter_map(|remote| {
+			let CursorPosition {
+				position: [x, y],
+				space: CursorSpace::Graph { network },
+			} = remote.cursor.as_ref()?
+			else {
+				return None;
+			};
+			(*network == shown).then(|| {
+				let point = to_viewport.transform_point2(DVec2::new(*x, *y));
+				FrontendRemoteCursor {
+					x: point.x,
+					y: point.y,
+					name: display_name(remote),
+					anonymous: remote.name.is_empty(),
+					color: peer_color(remote.peer),
+				}
+			})
+		})
+		.collect()
+}
+
+fn graph_to_viewport(document: &DocumentMessageHandler) -> Option<DAffine2> {
+	let metadata = document.network_interface.network_metadata(document.breadcrumb_network_path())?;
+	Some(metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
+}
+
+fn shown_network(document: &DocumentMessageHandler) -> Vec<u64> {
+	document.breadcrumb_network_path().iter().map(|id| id.0).collect()
 }
 
 fn display_name(remote: &RemotePeer) -> String {

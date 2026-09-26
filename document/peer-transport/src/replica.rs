@@ -1,4 +1,4 @@
-use crate::packet::{Broadcast, BroadcastBody, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
+use crate::packet::{Broadcast, BroadcastBody, CursorPosition, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
 use crate::target::{SyncTarget, TargetError};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
 use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, ResourceHash, Rev, UserId};
@@ -57,7 +57,7 @@ pub struct RemotePeer {
 	/// The display name it announced; empty until its profile arrives.
 	pub name: String,
 	/// Its pointer in document space, `None` when it is not over the viewport.
-	pub cursor: Option<[f64; 2]>,
+	pub cursor: Option<CursorPosition>,
 }
 
 /// How far one peer's broadcasts have been delivered here.
@@ -292,9 +292,9 @@ impl Replica {
 		self.transport.broadcast_except(None, &SyncPacket::Profile { name: self.name.clone() })
 	}
 
-	/// Tell the room where this peer's pointer is in document space, `None` once it left the viewport. The
+	/// Tell the room where this peer's pointer is, `None` once it left the viewport. The
 	/// caller coalesces: one call per frame at most, and none when nothing moved.
-	pub fn send_cursor(&mut self, position: Option<[f64; 2]>) -> Result<(), PacketError> {
+	pub fn send_cursor(&mut self, position: Option<CursorPosition>) -> Result<(), PacketError> {
 		if self.peers.is_empty() {
 			return Ok(());
 		}

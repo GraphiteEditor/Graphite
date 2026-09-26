@@ -5,7 +5,7 @@ use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewIm
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendRemoteCursor, NodeGraphErrorDiagnostic,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
@@ -203,6 +203,9 @@ pub enum FrontendMessage {
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
+	},
+	UpdateNodeGraphCursors {
+		cursors: Vec<FrontendRemoteCursor>,
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]

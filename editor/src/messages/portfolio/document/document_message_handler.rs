@@ -2019,6 +2019,11 @@ impl DocumentMessageHandler {
 
 	/// Path to the subnetwork that the user's selection is currently scoped to.
 	/// Empty when the selection lives in the root document network.
+	/// The network the node graph shows, from the document network down.
+	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
+		&self.breadcrumb_network_path
+	}
+
 	pub fn selection_network_path(&self) -> &[NodeId] {
 		&self.selection_network_path
 	}
