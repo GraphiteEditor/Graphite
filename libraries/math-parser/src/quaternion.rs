@@ -207,7 +207,7 @@ impl Div for Quaternion {
 
 impl fmt::Display for Quaternion {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		// Only the nonzero parts are written, each with its basis, in the style `1+2i-3j`
+		// Only the nonzero parts are written, each with its basis, in the style `1+2i-3j`, where a unit part is its basis alone
 		let mut written = false;
 		for (part, basis) in self.parts().into_iter().zip(["", "i", "j", "k"]) {
 			if part == 0. {
@@ -216,7 +216,11 @@ impl fmt::Display for Quaternion {
 			if written && part.is_sign_positive() {
 				f.write_str("+")?;
 			}
-			fmt_real(part, f)?;
+			if basis.is_empty() || part.abs() != 1. {
+				fmt_real(part, f)?;
+			} else if part < 0. {
+				f.write_str("-")?;
+			}
 			f.write_str(basis)?;
 			written = true;
 		}

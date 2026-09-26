@@ -282,6 +282,8 @@ mod tests {
 	fn display_writes_the_nonzero_parts_with_their_bases() {
 		for (input, expected) in [
 			("sqrt(-4)", "2i"),
+			("sqrt(-1)", "i"),
+			("1 - i", "1-i"),
 			("1 - 2i", "1-2i"),
 			("(1 + i) / 2", "0.5+0.5i"),
 			("2i + 3j", "2i+3j"),
@@ -1856,16 +1858,18 @@ mod tests {
 	#[test]
 	fn matrices_display_as_row_literals() {
 		for (input, expected) in [
-			("I", "[1;1i;1j;1k]"),
-			("[i;j]", "[1i;1j]"),
+			("I", "[1;i;j;k]"),
+			("[i;j]", "[i;j]"),
 			("[3i + 4j]", "[3i+4j]"),
-			("[1;i]^T", "[1i;1j;0;0]"),
+			("[1;i]^T", "[i;j;0;0]"),
+			("-I", "[-1;-i;-j;-k]"),
 			("I - I", "[0]"),
-			("I + 5i", "[1;1i;1j;1k] + 5i"),
-			("I - 5i", "[1;1i;1j;1k] + (-5i)"),
-			("I + 5i + 4j", "[1;1i;1j;1k] + (5i+4j)"),
-			("2..4", "[2;1i;1j;1k] + 2"),
-			("0..(3i + 4j)", "[1;3i;4j;1k]"),
+			("I + 5i", "[1;i;j;k] + 5i"),
+			("I - 5i", "[1;i;j;k] + (-5i)"),
+			("I + 5i + 4j", "[1;i;j;k] + (5i+4j)"),
+			("I + i", "[1;i;j;k] + i"),
+			("2..4", "[2;i;j;k] + 2"),
+			("0..(3i + 4j)", "[1;3i;4j;k]"),
 		] {
 			assert_eq!(evaluate(input).unwrap().unwrap().to_string(), expected, "`{input}`");
 		}
