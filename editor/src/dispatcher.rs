@@ -286,7 +286,6 @@ impl Dispatcher {
 						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
 
 						menu_bar_message_handler.has_active_document = true;
-						menu_bar_message_handler.in_session = document.storage().is_some_and(|gdd| gdd.role().is_some());
 						menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
 						menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
 						menu_bar_message_handler.rulers_visible = document.rulers_visible;
@@ -297,7 +296,6 @@ impl Dispatcher {
 						menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 					} else {
 						menu_bar_message_handler.has_active_document = false;
-						menu_bar_message_handler.in_session = false;
 						menu_bar_message_handler.canvas_tilted = false;
 						menu_bar_message_handler.canvas_flipped = false;
 						menu_bar_message_handler.rulers_visible = false;

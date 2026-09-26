@@ -254,6 +254,11 @@ impl WorkspacePanelLayout {
 		});
 	}
 
+	/// Whether the panel was closed by the user, so its position is remembered for a later restore.
+	pub fn was_closed(&self, panel_type: PanelType) -> bool {
+		self.saved_positions.iter().any(|saved| saved.panel_type == panel_type)
+	}
+
 	/// Restore a panel to its previous position if available, otherwise to its default position.
 	pub fn restore_panel(&mut self, panel_type: PanelType) {
 		let saved = self.saved_positions.iter().find(|s| s.panel_type == panel_type).copied();
@@ -304,6 +309,15 @@ impl WorkspacePanelLayout {
 	/// - Properties: top of the right column (root child 1)
 	/// - Layers: bottom of the right column (root child 1)
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
+		// The Session panel's home is a tab beside Properties, so it joins that group whenever one is present.
+		if panel_type == PanelType::Session
+			&& let Some(group_id) = self.find_panel(PanelType::Properties)
+			&& let Some(group) = self.panel_group_mut(group_id)
+		{
+			group.tabs.push(panel_type);
+			group.active_tab_index = group.tabs.len() - 1;
+			return;
+		}
 		let new_id = self.next_id();
 		let new_group = SplitChild {
 			subdivision: PanelLayoutSubdivision::PanelGroup {

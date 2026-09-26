@@ -105,6 +105,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				} else if gdd.is_shared() && gdd.role().is_none() {
 					// The document was in its room when it was last persisted: a reload rejoins on its own.
 					self.connect_document(document_id, gdd, preferences, responses);
+				} else {
+					// The panel may have shown the document still mounting.
+					responses.add(SyncMessage::RefreshPanel);
 				}
 			}
 			SyncMessage::Leave => {

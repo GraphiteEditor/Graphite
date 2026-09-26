@@ -396,6 +396,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::LoadPersistedState { state } => {
 				if let Some(layout) = state.workspace_layout {
 					self.workspace.panel_layout = layout;
+					// A workspace saved before the Session panel existed gets it as a tab beside Properties, behind it; one
+					// where it was closed keeps it closed.
+					let panel_layout = &mut self.workspace.panel_layout;
+					if !panel_layout.is_panel_present(PanelType::Session) && !panel_layout.was_closed(PanelType::Session) {
+						match panel_layout.find_panel(PanelType::Properties).and_then(|group_id| panel_layout.panel_group_mut(group_id)) {
+							Some(group) => group.tabs.push(PanelType::Session),
+							None => panel_layout.restore_panel(PanelType::Session),
+						}
+					}
 					responses.add(WorkspaceMessage::UpdatePanelsLayout);
 
 					// Refill panels whose content was lost when the layout load remounted their frontend components
