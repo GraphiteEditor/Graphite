@@ -5,7 +5,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use document_graph_storage::PeerId;
+use document_graph_storage::{PeerId, UserId};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNodeImplementation, NodeId};
 
@@ -56,7 +56,7 @@ pub struct RoundTrip {
 pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundTrip {
 	let byte_store = HashMapResourceStorage::new();
 
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into())
 		.await
 		.expect("create_in");
 

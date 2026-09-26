@@ -13,7 +13,7 @@ use peer_transport::mock::MockNetwork;
 #[test]
 fn staging_a_constructed_batch_reaches_the_room() {
 	futures::executor::block_on(async {
-		let mut host = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 1, "editor".into(), "stdlib".into())
+		let mut host = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 1, "editor".into(), "stdlib".into())
 			.await
 			.expect("create");
 

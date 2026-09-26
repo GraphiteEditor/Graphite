@@ -53,7 +53,7 @@ impl LiveDocument {
 
 	async fn empty_document(peer: PeerId) -> Result<GddV1, FormatError> {
 		let version = env!("CARGO_PKG_VERSION").to_string();
-		GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, peer, peer.0, version.clone(), version).await
+		GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, peer, UserId(peer.0), peer.0, version.clone(), version).await
 	}
 
 	pub fn token(&self) -> SessionToken {

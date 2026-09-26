@@ -287,7 +287,11 @@ fn first_contribution_registers_the_peer() {
 	let registrations = first.iter().filter(|hot_op| matches!(hot_op.op, RegistryDelta::RegisterPeer { .. })).count();
 	assert_eq!(registrations, 1, "exactly one RegisterPeer on first contribution");
 	assert!(matches!(first[0].op, RegistryDelta::RegisterPeer { .. }), "RegisterPeer must precede the edit ops");
-	assert_eq!(session.registry().peer_users.get(&PeerId(7)), Some(&crate::UserId(7)), "peer mapped to its UserId");
+	assert_eq!(
+		session.registry().peer_users.get(&PeerId(7)).map(|registration| registration.user),
+		Some(crate::UserId(7)),
+		"peer mapped to its UserId"
+	);
 
 	// A second, distinct contribution must not re-register.
 	let mut other_network = tiny_network();

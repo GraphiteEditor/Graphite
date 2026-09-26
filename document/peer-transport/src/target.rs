@@ -105,7 +105,7 @@ impl SyncTarget for Session {
 		// Kept across the replace: a sequence this peer already spent must not come round again, or an
 		// op of its own would be taken for one already retired.
 		let spent = self.next_hot_sequence();
-		*self = Session::load(self.peer(), registry, history, head, Vec::new(), self.next_node_counter());
+		*self = Session::load(self.peer(), self.user(), registry, history, head, Vec::new(), self.next_node_counter());
 		self.restore_hot_sequence(spent);
 		Ok(())
 	}

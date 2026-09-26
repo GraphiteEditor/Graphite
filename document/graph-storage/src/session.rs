@@ -30,11 +30,17 @@ impl Session {
 		Self::with_peer(PeerId(core_types::uuid::generate_uuid()))
 	}
 
-	/// Construct a session bound to a specific `PeerId`. Used by tests; production code wants
-	/// `Session::new`.
+	/// A session for `peer` standing for itself as a person. For tests and tools without a stored identity;
+	/// a working copy wants [`with_identity`](Self::with_identity).
 	pub fn with_peer(peer: PeerId) -> Self {
+		Self::with_identity(peer, UserId(peer.0))
+	}
+
+	/// A session for device `peer` used by person `user`. The user is what the peer's registration records,
+	/// and what undo and history authorship scope by.
+	pub fn with_identity(peer: PeerId, user: UserId) -> Self {
 		Self {
-			document: Document::empty(peer),
+			document: Document::empty(peer, user),
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 		}
@@ -42,6 +48,30 @@ impl Session {
 
 	pub fn peer(&self) -> PeerId {
 		self.document.peer
+	}
+
+	pub fn user(&self) -> UserId {
+		self.document.user
+	}
+
+	/// Change the person behind this peer. The next staged batch registers the peer again, and the newer
+	/// registration wins everywhere.
+	pub fn set_user(&mut self, user: UserId) {
+		self.document.user = user;
+	}
+
+	/// The person a peer is registered to, if its registration has landed here.
+	pub fn user_of(&self, peer: PeerId) -> Option<UserId> {
+		if peer == self.document.peer {
+			return Some(self.document.user);
+		}
+		self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user)
+	}
+
+	/// Whether `peer` is this person: this device, or another registered to the same user. Undo in a
+	/// session scopes by this, so a fresh copy of a document still undoes what its user did from another.
+	pub fn is_mine(&self, peer: PeerId) -> bool {
+		self.user_of(peer) == Some(self.document.user)
 	}
 
 	pub fn registry(&self) -> &Registry {
@@ -150,8 +180,9 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		if !self.document.working_registry.peer_users.contains_key(&self.document.peer) {
-			let user = UserId(self.document.peer.0);
+		let registered = self.document.working_registry.peer_users.get(&self.document.peer).map(|registration| registration.user);
+		if registered != Some(self.document.user) {
+			let user = self.document.user;
 			pending.insert(0, RegistryDelta::RegisterPeer { peer: self.document.peer, user });
 		}
 
@@ -228,7 +259,7 @@ impl Session {
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
 	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in on-disk
 	/// (topological) order.
-	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
+	pub fn load(peer: PeerId, user: UserId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
 		for delta in &history {
 			clock.observe(delta.timestamp);
@@ -245,7 +276,7 @@ impl Session {
 				redo_stack,
 				clock,
 				next_node_counter,
-				..Document::empty(peer)
+				..Document::empty(peer, user)
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
@@ -254,8 +285,8 @@ impl Session {
 
 	/// Rebuild the registry from scratch by applying every delta in causal order.
 	/// `deltas` must be in causal order (every parent before its children).
-	pub fn replay_from_history(peer: PeerId, deltas: impl IntoIterator<Item = Delta>, next_node_counter: u64) -> Result<Self, CrdtError> {
-		let mut session = Self::with_peer(peer);
+	pub fn replay_from_history(peer: PeerId, user: UserId, deltas: impl IntoIterator<Item = Delta>, next_node_counter: u64) -> Result<Self, CrdtError> {
+		let mut session = Self::with_identity(peer, user);
 		session.document.next_node_counter = next_node_counter;
 
 		for delta in deltas {
@@ -326,13 +357,14 @@ impl Session {
 		self.document.retract_hot_ops(ids).0
 	}
 
-	/// The last delta of this peer's latest retired interaction on the line, if any: what an undo of a
-	/// retired step in a session names.
+	/// The last delta of this person's latest retired interaction on the line, if any: what an undo of a
+	/// retired step in a session names. Any peer of the same user counts, so a fresh copy undoes what its
+	/// user did from another device or before a rejoin under a new peer id.
 	pub fn latest_own_interaction(&self) -> Option<Rev> {
 		let mut current = self.document.head?;
 		loop {
 			let delta = self.document.history.get(current)?;
-			if delta.is_interaction_end() && delta.author == self.document.peer {
+			if delta.is_interaction_end() && self.is_mine(delta.author) {
 				return Some(current);
 			}
 			current = delta.parent?;
@@ -520,7 +552,7 @@ impl Session {
 		// The oracle for tests and the simulation. The live registries are never rebuilt from history:
 		// every op lands the same whatever order it arrives in, so applying each once is the fold.
 		let reachable = self.document.history.ancestors(self.document.head);
-		let mut scratch = Document::empty(self.document.peer);
+		let mut scratch = Document::empty(self.document.peer, self.document.user);
 		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
 			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 		}
@@ -887,9 +919,9 @@ impl Session {
 
 	/// Build a synthetic linear history whose replay reproduces `registry`. Each op gets a
 	/// freshly-ticked clock timestamp and chains to the previous op's `Rev`.
-	pub fn bootstrap_from_registry(peer: PeerId, registry: Registry) -> Result<Self, CrdtError> {
+	pub fn bootstrap_from_registry(peer: PeerId, user: UserId, registry: Registry) -> Result<Self, CrdtError> {
 		let ops = crate::delta::compute_deltas(&Registry::default(), &registry);
-		let mut session = Self::with_peer(peer);
+		let mut session = Self::with_identity(peer, user);
 		session.commit_ops(ops, false)?;
 		// No hot ops on this path, so the working registry must mirror the freshly-built snapshot.
 		session.document.working_registry = session.document.retired_snapshot.clone();
@@ -1212,9 +1244,6 @@ pub enum CrdtError {
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]
 	NetworkAlreadyExists(NetworkId),
-	/// PeerId is already registered to a different UserId.
-	#[error("Peer {0:?} is already registered to a different user")]
-	PeerRegistrationConflict(PeerId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
 }

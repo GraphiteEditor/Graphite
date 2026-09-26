@@ -5,7 +5,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{Codec, Error, GddV1, GddV1Layout, Layout, Manifest, io, manifest};
-use document_graph_storage::{HotOp, HotSequence, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
+use document_graph_storage::{HotOp, HotSequence, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp, UserId};
 
 fn empty_container() -> AnyContainer {
 	AnyContainer::Memory(MemoryBackend::new())
@@ -44,7 +44,7 @@ fn create_in_round_trips_empty_document() {
 	futures::executor::block_on(async {
 		let container = empty_container();
 
-		let created = match GddV1::create_in(container, GddV1Layout, PeerId(7), 0xFEED, "editor-x".into(), "stdlib-x".into()).await {
+		let created = match GddV1::create_in(container, GddV1Layout, PeerId(7), UserId(7), 0xFEED, "editor-x".into(), "stdlib-x".into()).await {
 			Ok(gdd) => gdd,
 			Err(error) => panic!("create_in failed: {error:?}"),
 		};
@@ -82,7 +82,7 @@ fn open_in_rejects_wrong_format_magic() {
 #[test]
 fn manifest_returns_what_create_in_wrote() {
 	futures::executor::block_on(async {
-		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(13), 0xC0FFEE, "ed-1.2".into(), "std-0.7".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(13), UserId(13), 0xC0FFEE, "ed-1.2".into(), "std-0.7".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -99,7 +99,7 @@ fn manifest_returns_what_create_in_wrote() {
 #[test]
 fn update_manifest_changes_visible_after_reopen() {
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), UserId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -116,7 +116,7 @@ fn update_manifest_changes_visible_after_reopen() {
 #[test]
 fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), UserId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -144,7 +144,7 @@ fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 #[test]
 fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), UserId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -192,7 +192,7 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 #[test]
 fn last_broadcast_rev_persists_across_reopen() {
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), UserId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -224,7 +224,7 @@ fn export_folder_round_trips_through_open() {
 	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
-		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(3), 0xAB, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(3), UserId(3), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -254,7 +254,7 @@ fn export_zip_round_trips_via_deserialize() {
 	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
-		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(4), 0xCD, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(4), UserId(4), 0xCD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -281,7 +281,7 @@ fn export_rejects_invalid_options() {
 	use document_format::{ExportFormat, ExportOptions};
 
 	futures::executor::block_on(async {
-		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xEF, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), UserId(1), 0xEF, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -306,7 +306,7 @@ fn resource_round_trip_add_read_remove() {
 	use graphene_resource::{ResourceHash, ResourceId};
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(99), 0xCAFE, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(99), UserId(99), 0xCAFE, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -338,7 +338,7 @@ fn resource_survives_reopen() {
 	use graphene_resource::{ResourceHash, ResourceId};
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(7), 0xC0DE, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(7), UserId(7), 0xC0DE, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -369,7 +369,7 @@ fn resource_from_path_uses_fs_copy_on_folder_backend() {
 		// Need a folder-backed working copy to exercise the fs::copy path.
 		let working_dir = tempfile::tempdir().unwrap();
 		let working = AnyContainer::Folder(FolderBackend::create(working_dir.path()).unwrap());
-		let mut gdd = GddV1::create_in(working, GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(working, GddV1Layout, PeerId(1), UserId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -395,7 +395,7 @@ fn export_carries_resources() {
 	use graphene_resource::{ResourceHash, ResourceId};
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(2), 0xBC, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(2), UserId(2), 0xBC, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -425,7 +425,7 @@ fn embed_all_resources_materializes_link_only_resource() {
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(8), 0xF00D, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(8), UserId(8), 0xF00D, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -492,7 +492,7 @@ fn export_materializes_embedded_resource_from_byte_store() {
 	use graphene_resource::{DataSource, ResourceHash, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(9), 0xBEEF, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(9), UserId(9), 0xBEEF, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -535,7 +535,7 @@ fn export_round_trips_unretired_hot_ops() {
 	use graphene_resource::{DataSource, ResourceId, ResourceRegistry};
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(3), 0xF15E, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(3), UserId(3), 0xF15E, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -590,7 +590,7 @@ fn open_in_rejects_future_format_version() {
 #[test]
 fn create_in_records_default_codecs_in_manifest() {
 	futures::executor::block_on(async {
-		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), UserId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -613,7 +613,7 @@ fn first_commit_registers_peer_and_survives_reopen() {
 	use graphene_resource::ResourceRegistry;
 
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(21), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(21), UserId(21), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -634,11 +634,19 @@ fn first_commit_registers_peer_and_survives_reopen() {
 
 		gdd.commit_from_runtime(&network, &NoMetadata, &ResourceRegistry::new(), &HashMapResourceStorage::new())
 			.unwrap_or_else(|error| panic!("commit_from_runtime failed: {error:?}"));
-		assert_eq!(gdd.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "first commit registers the peer");
+		assert_eq!(
+			gdd.registry().peer_users.get(&PeerId(21)).map(|registration| registration.user),
+			Some(UserId(21)),
+			"first commit registers the peer"
+		);
 
 		let (working, layout) = gdd.into_storage();
 		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
-		assert_eq!(reopened.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "registration survives reopen");
+		assert_eq!(
+			reopened.registry().peer_users.get(&PeerId(21)).map(|registration| registration.user),
+			Some(UserId(21)),
+			"registration survives reopen"
+		);
 	});
 }
 
@@ -649,7 +657,7 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 	futures::executor::block_on(async {
 		use document_container::AsyncContainer;
 
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xDEAD, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), UserId(5), 0xDEAD, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 
@@ -703,7 +711,7 @@ fn declarations_round_trip_through_byte_store() {
 			..Default::default()
 		};
 
-		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into())
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), UserId(1), 0xAB, "ed".into(), "std".into())
 			.await
 			.unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
 

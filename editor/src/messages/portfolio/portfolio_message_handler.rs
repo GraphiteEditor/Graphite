@@ -489,7 +489,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
+				self.load_document(new_document, document_id, resource_storage, preferences, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
@@ -564,7 +564,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.path = document_path;
 
 				// The working copy is already mounted (we opened the .gdd), so skip the async re-mount.
-				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
+				self.load_document(document, document_id, resource_storage, preferences, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
@@ -718,7 +718,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.name = self.resolve_document_name(candidate_name, None);
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
+				self.load_document(document, document_id, resource_storage, preferences, responses);
 
 				responses.add(AppWindowMessage::Focus);
 
@@ -1257,7 +1257,7 @@ impl PortfolioMessageHandler {
 		mut new_document: DocumentMessageHandler,
 		document_id: DocumentId,
 		resource_storage: &ResourceStorageMessageHandler,
-		validate: bool,
+		preferences: &PreferencesMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
 		let is_new_document = !self.document_ids.contains(&document_id);
@@ -1301,9 +1301,10 @@ impl PortfolioMessageHandler {
 			responses.add(Self::mount_document_storage(
 				self.working_copy_root.clone(),
 				document_id,
+				document_graph_storage::UserId(preferences.user_id),
 				legacy_network,
 				resource_storage.resources(),
-				validate,
+				preferences.validate_storage_round_trip,
 			));
 		}
 	}
@@ -1316,6 +1317,7 @@ impl PortfolioMessageHandler {
 	fn mount_document_storage(
 		working_copy_root: Option<std::path::PathBuf>,
 		document_id: DocumentId,
+		user: document_graph_storage::UserId,
 		legacy_network: graph_craft::document::NodeNetwork,
 		byte_store: Box<dyn graph_craft::application_io::resource::LoadResource>,
 		validate: bool,
@@ -1325,7 +1327,7 @@ impl PortfolioMessageHandler {
 		let peer = document_graph_storage::PeerId(generate_uuid());
 
 		let future = async move {
-			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {
+			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, user, document_id.0, editor_version).await {
 				Ok(result) => result,
 				Err(error) => {
 					log::error!("Failed to mount document storage for {document_id:?}: {error}");

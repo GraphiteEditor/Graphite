@@ -3,7 +3,8 @@ use std::hash::Hash;
 
 use crate::{
 	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId,
-	NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredHotOps, Rev, SourceValue, TimeStamp, Tombstone, apply_attribute_delta, reverse_attribute_delta,
+	NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredHotOps, Rev, SourceValue, TimeStamp, Tombstone, UserId, apply_attribute_delta,
+	reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -36,6 +37,8 @@ pub struct Document {
 	pub(crate) redo_stack: Vec<Rev>,
 	pub(crate) clock: LamportClock,
 	pub(crate) peer: PeerId,
+	/// The person behind this peer; what `RegisterPeer` records for it.
+	pub(crate) user: UserId,
 	/// Latest retired commit on the local chain that has been broadcast to at least one peer.
 	/// Commits after this can be rewritten silently; commits at or before this are published
 	/// and require forward reverse-delta ops to undo. `None` means nothing broadcast yet.
@@ -50,7 +53,7 @@ pub struct Document {
 
 impl Document {
 	/// An empty document for `peer`, at the origin of its clock.
-	pub(crate) fn empty(peer: PeerId) -> Self {
+	pub(crate) fn empty(peer: PeerId, user: UserId) -> Self {
 		Self {
 			working_registry: Registry::default(),
 			retired_snapshot: Registry::default(),
@@ -62,6 +65,7 @@ impl Document {
 			redo_stack: Vec::new(),
 			clock: LamportClock::new(peer),
 			peer,
+			user,
 			last_broadcast_rev: None,
 			next_node_counter: 0,
 			next_hot_sequence: HotSequence::NONE,
@@ -401,13 +405,12 @@ impl Document {
 			RegistryDelta::RemoveResource { id, snapshot } => {
 				remove(&mut registry.resources, &mut registry.removed_resources, id, snapshot, timestamp, force);
 			}
-			RegistryDelta::RegisterPeer { peer, user } => match registry.peer_users.get(&peer) {
-				Some(existing) if *existing != user => return Err(CrdtError::PeerRegistrationConflict(peer)),
-				Some(_) => {}
-				None => {
-					registry.peer_users.insert(peer, user);
+			RegistryDelta::RegisterPeer { peer, user } => {
+				// A write like any other: the newest registration of a device wins whatever order they land in.
+				if force || registry.peer_users.get(&peer).is_none_or(|existing| timestamp > existing.at) {
+					registry.peer_users.insert(peer, PeerRegistration { user, at: timestamp });
 				}
-			},
+			}
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
 				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes, TimeStamp::ORIGIN);
 			}

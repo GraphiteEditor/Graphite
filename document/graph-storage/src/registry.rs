@@ -16,9 +16,11 @@ pub struct Registry {
 	/// Content-addressable resources (images, fonts, eventually proto-node declarations) referenced
 	/// by `ResourceId`. See [`ResourceStore`].
 	pub resources: ResourceStore,
-	/// Append-only mapping from per-device `PeerId` to per-human `UserId`.
-	/// Registered by each device's first contribution via `RegistryDelta::RegisterPeer`.
-	pub peer_users: HashMap<PeerId, UserId>,
+	/// Which person each device is: a per-device `PeerId` to a per-human `UserId`, registered by a device's
+	/// first contribution via `RegistryDelta::RegisterPeer` and again whenever its user changes. Last writer
+	/// wins on the stamp like every other field, so undo and history authorship scope by person across the
+	/// peer ids one person accumulates.
+	pub peer_users: HashMap<PeerId, PeerRegistration>,
 	pub attributes: Attributes,
 	#[serde(default)]
 	pub removed_nodes: HashMap<NodeId, Tombstone<Node>>,
@@ -26,6 +28,13 @@ pub struct Registry {
 	pub removed_networks: HashMap<NetworkId, Tombstone<Network>>,
 	#[serde(default)]
 	pub removed_resources: HashMap<ResourceId, Tombstone<ResourceEntry>>,
+}
+
+/// A device's registration to a person, and when it was made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerRegistration {
+	pub user: UserId,
+	pub at: TimeStamp,
 }
 
 /// A removed entity: its content as of the removal, for reviving it, and when it was removed, for

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{AttributeDelta, Delta, History, MergeOutcome, Network, NetworkId, NodeId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session};
+use crate::{AttributeDelta, Delta, History, MergeOutcome, Network, NetworkId, NodeId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session, UserId};
 
 fn set_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
@@ -338,7 +338,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 
 	// The guest's step, retired by the host: it writes its own key and one the host writes after it. A
 	// guest of its own, clock included, so its ops carry its authorship.
-	let mut guest = Session::load(PeerId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
 	let guest_ops = [set_attribute("guest", 1), set_attribute("shared", 1)];
 	let hot = guest.stage_ops(guest_ops).expect("stage");
 	for hot_op in &hot {
@@ -515,4 +515,61 @@ fn following_a_merge_refolds_the_branch_it_joins() {
 	assert!(guest.retired_registry().networks.contains_key(&NetworkId(2)), "the branch is back on the line");
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 	assert!(guest.registry().value_equal(guest.retired_registry()));
+}
+
+/// A device's registration to a person is a write like any other: a later one replaces it, and a peer that
+/// receives the two in the other order ends up with the same mapping.
+#[test]
+fn a_peers_registration_is_the_newest_by_stamp_whatever_order_it_lands() {
+	// Registration rides the staging path, so the steps go through the hot log and retire.
+	fn stage_and_retire(session: &mut Session, op: RegistryDelta) {
+		let hot = session.stage_ops([op]).expect("stage");
+		let ids: Vec<crate::HotOpId> = hot.iter().map(crate::HotOp::id).collect();
+		session.retire_hot_ops(&ids).expect("retire");
+	}
+	let mut device = Session::with_identity(PeerId(1), UserId(10));
+	stage_and_retire(&mut device, set_attribute("first", 1));
+	assert_eq!(device.user_of(PeerId(1)), Some(UserId(10)));
+	assert_eq!(device.registry().peer_users[&PeerId(1)].user, UserId(10));
+
+	// The person at the device changes: the next batch registers again, and the newer registration wins.
+	device.set_user(UserId(20));
+	stage_and_retire(&mut device, set_attribute("second", 2));
+	assert_eq!(device.registry().peer_users[&PeerId(1)].user, UserId(20));
+	let registrations = device.history().filter(|delta| matches!(delta.kind, RegistryDelta::RegisterPeer { .. })).count();
+	assert_eq!(registrations, 2, "one registration per person the device stood for");
+
+	let mut reversed = Session::with_peer(PeerId(2));
+	let deltas: Vec<Delta> = device.cloned_deltas().into_iter().rev().collect();
+	reversed.merge(deltas).expect("merge");
+	assert_eq!(reversed.user_of(PeerId(1)), Some(UserId(20)), "the newest registration wins in any order");
+	assert_eq!(reversed.user_of(PeerId(2)), Some(UserId(2)), "a peer without a stored identity stands for itself");
+}
+
+/// Undo of a retired step in a session names the person's latest step, not the device's: a fresh copy of
+/// the document under a new peer id still undoes what its user did from the old one, and nobody else's.
+#[test]
+fn undo_in_a_session_finds_the_users_step_from_another_peer() {
+	let mut host = Session::with_identity(PeerId(1), UserId(1));
+	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = host.head_rev().expect("rev");
+	host.mark_interaction_end(base);
+
+	let mut old_device = Session::load(PeerId(2), UserId(7), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let hot = old_device.stage_ops([set_attribute("mine", 1)]).expect("stage");
+	for hot_op in &hot {
+		host.apply_hot_op(hot_op.clone()).expect("the step reaches the host");
+	}
+	let ids: Vec<crate::HotOpId> = hot.iter().map(crate::HotOp::id).collect();
+	let revs = host.retire_hot_ops(&ids).expect("retire");
+	let step = *revs.last().expect("the step");
+	host.mark_interaction_end(step);
+
+	let new_device = Session::load(PeerId(3), UserId(7), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	assert_eq!(new_device.latest_own_interaction(), Some(step), "the same person under a new peer id owns the step");
+	assert!(new_device.is_mine(PeerId(2)));
+
+	let stranger = Session::load(PeerId(4), UserId(8), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	assert_eq!(stranger.latest_own_interaction(), None, "someone else has nothing of theirs to undo");
+	assert!(!stranger.is_mine(PeerId(2)));
 }

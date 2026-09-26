@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, UserId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -15,6 +15,10 @@ pub struct SessionState {
 	/// tiebreaking and minting peer-scoped IDs.
 	#[serde(default)]
 	pub peer_id: PeerId,
+	/// The person using this device, from the editor's preferences: what the peer registers as in the CRDT,
+	/// so undo and authorship follow the person across the peer ids they accumulate. `0` until one is known.
+	#[serde(default)]
+	pub user_id: UserId,
 	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
 	/// document (no commits yet).
 	#[serde(default)]

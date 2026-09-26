@@ -17,7 +17,7 @@ use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session};
+use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::{ResourceHash, ResourceStorage};
@@ -160,10 +160,10 @@ impl<L: Layout + Default> Gdd<L> {
 
 	/// Create a fresh, empty working copy at `path` bound to `peer`. Writes a default manifest
 	/// and session state; the caller fills in editor metadata via [`Gdd::update_manifest`].
-	pub async fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub async fn create(path: &Path, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::create(path)?);
 		let layout = L::default();
-		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version).await
+		Self::create_in(working, layout, peer, user, document_uuid, editor_version, stdlib_version).await
 	}
 }
 
@@ -199,18 +199,23 @@ impl<L: Layout> Gdd<L> {
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
 
 		let peer = session_state.peer_id;
+		// A copy written before identities were stored has no user; the peer stands for itself until one is set.
+		let user = match session_state.user_id {
+			UserId(0) => UserId(peer.0),
+			user => user,
+		};
 		let mut session = match (has_registry, has_history) {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
+				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(peer, registry)?
+				Session::bootstrap_from_registry(peer, user, registry)?
 			}
-			(false, _) => Session::replay_from_history(peer, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
 		};
 
 		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
@@ -245,14 +250,18 @@ impl<L: Layout> Gdd<L> {
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
-	pub async fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub async fn create_in(working: AnyContainer, layout: L, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
-		let session_state = SessionState { peer_id: peer, ..Default::default() };
+		let session_state = SessionState {
+			peer_id: peer,
+			user_id: user,
+			..Default::default()
+		};
 		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
 
-		let session = Session::with_peer(peer);
+		let session = Session::with_identity(peer, user);
 		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
 
 		Ok(Self {

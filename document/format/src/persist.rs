@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{Delta, HotOp, RegistryDelta, Rev, TimeStamp};
+use document_graph_storage::{Delta, HotOp, RegistryDelta, Rev, TimeStamp, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -36,6 +36,16 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Edit the cached manifest and persist it. Always JSON, synchronous.
+	/// The person using this device, from the editor's preferences. A change registers the peer again on
+	/// its next staged batch, and the newer registration wins everywhere.
+	pub fn set_user(&mut self, user: UserId) -> Result<(), Error> {
+		if self.session.user() == user {
+			return Ok(());
+		}
+		self.session.set_user(user);
+		self.persist_session_state()
+	}
+
 	pub fn update_manifest(&mut self, edit: impl FnOnce(&mut Manifest)) -> Result<(), Error> {
 		edit(&mut self.manifest);
 		io::write_single(&self.working, self.layout.manifest_basename(), MANIFEST_CODEC, &self.manifest)?;
@@ -209,6 +219,7 @@ impl<L: Layout> Gdd<L> {
 	pub(crate) fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			peer_id: self.session.peer(),
+			user_id: self.session.user(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),

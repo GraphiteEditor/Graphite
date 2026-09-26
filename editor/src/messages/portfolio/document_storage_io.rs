@@ -52,15 +52,19 @@ async fn build_per_document_container(path: Option<&std::path::Path>) -> Result<
 pub(super) async fn build_or_open_working_copy(
 	path: Option<&std::path::Path>,
 	peer: document_graph_storage::PeerId,
+	user: document_graph_storage::UserId,
 	document_uuid: u64,
 	version: String,
 ) -> Result<(GddV1, bool), DocumentFormatError> {
 	let (container, exists) = build_per_document_container(path).await?;
 
 	let gdd = if exists {
-		GddV1::open_in(container, GddV1Layout).await?
+		let mut gdd = GddV1::open_in(container, GddV1Layout).await?;
+		// The person at this device may have changed since the copy was written; the copy follows the preferences.
+		gdd.set_user(user)?;
+		gdd
 	} else {
-		GddV1::create_in(container, GddV1Layout, peer, document_uuid, version.clone(), version).await?
+		GddV1::create_in(container, GddV1Layout, peer, user, document_uuid, version.clone(), version).await?
 	};
 	Ok((gdd, exists))
 }
