@@ -1444,6 +1444,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
+									responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
 			}
 			DocumentMessage::ToggleGridVisibility => {
