@@ -1,5 +1,7 @@
 use glam::{DAffine2, DVec2};
 
+use crate::FallibleVec2Operations;
+
 #[derive(Debug, Clone, Default, Copy)]
 /// A quad defined by four vertices. Clockwise from the top left:
 ///
@@ -91,7 +93,7 @@ impl Quad {
 		let offset = |index_before, index, index_after| {
 			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];
 			let [line_in, line_out] = [(point - point_before).try_normalize()?, (point_after - point).try_normalize()?];
-			let angle = line_in.angle_to(-line_out);
+			let angle = line_in.try_angle_to(-line_out)?;
 			let offset_length = offset / (std::f64::consts::FRAC_PI_2 - angle / 2.).cos();
 			Some(point + (line_in.perp() + line_out.perp()).try_normalize()? * offset_length)
 		};

@@ -12,6 +12,7 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::FallibleVec2Operations;
 use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
@@ -153,13 +154,10 @@ impl SpiralTurns {
 		let layer_vector = viewport.inverse().transform_vector2(input.mouse.position - center);
 		let mouse_vector = viewport.inverse().transform_vector2(self.previous_mouse_position - center);
 
-		// Cannot take angle to zero length vector
-		if !(layer_vector.length_squared() > 0. && mouse_vector.length_squared() > 0.) {
+		let Some(angle_delta) = layer_vector.try_angle_to(mouse_vector).map(f64::to_degrees) else {
 			self.previous_mouse_position = input.mouse.position;
 			return;
-		}
-
-		let angle_delta = layer_vector.angle_to(mouse_vector).to_degrees();
+		};
 
 		// Skip update if angle calculation produced NaN or infinity (can happen when mouse is at center)
 		// Also skip very small angle changes to reduce jitter near center

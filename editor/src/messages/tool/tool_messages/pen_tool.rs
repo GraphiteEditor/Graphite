@@ -1230,12 +1230,14 @@ impl PenToolData {
 
 			let angle = if lock_angle {
 				self.angle
-			} else if (relative - document_pos) != DVec2::ZERO && !lock_angle {
-				(-(relative - document_pos).angle_to(DVec2::X) / resolution).round() * resolution
+			} else if let Some(angle) = DVec2::X.try_angle_to(relative - document_pos)
+				&& !lock_angle
+			{
+				(angle / resolution).round() * resolution
 			} else {
 				self.angle
 			};
-			document_pos = relative - (relative - document_pos).project_onto(DVec2::new(angle.cos(), angle.sin()));
+			document_pos = relative - (relative - document_pos).project_onto_normalized(DVec2::from_angle(angle));
 
 			let constraint = SnapConstraint::Line {
 				origin: relative,
@@ -1273,13 +1275,10 @@ impl PenToolData {
 		}
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer))
-			&& (relative - document_pos) != DVec2::ZERO
+			&& let Some(angle) = DVec2::X.try_angle_to(relative - document_pos)
 			&& (relative - document_pos).length_squared() > f64::EPSILON * 100.
 		{
-			let vector = relative - document_pos;
-			if vector.length_squared() > 0. {
-				self.angle = -vector.angle_to(DVec2::X);
-			}
+			self.angle = angle;
 		}
 
 		transform.inverse().transform_point2(document_pos)
@@ -1395,7 +1394,7 @@ impl PenToolData {
 
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
-		let vector = document.network_interface.compute_modified_vector(layer);
+		let vector: Option<Vector> = document.network_interface.compute_modified_vector(layer);
 		let (handle_start, in_segment) = if let Some(vector) = &vector {
 			vector
 				.segment_iter()
@@ -1497,16 +1496,14 @@ impl PenToolData {
 				}
 			}
 			(TargetHandle::PriorInHandle(..) | TargetHandle::PriorOutHandle(..), true) => {
-				let vector = self.handle_end.unwrap() - anchor_position;
-				if vector.length_squared() > 0. {
-					self.angle = -vector.angle_to(DVec2::X);
+				if let Some(angle) = self.handle_end.and_then(|handle_end| DVec2::X.try_angle_to(handle_end - anchor_position)) {
+					self.angle = angle;
 					self.handle_mode = HandleMode::ColinearEquidistant;
 				}
 			}
 			_ => {
-				let vector = self.next_handle_start - anchor_position;
-				if vector.length_squared() > 0. {
-					self.angle = -vector.angle_to(DVec2::X);
+				if let Some(angle) = DVec2::X.try_angle_to(self.next_handle_start - anchor_position) {
+					self.angle = angle;
 					self.handle_mode = HandleMode::ColinearEquidistant;
 				}
 			}

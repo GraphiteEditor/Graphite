@@ -3,6 +3,7 @@ use super::intersection::{bezpath_intersections, filtered_all_segment_intersecti
 use super::poisson_disk::poisson_disk_sample;
 use super::util::pathseg_tangent;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
+use core_types::FallibleVec2Operations;
 use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
@@ -453,7 +454,7 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	let in_tangent_normalized = pathseg_tangent(in_segment, 1.).try_normalize()?;
 	let out_tangent_normalized = pathseg_tangent(out_segment, 0.).try_normalize()?;
 
-	let angle = (in_tangent_normalized * -1.).angle_to(out_tangent_normalized).abs();
+	let angle = (in_tangent_normalized * -1.).try_angle_to(out_tangent_normalized)?.abs();
 
 	if angle.to_degrees() < miter_limit {
 		return None;
@@ -508,15 +509,19 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	let in_segment = bezpath1.segments().last();
 	let in_tangent = in_segment.and_then(|in_segment| pathseg_tangent(in_segment, 1.).try_normalize());
 
-	let mut angle = if center_to_right.length_squared() > 0. && center_to_left.length_squared() > 0. {
-		center_to_right.angle_to(center_to_left) / 2.
-	} else {
-		warn!("round line join with zero length vectors");
-		0.
-	};
+	let mut angle = center_to_right.try_angle_to(center_to_left).map_or_else(
+		|| {
+			warn!("round line join with zero length vectors");
+			0.
+		},
+		|angle| angle / 2.,
+	);
 	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-	if arc_point.distance_squared(left) > 0. && in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > FRAC_PI_2 {
+	if in_tangent
+		.and_then(|in_tangent| (arc_point - left).try_angle_to(in_tangent))
+		.map_or(false, |angle| angle.abs() > FRAC_PI_2)
+	{
 		angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 		arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 	}

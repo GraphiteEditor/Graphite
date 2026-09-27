@@ -1819,7 +1819,10 @@ fn angle_between(
 		return Item::from_parts(0., attributes);
 	}
 
-	let angle = direction_from.angle_to(direction_to);
+	let angle = direction_from.try_angle_to(direction_to).unrwap_or_else(|| {
+		warn!("Angle Between node has zero length vector");
+		0.
+	});
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }

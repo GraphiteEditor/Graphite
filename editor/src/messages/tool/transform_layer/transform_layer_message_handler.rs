@@ -549,9 +549,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
 							let end_offset = self.state.pivot_viewport(document) - input.mouse.position;
-							if start_offset.length_squared() > 0. && end_offset.length_squared() > 0. {
-								let angle = start_offset.angle_to(end_offset);
-
+							if let Some(angle) = start_offset.try_angle_to(end_offset) {
 								let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 								self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));

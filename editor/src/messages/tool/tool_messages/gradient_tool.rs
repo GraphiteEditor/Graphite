@@ -634,7 +634,7 @@ impl SelectedGradient {
 			let point = anchor_point();
 			let delta = point - mouse;
 
-			let mut angle = if delta.length_squared() > 0. { -delta.angle_to(DVec2::X) } else { *gradient_angle };
+			let mut angle = DVec2::X.try_angle_to(delta).unwrap_or(*gradient_angle);
 
 			if lock_angle {
 				angle = *gradient_angle;
@@ -659,8 +659,8 @@ impl SelectedGradient {
 			if matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start | GradientDragTarget::New) {
 				let point = anchor_point();
 				let delta = point - mouse;
-				if delta.length_squared() > 0. {
-					*gradient_angle = -delta.angle_to(DVec2::X);
+				if let Some(angle) = DVec2::X.try_angle_to(delta) {
+					*gradient_angle = angle;
 				}
 			}
 
@@ -1498,8 +1498,8 @@ impl Fsm for GradientToolFsmState {
 						GradientDragTarget::Start => vp_end - vp_start,
 						_ => vp_start - vp_end,
 					};
-					if delta.length_squared() > 0. {
-						tool_data.gradient_angle = -delta.angle_to(DVec2::X);
+					if let Some(angle) = DVec2::X.try_angle_to(delta) {
+						tool_data.gradient_angle = angle;
 					}
 				}
 

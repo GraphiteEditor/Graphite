@@ -1152,6 +1152,7 @@ impl ShapeState {
 				} else {
 					let Some(anchor) = point.get_anchor_position(&vector) else { continue };
 					let Some(orig_handle_pos) = point.get_position(&vector) else { continue };
+					let Some(v_orig) = (orig_handle_pos - anchor).try_normalize() else { continue };
 
 					point.get_all_connected_handles(&vector).and_then(|handles| {
 						let mut non_colinear_handles = handles.iter().filter(|&handle| !is_handle_colinear(*handle)).clone().collect::<Vec<_>>();
@@ -1159,24 +1160,18 @@ impl ShapeState {
 						// Skip handles with no position or with the same position as the anchor
 						non_colinear_handles.retain(|&handle| {
 							let Some(handle) = handle.to_manipulator_point().get_position(&vector) else { return false };
-							(handle - anchor).length_squared() > 0.
+							(handle - anchor).is_non_zero()
 						});
 
-						// Sort these by angle from the current handle
-						non_colinear_handles.sort_by(|&handle_a, &handle_b| {
-							let a_pos = handle_a.to_manipulator_point().get_position(&vector).expect("No handle position");
-							let b_pos = handle_b.to_manipulator_point().get_position(&vector).expect("No handle position");
-
-							let v_orig = (orig_handle_pos - anchor).normalize_or_zero();
-
-							let v_a = (a_pos - anchor).normalize_or_zero();
-							let v_b = (b_pos - anchor).normalize_or_zero();
-
-							let angle_a = v_orig.angle_to(v_a).abs();
-							let angle_b = v_orig.angle_to(v_b).abs();
-
-							// Sort by descending angle (180° is furthest)
-							angle_b.partial_cmp(&angle_a).unwrap_or(std::cmp::Ordering::Equal)
+						// Find the most colinear handle (maximum absolute angle from the origional)
+						let most_colinear = non_colinear_handles.into_iter().max_by(|&handle_a, &handle_b| {
+							let [Some(angle_a), Some(angle_b)] =
+								[handle_a, handle_b].map(|handle| handle.to_manipulator_point().get_position(&vector).and_then(|pos| v_orig.try_angle_to(pos - anchor)))
+							else {
+								error!("invalid handles (e.g. no handle or zero length) should be filtered above");
+								return core::cmp::Ordering::Equal;
+							};
+							angle_a.abs().total_cmp(&angle_b)
 						});
 
 						let current = match point {
@@ -1185,7 +1180,7 @@ impl ShapeState {
 							ManipulatorPointId::Anchor(_) => unreachable!(),
 						};
 
-						non_colinear_handles.first().map(|other| [current, **other])
+						most_colinear.map(|&other| [current, other])
 					})
 				};
 
@@ -1937,6 +1932,7 @@ impl ShapeState {
 				if let Some(other_handles) = point.get_all_connected_handles(&vector) {
 					let Some(anchor) = point.get_anchor_position(&vector) else { continue };
 					let Some(orig_handle_pos) = point.get_position(&vector) else { continue };
+					let Some(v_orig) = (orig_handle_pos - anchor).try_normalize() else { continue };
 
 					// Find the next closest handle in the clockwise sense
 					let mut candidates = other_handles.clone();
@@ -1944,36 +1940,25 @@ impl ShapeState {
 					// Skip handles with no position or with the same position as the anchor
 					candidates.retain(|&handle| {
 						let Some(handle) = handle.to_manipulator_point().get_position(&vector) else { return false };
-						(handle - anchor).length_squared() > 0.
+						(handle - anchor).is_non_zero()
 					});
 
-					candidates.sort_by(|&handle_a, &handle_b| {
-						let a_pos = handle_a.to_manipulator_point().get_position(&vector).expect("No handle position");
-						let b_pos = handle_b.to_manipulator_point().get_position(&vector).expect("No handle position");
-
-						let v_orig = (orig_handle_pos - anchor).normalize_or_zero();
-
-						let v_a = (a_pos - anchor).normalize_or_zero();
-						let v_b = (b_pos - anchor).normalize_or_zero();
-
-						let signed_angle = |base: DVec2, to: DVec2| -> f64 {
-							let angle = base.angle_to(to);
-							let cross = base.perp_dot(to);
-
-							if cross < 0. { TAU - angle } else { angle }
+					// Find the next handle
+					let next_handle = candidates.into_iter().min_by(|&handle_a, &handle_b| {
+						let [Some(angle_a), Some(angle_b)] = [handle_a, handle_b].map(|handle| handle.to_manipulator_point().get_position(&vector).and_then(|pos| v_orig.try_angle_to(pos - anchor)))
+						else {
+							error!("invalid handles (e.g. no handle or zero length) should be filtered above");
+							return core::cmp::Ordering::Equal;
 						};
+						// Map from [-π, π] tο [0, 2π]
+						let [remapped_angle_a, remapped_angle_b] = [angle_a, angle_b].map(|angle| (angle + TAU) % TAU);
 
-						let angle_a = signed_angle(v_orig, v_a);
-						let angle_b = signed_angle(v_orig, v_b);
-
-						angle_a.partial_cmp(&angle_b).unwrap_or(std::cmp::Ordering::Equal)
+						remapped_angle_a.total_cmp(&remapped_angle_b)
 					});
 
-					if candidates.is_empty() {
-						continue;
+					if let Some(next_handle) = next_handle {
+						handles_to_update.push((layer, *point, next_handle.to_manipulator_point()));
 					}
-
-					handles_to_update.push((layer, *point, candidates[0].to_manipulator_point()));
 				}
 			}
 		}

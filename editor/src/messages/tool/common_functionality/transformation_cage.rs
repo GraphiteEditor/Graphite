@@ -307,9 +307,9 @@ pub fn axis_align_drag(axis_align: bool, axis_constraint: DVec2, position: DVec2
 	// An explicit axis constraint (the compass rose's local axis) takes priority over the screen-space angle snapping
 	if axis_constraint != DVec2::ZERO {
 		start + axis_constraint * mouse_position.dot(axis_constraint)
-	} else if axis_align && mouse_position.length_squared() > 0. {
+	} else if axis_align {
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-		let angle = -mouse_position.angle_to(DVec2::X);
+		let Some(angle) = DVec2::X.try_angle_to(mouse_position) else { return position };
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 		let axis_vector = DVec2::from_angle(snapped_angle);
 		if snapped_angle.is_finite() {

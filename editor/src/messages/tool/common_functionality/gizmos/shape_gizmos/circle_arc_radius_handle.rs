@@ -12,6 +12,7 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::ParameterRef;
+use graphene_std::core_types::FallibleVec2Operations;
 use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_2;
 
@@ -86,10 +87,7 @@ impl RadiusHandle {
 				};
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let vector = viewport.inverse().transform_point2(mouse_position);
-				if !(vector.length_squared() > 0.) {
-					return; // Cannot do anything if the cursor is exactly on the pivot.
-				}
-				let angle = vector.angle_to(DVec2::X);
+				let Some(angle) = vector.try_angle_to(DVec2::X) else { return };
 				let point_position = viewport.transform_point2(calculate_circle_point_position(angle, radius.abs()));
 				let center = viewport.transform_point2(DVec2::ZERO);
 
