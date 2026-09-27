@@ -10,9 +10,12 @@ use serde::Serialize;
 
 use crate::attr::*;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
-use crate::{AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp};
+use crate::{
+	AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value,
+	ValueError, from_value, to_value,
+};
 
-fn map_serialization_error(key: &str) -> impl FnOnce(serde_json::Error) -> ConversionError + '_ {
+fn map_serialization_error(key: &str) -> impl FnOnce(ValueError) -> ConversionError + '_ {
 	move |e| ConversionError::SerializationError(format!("{key}: {e:?}"))
 }
 
@@ -40,7 +43,7 @@ impl NodePath {
 	}
 
 	fn to_global_id(&self, peer: PeerId) -> NodeId {
-		let bytes = rmp_serde::to_vec(&(peer, self)).expect("NodePath must serialize");
+		let bytes = postcard::to_stdvec(&(peer, self)).expect("NodePath must serialize");
 		let digest = blake3::hash(&bytes);
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
@@ -52,7 +55,7 @@ impl NodePath {
 	/// depending on traversal order. A domain tag keeps it from colliding with this node's own
 	/// `to_global_id`. The root network is `ROOT_NETWORK` and never goes through here.
 	fn owned_network_id(&self, peer: PeerId) -> NetworkId {
-		let bytes = rmp_serde::to_vec(&("network", peer, self)).expect("NodePath must serialize");
+		let bytes = postcard::to_stdvec(&("network", peer, self)).expect("NodePath must serialize");
 		let digest = blake3::hash(&bytes);
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
@@ -128,18 +131,18 @@ pub struct RuntimeConversion {
 	pub network_ids: HashMap<Vec<RuntimeNodeId>, NetworkId>,
 }
 
-/// Encode a [`ProtoNode`] declaration to its content-addressed bytes: through a self-describing
-/// `serde_json::Value` (so serde aliases keep working and the on-disk shape stays migratable), then
-/// rmp-serialized (which encodes the intermediate `Value` compactly). Paired with [`decode_declaration`].
+/// Encode a [`ProtoNode`] declaration to its content-addressed bytes: through the self-describing
+/// [`Value`] (so serde aliases keep working and the on-disk shape stays migratable), then postcard.
+/// Paired with [`decode_declaration`].
 pub fn encode_declaration(proto: &ProtoNode) -> Result<Vec<u8>, String> {
-	let value = serde_json::to_value(proto).map_err(|error| error.to_string())?;
-	rmp_serde::to_vec(&value).map_err(|error| error.to_string())
+	let value = to_value(proto).map_err(|error| error.to_string())?;
+	postcard::to_stdvec(&value).map_err(|error| error.to_string())
 }
 
 /// Decode a [`ProtoNode`] declaration from the bytes [`encode_declaration`] produced.
 pub fn decode_declaration(bytes: &[u8]) -> Result<ProtoNode, String> {
-	let value: serde_json::Value = rmp_serde::from_slice(bytes).map_err(|error| error.to_string())?;
-	serde_json::from_value(value).map_err(|error| error.to_string())
+	let value: Value = postcard::from_bytes(bytes).map_err(|error| error.to_string())?;
+	from_value(&value).map_err(|error| error.to_string())
 }
 
 impl Registry {
@@ -189,7 +192,7 @@ impl Registry {
 /// Snapshot the runtime [`ResourceRegistry`](graphene_resource::ResourceRegistry) into the storage
 /// [`ResourceStore`](crate::ResourceStore). Each source's chain position becomes a fractional
 /// [`Priority`](crate::Priority) (index-as-priority preserves order); the `DataSource` body is
-/// stored type-erased as `serde_json::Value` so its on-disk shape can migrate freely. All
+/// stored type-erased as [`Value`] so its on-disk shape can migrate freely. All
 /// timestamps are `ORIGIN`, since this is a bootstrap snapshot, not an edit.
 fn convert_resources(resources: &graphene_resource::ResourceRegistry, referenced: &std::collections::HashSet<ResourceId>, peer: PeerId, registry: &mut Registry) -> Result<(), ConversionError> {
 	for id in resources.ids() {
@@ -217,7 +220,7 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 			priority: crate::Priority::new(position as f64).expect("enumerate index is finite"),
 			peer,
 		};
-		let body = serde_json::to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
+		let body = to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
 		entry.set_source(
 			key,
 			crate::SourceValue {
@@ -317,7 +320,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 			runtime_node_id: *runtime_node_id,
 		};
 		let mut node = convert_node(doc_node, location, registry, ctx, true)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(runtime_node_id.0), TimeStamp::ORIGIN);
+		node.attributes.set(node::ORIGINAL_NODE_ID, Value::Int(runtime_node_id.0.into()), TimeStamp::ORIGIN);
 		registry.node_instances.insert(global_id, node);
 	}
 
@@ -466,11 +469,7 @@ pub fn encode_context_features(context_features: &ContextDependencies) -> Result
 }
 
 fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default: &T) -> Result<crate::AttributeDelta, ConversionError> {
-	let value = if value == default {
-		None
-	} else {
-		Some(serde_json::to_value(value).map_err(map_serialization_error(key))?)
-	};
+	let value = if value == default { None } else { Some(to_value(value).map_err(map_serialization_error(key))?) };
 
 	Ok(crate::AttributeDelta { key: key.to_string(), value })
 }
@@ -518,14 +517,14 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 		(node::ui::PINNED, metadata.pinned(metadata_path, runtime_node_id)),
 	] {
 		if value {
-			attributes.set(key, serde_json::Value::Bool(true), timestamp);
+			attributes.set(key, Value::Bool(true), timestamp);
 		}
 	}
 
 	if let Some(name) = metadata.display_name(metadata_path, runtime_node_id)
 		&& !name.is_empty()
 	{
-		attributes.set(node::ui::DISPLAY_NAME, serde_json::Value::String(name.to_string()), timestamp);
+		attributes.set(node::ui::DISPLAY_NAME, Value::Str(name.to_string()), timestamp);
 	}
 
 	// One whole-vec attribute; per-slot LWW would be overkill for rename-on-output.
@@ -553,7 +552,7 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	// The same source the IDs resolve through, so a network's attributes and the nodes they name agree.
 	let Some(metadata) = ids.metadata else { return Ok(()) };
 	if let Some(reference) = metadata.reference(network_path) {
-		attributes.set(node::ui::REFERENCE, serde_json::Value::String(reference.to_string()), timestamp);
+		attributes.set(node::ui::REFERENCE, Value::Str(reference.to_string()), timestamp);
 	}
 
 	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(&child_path(parent_path, network_id, runtime_id), runtime_id);
@@ -584,7 +583,7 @@ fn write_ui_input_attributes<M: NodeMetadataSource + ?Sized>(
 ) -> Result<(), ConversionError> {
 	let non_empty_string = |key: &'static str, value: Option<&str>, attributes: &mut crate::Attributes| {
 		if let Some(value) = value.filter(|s| !s.is_empty()) {
-			attributes.set(key, serde_json::Value::String(value.to_string()), timestamp);
+			attributes.set(key, Value::Str(value.to_string()), timestamp);
 		}
 	};
 
@@ -606,7 +605,7 @@ fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, pa
 			index: (*output_index).try_into().map_err(|_| ConversionError::IndexOverflow(*output_index))?,
 		},
 		GraphCraftNodeInput::Value { tagged_value, exposed } => {
-			let value = serde_json::to_value(&**tagged_value).map_err(|e| ConversionError::SerializationError(format!("{e:?}")))?;
+			let value = to_value(&**tagged_value).map_err(|e| ConversionError::SerializationError(format!("{e:?}")))?;
 			NodeInput::Value { value, exposed: *exposed }
 		}
 		GraphCraftNodeInput::Scope(s) => NodeInput::Scope(s.clone()),
@@ -787,7 +786,7 @@ impl<'m> ScopedConversion<'m> {
 		};
 
 		let mut node = convert_node(doc_node, location, registry, &mut self.ctx, recurse)?;
-		node.attributes.set(node::ORIGINAL_NODE_ID, serde_json::json!(local_id.0), TimeStamp::ORIGIN);
+		node.attributes.set(node::ORIGINAL_NODE_ID, Value::Int(local_id.0.into()), TimeStamp::ORIGIN);
 		registry.node_instances.insert(self.resolver.node_id(local_path, local_id), node);
 		Ok(())
 	}
@@ -836,7 +835,10 @@ pub fn node_value_resource_refs(node: &Node) -> impl Iterator<Item = ResourceId>
 /// The `TaggedValue::Resource` ID referenced by a stored value input, if any.
 pub fn value_resource_ref(input: &NodeInput) -> Option<ResourceId> {
 	match input {
-		NodeInput::Value { value, .. } => value.get("Resource").and_then(|id| serde_json::from_value(id.clone()).ok()),
+		NodeInput::Value { value: Value::Object(fields), .. } => match fields.as_slice() {
+			[(key, id)] if key == "Resource" => from_value(id).ok(),
+			_ => None,
+		},
 		_ => None,
 	}
 }
@@ -848,8 +850,8 @@ mod resource_ref_shape {
 	#[test]
 	fn resource_ref_shape_matches_serde() {
 		let id = ResourceId::from_hash(&ResourceHash::from(b"shape test".as_slice()));
-		let value = serde_json::to_value(TaggedValue::Resource(id)).expect("TaggedValue::Resource serializes");
-		let parsed: Option<ResourceId> = value.get("Resource").and_then(|inner| serde_json::from_value(inner.clone()).ok());
+		let value = to_value(&TaggedValue::Resource(id)).expect("TaggedValue::Resource serializes");
+		let parsed = value_resource_ref(&NodeInput::Value { value, exposed: false });
 		assert_eq!(parsed, Some(id), "The shape peek in node_value_resource_refs must match TaggedValue's serde form");
 	}
 }

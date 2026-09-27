@@ -48,15 +48,13 @@ pub type GddV1 = Gdd<GddV1Layout>;
 pub const MANIFEST_CODEC: Codec = Codec::Json;
 
 /// Working-copy codecs. The working copy lives in appdata, not under VCS — these defaults
-/// optimize for size and write cost. MessagePack is self-describing, so it round-trips the
-/// type-erased `serde_json::Value` bodies that resource and attribute deltas carry (a non-self-
-/// describing format like postcard cannot). JSON/JSONL is opt-in via `ExportFormat::Folder` for
-/// users who want a diffable on-disk representation. Recorded in the manifest at create time and
-/// read back on open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
+/// optimize for size and write cost. JSON/JSONL is opt-in via `ExportFormat::Folder` for users who
+/// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
+/// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
-pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::MessagePack;
-pub const DEFAULT_HISTORY_CODEC: Codec = Codec::MessagePackFrames;
-pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
+pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
+pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
+pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 
 /// Editor-facing handle. Owns the `Session` and the working-copy container; mutations are mirrored
 /// to disk continuously (every retirement appends to the history file and re-snapshots the registry).
@@ -79,10 +77,10 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) manifest: Manifest,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
-	pub(crate) view_settings: std::collections::BTreeMap<String, serde_json::Value>,
+	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
-	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -259,13 +257,13 @@ impl<L: Layout> Gdd<L> {
 
 	/// The per-peer view settings read from `session.json` (PTZ, rulers, overlays, snapping, collapse).
 	/// Opaque `ui::doc::*` blobs; the editor decodes them. Empty for a fresh document.
-	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, serde_json::Value> {
+	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, document_graph_storage::Value> {
 		&self.view_settings
 	}
 
 	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
 	/// [`NetworkId`](document_graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
-	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
+	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>> {
 		&self.network_view_settings
 	}
 

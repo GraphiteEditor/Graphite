@@ -46,7 +46,7 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 pub struct RoundTrip {
 	pub rebuilt: NodeNetworkInterface,
 	pub registry: document_graph_storage::Registry,
-	pub view_settings: std::collections::BTreeMap<String, serde_json::Value>,
+	pub view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 }
 
 /// Push `document`'s current runtime state through a fresh in-memory `Gdd` and reopen it. The commit goes
