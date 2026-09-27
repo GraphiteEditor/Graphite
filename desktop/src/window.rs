@@ -186,14 +186,25 @@ impl Window {
 		self.winit_window.set_cursor(cursor);
 	}
 
-	pub(crate) fn start_pointer_lock(&self) {
-		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+	pub(crate) fn start_pointer_lock(&self) -> bool {
+		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
 		self.winit_window.set_cursor_visible(false);
+		locked
 	}
 
 	pub(crate) fn end_pointer_lock(&self) {
 		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
 		self.winit_window.set_cursor_visible(true);
+	}
+
+	pub(crate) fn set_cursor_position(&self, position: winit::dpi::PhysicalPosition<f64>) {
+		if let Err(e) = self.winit_window.set_cursor_position(position.into()) {
+			tracing::warn!("Failed to place the cursor: {e}");
+		}
+	}
+
+	pub(crate) fn has_focus(&self) -> bool {
+		self.winit_window.has_focus()
 	}
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {

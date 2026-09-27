@@ -26,6 +26,7 @@ pub(crate) struct InputState {
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
+	software_cursor: Option<(f64, f64)>,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
 }
@@ -39,6 +40,7 @@ impl InputState {
 			modifiers: ModifiersState::default(),
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
+			software_cursor: None,
 			click_tracker: ClickTracker::default(),
 			shake_tracker: ShakeTracker::default(),
 		}
@@ -50,6 +52,10 @@ impl InputState {
 
 	pub(crate) fn set_direct_input(&mut self, enabled: bool) {
 		self.direct_input = enabled;
+	}
+
+	pub(crate) fn set_software_cursor(&mut self, cursor: Option<(f64, f64)>) {
+		self.software_cursor = cursor;
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
@@ -67,25 +73,50 @@ impl InputState {
 		};
 	}
 
-	pub(crate) fn unlock_pointer(&mut self) -> Option<PhysicalPosition<f64>> {
+	/// Releases the pointer lock, returning where to place the pointer: `destination` if given, otherwise where the lock began.
+	pub(crate) fn unlock_pointer(&mut self, destination: Option<PhysicalPosition<f64>>) -> Option<PhysicalPosition<f64>> {
 		let PointerState::Locked {
 			route: resume,
 			keys,
-			position: restore,
+			position: locked_at,
 		} = self.pointer_state
 		else {
-			return None;
+			let destination = destination?;
+			self.pointer_position = destination;
+			return Some(destination);
 		};
-		self.pointer_position = restore;
+
+		let position = destination.unwrap_or(locked_at);
+		self.pointer_position = position;
 		self.pointer_state = match keys.is_empty() {
 			true => PointerState::Hover { route: Route::Ui },
 			false => PointerState::Stroke { route: resume, keys },
 		};
-		Some(restore)
+		Some(position)
 	}
 
 	pub(crate) fn pointer_locked(&self) -> bool {
 		matches!(self.pointer_state, PointerState::Locked { .. })
+	}
+
+	pub(crate) fn window_position(&self, x: f64, y: f64) -> Option<PhysicalPosition<f64>> {
+		let viewport = self.viewport_info.as_ref()?;
+		if !x.is_finite() || !y.is_finite() {
+			return None;
+		}
+
+		let (x, y) = (viewport.x + x * viewport.scale, viewport.y + y * viewport.scale);
+		let (left, top, right, bottom) = (viewport.x, viewport.y, viewport.x + viewport.width, viewport.y + viewport.height);
+
+		Some(PhysicalPosition::new(
+			if right > left { x.clamp(left, right) } else { x },
+			if bottom > top { y.clamp(top, bottom) } else { y },
+		))
+	}
+
+	fn locked_position(&self) -> Option<PhysicalPosition<f64>> {
+		let (x, y) = self.software_cursor?;
+		self.window_position(x, y)
 	}
 
 	pub(crate) fn modifiers(&self) -> ModifiersState {
@@ -96,6 +127,11 @@ impl InputState {
 		match event {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
+
+				// A locked pointer only reports the frozen or warp-back OS location, so the editor follows the locked deltas instead
+				if self.pointer_locked() {
+					return;
+				}
 
 				let route = match self.pointer_state {
 					PointerState::Hover { .. } => {
@@ -139,6 +175,8 @@ impl InputState {
 			WindowEvent::PointerButton { state, button, position, .. } => {
 				self.pointer_position = *position;
 
+				let hit_position = if self.pointer_locked() { self.locked_position().unwrap_or(*position) } else { *position };
+
 				let mouse_button = button.clone().mouse_button();
 				let keys = match mouse_button {
 					Some(MouseButton::Left) => MouseKeys::LEFT,
@@ -179,10 +217,10 @@ impl InputState {
 				};
 				self.pointer_state = pointer;
 
-				let count = mouse_button.map_or(1, |button| self.click_tracker.input(*position, button, *state));
+				let count = mouse_button.map_or(1, |button| self.click_tracker.input(hit_position, button, *state));
 
 				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
-				let pointer = InputEvent::pointer().position(*position);
+				let pointer = InputEvent::pointer().position(hit_position);
 				let input = match state {
 					ElementState::Pressed => pointer.pressed(button.clone(), count),
 					ElementState::Released => pointer.released(button.clone(), count),
@@ -261,7 +299,7 @@ impl InputState {
 		}
 	}
 
-	fn scale(&self) -> f64 {
+	pub(crate) fn viewport_scale(&self) -> f64 {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
 
@@ -282,7 +320,7 @@ impl InputState {
 
 	fn pointer_state(&self) -> EditorPointerState {
 		EditorPointerState {
-			editor_position: (self.pointer_position.x / self.scale(), self.pointer_position.y / self.scale()).into(),
+			editor_position: (self.pointer_position.x / self.viewport_scale(), self.pointer_position.y / self.viewport_scale()).into(),
 			mouse_keys: self.pointer_keys(),
 			time: Some(self.start.elapsed().as_secs_f64() * 1000.),
 			..Default::default()
