@@ -256,7 +256,7 @@ where
 			node
 		});
 
-		let ident = select! {Token::Ident(s) => s}.labelled("ident");
+		let ident = select! {Token::Ident(s) => s}.labelled("a name");
 
 		// An ident followed by parenthesized args is a function call, otherwise a variable
 		let call_or_var = ident.then(args.or_not()).map(|(name, args): (&str, Option<Vec<Syntax>>)| match args {
@@ -270,7 +270,7 @@ where
 			expr: Box::new(expr),
 		});
 
-		let atom = choice((constant, piecewise, matrix, call_or_var, parens, magnitude)).labelled("atom");
+		let atom = choice((constant, piecewise, matrix, call_or_var, parens, magnitude)).labelled("a value");
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
@@ -352,28 +352,29 @@ where
 		let cmp = range
 			.clone()
 			.then(cmp_op.then(range).repeated().collect::<Vec<_>>())
-			.try_map(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>), span| {
+			// Emitted rather than failed, since chumsky's `try_map` moves the deepest error found inside it back to its own start, hiding it behind the operator
+			.validate(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>), extra, emitter| {
 				// A lone comparison is an ordinary binary operation
 				if rest.len() <= 1 {
-					return Ok(match rest.pop() {
+					return match rest.pop() {
 						Some((op, second)) => Syntax::BinOp {
 							lhs: Box::new(first),
 							op,
 							rhs: Box::new(second),
 						},
 						None => first,
-					});
+					};
 				}
 
 				let ops: Vec<BinaryOp> = rest.iter().map(|(op, _)| *op).collect();
 				if !BinaryOp::chain_in_one_direction(&ops) {
-					return Err(CustomError::custom(
-						span,
+					emitter.emit(CustomError::custom(
+						extra.span(),
 						"A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`",
 					));
 				}
 
-				Ok(Syntax::Comparison { first: Box::new(first), rest })
+				Syntax::Comparison { first: Box::new(first), rest }
 			});
 
 		let and = cmp.clone().foldl(and_op.then(cmp).repeated(), |lhs, (op, rhs)| Syntax::BinOp {

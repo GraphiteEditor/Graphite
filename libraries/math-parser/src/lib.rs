@@ -72,6 +72,20 @@ mod tests {
 	}
 
 	#[test]
+	fn errors_after_an_operator_point_past_it() {
+		// The deepest failure is reported, rather than the operator before it being blamed for the expression not ending there
+		for (input, expected) in [
+			("x + 1.5.5", "`1.5.5` is not a valid number, at 4..9"),
+			("sin(1.5.5)", "`1.5.5` is not a valid number, at 4..9"),
+			("x < #", "`#` is not recognized, at 4..5"),
+			("x +", "Found end of input, expected `-`, `+`, `!`, `¬`, or a value, at 3..3"),
+			("2 * * 3", "Found `*`, expected `-`, `+`, `!`, `¬`, or a value, at 4..5"),
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
+		}
+	}
+
+	#[test]
 	fn error_spans_begin_at_the_token() {
 		for (input, expected) in [("2 %", "at 2..3"), ("x  if 1", "at 3..5")] {
 			let error = evaluate(input).unwrap_err().to_string();
@@ -110,17 +124,20 @@ mod tests {
 		assert_eq!(message("sin(I)").span(), None);
 
 		// The tokens the parser library quotes are code too, as is the code a custom message writes between backticks
-		assert_eq!(evaluate("2 +").unwrap_err().to_string(), "Found `+`, expected `&&`, `||`, or end of input, at 2..3");
 		assert_eq!(
-			message("2 +").parts(),
+			message("2 * * 3").parts(),
 			[
 				Text("Found ".into()),
-				Code("+".into()),
+				Code("*".into()),
 				Text(", expected ".into()),
-				Code("&&".into()),
+				Code("-".into()),
 				Text(", ".into()),
-				Code("||".into()),
-				Text(", or end of input".into())
+				Code("+".into()),
+				Text(", ".into()),
+				Code("!".into()),
+				Text(", ".into()),
+				Code("¬".into()),
+				Text(", or a value".into())
 			]
 		);
 		assert_eq!(
