@@ -30,10 +30,27 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 
 impl LayoutHolder for CloseAllDocumentsDialog {
 	fn layout(&self) -> Layout {
-		let max_docs_to_show = 5;
-		let mut unsaved_list = "• ".to_string() + &self.unsaved_document_names.iter().take(max_docs_to_show).cloned().collect::<Vec<_>>().join("\n• ");
+		const MAX_DOCS_TO_SHOW: usize = 5;
+		const MAX_NAME_LENGTH: usize = 60;
 
-		let remaining = self.unsaved_document_names.len().saturating_sub(max_docs_to_show);
+		let mut unsaved_list = "• ".to_string()
+			+ &self
+				.unsaved_document_names
+				.iter()
+				.take(MAX_DOCS_TO_SHOW)
+				.map(|name| {
+					if name.chars().count() > MAX_NAME_LENGTH {
+						let mut truncated: String = name.chars().take(MAX_NAME_LENGTH).collect();
+						truncated.push('…');
+						truncated
+					} else {
+						name.clone()
+					}
+				})
+				.collect::<Vec<_>>()
+				.join("\n• ");
+
+		let remaining = self.unsaved_document_names.len().saturating_sub(MAX_DOCS_TO_SHOW);
 		if remaining > 0 {
 			let s = if remaining == 1 { "" } else { "s" };
 			unsaved_list.push_str(&format!("\n... and {remaining} more document{s}"));
