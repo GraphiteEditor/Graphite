@@ -181,18 +181,23 @@
 		text = displayText(sanitized, unit);
 	}
 
+	// Rounds half away from zero, the graph's one Number to Integer rule, where `Math.round` would carry -1.5 up to -1
+	function roundToInteger(value: number): number {
+		return Math.sign(value) * Math.round(Math.abs(value));
+	}
+
 	// Called internally to update the value indirectly by informing the parent component of the new value,
 	// so it can update the prop for this component, finally yielding the value change.
 	function updateValue(newValue: number | undefined): number | undefined {
 		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
-		const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
+		const oldValue = value !== undefined && isInteger ? roundToInteger(value) : value;
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
 		if (newValueValidated !== undefined) {
 			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
 			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
 
-			if (isInteger) newValueValidated = Math.round(newValueValidated);
+			if (isInteger) newValueValidated = roundToInteger(newValueValidated);
 
 			rangeSliderValue = newValueValidated;
 			rangeSliderValueAsRendered = newValueValidated;
@@ -529,7 +534,7 @@
 		cumulativeDragDelta += dragDelta;
 
 		const combined = initialValue + cumulativeDragDelta;
-		const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
+		const combineSnapped = snapping || isInteger ? roundToInteger(combined) : combined;
 
 		const newValue = updateValue(combineSnapped);
 
@@ -577,7 +582,7 @@
 		}
 
 		// Snap the slider value to the nearest integer if the Ctrl key is held, or the widget is set to integer mode.
-		const snappedValue = ctrlKeyDown || isInteger ? Math.round(roundedValue) : roundedValue;
+		const snappedValue = ctrlKeyDown || isInteger ? roundToInteger(roundedValue) : roundedValue;
 
 		// The first "input" event upon mousedown means we transition to a "Deciding" state, allowing us to wait for the
 		// next event to determine if the user is dragging (to slide the slider) or releasing (to edit the numerical text field).

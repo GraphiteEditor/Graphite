@@ -173,7 +173,7 @@ impl RadiusHandle {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, radius_parameter),
-			input: NodeInput::value(TaggedValue::F64(current_radius + net_delta), false),
+			input: NodeInput::value(TaggedValue::Number(current_radius + net_delta), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

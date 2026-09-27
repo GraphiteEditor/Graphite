@@ -5,14 +5,20 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [dependencies]
 thiserror = "2.0"
 num-complex = "0.4"
 unicode-ident = "1.0"
-chumsky = { version = "0.10", default-features = false, features = ["std"] }
+chumsky = { version = "0.10", default-features = false, features = ["std", "unstable"] }
 
 [dev-dependencies]
 criterion = { workspace = true }

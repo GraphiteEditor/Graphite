@@ -46,7 +46,7 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 pub struct RoundTrip {
 	pub rebuilt: NodeNetworkInterface,
 	pub registry: document_graph_storage::Registry,
-	pub view_settings: std::collections::BTreeMap<String, serde_json::Value>,
+	pub view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 }
 
 /// Push `document`'s current runtime state through a fresh in-memory `Gdd` and reopen it. The commit goes
@@ -56,9 +56,7 @@ pub struct RoundTrip {
 pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundTrip {
 	let byte_store = HashMapResourceStorage::new();
 
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);

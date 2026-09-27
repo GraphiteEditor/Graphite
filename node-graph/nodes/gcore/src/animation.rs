@@ -68,9 +68,7 @@ async fn quantize_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> Item<bool>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
-		Context -> Item<f32>,
+		Context -> Item<i64>,
 		Context -> Item<f64>,
 		Context -> Item<String>,
 		Context -> Item<DAffine2>,
@@ -96,7 +94,7 @@ async fn quantize_real_time<T>(
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
-	#[unit("sec")]
+	#[unit(" sec")]
 	quantum: Item<f64>,
 ) -> T {
 	let time = ctx.try_real_time().unwrap_or_default();
@@ -116,9 +114,7 @@ async fn quantize_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> Item<bool>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
-		Context -> Item<f32>,
+		Context -> Item<i64>,
 		Context -> Item<f64>,
 		Context -> Item<String>,
 		Context -> Item<DAffine2>,
@@ -144,7 +140,7 @@ async fn quantize_animation_time<T>(
 	)]
 	value: impl Node<'n, Context<'static>, Output = T>,
 	#[default(1)]
-	#[unit("sec")]
+	#[unit(" sec")]
 	quantum: Item<f64>,
 ) -> T {
 	let time = ctx.try_animation_time().unwrap_or_default();

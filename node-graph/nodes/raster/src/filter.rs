@@ -2,7 +2,6 @@ use bytemuck::{Pod, Zeroable};
 use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
 use core_types::list::Item;
-use core_types::registry::types::PixelLength;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
@@ -92,10 +91,11 @@ async fn blur(
 	/// The image to be blurred.
 	image_frame: Item<Raster<CPU>>,
 	/// The radius of the blur kernel.
+	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..100)]
-	radius: Item<PixelLength>,
+	radius: Item<f64>,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
 	box_blur: Item<bool>,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
@@ -105,6 +105,8 @@ async fn blur(
 
 	let (image, attributes) = image_frame.into_parts();
 
+	// TODO: Scale the radius through the footprint so it acts as the document-space length its Pixels unit promises, with a
+	// window that varies continuously rather than snapping to whole source pixels
 	let blurred_image = if radius < 0.1 {
 		// Minimum blur radius
 		image
@@ -124,15 +126,18 @@ async fn median_filter(
 	/// The image to be filtered.
 	image_frame: Item<Raster<CPU>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
+	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..50)]
-	radius: Item<PixelLength>,
+	radius: Item<f64>,
 ) -> Item<Raster<CPU>> {
 	let radius = *radius.element();
 
 	let (image, attributes) = image_frame.into_parts();
 
+	// TODO: Scale the radius through the footprint so it acts as the document-space length its Pixels unit promises, with a
+	// window that varies continuously rather than snapping to whole source pixels
 	let filtered_image = if radius < 0.5 {
 		// Minimum filter radius
 		image

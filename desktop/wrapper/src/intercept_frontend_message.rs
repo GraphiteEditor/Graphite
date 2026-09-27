@@ -69,18 +69,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerPersistenceWriteState { state } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteState { state });
 		}
-		FrontendMessage::TriggerPersistenceReadDocument { document_id } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceReadDocument { id: document_id });
-		}
-		FrontendMessage::TriggerPersistenceDeleteDocument { document_id } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceDeleteDocument { id: document_id });
-		}
-		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
-				id: document_id,
-				document_serialized_content: document,
-			});
-		}
 		FrontendMessage::TriggerOpenLaunchDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::OpenLaunchDocuments);
 		}

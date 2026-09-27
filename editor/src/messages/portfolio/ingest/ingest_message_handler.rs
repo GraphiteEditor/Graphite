@@ -97,7 +97,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						let Ok(document_serialized_content) = String::from_utf8(data) else {
 							return unsupported(responses);
 						};
-						responses.add(PortfolioMessage::OpenDocumentFile {
+						responses.add(PortfolioMessage::OpenLegacyDocumentFile {
 							document_name: name,
 							document_path,
 							document_serialized_content,
@@ -105,7 +105,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						return;
 					}
 					DataType::Gdd => {
-						responses.add(PortfolioMessage::OpenGddDocument {
+						responses.add(PortfolioMessage::OpenDocumentFile {
 							document_name: name,
 							document_path,
 							content: data,

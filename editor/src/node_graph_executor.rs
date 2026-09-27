@@ -939,10 +939,8 @@ mod test {
 				Some(x.output.clone())
 			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Output>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Output>>() {
-				Some(x.output.clone())
 			} else {
-				None
+				dynamic.downcast_ref::<IORecord<Context, Output>>().map(|x| x.output.clone())
 			}
 		}
 

@@ -219,7 +219,7 @@ impl SvgRender {
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
 		let svg_header = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,
-			defs = &self.svg_defs
+			defs = self.svg_defs
 		);
 		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
@@ -237,7 +237,7 @@ impl SvgRender {
 
 		let svg_header = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#,
-			defs = &self.svg_defs
+			defs = self.svg_defs
 		);
 		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
@@ -3023,8 +3023,8 @@ fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAf
 	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
 	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
 	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width: Option<f64> = item.attribute_cloned_or(ATTR_MAX_WIDTH, None);
-	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
+	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
+	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
@@ -3144,8 +3144,8 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
 	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
 	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width: Option<f64> = item.attribute_cloned_or(ATTR_MAX_WIDTH, None);
-	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
+	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
+	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
@@ -3225,8 +3225,8 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
 	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
 	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width: Option<f64> = item.attribute_cloned_or(ATTR_MAX_WIDTH, None);
-	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
+	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
+	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);

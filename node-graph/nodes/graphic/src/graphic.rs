@@ -1,7 +1,6 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::registry::types::{Angle, SeedValue, SignedInteger};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
@@ -22,10 +21,8 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -38,14 +35,14 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	)]
 	list: T,
 	/// The index of the item to remove, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: Item<SignedInteger>,
+	index: Item<i64>,
 ) -> T {
-	let index = index.into_element() as i32;
+	let index = index.into_element();
 
 	if index < 0 {
-		list.omit_index_from_end(index.unsigned_abs() as usize)
+		list.omit_index_from_end(usize::try_from(index.unsigned_abs()).unwrap_or(usize::MAX))
 	} else {
-		list.omit_index(index as usize)
+		list.omit_index(usize::try_from(index).unwrap_or(usize::MAX))
 	}
 }
 
@@ -58,10 +55,8 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -73,23 +68,23 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	)]
 	list: List<T>,
 	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the list, starting from -1 for the last item.
-	index: Item<SignedInteger>,
+	index: Item<i64>,
 ) -> Item<T> {
 	let len = list.len();
-	let index = index.into_element() as i32;
+	let index = index.into_element();
 	let resolved = if index < 0 {
-		let from_end = index.unsigned_abs() as usize;
-		if from_end > len {
+		let from_end = index.unsigned_abs();
+		if from_end > len as u64 {
 			return Item::default();
 		}
-		len - from_end
+		len - from_end as usize
 	} else {
-		index as usize
+		index.min(len as i64) as usize
 	};
 	list.clone_item(resolved).unwrap_or_default()
 }
 
-/// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* bool list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
+/// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* `Bool` list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
 #[node_macro::node(category("General"))]
 fn filter<T: Send + Sync + 'static>(
 	_: impl Ctx,
@@ -97,10 +92,8 @@ fn filter<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -132,10 +125,8 @@ fn reverse<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -159,10 +150,8 @@ fn shift<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -175,12 +164,12 @@ fn shift<T: Send + Sync + 'static>(
 	)]
 	list: List<T>,
 	/// How many positions to shift each item. Positive values shift items toward the start of the list, negative toward the end.
-	amount: Item<SignedInteger>,
+	amount: Item<i64>,
 	/// Whether items shifted off one end wrap around to the other. When off, they are dropped and the list gets shorter.
 	#[default(true)]
 	wrap: Item<bool>,
 ) -> List<T> {
-	let amount = amount.into_element() as i64;
+	let amount = amount.into_element();
 	let wrap = wrap.into_element();
 	let len = list.len() as i64;
 	if len == 0 {
@@ -194,7 +183,7 @@ fn shift<T: Send + Sync + 'static>(
 	} else if amount >= 0 {
 		items.into_iter().skip(amount.min(len) as usize).collect()
 	} else {
-		items.into_iter().take((len + amount).max(0) as usize).collect()
+		items.into_iter().take((len + amount.max(-len)) as usize).collect()
 	}
 }
 
@@ -206,10 +195,8 @@ fn shuffle<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -222,12 +209,13 @@ fn shuffle<T: Send + Sync + 'static>(
 	)]
 	list: List<T>,
 	/// Seed to determine the unique variation of the random shuffle ordering. The same seed always produces the same ordering.
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 ) -> List<T> {
 	let seed = seed.into_element();
 	let mut items: Vec<Item<T>> = list.into_iter().collect();
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 	items.shuffle(&mut rng);
 
 	items.into_iter().collect()
@@ -245,13 +233,16 @@ fn number_sequence(
 	step: Item<f64>,
 	/// How many numbers to generate.
 	#[default(10)]
-	count: Item<u32>,
+	#[hard(0..)]
+	count: Item<i64>,
 ) -> List<f64> {
 	let (start, step, count) = (*start.element(), *step.element(), count.into_element());
 
 	(0..count).map(|i| Item::new_from_element(start + step * i as f64)).collect()
 }
 
+// TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall these indices off from the generic math nodes.
+// TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
 #[node_macro::node(category("General"))]
 fn list_indices(
@@ -259,11 +250,11 @@ fn list_indices(
 	/// The list whose items are counted.
 	list: ListDyn,
 	/// The number that the count begins from for the first item.
-	start_index: Item<SignedInteger>,
+	start_index: Item<i64>,
 ) -> List<f64> {
 	let start_index = start_index.into_element();
 
-	(0..list.len()).map(|index| Item::new_from_element(start_index + index as f64)).collect()
+	(0..list.len()).map(|index| Item::new_from_element(start_index as f64 + index as f64)).collect()
 }
 
 /// Extracts a portion of a list, starting at "Start" and ending before "End".
@@ -276,10 +267,8 @@ fn list_slice<T: Send + Sync + 'static>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -292,23 +281,15 @@ fn list_slice<T: Send + Sync + 'static>(
 	)]
 	list: List<T>,
 	/// The index of the first item in the portion. Negative indices count from the end of the list.
-	start: Item<SignedInteger>,
+	start: Item<i64>,
 	/// The index the portion ends before, which is not included. Zero or negative indices count from the end of the list.
-	end: Item<SignedInteger>,
+	end: Item<i64>,
 ) -> List<T> {
 	let (start, end) = (start.into_element(), end.into_element());
-	let total_items = list.len();
+	let total_items = list.len() as i64;
 
-	let start = if start < 0. {
-		total_items.saturating_sub(start.abs() as usize)
-	} else {
-		(start as usize).min(total_items)
-	};
-	let end = if end <= 0. {
-		total_items.saturating_sub(end.abs() as usize)
-	} else {
-		(end as usize).min(total_items)
-	};
+	let start = if start < 0 { (total_items + start).max(0) } else { start.min(total_items) } as usize;
+	let end = if end <= 0 { (total_items + end).max(0) } else { end.min(total_items) } as usize;
 
 	if start >= end {
 		return List::new();
@@ -334,22 +315,12 @@ impl ElementOrder for bool {
 		self.cmp(other)
 	}
 }
-impl ElementOrder for f32 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.total_cmp(other)
-	}
-}
 impl ElementOrder for f64 {
 	fn element_order(&self, other: &Self) -> Ordering {
 		self.total_cmp(other)
 	}
 }
-impl ElementOrder for u32 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
-	}
-}
-impl ElementOrder for u64 {
+impl ElementOrder for i64 {
 	fn element_order(&self, other: &Self) -> Ordering {
 		self.cmp(other)
 	}
@@ -370,17 +341,17 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	_: impl Ctx,
 	/// The list of data to reorder.
 	#[implementations(
-		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f32>, List<f64>, List<u32>, List<u64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
 	)]
 	list: List<T>,
 	/// The optional list of orderable values, corresponding item-to-item with the input list, to sort by instead of the items' own values.
 	#[expose]
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
-		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
-		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>, List<String>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
 	)]
 	sort_order: List<U>,
 	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
@@ -417,10 +388,8 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -435,10 +404,8 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	#[implementations(
 		Context -> List<String>,
 		Context -> List<bool>,
-		Context -> List<f32>,
 		Context -> List<f64>,
-		Context -> List<u32>,
-		Context -> List<u64>,
+		Context -> List<i64>,
 		Context -> List<DVec2>,
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
@@ -479,9 +446,10 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 	content: Item<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: Item<ReferencePoint>,
 	#[unit(" px")] offset: Item<f64>,
+	#[unit("°")]
 	#[range]
 	#[soft(-90..90)]
-	angle: Item<Angle>,
+	angle: Item<f64>,
 	#[default(true)] keep_original: Item<bool>,
 ) -> List<T> {
 	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());
@@ -554,10 +522,8 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -575,7 +541,6 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	/// The attribute name (key) to write or replace.
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	#[implementations(Context -> Item<AttributeValueDyn>)]
 	value: impl Node<'n, Context<'static>, Output = Item<AttributeValueDyn>>,
 ) -> List<T> {
 	let name = name.into_element();
@@ -607,7 +572,7 @@ fn read_attribute_vector(
 	result
 }
 
-/// Reads a named numeric attribute (`f64`, `u64`, or `u32`) from the input list, outputting each value as an element of a new `f64[]`. Integer values are converted to `f64`.
+/// Reads a named `Number` or `Integer` attribute from the input list, outputting each value as an element of a new `Number[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_number(
 	_: impl Ctx,
@@ -618,18 +583,14 @@ fn read_attribute_number(
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let value = content
-			.attribute::<f64>(&name, index)
-			.copied()
-			.or_else(|| content.attribute::<u64>(&name, index).map(|v| *v as f64))
-			.or_else(|| content.attribute::<u32>(&name, index).map(|v| *v as f64));
+		let value = content.attribute::<f64>(&name, index).copied().or_else(|| content.attribute::<i64>(&name, index).map(|v| *v as f64));
 		let Some(value) = value else { continue };
 		result.push(Item::new_from_element(value));
 	}
 	result
 }
 
-/// Reads a named `bool` attribute from the input list, outputting each value as an element of a new `bool[]`.
+/// Reads a named `Bool` attribute from the input list, outputting each value as an element of a new `Bool[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_bool(
 	_: impl Ctx,
@@ -663,7 +624,7 @@ fn read_attribute_string(
 	result
 }
 
-/// Reads a named `DAffine2` transform attribute from the input list, outputting each value as an element of a new `DAffine2[]`.
+/// Reads a named `Transform` attribute from the input list, outputting each value as an element of a new `Transform[]`.
 #[node_macro::node(category("Attributes: Read"))]
 fn read_attribute_transform(
 	_: impl Ctx,
@@ -858,10 +819,8 @@ pub async fn extend<T: 'n + Send + Clone>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -879,10 +838,8 @@ pub async fn extend<T: 'n + Send + Clone>(
 	#[implementations(
 		List<String>,
 		List<bool>,
-		List<f32>,
 		List<f64>,
-		List<u32>,
-		List<u64>,
+		List<i64>,
 		List<DVec2>,
 		List<DAffine2>,
 		List<Vector>,
@@ -1134,27 +1091,36 @@ mod test {
 
 	#[test]
 	fn shift_wraps_items_around() {
-		let forward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(1.), Item::new_from_element(true));
+		let forward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(1_i64), Item::new_from_element(true));
 		assert_eq!(elements(&forward), [2., 3., 4., 1.]);
 
-		let backward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(-1.), Item::new_from_element(true));
+		let backward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(-1_i64), Item::new_from_element(true));
+		assert_eq!(elements(&backward), [4., 1., 2., 3.]);
+	}
+
+	#[test]
+	fn shift_wraps_by_more_than_the_list_length() {
+		let forward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(5_i64), Item::new_from_element(true));
+		assert_eq!(elements(&forward), [2., 3., 4., 1.], "a wrapping shift past the length keeps rotating");
+
+		let backward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(-5_i64), Item::new_from_element(true));
 		assert_eq!(elements(&backward), [4., 1., 2., 3.]);
 	}
 
 	#[test]
 	fn shift_without_wrapping_drops_items() {
-		let dropped_front = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(1.), Item::new_from_element(false));
+		let dropped_front = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(1_i64), Item::new_from_element(false));
 		assert_eq!(elements(&dropped_front), [2., 3., 4.]);
 
-		let dropped_back = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(-1.), Item::new_from_element(false));
+		let dropped_back = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(-1_i64), Item::new_from_element(false));
 		assert_eq!(elements(&dropped_back), [1., 2., 3.]);
 	}
 
 	#[test]
 	fn shuffle_is_deterministic_and_preserves_elements() {
 		let original = [1., 2., 3., 4., 5., 6., 7., 8.];
-		let first = shuffle((), list_of(original), Item::new_from_element(42_u32));
-		let second = shuffle((), list_of(original), Item::new_from_element(42_u32));
+		let first = shuffle((), list_of(original), Item::new_from_element(42_i64));
+		let second = shuffle((), list_of(original), Item::new_from_element(42_i64));
 		assert_eq!(elements(&first), elements(&second), "the same seed should always produce the same ordering");
 
 		let mut recovered = elements(&first);
@@ -1164,34 +1130,34 @@ mod test {
 
 	#[test]
 	fn number_sequence_generates_evenly_spaced_numbers() {
-		let sequence = number_sequence((), (), Item::new_from_element(0.), Item::new_from_element(2.), Item::new_from_element(4_u32));
+		let sequence = number_sequence((), (), Item::new_from_element(0.), Item::new_from_element(2.), Item::new_from_element(4_i64));
 		assert_eq!(elements(&sequence), [0., 2., 4., 6.]);
 	}
 
 	#[test]
 	fn list_indices_counts_each_item() {
-		let indices = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(0.));
+		let indices = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(0_i64));
 		assert_eq!(elements(&indices), [0., 1., 2.]);
 
-		let from_one = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(1.));
+		let from_one = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(1_i64));
 		assert_eq!(elements(&from_one), [1., 2., 3.]);
 	}
 
 	#[test]
 	fn list_slice_takes_the_portion_between_start_and_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(1.), Item::new_from_element(3.));
+		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(1_i64), Item::new_from_element(3_i64));
 		assert_eq!(elements(&portion), [2., 3.]);
 	}
 
 	#[test]
 	fn list_slice_resolves_negative_indices_from_the_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(-2.), Item::new_from_element(0.));
+		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(-2_i64), Item::new_from_element(0_i64));
 		assert_eq!(elements(&portion), [4., 5.], "an end of zero reaches through the end of the list");
 	}
 
 	#[test]
 	fn list_slice_yields_nothing_when_start_reaches_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3.), Item::new_from_element(3.));
+		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3_i64), Item::new_from_element(3_i64));
 		assert!(elements(&portion).is_empty());
 	}
 

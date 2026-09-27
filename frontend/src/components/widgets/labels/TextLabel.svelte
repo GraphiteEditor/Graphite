@@ -157,5 +157,16 @@
 			background: var(--color-3-darkgray);
 			padding: 0 2px;
 		}
+
+		pre {
+			margin: 4px 0 0;
+			padding: 2px 4px;
+			background: var(--color-3-darkgray);
+			white-space: pre-wrap;
+
+			code {
+				padding: 0;
+			}
+		}
 	}
 </style>

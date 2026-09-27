@@ -95,7 +95,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 								.network_interface
 								.node_metadata(&layer.to_node(), &[])
 								.map(|node| node.persistent_metadata.display_name.clone())
-								.and_then(|name| if name.is_empty() { None } else { Some(name) })
+								.filter(|name| !name.is_empty())
 								.unwrap_or_else(|| "Artboard".to_string());
 							(layer, name)
 						})

@@ -333,11 +333,11 @@ impl SweepAngleGizmo {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::StartAngleInput),
-			input: NodeInput::value(TaggedValue::F64(start_angle), false),
+			input: NodeInput::value(TaggedValue::Number(start_angle), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::SweepAngleInput),
-			input: NodeInput::value(TaggedValue::F64(sweep_angle), false),
+			input: NodeInput::value(TaggedValue::Number(sweep_angle), false),
 		});
 
 		self.previous_mouse_position = input.mouse.position;

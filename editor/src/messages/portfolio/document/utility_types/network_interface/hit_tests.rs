@@ -121,11 +121,11 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn node_graph_ptz_mut(&mut self, network_path: &[NodeId]) -> Option<&mut PTZ> {
-		let Some(network_metadata) = self.network_metadata_mut(network_path) else {
+		let Some(navigation) = self.navigation_mut(network_path) else {
 			log::error!("Could not get nested network_metadata in node_graph_ptz_mut");
 			return None;
 		};
-		Some(&mut network_metadata.persistent_metadata.navigation_metadata.node_graph_ptz)
+		Some(&mut navigation.node_graph_ptz)
 	}
 
 	// TODO: Optimize getting click target intersections from click by using a spacial data structure like a quadtree instead of linear search

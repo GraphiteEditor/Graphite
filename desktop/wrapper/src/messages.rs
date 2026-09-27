@@ -44,13 +44,6 @@ pub enum DesktopFrontendMessage {
 		enabled: bool,
 	},
 	UpdateOverlays(vello::Scene),
-	PersistenceWriteDocument {
-		id: DocumentId,
-		document_serialized_content: String,
-	},
-	PersistenceDeleteDocument {
-		id: DocumentId,
-	},
 	PersistenceWritePreferences {
 		preferences: Preferences,
 	},
@@ -59,9 +52,6 @@ pub enum DesktopFrontendMessage {
 		state: PersistedState,
 	},
 	PersistenceReadState,
-	PersistenceReadDocument {
-		id: DocumentId,
-	},
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
@@ -92,7 +82,6 @@ pub enum DesktopWrapperMessage {
 	PollNodeGraphEvaluation,
 	UpdateMaximized { maximized: bool },
 	UpdateFullscreen { fullscreen: bool },
-	LoadDocumentContent { id: DocumentId, document: String },
 	LoadPersistedState { state: PersistedState },
 	LoadPreferences { preferences: Preferences },
 	MenuEvent { id: String },

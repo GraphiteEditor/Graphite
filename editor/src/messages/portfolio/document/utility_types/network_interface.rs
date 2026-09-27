@@ -1,14 +1,22 @@
+mod apply;
 mod caches;
 #[cfg(test)]
 mod characterization_tests;
 mod deserialization;
+pub mod editor_delta;
+#[cfg(test)]
+mod editor_delta_tests;
+mod frontend;
+mod geometry;
 mod hit_tests;
+mod invalidation;
 mod layout;
 mod memo_network;
 mod mutations;
 mod queries;
 mod resolved_types;
 pub mod storage_metadata;
+mod store;
 mod structure;
 mod template;
 mod types;
@@ -16,6 +24,9 @@ mod types;
 mod validation;
 mod view;
 
+pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
+use store::Guarded;
+pub use store::NodeLocator;
 pub use template::*;
 pub use types::*;
 pub use view::{NetworkError, NetworkView};
@@ -59,9 +70,9 @@ use std::sync::Arc;
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A public mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
-	network: MemoNetwork,
+	network: Guarded<MemoNetwork>,
 	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
-	network_metadata: NodeNetworkMetadata,
+	network_metadata: Guarded<NodeNetworkMetadata>,
 	// TODO: Wrap in a TransientCache
 	/// Stores the document network's structural topology. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	#[serde(skip)]
@@ -71,6 +82,14 @@ pub struct NodeNetworkInterface {
 	pub resolved_types: ResolvedDocumentNodeTypes,
 	#[serde(skip)]
 	transaction_status: TransactionStatus,
+	/// What the writes since the last drain changed, in write order, appended by `store.rs` alone.
+	///
+	/// Emitting here rather than in the mutators makes it impossible to write without saying what was
+	/// written, the same way writing through the store makes it impossible to update one tree without
+	/// the other. Transient: a snapshot clone starts empty, since the snapshot is a state rather than
+	/// a set of changes.
+	#[serde(skip)]
+	deltas: Vec<EditorDelta>,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -81,6 +100,7 @@ impl Clone for NodeNetworkInterface {
 			document_metadata: Default::default(),
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
+			deltas: Vec::new(),
 		}
 	}
 }
@@ -92,9 +112,14 @@ impl PartialEq for NodeNetworkInterface {
 }
 
 impl NodeNetworkInterface {
+	/// Normalizes the stored types of every node at every nesting level, for an older document whose stored types predate the current form.
+	pub fn normalize_stored_types(&mut self) {
+		self.migrate_graph(NodeNetwork::normalize_stored_types);
+	}
+
 	/// Add DocumentNodePath input to the PathModifyNode protonode
 	pub fn migrate_path_modify_node(&mut self) {
-		fix_network(self.document_network_mut());
+		self.migrate_graph(fix_network);
 		fn fix_network(network: &mut NodeNetwork) {
 			for node in network.nodes.values_mut() {
 				if let Some(network) = node.implementation.get_network_mut() {
@@ -136,11 +161,11 @@ mod network_interface_tests {
 				content: ClipboardContentRaw::Text(clipboard),
 			})
 			.await;
-		let nodes = &mut editor.active_document_mut().network_interface.network_mut(&[]).unwrap().nodes;
-		let orignal = nodes.remove(&rectangle).expect("original node should exist");
+		let nodes = &editor.active_document().network_interface.document_network().nodes;
+		let original = nodes.get(&rectangle).expect("original node should exist");
 		assert!(
-			nodes.values().any(|other| *other == orignal),
-			"duplicated node should exist\nother nodes: {nodes:#?}\norignal {orignal:#?}"
+			nodes.iter().any(|(node_id, other)| *node_id != rectangle && other == original),
+			"duplicated node should exist\nother nodes: {nodes:#?}\noriginal {original:#?}"
 		);
 	}
 }

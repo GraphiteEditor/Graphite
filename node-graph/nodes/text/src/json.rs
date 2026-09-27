@@ -28,7 +28,8 @@ fn format_json(
 	///
 	/// This is not a maximum line length guarantee. Deep nesting and long keys or values may exceed this length.
 	#[default(120)]
-	break_length: Item<u32>,
+	#[hard(0..)]
+	break_length: Item<i64>,
 	/// Always break a container (array or object) across lines if it holds another container, even if it would fit within the break length. (Requires *Multi-Line* to take effect.)
 	#[default(true)]
 	break_nested: Item<bool>,

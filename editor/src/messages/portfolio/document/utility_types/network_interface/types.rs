@@ -93,6 +93,9 @@ pub enum ImportOrExport {
 pub const PRIMARY_INPUT_INDEX: usize = 0;
 /// The secondary input (index 1) of a layer-shaped node: the horizontal wire from the left, carrying the node chain or child stack that the layer renders.
 pub const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+/// The height in grid cells of a node displayed as a layer, which is fixed regardless of its inputs.
+pub const LAYER_GRID_HEIGHT: u32 = 2;
+
 /// The primary output (index 0) of a node, which most nodes expose as their only output.
 pub const PRIMARY_OUTPUT_INDEX: usize = 0;
 
@@ -442,6 +445,24 @@ impl<T> TransientCache<T> {
 		*self.0.borrow_mut() = None;
 	}
 
+	/// Computes and stores the value with `load` if it is not already loaded.
+	///
+	/// `load` runs with no borrow held, so it is free to read other cache slots.
+	pub(crate) fn ensure_loaded(&self, load: impl FnOnce() -> Option<T>) {
+		let already_loaded = self.0.borrow().is_some();
+		if already_loaded {
+			return;
+		}
+		let Some(value) = load() else { return };
+		self.store(value);
+	}
+
+	/// Runs `read` on the cached value, computing it with `load` first if it is not loaded.
+	pub(crate) fn with_loaded_or<R>(&self, load: impl FnOnce() -> Option<T>, read: impl FnOnce(&T) -> R) -> Option<R> {
+		self.ensure_loaded(load);
+		self.with_loaded(read)
+	}
+
 	/// Runs `read` on the cached value if it is loaded.
 	pub(crate) fn with_loaded<R>(&self, read: impl FnOnce(&T) -> R) -> Option<R> {
 		self.0.borrow().as_ref().map(read)
@@ -655,6 +676,11 @@ impl InputPersistentMetadata {
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DocumentNodePersistentMetadata {
+	/// The identity storage holds for this node, pinned when the interface is built from a document so
+	/// a conversion back reuses it instead of re-deriving one. Absent for a node storage has not named,
+	/// which falls back to a hash of its location.
+	#[serde(default)]
+	pub storage_id: Option<u64>,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,

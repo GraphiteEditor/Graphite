@@ -1,4 +1,7 @@
-use crate::{Attributes, AttributesWrite, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
+use crate::{
+	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value,
+	attr, compute_rev,
+};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +23,7 @@ pub struct Delta {
 	/// Local, mutable annotations on this commit (interaction-end marker, future commit messages / labels).
 	/// Deliberately excluded from `compute_rev`: relabeling a commit must not change its content-addressed
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
-	#[serde(default, skip_serializing_if = "Attributes::is_empty")]
+	#[serde(default)]
 	pub attributes: Attributes,
 }
 
@@ -69,11 +72,11 @@ impl Delta {
 
 	/// Mark this delta as the last op of a user interaction, so the undo cursor treats it as a checkpoint.
 	pub fn mark_interaction_end(&mut self, timestamp: TimeStamp) {
-		self.attributes.set(attr::delta::INTERACTION_END, serde_json::Value::Bool(true), timestamp);
+		self.attributes.set(attr::delta::INTERACTION_END, Value::Bool(true), timestamp);
 	}
 
 	pub fn is_interaction_end(&self) -> bool {
-		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == serde_json::Value::Bool(true))
+		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
@@ -92,7 +95,7 @@ impl Delta {
 
 /// Op payload. Timestamps live on the wrapping `Delta` — one per delta, applied to all LWW-eligible
 /// writes within. See `notes/document-format-collaboration.md`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum RegistryDelta {
 	AddNode {
 		id: NodeId,
@@ -108,6 +111,25 @@ pub enum RegistryDelta {
 		id: NodeId,
 		index: u32,
 		new_input: NodeInput,
+	},
+	/// A node's whole input list, for a change to the number or order of its slots that the
+	/// index-addressed `ChangeNodeInput` cannot express. Assigns rather than merging: concurrent
+	/// per-slot edits are lost, which is inherent to the indices themselves moving.
+	///
+	/// Touches only the inputs, leaving the node's attributes and implementation alone, so it composes
+	/// with attribute ops on the same node instead of reverting them.
+	SetNodeInputs {
+		id: NodeId,
+		inputs: Vec<InputSlot>,
+	},
+	/// A node's implementation, for swapping what it computes without rebuilding the node.
+	///
+	/// Removing and re-adding the node would express the same change, but would also clear every
+	/// attribute it carries, so restating them would clobber whatever a concurrent peer wrote to the
+	/// node's name, lock or pin.
+	SetNodeImplementation {
+		id: NodeId,
+		implementation: Implementation,
 	},
 	ChangeNodeAttribute {
 		id: NodeId,
@@ -161,7 +183,7 @@ pub enum RegistryDelta {
 	AddSource {
 		id: ResourceId,
 		key: SourceKey,
-		source: serde_json::Value,
+		source: Value,
 	},
 	/// Remove one entry from a resource's source chain. LWW against the entry's timestamp.
 	RemoveSource {
@@ -186,14 +208,14 @@ pub enum RegistryDelta {
 		extra_parents: Vec<Rev>,
 	},
 	// Allow for future delta types without a model change
-	Other(serde_json::Value),
+	Other(Value),
 }
 
 /// `value: None` means remove. The timestamp comes from the wrapping `Delta`.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeDelta {
 	pub key: String,
-	pub value: Option<serde_json::Value>,
+	pub value: Option<Value>,
 }
 
 pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
@@ -209,11 +231,11 @@ pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp,
 		Some(value) => match attributes.entry(key) {
 			std::collections::btree_map::Entry::Occupied(mut entry) => {
 				if force || timestamp > entry.get().timestamp {
-					entry.insert(Value { value, timestamp });
+					entry.insert(AttributeValue { value, timestamp });
 				}
 			}
 			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(Value { value, timestamp });
+				entry.insert(AttributeValue { value, timestamp });
 			}
 		},
 		None => {

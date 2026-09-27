@@ -431,7 +431,7 @@ fn read_transform_node_value(inputs: &[graph_craft::document::NodeInput]) -> DAf
 	let rotation_degrees = inputs
 		.get(2)
 		.and_then(|input| input.as_value())
-		.and_then(|value| if let TaggedValue::F64(v) = value { Some(*v) } else { None })
+		.and_then(|value| if let TaggedValue::Number(v) = value { Some(*v) } else { None })
 		.unwrap_or(0.);
 	let scale = inputs
 		.get(3)

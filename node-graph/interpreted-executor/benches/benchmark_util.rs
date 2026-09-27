@@ -18,6 +18,7 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
 	(executor, proto_network)
 }
 
+#[allow(dead_code, reason = "shared by the bench targets, only some of which call it, and each compiles this module separately")]
 pub fn bench_for_each_demo<M: Measurement, F>(group: &mut BenchmarkGroup<M>, f: F)
 where
 	F: Fn(&str, &mut BenchmarkGroup<M>),

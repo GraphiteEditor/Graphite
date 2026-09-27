@@ -15,7 +15,7 @@ pub struct Ellipse;
 impl Ellipse {
 	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::ellipse::IDENTIFIER).expect("Ellipse node can't be found");
-		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(0.5), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
+		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(0.5), false)), Some(NodeInput::value(TaggedValue::Number(0.5), false))])
 	}
 
 	pub fn update_shape(
@@ -38,11 +38,11 @@ impl Ellipse {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::ellipse::RadiusXInput),
-				input: NodeInput::value(TaggedValue::F64(radius.x), false),
+				input: NodeInput::value(TaggedValue::Number(radius.x), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::ellipse::RadiusYInput),
-				input: NodeInput::value(TaggedValue::F64(radius.y), false),
+				input: NodeInput::value(TaggedValue::Number(radius.y), false),
 			});
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));
 		}

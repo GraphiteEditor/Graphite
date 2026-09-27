@@ -27,8 +27,8 @@ impl EditorTestUtils {
 
 		editor.handle_message(PortfolioMessage::Init);
 
-		// Enable the dual-write soak validation in tests so storage round-trip drift fails loud, matching
-		// the previous always-on-in-debug behavior now that it is gated by a preference.
+		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
+		editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: true });
 		editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
 
 		Self { editor, runtime }

@@ -197,14 +197,6 @@ mod editor_commands {
 		PreferencesMessage::Load { preferences }.into()
 	}
 
-	fn load_document_content(document_id: u64, document: String) -> Message {
-		PersistentStateMessage::LoadDocument {
-			document_id: DocumentId(document_id),
-			document,
-		}
-		.into()
-	}
-
 	fn select_document(document_id: u64) -> Message {
 		PortfolioMessage::SelectDocument { document_id: DocumentId(document_id) }.into()
 	}
