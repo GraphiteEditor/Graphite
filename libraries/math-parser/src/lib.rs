@@ -72,11 +72,78 @@ mod tests {
 	}
 
 	#[test]
+	fn errors_after_an_operator_point_past_it() {
+		// The deepest failure is reported, rather than the operator before it being blamed for the expression not ending there
+		for (input, expected) in [
+			("x + 1.5.5", "`1.5.5` is not a valid number, at 4..9"),
+			("sin(1.5.5)", "`1.5.5` is not a valid number, at 4..9"),
+			("x < #", "`#` is not recognized, at 4..5"),
+			("x +", "Found end of input, expected `-`, `+`, `!`, `¬`, or a value, at 3..3"),
+			("2 * * 3", "Found `*`, expected `-`, `+`, `!`, `¬`, or a value, at 4..5"),
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
+		}
+	}
+
+	#[test]
 	fn error_spans_begin_at_the_token() {
 		for (input, expected) in [("2 %", "at 2..3"), ("x  if 1", "at 3..5")] {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.ends_with(expected), "`{input}` gave the error `{error}`");
 		}
+
+		// Every message is in sentence case, including the parser library's own "found ... expected ..." phrasing
+		for input in ["2 +", "(1", "[1;i"] {
+			let error = evaluate(input).unwrap_err().to_string();
+			assert!(error.starts_with(char::is_uppercase), "`{input}` gave the error `{error}`");
+		}
+
+		// Source the lexer can't read is quoted with the reason
+		for (input, expected) in [
+			("x @ 2", "`@` is not recognized, at 2..3"),
+			("#foo", "`#foo` is not recognized, at 0..4"),
+			("1.5.5", "`1.5.5` is not a valid number, at 0..5"),
+			("10 000", "`000` can't follow another number, so write them as one or put `*` between them, at 3..6"),
+			("x.5", "`.5` needs its leading zero after an operand, like `0.5`, at 1..3"),
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
+		}
+
+		// The quoted source is a part of its own, so a host can render it safely whatever it holds, backticks included, and the span
+		// stands apart from the prose, which a sort error has none of
+		use parser::MessagePart::{Code, Text};
+		let message = |input: &str| ast::Node::try_parse_from_str(input).unwrap_err().messages()[0].clone();
+		assert_eq!(message("`abc").parts(), [Code("`abc".into()), Text(" is not recognized".into())]);
+		assert_eq!(message("`abc").span(), Some(0..4));
+		assert_eq!(
+			message("7 % 3").parts(),
+			[Code("%".into()), Text(" is reserved for percentages, so the remainder is written ".into()), Code("mod(a, b)".into()),]
+		);
+		assert_eq!(message("7 % 3").span(), Some(2..3));
+		assert_eq!(message("sin(I)").parts(), [Text("A matrix stands where a value is needed".into())]);
+		assert_eq!(message("sin(I)").span(), None);
+
+		// The tokens the parser library quotes are code too, as is the code a custom message writes between backticks
+		assert_eq!(
+			message("2 * * 3").parts(),
+			[
+				Text("Found ".into()),
+				Code("*".into()),
+				Text(", expected ".into()),
+				Code("-".into()),
+				Text(", ".into()),
+				Code("+".into()),
+				Text(", ".into()),
+				Code("!".into()),
+				Text(", ".into()),
+				Code("¬".into()),
+				Text(", or a value".into())
+			]
+		);
+		assert_eq!(
+			message("{1 if x, 2 otherwise, 3 otherwise}").parts(),
+			[Text("A piecewise has at most one ".into()), Code("otherwise".into()), Text(" case".into())]
+		);
 	}
 
 	#[test]
@@ -222,7 +289,7 @@ mod tests {
 		for input in ["1 < 2 > 1", "1 < 2 != 3", "1 == 2 != 2"] {
 			let error = evaluate(input).unwrap_err().to_string();
 			let expected = "A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`";
-			assert_eq!(error, format!("{expected} at 0..{}", input.len()), "`{input}`");
+			assert_eq!(error, format!("{expected}, at 0..{}", input.len()), "`{input}`");
 		}
 	}
 

@@ -1,4 +1,5 @@
 pub mod layout_widget;
+pub mod tooltip_markdown;
 pub mod widgets;
 
 pub mod widget_prelude {

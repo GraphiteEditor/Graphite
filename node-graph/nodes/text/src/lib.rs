@@ -163,23 +163,24 @@ fn escape_string(input: String) -> String {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum StringCapitalization {
-	/// "on the origin of species" — Converts all letters to lower case.
+	/// *"on the origin of species"* — Converts all letters to lower case.
 	#[default]
 	#[label("lower case")]
 	LowerCase,
-	/// "ON THE ORIGIN OF SPECIES" — Converts all letters to upper case.
+	/// *"ON THE ORIGIN OF SPECIES"* — Converts all letters to upper case.
 	#[label("UPPER CASE")]
 	UpperCase,
-	/// "On The Origin Of Species" — Converts the first letter of every word to upper case.
+	#[menu_separator]
+	/// *"On The Origin Of Species"* — Converts the first letter of every word to upper case.
 	#[label("Capital Case")]
 	CapitalCase,
-	/// "On the Origin of Species" — Converts the first letter of significant words to upper case.
+	/// *"On the Origin of Species"* — Converts the first letter of significant words to upper case.
 	#[label("Headline Case")]
 	HeadlineCase,
-	/// "On the origin of species" — Converts the first letter of every word to lower case, except the initial word which is made upper case.
+	/// *"On the origin of species"* — Converts the first letter of every word to lower case, except the initial word which is made upper case.
 	#[label("Sentence case")]
 	SentenceCase,
-	/// "on The Origin Of Species" — Converts the first letter of every word to upper case, except the initial word which is made lower case.
+	/// *"on The Origin Of Species"* — Converts the first letter of every word to upper case, except the initial word which is made lower case.
 	#[label("camel Case")]
 	CamelCase,
 }
@@ -560,7 +561,7 @@ fn string_repeat(
 	#[default("\\n")]
 	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	separator_escaping: Item<bool>,
 ) -> Item<String> {
@@ -907,7 +908,7 @@ fn string_split(
 	#[default("\\n")]
 	delimiter: Item<String>,
 	/// Whether to convert escape sequences found in the delimiter into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	delimiter_escaping: Item<bool>,
 ) -> List<String> {
@@ -929,7 +930,7 @@ fn string_join(
 	#[default(", ")]
 	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	separator_escaping: Item<bool>,
 ) -> Item<String> {

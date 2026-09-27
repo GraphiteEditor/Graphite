@@ -1,16 +1,23 @@
 use crate::ast::{BinaryOp, Case, Literal, Node, Syntax, UnaryOp};
 use crate::context::{FunctionProvider, NothingMap};
-use crate::lexer::{Lexer, Span, Token};
+use crate::lexer::{LexError, Lexer, Span, Token};
 use crate::sort::sorted;
 use chumsky::cache::{Cache, Cached};
-use chumsky::error::{EmptyErr, LabelError};
+use chumsky::error::{EmptyErr, LabelError, RichReason};
 use chumsky::input::ValueInput;
 use chumsky::{Parser, prelude::*};
 use std::fmt;
+use std::ops::Range;
 
 /// One message per parse failure, each tagged with its byte range in the source expression.
 #[derive(Debug)]
-pub struct ParseError(Vec<String>);
+pub struct ParseError(Vec<ErrorMessage>);
+
+impl ParseError {
+	pub fn messages(&self) -> &[ErrorMessage] {
+		&self.0
+	}
+}
 
 impl fmt::Display for ParseError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -19,6 +26,74 @@ impl fmt::Display for ParseError {
 				writeln!(f)?;
 			}
 			write!(f, "{error}")?;
+		}
+		Ok(())
+	}
+}
+
+/// A parse failure's message as prose and the code it quotes, so a host can render the code, which may be the user's own source,
+/// safely apart, with the byte range of the source it points at, which a sort error lacks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ErrorMessage {
+	parts: Vec<MessagePart>,
+	span: Option<Range<usize>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum MessagePart {
+	Text(String),
+	/// Code the message quotes, like a keyword, an example, or the offending source text.
+	Code(String),
+}
+
+impl ErrorMessage {
+	pub fn parts(&self) -> &[MessagePart] {
+		&self.parts
+	}
+
+	pub fn span(&self) -> Option<Range<usize>> {
+		self.span.clone()
+	}
+
+	/// A message written with its code between backticks, which only the language's own wording uses, never the source text.
+	fn from_prose(prose: &str) -> Self {
+		Self::with_code_between(prose, '`')
+	}
+
+	/// A message whose code sits between a quote character that no code within can hold.
+	fn with_code_between(message: &str, quote: char) -> Self {
+		let parts = message.split(quote).enumerate().filter(|(_, part)| !part.is_empty());
+		let parts = parts
+			.map(|(index, part)| {
+				if index % 2 == 0 {
+					MessagePart::Text(part.to_string())
+				} else {
+					MessagePart::Code(part.to_string())
+				}
+			})
+			.collect();
+		Self { parts, span: None }
+	}
+
+	fn at(self, span: &Span) -> Self {
+		Self {
+			span: Some(span.start..span.end),
+			..self
+		}
+	}
+}
+
+// Code goes between backticks and the span after the prose, the plain-text convention
+impl fmt::Display for ErrorMessage {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		for part in &self.parts {
+			match part {
+				MessagePart::Text(text) => f.write_str(text)?,
+				MessagePart::Code(code) => write!(f, "`{code}`")?,
+			}
+		}
+		if let Some(span) = &self.span {
+			write!(f, ", at {}..{}", span.start, span.end)?;
 		}
 		Ok(())
 	}
@@ -50,7 +125,7 @@ impl Node {
 
 	/// Parses the source for a host that supplies functions, which shadow any builtin of the same name.
 	pub fn try_parse_with_functions(src: &str, functions: &impl FunctionProvider) -> Result<Node, ParseError> {
-		sorted(parse(src)?, functions).map_err(|error| ParseError(vec![error.to_string()]))
+		sorted(parse(src)?, functions).map_err(|error| ParseError(vec![ErrorMessage::from_prose(&error.to_string())]))
 	}
 }
 
@@ -95,11 +170,33 @@ fn parse(src: &str) -> Result<Syntax, ParseError> {
 			parse_errs
 				.into_iter()
 				.map(|e| match e.found() {
-					Some(Token::Percent) => format!("`%` is reserved for percentages, so the remainder is written `mod(a, b)`, at {}", e.span()),
-					Some(Token::If) => format!("`if` joins a case's value to its condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span()),
-					Some(Token::Otherwise) => format!("`otherwise` ends the one case with no condition, like `{{a if x > 0, b otherwise}}`, at {}", e.span()),
-					Some(Token::Where) => format!("`where` is a reserved word, so it can't be a name, at {}", e.span()),
-					_ => format!("{e} at {}", e.span()),
+					Some(Token::Percent) => ErrorMessage::from_prose("`%` is reserved for percentages, so the remainder is written `mod(a, b)`").at(e.span()),
+					Some(Token::If) => ErrorMessage::from_prose("`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`").at(e.span()),
+					Some(Token::Otherwise) => ErrorMessage::from_prose("`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`").at(e.span()),
+					Some(Token::Where) => ErrorMessage::from_prose("`where` is a reserved word, so it can't be a name").at(e.span()),
+					// The offending source is quoted as its own part, since it may hold anything, backticks included
+					Some(Token::Error(error)) => {
+						let text = src.get(e.span().start..e.span().end).unwrap_or_default();
+						let reason = match error {
+							LexError::Unrecognized => "is not recognized",
+							LexError::MalformedNumber => "is not a valid number",
+							LexError::NumberAfterNumber => "can't follow another number, so write them as one or put `*` between them",
+							LexError::LeadingDotAfterOperand => "needs its leading zero after an operand, like `0.5`",
+						};
+						let reason = ErrorMessage::from_prose(&format!(" {reason}"));
+						let parts = std::iter::once(MessagePart::Code(text.to_string())).chain(reason.parts).collect();
+						ErrorMessage { parts, span: None }.at(e.span())
+					}
+					_ => match e.reason() {
+						RichReason::Custom(message) => ErrorMessage::from_prose(message).at(e.span()),
+						// Chumsky's own wording is "found ... expected ..." in lowercase, without a comma, with its tokens between single quotes
+						RichReason::ExpectedFound { .. } => {
+							let message = e.to_string().replacen(" expected ", ", expected ", 1);
+							let mut characters = message.chars();
+							let sentence_case: String = characters.next().into_iter().flat_map(char::to_uppercase).chain(characters).collect();
+							ErrorMessage::with_code_between(&sentence_case, '\'').at(e.span())
+						}
+					},
 				})
 				.collect(),
 		)),
@@ -159,7 +256,7 @@ where
 			node
 		});
 
-		let ident = select! {Token::Ident(s) => s}.labelled("ident");
+		let ident = select! {Token::Ident(s) => s}.labelled("a name");
 
 		// An ident followed by parenthesized args is a function call, otherwise a variable
 		let call_or_var = ident.then(args.or_not()).map(|(name, args): (&str, Option<Vec<Syntax>>)| match args {
@@ -173,7 +270,7 @@ where
 			expr: Box::new(expr),
 		});
 
-		let atom = choice((constant, piecewise, matrix, call_or_var, parens, magnitude)).labelled("atom");
+		let atom = choice((constant, piecewise, matrix, call_or_var, parens, magnitude)).labelled("a value");
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
 		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
@@ -255,28 +352,29 @@ where
 		let cmp = range
 			.clone()
 			.then(cmp_op.then(range).repeated().collect::<Vec<_>>())
-			.try_map(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>), span| {
+			// Emitted rather than failed, since chumsky's `try_map` moves the deepest error found inside it back to its own start, hiding it behind the operator
+			.validate(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>), extra, emitter| {
 				// A lone comparison is an ordinary binary operation
 				if rest.len() <= 1 {
-					return Ok(match rest.pop() {
+					return match rest.pop() {
 						Some((op, second)) => Syntax::BinOp {
 							lhs: Box::new(first),
 							op,
 							rhs: Box::new(second),
 						},
 						None => first,
-					});
+					};
 				}
 
 				let ops: Vec<BinaryOp> = rest.iter().map(|(op, _)| *op).collect();
 				if !BinaryOp::chain_in_one_direction(&ops) {
-					return Err(CustomError::custom(
-						span,
+					emitter.emit(CustomError::custom(
+						extra.span(),
 						"A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`",
 					));
 				}
 
-				Ok(Syntax::Comparison { first: Box::new(first), rest })
+				Syntax::Comparison { first: Box::new(first), rest }
 			});
 
 		let and = cmp.clone().foldl(and_op.then(cmp).repeated(), |lhs, (op, rhs)| Syntax::BinOp {
