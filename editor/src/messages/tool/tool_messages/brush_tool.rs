@@ -624,7 +624,7 @@ fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<M
 
 	let brush_node = resolve_proto_node_type(active_brush::IDENTIFIER)
 		.expect("Brush node does not exist")
-		.node_template_input_override([None, Some(NodeInput::value(TaggedValue::BrushCache(Default::default()), false))]);
+		.node_template_input_override([None, Some(NodeInput::value(TaggedValue::CacheHandle(Default::default()), false))]);
 
 	let id = NodeId::new();
 	responses.add(GraphOperationMessage::NewCustomLayer {
