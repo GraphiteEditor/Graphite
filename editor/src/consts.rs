@@ -193,5 +193,9 @@ pub const UI_SCALE_DEFAULT: f64 = 1.;
 pub const UI_SCALE_MIN: f64 = 0.5;
 pub const UI_SCALE_MAX: f64 = 3.;
 
+// DIALOGS
+pub const MAX_UNSAVED_DOCUMENTS_IN_DIALOG: usize = 5;
+pub const MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG: usize = 60;
+
 // ACTIONS
 pub const BLEND_COUNT_PER_LAYER: usize = 10;

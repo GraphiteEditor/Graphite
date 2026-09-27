@@ -1,5 +1,8 @@
+use crate::consts::{MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG, MAX_UNSAVED_DOCUMENTS_IN_DIALOG};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
+
+use std::fmt::Write;
 
 /// A dialog for confirming the closing of all documents viewable via `File -> Close All` in the menu bar.
 pub struct CloseAllDocumentsDialog {
@@ -30,17 +33,14 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 
 impl LayoutHolder for CloseAllDocumentsDialog {
 	fn layout(&self) -> Layout {
-		const MAX_DOCS_TO_SHOW: usize = 5;
-		const MAX_NAME_LENGTH: usize = 60;
-
 		let mut unsaved_list = "• ".to_string()
 			+ &self
 				.unsaved_document_names
 				.iter()
-				.take(MAX_DOCS_TO_SHOW)
+				.take(MAX_UNSAVED_DOCUMENTS_IN_DIALOG)
 				.map(|name| {
-					if name.chars().count() > MAX_NAME_LENGTH {
-						let mut truncated: String = name.chars().take(MAX_NAME_LENGTH).collect();
+					if name.chars().count() > MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG {
+						let mut truncated: String = name.chars().take(MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG).collect();
 						truncated.push('…');
 						truncated
 					} else {
@@ -50,10 +50,10 @@ impl LayoutHolder for CloseAllDocumentsDialog {
 				.collect::<Vec<_>>()
 				.join("\n• ");
 
-		let remaining = self.unsaved_document_names.len().saturating_sub(MAX_DOCS_TO_SHOW);
+		let remaining = self.unsaved_document_names.len().saturating_sub(MAX_UNSAVED_DOCUMENTS_IN_DIALOG);
 		if remaining > 0 {
 			let s = if remaining == 1 { "" } else { "s" };
-			unsaved_list.push_str(&format!("\n... and {remaining} more document{s}"));
+			let _ = write!(unsaved_list, "\n... and {remaining} more document{s}");
 		}
 
 		Layout(vec![
