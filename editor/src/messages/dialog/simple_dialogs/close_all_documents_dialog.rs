@@ -30,7 +30,14 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 
 impl LayoutHolder for CloseAllDocumentsDialog {
 	fn layout(&self) -> Layout {
-		let unsaved_list = "• ".to_string() + &self.unsaved_document_names.join("\n• ");
+		let max_docs_to_show = 5;
+		let mut unsaved_list = "• ".to_string() + &self.unsaved_document_names.iter().take(max_docs_to_show).cloned().collect::<Vec<_>>().join("\n• ");
+
+		let remaining = self.unsaved_document_names.len().saturating_sub(max_docs_to_show);
+		if remaining > 0 {
+			let s = if remaining == 1 { "" } else { "s" };
+			unsaved_list.push_str(&format!("\n... and {remaining} more document{s}"));
+		}
 
 		Layout(vec![
 			LayoutGroup::row(vec![TextLabel::new("Save documents before closing them?").bold(true).multiline(true).widget_instance()]),
