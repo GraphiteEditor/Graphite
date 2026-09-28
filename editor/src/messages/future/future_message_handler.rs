@@ -6,13 +6,14 @@ use dyn_any::WasmNotSend;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 
 use crate::messages::prelude::*;
+use crate::task::{Spawn, TaskExecutor, TaskExecutorHandle};
 
 #[cfg(not(target_family = "wasm"))]
 type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + Send + 'static>>;
 #[cfg(target_family = "wasm")]
 type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + 'static>>;
 
-/// Invoked by the spawner after a result is sent, to wake the platform event loop.
+/// Invoked after a result is sent, to wake the platform event loop.
 pub type Wake = Arc<dyn Fn() + Send + Sync>;
 
 fn noop_wake() -> Wake {
@@ -62,38 +63,26 @@ where
 	}
 }
 
-/// Platform-specific async-task executor.
-/// Runs `future`, sends the resolved message on `results`, then calls `wake`.
-pub trait MessageSpawner: Send + Sync {
-	fn spawn(&self, future: InnerMessageFuture, results: UnboundedSender<Message>, wake: Wake);
-}
-
 #[derive(ExtractField)]
 pub struct FutureMessageContext {}
 
 #[derive(ExtractField)]
 pub struct FutureMessageHandler {
-	#[cfg_attr(test, expect(dead_code))]
-	spawner: Arc<dyn MessageSpawner>,
+	handle: TaskExecutorHandle,
 	wake: Wake,
-	#[cfg_attr(test, expect(dead_code))]
 	results_sender: UnboundedSender<Message>,
 	results_receiver: UnboundedReceiver<Message>,
 }
 
 impl FutureMessageHandler {
-	pub fn with_wake(wake: Wake) -> Self {
+	pub fn new(handle: TaskExecutorHandle, wake: Wake) -> Self {
 		let (results_sender, results_receiver) = unbounded();
 		Self {
-			spawner: default_spawner(),
+			handle,
 			wake,
 			results_sender,
 			results_receiver,
 		}
-	}
-
-	pub fn set_wake(&mut self, wake: Wake) {
-		self.wake = wake;
 	}
 
 	/// Pull every resolved async result into `out`.
@@ -106,7 +95,7 @@ impl FutureMessageHandler {
 
 impl Default for FutureMessageHandler {
 	fn default() -> Self {
-		Self::with_wake(noop_wake())
+		Self::new(TaskExecutor::blocking().handle(), noop_wake())
 	}
 }
 
@@ -118,18 +107,17 @@ impl std::fmt::Debug for FutureMessageHandler {
 
 #[message_handler_data]
 impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandler {
-	fn process_message(&mut self, message: FutureMessage, _responses: &mut VecDeque<Message>, _context: FutureMessageContext) {
+	fn process_message(&mut self, message: FutureMessage, responses: &mut VecDeque<Message>, _context: FutureMessageContext) {
 		match message {
 			FutureMessage::Await { future } => {
-				#[cfg(not(test))]
-				self.spawner.spawn(future.into_future(), self.results_sender.clone(), self.wake.clone());
-
-				// For tests, block on the future to ensure the result is available when validating editor state afterwards.
-				#[cfg(test)]
-				{
-					let message = futures::executor::block_on(future.into_future());
-					_responses.push_back(message);
-				}
+				let results = self.results_sender.clone();
+				let wake = self.wake.clone();
+				self.handle.spawn(Box::pin(async move {
+					let message = future.await;
+					let _ = results.unbounded_send(message);
+					wake();
+				}));
+				self.drain_results(responses);
 			}
 			FutureMessage::Wake => {
 				// Tick-only message: the dispatcher's top-of-tick drain handles the real work.
@@ -138,66 +126,4 @@ impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandle
 	}
 
 	advertise_actions!(FutureMessageDiscriminant;);
-}
-
-#[cfg(not(target_family = "wasm"))]
-fn default_spawner() -> Arc<dyn MessageSpawner> {
-	Arc::new(TokioSpawner::default())
-}
-
-#[cfg(target_family = "wasm")]
-fn default_spawner() -> Arc<dyn MessageSpawner> {
-	Arc::new(WasmSpawner)
-}
-
-#[cfg(not(target_family = "wasm"))]
-struct TokioSpawner {
-	/// Built lazily on first spawn. `multi_thread(1)` lets Tokio manage its own driver.
-	runtime: std::sync::OnceLock<tokio::runtime::Runtime>,
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl Default for TokioSpawner {
-	fn default() -> Self {
-		Self { runtime: std::sync::OnceLock::new() }
-	}
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl TokioSpawner {
-	fn runtime(&self) -> &tokio::runtime::Runtime {
-		self.runtime.get_or_init(|| {
-			tokio::runtime::Builder::new_multi_thread()
-				.worker_threads(1)
-				.thread_name("graphite-async")
-				.enable_all()
-				.build()
-				.expect("failed to construct async-message tokio runtime")
-		})
-	}
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl MessageSpawner for TokioSpawner {
-	fn spawn(&self, future: InnerMessageFuture, results: UnboundedSender<Message>, wake: Wake) {
-		self.runtime().spawn(async move {
-			let message = future.await;
-			let _ = results.unbounded_send(message);
-			wake();
-		});
-	}
-}
-
-#[cfg(target_family = "wasm")]
-struct WasmSpawner;
-
-#[cfg(target_family = "wasm")]
-impl MessageSpawner for WasmSpawner {
-	fn spawn(&self, future: InnerMessageFuture, results: UnboundedSender<Message>, wake: Wake) {
-		wasm_bindgen_futures::spawn_local(async move {
-			let message = future.await;
-			let _ = results.unbounded_send(message);
-			wake();
-		});
-	}
 }

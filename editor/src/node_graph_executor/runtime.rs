@@ -8,7 +8,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
-use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
+use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
@@ -36,7 +36,7 @@ pub struct NodeRuntime {
 	#[cfg(not(test))]
 	executor: DynamicExecutor,
 	receiver: Receiver<GraphRuntimeRequest>,
-	sender: InternalNodeGraphUpdateSender,
+	sender: Sender<NodeGraphUpdate>,
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
@@ -93,29 +93,6 @@ pub struct ExportConfig {
 	pub artboard_count: usize,
 }
 
-#[derive(Clone)]
-struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
-
-impl InternalNodeGraphUpdateSender {
-	fn send_compilation_response(&self, response: CompilationResponse) {
-		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
-	}
-
-	fn send_execution_response(&self, response: ExecutionResponse) {
-		self.0.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response")
-	}
-
-	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
-		self.0.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response")
-	}
-}
-
-impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		self.0.send(NodeGraphUpdate::NodeGraphUpdateMessage(message)).expect("Failed to send response")
-	}
-}
-
 // TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
@@ -124,7 +101,7 @@ impl NodeRuntime {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
-			sender: InternalNodeGraphUpdateSender(sender.clone()),
+			sender,
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
 			resources: ResourceRegistry::default(),
@@ -132,7 +109,6 @@ impl NodeRuntime {
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
-				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
 
 				#[cfg(not(test))]
 				application_io: None,
@@ -201,7 +177,6 @@ impl NodeRuntime {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = PlatformEditorApi {
 						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
 						editor_preferences: Box::new(preferences),
 					}
 					.into();
@@ -227,7 +202,9 @@ impl NodeRuntime {
 
 					self.update_thumbnails = true;
 
-					self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
+					self.sender
+						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse { result, node_graph_errors }))
+						.expect("Failed to send response");
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
 					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
@@ -287,7 +264,7 @@ impl NodeRuntime {
 
 							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
 
-							self.sender.send_eyedropper_preview(raster_cpu);
+							self.sender.send(NodeGraphUpdate::EyedropperPreview(raster_cpu)).expect("Failed to send response");
 							continue;
 						}
 						// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
@@ -331,13 +308,14 @@ impl NodeRuntime {
 						r => (r, None),
 					};
 
-					self.sender.send_execution_response(ExecutionResponse {
+					let response = ExecutionResponse {
 						execution_id,
 						result,
 						responses,
 						vector_modify: self.vector_modify.clone(),
 						inspect_result,
-					});
+					};
+					self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 					return texture;
 				}
 			}
@@ -597,7 +575,6 @@ impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
 		self.editor_api = PlatformEditorApi {
 			application_io: Some(application_io.into()),
-			node_graph_message_sender: Box::new(self.sender.clone()),
 			editor_preferences: Box::new(self.editor_preferences.clone()),
 		}
 		.into();

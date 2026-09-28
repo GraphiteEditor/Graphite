@@ -6,7 +6,7 @@ use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
-use graphene_std::application_io::{ExportFormat, NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
 use graphene_std::list::List;
@@ -51,7 +51,6 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
-	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
 #[derive(Debug, Default)]
@@ -465,7 +464,6 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
-				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 			}
 		}
 

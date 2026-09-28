@@ -15,6 +15,7 @@ pub mod consts;
 pub mod dispatcher;
 pub mod messages;
 pub mod node_graph_executor;
+pub mod task;
 #[cfg(test)]
 pub mod test_utils;
 pub mod utility_traits;

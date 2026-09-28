@@ -16,7 +16,7 @@ pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage,
 pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageContext, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageContext, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
-pub use crate::messages::future::{FutureMessage, FutureMessageContext, FutureMessageDiscriminant, FutureMessageHandler, MessageFuture, MessageSpawner, Wake};
+pub use crate::messages::future::{FutureMessage, FutureMessageContext, FutureMessageDiscriminant, FutureMessageHandler, MessageFuture, Wake};
 pub use crate::messages::input_mapper::key_mapping::{KeyMappingMessage, KeyMappingMessageContext, KeyMappingMessageDiscriminant, KeyMappingMessageHandler};
 pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageContext, InputMapperMessageDiscriminant, InputMapperMessageHandler};
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageContext, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};

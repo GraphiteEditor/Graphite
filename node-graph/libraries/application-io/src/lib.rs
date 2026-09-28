@@ -38,20 +38,6 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	}
 }
 
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum NodeGraphUpdateMessage {}
-
-pub trait NodeGraphUpdateSender {
-	fn send(&self, message: NodeGraphUpdateMessage);
-}
-
-impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		self.lock().as_mut().unwrap().send(message)
-	}
-}
-
 pub trait GetEditorPreferences {
 	fn max_render_region_area(&self) -> u32;
 }
@@ -92,14 +78,6 @@ impl RenderConfig {
 	}
 }
 
-struct Logger;
-
-impl NodeGraphUpdateSender for Logger {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		log::warn!("dispatching message with fallback node graph update sender {message:?}");
-	}
-}
-
 struct DummyPreferences;
 
 impl GetEditorPreferences for DummyPreferences {
@@ -111,7 +89,6 @@ impl GetEditorPreferences for DummyPreferences {
 pub struct EditorApi<Io> {
 	/// Gives access to APIs like resources.
 	pub application_io: Option<Arc<Io>>,
-	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
 	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
 	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
 }
@@ -122,7 +99,6 @@ impl<Io: Default> Default for EditorApi<Io> {
 	fn default() -> Self {
 		Self {
 			application_io: None,
-			node_graph_message_sender: Box::new(Logger),
 			editor_preferences: Box::new(DummyPreferences),
 		}
 	}
@@ -131,7 +107,6 @@ impl<Io: Default> Default for EditorApi<Io> {
 impl<Io> Hash for EditorApi<Io> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.application_io.as_ref().map_or(0, |io| io as *const _ as usize).hash(state);
-		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
 		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
 	}
 }
@@ -145,7 +120,6 @@ impl<Io> CacheHash for EditorApi<Io> {
 impl<Io> PartialEq for EditorApi<Io> {
 	fn eq(&self, other: &Self) -> bool {
 		self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
-			&& std::ptr::eq(self.node_graph_message_sender.as_ref() as *const _, other.node_graph_message_sender.as_ref() as *const _)
 			&& std::ptr::eq(self.editor_preferences.as_ref() as *const _, other.editor_preferences.as_ref() as *const _)
 	}
 }

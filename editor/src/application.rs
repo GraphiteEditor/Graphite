@@ -1,5 +1,6 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
+use crate::task::TaskExecutor;
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 pub use graphene_std::uuid::*;
@@ -7,6 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 pub struct Editor {
 	pub dispatcher: Dispatcher,
+	task_executor: TaskExecutor,
 }
 
 impl Editor {
@@ -21,12 +23,13 @@ impl Editor {
 		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
 		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
+		let task_executor = TaskExecutor::new();
 		let mut dispatcher = Dispatcher::new(resource_storage, document_store);
-		dispatcher.message_handlers.future_message_handler.set_wake(wake);
+		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), wake);
 		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
 		crate::node_graph_executor::replace_application_io(application_io);
 
-		Self { dispatcher }
+		Self { dispatcher, task_executor }
 	}
 
 	#[cfg(test)]
@@ -35,9 +38,10 @@ impl Editor {
 		graphene_std::uuid::set_uuid_seed(0);
 
 		let (mut runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
-		let editor = Self {
-			dispatcher: Dispatcher::with_executor(executor),
-		};
+		let task_executor = TaskExecutor::blocking();
+		let mut dispatcher = Dispatcher::with_executor(executor);
+		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), Arc::new(|| {}));
+		let editor = Self { dispatcher, task_executor };
 
 		let mut application_io = PlatformApplicationIo::default();
 		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_storage_message_handler.resources());
