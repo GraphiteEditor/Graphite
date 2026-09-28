@@ -29,7 +29,14 @@ pub struct InvalidSessionToken;
 impl FromStr for SessionToken {
 	type Err = InvalidSessionToken;
 
+	/// Parses the bare token, or a share link carrying it as the `session` query parameter, so a pasted link
+	/// works wherever a token does: the editor's join field, the CLI, a URL scheme.
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		let s = s.trim();
+		let s = match s.split_once("session=") {
+			Some((_, rest)) => rest.split(['&', '#', ' ']).next().unwrap_or(""),
+			None => s,
+		};
 		let encoded = s.strip_prefix(PREFIX).ok_or(InvalidSessionToken)?;
 		let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| InvalidSessionToken)?;
 		let bytes = bytes.try_into().map_err(|_| InvalidSessionToken)?;
@@ -45,6 +52,14 @@ mod tests {
 	fn round_trips_through_string() {
 		let token = SessionToken([7; 16]);
 		assert_eq!(token.to_string().parse::<SessionToken>().unwrap(), token);
+	}
+
+	#[test]
+	fn parses_the_token_out_of_a_share_link() {
+		let token = SessionToken([7; 16]);
+		let link = format!(" https://editor.graphite.rs/?session={token}#top ");
+		assert_eq!(link.parse::<SessionToken>().unwrap(), token);
+		assert_eq!(format!("http://localhost:8080/?debug=1&session={token}").parse::<SessionToken>().unwrap(), token);
 	}
 
 	#[test]

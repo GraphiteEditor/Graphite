@@ -459,9 +459,8 @@
 						<button
 							class="session"
 							class:disconnected={tabLabel.session === "Disconnected"}
-							title={tabLabel.session === "Connected"
-								? "In a live session. Click to open the Session panel."
-								: "Disconnected from the session, reconnecting. Click to open the Session panel."}
+							data-tooltip-label={tabLabel.session === "Connected" ? "Live session" : "Disconnected from the session"}
+							data-tooltip-description={tabLabel.session === "Connected" ? "Click to open the Session panel." : "Reconnecting. Click to open the Session panel."}
 							data-session-button
 							on:pointerdown|stopPropagation
 							on:click|stopPropagation={() => sessionAction?.(tabIndex)}

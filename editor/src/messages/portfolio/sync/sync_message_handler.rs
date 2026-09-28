@@ -89,7 +89,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if token.trim().is_empty() {
 					return;
 				}
-				let token = match session_token_in(&token).parse::<SessionToken>() {
+				let token = match token.parse::<SessionToken>() {
 					Ok(token) => token,
 					Err(error) => {
 						log::warn!("Ignoring session link: {error}");
@@ -593,6 +593,7 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			let live = role == Role::Host || (role == Role::Guest && gdd.is_synced());
 			let token = SessionToken::for_document(gdd.manifest().document_id).to_string();
 			let copy_token = token.clone();
+			let bare_token = token.clone();
 			(
 				if live { "Live session" } else { "Connecting" },
 				vec![
@@ -610,6 +611,12 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 						.selectable(true)
 						.tooltip_label("Session")
 						.tooltip_description("Opening the editor with this session in the link joins the room.")
+						.widget_instance(),
+					// The text itself, for the CLI or a message where a link is not wanted; the label is selectable but the
+					// editor owns the copy shortcut.
+					IconButton::new("Copy", 24)
+						.tooltip_label("Copy Session Token")
+						.on_update(move |_| FrontendMessage::TriggerClipboardWrite { content: bare_token.clone() }.into())
 						.widget_instance(),
 				]),
 			)
@@ -821,13 +828,4 @@ fn peer_color(peer: PeerId) -> String {
 	};
 	let channel = |value: f64| ((value + m) * 255.).round() as u8;
 	format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b))
-}
-
-/// The session token in a pasted link, or the text itself when it is a bare token.
-fn session_token_in(text: &str) -> &str {
-	let text = text.trim();
-	match text.split_once("session=") {
-		Some((_, rest)) => rest.split(['&', '#', ' ']).next().unwrap_or(""),
-		None => text,
-	}
 }
