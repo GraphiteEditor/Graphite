@@ -47,10 +47,12 @@ pub enum Token<'src> {
 	Ge,
 	Neq,
 	EqEq,
+	/// The `=` that defines a name in a `where` clause.
+	Equals,
 
 	If,
 	Otherwise,
-	/// Reserved for `where` bindings, so the parser never matches it yet and no host binding can claim the name first.
+	/// Begins the clause of bindings for the expression before it.
 	Where,
 
 	/// Source that is no token, which the parser never matches, forcing a parse error rather than silently truncating the input.
@@ -106,6 +108,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Ge => f.write_str(">="),
 			Token::Neq => f.write_str("!="),
 			Token::EqEq => f.write_str("=="),
+			Token::Equals => f.write_str("="),
 
 			Token::If => f.write_str("if"),
 			Token::Otherwise => f.write_str("otherwise"),
@@ -549,7 +552,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					Error(LexError::Unrecognized)
+					Equals
 				}
 			}
 

@@ -57,7 +57,7 @@ mod tests {
 	#[test]
 	fn unrecognized_characters_fail_to_parse() {
 		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix
-		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3", "\\", "2 \\ 3", "\\2", "\\_foo"] {
+		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "\\", "2 \\ 3", "\\2", "\\_foo"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -225,7 +225,6 @@ mod tests {
 			("x if 1", "`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`"),
 			("{1 if 1 otherwise}", "`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`"),
 			("{1 otherwise, 2 otherwise}", "A piecewise has at most one `otherwise` case"),
-			("where", "`where` is a reserved word, so it can't be a name"),
 		] {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.starts_with(expected), "`{input}` gave the error `{error}`");
@@ -604,6 +603,253 @@ mod tests {
 		assert_eq!(eval("clamp(8)"), Some(4.));
 		assert_eq!(eval("\\clamp(8, 0..5)"), Some(5.));
 		assert!(ast::Node::try_parse_from_str("clamp(8)").is_err(), "without the host, `clamp` is the builtin");
+	}
+
+	/// Binds `x` to 3 and `y` to 4, and supplies the function `double`.
+	struct WhereHost;
+
+	impl context::ValueProvider for WhereHost {
+		fn get_value(&self, name: &str) -> Option<Value> {
+			match name {
+				"x" => Some(Value::from_f64(3.)),
+				"y" => Some(Value::from_f64(4.)),
+				_ => None,
+			}
+		}
+	}
+
+	impl context::FunctionProvider for WhereHost {
+		fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+			(name == "double").then(|| Value::from_f64(2. * args[0].as_real().unwrap()))
+		}
+		fn provides(&self, name: &str) -> bool {
+			name == "double"
+		}
+	}
+
+	fn evaluate_with_where_host(source: &str) -> Result<Object, EvalError> {
+		ast::Node::try_parse_with_functions(source, &WhereHost).unwrap().eval(&EvalContext::new(WhereHost, WhereHost))
+	}
+
+	#[test]
+	fn where_defines_names_for_the_expression_before_it() {
+		let real = |source: &str| evaluate_with_where_host(source).unwrap().as_real();
+
+		assert_eq!(real("a + b where a = 1, b = 2"), Some(3.));
+		assert_eq!(real("{sin(r)/r if r != 0, 1 otherwise} where r = hypot(x, y)"), Some(5_f64.sin() / 5.));
+		assert_eq!(real("f(0) + f(1) where f(t) = t^2 + c, c = 3"), Some(7.));
+		assert_eq!(real("g(2, 3) where g(a, b) = a b"), Some(6.));
+
+		// A clause runs to its closing parenthesis, so every comma inside separates definitions
+		assert_eq!(real("2 (a + b where a = x^2, b = y^2)"), Some(50.));
+		assert_eq!(real("(a where a = 1) + (a where a = 2)"), Some(3.));
+		assert_eq!(real("a where a = (b where b = 2) + 1"), Some(3.));
+
+		// Within a call's parentheses, a clause after the last argument is read by every argument, but not by the function's name
+		assert_eq!(real("sqrt(a where a = 16)"), Some(4.));
+		assert_eq!(real("max(a, b where a = 1, b = 2)"), Some(2.));
+		assert_eq!(real("f(2 where f(t) = t + 1) where f(t) = 10 t"), Some(20.));
+		assert_eq!(real("k(a where a = 3, k = 5) where k = 2"), Some(6.));
+		assert_eq!(real("sin(0 where sin = 2)"), Some(0.));
+	}
+
+	#[test]
+	fn where_definitions_are_ordered_by_dependency() {
+		let real = |source: &str| evaluate(source).unwrap().unwrap().as_real();
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// A definition may read any other in its clause, whatever their order
+		assert_eq!(real("a where a = b + 1, b = 2"), Some(3.));
+		assert_eq!(real("f(1) where f(t) = g(t) + c, g(t) = 2t, c = 1"), Some(3.));
+
+		// A cycle could never finish, whether through values, functions, or a nested clause
+		assert_eq!(error("x where x = x + 1"), "`x` is defined in terms of itself");
+		assert_eq!(error("f(1) where f(t) = f(t - 1)"), "`f` is defined in terms of itself");
+		assert_eq!(error("a where a = b, b = a"), "`a` and `b` are defined in terms of each other");
+		assert_eq!(error("f(1) where f(t) = g(t), g(t) = f(t)"), "`f` and `g` are defined in terms of each other");
+		assert_eq!(error("a where a = b, b = c, c = f(1), f(t) = a"), "`a`, `b`, `c`, and `f` are defined in terms of each other");
+		assert_eq!(error("a where a = (c where c = b), b = a"), "`a` and `b` are defined in terms of each other");
+
+		// A parameter or an inner definition of the same name is another name, as is a function beside a value
+		assert_eq!(real("a where f(a) = a + 1, a = f(2)"), Some(3.));
+		assert_eq!(real("a where a = (b where b = 1), b = a"), Some(1.));
+		assert_eq!(real("f(2) where f = 3, f(t) = f t"), Some(6.));
+	}
+
+	#[test]
+	fn where_scoping_is_lexical() {
+		let real = |source: &str| evaluate_with_where_host(source).unwrap().as_real();
+
+		// A clause shadows the host's bindings, the builtins, and enclosing clauses, and a parameter shadows every outer name
+		assert_eq!(real("x where x = 2"), Some(2.));
+		assert_eq!(real("e + \\e where e = 2"), Some(2. + std::f64::consts::E));
+		assert_eq!(real("(a where a = 2) + a where a = 5"), Some(7.));
+		assert_eq!(real("f(1) where f(a) = a, a = 5"), Some(1.));
+		assert_eq!(real("f(1) + x where f(x) = x"), Some(4.));
+
+		// A function reads the names around its definition, not around its call
+		assert_eq!(real("(f(1) where a = 5) where f(t) = t + a, a = 2"), Some(3.));
+
+		// A clause's names are unknown outside its parentheses
+		assert!(matches!(evaluate_with_where_host("(a where a = 1) + a"), Err(EvalError::MissingValue(name)) if name == "a"));
+	}
+
+	#[test]
+	fn where_calls_and_values_are_separate_namespaces() {
+		let real = |source: &str| evaluate_with_where_host(source).unwrap().as_real();
+
+		assert_eq!(real("f + f(1) where f = 2, f(t) = t + 1"), Some(4.));
+
+		// A value leaves any function of its name a call, and multiplies its one argument only where no such function exists
+		assert_eq!(real("sin(0) + sin where sin = 2"), Some(2.));
+		assert_eq!(real("double(1) + double where double = 5"), Some(7.));
+		assert_eq!(real("k(x + 1) where k = 2"), Some(8.));
+
+		// A defined function shadows the host's function and the builtin of its name, which the prefix still reaches
+		assert_eq!(real("double(1) where double(t) = t + 5"), Some(6.));
+		assert_eq!(real("sin(2) where sin(t) = t"), Some(2.));
+		assert_eq!(real("\\sin(0) where sin(t) = t + 1"), Some(0.));
+
+		// A function is only ever called, so its bare name reads a value
+		assert!(matches!(evaluate("f where f(t) = t").unwrap(), Err(EvalError::MissingValue(name)) if name == "f"));
+	}
+
+	#[test]
+	fn where_definitions_are_evaluated_lazily_and_once() {
+		use std::cell::Cell;
+		use std::rc::Rc;
+
+		struct Counting(Rc<Cell<u32>>);
+		impl context::FunctionProvider for Counting {
+			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+				(name == "counted").then(|| {
+					self.0.set(self.0.get() + 1);
+					args[0]
+				})
+			}
+			fn provides(&self, name: &str) -> bool {
+				name == "counted"
+			}
+		}
+		let calls = Rc::new(Cell::new(0));
+		let counted = |source: &str| {
+			calls.set(0);
+			let node = ast::Node::try_parse_with_functions(source, &Counting(calls.clone())).unwrap();
+			let result = node.eval(&EvalContext::new(context::NothingMap, Counting(calls.clone()))).unwrap().as_real();
+			(result, calls.get())
+		};
+
+		// A definition or argument the result never reaches is never evaluated, so its error is never raised
+		for source in ["1 where a = 0/0", "f(0/0) where f(t) = 1", "{1 if 1 > 0, a otherwise} where a = 0/0"] {
+			assert_eq!(evaluate(source).unwrap().unwrap().as_real(), Some(1.), "`{source}`");
+		}
+		assert!(matches!(evaluate("a + 1 where a = 0/0").unwrap(), Err(EvalError::Indeterminate)));
+
+		// A definition is evaluated once however often it's read, as is an argument within one call
+		assert_eq!(counted("a + a + a where a = counted(2)"), (Some(6.), 1));
+		assert_eq!(counted("f(counted(2)) where f(t) = t t t"), (Some(8.), 1));
+		assert_eq!(counted("0 where a = counted(2)"), (Some(0.), 0));
+
+		// So reads never multiply the work, however deeply calls nest
+		let nested = format!("{}1{} where f(t) = t + t", "f(".repeat(40), ")".repeat(40));
+		assert_eq!(evaluate(&nested).unwrap().unwrap().as_real(), Some(2_f64.powi(40)));
+	}
+
+	#[test]
+	fn where_names_follow_the_case_rule() {
+		let real = |source: &str| evaluate(source).unwrap().unwrap().as_real();
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// A name beginning with a capital letter defines a matrix and any other a value, parameters included
+		assert_eq!(real("det(M) where M = 2 I"), Some(16.));
+		assert_eq!(real("det(F(3)) where F(t) = t I"), Some(81.));
+		assert_eq!(real("f(2 I) where f(T) = det(T)"), Some(16.));
+
+		// A name of the wrong case is recased in the message where the case exists to flip
+		assert_eq!(error("m where m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`");
+		assert_eq!(error("Mass where Mass = 1"), "`Mass` is defined as a value, so rename it to begin with a lowercase letter, like `mass`");
+		assert_eq!(error("f(1) where f(t) = t I"), "`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`");
+		assert_eq!(error("あ where あ = I"), "`あ` is defined as a matrix, so rename it to begin with a capital letter");
+		assert_eq!(error("𝐀 where 𝐀 = 1"), "`𝐀` is defined as a value, so rename it to begin with a lowercase letter");
+
+		// The definition is checked before any read of it, even one in an earlier definition, so a read never takes the blame
+		assert_eq!(error("det(m) where m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`");
+		assert_eq!(error("a where a = det(m), m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`");
+		assert_eq!(
+			error("det(f(1)) where f(t) = t I"),
+			"`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`"
+		);
+		assert_eq!(
+			error("Width < 10 where Width = 5"),
+			"`Width` is defined as a value, so rename it to begin with a lowercase letter, like `width`"
+		);
+
+		// A definition agreeing with its name leaves a mismatched read the mistake, like a host's name
+		assert_eq!(error("det(m) where m = 2"), "A value stands where a matrix is needed");
+		assert_eq!(error("det(f(1)) where f(t) = 2 t"), "A value stands where a matrix is needed");
+		assert_eq!(error("det(x)"), "A value stands where a matrix is needed");
+
+		// A parameter has no definition, so a read in its function's body decides its sort
+		assert_eq!(error("f(1) where f(t) = det(t)"), "`t` is used as a matrix, so rename it to begin with a capital letter, like `T`");
+		assert_eq!(error("f(2 I) where f(t) = t^T"), "`t` is used as a matrix, so rename it to begin with a capital letter, like `T`");
+
+		// A call is blamed on the parameter where the body could take what's passed, and on the argument otherwise
+		assert_eq!(error("f(2 I) where f(t) = 2 t"), "`t` is passed a matrix, so rename it to begin with a capital letter, like `T`");
+		assert_eq!(error("f(1) where f(T) = det(T)"), "`f(T)` is passed a value for `T`, which its body uses as a matrix");
+		assert_eq!(error("f(I) where f(t) = sin(t)"), "`f(t)` is passed a matrix for `t`, which its body uses as a value");
+		assert!(evaluate("f(1) where f(t) = f(I)").is_err(), "a body testing a call to itself must still finish");
+
+		// One function serves every rung it's called with
+		assert_eq!(real("f(2) + f(i) where f(t) = t^2"), Some(3.));
+	}
+
+	#[test]
+	fn where_definitions_are_checked_when_parsed() {
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// Each name is defined once per clause, where a function and a value may share one
+		assert_eq!(error("a where a = 1, a = 2"), "`a` is defined twice in one `where` clause");
+		assert_eq!(error("f(1) where f(t) = t, f(t, u) = t"), "`f` is defined twice in one `where` clause");
+		assert_eq!(error("f(1, 2) where f(t, t) = t"), "`f` has two parameters named `t`");
+
+		// A function takes one argument per parameter, and has at least one parameter
+		assert_eq!(error("f(1, 2) where f(t) = t"), "`f` takes 1 argument");
+		assert_eq!(error("f(1) where f(a, b) = a"), "`f` takes 2 arguments");
+		assert!(evaluate("f(1) where f() = 1").is_err());
+
+		// The prefix always reaches the builtin, so no clause can define a name that has it
+		assert!(error("\\pi where \\pi = 3").starts_with("A `\\` name is always the builtin, so no `where` clause can define one"));
+
+		// Even an unread definition must stand
+		assert_eq!(error("1 where a = sin(I)"), "A matrix stands where a value is needed");
+	}
+
+	#[test]
+	fn misplaced_equals_and_where_are_told_where_they_belong() {
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// A single `=` only defines, so one that compares is pointed to `==`
+		for source in ["x = 2", "{1 if x = 0, 2 otherwise}", "a where a = 1 = 2"] {
+			let error = error(source);
+			assert!(
+				error.starts_with("`=` names a value in a `where` clause, so equality is written `==`"),
+				"`{source}` gave the error `{error}`"
+			);
+		}
+
+		// A clause ends the whole expression or stands within parentheses, with commas between its definitions
+		for source in ["[a where a = 1]", "a where a = 1 where b = 2", "{a where a = 1 if 1, 0 otherwise}", "|a where a = 1|"] {
+			let error = error(source);
+			assert!(
+				error.starts_with("`where` defines names for the whole expression or within parentheses"),
+				"`{source}` gave the error `{error}`"
+			);
+		}
+
+		// Elsewhere the parser says what it expected
+		assert_eq!(error("x where"), "Found end of input, expected a name, at 7..7");
+		assert_eq!(error("x where a"), "Found end of input, expected `(` or `=`, at 9..9");
+		assert_eq!(error("x where a = = 2"), "Found `=`, expected `-`, `+`, `!`, `¬`, or a value, at 12..13");
 	}
 
 	#[test]
