@@ -1,4 +1,5 @@
 use core_types::Context;
+use core_types::FallibleVec2Operations;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
@@ -1819,7 +1820,7 @@ fn angle_between(
 		return Item::from_parts(0., attributes);
 	}
 
-	let angle = direction_from.try_angle_to(direction_to).unrwap_or_else(|| {
+	let angle = direction_from.try_angle_to(direction_to).unwrap_or_else(|| {
 		warn!("Angle Between node has zero length vector");
 		0.
 	});

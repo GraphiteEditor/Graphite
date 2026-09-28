@@ -26,12 +26,12 @@ impl FallibleVec2Operations for DVec2 {
 
 	#[inline]
 	fn try_project_onto(self, rhs: Self) -> Option<Self> {
-		let other_len_sq_rcp = 1.0 / rhs.dot(rhs);
-		other_len_sq_rcp.is_finite().then(|| rhs * self.dot(rhs) * other_len_sq_rcp)
+		let other_len_sq_rcp = rhs.dot(rhs).recip();
+		other_len_sq_rcp.is_finite().then(|| rhs * (self.dot(rhs) * other_len_sq_rcp)).filter(|result| result.is_finite())
 	}
 
 	#[inline]
 	fn is_non_zero(&self) -> bool {
-		self.length_squared() > 0.
+		self.is_finite() && self.length_squared() > 0.
 	}
 }

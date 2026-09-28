@@ -1171,7 +1171,7 @@ impl ShapeState {
 								error!("invalid handles (e.g. no handle or zero length) should be filtered above");
 								return core::cmp::Ordering::Equal;
 							};
-							angle_a.abs().total_cmp(&angle_b)
+							angle_a.abs().total_cmp(&angle_b.abs())
 						});
 
 						let current = match point {

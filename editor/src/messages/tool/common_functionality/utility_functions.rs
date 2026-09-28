@@ -617,7 +617,7 @@ pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool 
 	let to_handle1 = handle1 - point;
 	let to_handle2 = handle2 - point;
 	// Take the angle to the negated other handle in the range `[-π, +π]`.
-	let Some(angle) = to_handle1.try_angle_to(to_handle2) else {
+	let Some(angle) = to_handle1.try_angle_to(-to_handle2) else {
 		// If it is impossible to take an angle (one of the handles is zero length) return true since that counts also as colinear.
 		return true;
 	};
