@@ -162,20 +162,22 @@ async fn sharpen(
 	/// The image to be sharpened.
 	image_frame: Item<Raster<CPU>>,
 	/// The strength of the sharpening effect.
+	#[unit("%")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..100)]
-	amount: Item<Percentage>,
+	amount: Item<f64>,
 	/// Sets how many pixels around edges are affected.
+	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..50)]
-	radius: Item<PixelLength>,
+	radius: Item<f64>,
 	/// Sets how many different pixels must be from surrounding area before sharpening is applied.
 	#[range]
 	#[hard(0..255)]
 	#[soft(..30)]
-	threshold: Item<u32>,
+	threshold: Item<i64>,
 ) -> Item<Raster<CPU>> {
 	let (amount, radius, threshold) = (*amount.element(), *radius.element(), *threshold.element());
 
