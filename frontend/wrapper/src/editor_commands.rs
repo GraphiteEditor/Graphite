@@ -20,7 +20,7 @@ mod editor_commands {
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-	use editor::messages::portfolio::utility_types::{PanelGroupId, PanelType};
+	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
 	use graph_craft::document::NodeId;
@@ -768,6 +768,7 @@ editor_proxy_types! {
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
+	PanelType = editor::messages::portfolio::utility_types::PanelType;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
 	SRGBA8 = graphene_std::color::SRGBA8;
 }
