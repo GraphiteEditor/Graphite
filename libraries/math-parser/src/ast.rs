@@ -193,6 +193,7 @@ pub enum ValueNode {
 		function: ValueOfRegions,
 		value: Box<ValueNode>,
 		regions: Vec<MatrixNode>,
+		trailing: Option<Box<ValueNode>>,
 	},
 	/// A chain of `==`, or of `!=`, over matrices, pointwise.
 	MatrixComparison {

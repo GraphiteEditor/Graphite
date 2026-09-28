@@ -1731,6 +1731,20 @@ mod tests {
 		clamp_to_box: "clamp(2i + 3j, 0..(i + j))" => Quaternion::new(0., 1., 1., 0.),
 		clamp_within_box: "clamp(0.5i, 0..(i + j))" => Complex::new(0., 0.5),
 		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
+		smoothstep_at_the_start: "smoothstep(0, 0..1)" => 0.,
+		smoothstep_at_a_quarter: "smoothstep(0.25, 0..1)" => 0.15625,
+		smoothstep_midway: "smoothstep(3, 2..4)" => 0.5,
+		smoothstep_at_the_end: "smoothstep(1, 0..1)" => 1.,
+		smoothstep_clamps_past_the_edges: "smoothstep(-7, 0..1) + smoothstep(7, 0..1)" => 1.,
+		smoothstep_reversed_range: "smoothstep(0.25, 1..0)" => 0.84375,
+		smoothstep_antialiased_edge: "smoothstep(0, -1..1)" => 0.5,
+		smoothstep_per_axis: "smoothstep(0.25i + 0.5j, 0..(i + j))" => Quaternion::new(0., 0.15625, 0.5, 0.),
+		smoothstep_drops_the_parts_the_range_lacks: "smoothstep(0.5 + 3i, 0..1)" => 0.5,
+		smoothstep_continuity_zero_is_the_ramp: "smoothstep(0.25, 0..1, 0)" => 0.25,
+		smoothstep_continuity_one_is_the_default: "smoothstep(0.25, 0..1, 1)" => 0.15625,
+		smoothstep_continuity_two_is_the_quintic: "smoothstep(0.25, 0..1, 2)" => 0.103515625,
+		smoothstep_continuity_three_is_the_septic: "smoothstep(0.25, 0..1, 1 + 2)" => 0.070556640625,
+		smoothstep_every_continuity_crosses_the_middle: "smoothstep(0.5, 0..1, 0) + smoothstep(0.5, 0..1, 2) + smoothstep(0.5, 0..1, 3)" => 1.5,
 		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
 		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
 		remap_extrapolates: "remap(3, 0..2, 0..1)" => 1.5,
@@ -1739,6 +1753,15 @@ mod tests {
 		within_huge_box: "within(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
 		within_tiny_box: "within(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
 		remap_from_huge_box: "remap(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k), 0..(i + j + k))" => Complex::new(0., 0.5),
+	}
+
+	#[test]
+	fn smoothstep_eases_along_a_rotated_box() {
+		// The parameter is read in the box's own frame, so the ease follows a rotated box's axes and lands on the parameter's
+		let Value::Number(number) = *evaluate("smoothstep(-0.5i + 0.25j, rotation(pi/2) (0..(i + j)))").unwrap().unwrap().as_value().unwrap();
+		for (part, expected) in number.to_quaternion().parts().into_iter().zip([0., 0.15625, 0.5, 0.]) {
+			assert!((part - expected).abs() < 1e-12, "{part} against {expected}");
+		}
 	}
 
 	#[test]
@@ -1768,12 +1791,19 @@ mod tests {
 		assert!(matches!(evaluate("remap(2, 2..2, 0..10)").unwrap(), Err(EvalError::FlatRemapSource)));
 		assert!(matches!(evaluate("remap(0.5i + 0.5k, 0..(i + k), 0..(2i + 2j + 2k))").unwrap(), Err(EvalError::FlatRemapSource)));
 		assert!(matches!(evaluate("within(1, [i, 2i])").unwrap(), Err(EvalError::SingularRange)));
+		assert!(matches!(evaluate("smoothstep(5, 5..5)").unwrap(), Err(EvalError::FlatSmoothstep)));
+		assert!(matches!(evaluate("smoothstep(0.5, 0..inf)").unwrap(), Err(EvalError::Indeterminate)));
+		assert_eq!(message("smoothstep(1, 0..1, 0..1)"), "A matrix stands where a value is needed");
+		for input in ["smoothstep(0.5, 0..1, 4)", "smoothstep(0.5, 0..1, 1.5)", "smoothstep(0.5, 0..1, -1)"] {
+			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SmoothstepContinuity)), "`{input}`");
+		}
 
 		// Matrix builtins check their argument counts as the expression is parsed
 		for input in [
 			"within(1)",
 			"clamp(1, 0..1, 0..1)",
 			"remap(1, 0..1)",
+			"smoothstep(1, 0..1, 1, 1)",
 			"rotation()",
 			"rotation(1, k, 2)",
 			"shear(i, j)",

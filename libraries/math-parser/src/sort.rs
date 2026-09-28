@@ -357,16 +357,23 @@ impl Sorter<'_> {
 					arguments: self.values(arguments)?,
 				})
 			}
-			Some(Builtin::OfValueAndRegions { function, regions }) => {
-				if arguments.len() != regions + 1 {
+			Some(Builtin::OfValueAndRegions {
+				function,
+				regions: region_count,
+				trailing_value,
+			}) => {
+				if !(region_count + 1..=region_count + 1 + usize::from(trailing_value)).contains(&arguments.len()) {
 					return Err(INVALID_ARGUMENTS);
 				}
 				let mut arguments = arguments.into_iter();
-				Node::Value(ValueNode::OfValueAndRegions {
-					function,
-					value: Box::new(self.value(arguments.next().ok_or(INVALID_ARGUMENTS)?, MATRIX_AS_VALUE)?),
-					regions: arguments.map(|region| self.matrix(region, VALUE_AS_MATRIX)).collect::<Result<Vec<MatrixNode>, SortError>>()?,
-				})
+				let value = Box::new(self.value(arguments.next().ok_or(INVALID_ARGUMENTS)?, MATRIX_AS_VALUE)?);
+				let regions = arguments
+					.by_ref()
+					.take(region_count)
+					.map(|region| self.matrix(region, VALUE_AS_MATRIX))
+					.collect::<Result<Vec<MatrixNode>, SortError>>()?;
+				let trailing = arguments.next().map(|trailing| self.value(trailing, MATRIX_AS_VALUE).map(Box::new)).transpose()?;
+				Node::Value(ValueNode::OfValueAndRegions { function, value, regions, trailing })
 			}
 			_ => Node::Value(ValueNode::FnCall { name, expr: self.values(arguments)? }),
 		})
