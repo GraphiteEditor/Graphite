@@ -204,6 +204,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
 	},
+	UpdateDocumentCursors {
+		cursors: Vec<FrontendRemoteCursor>,
+	},
 	UpdateNodeGraphCursors {
 		cursors: Vec<FrontendRemoteCursor>,
 	},

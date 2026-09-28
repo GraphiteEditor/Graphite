@@ -1,7 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendRemoteCursor;
-use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
@@ -21,6 +20,7 @@ pub struct SyncMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
+	pub current_tool_icon: String,
 }
 
 /// Drives every document's collaborative session: attaches transports, polls them once per frame and as
@@ -48,6 +48,7 @@ pub struct SyncMessageHandler {
 	last_cursor: HashMap<DocumentId, Option<CursorPosition>>,
 	/// The other peers' pointers over the node graph as last sent to the frontend.
 	graph_cursors: Vec<FrontendRemoteCursor>,
+	document_cursors: Vec<FrontendRemoteCursor>,
 	/// When each document whose transport went down is next to be reconnected.
 	reconnect_at: HashMap<DocumentId, f64>,
 }
@@ -62,6 +63,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			preferences,
 			ipp,
 			viewport,
+			current_tool_icon,
 		} = context;
 
 		match message {
@@ -227,7 +229,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					document.stage_pending_edits(&resources);
 					// Presence rides outside the causal broadcast: the name whenever it changed, and the pointer
 					// over the active document once per frame when it moved, `None` for every other document.
-					let cursor = (Some(document_id) == active_document_id).then(|| cursor_position(document, ipp, viewport)).flatten();
+					let cursor = (Some(document_id) == active_document_id)
+						.then(|| cursor_position(document, ipp, viewport, &current_tool_icon))
+						.flatten();
 					let Some(gdd) = document.storage_mut() else { continue };
 					announce_name(gdd, &preferences.user_name);
 					if self.last_cursor.get(&document_id) != Some(&cursor) {
@@ -273,11 +277,8 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 								refresh_session_views(responses);
 							}
 							Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
-							Event::CursorMoved { .. } => {
-								if Some(document_id) == active_document_id {
-									responses.add(OverlaysMessage::Draw);
-								}
-							}
+							// Cursors are gathered afresh below every poll, so a move needs no action of its own.
+							Event::CursorMoved { .. } => {}
 						}
 					}
 				}
@@ -291,6 +292,14 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if graph_cursors != self.graph_cursors {
 					self.graph_cursors = graph_cursors.clone();
 					responses.add(FrontendMessage::UpdateNodeGraphCursors { cursors: graph_cursors });
+				}
+				let document_cursors = active_document_id
+					.and_then(|id| documents.get(&id))
+					.map(|document| document_cursors(document, preferences))
+					.unwrap_or_default();
+				if document_cursors != self.document_cursors {
+					self.document_cursors = document_cursors.clone();
+					responses.add(FrontendMessage::UpdateDocumentCursors { cursors: document_cursors });
 				}
 
 				// Apply only once every referenced resource is in the app cache, and never underneath an
@@ -350,29 +359,6 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				// The inbox was drained above; the next arrival wakes the next poll.
 				if let Some(document_id) = woken {
 					self.arm(document_id, responses);
-				}
-			}
-			SyncMessage::DrawPresence { context: mut overlay_context } => {
-				let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else { return };
-				if !preferences.show_remote_cursors || document.is_graph_overlay_open() {
-					return;
-				}
-				let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return };
-				let to_viewport = document.metadata().document_to_viewport;
-				for remote in gdd.peers() {
-					let Some(CursorPosition {
-						position: [x, y],
-						space: CursorSpace::Document,
-					}) = &remote.cursor
-					else {
-						continue;
-					};
-					let position = to_viewport.transform_point2(DVec2::new(*x, *y));
-					let color = peer_color(remote.peer);
-					let arrow = CURSOR_ARROW.map(|[dx, dy]| position + DVec2::new(dx, dy));
-					overlay_context.polygon(&arrow, Some("#ffffff"), Some(&color));
-					let label = DAffine2::from_translation(position + DVec2::new(14., 18.));
-					overlay_context.text(&display_name(&remote), "#ffffff", Some(&color), label, 3., [Pivot::Start, Pivot::Start]);
 				}
 			}
 			SyncMessage::DeclarationLoaded { document_id, hash, bytes } => {
@@ -654,12 +640,6 @@ fn peer_row(name: &str, anonymous: bool) -> LayoutGroup {
 	LayoutGroup::row(vec![TextLabel::new(name).italic(anonymous).widget_instance()])
 }
 
-/// Draws the other peers' cursors; registered on every document with the tools, and a no-op outside a session.
-pub const PRESENCE_OVERLAY_PROVIDER: OverlayProvider = |context| SyncMessage::DrawPresence { context }.into();
-
-/// A pointer arrow in logical pixels, tip at the origin.
-const CURSOR_ARROW: [[f64; 2]; 7] = [[0., 0.], [0., 15.], [4., 11.5], [7., 17.5], [9.5, 16.5], [6.5, 10.5], [11., 10.5]];
-
 /// Tell the room this peer's display name; a no-op when it has not changed.
 fn announce_name(gdd: &mut document_format::GddV1, name: &str) {
 	if let Err(error) = gdd.set_name(name) {
@@ -669,7 +649,7 @@ fn announce_name(gdd: &mut document_format::GddV1, name: &str) {
 
 /// The pointer while it is over the viewport, in the space it is over: the node graph's network when the
 /// graph is open, the document otherwise. Rounded so jitter below a hundredth of a unit sends nothing.
-fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<CursorPosition> {
+fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, tool_icon: &str) -> Option<CursorPosition> {
 	let mouse = ipp.mouse.position;
 	let size = viewport.size();
 	if mouse.x < 0. || mouse.y < 0. || mouse.x > size.x() || mouse.y > size.y() {
@@ -683,7 +663,24 @@ fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMes
 	Some(CursorPosition {
 		position: [(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.],
 		space,
+		tool: (!tool_icon.is_empty()).then(|| tool_icon.to_string()),
 	})
+}
+
+/// The other peers' pointers over the document, in viewport pixels for the frontend, while the canvas is showing.
+fn document_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
+	if !preferences.show_remote_cursors || document.is_graph_overlay_open() {
+		return Vec::new();
+	}
+	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
+	let to_viewport = document.metadata().document_to_viewport;
+	gdd.peers()
+		.iter()
+		.filter_map(|remote| {
+			let cursor = remote.cursor.as_ref()?;
+			matches!(cursor.space, CursorSpace::Document).then(|| remote_cursor(remote, cursor, to_viewport))
+		})
+		.collect()
 }
 
 /// The other peers' pointers over the network the node graph shows, in viewport pixels for the frontend.
@@ -697,25 +694,25 @@ fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMes
 	gdd.peers()
 		.iter()
 		.filter_map(|remote| {
-			let CursorPosition {
-				position: [x, y],
-				space: CursorSpace::Graph { network },
-			} = remote.cursor.as_ref()?
-			else {
-				return None;
-			};
-			(*network == shown).then(|| {
-				let point = to_viewport.transform_point2(DVec2::new(*x, *y));
-				FrontendRemoteCursor {
-					x: point.x,
-					y: point.y,
-					name: display_name(remote),
-					anonymous: remote.name.is_empty(),
-					color: peer_color(remote.peer),
-				}
-			})
+			let cursor = remote.cursor.as_ref()?;
+			let CursorSpace::Graph { network } = &cursor.space else { return None };
+			(*network == shown).then(|| remote_cursor(remote, cursor, to_viewport))
 		})
 		.collect()
+}
+
+/// One pointer for the frontend: its position mapped into viewport pixels, with the peer's name, colour and tool.
+fn remote_cursor(remote: &RemotePeer, cursor: &CursorPosition, to_viewport: DAffine2) -> FrontendRemoteCursor {
+	let [x, y] = cursor.position;
+	let point = to_viewport.transform_point2(DVec2::new(x, y));
+	FrontendRemoteCursor {
+		x: point.x,
+		y: point.y,
+		name: display_name(remote),
+		anonymous: remote.name.is_empty(),
+		color: peer_color(remote.peer),
+		tool: cursor.tool.clone(),
+	}
 }
 
 fn graph_to_viewport(document: &DocumentMessageHandler) -> Option<DAffine2> {

@@ -1,4 +1,3 @@
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::*;
 use graph_craft::application_io::resource::ResourceHash;
 use peer_transport::TransportPeerId;
@@ -17,8 +16,6 @@ pub enum SyncMessage {
 	Fork,
 	/// Send the Session panel's layout for the active document.
 	RefreshPanel,
-	/// Draw the other peers' cursors over the active document; the overlay provider registered with the tools.
-	DrawPresence { context: OverlayContext },
 	/// Per frame: apply what peers sent and answer their requests.
 	Poll,
 	/// A packet arrived for a document's room: poll it now rather than at the next frame. `generation`

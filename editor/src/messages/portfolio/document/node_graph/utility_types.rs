@@ -219,4 +219,6 @@ pub struct FrontendRemoteCursor {
 	/// A stand-in name for someone who gave none, shown in italics.
 	pub anonymous: bool,
 	pub color: String,
+	/// The icon name of the tool the peer holds, if it told.
+	pub tool: Option<String>,
 }

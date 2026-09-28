@@ -5,6 +5,7 @@
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import RemoteCursor from "/src/components/views/RemoteCursor.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -864,10 +865,7 @@
 
 <!-- Other peers' pointers over the graph, in viewport pixels like the box selection -->
 {#each $nodeGraph.remoteCursors as cursor}
-	<div class="remote-cursor" style:left={`${cursor.x}px`} style:top={`${cursor.y}px`}>
-		<svg width="12" height="18" viewBox="0 0 12 18"><path d="M0 0 L0 15 L4 11.5 L7 17.5 L9.5 16.5 L6.5 10.5 L11 10.5 Z" fill={cursor.color} stroke="#fff" stroke-width="1" /></svg>
-		<span class="label" class:anonymous={cursor.anonymous} style:background={cursor.color}>{cursor.name}</span>
-	</div>
+	<RemoteCursor {cursor} />
 {/each}
 
 <!-- Box selection widget -->
@@ -1499,30 +1497,6 @@
 				&::after {
 					right: 0;
 				}
-			}
-		}
-	}
-
-	.remote-cursor {
-		position: absolute;
-		pointer-events: none;
-		z-index: 3;
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-
-		.label {
-			margin-left: 12px;
-			margin-top: -2px;
-			padding: 1px 4px;
-			border-radius: 2px;
-			color: #fff;
-			font-size: 12px;
-			line-height: 16px;
-			white-space: nowrap;
-
-			&.anonymous {
-				font-style: italic;
 			}
 		}
 	}

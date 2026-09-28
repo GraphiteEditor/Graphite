@@ -137,6 +137,8 @@ impl SyncPacket {
 pub struct CursorPosition {
 	pub position: [f64; 2],
 	pub space: CursorSpace,
+	/// The icon name of the tool the peer holds, shown beside the pointer; `None` from a viewer with no tools.
+	pub tool: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

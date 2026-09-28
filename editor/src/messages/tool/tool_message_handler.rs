@@ -165,9 +165,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 
 				// Re-add the artboard overlay provider when tools are reactivated
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
-				responses.add(OverlaysMessage::AddProvider {
-					provider: crate::messages::portfolio::sync::PRESENCE_OVERLAY_PROVIDER,
-				});
 
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
 				responses.add(EventMessage::SelectionChanged);
@@ -245,9 +242,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
-				responses.add(OverlaysMessage::AddProvider {
-					provider: crate::messages::portfolio::sync::PRESENCE_OVERLAY_PROVIDER,
-				});
 			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -387,6 +381,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
+	/// The icon name of the active tool, for showing other peers what this one holds.
+	pub fn active_tool_icon(&self) -> String {
+		let tool_data = &self.tool_state.tool_data;
+		tool_data.tools.get(&tool_data.active_tool_type).map(|tool| tool.icon_name()).unwrap_or_default()
+	}
+
 	pub fn actions_with_preferences(&self, preferences: &PreferencesMessageHandler) -> ActionList {
 		let mut list = self.actions();
 
