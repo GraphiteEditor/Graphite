@@ -520,7 +520,7 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 
 	if in_tangent
 		.and_then(|in_tangent| (arc_point - left).try_angle_to(in_tangent))
-		.map_or(false, |angle| angle.abs() > FRAC_PI_2)
+		.is_some_and(|angle| angle.abs() > FRAC_PI_2)
 	{
 		angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 		arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);

@@ -105,7 +105,7 @@ impl Quad {
 	/// Not currently very optimized
 	pub fn inflate(&self, offset: f64) -> Quad {
 		self.try_inflate(offset).unwrap_or_else(|| {
-			log::warn!("Failed to inflate quad, returning origional");
+			log::warn!("Failed to inflate quad, returning original");
 			*self
 		})
 	}

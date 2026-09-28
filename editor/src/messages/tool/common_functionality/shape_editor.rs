@@ -1163,7 +1163,7 @@ impl ShapeState {
 							(handle - anchor).is_non_zero()
 						});
 
-						// Find the most colinear handle (maximum absolute angle from the origional)
+						// Find the most colinear handle (maximum absolute angle from the original)
 						let most_colinear = non_colinear_handles.into_iter().max_by(|&handle_a, &handle_b| {
 							let [Some(angle_a), Some(angle_b)] =
 								[handle_a, handle_b].map(|handle| handle.to_manipulator_point().get_position(&vector).and_then(|pos| v_orig.try_angle_to(pos - anchor)))

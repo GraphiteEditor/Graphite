@@ -151,10 +151,10 @@ impl SpiralTurns {
 		let viewport = document.metadata().transform_to_viewport(layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		let layer_vector = viewport.inverse().transform_vector2(input.mouse.position - center);
-		let mouse_vector = viewport.inverse().transform_vector2(self.previous_mouse_position - center);
+		let current_mouse_vector = viewport.inverse().transform_vector2(input.mouse.position - center);
+		let previous_mouse_vector = viewport.inverse().transform_vector2(self.previous_mouse_position - center);
 
-		let Some(angle_delta) = layer_vector.try_angle_to(mouse_vector).map(f64::to_degrees) else {
+		let Some(angle_delta) = current_mouse_vector.try_angle_to(previous_mouse_vector).map(f64::to_degrees) else {
 			self.previous_mouse_position = input.mouse.position;
 			return;
 		};

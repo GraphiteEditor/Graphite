@@ -1821,7 +1821,7 @@ fn angle_between(
 	}
 
 	let angle = direction_from.try_angle_to(direction_to).unwrap_or_else(|| {
-		warn!("Angle Between node has zero length vector");
+		warn!("Angle to could not be computed");
 		0.
 	});
 	let result = if *radians.element() { angle } else { angle.to_degrees() };

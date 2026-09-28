@@ -21,7 +21,7 @@ pub trait FallibleVec2Operations: Sized {
 impl FallibleVec2Operations for DVec2 {
 	#[inline]
 	fn try_angle_to(self, rhs: Self) -> Option<f64> {
-		(self.is_non_zero() && rhs.is_non_zero()).then(|| self.angle_to(rhs))
+		(self.is_non_zero() && rhs.is_non_zero()).then(|| self.angle_to(rhs)).filter(|angle| angle.is_finite())
 	}
 
 	#[inline]
