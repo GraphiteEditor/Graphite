@@ -4,6 +4,7 @@ pub mod bounds;
 pub mod consts;
 pub mod context;
 pub mod generic;
+mod glam_ext;
 pub mod list;
 pub mod math;
 pub mod memo;
@@ -23,6 +24,7 @@ pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
+pub use glam_ext::FallibleVec2Operations;
 pub use graphene_hash;
 pub use graphene_hash::CacheHash;
 pub use list::{

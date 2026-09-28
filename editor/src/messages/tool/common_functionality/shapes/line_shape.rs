@@ -128,8 +128,8 @@ pub fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_an
 	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
 
-	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
+	let mut angle = DVec2::X.try_angle_to(document_points[1] - document_points[0]).unwrap_or(0.);
 
 	if lock_angle {
 		angle = tool_data.line_data.angle;
