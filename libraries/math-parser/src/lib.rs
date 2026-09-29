@@ -1798,6 +1798,9 @@ mod tests {
 			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SmoothstepContinuity)), "`{input}`");
 		}
 
+		// Arguments are evaluated in order, so the range's error is raised before the continuity's
+		assert!(matches!(evaluate("smoothstep(1, x..1, y)").unwrap(), Err(EvalError::MissingValue(name)) if name == "x"));
+
 		// Matrix builtins check their argument counts as the expression is parsed
 		for input in [
 			"within(1)",

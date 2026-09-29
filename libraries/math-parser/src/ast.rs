@@ -193,6 +193,7 @@ pub enum ValueNode {
 		function: ValueOfRegions,
 		value: Box<ValueNode>,
 		regions: Vec<MatrixNode>,
+		/// The value after the regions, where the builtin takes one, like `smoothstep`'s continuity.
 		trailing: Option<Box<ValueNode>>,
 	},
 	/// A chain of `==`, or of `!=`, over matrices, pointwise.

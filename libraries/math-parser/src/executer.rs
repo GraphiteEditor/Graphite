@@ -457,7 +457,6 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(scope: &Scope<'_, V, F
 		MatrixValueCase::OfMatrix(function, matrix) => settle(function(matrix.eval_in(scope)?)),
 		MatrixValueCase::OfValueAndRegions(function, value, regions, trailing) => {
 			let value = value.eval_in(scope)?;
-			let trailing = trailing.map(|trailing| trailing.eval_in(scope)).transpose()?;
 
 			// A range literal is kept by its corners, which may be infinite where no matrix can hold them
 			let region_of = |region: &MatrixNode| -> Result<Region, EvalError> {
@@ -482,6 +481,8 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(scope: &Scope<'_, V, F
 				heap_regions = regions.iter().map(region_of).collect::<Result<Vec<Region>, EvalError>>()?;
 				&heap_regions
 			};
+
+			let trailing = trailing.map(|trailing| trailing.eval_in(scope)).transpose()?;
 			settle(function(value, regions, trailing)?)
 		}
 		MatrixValueCase::Comparison(matrices, distinct) => {
