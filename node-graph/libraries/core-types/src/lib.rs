@@ -53,8 +53,6 @@ pub trait Node<'i, Input> {
 	type Output: 'i;
 	/// Evaluates the node with the single specified input.
 	fn eval(&'i self, input: Input) -> Self::Output;
-	/// Resets the node, e.g. the LetNode's cache is set to None.
-	fn reset(&self) {}
 	/// Returns the name of the node for diagnostic purposes.
 	fn node_name(&self) -> &'static str {
 		std::any::type_name::<Self>()

@@ -18,10 +18,6 @@ where
 		self.0.eval(input)
 	}
 
-	fn reset(&self) {
-		self.0.reset();
-	}
-
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.0.serialize()
 	}

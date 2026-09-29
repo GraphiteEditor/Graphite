@@ -177,9 +177,6 @@ where
 			})
 		}
 	}
-	fn reset(&self) {
-		self.node.reset();
-	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.node.serialize()
@@ -207,10 +204,6 @@ where
 	fn eval(&'i self, input: T) -> Self::Output {
 		let result = self.node.eval(input);
 		Box::pin(async move { result })
-	}
-	#[inline(always)]
-	fn reset(&self) {
-		self.node.reset();
 	}
 
 	#[inline(always)]
@@ -249,10 +242,6 @@ where
 			Ok(input) => Box::pin(output(*input)),
 			Err(e) => panic!("DynAnyNode Input, {e} in:\n{node_name}"),
 		}
-	}
-
-	fn reset(&self) {
-		self.node.reset();
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
