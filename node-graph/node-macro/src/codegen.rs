@@ -1238,19 +1238,15 @@ fn generate_register_node_impl(
 			constructors.push(quote!(
 				(
 					|args| {
-						Box::pin(async move {
-							#(#temp_constructors;)*
-							let node = #variant_struct_name::new(#(#field_names,)*);
-							// try polling futures
-							let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
-							Box::new(any) as TypeErasedBox<'_>
-						})
+						#(#temp_constructors;)*
+						let node = #variant_struct_name::new(#(#field_names,)*);
+						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox<'_>
 					}, {
 						let node = #variant_struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
 						let params = vec![#(#temp_node_io,)*];
 						let mut node_io = NodeIO::<'_, #input_type>::to_async_node_io(&node, params);
 						node_io
-
 					}
 				)
 			));

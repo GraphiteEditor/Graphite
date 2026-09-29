@@ -48,11 +48,11 @@ pub struct ResolvedDocumentNodeTypesDelta {
 }
 
 impl DynamicExecutor {
-	pub async fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
+	pub fn new(proto_network: ProtoNetwork) -> Result<Self, GraphErrors> {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
-		let tree = BorrowTree::new(proto_network, &typing_context).await?;
+		let tree = BorrowTree::new(proto_network, &typing_context)?;
 
 		Ok(Self {
 			tree,
@@ -64,7 +64,7 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
+	pub fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.output = proto_network.output;
 		self.typing_context.update(&proto_network).map_err(|e| {
 			// If there is an error then get types that have been resolved before the error
@@ -87,11 +87,7 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
-		let (add, orphaned) = self
-			.tree
-			.update(proto_network, &self.typing_context)
-			.await
-			.map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
+		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {
@@ -204,23 +200,23 @@ pub struct BorrowTree {
 }
 
 impl BorrowTree {
-	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
+	pub fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
 		let mut nodes = BorrowTree::default();
 		for (id, node) in proto_network.nodes {
-			nodes.push_node(id, node, typing_context).await?
+			nodes.push_node(id, node, typing_context)?
 		}
 		Ok(nodes)
 	}
 
 	/// Pushes new nodes into the tree and return orphaned nodes
-	pub async fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
+	pub fn update(&mut self, proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<(Vec<Path>, HashSet<NodeId>), GraphErrors> {
 		let mut old_nodes: HashSet<_> = self.nodes.keys().copied().collect();
 		let mut new_nodes: Vec<_> = Vec::new();
 		// TODO: Problem: When a passthrough node is connected directly to an export the first input to the passthrough node is not added to the proto network, while the second input is. This means the primary input does not have a type.
 		for (id, node) in proto_network.nodes {
 			if !self.nodes.contains_key(&id) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
-				self.push_node(id, node, typing_context).await?;
+				self.push_node(id, node, typing_context)?;
 			} else if self.update_source_map(id, typing_context, &node) {
 				new_nodes.push(node.original_location.path.clone().unwrap_or_default().into());
 			}
@@ -293,10 +289,10 @@ impl BorrowTree {
 	/// use interpreted_executor::node_registry;
 	///
 	///
-	/// async fn example() -> Result<(), GraphErrors> {
+	/// fn example() -> Result<(), GraphErrors> {
 	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
 	///     let typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
-	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
+	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context)?;
 	///
 	///     // Assert that the node exists in the BorrowTree
 	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist before removal");
@@ -393,7 +389,7 @@ impl BorrowTree {
 	///   - `Nodes`: Constructs a node using other nodes as dependencies.
 	/// - Uses the constructor function from the `typing_context` for `Nodes` construction arguments.
 	/// - Returns an error if no constructor is found for the given node ID.
-	async fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
+	fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		self.update_source_map(id, typing_context, &proto_node);
 		let path = proto_node.original_location.path.clone().unwrap_or_default();
 
@@ -421,13 +417,13 @@ impl BorrowTree {
 						let adapter_constructor = typing_context
 							.adapter_constructor(&promotion.adapter_identifier())
 							.ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
-						let adapter = adapter_constructor(vec![construction_nodes[*argument_index].clone()]).await;
+						let adapter = adapter_constructor(vec![construction_nodes[*argument_index].clone()]);
 						construction_nodes[*argument_index] = NodeContainer::new(adapter);
 					}
 				}
 
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
-				let node = constructor(construction_nodes).await;
+				let node = constructor(construction_nodes);
 				let node = NodeContainer::new(node);
 				self.store_node(node, id, path.into());
 			}

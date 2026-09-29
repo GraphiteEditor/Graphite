@@ -90,7 +90,7 @@ pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
-pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> DynFuture<'static, TypeErasedBox<'static>>;
+pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> TypeErasedBox<'static>;
 
 #[derive(Clone)]
 pub struct NodeContainer {
