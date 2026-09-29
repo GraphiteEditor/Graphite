@@ -107,6 +107,10 @@ pub enum GraphOperationMessage {
 		transform_in: TransformIn,
 		skip_rerender: bool,
 	},
+	/// Move a rectangle or ellipse layer's scale off the Transform node and into its size inputs.
+	BakeShapeScale {
+		layer: LayerNodeIdentifier,
+	},
 	Vector {
 		layer: LayerNodeIdentifier,
 		modification_type: VectorModificationType,

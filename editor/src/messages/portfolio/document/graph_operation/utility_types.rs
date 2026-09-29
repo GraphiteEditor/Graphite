@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
-	ReplaceablePaintChain, get_fill_input_node_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
+	ReplaceablePaintChain, get_ellipse_id, get_fill_input_node_id, get_rectangle_id, get_upstream_gradient_value_node_id, gradient_chain_target_input, replaceable_paint_chain,
 };
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::application_io::resource::ResourceId;
@@ -15,6 +15,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::transform::Transform;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -26,6 +27,13 @@ pub enum TransformIn {
 	Local,
 	Scope { scope: DAffine2 },
 	Viewport,
+}
+
+fn literal_number(input: Option<&NodeInput>) -> Option<f64> {
+	match input.and_then(|input| input.as_value()) {
+		Some(TaggedValue::Number(value)) => Some(*value),
+		_ => None,
+	}
 }
 
 // This struct is helpful to prevent passing the same arguments to multiple functions
@@ -999,6 +1007,121 @@ impl<'a> ModifyInputsContext<'a> {
 			NodeInput::value(TaggedValue::DVec2(dimensions), false),
 			false,
 		);
+	}
+
+	/// Fold scale from this layer's Transform node into a rectangle or ellipse whose size inputs are plain numbers.
+	/// Position and rotation stay on the Transform node. Connected inputs, skew, and non-uniform scale on a rounded rectangle are left alone.
+	pub fn bake_scale_into_shape_generator(&mut self) {
+		let Some(layer) = self.layer_node else { return };
+		// A group has no single rectangle or ellipse size. Its scale has to stay on the group Transform.
+		if layer.children(self.network_interface.document_metadata()).next().is_some() {
+			return;
+		}
+		let Some(transform_node_id) = self.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) else {
+			return;
+		};
+
+		let transform = {
+			let Some(node) = self.network_interface.document_network().nodes.get(&transform_node_id) else {
+				return;
+			};
+			let literal_transform = (1..=4).all(|index| node.inputs.get(index).and_then(|input| input.as_value()).is_some());
+			if !literal_transform {
+				return;
+			}
+			transform_utils::get_current_transform(&node.inputs)
+		};
+
+		let (rotation, scale, skew) = transform.decompose_rotation_scale_skew();
+		if !scale.x.is_finite() || !scale.y.is_finite() || skew.abs() > 1e-4 {
+			return;
+		}
+		if (scale.x.abs() - 1.).abs() < 1e-8 && (scale.y.abs() - 1.).abs() < 1e-8 {
+			return;
+		}
+
+		let baked = if let Some(node_id) = get_rectangle_id(layer, self.network_interface) {
+			self.bake_rectangle_scale(node_id, scale)
+		} else if let Some(node_id) = get_ellipse_id(layer, self.network_interface) {
+			self.bake_ellipse_scale(node_id, scale)
+		} else {
+			false
+		};
+		if !baked {
+			return;
+		}
+
+		let signed_scale = DVec2::new(if scale.x < 0. { -1. } else { 1. }, if scale.y < 0. { -1. } else { 1. });
+		let without_scale = DAffine2::from_scale_angle_translation(signed_scale, rotation, transform.translation);
+		transform_utils::update_transform(self.network_interface, &transform_node_id, without_scale);
+		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn bake_rectangle_scale(&mut self, node_id: NodeId, scale: DVec2) -> bool {
+		use graphene_std::vector::generator_nodes::rectangle;
+
+		let (width, height, corners) = {
+			let Some(node) = self.network_interface.document_network().nodes.get(&node_id) else {
+				return false;
+			};
+			let Some(width) = literal_number(node.input(rectangle::WidthInput)) else { return false };
+			let Some(height) = literal_number(node.input(rectangle::HeightInput)) else { return false };
+			let Some(TaggedValue::BoxCorners(corners)) = node.input(rectangle::CornerRadiusInput).and_then(|input| input.as_value()) else {
+				return false;
+			};
+			(width, height, corners.clone())
+		};
+
+		let uniform = (scale.x.abs() - scale.y.abs()).abs() <= 1e-6 * scale.x.abs().max(scale.y.abs()).max(1.);
+		if !uniform && corners.iter().any(|radius| radius.abs() > 1e-9) {
+			return false;
+		}
+
+		self.network_interface.set_input(
+			&InputConnector::node(node_id, rectangle::WidthInput),
+			NodeInput::value(TaggedValue::Number(width * scale.x.abs()), false),
+			&[],
+		);
+		self.network_interface.set_input(
+			&InputConnector::node(node_id, rectangle::HeightInput),
+			NodeInput::value(TaggedValue::Number(height * scale.y.abs()), false),
+			&[],
+		);
+		if uniform && corners.iter().any(|radius| radius.abs() > 1e-9) {
+			let scaled_corners = corners.iter().map(|radius| radius * scale.x.abs()).collect::<Vec<_>>();
+			self.network_interface.set_input(
+				&InputConnector::node(node_id, rectangle::CornerRadiusInput),
+				NodeInput::value(TaggedValue::BoxCorners(scaled_corners), false),
+				&[],
+			);
+		}
+		true
+	}
+
+	fn bake_ellipse_scale(&mut self, node_id: NodeId, scale: DVec2) -> bool {
+		use graphene_std::vector::generator_nodes::ellipse;
+
+		let (radius_x, radius_y) = {
+			let Some(node) = self.network_interface.document_network().nodes.get(&node_id) else {
+				return false;
+			};
+			let Some(radius_x) = literal_number(node.input(ellipse::RadiusXInput)) else { return false };
+			let Some(radius_y) = literal_number(node.input(ellipse::RadiusYInput)) else { return false };
+			(radius_x, radius_y)
+		};
+
+		self.network_interface.set_input(
+			&InputConnector::node(node_id, ellipse::RadiusXInput),
+			NodeInput::value(TaggedValue::Number(radius_x * scale.x.abs()), false),
+			&[],
+		);
+		self.network_interface.set_input(
+			&InputConnector::node(node_id, ellipse::RadiusYInput),
+			NodeInput::value(TaggedValue::Number(radius_y * scale.y.abs()), false),
+			&[],
+		);
+		true
 	}
 
 	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
