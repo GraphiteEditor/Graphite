@@ -45,6 +45,11 @@ pub enum SyncPacket {
 		rev: Rev,
 		restore: bool,
 	},
+	/// A guest asks the host to move the shared head to `rev`, an ancestor of it, leaving the line since as a
+	/// branch. The host answers the room with a `HeadMove` without copies.
+	MoveRequest {
+		rev: Rev,
+	},
 	ResourceRequest(Vec<ResourceHash>),
 	Resource {
 		hash: ResourceHash,

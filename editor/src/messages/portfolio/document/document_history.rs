@@ -227,6 +227,30 @@ impl DocumentHistory {
 		}
 	}
 
+	/// Drop any retired interaction out of the line; see [`document_format::Gdd::drop_step`].
+	pub fn drop_step(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.drop_step(rev) {
+			log::error!("Removing the step failed: {error}");
+		}
+	}
+
+	/// Move the shared head to an ancestor; see [`document_format::Gdd::move_head`].
+	pub fn move_head_to(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.move_head(rev) {
+			log::error!("Moving the head failed: {error}");
+		}
+	}
+
+	/// Forget the legacy snapshots: after a move made from the History panel they describe states off the line the
+	/// head is on, so Ctrl+Z resumes from the next edit and the panel is the way back meanwhile.
+	pub fn clear_legacy(&mut self) {
+		self.legacy_undo_stack.clear();
+		self.legacy_redo_stack.clear();
+		self.retracted_undos.clear();
+	}
+
 	/// Close this peer's open transaction and retire every closed one into durable Gdd history, so the
 	/// interaction being undone is in history. Called before undo/redo and after the first commit of a
 	/// newly mounted document. No-op while unmounted.

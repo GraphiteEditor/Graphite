@@ -575,3 +575,34 @@ fn undo_in_a_session_finds_the_users_step_from_another_peer() {
 	assert_eq!(stranger.latest_own_interaction(), None, "someone else has nothing of theirs to undo");
 	assert!(!stranger.is_mine(PeerId(2)));
 }
+
+#[test]
+fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
+	let mut host = Session::with_identity(PeerId(1), UserId(1));
+	host.commit_op_for_test(set_attribute("a", 1)).expect("first");
+	let first = host.head_rev().expect("rev");
+	host.mark_interaction_end(first);
+	host.commit_op_for_test(set_attribute("b", 2)).expect("second");
+	let second = host.head_rev().expect("rev");
+	host.mark_interaction_end(second);
+	host.commit_op_for_test(set_attribute("c", 3)).expect("third");
+	let third = host.head_rev().expect("rev");
+	host.mark_interaction_end(third);
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+
+	let (moved, touched) = host.move_head_to(first).expect("move");
+	assert_eq!(moved.from, Some(third));
+	assert_eq!(moved.head, Some(first));
+	assert!(moved.copies.is_empty(), "nothing is minted: the line since is left behind");
+	assert!(touched.nodes.is_empty() && !touched.resources, "document attributes only");
+	let snapshot = host.retired_registry();
+	assert!(snapshot.attributes.get("b").is_none_or(|value| value.deleted), "the second step's write is gone");
+	assert!(snapshot.attributes.get("c").is_none_or(|value| value.deleted), "the third step's write is gone");
+	assert_eq!(snapshot.attributes.get("a").map(|value| &value.value), Some(&serde_json::json!(1)));
+	assert!(host.delta(second).is_some() && host.delta(third).is_some(), "the steps left behind stay as a branch");
+	assert!(host.registry().value_equal(host.retired_registry()));
+
+	guest.apply_head_move(&moved).expect("follow");
+	assert_eq!(guest.head_rev(), Some(first));
+	assert!(guest.retired_registry().value_equal(host.retired_registry()), "the follower folds to the same state");
+}

@@ -419,6 +419,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::HistoryMoveHead { rev } => self.apply_history_action(|history| history.move_head_to(rev), responses),
+			DocumentMessage::HistoryRemoveStep { rev } => self.apply_history_action(|history| history.drop_step(rev), responses),
+			DocumentMessage::HistoryRestoreStep { rev } => self.apply_history_action(|history| history.redo_retired_step(rev), responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -2640,6 +2643,21 @@ impl DocumentMessageHandler {
 			self.history.note_undo(UndoNote::Cursor);
 		}
 		self.drive_storage_undo_redo(legacy_applied, true, validate, responses);
+	}
+
+	/// An action from the History panel: storage performs it and records what it named, the interface follows on
+	/// just those entities, and the legacy snapshots go since they describe states off the line the head is on now.
+	fn apply_history_action(&mut self, action: impl FnOnce(&mut super::document_history::DocumentHistory), responses: &mut VecDeque<Message>) {
+		if self.network_interface.transaction_status() != TransactionStatus::Finished {
+			return;
+		}
+		responses.add(EventMessage::ToolAbort);
+		self.history.retire_storage_interaction();
+		action(&mut self.history);
+		self.history.clear_legacy();
+		self.follow_storage_changes(responses);
+		responses.add(OverlaysMessage::Draw);
+		responses.add(EventMessage::SelectionChanged);
 	}
 
 	/// Bring the interface into line with what storage just changed under it, a step taken back or staged

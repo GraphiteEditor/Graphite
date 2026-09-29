@@ -338,6 +338,13 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
+	fn move_head_to(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
+		let (moved, touched) = self.session.move_head_to(rev)?;
+		self.remote_changes.touched.extend(touched);
+		self.pending_persist.snapshot = true;
+		Ok(moved)
+	}
+
 	fn flush(&mut self) -> Result<(), TargetError> {
 		let pending = std::mem::take(&mut self.pending_persist);
 

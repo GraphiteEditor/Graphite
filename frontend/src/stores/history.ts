@@ -5,7 +5,7 @@ import type { HistoryPanelState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type HistoryStore = ReturnType<typeof createHistoryStore>;
 
-const initialState: HistoryPanelState = { rows: [], progress: [], more: false };
+const initialState: HistoryPanelState = { rows: [], progress: [], more: false, following: undefined, session: false };
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<HistoryPanelState> = import.meta.hot?.data?.store || writable<HistoryPanelState>(initialState);

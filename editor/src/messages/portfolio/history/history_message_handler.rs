@@ -1,4 +1,4 @@
-use super::utility_types::{HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow};
+use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::prelude::*;
@@ -16,16 +16,18 @@ pub struct HistoryMessageContext<'a> {
 	pub panel_open: bool,
 }
 
-/// Feeds the History panel: the active document's history as interactions along the head's line, sent
-/// again whenever it moved. Read-only for now; the actions come with the graph view.
+/// Feeds the History panel with the active document's history as interactions along a line, sent again
+/// whenever it moved, and turns the panel's actions into moves of the document's head.
 #[derive(Debug, Default, ExtractField)]
 pub struct HistoryMessageHandler {
 	/// Whether the per-frame tick is subscribed.
 	ticking: bool,
 	/// Interactions shown with their deltas, by closing rev.
 	expanded: HashSet<Rev>,
-	/// How many interactions of the head's line to send; grows on request.
+	/// How many interactions of the line to send; grows on request.
 	limit: usize,
+	/// The tip of the branch shown instead of the head's line.
+	following: Option<Rev>,
 	/// What the last send described, so a frame with no movement sends nothing.
 	last_sent: Option<u64>,
 }
@@ -53,7 +55,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				}
 			}
 			HistoryMessage::Expand { id, expanded } => {
-				if let Some(rev) = id.parse::<u128>().ok().and_then(Rev::new) {
+				if let Some(rev) = parse_rev(&id) {
 					match expanded {
 						true => self.expanded.insert(rev),
 						false => self.expanded.remove(&rev),
@@ -65,6 +67,40 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				self.limit = self.limit.max(PAGE) + PAGE;
 				self.send(&context, responses, true);
 			}
+			HistoryMessage::Follow { id } => {
+				self.following = id.as_deref().and_then(parse_rev);
+				self.send(&context, responses, true);
+			}
+			HistoryMessage::GoBack { id } => {
+				let Some((gdd, rev)) = active_storage(&context).zip(parse_rev(&id)) else { return };
+				let session = gdd.session();
+				match place(session, rev) {
+					// Above the head: forward again over the undone interactions, one redo each.
+					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
+					// On the head's line: in a session one shared move for everyone; alone, the cursor walks back one
+					// interaction at a time so the editor's own undo stays in step.
+					Some(Place::Line(0)) => {}
+					Some(Place::Line(steps)) => match gdd.role().is_some() {
+						true => responses.add(DocumentMessage::HistoryMoveHead { rev }),
+						false => (0..steps).for_each(|_| responses.add(DocumentMessage::Undo)),
+					},
+					None => log::warn!("The History panel asked to go to {rev:?}, which is not on the head's line"),
+				}
+			}
+			HistoryMessage::RemoveStep { id } => {
+				if let Some(rev) = parse_rev(&id) {
+					responses.add(DocumentMessage::HistoryRemoveStep { rev });
+				}
+			}
+			HistoryMessage::BringBack { id } => {
+				let Some((gdd, rev)) = active_storage(&context).zip(parse_rev(&id)) else { return };
+				match place(gdd.session(), rev) {
+					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
+					Some(Place::Line(_)) => {}
+					// Off the line: minted again on top of it.
+					None => responses.add(DocumentMessage::HistoryRestoreStep { rev }),
+				}
+			}
 		}
 	}
 
@@ -73,27 +109,59 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 
 impl HistoryMessageHandler {
 	fn send(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>, force: bool) {
-		let gdd = context.active_document_id.and_then(|id| context.documents.get(&id)).and_then(|document| document.storage());
-		let Some(gdd) = gdd else {
+		let Some(gdd) = active_storage(context) else {
 			if force {
 				self.last_sent = None;
 				responses.add(FrontendMessage::UpdateHistoryPanel { state: HistoryPanelState::default() });
 			}
 			return;
 		};
+		// A branch whose tip this copy no longer holds is nothing to follow.
+		if self.following.is_some_and(|tip| gdd.session().delta(tip).is_none()) {
+			self.following = None;
+		}
 		let limit = self.limit.max(PAGE);
-		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded);
+		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following);
 		if !force && self.last_sent == Some(fingerprint) {
 			return;
 		}
 		self.last_sent = Some(fingerprint);
-		let state = panel_state(gdd, limit, &self.expanded);
+		let state = panel_state(gdd, limit, &self.expanded, self.following);
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
 	}
 }
 
+fn active_storage<'a>(context: &'a HistoryMessageContext) -> Option<&'a GddV1> {
+	context.active_document_id.and_then(|id| context.documents.get(&id)).and_then(|document| document.storage())
+}
+
+fn parse_rev(id: &str) -> Option<Rev> {
+	id.parse::<u128>().ok().and_then(Rev::new)
+}
+
+/// Where an interaction sits relative to the head.
+enum Place {
+	/// On the head's line, this many interactions back; zero is the head itself.
+	Line(usize),
+	/// Above the head on the undone line, this many redos forward.
+	Undone(usize),
+}
+
+fn place(session: &Session, rev: Rev) -> Option<Place> {
+	let head = session.head_rev();
+	let (kept, _) = line(session, head, None, usize::MAX);
+	if let Some(steps) = interactions(&kept).iter().position(|group| group[0].id == rev) {
+		return Some(Place::Line(steps));
+	}
+	let checkpoint = *session.redo_stack().last()?;
+	let (undone, _) = line(session, Some(checkpoint), head, usize::MAX);
+	let groups = interactions(&undone);
+	let index = groups.iter().position(|group| group[0].id == rev)?;
+	Some(Place::Undone(groups.len() - index))
+}
+
 /// Everything the panel's content depends on, hashed: cheap to take every frame.
-fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>) -> u64 {
+fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Option<Rev>) -> u64 {
 	let session = gdd.session();
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
 	document_id.hash(&mut hasher);
@@ -101,6 +169,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 	session.head_rev().hash(&mut hasher);
 	session.redo_stack().hash(&mut hasher);
 	session.hot_log().len().hash(&mut hasher);
+	gdd.role().is_some().hash(&mut hasher);
 	for record in &gdd.metadata().users {
 		record.user.hash(&mut hasher);
 		if let Some(name) = gdd.metadata().user_name(record.user) {
@@ -113,10 +182,11 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 	}
 	limit.hash(&mut hasher);
 	expanded.len().hash(&mut hasher);
+	following.hash(&mut hasher);
 	hasher.finish()
 }
 
-fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>) -> HistoryPanelState {
+fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
 	let session = gdd.session();
 	let people = People {
 		session,
@@ -133,20 +203,51 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>) -> HistoryPan
 	}
 
 	let head = session.head_rev();
-	// Taken back and not yet redone: from the redo stack's top down to the head, shown above it.
-	let undone = match session.redo_stack().last() {
-		Some(&checkpoint) => line(session, Some(checkpoint), head, usize::MAX).0,
-		None => Vec::new(),
-	};
-	let (kept, more) = line(session, head, None, limit);
-	let on_line: HashSet<Rev> = undone.iter().chain(&kept).map(|delta| delta.id).collect();
+	let (head_line, _) = line(session, head, None, usize::MAX);
+	let head_line_revs: HashSet<Rev> = head_line.iter().map(|delta| delta.id).collect();
 
+	// Taken back and not yet redone: from the redo stack's top down to the head, shown above it. Not while
+	// following a branch, whose line is shown whole instead.
+	let undone = match (following, session.redo_stack().last()) {
+		(None, Some(&checkpoint)) => line(session, Some(checkpoint), head, usize::MAX).0,
+		_ => Vec::new(),
+	};
+	let (shown, more) = match following {
+		Some(tip) => line(session, Some(tip), None, limit),
+		None => (
+			head_line
+				.iter()
+				.take_while({
+					let mut ends = 0;
+					move |delta| {
+						if delta.is_interaction_end() {
+							ends += 1;
+						}
+						ends <= limit
+					}
+				})
+				.cloned()
+				.collect::<Vec<_>>(),
+			interactions(&head_line).len() > limit,
+		),
+	};
+	let on_line: HashSet<Rev> = undone.iter().chain(&shown).map(|delta| delta.id).collect();
+
+	let view = View {
+		children: &children,
+		on_line: &on_line,
+		head_line: &head_line_revs,
+		head,
+		people: &people,
+		expanded,
+		session,
+	};
 	let mut rows = Vec::new();
 	for group in interactions(&undone) {
-		rows.push(row(&group, true, false, &children, &on_line, &people, expanded));
+		rows.push(view.row(&group, true));
 	}
-	for (index, group) in interactions(&kept).into_iter().enumerate() {
-		rows.push(row(&group, false, index == 0, &children, &on_line, &people, expanded));
+	for group in interactions(&shown) {
+		rows.push(view.row(&group, false));
 	}
 
 	// The hot log: what is under way, by the person doing it.
@@ -171,7 +272,13 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>) -> HistoryPan
 		})
 		.collect();
 
-	HistoryPanelState { rows, progress, more }
+	HistoryPanelState {
+		rows,
+		progress,
+		more,
+		following: following.map(|tip| tip.to_string()),
+		session: gdd.role().is_some(),
+	}
 }
 
 /// The deltas from `from` back along first parents to `until` exclusive, or the root, newest first.
@@ -210,46 +317,71 @@ fn interactions(deltas: &[Delta]) -> Vec<Vec<&Delta>> {
 	groups
 }
 
-#[allow(clippy::too_many_arguments)]
-fn row(group: &[&Delta], undone: bool, head: bool, children: &HashMap<Rev, Vec<Rev>>, on_line: &HashSet<Rev>, people: &People, expanded: &HashSet<Rev>) -> HistoryRow {
-	let closing = group[0];
-	let person = people.person(closing.author);
-	let branches = group
-		.iter()
-		.flat_map(|delta| children.get(&delta.id).into_iter().flatten())
-		.filter(|child| !on_line.contains(child))
-		.count();
-	let is_expanded = expanded.contains(&closing.id);
-	let details = match is_expanded {
-		true => group
+/// What one send of the panel is computed against.
+struct View<'a> {
+	children: &'a HashMap<Rev, Vec<Rev>>,
+	on_line: &'a HashSet<Rev>,
+	head_line: &'a HashSet<Rev>,
+	head: Option<Rev>,
+	people: &'a People<'a>,
+	expanded: &'a HashSet<Rev>,
+	session: &'a Session,
+}
+
+impl View<'_> {
+	fn row(&self, group: &[&Delta], undone: bool) -> HistoryRow {
+		let closing = group[0];
+		let person = self.people.person(closing.author);
+		let branches = group
 			.iter()
-			.map(|delta| {
-				let author = people.person(delta.author);
-				HistoryDeltaRow {
-					id: delta.id.to_string(),
-					label: describe(&delta.kind),
-					author: author.name,
-					color: author.color,
-					time: delta.retired_at().map(|ms| ms as f64),
-				}
-			})
-			.collect(),
-		false => Vec::new(),
-	};
-	HistoryRow {
-		id: closing.id.to_string(),
-		label: summarize(group),
-		author: person.name,
-		anonymous: person.anonymous,
-		mine: person.mine,
-		color: person.color,
-		time: group.iter().find_map(|delta| delta.retired_at()).map(|ms| ms as f64),
-		deltas: group.len(),
-		branches,
-		undone,
-		head,
-		expanded: is_expanded,
-		details,
+			.flat_map(|delta| self.children.get(&delta.id).into_iter().flatten())
+			.filter(|child| !self.on_line.contains(child))
+			.map(|&child| self.branch(child))
+			.collect();
+		let is_expanded = self.expanded.contains(&closing.id);
+		let details = match is_expanded {
+			true => group
+				.iter()
+				.map(|delta| {
+					let author = self.people.person(delta.author);
+					HistoryDeltaRow {
+						id: delta.id.to_string(),
+						label: describe(&delta.kind),
+						author: author.name,
+						color: author.color,
+						time: delta.retired_at().map(|ms| ms as f64),
+					}
+				})
+				.collect(),
+			false => Vec::new(),
+		};
+		HistoryRow {
+			id: closing.id.to_string(),
+			label: summarize(group),
+			author: person.name,
+			anonymous: person.anonymous,
+			mine: person.mine,
+			color: person.color,
+			time: group.iter().find_map(|delta| delta.retired_at()).map(|ms| ms as f64),
+			deltas: group.len(),
+			branches,
+			undone,
+			abandoned: !undone && !self.head_line.contains(&closing.id),
+			head: Some(closing.id) == self.head,
+			expanded: is_expanded,
+			details,
+		}
+	}
+
+	/// The branch that starts at `first`: its tip, following first children, and what its newest interaction did.
+	fn branch(&self, first: Rev) -> HistoryBranch {
+		let mut tip = first;
+		while let Some(&next) = self.children.get(&tip).and_then(|children| children.first()) {
+			tip = next;
+		}
+		let (newest, _) = line(self.session, Some(tip), None, 1);
+		let label = interactions(&newest).first().map(|group| summarize(group)).unwrap_or_default();
+		HistoryBranch { id: tip.to_string(), label }
 	}
 }
 
@@ -257,7 +389,8 @@ fn row(group: &[&Delta], undone: bool, head: bool, children: &HashMap<Rev, Vec<R
 fn summarize(group: &[&Delta]) -> String {
 	let mut counts: Vec<(String, usize)> = Vec::new();
 	for delta in group {
-		// A registration says nothing about the document; it labels an interaction only when it is all there is.
+		// A registration or a marker says nothing about the document; it labels an interaction only when it is all
+		// there is.
 		if matches!(delta.kind, RegistryDelta::RegisterPeer { .. } | RegistryDelta::EndTransaction) && group.len() > 1 {
 			continue;
 		}

@@ -11,4 +11,12 @@ pub enum HistoryMessage {
 	Expand { id: String, expanded: bool },
 	/// Show older interactions than the ones on hand.
 	LoadMore,
+	/// Move the head to the interaction: back along the line, or forward again over undone ones.
+	GoBack { id: String },
+	/// Drop one interaction out of the line, the later ones staying.
+	RemoveStep { id: String },
+	/// Bring an undone or abandoned interaction back.
+	BringBack { id: String },
+	/// Show the line of the branch whose tip is `id`, or the head's line again with `None`.
+	Follow { id: Option<String> },
 }

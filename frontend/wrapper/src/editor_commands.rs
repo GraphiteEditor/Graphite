@@ -285,6 +285,26 @@ mod editor_commands {
 		HistoryMessage::LoadMore.into()
 	}
 
+	/// Move the head to an interaction shown in the History panel
+	fn history_go_back(id: String) -> Message {
+		HistoryMessage::GoBack { id }.into()
+	}
+
+	/// Drop one interaction out of the line, the later ones staying
+	fn history_remove_step(id: String) -> Message {
+		HistoryMessage::RemoveStep { id }.into()
+	}
+
+	/// Bring an undone or abandoned interaction back
+	fn history_bring_back(id: String) -> Message {
+		HistoryMessage::BringBack { id }.into()
+	}
+
+	/// Show a branch's line in the History panel, or the head's again with no id
+	fn follow_history_branch(id: Option<String>) -> Message {
+		HistoryMessage::Follow { id }.into()
+	}
+
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),

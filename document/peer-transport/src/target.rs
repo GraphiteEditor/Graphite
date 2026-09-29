@@ -59,6 +59,11 @@ pub trait SyncTarget {
 	fn drop_interaction(&mut self, rev: Rev) -> Result<HeadMove, TargetError>;
 	/// Host only: mint a dropped interaction again on top of the line. See [`Session::restore_interaction`].
 	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError>;
+	/// Host only: move the shared head to an ancestor, leaving the line since as a branch. See [`Session::move_head_to`].
+	fn move_head_to(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
+		let _ = rev;
+		Err("this target cannot move its head".into())
+	}
 	/// Follow the host's cursor move. See [`Session::apply_head_move`].
 	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError>;
 	/// Make everything applied since the last flush durable. Called once per [`Replica::poll`](crate::Replica::poll),
@@ -186,5 +191,9 @@ impl SyncTarget for Session {
 	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError> {
 		Session::apply_head_move(self, moved)?;
 		Ok(())
+	}
+
+	fn move_head_to(&mut self, rev: Rev) -> Result<HeadMove, TargetError> {
+		Ok(Session::move_head_to(self, rev)?.0)
 	}
 }

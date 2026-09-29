@@ -353,6 +353,15 @@ impl<L: Layout> Gdd<L> {
 		let Some(rev) = self.session.latest_own_interaction() else {
 			return Ok(None);
 		};
+		self.drop_step(rev)?;
+		Ok(Some(rev))
+	}
+
+	/// Drop any retired interaction out of the line, by the retirer directly or on request, the later steps minted
+	/// again on its parent; see [`Session::drop_interaction`]. What it named lands in the remote changes for the
+	/// mirror to follow. Works alone too, where this peer is its own retirer.
+	#[cfg(feature = "network")]
+	pub fn drop_step(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {
 			let (moved, touched) = self.session.drop_interaction(rev)?;
 			self.remote_changes.touched.extend(touched);
@@ -369,7 +378,28 @@ impl<L: Layout> Gdd<L> {
 		} else if let Some(replica) = &mut self.network {
 			replica.request_undo(rev, false)?;
 		}
-		Ok(Some(rev))
+		Ok(())
+	}
+
+	/// Move the head to an ancestor in a session, everything since staying as a branch; see
+	/// [`Session::move_head_to`]. The retirer does it and tells the room; anyone else asks the retirer.
+	#[cfg(feature = "network")]
+	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let (moved, touched) = self.session.move_head_to(rev)?;
+			self.remote_changes.touched.extend(touched);
+			if let Some(head) = self.session.head_rev() {
+				self.session.publish_up_to(head);
+			}
+			self.persist_registry_snapshot()?;
+			self.persist_session_state()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_head_move(moved)?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_move(rev)?;
+		}
+		Ok(())
 	}
 
 	/// Redo a step [`undo_retired_step`](Self::undo_retired_step) dropped: it comes back as a copy on top

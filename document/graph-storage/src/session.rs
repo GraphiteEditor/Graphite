@@ -431,6 +431,38 @@ impl Session {
 		))
 	}
 
+	/// Move the shared head to an ancestor in a session: the line from the head down to `target` stays as an
+	/// abandoned branch, nothing is minted, and the snapshot is refolded at the target for the reason
+	/// [`drop_interaction`](Self::drop_interaction) gives. Returns the move to broadcast and what the steps left
+	/// behind named. Only the retirer does this; a guest asks it to.
+	pub fn move_head_to(&mut self, target: Rev) -> Result<(HeadMove, Touched), CrdtError> {
+		let from = self.document.head;
+		if from == Some(target) {
+			return Err(CrdtError::NothingToUndo);
+		}
+		let mut touched = Touched::default();
+		let mut current = from;
+		while current != Some(target) {
+			let rev = current.ok_or(CrdtError::NotFoundInHistory(target))?;
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?;
+			touched.record(&delta.kind);
+			current = delta.parent;
+		}
+		self.document.head = Some(target);
+		self.document.retired_snapshot = self.snapshot_from_history()?;
+		self.document.redo_stack.clear();
+		self.document.rebuild_working();
+		self.runtime_base = None;
+		Ok((
+			HeadMove {
+				from,
+				head: Some(target),
+				copies: Vec::new(),
+			},
+			touched,
+		))
+	}
+
 	/// Follow another peer's cursor move: refold the snapshot to where the copies start, take the copies on,
 	/// and put the head where the mover put it. Returns what the walked-over ops named. The move only
 	/// applies from the head it started at; anywhere else this peer has diverged and needs a resync.

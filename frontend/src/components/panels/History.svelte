@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { HistoryStore } from "/src/stores/history";
@@ -29,6 +31,12 @@
 </script>
 
 <LayoutCol class="history-panel">
+	{#if $history.following}
+		<LayoutRow class="following">
+			<TextLabel>Viewing a branch</TextLabel>
+			<TextButton label="Back to now" action={() => editor.followHistoryBranch(undefined)} />
+		</LayoutRow>
+	{/if}
 	<LayoutCol class="body" scrollableY={true}>
 		{#each $history.progress as row}
 			<div class="row progress">
@@ -43,11 +51,10 @@
 			</div>
 		{/each}
 		{#each $history.rows as row (row.id)}
-			<div class="row" class:head={row.head} class:undone={row.undone}>
+			<div class="row" class:head={row.head} class:undone={row.undone} class:abandoned={row.abandoned}>
 				<button
 					class="expand"
 					class:expanded={row.expanded}
-					title=""
 					data-tooltip-label={row.expanded ? "Hide the changes" : "Show the changes"}
 					on:click={() => editor.expandHistoryInteraction(row.id, !row.expanded)}
 				></button>
@@ -58,11 +65,48 @@
 						<span class="author" class:anonymous={row.anonymous}>{row.mine ? `${row.author} (you)` : row.author}</span>
 						{#if row.time}· {when(row.time)}{/if}
 						· {count(row.deltas, "change", "changes")}
-						{#if row.branches > 0}· {count(row.branches, "branch", "branches")}{/if}
 					</span>
+					{#if row.branches.length > 0}
+						<span class="branches">
+							{#each row.branches as branch (branch.id)}
+								<button class="branch" data-tooltip-label="Show this branch" on:click={() => editor.followHistoryBranch(branch.id)}>↳ {branch.label}</button>
+							{/each}
+						</span>
+					{/if}
 				</div>
+				<span class="actions">
+					{#if row.undone}
+						<IconButton icon="HistoryRedo" size={16} tooltipLabel="Bring back" tooltipDescription="Redo up to and including this step." action={() => editor.historyBringBack(row.id)} />
+					{:else if row.abandoned}
+						<IconButton
+							icon="HistoryRedo"
+							size={16}
+							tooltipLabel="Bring back"
+							tooltipDescription="Do this step again on top of the current line."
+							action={() => editor.historyBringBack(row.id)}
+						/>
+					{:else}
+						{#if !row.head}
+							<IconButton
+								icon="HistoryUndo"
+								size={16}
+								tooltipLabel="Go back to here"
+								tooltipDescription={$history.session ? "Move everyone's document back to this step. The steps since stay as a branch." : "Undo up to this step."}
+								action={() => editor.historyGoBack(row.id)}
+							/>
+						{/if}
+						<IconButton
+							icon="Trash"
+							size={16}
+							tooltipLabel="Remove this step"
+							tooltipDescription="Take this step out and keep the ones after it."
+							action={() => editor.historyRemoveStep(row.id)}
+						/>
+					{/if}
+				</span>
 				{#if row.head}<span class="marker">Now</span>{/if}
 				{#if row.undone}<span class="marker">Undone</span>{/if}
+				{#if row.abandoned}<span class="marker">Branch</span>{/if}
 			</div>
 			{#if row.expanded}
 				{#each row.details as delta (delta.id)}
@@ -95,6 +139,13 @@
 		flex-grow: 1;
 		padding: 4px 0;
 
+		.following {
+			flex: 0 0 auto;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0 8px 4px 8px;
+		}
+
 		.row {
 			display: flex;
 			align-items: center;
@@ -106,14 +157,28 @@
 				background: var(--color-3-darkgray);
 			}
 
-			&.undone {
-				opacity: 0.5;
+			&.undone,
+			&.abandoned {
+				.rail,
+				.text {
+					opacity: 0.6;
+				}
 			}
 
 			&.delta {
 				min-height: 24px;
 				padding-left: 28px;
 				font-size: 11px;
+			}
+
+			.actions {
+				flex: 0 0 auto;
+				display: flex;
+				visibility: hidden;
+			}
+
+			&:hover .actions {
+				visibility: visible;
 			}
 
 			.expand {
@@ -200,6 +265,33 @@
 
 					.anonymous {
 						font-style: italic;
+					}
+				}
+
+				.branches {
+					display: flex;
+					flex-wrap: wrap;
+					gap: 4px;
+					margin-top: 2px;
+
+					.branch {
+						font-size: 11px;
+						line-height: 14px;
+						padding: 0 4px;
+						border: none;
+						border-radius: 2px;
+						background: var(--color-4-dimgray);
+						color: var(--color-c-brightgray);
+						cursor: pointer;
+						max-width: 100%;
+						white-space: nowrap;
+						overflow: hidden;
+						text-overflow: ellipsis;
+
+						&:hover {
+							background: var(--color-5-dullgray);
+							color: var(--color-e-nearwhite);
+						}
 					}
 				}
 			}

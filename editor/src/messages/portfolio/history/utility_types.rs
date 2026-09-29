@@ -1,6 +1,7 @@
 //! What the History panel shows, as the frontend receives it.
 
-/// The panel's content: the head's line as interactions, newest first, with the undone ones above the head.
+/// The panel's content: a line as interactions, newest first. The head's line with the undone ones above it,
+/// or a branch's line while one is followed.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HistoryPanelState {
@@ -9,6 +10,10 @@ pub struct HistoryPanelState {
 	pub progress: Vec<HistoryProgressRow>,
 	/// Whether older interactions exist beyond the rows sent.
 	pub more: bool,
+	/// The tip of the branch being followed instead of the head's line, if any.
+	pub following: Option<String>,
+	/// Whether the document is in a session, where moving the head moves it for everyone.
+	pub session: bool,
 }
 
 /// One interaction: a run of deltas that undo takes back together.
@@ -27,14 +32,24 @@ pub struct HistoryRow {
 	/// When the interaction entered history, in milliseconds since the Unix epoch, if its retirer recorded it.
 	pub time: Option<f64>,
 	pub deltas: usize,
-	/// Branches leaving this interaction that are not on the line shown.
-	pub branches: usize,
+	/// Branches leaving this interaction that are not on the line shown, each by its tip.
+	pub branches: Vec<HistoryBranch>,
 	/// Above the head: taken back, and redo would bring it back.
 	pub undone: bool,
+	/// On a followed branch and not on the head's line: no head reaches it.
+	pub abandoned: bool,
 	pub head: bool,
 	pub expanded: bool,
 	/// The interaction's deltas, newest first, when expanded.
 	pub details: Vec<HistoryDeltaRow>,
+}
+
+/// A branch leaving an interaction, named by its tip and what its newest interaction did.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryBranch {
+	pub id: String,
+	pub label: String,
 }
 
 /// One delta of an expanded interaction.

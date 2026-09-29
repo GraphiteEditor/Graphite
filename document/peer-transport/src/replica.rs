@@ -370,6 +370,15 @@ impl Replica {
 		self.transport.send(host, &SyncPacket::UndoRequest { rev, restore })
 	}
 
+	/// Ask the host to move the shared head to `rev`, an ancestor of it. A host moves its own directly with
+	/// [`broadcast_head_move`](Self::broadcast_head_move).
+	pub fn request_move(&mut self, rev: Rev) -> Result<(), PacketError> {
+		let Some((&host, _)) = self.peers.iter().find(|(_, remote)| remote.role == Role::Host) else {
+			return Ok(());
+		};
+		self.transport.send(host, &SyncPacket::MoveRequest { rev })
+	}
+
 	/// Host only: tell the room the head moved, with the steps minted again under it.
 	pub fn broadcast_head_move(&mut self, moved: HeadMove) -> Result<(), PacketError> {
 		debug_assert_eq!(self.role, Role::Host);
@@ -706,6 +715,16 @@ impl Replica {
 				match outcome {
 					Ok(()) => events.push(Event::Changed),
 					Err(error) => log::error!("Undo request for {rev:?} failed: {error}"),
+				}
+			}
+			SyncPacket::MoveRequest { rev } => {
+				if self.role != Role::Host {
+					return Ok(());
+				}
+				let outcome = target.move_head_to(rev).and_then(|moved| self.broadcast_head_move(moved).map_err(TargetError::from));
+				match outcome {
+					Ok(()) => events.push(Event::Changed),
+					Err(error) => log::error!("Move request to {rev:?} failed: {error}"),
 				}
 			}
 			SyncPacket::SyncRequest { known_revs } => {
