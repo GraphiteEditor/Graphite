@@ -9,7 +9,7 @@ use vector_types::vector::style::RenderMode;
 use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-pub async fn render_pixel_preview<'a: 'n>(
+async fn render_pixel_preview<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,

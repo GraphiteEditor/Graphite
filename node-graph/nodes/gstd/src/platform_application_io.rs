@@ -239,12 +239,12 @@ async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>,
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
+fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
 	editor_api
 }
 
 #[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(
+async fn resource<'a: 'n>(
 	_: impl Ctx,
 	/// The scope-provided editor API giving access to the platform's resource storage.
 	#[scope(editor_api::IDENTIFIER)]
@@ -269,7 +269,7 @@ pub async fn resource<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
+fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
 	let executor = editor_api
 		.into_element()
 		.application_io
@@ -281,14 +281,14 @@ pub fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] edito
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
+fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
 	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor());
 	Item::new_from_element(executor)
 }
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
 #[node_macro::node(category("Debug"), memoize)]
-pub async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
+async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
 	let executor = executor.into_element();
 	let (raster, attributes) = content.into_parts();
 

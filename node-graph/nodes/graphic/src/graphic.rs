@@ -15,7 +15,7 @@ use vector_types::{Gradient, ReferencePoint};
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
 #[node_macro::node(category("General"), name("Remove at Index"))]
-pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
+fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
@@ -49,7 +49,7 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 /// Returns the item at the specified index in a list, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"), name("Item at Index"))]
-pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
+fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to take the item from.
 	#[implementations(
@@ -503,7 +503,7 @@ fn mirror<T: BoundingBox + 'n + Send + Clone>(
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
-pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
+fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
 	let node_path = node_path.into_element().0;
 	let len = node_path.len();
 	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
@@ -813,7 +813,7 @@ fn read_attribute_raster(
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
 #[node_macro::node(category("General"))]
-pub fn extend<T: 'n + Send + Clone>(
+fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
 	#[implementations(
@@ -863,7 +863,7 @@ pub fn extend<T: 'n + Send + Clone>(
 /// Performs an obsolete function as part of a migration from an older document format.
 /// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
-pub fn legacy_layer_extend<T: 'n + Send + Clone>(
+fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
@@ -890,7 +890,7 @@ pub fn legacy_layer_extend<T: 'n + Send + Clone>(
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
-pub fn into_group<T: Into<Graphic> + 'n>(
+fn into_group<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -912,13 +912,13 @@ pub fn into_group<T: Into<Graphic> + 'n>(
 /// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"))]
-pub fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
+fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
-pub fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
+fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
@@ -995,19 +995,19 @@ pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
-pub fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
+fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
-pub fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
+fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
+fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
 

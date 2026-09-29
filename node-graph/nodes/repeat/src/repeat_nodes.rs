@@ -53,7 +53,7 @@ async fn repeat<T: Send + Clone + 'static>(
 }
 
 #[node_macro::node(category("Repeat"))]
-pub async fn repeat_array<T: Send + Clone + 'static>(
+async fn repeat_array<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> List<String>,

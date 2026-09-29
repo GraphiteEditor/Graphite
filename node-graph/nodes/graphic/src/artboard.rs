@@ -9,7 +9,7 @@ use vector_types::Gradient;
 
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
-pub async fn create_artboard<T: IntoGraphicList>(
+async fn create_artboard<T: IntoGraphicList>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// Graphics to include within the artboard.
 	#[implementations(
