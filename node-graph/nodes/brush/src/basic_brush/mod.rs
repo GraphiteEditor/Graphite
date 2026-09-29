@@ -57,7 +57,7 @@ async fn basic_brush<'a: 'n>(
 		strokes: &strokes,
 		cache: &cache,
 	};
-	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args).await else {
+	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args) else {
 		return List::new();
 	};
 	let raster = Raster::<GPU>::new_gpu(texture);

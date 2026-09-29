@@ -136,7 +136,6 @@ async fn render<'a: 'n>(
 				.into_element()
 				.expect("GPU executor not available")
 				.render_vello_scene(&transformed_scene, footprint.resolution, context, None)
-				.await
 				.expect("Failed to render Vello scene");
 			RenderOutputType::Texture(texture)
 		}

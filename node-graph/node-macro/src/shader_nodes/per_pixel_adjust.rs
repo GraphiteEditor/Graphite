@@ -325,7 +325,7 @@ impl PerPixelAdjustCodegen<'_> {
 					wgsl_shader: crate::WGSL_SHADER,
 					fragment_shader_name: super::#entry_point_name,
 					has_uniform: #has_uniform,
-				}, #gpu_image, #uniform_buffer).await
+				}, #gpu_image, #uniform_buffer)
 			}
 		};
 
@@ -353,7 +353,7 @@ impl PerPixelAdjustCodegen<'_> {
 			},
 			output_type: raster_gpu,
 			output_element: None,
-			is_async: true,
+			is_async: false,
 			fields,
 			body,
 			description: self.parsed.description.clone(),

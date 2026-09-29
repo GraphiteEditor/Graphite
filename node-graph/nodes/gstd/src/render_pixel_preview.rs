@@ -6,7 +6,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use vector_types::vector::style::RenderMode;
-use wgpu_executor::{AsyncWgpuPipeline, WgpuExecutor, WgpuPipelineCache};
+use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
 async fn render_pixel_preview<'a: 'n>(
@@ -62,14 +62,11 @@ async fn render_pixel_preview<'a: 'n>(
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
 	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
-	let resampled = pipeline
-		.into_element()
-		.run::<PixelPreview>(&PixelPreviewArgs {
-			source: source_texture.as_ref(),
-			transform: &transform,
-			size: physical_resolution,
-		})
-		.await;
+	let resampled = pipeline.into_element().run::<PixelPreview>(&PixelPreviewArgs {
+		source: source_texture.as_ref(),
+		transform: &transform,
+		size: physical_resolution,
+	});
 
 	result.data = RenderOutputType::Texture(resampled);
 
@@ -101,7 +98,7 @@ pub struct PixelPreviewArgs<'a> {
 	size: UVec2,
 }
 
-impl AsyncWgpuPipeline for PixelPreview {
+impl WgpuPipeline for PixelPreview {
 	type Args<'a> = PixelPreviewArgs<'a>;
 	type Out = Texture;
 
@@ -173,7 +170,7 @@ impl AsyncWgpuPipeline for PixelPreview {
 		PixelPreview { pipeline, bind_group_layout }
 	}
 
-	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
+	fn run(&self, executor: &WgpuExecutor, args: &Self::Args<'_>) -> Self::Out {
 		let context = &executor.context();
 		let &PixelPreviewArgs { source, transform, size } = args;
 
