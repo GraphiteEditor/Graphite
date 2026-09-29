@@ -922,7 +922,6 @@ dependencies = [
  "serde_json",
  "skrifa 0.42.1",
  "tinyvec",
- "tokio",
  "tsify",
  "wasm-bindgen",
 ]

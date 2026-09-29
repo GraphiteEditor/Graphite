@@ -58,5 +58,4 @@ wasm-bindgen = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies
-tokio = { workspace = true }
 serde_json = { workspace = true }

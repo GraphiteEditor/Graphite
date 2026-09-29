@@ -96,7 +96,7 @@ async fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl
 	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
 	let (value, attributes) = value.into_parts();
 
-	Item::from_parts(value.convert(footprint, ()).await, attributes)
+	Item::from_parts(value.convert(footprint, ()), attributes)
 }
 
 /// The `List` counterpart of `convert_item`, casting every element to the connector's numeric element type.
@@ -107,7 +107,7 @@ async fn convert_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl
 	let mut result = List::default();
 	for item in value.into_iter() {
 		let (value, attributes) = item.into_parts();
-		result.push(Item::from_parts(value.convert(footprint, ()).await, attributes));
+		result.push(Item::from_parts(value.convert(footprint, ()), attributes));
 	}
 
 	result

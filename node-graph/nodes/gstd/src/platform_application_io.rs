@@ -292,5 +292,5 @@ async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope
 	let executor = executor.into_element();
 	let (raster, attributes) = content.into_parts();
 
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor).await, attributes)
+	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
 }
