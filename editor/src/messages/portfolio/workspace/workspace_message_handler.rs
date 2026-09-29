@@ -296,6 +296,14 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Session;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
+			WorkspaceMessage::ToggleHistoryPanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::History;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
 			WorkspaceMessage::UpdatePanelsLayout => {
 				let panel_layout = match self.panel_layout.focus_document {
 					true => self.panel_layout.document_only_layout(),
@@ -412,7 +420,7 @@ impl WorkspaceMessageHandler {
 			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelControlRightBar, LayoutTarget::LayersPanelBottomBar],
 			PanelType::Data => &[LayoutTarget::DataPanel],
 			PanelType::Session => &[LayoutTarget::SessionPanel],
-			PanelType::Document | PanelType::Welcome => return,
+			PanelType::Document | PanelType::Welcome | PanelType::History => return,
 		};
 
 		for &layout_target in targets {
@@ -440,6 +448,9 @@ impl WorkspaceMessageHandler {
 			}
 			PanelType::Session => {
 				responses.add(SyncMessage::RefreshPanel);
+			}
+			PanelType::History => {
+				responses.add(HistoryMessage::Refresh);
 			}
 			PanelType::Document | PanelType::Welcome => {
 				// Re-send the welcome screen buttons layout to repopulate after a remount

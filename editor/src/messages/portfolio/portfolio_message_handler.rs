@@ -55,6 +55,7 @@ pub struct PortfolioMessageHandler {
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
 	ingest: IngestMessageHandler,
+	history: HistoryMessageHandler,
 	sync: SyncMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
@@ -121,6 +122,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_open: self.active_document().is_some(),
 				};
 				self.ingest.process_message(message, responses, context);
+			}
+			PortfolioMessage::History(message) => {
+				let context = HistoryMessageContext {
+					documents: &self.documents,
+					active_document_id: self.active_document_id,
+					panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::History) && !self.workspace.panel_layout.focus_document,
+				};
+				self.history.process_message(message, responses, context);
 			}
 			PortfolioMessage::Sync(message) => {
 				let context = SyncMessageContext {

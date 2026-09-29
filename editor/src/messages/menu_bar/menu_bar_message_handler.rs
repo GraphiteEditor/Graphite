@@ -21,6 +21,7 @@ pub struct MenuBarMessageHandler {
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
 	pub session_panel_open: bool,
+	pub history_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub focus_document: bool,
@@ -684,6 +685,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.label("Session")
 							.icon(if self.session_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.on_commit(|_| WorkspaceMessage::ToggleSessionPanelOpen.into())
+							.disabled(self.focus_document),
+						MenuListEntry::new("History")
+							.label("History")
+							.icon(if self.history_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| WorkspaceMessage::ToggleHistoryPanelOpen.into())
 							.disabled(self.focus_document),
 					],
 				])

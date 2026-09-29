@@ -13,6 +13,8 @@ pub enum PanelType {
 	Data,
 	/// The live session of the active document: its state, the join link, the peers, and the sharing actions.
 	Session,
+	/// The active document's history as interactions along the head's line, with who did what and when.
+	History,
 }
 
 impl From<String> for PanelType {
@@ -24,6 +26,7 @@ impl From<String> for PanelType {
 			"Properties" => PanelType::Properties,
 			"Data" => PanelType::Data,
 			"Session" => PanelType::Session,
+			"History" => PanelType::History,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}
@@ -31,7 +34,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Properties, PanelType::Data, PanelType::Session]
+		&[PanelType::Layers, PanelType::Properties, PanelType::Data, PanelType::Session, PanelType::History]
 	}
 }
 
@@ -309,9 +312,15 @@ impl WorkspacePanelLayout {
 	/// - Properties: top of the right column (root child 1)
 	/// - Layers: bottom of the right column (root child 1)
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
-		// The Session panel's home is a tab beside Properties, so it joins that group whenever one is present.
-		if panel_type == PanelType::Session
-			&& let Some(group_id) = self.find_panel(PanelType::Properties)
+		// The Session panel's home is a tab beside Properties and the History panel's beside Layers, so each joins
+		// that group whenever one is present.
+		let beside = match panel_type {
+			PanelType::Session => Some(PanelType::Properties),
+			PanelType::History => Some(PanelType::Layers),
+			_ => None,
+		};
+		if let Some(beside) = beside
+			&& let Some(group_id) = self.find_panel(beside)
 			&& let Some(group) = self.panel_group_mut(group_id)
 		{
 			group.tabs.push(panel_type);
@@ -334,7 +343,7 @@ impl WorkspacePanelLayout {
 		let (root_child_index, insert_at_end) = match panel_type {
 			PanelType::Data => (0, true),                             // Left column, after document
 			PanelType::Properties | PanelType::Session => (1, false), // Right column, at top
-			PanelType::Layers => (1, true),                           // Right column, at bottom
+			PanelType::Layers | PanelType::History => (1, true),      // Right column, at bottom
 			_ => (1, true),
 		};
 

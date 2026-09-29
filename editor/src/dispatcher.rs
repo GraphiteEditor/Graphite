@@ -271,6 +271,7 @@ impl Dispatcher {
 					let layout = &self.message_handlers.portfolio_message_handler.workspace.panel_layout;
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
 					menu_bar_message_handler.session_panel_open = layout.is_panel_present(PanelType::Session);
+					menu_bar_message_handler.history_panel_open = layout.is_panel_present(PanelType::History);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;

@@ -1,3 +1,4 @@
+pub(crate) mod identity;
 mod sync_message;
 mod sync_message_handler;
 

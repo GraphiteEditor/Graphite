@@ -275,6 +275,16 @@ mod editor_commands {
 		WorkspaceMessage::FocusPanel { panel_type }.into()
 	}
 
+	/// Show or hide the deltas of one interaction in the History panel
+	fn expand_history_interaction(id: String, expanded: bool) -> Message {
+		HistoryMessage::Expand { id, expanded }.into()
+	}
+
+	/// Show older interactions in the History panel
+	fn load_more_history() -> Message {
+		HistoryMessage::LoadMore.into()
+	}
+
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),

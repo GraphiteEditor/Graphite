@@ -1,4 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::history::HistoryMessage;
 use super::persistent_state::PersistentStateMessage;
 use super::sync::SyncMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
@@ -20,6 +21,8 @@ pub enum PortfolioMessage {
 	Ingest(IngestMessage),
 	#[child]
 	PersistentState(PersistentStateMessage),
+	#[child]
+	History(HistoryMessage),
 	#[child]
 	Sync(SyncMessage),
 	#[child]

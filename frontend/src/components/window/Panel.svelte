@@ -4,6 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Data from "/src/components/panels/Data.svelte";
 	import Document from "/src/components/panels/Document.svelte";
+	import History from "/src/components/panels/History.svelte";
 	import Layers from "/src/components/panels/Layers.svelte";
 	import Properties from "/src/components/panels/Properties.svelte";
 	import Session from "/src/components/panels/Session.svelte";
@@ -18,6 +19,7 @@
 		Welcome,
 		Document,
 		Layers,
+		History,
 		Properties,
 		Data,
 		Session,
