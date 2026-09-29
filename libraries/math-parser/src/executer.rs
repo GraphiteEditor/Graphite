@@ -47,6 +47,12 @@ pub enum EvalError {
 	#[error("Remapping from a flat range is ambiguous, since a value lies at every position along its flat side")]
 	FlatRemapSource,
 
+	#[error("A smoothstep across a flat range has no width to ease over")]
+	FlatSmoothstep,
+
+	#[error("A smoothstep's continuity is a whole number from 0 to 3")]
+	SmoothstepContinuity,
+
 	#[error("Only a matrix without translation has a transpose")]
 	AffineTranspose,
 
@@ -421,7 +427,7 @@ impl ValueNode {
 			},
 			ValueNode::Apply { matrix, value } => value_of_matrix(scope, MatrixValueCase::Apply(matrix, value)),
 			ValueNode::OfMatrix { function, matrix } => value_of_matrix(scope, MatrixValueCase::OfMatrix(*function, matrix)),
-			ValueNode::OfValueAndRegions { function, value, regions } => value_of_matrix(scope, MatrixValueCase::OfValueAndRegions(*function, value, regions)),
+			ValueNode::OfValueAndRegions { function, value, regions, trailing } => value_of_matrix(scope, MatrixValueCase::OfValueAndRegions(*function, value, regions, trailing.as_deref())),
 			ValueNode::MatrixComparison { matrices, distinct } => value_of_matrix(scope, MatrixValueCase::Comparison(matrices, *distinct)),
 			ValueNode::Local(local) => bound_value(scope, Bound::Local(*local)),
 			ValueNode::Call { function, arguments } => bound_value(scope, Bound::Call(*function, arguments)),
@@ -434,7 +440,7 @@ impl ValueNode {
 enum MatrixValueCase<'a> {
 	Apply(&'a MatrixNode, &'a ValueNode),
 	OfMatrix(MatrixToValue, &'a MatrixNode),
-	OfValueAndRegions(ValueOfRegions, &'a ValueNode, &'a [MatrixNode]),
+	OfValueAndRegions(ValueOfRegions, &'a ValueNode, &'a [MatrixNode], Option<&'a ValueNode>),
 	Comparison(&'a [MatrixNode], bool),
 }
 
@@ -449,7 +455,7 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(scope: &Scope<'_, V, F
 			settle(Value::from(matrix.apply(value.to_quaternion())))
 		}
 		MatrixValueCase::OfMatrix(function, matrix) => settle(function(matrix.eval_in(scope)?)),
-		MatrixValueCase::OfValueAndRegions(function, value, regions) => {
+		MatrixValueCase::OfValueAndRegions(function, value, regions, trailing) => {
 			let value = value.eval_in(scope)?;
 
 			// A range literal is kept by its corners, which may be infinite where no matrix can hold them
@@ -475,7 +481,9 @@ fn value_of_matrix<V: ValueProvider, F: FunctionProvider>(scope: &Scope<'_, V, F
 				heap_regions = regions.iter().map(region_of).collect::<Result<Vec<Region>, EvalError>>()?;
 				&heap_regions
 			};
-			settle(function(value, regions)?)
+
+			let trailing = trailing.map(|trailing| trailing.eval_in(scope)).transpose()?;
+			settle(function(value, regions, trailing)?)
 		}
 		MatrixValueCase::Comparison(matrices, distinct) => {
 			// A chain lands in a stack buffer when it fits, the usual case
