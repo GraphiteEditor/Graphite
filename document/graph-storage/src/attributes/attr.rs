@@ -69,4 +69,7 @@ pub mod network {
 pub mod delta {
 	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta.
 	pub const INTERACTION_END: &str = "interaction_end";
+	/// When the delta entered history, in wall-clock milliseconds since the Unix epoch as its retirer saw them.
+	/// For showing when a step happened; order always comes from the graph, never from this.
+	pub const RETIRED_AT: &str = "retired_at";
 }

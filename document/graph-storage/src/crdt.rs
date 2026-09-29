@@ -78,6 +78,11 @@ impl Delta {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == serde_json::Value::Bool(true))
 	}
 
+	/// When the delta entered history in wall-clock milliseconds, if its retirer recorded it.
+	pub fn retired_at(&self) -> Option<u64> {
+		self.attributes.get(attr::delta::RETIRED_AT).and_then(|recorded| recorded.value.as_u64())
+	}
+
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
 	/// via `new`/`merge`; differs only if `id` was tampered with or the hash derivation changed.
 	pub fn recomputed_id(&self) -> Rev {

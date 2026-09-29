@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::Codec;
-use crate::{DEFAULT_HISTORY_CODEC, DEFAULT_HOT_LOG_CODEC, DEFAULT_REGISTRY_CODEC, DEFAULT_SESSION_CODEC};
+use crate::{DEFAULT_HISTORY_CODEC, DEFAULT_HOT_LOG_CODEC, DEFAULT_METADATA_CODEC, DEFAULT_REGISTRY_CODEC, DEFAULT_SESSION_CODEC};
 
 /// Magic string carried in [`Manifest::format`] to identify a `.gdd` document.
 pub const FORMAT_MAGIC: &str = "gdd";
@@ -21,6 +21,13 @@ pub struct PayloadCodecs {
 	pub history: Codec,
 	pub hot_log: Codec,
 	pub session: Codec,
+	/// Added after the first working copies were written, so a manifest without it reads as the default.
+	#[serde(default = "default_metadata_codec")]
+	pub metadata: Codec,
+}
+
+fn default_metadata_codec() -> Codec {
+	DEFAULT_METADATA_CODEC
 }
 
 impl Default for PayloadCodecs {
@@ -30,6 +37,7 @@ impl Default for PayloadCodecs {
 			history: DEFAULT_HISTORY_CODEC,
 			hot_log: DEFAULT_HOT_LOG_CODEC,
 			session: DEFAULT_SESSION_CODEC,
+			metadata: DEFAULT_METADATA_CODEC,
 		}
 	}
 }

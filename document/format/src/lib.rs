@@ -17,7 +17,7 @@ use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOp, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::{ResourceHash, ResourceStorage};
@@ -57,6 +57,7 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// users who want a diffable on-disk representation. Recorded in the manifest at create time and
 /// read back on open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
+pub const DEFAULT_METADATA_CODEC: Codec = Codec::Json;
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::MessagePack;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::MessagePackFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
@@ -80,6 +81,12 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
 	/// and synchronous.
 	pub(crate) manifest: Manifest,
+	/// What people state about the history: its users and their names, later labels and tags. Kept beside
+	/// the history in its own file, merged last-writer-wins with every copy met, never folded and never undone.
+	pub(crate) metadata: HistoryMetadata,
+	/// The wall clock as the editor last reported it, in milliseconds since the Unix epoch, so retirements can
+	/// record when they happened. `None` for a copy nothing ticks, the CLI or a test.
+	pub(crate) wall_clock_ms: Option<f64>,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
 	pub(crate) view_settings: std::collections::BTreeMap<String, serde_json::Value>,
@@ -119,6 +126,7 @@ pub(crate) struct PendingPersist {
 	pub(crate) history: bool,
 	pub(crate) hot_log: bool,
 	pub(crate) snapshot: bool,
+	pub(crate) metadata: bool,
 }
 
 impl<L: Layout + Clone> Clone for Gdd<L> {
@@ -129,6 +137,8 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 			layout: self.layout.clone(),
 			manifest: self.manifest.clone(),
 			view_settings: self.view_settings.clone(),
+			metadata: self.metadata.clone(),
+			wall_clock_ms: self.wall_clock_ms,
 			network_view_settings: self.network_view_settings.clone(),
 			byte_store: self.byte_store.clone(),
 			shared: self.shared,
@@ -194,6 +204,10 @@ impl<L: Layout> Gdd<L> {
 			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
 			false => SessionState::default(),
 		};
+		let metadata: HistoryMetadata = match io::exists(&working, layout.metadata_basename(), codecs.metadata).await {
+			true => io::read_single(&working, layout.metadata_basename(), codecs.metadata).await?,
+			false => HistoryMetadata::default(),
+		};
 
 		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
@@ -235,6 +249,8 @@ impl<L: Layout> Gdd<L> {
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
 			shared: session_state.shared,
+			metadata,
+			wall_clock_ms: None,
 			byte_store: None,
 			#[cfg(feature = "network")]
 			network: None,
@@ -271,6 +287,8 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
 			network_view_settings: std::collections::BTreeMap::new(),
+			metadata: HistoryMetadata::default(),
+			wall_clock_ms: None,
 			byte_store: None,
 			shared: false,
 			#[cfg(feature = "network")]

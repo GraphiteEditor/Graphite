@@ -357,6 +357,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	host.commit_op_for_test(set_attribute("shared", 2)).expect("later step");
 	let later = host.head_rev().expect("rev");
 	host.mark_interaction_end(later);
+	host.stamp_retired_at(&[later], 1_234);
 	guest
 		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
 		.expect("merge");
@@ -368,6 +369,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(moved.copies.len(), 1, "the later step is minted again");
 	assert_eq!(moved.copies[0].parent, Some(base), "the copy hangs off the dropped step's parent");
 	assert!(moved.copies[0].is_interaction_end(), "the copy keeps its interaction end");
+	assert_eq!(moved.copies[0].retired_at(), Some(1_234), "the copy keeps when the original was retired");
 	assert!(touched.nodes.is_empty() && !touched.resources, "document attributes only");
 	let snapshot = host.retired_registry();
 	assert!(snapshot.attributes.get("guest").is_none_or(|value| value.deleted), "the dropped step's write is gone");

@@ -158,6 +158,9 @@ impl<L: Layout> Gdd<L> {
 			network_view_settings: self.network_view_settings.clone(),
 		};
 		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
+		if !self.metadata.is_empty() {
+			sink.write_entry(&io::path_for(self.layout.metadata_basename(), codecs.metadata), &codecs.metadata.write_single(&self.metadata)?)?;
+		}
 
 		let working_copy_hashes: std::collections::HashSet<ResourceHash> = self.resource_hashes().await?.into_iter().collect();
 

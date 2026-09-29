@@ -18,6 +18,7 @@ pub fn report(event: &Event) {
 		Event::RoleChanged { role } => println!("role is now {role:?}"),
 		Event::ProfileChanged { peer } => println!("peer {peer:?} announced a name"),
 		Event::CursorMoved { .. } => {}
+		Event::MetadataChanged => println!("the record of the document's users changed"),
 		Event::Synced => println!("synced"),
 		Event::Changed => println!("document changed"),
 		Event::ResourceReceived { hash, bytes } => println!("received resource {hash} ({} bytes)", bytes.len()),

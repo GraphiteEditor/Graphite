@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, UserId};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, UserId};
 use serde::{Deserialize, Serialize};
 
 /// The host is the single peer that retires hot ops.
@@ -61,6 +61,9 @@ pub enum SyncPacket {
 	Cursor {
 		position: Option<CursorPosition>,
 	},
+	/// A peer's statements about the history, users and their names among it. Outside the causal order: the
+	/// record merges the same whatever order it arrives in.
+	Metadata(HistoryMetadata),
 }
 
 /// The host's answer to a `SyncRequest`. `registry` is only sent when the host recognized none of
@@ -84,6 +87,9 @@ pub struct SyncPayload {
 	/// to the same room by opening its own copy later.
 	#[serde(default)]
 	pub document_id: Option<u64>,
+	/// What the host has on record about the history's users, so a joiner can name every author.
+	#[serde(default)]
+	pub metadata: HistoryMetadata,
 }
 
 /// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`

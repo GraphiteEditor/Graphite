@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session};
 use std::collections::HashSet;
 
 pub type TargetError = Box<dyn std::error::Error>;
@@ -29,6 +29,16 @@ pub trait SyncTarget {
 	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError>;
 	/// Take on a peer's retractions, dropping what they cover from the hot log.
 	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError>;
+
+	/// What people state about the history, users and their names among it, kept beside it and merged
+	/// last-writer-wins. Empty for a target that keeps none.
+	fn metadata(&self) -> HistoryMetadata {
+		HistoryMetadata::default()
+	}
+	/// Take on a peer's statements about the history. Returns whether any of them was news.
+	fn absorb_metadata(&mut self, _remote: &HistoryMetadata) -> Result<bool, TargetError> {
+		Ok(false)
+	}
 
 	/// Replace all state with the given retired state.
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError>;

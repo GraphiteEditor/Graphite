@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{Delta, HotOp, RegistryDelta, Rev, TimeStamp, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOp, RegistryDelta, Rev, TimeStamp, UserId, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -216,6 +216,33 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// What people state about the history: users and their names, later labels and tags.
+	pub fn metadata(&self) -> &HistoryMetadata {
+		&self.metadata
+	}
+
+	/// State a fact about a user, `wall_ms` being now on the wall clock: put on record, persisted, and told
+	/// to the room when it changed anything. Returns whether it did.
+	pub fn record_user_attribute(&mut self, user: UserId, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
+		let stamp = WallStamp {
+			ms: wall_ms.max(0.) as u64,
+			peer: self.session.peer(),
+		};
+		if !self.metadata.set_user_attribute(user, key, value, stamp) {
+			return Ok(false);
+		}
+		self.persist_metadata()?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.send_metadata(&self.metadata)?;
+		}
+		Ok(true)
+	}
+
+	pub(crate) fn persist_metadata(&mut self) -> Result<(), Error> {
+		io::write_single(&self.working, self.layout.metadata_basename(), self.manifest.codecs.metadata, &self.metadata)
+	}
+
 	pub(crate) fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			peer_id: self.session.peer(),
@@ -389,6 +416,8 @@ impl<L: Layout> Gdd<L> {
 	/// its author is. Called once a frame by the editor with whether it is between steps; a peer that does
 	/// not retire only closes its own transaction here, once it has gone quiet for the minimum age.
 	pub fn retire_due(&mut self, now_ms: f64, idle: bool) -> Result<Vec<Rev>, Error> {
+		// The editor's clock is the wall clock; retirements record it as the time a step happened.
+		self.wall_clock_ms = Some(now_ms);
 		// A gesture the editor never closed, or one interrupted by a reopen, closes on its own once quiet,
 		// but only while the editor is between steps: a pause inside a gesture must not split it, since undo
 		// takes a whole transaction back.
@@ -467,6 +496,12 @@ impl<L: Layout> Gdd<L> {
 	/// What every retirement ends with: the published frontier moves, the deltas reach the history file,
 	/// the hot log and snapshot are rewritten, and the room hears about it.
 	fn finish_retirement(&mut self, new_revs: &[Rev], retired_hot_ops: &[document_graph_storage::HotOpId]) -> Result<(), Error> {
+		// Stamped before the frames are written, so the time is on disk with them and goes out with the broadcast.
+		if let Some(wall_ms) = self.wall_clock_ms
+			&& !new_revs.is_empty()
+		{
+			self.session.stamp_retired_at(new_revs, wall_ms as u64);
+		}
 		// In a session these deltas are about to reach peers, so the published frontier moves with them.
 		// Rewinding a commit peers already hold would diverge from them for good, with nothing on the wire
 		// to tell them, so undo past this point has to go through forward inverse ops instead. Set before

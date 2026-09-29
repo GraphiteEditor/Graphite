@@ -410,10 +410,9 @@ impl Session {
 		let mut copies = Vec::new();
 		for original in walked[..position].iter().rev() {
 			let revs = self.commit_ops_authored_at([(original.kind.clone(), Some(original.timestamp))], true)?;
-			if original.is_interaction_end()
-				&& let Some(&rev) = revs.last()
-			{
-				self.document.history.mark_interaction_end(rev, original.timestamp);
+			// A copy keeps what was said about the original: its interaction end, and when it was retired.
+			if let Some(&rev) = revs.last() {
+				self.carry_attributes(original, rev);
 			}
 			copies.extend(revs.iter().filter_map(|&rev| self.document.history.get(rev).cloned()));
 		}
@@ -489,16 +488,23 @@ impl Session {
 	/// Returns the new revs, for an ordinary retirement-style broadcast.
 	pub fn restore_interaction(&mut self, dropped: Rev) -> Result<Vec<Rev>, CrdtError> {
 		let base = self.interaction_start_parent(dropped).ok_or(CrdtError::NotUndoable(dropped))?;
-		let mut ops = Vec::new();
+		let mut originals = Vec::new();
 		let mut current = Some(dropped);
 		while current != Some(base) {
 			let rev = current.ok_or(CrdtError::NothingToRedo)?;
-			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?;
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
 			current = delta.parent;
-			ops.push((delta.kind.clone(), Some(delta.timestamp)));
+			originals.push(delta);
 		}
-		ops.reverse();
+		originals.reverse();
+		let ops: Vec<_> = originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))).collect();
 		let revs = self.commit_ops_authored_at(ops, true)?;
+		// The copies keep what was said about the originals, when they were retired among it.
+		if revs.len() == originals.len() {
+			for (original, &rev) in originals.iter().zip(&revs) {
+				self.carry_attributes(original, rev);
+			}
+		}
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
 		}
@@ -808,6 +814,24 @@ impl Session {
 	pub fn mark_interaction_end(&mut self, rev: Rev) {
 		let timestamp = self.document.clock.tick();
 		self.document.history.mark_interaction_end(rev, timestamp);
+	}
+
+	/// Record when these retired deltas entered history, in wall-clock milliseconds as the retirer saw them,
+	/// as an attribute outside their revs: for showing when a step happened, never for ordering.
+	pub fn stamp_retired_at(&mut self, revs: &[Rev], wall_ms: u64) {
+		let timestamp = self.document.clock.tick();
+		for &rev in revs {
+			self.document
+				.history
+				.annotate(rev, crate::attributes::attr::delta::RETIRED_AT, serde_json::Value::from(wall_ms), timestamp);
+		}
+	}
+
+	/// Give a minted copy every attribute of the delta it stands for, each with the stamp it had.
+	fn carry_attributes(&mut self, original: &Delta, copy: Rev) {
+		for (key, value) in crate::attributes::live(&original.attributes) {
+			self.document.history.annotate(copy, key, value.value.clone(), value.timestamp);
+		}
 	}
 
 	/// Low-level: set a local annotation attribute (e.g. a commit message) on a retired delta in place.

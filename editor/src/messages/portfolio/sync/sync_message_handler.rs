@@ -6,7 +6,7 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use crate::messages::viewport::Position;
-use document_graph_storage::{PeerId, UserId};
+use document_graph_storage::{HistoryMetadata, UserId, user_attr};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
 use peer_transport::{CursorPosition, CursorSpace, DEFAULT_SIGNALING_SERVER, Event, Incoming, RemotePeer, Role, Room, SessionToken, SyncTarget};
@@ -197,6 +197,11 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					{
 						log::error!("Retirement failed: {error}");
 					}
+					// The person behind this copy goes on the document's record of its users, so whoever opens it later
+					// can name the author of every step; a no-op once the name is on record.
+					if let Some(gdd) = document.storage_mut() {
+						record_profile(gdd, preferences);
+					}
 					// A document whose transport went down tries again after a pause, for as long as it is meant to be shared.
 					if self.reconnect_at.get(&document_id).is_some_and(|&due| now_ms() >= due)
 						&& let Some(gdd) = document.storage_mut()
@@ -276,7 +281,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 								log::info!("Session role is now {role:?}");
 								refresh_session_views(responses);
 							}
-							Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
+							Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } | Event::MetadataChanged => refresh_session_views(responses),
 							// Cursors are gathered afresh below every poll, so a move needs no action of its own.
 							Event::CursorMoved { .. } => {}
 						}
@@ -630,7 +635,8 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			false => user_name.to_string(),
 		};
 		groups.push(peer_row(&format!("{me} (you)"), user_name.is_empty()));
-		groups.extend(peers.iter().map(|remote| peer_row(&display_name(remote), remote.name.is_empty())));
+		let metadata = gdd.metadata();
+		groups.extend(peers.iter().map(|remote| peer_row(&display_name(remote, metadata), is_anonymous(remote, metadata))));
 	}
 	Layout(groups)
 }
@@ -638,6 +644,19 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 /// One peer in the list; an anonymous one shows its stand-in name in italics.
 fn peer_row(name: &str, anonymous: bool) -> LayoutGroup {
 	LayoutGroup::row(vec![TextLabel::new(name).italic(anonymous).widget_instance()])
+}
+
+/// Put this user's display name on the document's record of its users; a no-op when it is already there. An
+/// unnamed user is not recorded until a name to clear stands.
+fn record_profile(gdd: &mut document_format::GddV1, preferences: &PreferencesMessageHandler) {
+	let name = preferences.user_name.trim();
+	let user = UserId(preferences.user_id);
+	if name.is_empty() && gdd.metadata().user_name(user).is_none() {
+		return;
+	}
+	if let Err(error) = gdd.record_user_attribute(user, user_attr::NAME, serde_json::Value::from(name), now_ms()) {
+		log::warn!("Recording the display name failed: {error}");
+	}
 }
 
 /// Tell the room this peer's display name; a no-op when it has not changed.
@@ -678,7 +697,7 @@ fn document_cursors(document: &DocumentMessageHandler, preferences: &Preferences
 		.iter()
 		.filter_map(|remote| {
 			let cursor = remote.cursor.as_ref()?;
-			matches!(cursor.space, CursorSpace::Document).then(|| remote_cursor(remote, cursor, to_viewport))
+			matches!(cursor.space, CursorSpace::Document).then(|| remote_cursor(remote, cursor, to_viewport, gdd.metadata()))
 		})
 		.collect()
 }
@@ -696,21 +715,21 @@ fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMes
 		.filter_map(|remote| {
 			let cursor = remote.cursor.as_ref()?;
 			let CursorSpace::Graph { network } = &cursor.space else { return None };
-			(*network == shown).then(|| remote_cursor(remote, cursor, to_viewport))
+			(*network == shown).then(|| remote_cursor(remote, cursor, to_viewport, gdd.metadata()))
 		})
 		.collect()
 }
 
 /// One pointer for the frontend: its position mapped into viewport pixels, with the peer's name, colour and tool.
-fn remote_cursor(remote: &RemotePeer, cursor: &CursorPosition, to_viewport: DAffine2) -> FrontendRemoteCursor {
+fn remote_cursor(remote: &RemotePeer, cursor: &CursorPosition, to_viewport: DAffine2, metadata: &HistoryMetadata) -> FrontendRemoteCursor {
 	let [x, y] = cursor.position;
 	let point = to_viewport.transform_point2(DVec2::new(x, y));
 	FrontendRemoteCursor {
 		x: point.x,
 		y: point.y,
-		name: display_name(remote),
-		anonymous: remote.name.is_empty(),
-		color: peer_color(remote.peer),
+		name: display_name(remote, metadata),
+		anonymous: is_anonymous(remote, metadata),
+		color: user_color(remote.user),
 		tool: cursor.tool.clone(),
 	}
 }
@@ -724,11 +743,20 @@ fn shown_network(document: &DocumentMessageHandler) -> Vec<u64> {
 	document.breadcrumb_network_path().iter().map(|id| id.0).collect()
 }
 
-fn display_name(remote: &RemotePeer) -> String {
+/// The one rule for a name shown anywhere: the document's record of the user, else what the peer announced
+/// for the room, else the stand-in.
+fn display_name(remote: &RemotePeer, metadata: &HistoryMetadata) -> String {
+	if let Some(name) = metadata.user_name(remote.user) {
+		return name.to_string();
+	}
 	match remote.name.is_empty() {
 		true => anonymous_name(remote.user),
 		false => remote.name.clone(),
 	}
+}
+
+fn is_anonymous(remote: &RemotePeer, metadata: &HistoryMetadata) -> bool {
+	metadata.user_name(remote.user).is_none() && remote.name.is_empty()
 }
 
 /// A stand-in for a person who has not given a name, the same on every device of theirs and everywhere
@@ -808,9 +836,10 @@ const ANONYMOUS_ANIMALS: [&str; 64] = [
 /// How long a document whose transport went down waits before it tries its room again.
 const RECONNECT_AFTER_MS: f64 = 3_000.;
 
-/// A colour for a peer derived from its id, so every peer sees the same one without anything on the wire.
-fn peer_color(peer: PeerId) -> String {
-	let hue = (peer.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) % 360;
+/// A colour for a person derived from their user id, so every peer sees the same one without anything on the
+/// wire, and one person has one colour across their tabs and in the history.
+fn user_color(user: UserId) -> String {
+	let hue = (user.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) % 360;
 	let (h, s, l): (f64, f64, f64) = (hue as f64 / 60., 0.65, 0.5);
 	let c = (1. - (2. * l - 1.).abs()) * s;
 	let x = c * (1. - (h % 2. - 1.).abs());

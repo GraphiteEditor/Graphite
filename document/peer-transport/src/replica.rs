@@ -1,7 +1,7 @@
 use crate::packet::{Broadcast, BroadcastBody, CursorPosition, PacketError, PeerSeq, Role, SyncPacket, SyncPayload};
 use crate::target::{SyncTarget, TargetError};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
-use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, ResourceHash, Rev, UserId};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, ResourceHash, Rev, UserId};
 use std::collections::{HashMap, HashSet};
 
 pub enum Event {
@@ -25,6 +25,8 @@ pub enum Event {
 	CursorMoved {
 		peer: PeerId,
 	},
+	/// Something on record about the history's users changed, from a peer or a sync.
+	MetadataChanged,
 	/// The guest has applied the host's state.
 	Synced,
 	/// Remote ops changed the target.
@@ -290,6 +292,14 @@ impl Replica {
 			return Ok(());
 		}
 		self.transport.broadcast_except(None, &SyncPacket::Profile { name: self.name.clone() })
+	}
+
+	/// Tell the room what this peer has on record about the history, after it changed here.
+	pub fn send_metadata(&mut self, metadata: &HistoryMetadata) -> Result<(), PacketError> {
+		if self.peers.is_empty() {
+			return Ok(());
+		}
+		self.transport.broadcast_except(None, &SyncPacket::Metadata(metadata.clone()))
 	}
 
 	/// Tell the room where this peer's pointer is, `None` once it left the viewport. The
@@ -714,6 +724,7 @@ impl Replica {
 					retired: target.retired_marks(),
 					retracted: target.retracted_marks(),
 					document_id: target.document_id(),
+					metadata: target.metadata(),
 				};
 				log::info!("Join handshake: sync answered with {} deltas and {} hot ops", sync.deltas.len(), sync.hot_log.len());
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
@@ -746,6 +757,14 @@ impl Replica {
 				}
 				target.absorb_retired_marks(&sync.retired)?;
 				target.absorb_retracted_marks(&sync.retracted)?;
+				if target.absorb_metadata(&sync.metadata)? {
+					events.push(Event::MetadataChanged);
+				}
+				// What this copy had on record, a name given while apart say, reaches the room the same way.
+				let own = target.metadata();
+				if !own.is_empty() {
+					self.transport.broadcast_except(None, &SyncPacket::Metadata(own))?;
+				}
 
 				self.deferred.extend(target.apply_remote_hot_ops(held)?);
 				self.deferred.extend(target.apply_remote_hot_ops(sync.hot_log)?);
@@ -814,6 +833,11 @@ impl Replica {
 				{
 					remote.cursor = position;
 					events.push(Event::CursorMoved { peer: remote.peer });
+				}
+			}
+			SyncPacket::Metadata(remote) => {
+				if target.absorb_metadata(&remote)? {
+					events.push(Event::MetadataChanged);
 				}
 			}
 			SyncPacket::ResourceRequest(hashes) => {

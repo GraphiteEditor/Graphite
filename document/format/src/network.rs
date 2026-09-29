@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HeadMove, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -185,6 +185,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 			history: true,
 			hot_log: true,
 			snapshot: true,
+			metadata: false,
 		};
 		Ok(())
 	}
@@ -282,6 +283,18 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
+	fn metadata(&self) -> HistoryMetadata {
+		self.metadata.clone()
+	}
+
+	fn absorb_metadata(&mut self, remote: &HistoryMetadata) -> Result<bool, TargetError> {
+		let changed = self.metadata.merge(remote);
+		if changed {
+			self.pending_persist.metadata = true;
+		}
+		Ok(changed)
+	}
+
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
 		let touched = self.session.retract_hot_ops(ops);
 		self.remote_changes.touched.extend(touched);
@@ -337,6 +350,9 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		if pending.snapshot {
 			self.persist_registry_snapshot()?;
 			self.persist_session_state()?;
+		}
+		if pending.metadata {
+			self.persist_metadata()?;
 		}
 		Ok(())
 	}
