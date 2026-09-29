@@ -83,7 +83,7 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
-	/// State for the context menu popups.
+	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
 	pub deselect_on_pointer_up: Option<usize>,
@@ -784,7 +784,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
 				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
 				let network_metadata = network_interface.network_metadata(selection_network_path).unwrap();
-				// Create the add node popup on right click, then exit
+				// Create the add node menu on right click, then exit
 				if right_click {
 					// Abort dragging a node
 					if self.drag_start.is_some() {

@@ -386,7 +386,7 @@ function detectShake(e: PointerEvent | MouseEvent): boolean {
 	return false;
 }
 
-function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
+export function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
 	if (!(target instanceof HTMLElement)) return false;
 	return (
 		target.isContentEditable ||
@@ -406,6 +406,16 @@ function potentiallyClearTextSelection(e: PointerEvent) {
 		const caret = control.selectionStart;
 		if (typeof caret === "number" && caret !== control.selectionEnd) control.setSelectionRange(caret, caret);
 	});
+
+	// A focused editable element's own caret is kept through a press that leaves the focus there, like on a popover's buttons, which only its mousedown decides
+	const focused = window.document.activeElement;
+	const anchor = window.getSelection()?.anchorNode;
+	if (focused instanceof HTMLElement && focused.isContentEditable && anchor && focused.contains(anchor)) {
+		setTimeout(() => {
+			if (window.document.activeElement !== focused) window.getSelection()?.removeAllRanges();
+		});
+		return;
+	}
 
 	window.getSelection()?.removeAllRanges();
 }

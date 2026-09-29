@@ -1,4 +1,7 @@
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
+use crate::messages::layout::utility_types::math_expression::{
+	MathExpressionTokens, math_expression_completions, math_expression_error, math_expression_error_ranges, math_expression_number, math_expression_tokens,
+};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
@@ -90,6 +93,41 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 				{
 					responses.add((dropdown_input.on_file_drop.callback)(&file));
 				}
+			}
+			LayoutMessage::AnalyzeMathExpression {
+				layout_target,
+				widget_id,
+				source,
+				caret,
+				asked,
+			} => {
+				let Some(layout) = self.layouts.get(layout_target as usize) else {
+					warn!("AnalyzeMathExpression referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter().find(|widget| widget.widget_id == widget_id) else {
+					warn!("AnalyzeMathExpression referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Widget::MathExpressionInput(input) = &*widget_instance.widget else {
+					warn!("AnalyzeMathExpression referenced a widget other than a MathExpressionInput. `widget_id: {widget_id}`");
+					return;
+				};
+
+				// The reply carries the source it read, so the frontend can drop one that a later keystroke has outdated
+				let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(&source, input.accepts_reducers);
+				let completions = caret.map(|caret| math_expression_completions(&source, caret, asked));
+				responses.add(FrontendMessage::UpdateMathExpressionAnalysis {
+					widget_id,
+					source,
+					tokens,
+					tooltips,
+					completions,
+				});
+			}
+			LayoutMessage::EvaluateMathExpression { widget_id, source } => {
+				let result = math_expression_number(&source);
+				responses.add(FrontendMessage::UpdateMathExpressionEvaluation { widget_id, source, result });
 			}
 		}
 	}
@@ -320,6 +358,29 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::ImageLabel(_) => {}
+			Widget::MathExpressionInput(math_expression_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (math_expression_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_str() else {
+							error!("MathExpressionInput update was not of type: string");
+							return;
+						};
+
+						// The widget is resent as stored, so its tokens and errors must be for its new value rather than its old one
+						let accepts_reducers = math_expression_input.accepts_reducers;
+						let error = math_expression_error(update_value, accepts_reducers);
+						let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(update_value, accepts_reducers);
+						math_expression_input.tokens = tokens;
+						math_expression_input.tooltips = tooltips;
+						math_expression_input.errors = math_expression_error_ranges(update_value, error.as_ref());
+						math_expression_input.value = update_value.into();
+						(math_expression_input.on_update.callback)(math_expression_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ShortcutLabel(_) => {}
 			Widget::IconLabel(_) => {}
 			Widget::NodeCatalog(node_type_input) => match action {
