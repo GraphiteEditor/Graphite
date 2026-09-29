@@ -3,7 +3,7 @@ use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::prelude::*;
 use document_format::GddV1;
-use document_graph_storage::{Delta, HistoryMetadata, PeerId, RegistryDelta, Rev, Session, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, UserId};
 use peer_transport::RemotePeer;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -250,27 +250,24 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 		rows.push(view.row(&group, false));
 	}
 
-	// The hot log: what is under way, by the person doing it.
-	let mut ops_by_peer: Vec<(PeerId, usize)> = Vec::new();
-	for hot_op in session.hot_log() {
-		match ops_by_peer.iter_mut().find(|(peer, _)| *peer == hot_op.timestamp.peer) {
-			Some((_, count)) => *count += 1,
-			None => ops_by_peer.push((hot_op.timestamp.peer, 1)),
+	// What has not entered history yet: every author's open transaction first, then each closed transaction
+	// waiting for the retirer as a step of its own, the newest first like the rows below.
+	let hot_log = session.hot_log();
+	let closed = session.closed_transactions();
+	let in_closed: HashSet<HotOpId> = closed.iter().flat_map(|transaction| transaction.ops.iter().copied()).collect();
+	let mut open_by_peer: Vec<(PeerId, Vec<&RegistryDelta>)> = Vec::new();
+	for hot_op in hot_log.iter().filter(|hot_op| !in_closed.contains(&hot_op.id())) {
+		match open_by_peer.iter_mut().find(|(peer, _)| *peer == hot_op.timestamp.peer) {
+			Some((_, ops)) => ops.push(&hot_op.op),
+			None => open_by_peer.push((hot_op.timestamp.peer, vec![&hot_op.op])),
 		}
 	}
-	let progress = ops_by_peer
-		.into_iter()
-		.map(|(peer, ops)| {
-			let person = people.person(peer);
-			HistoryProgressRow {
-				author: person.name,
-				anonymous: person.anonymous,
-				mine: person.mine,
-				color: person.color,
-				ops,
-			}
-		})
-		.collect();
+	let mut progress: Vec<HistoryProgressRow> = open_by_peer.into_iter().map(|(peer, ops)| progress_row(&people, peer, &ops, true)).collect();
+	for transaction in closed.iter().rev() {
+		let ids: HashSet<HotOpId> = transaction.ops.iter().copied().collect();
+		let ops: Vec<&RegistryDelta> = hot_log.iter().filter(|hot_op| ids.contains(&hot_op.id())).map(|hot_op| &hot_op.op).collect();
+		progress.push(progress_row(&people, transaction.author, &ops, false));
+	}
 
 	HistoryPanelState {
 		rows,
@@ -357,7 +354,7 @@ impl View<'_> {
 		};
 		HistoryRow {
 			id: closing.id.to_string(),
-			label: summarize(group),
+			label: summarize(group.iter().map(|delta| &delta.kind)),
 			author: person.name,
 			anonymous: person.anonymous,
 			mine: person.mine,
@@ -380,21 +377,34 @@ impl View<'_> {
 			tip = next;
 		}
 		let (newest, _) = line(self.session, Some(tip), None, 1);
-		let label = interactions(&newest).first().map(|group| summarize(group)).unwrap_or_default();
+		let label = interactions(&newest).first().map(|group| summarize(group.iter().map(|delta| &delta.kind))).unwrap_or_default();
 		HistoryBranch { id: tip.to_string(), label }
 	}
 }
 
-/// One line for an interaction: the kinds of change it made, the most frequent first.
-fn summarize(group: &[&Delta]) -> String {
+fn progress_row(people: &People, peer: PeerId, ops: &[&RegistryDelta], open: bool) -> HistoryProgressRow {
+	let person = people.person(peer);
+	HistoryProgressRow {
+		label: summarize(ops.iter().copied()),
+		author: person.name,
+		anonymous: person.anonymous,
+		mine: person.mine,
+		color: person.color,
+		ops: ops.len(),
+		open,
+	}
+}
+
+/// One line for a run of changes: the kinds among them, the most frequent first.
+fn summarize<'a>(kinds: impl IntoIterator<Item = &'a RegistryDelta>) -> String {
+	let kinds: Vec<&RegistryDelta> = kinds.into_iter().collect();
 	let mut counts: Vec<(String, usize)> = Vec::new();
-	for delta in group {
-		// A registration or a marker says nothing about the document; it labels an interaction only when it is all
-		// there is.
-		if matches!(delta.kind, RegistryDelta::RegisterPeer { .. } | RegistryDelta::EndTransaction) && group.len() > 1 {
+	for kind in &kinds {
+		// A registration or a marker says nothing about the document; it labels a run only when it is all there is.
+		if matches!(kind, RegistryDelta::RegisterPeer { .. } | RegistryDelta::EndTransaction) && kinds.len() > 1 {
 			continue;
 		}
-		let label = describe(&delta.kind);
+		let label = describe(kind);
 		match counts.iter_mut().find(|(known, _)| *known == label) {
 			Some((_, count)) => *count += 1,
 			None => counts.push((label, 1)),

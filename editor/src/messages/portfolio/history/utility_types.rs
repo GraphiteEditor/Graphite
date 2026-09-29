@@ -67,9 +67,13 @@ pub struct HistoryDeltaRow {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HistoryProgressRow {
+	/// What the work changes so far, in the words of the rows.
+	pub label: String,
 	pub author: String,
 	pub anonymous: bool,
 	pub mine: bool,
 	pub color: String,
 	pub ops: usize,
+	/// Still being made, rather than closed and waiting to enter history.
+	pub open: bool,
 }

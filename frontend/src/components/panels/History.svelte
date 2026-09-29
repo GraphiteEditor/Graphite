@@ -42,10 +42,11 @@
 			<div class="row progress">
 				<span class="rail"><span class="dot hollow" style:border-color={row.color}></span></span>
 				<div class="text">
-					<span class="label">In progress</span>
+					<span class="label">{row.label || (row.open ? "In progress" : "Waiting to enter history")}</span>
 					<span class="meta">
 						<span class="author" class:anonymous={row.anonymous}>{row.mine ? `${row.author} (you)` : row.author}</span>
-						· {count(row.ops, "change", "changes")} not yet in history
+						· {count(row.ops, "change", "changes")}
+						· {row.open ? "in progress" : "not yet in history"}
 					</span>
 				</div>
 			</div>

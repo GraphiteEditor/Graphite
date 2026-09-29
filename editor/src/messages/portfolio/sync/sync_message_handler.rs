@@ -106,6 +106,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
 					return;
 				};
+				// Retirement runs on the frame tick for every document, in a session or not, so history grows as steps
+				// close rather than waiting for the first undo.
+				self.start_polling(responses);
 				if let Some(token) = self.pending_join.take() {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 					let incoming = room.incoming();
