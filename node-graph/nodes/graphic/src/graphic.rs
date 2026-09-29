@@ -432,7 +432,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 }
 
 #[node_macro::node(category("General"))]
-async fn mirror<T: BoundingBox + 'n + Send + Clone>(
+fn mirror<T: BoundingBox + 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Graphic,
@@ -813,7 +813,7 @@ fn read_attribute_raster(
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
 #[node_macro::node(category("General"))]
-pub async fn extend<T: 'n + Send + Clone>(
+pub fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
 	#[implementations(
@@ -863,7 +863,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 /// Performs an obsolete function as part of a migration from an older document format.
 /// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
-pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
+pub fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
@@ -890,7 +890,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
-pub async fn into_group<T: Into<Graphic> + 'n>(
+pub fn into_group<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -912,13 +912,13 @@ pub async fn into_group<T: Into<Graphic> + 'n>(
 /// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"))]
-pub async fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
+pub fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
-pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
+pub fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
@@ -963,7 +963,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
+pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	let mut output: List<Vector> = content.clone().into_flattened_list();
 
 	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
@@ -995,19 +995,19 @@ pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector>
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
-pub async fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
+pub fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
+pub fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
-pub async fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
+pub fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
