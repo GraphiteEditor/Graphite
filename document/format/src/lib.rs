@@ -17,7 +17,7 @@ use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HistoryMetadata, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOp, MetadataFact, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::{ResourceHash, ResourceStorage};
@@ -57,7 +57,8 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// users who want a diffable on-disk representation. Recorded in the manifest at create time and
 /// read back on open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
-pub const DEFAULT_METADATA_CODEC: Codec = Codec::Json;
+/// The metadata file is a log of facts appended one per line and folded on read, so nothing is ever rewritten.
+pub const METADATA_CODEC: Codec = Codec::JsonLines;
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::MessagePack;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::MessagePackFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
@@ -126,7 +127,6 @@ pub(crate) struct PendingPersist {
 	pub(crate) history: bool,
 	pub(crate) hot_log: bool,
 	pub(crate) snapshot: bool,
-	pub(crate) metadata: bool,
 }
 
 impl<L: Layout + Clone> Clone for Gdd<L> {
@@ -204,8 +204,8 @@ impl<L: Layout> Gdd<L> {
 			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
 			false => SessionState::default(),
 		};
-		let metadata: HistoryMetadata = match io::exists(&working, layout.metadata_basename(), codecs.metadata).await {
-			true => io::read_single(&working, layout.metadata_basename(), codecs.metadata).await?,
+		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
+			true => HistoryMetadata::fold(io::iter::<MetadataFact>(&working, layout.metadata_basename(), METADATA_CODEC).await?),
 			false => HistoryMetadata::default(),
 		};
 

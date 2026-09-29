@@ -125,7 +125,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::History(message) => {
 				let context = HistoryMessageContext {
-					documents: &self.documents,
+					documents: &mut self.documents,
 					active_document_id: self.active_document_id,
 					panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::History) && !self.workspace.panel_layout.focus_document,
 				};

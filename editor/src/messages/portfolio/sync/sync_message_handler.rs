@@ -498,7 +498,7 @@ fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPe
 const ROLE_GRACE_MS: f64 = 1_500.;
 
 /// A monotonic-enough millisecond clock for the retirement policy, which only ever compares differences.
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
 	#[cfg(target_arch = "wasm32")]
 	{
 		js_sys::Date::now()

@@ -19,4 +19,8 @@ pub enum HistoryMessage {
 	BringBack { id: String },
 	/// Show the line of the branch whose tip is `id`, or the head's line again with `None`.
 	Follow { id: Option<String> },
+	/// Give the interaction a name of its own, or take it away with an empty one.
+	Rename { id: String, label: String },
+	/// Put a tag on the interaction, or take it off.
+	Tag { id: String, tag: String, on: bool },
 }

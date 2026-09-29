@@ -22,7 +22,12 @@ pub struct HistoryPanelState {
 pub struct HistoryRow {
 	/// The rev closing the interaction, in decimal.
 	pub id: String,
+	/// The name a person gave it, or one derived from what it changed.
 	pub label: String,
+	/// Whether `label` was given by a person.
+	pub named: bool,
+	/// The tags standing on it, in name order.
+	pub tags: Vec<String>,
 	pub author: String,
 	/// The author has no name on record, so `author` is a stand-in.
 	pub anonymous: bool,

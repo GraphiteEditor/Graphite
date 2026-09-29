@@ -1,16 +1,17 @@
 use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
+use crate::messages::portfolio::sync::now_ms;
 use crate::messages::prelude::*;
 use document_format::GddV1;
-use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, UserId, rev_attr};
 use peer_transport::RemotePeer;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 #[derive(ExtractField)]
 pub struct HistoryMessageContext<'a> {
-	pub documents: &'a HashMap<DocumentId, DocumentMessageHandler>,
+	pub documents: &'a mut HashMap<DocumentId, DocumentMessageHandler>,
 	pub active_document_id: Option<DocumentId>,
 	/// Whether the History panel is showing; nothing is computed while it is not.
 	pub panel_open: bool,
@@ -37,7 +38,7 @@ const PAGE: usize = 100;
 
 #[message_handler_data]
 impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessageHandler {
-	fn process_message(&mut self, message: HistoryMessage, responses: &mut VecDeque<Message>, context: HistoryMessageContext) {
+	fn process_message(&mut self, message: HistoryMessage, responses: &mut VecDeque<Message>, mut context: HistoryMessageContext) {
 		match message {
 			HistoryMessage::Refresh => {
 				if !self.ticking {
@@ -101,6 +102,24 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 					None => responses.add(DocumentMessage::HistoryRestoreStep { rev }),
 				}
 			}
+			HistoryMessage::Rename { id, label } => {
+				let Some((gdd, rev)) = active_storage_mut(&mut context).zip(parse_rev(&id)) else { return };
+				if let Err(error) = gdd.record_rev_attribute(rev, rev_attr::LABEL, serde_json::Value::from(label.trim()), now_ms()) {
+					log::warn!("Naming the step failed: {error}");
+				}
+				self.send(&context, responses, true);
+			}
+			HistoryMessage::Tag { id, tag, on } => {
+				let tag = tag.trim();
+				if tag.is_empty() {
+					return;
+				}
+				let Some((gdd, rev)) = active_storage_mut(&mut context).zip(parse_rev(&id)) else { return };
+				if let Err(error) = gdd.record_rev_attribute(rev, &format!("{}{tag}", rev_attr::TAG_PREFIX), serde_json::Value::Bool(on), now_ms()) {
+					log::warn!("Tagging the step failed: {error}");
+				}
+				self.send(&context, responses, true);
+			}
 		}
 	}
 
@@ -133,6 +152,10 @@ impl HistoryMessageHandler {
 
 fn active_storage<'a>(context: &'a HistoryMessageContext) -> Option<&'a GddV1> {
 	context.active_document_id.and_then(|id| context.documents.get(&id)).and_then(|document| document.storage())
+}
+
+fn active_storage_mut<'a>(context: &'a mut HistoryMessageContext) -> Option<&'a mut GddV1> {
+	context.active_document_id.and_then(|id| context.documents.get_mut(&id)).and_then(|document| document.storage_mut())
 }
 
 fn parse_rev(id: &str) -> Option<Rev> {
@@ -179,6 +202,13 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 	for remote in gdd.peers() {
 		remote.user.hash(&mut hasher);
 		remote.name.hash(&mut hasher);
+	}
+	for record in &gdd.metadata().revs {
+		record.rev.hash(&mut hasher);
+		for (key, fact) in &record.attributes {
+			key.hash(&mut hasher);
+			fact.stamp.hash(&mut hasher);
+		}
 	}
 	limit.hash(&mut hasher);
 	expanded.len().hash(&mut hasher);
@@ -241,6 +271,7 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 		people: &people,
 		expanded,
 		session,
+		metadata: gdd.metadata(),
 	};
 	let mut rows = Vec::new();
 	for group in interactions(&undone) {
@@ -323,6 +354,7 @@ struct View<'a> {
 	people: &'a People<'a>,
 	expanded: &'a HashSet<Rev>,
 	session: &'a Session,
+	metadata: &'a HistoryMetadata,
 }
 
 impl View<'_> {
@@ -352,9 +384,12 @@ impl View<'_> {
 				.collect(),
 			false => Vec::new(),
 		};
+		let given = self.metadata.rev_label(closing.id);
 		HistoryRow {
 			id: closing.id.to_string(),
-			label: summarize(group.iter().map(|delta| &delta.kind)),
+			label: given.map(str::to_string).unwrap_or_else(|| summarize(group.iter().map(|delta| &delta.kind))),
+			named: given.is_some(),
+			tags: self.metadata.rev_tags(closing.id).into_iter().map(str::to_string).collect(),
 			author: person.name,
 			anonymous: person.anonymous,
 			mine: person.mine,
@@ -377,7 +412,11 @@ impl View<'_> {
 			tip = next;
 		}
 		let (newest, _) = line(self.session, Some(tip), None, 1);
-		let label = interactions(&newest).first().map(|group| summarize(group.iter().map(|delta| &delta.kind))).unwrap_or_default();
+		let label = self
+			.metadata
+			.rev_label(tip)
+			.map(str::to_string)
+			.unwrap_or_else(|| interactions(&newest).first().map(|group| summarize(group.iter().map(|delta| &delta.kind))).unwrap_or_default());
 		HistoryBranch { id: tip.to_string(), label }
 	}
 }

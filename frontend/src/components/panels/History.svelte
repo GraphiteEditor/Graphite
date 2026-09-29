@@ -4,6 +4,7 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { HistoryStore } from "/src/stores/history";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -27,6 +28,20 @@
 
 	function count(n: number, one: string, many: string): string {
 		return `${n} ${n === 1 ? one : many}`;
+	}
+
+	// The row whose name is being edited, and the row a tag is being typed for.
+	let renaming: string | undefined = undefined;
+	let tagging: string | undefined = undefined;
+
+	function commitName(id: string, label: string) {
+		editor.renameHistoryInteraction(id, label);
+		renaming = undefined;
+	}
+
+	function commitTag(id: string, tag: string) {
+		if (tag.trim()) editor.tagHistoryInteraction(id, tag, true);
+		tagging = undefined;
 	}
 </script>
 
@@ -61,12 +76,26 @@
 				></button>
 				<span class="rail"><span class="dot" style:background={row.color}></span></span>
 				<div class="text">
-					<span class="label">{row.label}</span>
+					{#if renaming === row.id}
+						<TextInput value={row.named ? row.label : ""} placeholder={row.label} on:commitText={({ detail }) => commitName(row.id, detail)} />
+					{:else}
+						<span class="label" class:named={row.named}>{row.label}</span>
+					{/if}
 					<span class="meta">
 						<span class="author" class:anonymous={row.anonymous}>{row.mine ? `${row.author} (you)` : row.author}</span>
 						{#if row.time}· {when(row.time)}{/if}
 						· {count(row.deltas, "change", "changes")}
 					</span>
+					{#if row.tags.length > 0 || tagging === row.id}
+						<span class="tags">
+							{#each row.tags as tag (tag)}
+								<span class="tag">{tag}<button class="remove" data-tooltip-label="Remove the tag" on:click={() => editor.tagHistoryInteraction(row.id, tag, false)}>×</button></span>
+							{/each}
+							{#if tagging === row.id}
+								<TextInput value="" placeholder="Tag name" narrow={true} on:commitText={({ detail }) => commitTag(row.id, detail)} />
+							{/if}
+						</span>
+					{/if}
 					{#if row.branches.length > 0}
 						<span class="branches">
 							{#each row.branches as branch (branch.id)}
@@ -76,6 +105,8 @@
 					{/if}
 				</div>
 				<span class="actions">
+					<button class="small" data-tooltip-label="Name this step" on:click={() => (renaming = renaming === row.id ? undefined : row.id)}>Name</button>
+					<button class="small" data-tooltip-label="Tag this step" on:click={() => (tagging = tagging === row.id ? undefined : row.id)}>Tag</button>
 					{#if row.undone}
 						<IconButton icon="HistoryRedo" size={16} tooltipLabel="Bring back" tooltipDescription="Redo up to and including this step." action={() => editor.historyBringBack(row.id)} />
 					{:else if row.abandoned}
@@ -175,7 +206,25 @@
 			.actions {
 				flex: 0 0 auto;
 				display: flex;
+				align-items: center;
+				gap: 2px;
 				visibility: hidden;
+
+				.small {
+					font-size: 11px;
+					line-height: 14px;
+					padding: 0 4px;
+					border: none;
+					border-radius: 2px;
+					background: var(--color-4-dimgray);
+					color: var(--color-c-brightgray);
+					cursor: pointer;
+
+					&:hover {
+						background: var(--color-5-dullgray);
+						color: var(--color-e-nearwhite);
+					}
+				}
 			}
 
 			&:hover .actions {
@@ -266,6 +315,39 @@
 
 					.anonymous {
 						font-style: italic;
+					}
+				}
+
+				.label.named {
+					font-weight: 600;
+				}
+
+				.tags {
+					display: flex;
+					flex-wrap: wrap;
+					align-items: center;
+					gap: 4px;
+					margin-top: 2px;
+
+					.tag {
+						display: inline-flex;
+						align-items: center;
+						gap: 2px;
+						font-size: 11px;
+						line-height: 14px;
+						padding: 0 2px 0 4px;
+						border-radius: 2px;
+						background: var(--color-accent-hover);
+						color: var(--color-f-white);
+
+						.remove {
+							border: none;
+							background: none;
+							color: inherit;
+							padding: 0 2px;
+							cursor: pointer;
+							line-height: 14px;
+						}
 					}
 				}
 

@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{Delta, HistoryMetadata, HotOp, RegistryDelta, Rev, TimeStamp, UserId, WallStamp};
+use document_graph_storage::{Delta, HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, TimeStamp, UserId, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -14,7 +14,7 @@ use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
 use crate::session_state::SessionState;
-use crate::{Gdd, MANIFEST_CODEC, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
 
 impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
@@ -228,10 +228,10 @@ impl<L: Layout> Gdd<L> {
 			ms: wall_ms.max(0.) as u64,
 			peer: self.session.peer(),
 		};
-		if !self.metadata.set_user_attribute(user, key, value, stamp) {
+		let Some(fact) = self.metadata.set_user_attribute(user, key, value, stamp) else {
 			return Ok(false);
-		}
-		self.persist_metadata()?;
+		};
+		self.append_facts(&[fact])?;
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
 			replica.send_metadata(&self.metadata)?;
@@ -239,8 +239,32 @@ impl<L: Layout> Gdd<L> {
 		Ok(true)
 	}
 
-	pub(crate) fn persist_metadata(&mut self) -> Result<(), Error> {
-		io::write_single(&self.working, self.layout.metadata_basename(), self.manifest.codecs.metadata, &self.metadata)
+	/// State a fact about a rev, the interaction it closes in the History panel's terms: a label or a tag. Put on
+	/// record, appended to the file, and told to the room when it changed anything. Returns whether it did.
+	pub fn record_rev_attribute(&mut self, rev: Rev, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
+		let stamp = WallStamp {
+			ms: wall_ms.max(0.) as u64,
+			peer: self.session.peer(),
+		};
+		let Some(fact) = self.metadata.set_rev_attribute(rev, key, value, stamp) else {
+			return Ok(false);
+		};
+		self.append_facts(&[fact])?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.send_metadata(&self.metadata)?;
+		}
+		Ok(true)
+	}
+
+	/// Append facts to the metadata file, one line each; the file is never rewritten.
+	pub(crate) fn append_facts(&mut self, facts: &[MetadataFact]) -> Result<(), Error> {
+		let mut buffer = Vec::new();
+		for fact in facts {
+			METADATA_CODEC.append(&mut buffer, fact)?;
+		}
+		self.working.append_non_blocking(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &buffer)?;
+		Ok(())
 	}
 
 	pub(crate) fn persist_session_state(&mut self) -> Result<(), Error> {

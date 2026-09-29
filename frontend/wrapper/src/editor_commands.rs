@@ -305,6 +305,16 @@ mod editor_commands {
 		HistoryMessage::Follow { id }.into()
 	}
 
+	/// Name an interaction in the History panel, or take the name away with an empty string
+	fn rename_history_interaction(id: String, label: String) -> Message {
+		HistoryMessage::Rename { id, label }.into()
+	}
+
+	/// Put a tag on an interaction in the History panel, or take it off
+	fn tag_history_interaction(id: String, tag: String, on: bool) -> Message {
+		HistoryMessage::Tag { id, tag, on }.into()
+	}
+
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),

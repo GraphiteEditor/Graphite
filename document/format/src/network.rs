@@ -185,7 +185,6 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 			history: true,
 			hot_log: true,
 			snapshot: true,
-			metadata: false,
 		};
 		Ok(())
 	}
@@ -288,11 +287,12 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn absorb_metadata(&mut self, remote: &HistoryMetadata) -> Result<bool, TargetError> {
-		let changed = self.metadata.merge(remote);
-		if changed {
-			self.pending_persist.metadata = true;
+		let landed = self.metadata.merge(remote);
+		if landed.is_empty() {
+			return Ok(false);
 		}
-		Ok(changed)
+		self.append_facts(&landed)?;
+		Ok(true)
 	}
 
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
@@ -357,9 +357,6 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		if pending.snapshot {
 			self.persist_registry_snapshot()?;
 			self.persist_session_state()?;
-		}
-		if pending.metadata {
-			self.persist_metadata()?;
 		}
 		Ok(())
 	}

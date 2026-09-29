@@ -11,7 +11,7 @@ use graphene_resource::{LoadResource, Resource, ResourceHash};
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::session_state::SessionState;
-use crate::{Gdd, MANIFEST_CODEC, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
 
 /// Export wrapping. Payloads keep the working copy's recorded per-payload codecs (see
 /// [`crate::manifest::PayloadCodecs`]); export does not re-encode.
@@ -159,7 +159,11 @@ impl<L: Layout> Gdd<L> {
 		};
 		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
 		if !self.metadata.is_empty() {
-			sink.write_entry(&io::path_for(self.layout.metadata_basename(), codecs.metadata), &codecs.metadata.write_single(&self.metadata)?)?;
+			let mut facts = Vec::new();
+			for fact in self.metadata.facts() {
+				METADATA_CODEC.append(&mut facts, &fact)?;
+			}
+			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &facts)?;
 		}
 
 		let working_copy_hashes: std::collections::HashSet<ResourceHash> = self.resource_hashes().await?.into_iter().collect();

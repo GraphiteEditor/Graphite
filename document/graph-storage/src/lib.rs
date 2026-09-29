@@ -24,7 +24,7 @@ pub use attributes::*;
 pub use crdt::*;
 pub use document::*;
 pub use history::History;
-pub use history_metadata::{Fact, HistoryMetadata, UserRecord, WallStamp, user_attr};
+pub use history_metadata::{Fact, HistoryMetadata, MetadataFact, RevRecord, Subject, UserRecord, WallStamp, rev_attr, user_attr};
 pub use ids::*;
 pub use model::*;
 pub use registry::*;

@@ -7,7 +7,7 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::from_runtime::DeclarationBytes;
-use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, TimeStamp, UserId, user_attr};
+use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, Rev, TimeStamp, UserId, rev_attr, user_attr};
 use peer_transport::mock::MockNetwork;
 
 const NOW_MS: f64 = 1_700_000_000_000.;
@@ -41,9 +41,14 @@ fn a_recorded_name_survives_a_reopen() {
 			"the same name is no change"
 		);
 
+		let step = Rev::new(7).expect("non-zero");
+		assert!(gdd.record_rev_attribute(step, rev_attr::LABEL, "Fixed the eye".into(), NOW_MS).expect("record"));
+		assert!(gdd.record_rev_attribute(step, "tag:v1", true.into(), NOW_MS).expect("record"));
 		let (working, layout) = gdd.into_storage();
 		let reopened = GddV1::open_in(working, layout).await.expect("open");
 		assert_eq!(reopened.metadata().user_name(UserId(10)), Some("Ada"));
+		assert_eq!(reopened.metadata().rev_label(step), Some("Fixed the eye"), "a label appended after the name is folded back in");
+		assert_eq!(reopened.metadata().rev_tags(step), vec!["v1"]);
 	});
 }
 
