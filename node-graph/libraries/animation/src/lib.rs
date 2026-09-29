@@ -2,7 +2,7 @@
 
 use dyn_any::DynAny;
 
-use glam::DVec2;
+use glam::{DVec2, FloatExt};
 use graphene_hash::CacheHash;
 use kurbo::{CubicBez, ParamCurve, Point};
 use serde::Deserialize;
@@ -66,31 +66,20 @@ impl AnimationCurve {
 			return 0.0;
 		}
 
-		// keyframes have finite, real coordinates
-		let index = self.keyframes.binary_search_by(|kf| kf.knot.x.partial_cmp(&time).unwrap_or(std::cmp::Ordering::Equal));
-
-		// We are on a keyframe, use its knot
-		if let Ok(idx) = index {
-			return self.keyframes[idx].knot.y;
-		}
-
-		let index = index.unwrap_err();
-
-		// Clamp to the first and last knot y-values when x is outside of all keyframes
-		if index == 0 {
-			return self.keyframes[0].knot.y;
-		} else if index == self.keyframes.len() {
-			// unwrap is safe because of the non-empty guard at the top
-			return self.keyframes.last().unwrap().knot.y;
-		}
+		let index = match self.keyframes.binary_search_by(|kf| kf.knot.x.total_cmp(&time)) {
+			Ok(index) => return self.keyframes[index].knot.y,
+			Err(0) => return self.keyframes[0].knot.y,
+			Err(index) if index == self.keyframes.len() => return self.keyframes[index - 1].knot.y,
+			Err(index) => index,
+		};
 
 		let segment_start = &self.keyframes[index - 1];
 		let segment_end = &self.keyframes[index];
+		let start = segment_start.knot;
+		let end = segment_end.knot;
 
 		match segment_start.interp_behavior {
 			InterpolationBehavior::Bezier { right_handle } => {
-				let start = segment_start.knot;
-				let end = segment_end.knot;
 				let left_handle = segment_end.left_handle.unwrap_or(end);
 
 				// Clamp the handle x-coordinates of the handles to inside the segment.
@@ -106,18 +95,12 @@ impl AnimationCurve {
 				);
 
 				// Find the value of t where curve.x == time to find the value
-				let t = kurbo::common::solve_itp(|t| curve.eval(t).x - time, 0.0, 1.0, 1e-7, 1, 0.2, segment_start.knot.x - time, segment_end.knot.x - time);
+				let t = kurbo::common::solve_itp(|t| curve.eval(t).x - time, 0.0, 1.0, 1e-7, 1, 0.2, start.x - time, end.x - time);
 
 				curve.eval(t).y
 			}
-			InterpolationBehavior::Constant => segment_start.knot.y,
-			InterpolationBehavior::Linear => {
-				let start = segment_start.knot.y;
-				let end = segment_end.knot.y;
-				let i = (time - segment_start.knot.x) / (segment_end.knot.x - segment_start.knot.x);
-
-				start + (end - start) * i
-			}
+			InterpolationBehavior::Constant => start.y,
+			InterpolationBehavior::Linear => start.y.lerp(end.y, (time - start.x) / (end.x - start.x)),
 		}
 	}
 
