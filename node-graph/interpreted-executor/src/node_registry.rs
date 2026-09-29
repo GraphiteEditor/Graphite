@@ -158,11 +158,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			(
 				ProtoNodeIdentifier::new(concat!["input_adapter<", stringify!($element), ">"]),
 				|mut args| {
-					Box::pin(async move {
-						let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::downcast_node::<Context, $ty>(args.pop().unwrap()));
-						let any: DynAnyNode<Context, $ty, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::downcast_node::<Context, $ty>(args.pop().unwrap()));
+					let any: DynAnyNode<Context, $ty, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $ty> + Send>>>::new());
@@ -176,14 +174,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			(
 				ProtoNodeIdentifier::new(concat![$name, "<", stringify!($element), ">"]),
 				|mut args| {
-					Box::pin(async move {
-						let node = graphene_core::ops::IntoNode::new(
-							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
-						);
-						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					let node = graphene_core::ops::IntoNode::new(
+						graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+					);
+					let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::IntoNode::new(
@@ -211,14 +207,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			(
 				ProtoNodeIdentifier::new(concat!["input_adapter<", stringify!($element), ">"]),
 				|mut args| {
-					Box::pin(async move {
-						let node = graphene_core::ops::$node::new(
-							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
-						);
-						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					let node = graphene_core::ops::$node::new(
+						graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
+					);
+					let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::$node::new(
@@ -238,11 +232,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ItemToListNode<", stringify!($element), ">"]),
 				|mut args| {
-					Box::pin(async move {
-						let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()));
-						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::downcast_node::<Context, Item<$element>>(args.pop().unwrap()));
+					let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::PanicNode::<
@@ -262,11 +254,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::BundleNode<", stringify!($element), ">"]),
 				|mut args| {
-					Box::pin(async move {
-						let node = graphene_core::ops::BundleNode::new(graphene_std::any::downcast_node::<Context, List<$element>>(args.pop().unwrap()));
-						let any: DynAnyNode<Context, Item<Bundle<$element>>, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					let node = graphene_core::ops::BundleNode::new(graphene_std::any::downcast_node::<Context, List<$element>>(args.pop().unwrap()));
+					let any: DynAnyNode<Context, Item<Bundle<$element>>, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::BundleNode::new(graphene_std::any::PanicNode::<
@@ -286,11 +276,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::UnbundleNode<", stringify!($element), ">"]),
 				|mut args| {
-					Box::pin(async move {
-						let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::downcast_node::<Context, Item<Bundle<$element>>>(args.pop().unwrap()));
-						let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::downcast_node::<Context, Item<Bundle<$element>>>(args.pop().unwrap()));
+					let any: DynAnyNode<Context, List<$element>, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::PanicNode::<
@@ -645,12 +633,10 @@ mod node_registry_macros {
 			(
 				$identifier,
 				|mut args| {
-					Box::pin(async move {
-						args.reverse();
-						let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
-						let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
-						Box::new(any) as TypeErasedBox
-					})
+					args.reverse();
+					let node = <$path>::new($(graphene_std::any::downcast_node::<$arg, $type>(args.pop().expect("Not enough arguments provided to construct node"))),*);
+					let any: DynAnyNode<$input, _, _> = graphene_std::any::DynAnyNode::new(node);
+					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = <$path>::new($(

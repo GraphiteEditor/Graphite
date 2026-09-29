@@ -11,8 +11,7 @@ fn push_node_sync() {
 	let mut tree = BorrowTree::default();
 	let val_1_protonode = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2_i64).into()), vec![]);
 	let context = TypingContext::default();
-	let future = tree.push_node(NodeId(0), val_1_protonode, &context);
-	futures::executor::block_on(future).unwrap();
+	tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 	let _node = tree.get(NodeId(0)).unwrap();
 	let result: Option<Item<i64>> = futures::executor::block_on(tree.eval(NodeId(0), ()));
 	assert_eq!(result.map(|item| *item.element()), Some(2_i64));
@@ -36,7 +35,7 @@ fn compile_bounding_box_network(content: TaggedValue) -> BorrowTree {
 	let network = bounding_box_network(content);
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("The network should resolve against exactly one registered wire variant");
-	futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The resolved variant's constructor should instantiate")
+	BorrowTree::new(network, &typing_context).expect("The resolved variant's constructor should instantiate")
 }
 
 #[test]
@@ -67,7 +66,7 @@ fn item_wire_promotes_to_list_connector() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item wire should resolve a List connector via promotion");
 	assert!(typing_context.promotions(NodeId(1)).is_some(), "The typing pass should record the promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapter should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The promotion adapter should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<graphene_std::vector::misc::BoxCorners>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -97,7 +96,7 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	typing_context.update(&network).expect("A rank-0 content wire should resolve the layer coercion path via promotion");
 	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 content should be raised at Into Group's List connector");
 	assert!(typing_context.promotions(NodeId(3)).is_some(), "The grouped Item<Graphic> should be raised at Extend's List connector");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The promotion adapters should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The promotion adapters should instantiate");
 
 	let context: Context = None;
 	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
@@ -131,7 +130,7 @@ fn mixed_rank_connectors_resolve_via_promotion() {
 		.update(&network)
 		.expect("A List primary with an Item parameter should resolve the mapped variant via promotion");
 	assert!(typing_context.promotions(NodeId(3)).is_some(), "The Item distance should be marked for promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Construction should wrap the promoted argument");
+	let tree = BorrowTree::new(network, &typing_context).expect("Construction should wrap the promoted argument");
 
 	let context: Context = None;
 	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
@@ -144,7 +143,7 @@ fn all_item_connectors_resolve_without_promotion() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("All-Item connectors should resolve the rank-0 variant exactly");
 	assert!(typing_context.promotions(NodeId(3)).is_none(), "No promotion should be needed at rank 0");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The rank-0 variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The rank-0 variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
@@ -192,7 +191,7 @@ fn transform_composes_onto_item_wire() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Transform should resolve its rank-0 variant");
 	assert!(typing_context.promotions(output).is_none(), "All-Item connectors should need no promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("Transform's rank-0 variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("Transform's rank-0 variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(output, context));
@@ -212,7 +211,7 @@ fn transform_broadcasts_item_content_across_a_framed_parameter() {
 		.update(&network)
 		.expect("A framed rotation should resolve the mapped variant via promotion of the other connectors");
 	assert!(typing_context.promotions(output).is_some(), "The Item-typed connectors should be raised into the frame");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The mapped variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(output, context));
@@ -245,7 +244,7 @@ fn generator_frames_over_a_list_parameter() {
 
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<f64> radius should resolve Circle's mapped generator variant");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped generator variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The mapped generator variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
@@ -315,7 +314,7 @@ fn value_wires_materialize_as_items_at_resolution() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("Value wires should materialize as Items and resolve the all-Item variant");
 	assert!(typing_context.promotions(NodeId(5)).is_none(), "Already-Item value wires should need no promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The all-Item variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The all-Item variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<DAffine2>> = futures::executor::block_on(tree.eval(NodeId(5), context));
@@ -339,7 +338,7 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<DVec2> wire should resolve the adapter's element conversion row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The conversion constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The conversion constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -364,7 +363,7 @@ fn position_value_raises_into_the_into_group_reducer() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<DVec2> wire should raise into Into Group's List<DVec2> row");
 	assert!(typing_context.promotions(NodeId(1)).is_some(), "The rank-0 position should be raised at Into Group's List connector");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The reducer constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The reducer constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -398,7 +397,7 @@ fn color_list_wraps_through_the_colors_to_gradient_node() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<Color> wire should embed into the node's List<Graphic> connector");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The node constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The node constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(3), context));
@@ -443,7 +442,7 @@ fn as_graphic_converts_a_vector_list_element_wise() {
 	typing_context
 		.update(&network)
 		.expect("A List<Vector> wire should resolve As Graphic's mapped variant through the embedding adapter");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The mapped constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The mapped constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<List<Graphic>> = futures::executor::block_on(tree.eval(NodeId(5), context));
@@ -479,7 +478,7 @@ fn gradient_value_embeds_through_the_graphic_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<Gradient> wire should resolve the adapter's embedding row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The embedding constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The embedding constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -509,7 +508,7 @@ fn number_value_splats_through_the_vec2_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An f64 wire should resolve the adapter's splat conversion row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The splat constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The splat constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<glam::DVec2>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -531,7 +530,7 @@ fn number_value_formats_through_the_string_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An f64 wire should resolve the adapter's formatting conversion row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The formatting constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The formatting constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -554,7 +553,7 @@ fn bool_value_embeds_through_the_number_input_adapter() {
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bool wire should resolve the adapter's embedding conversion row");
-		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The embedding constructor should instantiate");
+		let tree = BorrowTree::new(network, &typing_context).expect("The embedding constructor should instantiate");
 
 		let context: Context = None;
 		let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -578,7 +577,7 @@ fn bool_value_formats_through_the_string_input_adapter() {
 		};
 		let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 		typing_context.update(&network).expect("A bool wire should resolve the adapter's formatting conversion row");
-		let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The formatting constructor should instantiate");
+		let tree = BorrowTree::new(network, &typing_context).expect("The formatting constructor should instantiate");
 
 		let context: Context = None;
 		let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -603,7 +602,7 @@ fn list_wire_erases_through_the_list_dyn_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A List<f64> wire should resolve the ListDyn erasure row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The erasure constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The erasure constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<ListDyn> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -625,7 +624,7 @@ fn value_wire_passes_through_the_input_adapter_as_item() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An f64 value's Item wire should resolve the adapter's passthrough row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The passthrough constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -651,7 +650,7 @@ fn modification_value_rides_the_item_wire_through_its_input_adapter() {
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("A modification value's Item wire should resolve the adapter's passthrough row");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The passthrough constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<Box<VectorModification>>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -675,7 +674,7 @@ fn item_wire_boxes_into_the_attribute_value_connector() {
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
 	typing_context.update(&network).expect("An Item<f64> wire should resolve the attribute value boxing row");
 	assert!(typing_context.promotions(NodeId(1)).is_none(), "The already-Item value wire should need no promotion");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The boxing constructor should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The boxing constructor should instantiate");
 
 	let context: Context = None;
 	let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(1), context));
@@ -733,7 +732,7 @@ fn expander_flattens_under_the_frame() {
 		.update(&network)
 		.expect("All-Item connectors should resolve the expander's direct `Item -> List` variant");
 	assert!(typing_context.promotions(output).is_none(), "No promotion should be needed when every connector is already an Item");
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The expander variant should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The expander variant should instantiate");
 
 	let context: Context = None;
 	let result: Option<List<String>> = futures::executor::block_on(tree.eval(output, context));
@@ -779,7 +778,7 @@ fn whole_list_switches_as_one_bundle() {
 		.count();
 	assert_eq!(branch_bundles, 2, "Both branches should bundle their whole list into one opaque cell");
 
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
 	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
 	let list = result.expect("The whole stack should round-trip through the bundle switch back to a flat List<f64>");
@@ -814,7 +813,7 @@ fn a_bundle_unbundles_into_a_list_connector() {
 		"The base connector should unbundle the whole list"
 	);
 
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The unbundle adapter should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The unbundle adapter should instantiate");
 	let context: Context = None;
 	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
 	assert!(result.is_some(), "The unbundled stack should flow into Extend as a List<Graphic>");
@@ -856,7 +855,7 @@ fn a_whole_list_of_scalars_switches_as_one_bundle() {
 		.count();
 	assert_eq!(branch_bundles, 2, "Both scalar-list branches should bundle into one opaque cell");
 
-	let tree = futures::executor::block_on(BorrowTree::new(network, &typing_context)).expect("The bundle, wrap, and unbundle adapters should instantiate");
+	let tree = BorrowTree::new(network, &typing_context).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
 	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
 	let list = result.expect("The whole scalar list should round-trip through the bundle switch");

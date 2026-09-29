@@ -11,12 +11,12 @@ fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let proto_network = compile(network);
 	let empty = ProtoNetwork::default();
 
-	let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
+	let executor = DynamicExecutor::new(empty).unwrap();
 
 	c.bench_function(name, |b| {
 		b.iter_batched(
 			|| (executor.clone(), proto_network.clone()),
-			|(mut executor, network)| futures::executor::block_on(executor.update(std::hint::black_box(network))),
+			|(mut executor, network)| executor.update(std::hint::black_box(network)),
 			criterion::BatchSize::SmallInput,
 		)
 	});
@@ -33,7 +33,7 @@ fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let network = load_from_name(name);
 	let proto_network = compile(network);
 
-	let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).unwrap();
+	let executor = DynamicExecutor::new(proto_network).unwrap();
 	let footprint = Footprint::default();
 
 	c.bench_function(name, |b| b.iter(|| futures::executor::block_on((&executor).execute(footprint))));

@@ -182,7 +182,7 @@ impl NodeRuntime {
 					.into();
 					if let Some(graph) = self.old_graph.clone() {
 						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
+						let _ = self.update_network(graph);
 					}
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
@@ -197,7 +197,7 @@ impl NodeRuntime {
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
-					let result = self.update_network(network).await;
+					let result = self.update_network(network);
 					let node_graph_errors = self.node_graph_errors.clone();
 
 					self.update_thumbnails = true;
@@ -323,7 +323,7 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
@@ -346,7 +346,7 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|(types, e)| {
+		self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		})

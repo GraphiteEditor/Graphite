@@ -2110,7 +2110,6 @@ dependencies = [
  "document-container",
  "document-format",
  "fern",
- "futures",
  "graph-craft",
  "graphene-std",
  "image",
