@@ -12,7 +12,7 @@ use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig, Te
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
-use graphene_std::ops::Convert;
+use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
@@ -238,7 +238,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -262,7 +262,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
 
 							self.sender.send(NodeGraphUpdate::EyedropperPreview(raster_cpu)).expect("Failed to send response");
 							continue;

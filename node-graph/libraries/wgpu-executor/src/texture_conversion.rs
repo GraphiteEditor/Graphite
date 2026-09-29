@@ -2,7 +2,7 @@ use crate::{Buffer, WgpuExecutor};
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
-use core_types::ops::Convert;
+use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
 use raster_types::Image;
 use raster_types::{CPU, GPU, Raster, Texture};
@@ -177,8 +177,8 @@ impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 }
 
 /// Converts a `List<Raster<GPU>>` to `List<Raster<CPU>>` by downloading texture data in one go then asynchronously maps all buffers and processes the results.
-impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
-	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<CPU>> {
+impl ConvertAsync<List<Raster<CPU>>, WgpuExecutor> for List<Raster<GPU>> {
+	async fn convert(self, _: Footprint, executor: WgpuExecutor) -> List<Raster<CPU>> {
 		let device = &executor.context().device;
 		let queue = &executor.context().queue;
 
@@ -191,7 +191,7 @@ impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
 
 		for row in self {
 			let (element, attributes) = row.into_parts();
-			converters.push(RasterGpuToRasterCpuConverter::new(executor, &mut encoder, element));
+			converters.push(RasterGpuToRasterCpuConverter::new(&executor, &mut encoder, element));
 			rows_meta.push(Item::from_parts((), attributes));
 		}
 
@@ -219,8 +219,8 @@ impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
 }
 
 /// Converts single GPU raster to CPU by downloading texture data
-impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
-	async fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<CPU> {
+impl ConvertAsync<Raster<CPU>, WgpuExecutor> for Raster<GPU> {
+	async fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<CPU> {
 		let device = &executor.context().device;
 		let queue = &executor.context().queue;
 
@@ -228,7 +228,7 @@ impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 			label: Some("single_texture_download_encoder"),
 		});
 
-		let converter = RasterGpuToRasterCpuConverter::new(executor, &mut encoder, self);
+		let converter = RasterGpuToRasterCpuConverter::new(&executor, &mut encoder, self);
 
 		queue.submit([encoder.finish()]);
 

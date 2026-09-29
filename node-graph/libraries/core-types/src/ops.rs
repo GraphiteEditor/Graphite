@@ -42,6 +42,12 @@ pub trait Convert<T, C>: Sized {
 	fn convert(self, footprint: Footprint, converter: C) -> impl Future<Output = T> + Send;
 }
 
+/// Asynchronous version of [`Convert`]
+pub trait ConvertAsync<T, C>: Sized {
+	#[must_use]
+	fn convert(self, footprint: Footprint, converter: C) -> impl std::future::Future<Output = T> + Send + 'static;
+}
+
 /// Implements the [`Convert`] trait for formatting a type into a `String` via [`ToString`].
 macro_rules! impl_convert_to_string {
 	($($from:ty),* $(,)?) => {
