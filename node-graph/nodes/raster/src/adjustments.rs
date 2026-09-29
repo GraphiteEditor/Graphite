@@ -653,7 +653,7 @@ fn levels<T: Adjust<Color>>(
 // Needs the heap for its curves, so it stays off the shader build for now.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), properties("transfer_curves_properties"))]
-async fn curves<T: Adjust<Color> + Send>(
+fn curves<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	curve: Item<TransferCurve>,
@@ -1428,7 +1428,7 @@ fn threshold<T: Adjust<Color>>(
 // TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn gradient_map<T: Adjust<Color> + Send>(
+fn gradient_map<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
@@ -2501,7 +2501,7 @@ fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 // TODO: Verify the tetrahedral interpolation, which is unconfirmed against other implementations.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"))]
-async fn color_lookup<T: Adjust<Color> + Send>(
+fn color_lookup<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	/// The image whose colors are remapped by the LUT (lookup table).
 	#[implementations(Raster<CPU>, Color, Gradient)]

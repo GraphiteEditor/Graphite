@@ -4,7 +4,7 @@ use core_types::list::{Item, List};
 use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
-async fn image_color_palette(
+fn image_color_palette(
 	_: impl Ctx,
 	image: Item<Raster<CPU>>,
 	#[default(4)]
@@ -75,6 +75,6 @@ mod test {
 			})),
 			Item::new_from_element(1),
 		);
-		assert_eq!(futures::executor::block_on(result), List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
+		assert_eq!(result, List::new_from_element(Color::from_rgbaf32(0., 0., 0., 1.).unwrap()));
 	}
 }
