@@ -173,7 +173,7 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
+fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
 	Item::new_from_element(CanvasHandle::new())
 }
 
@@ -239,7 +239,7 @@ async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>,
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
+pub fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
 	editor_api
 }
 
@@ -269,7 +269,7 @@ pub async fn resource<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
+pub fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
 	let executor = editor_api
 		.into_element()
 		.application_io
@@ -281,7 +281,7 @@ pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)]
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
+pub fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
 	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor());
 	Item::new_from_element(executor)
 }

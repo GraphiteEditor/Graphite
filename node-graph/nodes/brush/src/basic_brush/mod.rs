@@ -65,7 +65,7 @@ pub async fn basic_brush<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn basic_brush_pipeline<'a: 'n>(
+fn basic_brush_pipeline<'a: 'n>(
 	_ctx: impl Ctx,
 	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<&'a WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,

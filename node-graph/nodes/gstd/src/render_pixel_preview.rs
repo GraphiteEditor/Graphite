@@ -79,7 +79,7 @@ pub async fn render_pixel_preview<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn pixel_preview_pipeline<'a: 'n>(
+fn pixel_preview_pipeline<'a: 'n>(
 	_ctx: impl Ctx,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
 	#[data] pipeline: WgpuPipelineCache,
