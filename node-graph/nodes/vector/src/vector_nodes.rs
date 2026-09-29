@@ -215,7 +215,7 @@ impl ExpandVectorItems for Graphic {
 
 /// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
-async fn assign_colors<T>(
+fn assign_colors<T>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill and/or stroke style to.
 	#[implementations(List<Graphic>, List<Vector>)]
@@ -304,7 +304,7 @@ where
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
-async fn fill<V>(
+fn fill<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
 	#[implementations(Vector, Graphic)]
@@ -394,7 +394,7 @@ where
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V>(
+fn stroke<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
 	#[implementations(Vector, Graphic)]
@@ -473,7 +473,7 @@ fn dash_pattern(
 }
 
 #[node_macro::node(category("Repeat"), name("Copy to Points"), path(core_types::vector))]
-async fn copy_to_points<I: 'n + Send + Clone>(
+fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
@@ -563,7 +563,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn round_corners<V: MapVectorItems + 'n + Send>(
+fn round_corners<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
 	#[unit(" px")]
@@ -886,7 +886,7 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn extrude<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
+fn extrude<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
 		let (direction, joining_algorithm) = (*direction.element(), *joining_algorithm.element());
@@ -897,7 +897,7 @@ async fn extrude<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(G
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn box_warp<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
+fn box_warp<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let target = rectangle.into_element();
 
@@ -980,7 +980,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn pack_strips<T: 'n + Send + Clone>(
+fn pack_strips<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -1103,7 +1103,7 @@ where
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
 #[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(core_types::vector))]
-async fn auto_tangents<V: MapVectorItems + 'n + Send>(
+fn auto_tangents<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
@@ -1255,7 +1255,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
+fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		let result = content
@@ -1274,7 +1274,7 @@ async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
+fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 	let dimensions = content
 		.element()
 		.bounding_box_with_transform(content.attribute_cloned_or_default(ATTR_TRANSFORM))
@@ -1308,7 +1308,7 @@ fn points_to_vector(
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
+fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
 	let closed = *closed.element();
 
 	V::map_vector_items(points, |points| {
@@ -1338,7 +1338,7 @@ async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implem
 
 /// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn relax_points<V: MapVectorItems + 'n + Send>(
+fn relax_points<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// A vector path or point cloud to relax.
 	#[implementations(Graphic, Vector)]
@@ -1366,7 +1366,7 @@ async fn relax_points<V: MapVectorItems + 'n + Send>(
 ///
 /// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
-async fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
+fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
 		let connect_cells = *connect_cells.element();
@@ -1386,7 +1386,7 @@ async fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementat
 ///
 /// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
-async fn triangulate<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
+fn triangulate<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
 		let connect_cells = *connect_cells.element();
@@ -1496,7 +1496,7 @@ fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-async fn offset_path<V: MapVectorItems + 'n + Send>(
+fn offset_path<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	distance: Item<f64>,
@@ -1699,14 +1699,14 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn solidify_stroke<V: SolidifyStroke + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+fn solidify_stroke<V: SolidifyStroke + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
 	V::solidify_strokes(content)
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	V::expand_vector_items(content, |content| {
 		let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
 
@@ -1732,7 +1732,7 @@ async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[impl
 
 /// Determines if the subpath at the given index is closed, meaning its ends are connected together forming a loop.
 #[node_macro::node(name("Path is Closed"), category("Vector: Measure"), path(core_types::vector))]
-async fn path_is_closed(
+fn path_is_closed(
 	_: impl Ctx,
 	/// The vector content whose subpaths are inspected.
 	content: Item<Vector>,
@@ -1767,7 +1767,7 @@ async fn map_points<V: MapVectorItems + 'n + Send>(
 
 /// Combines every vector path across the input into a single compound path.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
+pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let graphic_list = content.clone();
 	let flattened = content.into_flattened_list::<Vector>();
 
@@ -1816,7 +1816,7 @@ pub async fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> 
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
-async fn sample_polyline<V: MapVectorItems + 'n + Send>(
+fn sample_polyline<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	spacing: Item<PointSpacingType>,
@@ -1895,7 +1895,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn simplify<V: MapVectorItems + 'n + Send>(
+fn simplify<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// The vector paths to simplify.
 	#[implementations(Graphic, Vector)]
@@ -1937,7 +1937,7 @@ async fn simplify<V: MapVectorItems + 'n + Send>(
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn decimate<V: MapVectorItems + 'n + Send>(
+fn decimate<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// The vector paths to decimate.
 	#[implementations(Graphic, Vector)]
@@ -2064,7 +2064,7 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn cut_path<V: MapVectorItems + 'n + Send>(
+fn cut_path<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// The path to insert a cut into.
 	#[implementations(Graphic, Vector)]
@@ -2115,7 +2115,7 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 
 /// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
+fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
@@ -2177,7 +2177,7 @@ async fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
-async fn position_on_path(
+fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Item<Vector>,
@@ -2215,7 +2215,7 @@ async fn position_on_path(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
-async fn tangent_on_path(
+fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Item<Vector>,
@@ -2257,7 +2257,7 @@ async fn tangent_on_path(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
-async fn scatter_points<V: MapVectorItems + 'n + Send>(
+fn scatter_points<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	#[unit(" px")]
@@ -2303,7 +2303,7 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 }
 
 #[node_macro::node(name("Spline"), category("Vector: Modifier"), path(core_types::vector))]
-async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
+fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		// Exit early if there are no points to generate splines from.
@@ -2399,7 +2399,7 @@ fn apply_point_deltas(element: &mut Vector, deltas: &[DVec2], transform: DAffine
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn jitter_points<V: MapVectorItems + 'n + Send>(
+fn jitter_points<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
 	#[implementations(Graphic, Vector)]
@@ -2455,7 +2455,7 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 /// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
 /// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn offset_points<V: MapVectorItems + 'n + Send>(
+fn offset_points<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
 	#[implementations(Graphic, Vector)]
@@ -2497,7 +2497,7 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph(
+fn morph(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	content: List<Graphic>,
@@ -3476,12 +3476,12 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
+fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
+fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 	let count = content.element().point_domain.positions().len() as f64;
 
 	Item::new_from_element(count)
@@ -3490,7 +3490,7 @@ async fn count_points(_: impl Ctx, content: Item<Vector>) -> Item<f64> {
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index within a vector element.
 /// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn index_points(
+fn index_points(
 	_: impl Ctx,
 	/// The vector element containing the anchor points to be retrieved.
 	content: Item<Vector>,
@@ -3515,7 +3515,7 @@ async fn index_points(
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
+fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 	let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let length = source
 		.element()
@@ -3644,8 +3644,8 @@ mod test {
 	async fn offset_path_does_not_duplicate_closing_anchors() {
 		// Offsetting closed triangles must not leave each subpath with a redundant start/end anchor (a Kurbo offset
 		// contour returns to approximately, not exactly, its start; that near-coincident point must close, not duplicate).
-		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
-		let offset = super::offset_path((), delaunay, item(0.5), item(StrokeJoin::Miter), item(4.)).await;
+		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
+		let offset = super::offset_path((), delaunay, item(0.5), item(StrokeJoin::Miter), item(4.));
 		let result = offset.element();
 
 		let mut subpaths = 0;
@@ -3661,7 +3661,7 @@ mod test {
 
 	#[tokio::test]
 	async fn delaunay_disconnected_cells_make_one_subpath_per_triangle() {
-		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
 		let vector = result.element();
 		// The square plus its center tessellates into four triangles, each its own closed subpath.
 		assert_eq!(vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count(), 4);
@@ -3691,8 +3691,8 @@ mod test {
 		assert_eq!(subpath_winding_signs(&ellipse)[0], expected, "Rectangle and Ellipse should agree on winding");
 
 		// Delaunay and Voronoi must emit subpaths that wind the same way as those generators.
-		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
-		let voronoi = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
+		let voronoi = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
 		for sign in subpath_winding_signs(delaunay.element()) {
 			assert_eq!(sign, expected, "Delaunay subpath winding should match the Rectangle/Ellipse generators");
 		}
@@ -3703,7 +3703,7 @@ mod test {
 
 	#[tokio::test]
 	async fn delaunay_shared_mesh_welds_points_and_shares_edges() {
-		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
+		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true));
 		let vector = result.element();
 		// The connected mesh reuses the five input points and shares edges, so it fills face by face.
 		assert!(vector.use_face_fill());
@@ -3714,7 +3714,7 @@ mod test {
 
 	#[tokio::test]
 	async fn voronoi_disconnected_cells_make_a_subpath_per_cell() {
-		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).await;
+		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
 		let vector = result.element();
 		let cells = vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count();
 		assert!(cells > 0, "expected at least one Voronoi cell");
@@ -3730,7 +3730,7 @@ mod test {
 
 	#[tokio::test]
 	async fn voronoi_shared_mesh_uses_face_fill() {
-		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
+		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true));
 		let vector = result.element();
 		assert!(vector.use_face_fill());
 		assert!(!vector.segment_domain.ids().is_empty());
@@ -3740,7 +3740,7 @@ mod test {
 	async fn voronoi_leaves_degenerate_input_untouched() {
 		// Two points cannot form a diagram, so the element passes through unchanged.
 		let points = [DVec2::new(0., 0.), DVec2::new(1., 1.)];
-		let result = super::voronoi_cells((), vector_item_from_points(&points), item(false)).await;
+		let result = super::voronoi_cells((), vector_item_from_points(&points), item(false));
 		let vector = result.element();
 		assert_eq!(vector.point_domain.ids().len(), 2);
 		assert_eq!(vector.segment_domain.ids().len(), 0);
@@ -3757,7 +3757,7 @@ mod test {
 			DVec2::new(3., 4.),
 			DVec2::new(7., 5.),
 		];
-		let result = super::relax_points((), vector_item_from_points(&points), item(2.)).await;
+		let result = super::relax_points((), vector_item_from_points(&points), item(2.));
 		let vector = result.element();
 
 		// Relaxation preserves the point count but repositions the interior anchors within the hull.
@@ -3777,7 +3777,7 @@ mod test {
 
 	#[tokio::test]
 	async fn bounding_box() {
-		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)))).await;
+		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))));
 		let bounding_box = bounding_box.element();
 		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
@@ -3829,9 +3829,8 @@ mod test {
 			Item::new_from_element(0),
 			Item::new_from_element(0.),
 			Item::new_from_element(0),
-		)
-		.await;
-		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))).await);
+		);
+		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))));
 		let combined_copy_to_points = combined.element(0).unwrap();
 
 		assert_eq!(combined_copy_to_points.stroke_manipulator_groups().count(), expected_points.len());
@@ -3858,8 +3857,7 @@ mod test {
 			Item::new_from_element(0.),
 			Item::new_from_element(0.),
 			Item::new_from_element(false),
-		)
-		.await;
+		);
 		let sample_polyline = sample_polyline.element();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 0., DVec2::X * 30., DVec2::X * 60., DVec2::X * 90.]) {
@@ -3878,8 +3876,7 @@ mod test {
 			Item::new_from_element(45.),
 			Item::new_from_element(10.),
 			Item::new_from_element(true),
-		)
-		.await;
+		);
 		let sample_polyline = sample_polyline.element();
 		assert_eq!(sample_polyline.point_domain.positions().len(), 4);
 		for (pos, expected) in sample_polyline.point_domain.positions().iter().zip([DVec2::X * 45., DVec2::X * 60., DVec2::X * 75., DVec2::X * 90.]) {
@@ -3893,8 +3890,7 @@ mod test {
 			vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.))),
 			Item::new_from_element(10. * std::f64::consts::SQRT_2),
 			Item::new_from_element(0),
-		)
-		.await;
+		);
 		let poisson_points = poisson_points.element();
 		assert!(
 			(20..=40).contains(&poisson_points.point_domain.positions().len()),
@@ -3911,14 +3907,14 @@ mod test {
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
 		let item = create_vector_item(bezpath, transform);
 
-		let length = super::path_length(Footprint::default(), item).await;
+		let length = super::path_length(Footprint::default(), item);
 
 		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale)
 		assert_eq!(length.into_element(), 101. * 4. * 2.);
 	}
 	#[tokio::test]
 	async fn spline() {
-		let spline = super::spline(Footprint::default(), vector_item_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY))).await;
+		let spline = super::spline(Footprint::default(), vector_item_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY)));
 		let spline = spline.element();
 		assert_eq!(spline.stroke_bezpath_iter().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
@@ -3937,8 +3933,7 @@ mod test {
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
 			Item::default(),
-		)
-		.await;
+		);
 		let morphed = List::new_from_item(morphed);
 		let morphed_element = morphed.element(0).unwrap();
 		// Geometry stays in local space (original rectangle coordinates)
@@ -3976,8 +3971,7 @@ mod test {
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
 			Item::default(),
-		)
-		.await;
+		);
 		let morphed = List::new_from_item(morphed);
 
 		let appearance = morphed.attribute::<Appearance>(ATTR_APPEARANCE, 0).expect("Morph should keep the appearance at the midpoint");
@@ -4032,8 +4026,7 @@ mod test {
 			Item::new_from_element(false),
 			Item::new_from_element(InterpolationDistribution::default()),
 			Item::default(),
-		)
-		.await;
+		);
 		let morphed = List::new_from_item(morphed);
 
 		let appearance = morphed.attribute::<Appearance>(ATTR_APPEARANCE, 0).expect("Morph should keep the appearance at the midpoint");
@@ -4192,8 +4185,7 @@ mod test {
 			Item::new_from_element(false),
 			Item::new_from_element(0),
 			Item::new_from_element(0_i64),
-		)
-		.await;
+		);
 
 		let Some(Graphic::Vector(item)) = styled.element(0) else {
 			panic!("the leaf should stay a rank-0 vector")
