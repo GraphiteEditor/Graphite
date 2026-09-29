@@ -12,7 +12,7 @@ use std::fmt::Write;
 use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-async fn render_background<'a: 'n>(
+fn render_background<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 	data: Item<RenderOutput>,

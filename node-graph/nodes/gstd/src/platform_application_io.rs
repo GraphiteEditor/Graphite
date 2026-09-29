@@ -288,7 +288,7 @@ fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] edito
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
 #[node_macro::node(category("Debug"), memoize)]
-async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
+fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
 	let executor = executor.into_element();
 	let (raster, attributes) = content.into_parts();
 

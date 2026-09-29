@@ -92,7 +92,7 @@ fn embed_list<'i, T: 'i + Send, E: 'i + Send + From<Item<T>>>(_: impl Ctx, value
 
 /// The [`Convert`]-based counterpart of `into_item`, casting an `Item` wire's element to a connector's numeric element type.
 #[node_macro::node(category(""), skip_impl)]
-async fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
 	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
 	let (value, attributes) = value.into_parts();
 
@@ -101,7 +101,7 @@ async fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl
 
 /// The `List` counterpart of `convert_item`, casting every element to the connector's numeric element type.
 #[node_macro::node(category(""), skip_impl)]
-async fn convert_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+fn convert_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
 	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
 
 	let mut result = List::default();

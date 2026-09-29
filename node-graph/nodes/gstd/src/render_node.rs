@@ -76,7 +76,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(
+fn render<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
 	data: Item<RenderIntermediate>,

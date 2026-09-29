@@ -15,7 +15,7 @@ use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category("Raster: Brush"))]
-async fn basic_brush<'a: 'n>(
+fn basic_brush<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
 	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<BrushCache>,
