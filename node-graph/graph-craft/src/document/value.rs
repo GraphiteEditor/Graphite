@@ -22,7 +22,6 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 use text_nodes::Font;
@@ -222,7 +221,7 @@ macro_rules! tagged_value {
 					Self::NodeIdPath(path) => Box::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Box::new(node),
 					Self::ContextFeatures(features) => Box::new(Item::new_from_element(features)),
-					Self::EditorApi(x) => Box::new(x),
+					Self::EditorApi(x) => Box::new(Item::new_from_element(x)),
 					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
 			}
@@ -290,7 +289,7 @@ macro_rules! tagged_value {
 					Self::NodeIdPath(path) => Arc::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextFeatures(features) => Arc::new(Item::new_from_element(features)),
-					Self::EditorApi(x) => Arc::new(x),
+					Self::EditorApi(x) => Arc::new(Item::new_from_element(x)),
 					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
 			}
@@ -321,7 +320,7 @@ macro_rules! tagged_value {
 					Self::NodeIdPath(_) => item!(NodeIdPath),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextFeatures(_) => item!(ContextFeatures),
-					Self::EditorApi(_) => item!(&PlatformEditorApi),
+					Self::EditorApi(_) => item!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => item!(ResourceHash),
 				};
 
@@ -878,23 +877,6 @@ impl UpcastNode {
 		Self { value }
 	}
 }
-#[derive(Default, Debug, Clone, Copy)]
-pub struct UpcastAsRefNode<T: AsRef<U> + Sync + Send, U: Sync + Send>(pub T, PhantomData<U>);
-
-impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
-	type Output = FutureAny<'i>;
-	#[inline(always)]
-	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(Item::new_from_element(self.0.as_ref())) as DAny<'i> })
-	}
-}
-
-impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
-	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
-		UpcastAsRefNode(value, PhantomData)
-	}
-}
-
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderOutput {
 	pub data: RenderOutputType,

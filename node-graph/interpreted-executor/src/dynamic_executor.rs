@@ -2,7 +2,7 @@ use crate::node_registry;
 use dyn_any::StaticType;
 use graph_craft::Type;
 use graph_craft::document::NodeId;
-use graph_craft::document::value::{TaggedValue, UpcastAsRefNode, UpcastNode};
+use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
@@ -395,15 +395,8 @@ impl BorrowTree {
 
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
-				let node = if let TaggedValue::EditorApi(api) = &**value {
-					let editor_api = UpcastAsRefNode::new(api.clone());
-					let node = Box::new(editor_api) as TypeErasedBox<'_>;
-					NodeContainer::new(node)
-				} else {
-					let upcasted = UpcastNode::new(value.to_owned());
-					let node = Box::new(upcasted) as TypeErasedBox<'_>;
-					NodeContainer::new(node)
-				};
+				let upcasted = UpcastNode::new(value.to_owned());
+				let node = NodeContainer::new(Box::new(upcasted) as TypeErasedBox<'_>);
 				self.store_node(node, id, path.into());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
