@@ -12,7 +12,7 @@ use std::fmt::Write;
 use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-fn render_background<'a: 'n>(
+fn render_background(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 	data: Item<RenderOutput>,
@@ -119,9 +119,9 @@ fn render_background<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn composite_background_pipeline<'a: 'n>(
+fn composite_background_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
 	if let Some(executor) = executor.into_element() {

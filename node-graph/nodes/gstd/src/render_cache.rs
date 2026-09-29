@@ -322,10 +322,10 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 }
 
 #[node_macro::node(category(""))]
-async fn render_output_cache<'a: 'n>(
+async fn render_output_cache(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
-	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
+	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> Item<RenderOutput> {
@@ -393,7 +393,7 @@ async fn render_output_cache<'a: 'n>(
 	let executor = executor.into_element().expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution);
 
-	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, executor);
+	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
 
 	Item::new_from_element(RenderOutput {
 		data: RenderOutputType::Texture(output_texture),

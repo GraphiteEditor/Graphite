@@ -254,7 +254,7 @@ fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> It
 ///
 /// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
 #[node_macro::node(category("Raster"))]
-fn image<'a: 'n>(
+fn image(
 	_: impl Ctx,
 	_primary: (),
 	/// The image file to display.

@@ -15,7 +15,7 @@ use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category("Raster: Brush"))]
-fn basic_brush<'a: 'n>(
+fn basic_brush(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
 	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<BrushCache>,
@@ -65,9 +65,9 @@ fn basic_brush<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn basic_brush_pipeline<'a: 'n>(
+fn basic_brush_pipeline(
 	_ctx: impl Ctx,
-	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<&'a WgpuExecutor>,
+	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
 	executor.into_element().pipeline_init::<BasicBrushPipeline>(pipeline);

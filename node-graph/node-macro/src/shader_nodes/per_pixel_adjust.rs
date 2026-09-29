@@ -255,7 +255,7 @@ impl PerPixelAdjustCodegen<'_> {
 			description: "".to_string(),
 			widget_override: Default::default(),
 			ty: ParsedFieldType::classify(RegularParsedField {
-				ty: parse_quote!(#gcore::list::Item<&'a WgpuExecutor>),
+				ty: parse_quote!(#gcore::list::Item<WgpuExecutor>),
 				exposed: true,
 				value_source: ParsedValueSource::Scope(Box::new(parse_quote!("graphene_std::platform_application_io::WgpuExecutorNode"))),
 				number_soft_min: None,
@@ -343,7 +343,7 @@ impl PerPixelAdjustCodegen<'_> {
 			fn_name: self.shader_node_mod.clone(),
 			struct_name: format_ident!("{}", self.shader_node_mod.to_string().to_case(Case::Pascal)),
 			mod_name: self.shader_node_mod.clone(),
-			fn_generics: vec![parse_quote!('a: 'n)],
+			fn_generics: Vec::new(),
 			where_clause: None,
 			input: Input {
 				pat_ident: self.parsed.input.pat_ident.clone(),

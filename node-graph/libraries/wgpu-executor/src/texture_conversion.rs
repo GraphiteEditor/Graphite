@@ -133,21 +133,21 @@ impl RasterGpuToRasterCpuConverter {
 }
 
 /// Passthrough conversion for GPU `List`s - no conversion needed
-impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<GPU>> {
-	fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<GPU>> {
+impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<GPU>> {
+	fn convert(self, _: Footprint, _converter: WgpuExecutor) -> List<Raster<GPU>> {
 		self
 	}
 }
 
 /// Converts a `List<Raster<CPU>>` to `List<Raster<GPU>>` by uploading each image to a texture
-impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
-	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> List<Raster<GPU>> {
+impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<CPU>> {
+	fn convert(self, _: Footprint, executor: WgpuExecutor) -> List<Raster<GPU>> {
 		let queue = executor.context().queue.lock();
 		let list = self
 			.into_iter()
 			.map(|row| {
 				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(executor, &queue, &image);
+				let texture = upload_to_texture(&executor, &queue, &image);
 
 				Item::from_parts(Raster::new_gpu(texture), attributes)
 			})
@@ -159,10 +159,10 @@ impl<'i> Convert<List<Raster<GPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
 }
 
 /// Converts single CPU raster to GPU by uploading to texture
-impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
-	fn convert(self, _: Footprint, executor: &'i WgpuExecutor) -> Raster<GPU> {
+impl Convert<Raster<GPU>, WgpuExecutor> for Raster<CPU> {
+	fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<GPU> {
 		let queue = executor.context().queue.lock();
-		let texture = upload_to_texture(executor, &queue, &self);
+		let texture = upload_to_texture(&executor, &queue, &self);
 
 		queue.submit([]);
 		Raster::new_gpu(texture)
@@ -170,8 +170,8 @@ impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 }
 
 /// Passthrough conversion for CPU `List`s - no conversion needed
-impl<'i> Convert<List<Raster<CPU>>, &'i WgpuExecutor> for List<Raster<CPU>> {
-	fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> List<Raster<CPU>> {
+impl Convert<List<Raster<CPU>>, WgpuExecutor> for List<Raster<CPU>> {
+	fn convert(self, _: Footprint, _converter: WgpuExecutor) -> List<Raster<CPU>> {
 		self
 	}
 }

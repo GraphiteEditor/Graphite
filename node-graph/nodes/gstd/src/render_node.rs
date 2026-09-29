@@ -23,7 +23,7 @@ pub struct RenderIntermediate {
 }
 
 #[node_macro::node(category(""))]
-async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + Sync>(
+async fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> List<Artboard>,
@@ -76,9 +76,9 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 }
 
 #[node_macro::node(category(""))]
-fn render<'a: 'n>(
+fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
 	data: Item<RenderIntermediate>,
 ) -> Item<RenderOutput> {
 	let footprint = ctx.footprint();
@@ -146,7 +146,7 @@ fn render<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn create_context<'a: 'n>(
+async fn create_context(
 	// The executor boundary supplies the render config as the sole vararg (see `wrap_network_in_scope()`)
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>>,
