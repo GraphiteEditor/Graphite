@@ -141,8 +141,7 @@ impl Constant {
 			Pi => Number::Real(consts::PI),
 			Tau => Number::Real(consts::TAU),
 			E => Number::Real(consts::E),
-			// TODO: Replace with f64::GOLDEN_RATIO when we bump MSRV to 1.94
-			Phi => Number::Real(1.618033988749895),
+			Phi => Number::Real(consts::GOLDEN_RATIO),
 			Inf => Number::Real(f64::INFINITY),
 			I => Number::Complex(Complex::new(0., 1.)),
 			J => Number::Quaternion(Quaternion::J),

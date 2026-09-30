@@ -53,7 +53,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.88"
+rust-version = "1.98"
 edition = "2024"
 authors = ["Graphite Authors <contact@graphite.art>"]
 homepage = "https://graphite.art"
