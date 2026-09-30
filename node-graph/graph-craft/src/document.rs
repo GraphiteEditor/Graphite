@@ -1101,20 +1101,15 @@ impl NodeNetwork {
 		}
 	}
 
-	fn remove_passthrough_node(&mut self, passthrough_id: NodeId) -> Result<(), String> {
-		// Validate that this is actually a passthrough
-		let node = self.nodes.get(&passthrough_id).ok_or_else(|| format!("Node with id {passthrough_id} does not exist"))?;
-		if !matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER) {
-			return Err(format!("remove_passthrough_node was given a node of type {:?} and id {}", node.implementation, passthrough_id));
-		}
+	fn remove_passthrough_node(&mut self, passthrough_id: NodeId) {
+		let node = self.nodes.remove(&passthrough_id).unwrap_or_else(|| panic!("Node with id {passthrough_id} does not exist"));
+
+		let implementation = &node.implementation;
+		assert!(
+			matches!(implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER),
+			"remove_passthrough_node was given a node {implementation:?} and id {passthrough_id:?}",
+		);
 		assert_eq!(node.inputs.len(), 1, "Passthrough node has more than one input");
-
-		// Skip passthrough nodes that do not take input from node e.g. from network or from value.
-		if !matches!(node.inputs[0], NodeInput::Node { .. }) {
-			return Ok(());
-		}
-
-		let node = self.nodes.remove(&passthrough_id).ok_or_else(|| format!("Node with id {passthrough_id} does not exist"))?;
 
 		// Consider the upstream node (the input to the passthrough)
 		if let NodeInput::Node {
@@ -1150,25 +1145,18 @@ impl NodeNetwork {
 				}
 			}
 		}
-		Ok(())
 	}
 
-	/// Strips out any [`graphene_core::ops::PassthroughNode`]s that are unnecessary.
-	pub fn remove_redundant_passthrough_nodes(&mut self) {
+	/// Strips out all [`graphene_core::ops::PassthroughNode`]s.
+	pub fn remove_all_passthrough_nodes(&mut self) {
 		let passthrough_nodes = self
 			.nodes
 			.iter()
-			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER)
-					&& node.inputs.len() == 1
-					&& matches!(node.inputs[0], NodeInput::Node { .. })
-			})
+			.filter(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER))
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>();
 		for id in passthrough_nodes {
-			if let Err(e) = self.remove_passthrough_node(id) {
-				log::warn!("{e}")
-			}
+			self.remove_passthrough_node(id);
 		}
 	}
 
@@ -1764,7 +1752,7 @@ mod test {
 		let mut network = passthrough_network();
 		network.generate_node_paths(&[]);
 		network.populate_dependants();
-		network.remove_redundant_passthrough_nodes();
+		network.remove_all_passthrough_nodes();
 
 		assert_eq!(network.nodes.len(), 3);
 
