@@ -23,7 +23,6 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
-use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
@@ -766,10 +765,10 @@ impl Fsm for SelectToolFsmState {
 
 				let mut transform = create_bounding_box_transform(document);
 
-				// Check if the matrix is not invertible
+				// Fallback to identity if the transform is singular (e.g. zero width or height)
 				let mut transform_tampered = false;
 				if transform.matrix2.determinant() == 0. {
-					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
+					transform = DAffine2::IDENTITY;
 					transform_tampered = true;
 				}
 

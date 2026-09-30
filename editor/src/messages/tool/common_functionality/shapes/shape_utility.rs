@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::core_types::misc::format_f64;
@@ -252,10 +252,10 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
 		.unwrap_or_default();
 
-	// Check if the matrix is not invertible
+	// Fallback to identity if the transform is singular (e.g. zero width or height)
 	let mut transform_tampered = false;
 	if transform.matrix2.determinant() == 0. {
-		transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
+		transform = DAffine2::IDENTITY;
 		transform_tampered = true;
 	}
 
