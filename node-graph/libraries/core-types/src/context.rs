@@ -1,3 +1,4 @@
+use crate::runtime::{Generations, SourceId};
 use crate::transform::Footprint;
 use glam::DVec2;
 pub use no_std_types::context::{ArcCtx, Ctx};
@@ -45,6 +46,10 @@ pub trait ExtractVarArgs {
 	fn hash_varargs(&self, hasher: &mut dyn Hasher);
 }
 
+pub trait ExtractGenerations {
+	fn try_generations(&self) -> Option<&Generations>;
+}
+
 pub trait CloneVarArgs: ExtractVarArgs {
 	// TODO: Consider returning a slice or something like that
 
@@ -77,7 +82,8 @@ pub trait ExtractAll:
 	ExtractPointerPosition +
 	ExtractPosition +
 	ExtractIndex +
-	ExtractVarArgs {}
+	ExtractVarArgs +
+	ExtractGenerations {}
 impl<
 	T: ?Sized
 		// Extract traits
@@ -87,7 +93,8 @@ impl<
 		+ ExtractPointerPosition
 		+ ExtractPosition
 		+ ExtractIndex
-		+ ExtractVarArgs,
+		+ ExtractVarArgs
+		+ ExtractGenerations,
 > ExtractAll for T
 {
 }
@@ -292,6 +299,12 @@ impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
 	}
 }
 
+impl<T: ExtractGenerations> ExtractGenerations for Option<T> {
+	fn try_generations(&self) -> Option<&Generations> {
+		self.as_ref().and_then(|x| x.try_generations())
+	}
+}
+
 // ================================
 // EXTRACT TRAIT IMPLS FOR `Arc<T>`
 // ================================
@@ -343,6 +356,12 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Arc<T> {
 impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
 		(**self).arc_clone()
+	}
+}
+
+impl<T: ExtractGenerations> ExtractGenerations for Arc<T> {
+	fn try_generations(&self) -> Option<&Generations> {
+		(**self).try_generations()
 	}
 }
 
@@ -425,6 +444,12 @@ impl ExtractVarArgs for ContextImpl<'_> {
 	}
 }
 
+impl ExtractGenerations for ContextImpl<'_> {
+	fn try_generations(&self) -> Option<&Generations> {
+		None
+	}
+}
+
 // ==========================================
 // EXTRACT TRAIT IMPLS FOR `OwnedContextImpl`
 // ==========================================
@@ -497,6 +522,12 @@ impl ExtractVarArgs for OwnedContextImpl {
 	}
 }
 
+impl ExtractGenerations for OwnedContextImpl {
+	fn try_generations(&self) -> Option<&Generations> {
+		self.generations.as_ref()
+	}
+}
+
 impl CloneVarArgs for Arc<OwnedContextImpl> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
 		Some(self.clone())
@@ -522,6 +553,7 @@ pub struct OwnedContextImpl {
 	// This could be converted into a single enum to save extra bytes
 	index: Option<Vec<usize>>,
 	varargs: Option<Arc<[DynBox]>>,
+	generations: Option<Generations>,
 }
 
 impl std::fmt::Debug for OwnedContextImpl {
@@ -534,6 +566,7 @@ impl std::fmt::Debug for OwnedContextImpl {
 			.field("pointer_position", &self.pointer_position)
 			.field("index", &self.index)
 			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
+			.field("generations", &self.generations)
 			.finish()
 	}
 }
@@ -553,6 +586,7 @@ impl graphene_hash::CacheHash for OwnedContextImpl {
 		self.pointer_position.cache_hash(state);
 		self.position.cache_hash(state);
 		self.index.cache_hash(state);
+		self.generations.cache_hash(state);
 		self.hash_varargs(state);
 	}
 }
@@ -588,6 +622,7 @@ impl OwnedContextImpl {
 			position,
 			index,
 			varargs: None,
+			generations: value.try_generations().cloned(),
 		}
 	}
 
@@ -601,6 +636,7 @@ impl OwnedContextImpl {
 			position: None,
 			index: None,
 			varargs: None,
+			generations: None,
 		}
 	}
 }
@@ -669,6 +705,17 @@ impl OwnedContextImpl {
 	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
 		assert!(self.varargs.is_none_or(|value| value.is_empty()));
 		self.varargs = Some(Arc::new([value]));
+		self
+	}
+	pub fn with_generations(mut self, generations: Generations) -> Self {
+		self.generations = (!generations.is_empty()).then_some(generations);
+		self
+	}
+	pub fn without_source(mut self, source: SourceId) -> Self {
+		self.generations = self
+			.generations
+			.map(|generations| generations.iter().filter(|(id, _)| *id != source).copied().collect::<Generations>())
+			.filter(|generations| !generations.is_empty());
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {

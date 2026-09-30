@@ -3,7 +3,7 @@
 use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, OwnedContextImpl};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
@@ -48,6 +48,7 @@ pub struct CacheKey {
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
 	pub pointer: [u8; 16],
+	pub generations: Generations,
 }
 
 impl CacheKey {
@@ -65,6 +66,7 @@ impl CacheKey {
 		animation_time: f64,
 		real_time: f64,
 		pointer: Option<DVec2>,
+		generations: Generations,
 	) -> Self {
 		let pointer_bytes = pointer
 			.map(|p| {
@@ -90,6 +92,7 @@ impl CacheKey {
 			animation_time_ms: (animation_time * 1000.).round() as i64,
 			real_time_ms: (real_time * 1000.).round() as i64,
 			pointer: pointer_bytes,
+			generations,
 		}
 	}
 }
@@ -367,6 +370,7 @@ async fn render_output_cache(
 		ctx.try_animation_time().unwrap_or(0.),
 		ctx.try_real_time().unwrap_or(0.),
 		ctx.try_pointer_position(),
+		ctx.try_generations().cloned().unwrap_or_default(),
 	);
 
 	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_area);

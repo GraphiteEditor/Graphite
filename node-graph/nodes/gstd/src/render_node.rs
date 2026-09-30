@@ -182,6 +182,7 @@ async fn create_context(
 		.with_animation_time(render_config.time.animation_time.as_secs_f64())
 		.with_pointer_position(render_config.pointer)
 		.with_vararg(Box::new(render_params))
+		.with_generations(ctx.try_generations().cloned().unwrap_or_default())
 		.into_context();
 
 	let mut result = data.eval(ctx).await;

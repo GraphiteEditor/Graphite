@@ -1,5 +1,5 @@
 use core_types::transform::Footprint;
-use core_types::{Context, OwnedContextImpl};
+use core_types::{Context, Generations, OwnedContextImpl};
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DVec2;
 use graphene_hash::CacheHash;
@@ -75,6 +75,10 @@ impl RenderConfig {
 	/// Wraps this render configuration as the sole vararg of a fresh context, the call argument of a compiled network's boundary node.
 	pub fn into_context(self) -> Context<'static> {
 		OwnedContextImpl::default().with_vararg(Box::new(self)).into_context()
+	}
+
+	pub fn into_context_with_generations(self, generations: Generations) -> Context<'static> {
+		OwnedContextImpl::default().with_vararg(Box::new(self)).with_generations(generations).into_context()
 	}
 }
 
