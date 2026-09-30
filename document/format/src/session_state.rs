@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{NetworkId, PeerId, Rev, Value};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, UserId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -15,6 +15,10 @@ pub struct SessionState {
 	/// tiebreaking and minting peer-scoped IDs.
 	#[serde(default)]
 	pub peer_id: PeerId,
+	/// The person using this device, from the editor's preferences: what the peer registers as in the CRDT,
+	/// so undo and authorship follow the person across the peer ids they accumulate. `0` until one is known.
+	#[serde(default)]
+	pub user_id: UserId,
 	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
 	/// document (no commits yet).
 	#[serde(default)]
@@ -39,4 +43,12 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
+	/// How many hot ops this peer has authored, feeding [`document_graph_storage::HotOp::sequence`]. A
+	/// reopen continues the run instead of reusing a spent sequence. Appended last: a positional codec
+	/// decodes these fields in declaration order.
+	#[serde(default)]
+	pub next_hot_sequence: HotSequence,
+	/// Whether the document was in its room when it was last persisted, so a reopen reconnects by itself.
+	#[serde(default)]
+	pub shared: bool,
 }

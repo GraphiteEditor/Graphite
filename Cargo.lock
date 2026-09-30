@@ -3065,6 +3065,7 @@ dependencies = [
  "node-macro",
  "num_enum",
  "once_cell",
+ "peer-transport",
  "preprocessor",
  "reqwest",
  "serde",

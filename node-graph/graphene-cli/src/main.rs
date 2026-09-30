@@ -1,12 +1,17 @@
 mod export;
+mod live;
+mod repl;
+mod watch;
 
 use clap::{Args, Parser, Subcommand};
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
+use document_live::SessionToken;
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::application_io::EditorPreferences;
+use graph_craft::application_io::resource::LoadResource;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
@@ -91,6 +96,25 @@ enum Command {
 	ExtractLegacyDoc {
 		document: PathBuf,
 	},
+
+	/// Host a collaborative session on a .gdd document (or an empty one), driven from stdin.
+	Host {
+		document: Option<PathBuf>,
+		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
+	/// Join a collaborative session and drive it from stdin.
+	Join {
+		token: SessionToken,
+		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
+	/// Join a collaborative session and show the document in a window.
+	Watch {
+		token: SessionToken,
+		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
 }
 
 #[derive(Debug, Args)]
@@ -109,6 +133,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	init_logging(log_level);
 
 	let document_path = match app.command {
+		Command::Host { ref document, ref signaling } => return live::host(signaling, document.as_deref()).await,
+		Command::Join { token, ref signaling } => return live::join(signaling, token).await,
+		Command::Watch { token, ref signaling } => return live::watch(signaling, token).await,
 		Command::Compile { ref document, .. } => document,
 		Command::Export { ref document, .. } => document,
 		Command::ExtractLegacyDoc { ref document } => document,
@@ -162,30 +189,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}
 	};
 
-	log::info!("Creating GPU context");
-	let mut application_io = PlatformApplicationIo::new().await;
-	if let Some(gdd) = &gdd {
-		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
-	}
-
-	// Convert application_io to Arc first
-	let application_io_arc = Arc::new(application_io);
-
-	// Clone the application_io Arc before borrowing to extract executor
-	let application_io_for_api = application_io_arc.clone();
-
-	// Get reference to wgpu executor and clone device handle
+	let (application_io_arc, editor_api) = editor_api(gdd.as_ref().map(|gdd| Box::new(gdd.resource_proxy()) as Box<dyn LoadResource>)).await;
 	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
 	let device = wgpu_executor_ref.context().device.clone();
-
-	let preferences = EditorPreferences {
-		max_render_region_size: EditorPreferences::default().max_render_region_size,
-	};
-	let editor_api = Arc::new(PlatformEditorApi {
-		application_io: Some(application_io_for_api),
-		node_graph_message_sender: Box::new(UpdateLogger {}),
-		editor_preferences: Box::new(preferences),
-	});
 	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref())?;
 
 	match app.command {
@@ -264,6 +270,26 @@ fn init_logging(log_level: u8) {
 		})
 		.apply()
 		.unwrap();
+}
+
+/// GPU context plus the editor API handed to compiled graphs, resolving resources through `resource_proxy` when given.
+async fn editor_api(resource_proxy: Option<Box<dyn LoadResource>>) -> (Arc<PlatformApplicationIo>, Arc<PlatformEditorApi>) {
+	log::info!("Creating GPU context");
+	let mut application_io = PlatformApplicationIo::new().await;
+	if let Some(resource_proxy) = resource_proxy {
+		application_io.inject_resource_proxy(resource_proxy);
+	}
+	let application_io = Arc::new(application_io);
+
+	let preferences = EditorPreferences {
+		max_render_region_size: EditorPreferences::default().max_render_region_size,
+	};
+	let editor_api = Arc::new(PlatformEditorApi {
+		application_io: Some(application_io.clone()),
+		node_graph_message_sender: Box::new(UpdateLogger {}),
+		editor_preferences: Box::new(preferences),
+	});
+	(application_io, editor_api)
 }
 
 fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>) -> Result<ProtoNetwork, Box<dyn Error>> {
