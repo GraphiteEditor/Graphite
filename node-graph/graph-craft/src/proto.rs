@@ -170,17 +170,12 @@ impl ProtoNode {
 
 	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
-		let inputs_exposed = match &value {
-			ConstructionArgs::Nodes(nodes) => nodes.len() + 1,
-			_ => 2,
-		};
 		Self {
 			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
 				path: Some(path),
-				inputs_exposed: vec![false; inputs_exposed],
 				..Default::default()
 			},
 			skip_deduplication: false,
@@ -285,7 +280,11 @@ impl ProtoNetwork {
 
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for ref_id in ref_nodes {
-					self.check_ref(ref_id, &NodeId(node_index as u64));
+					// Same as the `fn check_ref` but without O(n^2).
+					debug_assert!(
+						id_map.get(ref_id).and_then(|&index| self.nodes.get(index)).is_some_and(|(id, _)| id == ref_id),
+						"Node with ID {node_id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
+					);
 					inwards_edges[node_index].push(id_map[ref_id]);
 				}
 			}
