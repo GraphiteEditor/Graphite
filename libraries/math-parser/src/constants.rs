@@ -372,8 +372,8 @@ pub type MatrixToValue = fn(Matrix) -> Value;
 pub type MatrixToMatrix = fn(Matrix) -> Matrix;
 /// A built-in function building a matrix from values, like `rotation`.
 pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
-/// A built-in function of a value and regions with a value result, like `within`.
-pub type ValueOfRegions = fn(Value, &[Region]) -> Result<Value, EvalError>;
+/// A built-in function of a value and regions with a value result, like `within`, and a trailing value where the builtin takes one.
+pub type ValueOfRegions = fn(Value, &[Region], Option<Value>) -> Result<Value, EvalError>;
 
 /// A built-in math function, by the sorts it takes and gives. Those taking matrices have their argument counts checked as the
 /// expression is parsed.
@@ -390,10 +390,11 @@ pub enum Builtin {
 		function: ValuesToMatrix,
 		arity: RangeInclusive<usize>,
 	},
-	/// A value, then `regions` regions.
+	/// A value, then `regions` regions, then one more value if `trailing_value`.
 	OfValueAndRegions {
 		function: ValueOfRegions,
 		regions: usize,
+		trailing_value: bool,
 	},
 }
 
@@ -863,7 +864,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		// infinite, like `within(x, 0..inf)` for `x >= 0`, and any other region's, with a parameter in `0..1` where it extends and 0 elsewhere
 		"within" => Builtin::OfValueAndRegions {
 			regions: 1,
-			function: |p, regions| {
+			trailing_value: false,
+			function: |p, regions, _| {
 				let [region] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(p) = p;
 				let clamped = clamp_to_region(p, *region)?;
@@ -880,7 +882,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 
 		"clamp" => Builtin::OfValueAndRegions {
 			regions: 1,
-			function: |x, regions| {
+			trailing_value: false,
+			function: |x, regions, _| {
 				let [region] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(x) = x;
 				Ok(Value::Number(clamp_to_region(x, *region)?))
@@ -890,7 +893,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		// From one range to another, `B A⁻¹ x`, where a flat axis of `A` leaves the parameter undefined
 		"remap" => Builtin::OfValueAndRegions {
 			regions: 2,
-			function: |x, regions| {
+			trailing_value: false,
+			function: |x, regions, _| {
 				let [from, to] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(x) = x;
 				let RangeParameter { parameter, flat, .. } = range_parameter(from.matrix(), x.to_quaternion())?;
@@ -898,6 +902,35 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 					return Err(EvalError::FlatRemapSource);
 				}
 				Ok(Value::from(to.matrix().region().apply(parameter)))
+			},
+		},
+
+		// The ease of each part of the clamped parameter whose first `continuity` derivatives reach 0 at the edges:
+		// the ramp, the GLSL-styled cubic, the "smootherstep" quintic, or the septic
+		"smoothstep" => Builtin::OfValueAndRegions {
+			regions: 1,
+			trailing_value: true,
+			function: |x, regions, continuity| {
+				let [region] = regions else { return Err(EvalError::TypeError) };
+				let continuity = match continuity {
+					Some(continuity) => whole_count(&continuity).filter(|continuity| *continuity <= 3).ok_or(EvalError::SmoothstepContinuity)?,
+					None => 1,
+				};
+
+				let Value::Number(x) = x;
+				let clamped = clamp_to_region(x, *region)?;
+				let RangeParameter { parameter, flat, .. } = range_parameter(region.matrix(), clamped.to_quaternion())?;
+				if flat.contains(&true) {
+					return Err(EvalError::FlatSmoothstep);
+				}
+
+				let ease = |t: f64| match continuity {
+					0 => t,
+					1 => t * t * (3. - 2. * t),
+					2 => t * t * t * (10. + t * (-15. + 6. * t)),
+					_ => t * t * t * t * (35. + t * (-84. + t * (70. - 20. * t))),
+				};
+				Ok(Value::from(Quaternion::from_parts(parameter.parts().map(ease))))
 			},
 		},
 

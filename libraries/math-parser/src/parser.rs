@@ -1,9 +1,9 @@
-use crate::ast::{BinaryOp, Case, Literal, Node, Syntax, UnaryOp};
+use crate::ast::{BinaryOp, Binding, CallWhere, Case, Literal, Node, Syntax, UnaryOp};
 use crate::context::{FunctionProvider, NothingMap};
 use crate::lexer::{LexError, Lexer, Span, Token};
 use crate::sort::sorted;
 use chumsky::cache::{Cache, Cached};
-use chumsky::error::{EmptyErr, LabelError, RichReason};
+use chumsky::error::{EmptyErr, LabelError, RichPattern, RichReason};
 use chumsky::input::ValueInput;
 use chumsky::{Parser, prelude::*};
 use std::fmt;
@@ -169,37 +169,86 @@ fn parse(src: &str) -> Result<Syntax, ParseError> {
 		Err(parse_errs) => Err(ParseError(
 			parse_errs
 				.into_iter()
-				.map(|e| match e.found() {
-					Some(Token::Percent) => ErrorMessage::from_prose("`%` is reserved for percentages, so the remainder is written `mod(a, b)`").at(e.span()),
-					Some(Token::If) => ErrorMessage::from_prose("`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`").at(e.span()),
-					Some(Token::Otherwise) => ErrorMessage::from_prose("`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`").at(e.span()),
-					Some(Token::Where) => ErrorMessage::from_prose("`where` is a reserved word, so it can't be a name").at(e.span()),
-					// The offending source is quoted as its own part, since it may hold anything, backticks included
-					Some(Token::Error(error)) => {
-						let text = src.get(e.span().start..e.span().end).unwrap_or_default();
-						let reason = match error {
-							LexError::Unrecognized => "is not recognized",
-							LexError::MalformedNumber => "is not a valid number",
-							LexError::NumberAfterNumber => "can't follow another number, so write them as one or put `*` between them",
-							LexError::LeadingDotAfterOperand => "needs its leading zero after an operand, like `0.5`",
-						};
-						let reason = ErrorMessage::from_prose(&format!(" {reason}"));
-						let parts = std::iter::once(MessagePart::Code(text.to_string())).chain(reason.parts).collect();
-						ErrorMessage { parts, span: None }.at(e.span())
-					}
-					_ => match e.reason() {
-						RichReason::Custom(message) => ErrorMessage::from_prose(message).at(e.span()),
-						// Chumsky's own wording is "found ... expected ..." in lowercase, without a comma, with its tokens between single quotes
-						RichReason::ExpectedFound { .. } => {
-							let message = e.to_string().replacen(" expected ", ", expected ", 1);
-							let mut characters = message.chars();
-							let sentence_case: String = characters.next().into_iter().flat_map(char::to_uppercase).chain(characters).collect();
-							ErrorMessage::with_code_between(&sentence_case, '\'').at(e.span())
+				.map(|e| {
+					// Where `==` could have come next, the unexpected token followed a complete operand
+					let after_operand = e.expected().any(|pattern| matches!(pattern, RichPattern::Token(token) if **token == Token::EqEq));
+
+					match e.found() {
+						Some(Token::Percent) => ErrorMessage::from_prose("`%` is reserved for percentages, so the remainder is written `mod(a, b)`").at(e.span()),
+						Some(Token::If) => ErrorMessage::from_prose("`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`").at(e.span()),
+						Some(Token::Otherwise) => ErrorMessage::from_prose("`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`").at(e.span()),
+						Some(Token::Equals) if after_operand => ErrorMessage::from_prose("`=` names a value in a `where` clause, so equality is written `==`").at(e.span()),
+						Some(Token::Where) if after_operand => {
+							ErrorMessage::from_prose("`where` defines names for the whole expression or within parentheses, like `2 (a + b where a = 1, b = 2)`").at(e.span())
 						}
-					},
+						// The offending source is quoted as its own part, since it may hold anything, backticks included
+						Some(Token::Error(error)) => {
+							let text = src.get(e.span().start..e.span().end).unwrap_or_default();
+							let reason = match error {
+								LexError::Unrecognized => "is not recognized",
+								LexError::MalformedNumber => "is not a valid number",
+								LexError::NumberAfterNumber => "can't follow another number, so write them as one or put `*` between them",
+								LexError::LeadingDotAfterOperand => "needs its leading zero after an operand, like `0.5`",
+							};
+							let reason = ErrorMessage::from_prose(&format!(" {reason}"));
+							let parts = std::iter::once(MessagePart::Code(text.to_string())).chain(reason.parts).collect();
+							ErrorMessage { parts, span: None }.at(e.span())
+						}
+						_ => match e.reason() {
+							RichReason::Custom(message) => ErrorMessage::from_prose(message).at(e.span()),
+							// Chumsky's wording: lowercase "found ... expected ...", no comma, tokens in single quotes, and "a, or b" for two alternatives
+							RichReason::ExpectedFound { .. } => {
+								let mut message = e.to_string().replacen(" expected ", ", expected ", 1);
+								if e.expected().len() == 2 {
+									message = message.replacen(", or ", " or ", 1);
+								}
+								let mut characters = message.chars();
+								let sentence_case: String = characters.next().into_iter().flat_map(char::to_uppercase).chain(characters).collect();
+								ErrorMessage::with_code_between(&sentence_case, '\'').at(e.span())
+							}
+						},
+					}
 				})
 				.collect(),
 		)),
+	}
+}
+
+/// A `where` clause: bindings separated by commas, each a value like `a = 1` or a function like `f(t) = t^2`, whose defining
+/// expression has no clause of its own unless parenthesized.
+fn where_clause<'src, I, E>(expression: impl Parser<'src, I, Syntax, E> + Clone) -> impl Parser<'src, I, Vec<Binding>, E> + Clone
+where
+	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+	E: extra::ParserExtra<'src, I>,
+	E::Error: LabelError<'src, I, &'static str> + CustomError,
+{
+	// The `\` prefix always reaches the language's own builtin, so no clause can define a name that has it
+	let name = select! {Token::Ident(name) => name}.labelled("a name").validate(|name: &str, extra, emitter| {
+		if name.starts_with('\\') {
+			emitter.emit(CustomError::custom(extra.span(), "A `\\` name is always the builtin, so no `where` clause can define one"));
+		}
+		name.to_string()
+	});
+
+	let parameters = name.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<String>>();
+	let binding = name
+		.then(parameters.delimited_by(just(Token::LParen), just(Token::RParen)).or_not())
+		.then_ignore(just(Token::Equals))
+		.then(expression)
+		.map(|((name, parameters), value)| Binding {
+			name,
+			parameters: parameters.unwrap_or_default(),
+			value,
+		});
+
+	just(Token::Where).ignore_then(binding.separated_by(just(Token::Comma)).at_least(1).collect())
+}
+
+/// The expression, within the names its `where` clause defines if it has one.
+fn with_bindings((body, bindings): (Syntax, Option<Vec<Binding>>)) -> Syntax {
+	match bindings {
+		Some(bindings) => Syntax::Where { body: Box::new(body), bindings },
+		None => body,
 	}
 }
 
@@ -209,13 +258,18 @@ where
 	E: extra::ParserExtra<'src, I>,
 	E::Error: LabelError<'src, I, &'static str> + CustomError,
 {
-	recursive(|expr| {
+	let expression = recursive(|expr| {
 		let constant = select! {
 			Token::Integer(integer) => Syntax::Lit(Literal::Integer(integer)),
 			Token::Float(float) => Syntax::Lit(Literal::Float(float)),
 		};
 
-		let args = expr.clone().separated_by(just(Token::Comma)).collect::<Vec<_>>().delimited_by(just(Token::LParen), just(Token::RParen));
+		let args = expr
+			.clone()
+			.separated_by(just(Token::Comma))
+			.collect::<Vec<_>>()
+			.then(where_clause(expr.clone()).or_not())
+			.delimited_by(just(Token::LParen), just(Token::RParen));
 
 		// Each case is a value then its condition, except the one `otherwise` case, which may stand anywhere since case order means nothing
 		let case = expr.clone().then(choice((just(Token::If).ignore_then(expr.clone()).map(Some), just(Token::Otherwise).map(|_| None))));
@@ -259,12 +313,21 @@ where
 		let ident = select! {Token::Ident(s) => s}.labelled("a name");
 
 		// An ident followed by parenthesized args is a function call, otherwise a variable
-		let call_or_var = ident.then(args.or_not()).map(|(name, args): (&str, Option<Vec<Syntax>>)| match args {
-			Some(args) => Syntax::FnCall { name: name.to_string(), expr: args },
+		let call_or_var = ident.then(args.or_not()).map(|(name, args)| match args {
+			Some((args, None)) => Syntax::FnCall { name: name.to_string(), expr: args },
+			Some((arguments, Some(bindings))) => Syntax::CallWhere(Box::new(CallWhere {
+				name: name.to_string(),
+				arguments,
+				bindings,
+			})),
 			None => Syntax::Var(name.to_string()),
 		});
 
-		let parens = expr.clone().delimited_by(just(Token::LParen), just(Token::RParen));
+		let parens = expr
+			.clone()
+			.then(where_clause(expr.clone()).or_not())
+			.map(with_bindings)
+			.delimited_by(just(Token::LParen), just(Token::RParen));
 		let magnitude = expr.clone().delimited_by(just(Token::BarOpen), just(Token::BarClose)).map(|expr| Syntax::UnaryOp {
 			op: UnaryOp::Magnitude,
 			expr: Box::new(expr),
@@ -388,7 +451,9 @@ where
 			op,
 			rhs: Box::new(rhs),
 		})
-	})
+	});
+
+	expression.clone().then(where_clause(expression).or_not()).map(with_bindings)
 }
 
 #[cfg(test)]
@@ -482,13 +547,22 @@ mod tests {
 		},
 		test_parse_ii_call: "ii(16)" => Syntax::FnCall {
 			name: "ii".to_string(),
-			expr: vec![Syntax::Lit(Literal::Integer(16))]
+			expr: vec![Syntax::Lit(Literal::Integer(16))],
 		},
 		// `i` is a name a binding may shadow, so only the evaluator can read this call as `i` times its argument
 		test_parse_i_mul: "i(16)" => Syntax::FnCall {
 			name: "i".to_string(),
 			expr: vec![Syntax::Lit(Literal::Integer(16))],
 		},
+		test_call_where_clause: "max(a, b where a = 1)" => Syntax::CallWhere(Box::new(CallWhere {
+			name: "max".to_string(),
+			arguments: vec![Syntax::Var("a".to_string()), Syntax::Var("b".to_string())],
+			bindings: vec![Binding {
+				name: "a".to_string(),
+				parameters: vec![],
+				value: Syntax::Lit(Literal::Integer(1)),
+			}],
+		})),
 		test_parse_complex_expr: "(1 + 2) * 3 - 4 ^ 2" => Syntax::BinOp {
 			lhs: Box::new(Syntax::BinOp {
 				lhs: Box::new(Syntax::BinOp {
@@ -505,6 +579,21 @@ mod tests {
 				op: BinaryOp::Pow,
 				rhs: Box::new(Syntax::Lit(Literal::Integer(2))),
 			}),
+		},
+		test_where_clause: "a where a = 1, f(t, u) = t" => Syntax::Where {
+			body: Box::new(Syntax::Var("a".to_string())),
+			bindings: vec![
+				Binding {
+					name: "a".to_string(),
+					parameters: vec![],
+					value: Syntax::Lit(Literal::Integer(1)),
+				},
+				Binding {
+					name: "f".to_string(),
+					parameters: vec!["t".to_string(), "u".to_string()],
+					value: Syntax::Var("t".to_string()),
+				},
+			],
 		},
 		test_piecewise_expr: "{0 otherwise, x + 3 if x < 0}" => Syntax::Piecewise {
 			cases: vec![Case {

@@ -1,6 +1,7 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
+use core_types::FallibleVec2Operations;
 use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
@@ -521,7 +522,7 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientFor
 		GradientForm::Linear => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
-			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
+			let line = axis.try_project_onto(band_normal).unwrap_or(axis);
 			DAffine2 {
 				matrix2: DMat2::from_cols(line, line.perp()),
 				translation: transform.translation,

@@ -1,4 +1,5 @@
 use core_types::Context;
+use core_types::FallibleVec2Operations;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
@@ -1819,7 +1820,10 @@ fn angle_between(
 		return Item::from_parts(0., attributes);
 	}
 
-	let angle = direction_from.angle_to(direction_to);
+	let angle = direction_from.try_angle_to(direction_to).unwrap_or_else(|| {
+		warn!("Angle to could not be computed");
+		0.
+	});
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }

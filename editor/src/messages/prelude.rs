@@ -61,6 +61,7 @@ pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextT
 
 // Helper/miscellaneous
 pub use crate::messages::portfolio::document::utility_types::misc::DocumentId;
+pub use graphene_std::core_types::FallibleVec2Operations;
 pub use graphite_proc_macros::*;
 pub use std::collections::{HashMap, HashSet, VecDeque};
 

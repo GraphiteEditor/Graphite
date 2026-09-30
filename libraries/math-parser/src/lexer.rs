@@ -47,10 +47,12 @@ pub enum Token<'src> {
 	Ge,
 	Neq,
 	EqEq,
+	/// The `=` that defines a name in a `where` clause.
+	Equals,
 
 	If,
 	Otherwise,
-	/// Reserved for `where` bindings, so the parser never matches it yet and no host binding can claim the name first.
+	/// Begins the clause of bindings for the expression before it.
 	Where,
 
 	/// Source that is no token, which the parser never matches, forcing a parse error rather than silently truncating the input.
@@ -106,6 +108,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Ge => f.write_str(">="),
 			Token::Neq => f.write_str("!="),
 			Token::EqEq => f.write_str("=="),
+			Token::Equals => f.write_str("="),
 
 			Token::If => f.write_str("if"),
 			Token::Otherwise => f.write_str("otherwise"),
@@ -138,8 +141,7 @@ impl Constant {
 			Pi => Number::Real(consts::PI),
 			Tau => Number::Real(consts::TAU),
 			E => Number::Real(consts::E),
-			// TODO: Replace with f64::GOLDEN_RATIO when we bump MSRV to 1.94
-			Phi => Number::Real(1.618033988749895),
+			Phi => Number::Real(consts::GOLDEN_RATIO),
 			Inf => Number::Real(f64::INFINITY),
 			I => Number::Complex(Complex::new(0., 1.)),
 			J => Number::Quaternion(Quaternion::J),
@@ -549,7 +551,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					Error(LexError::Unrecognized)
+					Equals
 				}
 			}
 
