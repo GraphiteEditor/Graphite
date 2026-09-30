@@ -66,6 +66,9 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				self.translate_mouse_event(pointer_state, true, responses);
 			}
+			InputPreprocessorMessage::PointerHover { editor_mouse_state } => {
+				self.mouse.position = editor_mouse_state.to_pointer_state(viewport).position;
+			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 

@@ -43,6 +43,14 @@ pub enum PreferencesMessage {
 		enabled: bool,
 	},
 	ToggleShowStoragePreferences,
+	/// The display name shown to peers in a live session.
+	UserName {
+		name: String,
+	},
+	/// Whether the other peers' pointers are drawn over a shared document.
+	ShowRemoteCursors {
+		enabled: bool,
+	},
 	#[cfg(target_os = "macos")]
 	VSync {
 		vsync: bool,

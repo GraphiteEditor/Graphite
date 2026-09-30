@@ -8,7 +8,6 @@ impl NodeNetworkInterface {
 	/// never made back to whoever sent it. Writing through the store and then dropping what the store
 	/// recorded keeps the two parallel trees written by one place, which is the property the store
 	/// exists for, without the echo.
-	#[cfg_attr(not(test), expect(dead_code, reason = "no caller until deltas from another peer are replayed; the replay tests exercise it"))]
 	pub(crate) fn apply(&mut self, delta: &EditorDelta) {
 		let recorded = self.deltas.len();
 		self.mirror(delta);

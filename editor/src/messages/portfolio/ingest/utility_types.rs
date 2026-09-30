@@ -16,6 +16,9 @@ const SNIFFED_TEXT_LENGTH: usize = 4096;
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 pub enum IngestAction {
 	Open,
+	/// Open a distributed file such as a demo artwork: the copy gets a document id of its own, so everyone
+	/// opening it does not share one session room.
+	OpenDemo,
 	Import,
 	Paste,
 	DropOnCanvas {

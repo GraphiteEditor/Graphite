@@ -329,6 +329,49 @@ impl NodeNetworkInterface {
 		self.deltas.clear();
 	}
 
+	/// Pins every node to the identity storage addresses it by, returning where each is held.
+	///
+	/// A node the interface built from storage is already pinned; one created here is addressed by a
+	/// hash of its location until now, which is what a conversion derives for it anyway. Pinning changes
+	/// no document content, so nothing is recorded: the identity is a fact about the node, not an edit.
+	pub(crate) fn pin_storage_identities(&mut self, peer: document_graph_storage::PeerId) -> HashMap<document_graph_storage::NodeId, (Vec<NodeId>, NodeId)> {
+		let mut index = HashMap::new();
+		let mut unpinned = Vec::new();
+		{
+			let view = super::storage_metadata::StorageMetadataView::new(self);
+			let resolver = document_graph_storage::PathResolver::new(Some(&view), peer);
+			let mut stack = vec![(Vec::new(), &*self.network_metadata)];
+			while let Some((path, metadata)) = stack.pop() {
+				for (&local_id, node) in &metadata.persistent_metadata.node_metadata {
+					let storage_id = match node.persistent_metadata.storage_id {
+						Some(pinned) => document_graph_storage::NodeId(pinned),
+						None => {
+							let derived = resolver.node_id(&path, local_id);
+							unpinned.push((path.clone(), local_id, derived));
+							derived
+						}
+					};
+					index.insert(storage_id, (path.clone(), local_id));
+					if let Some(nested) = &node.persistent_metadata.network_metadata {
+						stack.push(([path.as_slice(), &[local_id]].concat(), nested));
+					}
+				}
+			}
+		}
+
+		for (path, local_id, storage_id) in unpinned {
+			if let Some(node) = self
+				.network_metadata
+				.get_mut()
+				.nested_metadata_mut(&path)
+				.and_then(|network| network.persistent_metadata.node_metadata.get_mut(&local_id))
+			{
+				node.persistent_metadata.storage_id = Some(storage_id.0);
+			}
+		}
+		index
+	}
+
 	/// Drops the network's link to the definition it was instantiated from, which no longer describes it
 	/// once its signature is edited.
 	pub(crate) fn clear_encapsulating_reference(&mut self, network_path: &[NodeId]) {

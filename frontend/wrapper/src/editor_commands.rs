@@ -210,6 +210,11 @@ mod editor_commands {
 		DialogMessage::RequestNewDocumentDialog.into()
 	}
 
+	/// Join the live session named in the page's `?session=` parameter
+	fn join_session(token: String) -> Message {
+		SyncMessage::Join { token }.into()
+	}
+
 	fn trigger_auto_save(document_id: u64) -> Message {
 		PortfolioMessage::AutoSaveDocument { document_id: DocumentId(document_id) }.into()
 	}
@@ -255,6 +260,51 @@ mod editor_commands {
 			tab_index,
 		}
 		.into()
+	}
+
+	/// Bring a panel to the front, restoring it to its default position first when it is closed
+	fn focus_panel(panel_type: PanelType) -> Message {
+		WorkspaceMessage::FocusPanel { panel_type }.into()
+	}
+
+	/// Show or hide the deltas of one interaction in the History panel
+	fn expand_history_interaction(id: String, expanded: bool) -> Message {
+		HistoryMessage::Expand { id, expanded }.into()
+	}
+
+	/// Show older interactions in the History panel
+	fn load_more_history() -> Message {
+		HistoryMessage::LoadMore.into()
+	}
+
+	/// Move the head to an interaction shown in the History panel
+	fn history_go_back(id: String) -> Message {
+		HistoryMessage::GoBack { id }.into()
+	}
+
+	/// Drop one interaction out of the line, the later ones staying
+	fn history_remove_step(id: String) -> Message {
+		HistoryMessage::RemoveStep { id }.into()
+	}
+
+	/// Bring an undone or abandoned interaction back
+	fn history_bring_back(id: String) -> Message {
+		HistoryMessage::BringBack { id }.into()
+	}
+
+	/// Show a branch's line in the History panel, or the head's again with no id
+	fn follow_history_branch(id: Option<String>) -> Message {
+		HistoryMessage::Follow { id }.into()
+	}
+
+	/// Name an interaction in the History panel, or take the name away with an empty string
+	fn rename_history_interaction(id: String, label: String) -> Message {
+		HistoryMessage::Rename { id, label }.into()
+	}
+
+	/// Put a tag on an interaction in the History panel, or take it off
+	fn tag_history_interaction(id: String, tag: String, on: bool) -> Message {
+		HistoryMessage::Tag { id, tag, on }.into()
 	}
 
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
@@ -321,6 +371,12 @@ mod editor_commands {
 		};
 		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
 		InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }.into()
+	}
+
+	/// The pointer moved over GUI covering the canvas, such as the node graph: the position is recorded for presence, and no tool hears of it
+	fn on_pointer_hover(x: f64, y: f64) -> Message {
+		let editor_mouse_state = EditorPointerState::from_keys_and_editor_position(0, (x, y).into());
+		InputPreprocessorMessage::PointerHover { editor_mouse_state }.into()
 	}
 
 	/// Mouse scrolling within the screenspace bounds of the viewport
@@ -744,6 +800,7 @@ editor_proxy_types! {
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
+	PanelType = editor::messages::portfolio::utility_types::PanelType;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
 	SRGBA8 = graphene_std::color::SRGBA8;
 }

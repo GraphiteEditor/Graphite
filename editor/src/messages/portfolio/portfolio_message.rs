@@ -1,5 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::history::HistoryMessage;
 use super::persistent_state::PersistentStateMessage;
+use super::sync::SyncMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
 use document_container::AnyContainer;
@@ -20,6 +22,10 @@ pub enum PortfolioMessage {
 	Ingest(IngestMessage),
 	#[child]
 	PersistentState(PersistentStateMessage),
+	#[child]
+	History(HistoryMessage),
+	#[child]
+	Sync(SyncMessage),
 	#[child]
 	Workspace(WorkspaceMessage),
 
@@ -83,6 +89,9 @@ pub enum PortfolioMessage {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		content: Vec<u8>,
+		/// Give the copy a document id of its own, so everyone opening the same distributed file, a demo artwork
+		/// say, does not share one session room.
+		fresh_identity: bool,
 	},
 	DocumentFileLoaded {
 		document_id: DocumentId,

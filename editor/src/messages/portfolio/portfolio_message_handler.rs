@@ -5,7 +5,7 @@ use crate::application::{Editor, generate_uuid};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
+use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState, SessionStatus};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -37,6 +37,8 @@ pub struct PortfolioMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
+	/// The icon name of the active tool, which the session shows beside this peer's pointer.
+	pub current_tool_icon: String,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
@@ -53,6 +55,8 @@ pub struct PortfolioMessageHandler {
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
 	ingest: IngestMessageHandler,
+	history: HistoryMessageHandler,
+	sync: SyncMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -71,6 +75,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			preferences,
 			animation,
 			current_tool,
+			current_tool_icon,
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
@@ -118,6 +123,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_open: self.active_document().is_some(),
 				};
 				self.ingest.process_message(message, responses, context);
+			}
+			PortfolioMessage::History(message) => {
+				let context = HistoryMessageContext {
+					documents: &mut self.documents,
+					active_document_id: self.active_document_id,
+					panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::History) && !self.workspace.panel_layout.focus_document,
+				};
+				self.history.process_message(message, responses, context);
+			}
+			PortfolioMessage::Sync(message) => {
+				let context = SyncMessageContext {
+					documents: &mut self.documents,
+					active_document_id: self.active_document_id,
+					resource_storage,
+					preferences,
+					ipp,
+					viewport,
+					current_tool_icon,
+				};
+				self.sync.process_message(message, responses, context);
 			}
 			PortfolioMessage::Workspace(message) => {
 				let context = WorkspaceMessageContext {
@@ -344,6 +369,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					if let Some(storage) = document.storage() {
 						used_resources.extend(storage.all_referenced_resource_hashes());
 					}
+					// A step taken back on undo names resources nothing else refers to until it is redone.
+					used_resources.extend(document.retracted_resource_hashes());
 				}
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
@@ -364,6 +391,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::LoadPersistedState { state } => {
 				if let Some(layout) = state.workspace_layout {
 					self.workspace.panel_layout = layout;
+					// A workspace saved before the Session panel existed gets it as a tab beside Properties, behind it; one
+					// where it was closed keeps it closed.
+					let panel_layout = &mut self.workspace.panel_layout;
+					if !panel_layout.is_panel_present(PanelType::Session) && !panel_layout.was_closed(PanelType::Session) {
+						match panel_layout.find_panel(PanelType::Properties).and_then(|group_id| panel_layout.panel_group_mut(group_id)) {
+							Some(group) => group.tabs.push(PanelType::Session),
+							None => panel_layout.restore_panel(PanelType::Session),
+						}
+					}
 					responses.add(WorkspaceMessage::UpdatePanelsLayout);
 
 					// Refill panels whose content was lost when the layout load remounted their frontend components
@@ -412,6 +448,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								name: String::new(),
 								path: None,
 								is_saved: false,
+								session: None,
 							},
 						);
 					}
@@ -453,7 +490,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						document.path = info.path;
 						document.set_save_state(info.is_saved);
 						self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
-						self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+						self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 					}
 					None => {
 						self.document_ids.retain(|id| *id != document_id);
@@ -514,6 +551,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_name,
 				document_path,
 				content,
+				fresh_identity,
 			} => {
 				let document_id = DocumentId(generate_uuid());
 
@@ -526,6 +564,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_name,
 					document_path,
 					content,
+					fresh_identity,
 					resource_storage.resources_mut(),
 					reset_node_definitions_on_open,
 					!preferences.save_as_gdd,
@@ -552,7 +591,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.path = document_path;
 
 				self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
-				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::StorageUpdated => {
@@ -580,7 +619,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 				document.container = Some(container);
-				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				self.save_if_needed(document_id, responses);
 			}
 			PortfolioMessage::NextDocument => {
@@ -815,6 +854,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });
 				responses.add(ToolMessage::InitTools);
+				responses.add(SyncMessage::RefreshPanel);
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(EventMessage::ToolAbort);
@@ -1156,12 +1196,30 @@ impl PortfolioMessageHandler {
 		declarations: Declarations,
 		resource_storage: &ResourceStorageMessageHandler,
 		preferences: &PreferencesMessageHandler,
+		responses: &mut VecDeque<Message>,
 	) {
-		let (Some(document), Some(gdd)) = (self.documents.get_mut(&document_id), gdd) else { return };
-		document.set_storage(*gdd, declarations);
-		document.require_whole_document_stage();
-		document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
-		document.retire_storage_interaction();
+		let Some(document) = self.documents.get_mut(&document_id) else { return };
+		let user = document_graph_storage::UserId(preferences.user_id);
+		match gdd {
+			Some(mut gdd) => {
+				// The copy follows the person at this device, whoever wrote it last.
+				if let Err(error) = gdd.set_user(user) {
+					log::error!("Setting the user of {document_id:?} failed: {error}");
+				}
+				document.set_storage(*gdd, declarations, resource_storage.resources_mut().storage());
+				document.require_whole_document_stage();
+				document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				document.retire_storage_interaction();
+			}
+			// Recovered from its storage alone, the document already holds it.
+			None => {
+				let Some(storage) = document.storage_mut() else { return };
+				if let Err(error) = storage.set_user(user) {
+					log::error!("Setting the user of {document_id:?} failed: {error}");
+				}
+			}
+		}
+		responses.add(SyncMessage::StorageMounted { document_id });
 	}
 
 	fn save_if_needed(&self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
@@ -1234,6 +1292,11 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
+				session: document.storage().and_then(|gdd| match (gdd.role().is_some(), gdd.is_shared()) {
+					(true, _) => Some(SessionStatus::Connected),
+					(false, true) => Some(SessionStatus::Disconnected),
+					(false, false) => None,
+				}),
 			})
 		} else {
 			self.loading_documents.get(&document_id).cloned()

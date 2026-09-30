@@ -41,10 +41,11 @@
 	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => {
 		const name = doc.name;
 		const unsaved = !doc.is_saved;
-		if (!editor.inDevelopmentMode()) return { name, unsaved };
+		const session = doc.session ?? undefined;
+		if (!editor.inDevelopmentMode()) return { name, unsaved, session };
 
 		const tooltipDescription = `Document ID: ${doc.id}`;
-		return { name, unsaved, tooltipLabel: name, tooltipDescription };
+		return { name, unsaved, session, tooltipLabel: name, tooltipDescription };
 	});
 
 	onDestroy(() => {
@@ -212,6 +213,11 @@
 				// Ensure the target document is the active one before renaming, since `RenameDocument` operates on the active document
 				editor.selectDocument($portfolio.documents[tabIndex].id);
 				editor.renameDocument(newName);
+			}}
+			sessionAction={(tabIndex) => {
+				// The panel shows the active document's session, so select the document first
+				editor.selectDocument($portfolio.documents[tabIndex].id);
+				editor.focusPanel("Session");
 			}}
 			tabActiveIndex={$portfolio.activeDocumentIndex}
 			groupDropAction={groupDrop}

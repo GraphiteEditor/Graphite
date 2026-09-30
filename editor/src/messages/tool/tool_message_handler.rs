@@ -381,6 +381,18 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
+	/// The icon name of the active tool, for showing other peers what this one holds. The shapes share the
+	/// Shape tool, so the shelf's highlighted shape names the icon rather than the tool.
+	pub fn active_tool_icon(&self) -> String {
+		let tool_data = &self.tool_state.tool_data;
+		match tool_data.active_shape_type {
+			Some(ToolType::Line) => Line.icon_name(),
+			Some(ToolType::Rectangle) => Rectangle.icon_name(),
+			Some(ToolType::Ellipse) => Ellipse.icon_name(),
+			_ => tool_data.tools.get(&tool_data.active_tool_type).map(|tool| tool.icon_name()).unwrap_or_default(),
+		}
+	}
+
 	pub fn actions_with_preferences(&self, preferences: &PreferencesMessageHandler) -> ActionList {
 		let mut list = self.actions();
 

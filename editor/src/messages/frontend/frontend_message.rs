@@ -5,7 +5,7 @@ use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewIm
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendRemoteCursor, NodeGraphErrorDiagnostic,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
@@ -137,6 +137,10 @@ pub enum FrontendMessage {
 		url: String,
 	},
 	TriggerClipboardRead,
+	/// Copy a link to join the live session behind `token`, built from the page's own origin.
+	TriggerSessionLinkCopy {
+		token: String,
+	},
 	TriggerClipboardWrite {
 		content: String,
 	},
@@ -186,6 +190,15 @@ pub enum FrontendMessage {
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
+	},
+	UpdateDocumentCursors {
+		cursors: Vec<FrontendRemoteCursor>,
+	},
+	UpdateHistoryPanel {
+		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
+	},
+	UpdateNodeGraphCursors {
+		cursors: Vec<FrontendRemoteCursor>,
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
