@@ -34,8 +34,8 @@ let
         version = "0.10.0-alpha.1";
         src = pkgs.fetchgit {
           url = "https://github.com/Rust-GPU/rust-gpu";
-          rev = "e53a94458e1e699f0d5f56acfcd71fc483c37da0";
-          sha256 = "sha256-V1c0tMjCr1e414fprID7cFFMHc2UlUUodKiBYqbvFB8=";
+          rev = "2fff75a21a1909945ac85f5818843dd9960004d7";
+          sha256 = "sha256-clUt4jUh4D9EmoXZFgur1RrMYob4X5jti2e2hvBnAx8=";
         };
         cargoHash = "sha256-9dGb+RDYpJKaIhkMPkZAx1M1VGE3gMfCD2T84i1VtV8=";
         cargoBuildFlags = [
