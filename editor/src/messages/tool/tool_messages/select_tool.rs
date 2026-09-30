@@ -715,7 +715,6 @@ fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentM
 /// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
 /// This uses some rather confusing logic to determine what transform that should be.
 pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
-	// Update bounds
 	document
 		.network_interface
 		.selected_nodes()
@@ -723,13 +722,40 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 		.map(|layer| {
 			let transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
-			if transform.matrix2.determinant() == 0. {
+			if transform.matrix2.determinant().abs() < 1e-6 {
 				document.metadata().document_to_viewport
 			} else {
 				transform
 			}
 		})
 		.unwrap_or_default()
+}
+
+pub fn calculate_selection_bounds(document: &DocumentMessageHandler) -> (DAffine2, Option<[DVec2; 2]>, bool) {
+	let transform = create_bounding_box_transform(document);
+	let transform_tampered = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.any(|layer| {
+			let layer_transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			layer_transform.matrix2.determinant().abs() < 1e-6
+		});
+
+	let bounds = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.filter_map(|layer| {
+			let layer_transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			let relative_transform = transform.inverse() * layer_transform;
+			document.metadata().bounding_box_with_transform(layer, relative_transform)
+		})
+		.reduce(graphene_std::renderer::Quad::combine_bounds);
+
+	(transform, bounds, transform_tampered)
 }
 
 impl Fsm for SelectToolFsmState {
@@ -770,29 +796,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let transform = create_bounding_box_transform(document);
-				let transform_tampered = document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.any(|layer| document.metadata().transform_to_viewport(layer).matrix2.determinant() == 0.);
-
-				let bounds = document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.filter_map(|layer| {
-						let layer_transform = document.metadata().transform_to_viewport(layer);
-						let relative_transform = if layer_transform.matrix2.determinant() == 0. {
-							transform.inverse() * document.metadata().document_to_viewport
-						} else {
-							transform.inverse() * layer_transform
-						};
-						document.metadata().bounding_box_with_transform(layer, relative_transform)
-					})
-					.reduce(graphene_std::renderer::Quad::combine_bounds);
+				let (transform, bounds, transform_tampered) = calculate_selection_bounds(document);
 
 				// When not in Drawing State
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
