@@ -3135,7 +3135,6 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
 		assert!(get_upstream_gradient_value_node_id(layer, &editor.active_document().network_interface).is_some());
 
-		editor.eval_graph().await.expect("graph should evaluate");
 		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
 		assert_eq!(bounds, Some([DVec2::ZERO, DVec2::X]), "a linear expanse's local bounds should be its canonical gradient line");
 
@@ -3149,7 +3148,6 @@ mod test_gradient {
 				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
 			})
 			.await;
-		editor.eval_graph().await.expect("graph should evaluate");
 		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
 		assert_eq!(bounds, Some([DVec2::splat(-1.), DVec2::splat(1.)]), "a radial expanse's local bounds should be its unit circle");
 
