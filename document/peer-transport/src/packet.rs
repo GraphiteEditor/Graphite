@@ -1,0 +1,161 @@
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, UserId};
+use serde::{Deserialize, Serialize};
+
+/// The host is the single peer that retires hot ops.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Role {
+	Host,
+	Guest,
+	/// Connected to the document's room without knowing yet whether a host is there: a host's hello makes
+	/// this peer a guest, and a room with no host makes it the host after a grace period.
+	Undecided,
+}
+
+/// How far one peer's broadcasts had got. A peer keeps its `PeerId` across a reconnect but restarts
+/// `seq`, so `epoch` names the incarnation that produced it and counters from different epochs are
+/// never compared.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerSeq {
+	pub peer: PeerId,
+	pub epoch: u64,
+	pub seq: u64,
+}
+
+/// MessagePack-encoded on the wire.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum SyncPacket {
+	/// Sent first on every new connection. `epoch` and `seq` anchor the receiver's counter for this
+	/// sender, since broadcasts made before the connection were never sent to it.
+	Hello {
+		peer: PeerId,
+		user: UserId,
+		role: Role,
+		epoch: u64,
+		seq: u64,
+	},
+	/// `known_revs` come from `Session::known_revs`, so the host can send only what's missing.
+	SyncRequest {
+		known_revs: Vec<Rev>,
+	},
+	Sync(Box<SyncPayload>),
+	Broadcast(Broadcast),
+	/// A guest asks the host to undo (`restore: false`) or redo (`restore: true`) one of its retired
+	/// interactions, named by its last delta. The host answers the room with a `HeadMove` or new deltas.
+	UndoRequest {
+		rev: Rev,
+		restore: bool,
+	},
+	/// A guest asks the host to move the shared head to `rev`, an ancestor of it, leaving the line since as a
+	/// branch. The host answers the room with a `HeadMove` without copies.
+	MoveRequest {
+		rev: Rev,
+	},
+	ResourceRequest(Vec<ResourceHash>),
+	Resource {
+		hash: ResourceHash,
+		#[serde(with = "serde_bytes")]
+		bytes: Vec<u8>,
+	},
+	/// Who the sender is, for display. Sent to a peer after the hello and to everyone when it changes; the
+	/// newest wins. Presence like this is never history, so it stays outside the causal broadcast.
+	Profile {
+		name: String,
+	},
+	/// Where the sender's pointer is, `None` when it left the viewport. Sent at most once a frame and identified
+	/// by the link it arrives on, so it carries nothing but the position and the space it is in.
+	Cursor {
+		position: Option<CursorPosition>,
+	},
+	/// A peer's statements about the history, users and their names among it. Outside the causal order: the
+	/// record merges the same whatever order it arrives in.
+	Metadata(HistoryMetadata),
+}
+
+/// The host's answer to a `SyncRequest`. `registry` is only sent when the host recognized none of
+/// the requester's revs; otherwise `deltas` extend the requester's history. `seen` is the host's
+/// delivery vector at snapshot time, which the guest adopts so later broadcasts line up.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SyncPayload {
+	pub registry: Option<Registry>,
+	pub deltas: Vec<Delta>,
+	pub head: Option<Rev>,
+	pub hot_log: Vec<HotOp>,
+	pub known_revs: Vec<Rev>,
+	pub seen: Vec<PeerSeq>,
+	/// Which hot ops the history being handed over already covers, so the requester can recognize one
+	/// it is holding rather than re-entering it as live work.
+	pub retired: RetiredHotOps,
+	/// Which hot ops their authors took back, so the requester drops any it still holds.
+	#[serde(default)]
+	pub retracted: RetiredHotOps,
+	/// The document's identity, so a peer that started from an empty document adopts it and can reconnect
+	/// to the same room by opening its own copy later.
+	#[serde(default)]
+	pub document_id: Option<u64>,
+	/// What the host has on record about the history's users, so a joiner can name every author.
+	#[serde(default)]
+	pub metadata: HistoryMetadata,
+}
+
+/// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`, and `seen`
+/// is the sender's delivery vector; a receiver holds the packet until it has delivered everything in
+/// `seen`.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Broadcast {
+	pub epoch: u64,
+	pub seq: u64,
+	pub seen: Vec<PeerSeq>,
+	pub body: BroadcastBody,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum BroadcastBody {
+	HotOps(Vec<HotOp>),
+	/// `deltas` are in causal order. `retires` names the hot ops they replace (empty for a plain history transfer).
+	Deltas {
+		deltas: Vec<Delta>,
+		retires: Vec<HotOpId>,
+	},
+	/// Hot ops their author took back: they leave every hot log and never retire.
+	Retract(Vec<HotOpId>),
+	/// Everything a peer knows to have been taken back, re-announced on a membership change the way hot
+	/// ops are, so a peer that joined while a retraction was in flight still hears of it.
+	RetractedMarks(RetiredHotOps),
+	/// The host dropped a retired interaction out of the line: every peer walks back and follows the head.
+	HeadMove(HeadMove),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PacketError {
+	#[error("failed to encode packet: {0}")]
+	Encode(#[from] rmp_serde::encode::Error),
+	#[error("failed to decode packet: {0}")]
+	Decode(#[from] rmp_serde::decode::Error),
+}
+
+impl SyncPacket {
+	pub fn encode(&self) -> Result<Box<[u8]>, PacketError> {
+		Ok(rmp_serde::to_vec(self)?.into_boxed_slice())
+	}
+
+	pub fn decode(bytes: &[u8]) -> Result<Self, PacketError> {
+		Ok(rmp_serde::from_slice(bytes)?)
+	}
+}
+
+/// A peer's pointer: where, and in which of the editor's spaces, so it is drawn only where it means something.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CursorPosition {
+	pub position: [f64; 2],
+	pub space: CursorSpace,
+	/// The icon name of the tool the peer holds, shown beside the pointer; `None` from a viewer with no tools.
+	pub tool: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum CursorSpace {
+	/// Document coordinates over the canvas.
+	Document,
+	/// Node-graph coordinates of the network at this path of node ids, from the document network down.
+	Graph { network: Vec<u64> },
+}

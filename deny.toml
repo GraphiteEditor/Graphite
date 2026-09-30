@@ -82,6 +82,7 @@ allow = [
 	"NCSA", # Keep this list in sync with those in `/about.toml`
 	"bzip2-1.0.6", # Keep this list in sync with those in `/about.toml`
 	"OFL-1.1", # Keep this list in sync with those in `/about.toml`
+	"Unlicense", # Keep this list in sync with those in `/about.toml`
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

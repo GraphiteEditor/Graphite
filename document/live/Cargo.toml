@@ -1,0 +1,21 @@
+[package]
+name = "document-live"
+description = "A memory-backed document following or hosting a collaborative session, for viewers and embedders"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+document-container = { workspace = true }
+document-format = { workspace = true }
+document-graph-storage = { workspace = true }
+peer-transport = { workspace = true }
+graph-craft = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true
