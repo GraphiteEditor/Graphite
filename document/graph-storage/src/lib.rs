@@ -5,11 +5,13 @@ pub mod crdt;
 pub mod delta;
 pub mod document;
 pub mod history;
+pub mod history_metadata;
 pub mod ids;
 pub mod model;
 pub mod registry;
 pub mod resources;
 pub mod session;
+pub mod touched;
 pub mod value;
 
 #[cfg(any(feature = "conversion", test))]
@@ -23,11 +25,13 @@ pub use attributes::*;
 pub use crdt::*;
 pub use document::*;
 pub use history::History;
+pub use history_metadata::{Fact, HistoryMetadata, MetadataFact, RevRecord, Subject, UserRecord, WallStamp, rev_attr, user_attr};
 pub use ids::*;
 pub use model::*;
 pub use registry::*;
 pub use resources::*;
 pub use session::*;
+pub use touched::Touched;
 pub use value::{Value, ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
@@ -38,10 +42,12 @@ pub use from_runtime::{
 #[cfg(any(feature = "conversion", test))]
 pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
 #[cfg(any(feature = "conversion", test))]
-pub use to_runtime::Declarations;
+pub use to_runtime::{Declarations, ProjectedNetwork, ProjectedNode, RuntimeProjection};
 
 #[cfg(test)]
 mod tests {
+	mod bookkeeping;
 	mod crdt;
+	mod projection;
 	mod round_trip;
 }

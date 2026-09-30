@@ -1,6 +1,6 @@
 use crate::{
 	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value,
-	attr, compute_rev,
+	attr, compute_rev, from_value,
 };
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
@@ -77,6 +77,11 @@ impl Delta {
 
 	pub fn is_interaction_end(&self) -> bool {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
+	}
+
+	/// When the delta entered history in wall-clock milliseconds, if its retirer recorded it.
+	pub fn retired_at(&self) -> Option<u64> {
+		self.attributes.get(attr::delta::RETIRED_AT).and_then(|recorded| from_value::<u64>(&recorded.value).ok())
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
@@ -207,6 +212,9 @@ pub enum RegistryDelta {
 	Merge {
 		extra_parents: Vec<Rev>,
 	},
+	/// The last op of its author's transaction. Changes nothing; retirement takes an author's ops through
+	/// one of these as one unit and drops the marker itself. See [`Session::closed_transactions`](crate::Session::closed_transactions).
+	EndTransaction,
 	// Allow for future delta types without a model change
 	Other(Value),
 }
@@ -221,28 +229,21 @@ pub struct AttributeDelta {
 pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
 	AttributeDelta {
 		key: delta.key.clone(),
-		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
+		value: attributes.get(&delta.key).filter(|previous| !previous.deleted).map(|previous| previous.value.clone()),
 	}
 }
 
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {
+/// Lands a single-key write. `floor` is when the map was last written whole: a key the map does not
+/// hold is deleted as of then, so a write older than it is dropped. A deletion leaves a tombstone.
+pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes, floor: TimeStamp) {
 	let AttributeDelta { key, value } = delta;
-	match value {
-		Some(value) => match attributes.entry(key) {
-			std::collections::btree_map::Entry::Occupied(mut entry) => {
-				if force || timestamp > entry.get().timestamp {
-					entry.insert(AttributeValue { value, timestamp });
-				}
-			}
-			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(AttributeValue { value, timestamp });
-			}
-		},
-		None => {
-			let should_remove = force || attributes.get(&key).is_none_or(|existing| timestamp > existing.timestamp);
-			if should_remove {
-				attributes.remove(&key);
-			}
-		}
+	let decided = attributes.get(&key).map_or(floor, |existing| existing.timestamp);
+	if !force && timestamp <= decided {
+		return;
 	}
+	let entry = match value {
+		Some(value) => AttributeValue::new(value, timestamp),
+		None => AttributeValue::deleted(timestamp),
+	};
+	attributes.insert(key, entry);
 }

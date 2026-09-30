@@ -8,20 +8,42 @@ use std::collections::BTreeMap;
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
 pub mod attr;
 
-/// A type-erased attribute value paired with the timestamp at which it was last set.
+/// A type-erased attribute value paired with the timestamp at which it was last set. A deleted key
+/// stays as a stamped tombstone, so a write older than the deletion is recognised as older whichever
+/// order the two land in; readers see a tombstone as absent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeValue {
 	pub value: Value,
 	pub timestamp: TimeStamp,
+	// No skipping: the registry is positional on disk, so every field is always present.
+	#[serde(default)]
+	pub deleted: bool,
 }
 
 impl AttributeValue {
 	pub fn new(value: Value, timestamp: TimeStamp) -> Self {
-		Self { value, timestamp }
+		Self { value, timestamp, deleted: false }
+	}
+
+	/// The tombstone of a key deleted at `timestamp`.
+	pub fn deleted(timestamp: TimeStamp) -> Self {
+		Self {
+			value: Value::None,
+			timestamp,
+			deleted: true,
+		}
 	}
 }
 
+/// Attribute maps. Each entity carries an `attributes_timestamp` next to its map: when the map was last
+/// written whole, by an addition or a whole-list input write. A key absent from the map is deleted as of
+/// that stamp, so a write older than it is dropped, and a tombstone older than it is redundant.
 pub type Attributes = BTreeMap<String, AttributeValue>;
+
+/// The live entries of an attribute map: every key that is not a tombstone.
+pub fn live(attributes: &Attributes) -> impl Iterator<Item = (&String, &AttributeValue)> {
+	attributes.iter().filter(|(_, value)| !value.deleted)
+}
 
 /// Write helpers for `Attributes`.
 pub trait AttributesWrite {
@@ -44,7 +66,7 @@ pub trait AttributesWrite {
 
 impl AttributesWrite for Attributes {
 	fn set(&mut self, key: &str, value: Value, timestamp: TimeStamp) {
-		self.insert(key.to_string(), AttributeValue { value, timestamp });
+		self.insert(key.to_string(), AttributeValue::new(value, timestamp));
 	}
 }
 
@@ -66,6 +88,6 @@ pub trait AttributesRead {
 
 impl AttributesRead for Attributes {
 	fn get_typed<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-		self.get(key).and_then(|v| from_value(&v.value).ok())
+		self.get(key).filter(|v| !v.deleted).and_then(|v| from_value(&v.value).ok())
 	}
 }
