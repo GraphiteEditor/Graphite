@@ -1,50 +1,41 @@
-use std::pin::Pin;
+pub use graphene_std::runtime::{Spawn, Task};
 use std::sync::Arc;
-
-#[cfg(not(target_family = "wasm"))]
-pub type Task = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
-#[cfg(target_family = "wasm")]
-pub type Task = Pin<Box<dyn Future<Output = ()> + 'static>>;
-
-pub trait Spawn {
-	fn spawn(&self, task: Task);
-}
 
 #[derive(Clone)]
 pub struct TaskExecutorHandle {
-	spawner: Arc<Spawner>,
+	backend: Arc<Backend>,
 }
 
 impl Spawn for TaskExecutorHandle {
 	fn spawn(&self, task: Task) {
-		self.spawner.spawn(task);
+		self.backend.spawn(task);
 	}
 }
 
 pub struct TaskExecutor {
-	spawner: Arc<Spawner>,
+	backend: Arc<Backend>,
 }
 
 impl TaskExecutor {
 	pub fn new() -> Self {
-		let spawner = {
+		let backend = {
 			#[cfg(target_family = "wasm")]
 			{
-				Arc::new(Spawner::Wasm(WasmSpawner))
+				Arc::new(Backend::Wasm(WasmSpawner))
 			}
 			#[cfg(not(target_family = "wasm"))]
 			{
-				Arc::new(Spawner::Tokio(TokioSpawner::new()))
+				Arc::new(Backend::Tokio(TokioSpawner::new()))
 			}
 		};
-		Self { spawner }
+		Self { backend }
 	}
 	pub fn blocking() -> Self {
-		let spawner = Arc::new(Spawner::Blocking(BlockingSpawner));
-		Self { spawner }
+		let backend = Arc::new(Backend::Blocking(BlockingSpawner));
+		Self { backend }
 	}
 	pub fn handle(&self) -> TaskExecutorHandle {
-		TaskExecutorHandle { spawner: self.spawner.clone() }
+		TaskExecutorHandle { backend: self.backend.clone() }
 	}
 }
 
@@ -54,7 +45,7 @@ impl Default for TaskExecutor {
 	}
 }
 
-enum Spawner {
+enum Backend {
 	#[cfg(target_family = "wasm")]
 	Wasm(WasmSpawner),
 	#[cfg(not(target_family = "wasm"))]
@@ -62,14 +53,14 @@ enum Spawner {
 	Blocking(BlockingSpawner),
 }
 
-impl Spawn for Spawner {
+impl Spawn for Backend {
 	fn spawn(&self, task: Task) {
 		match self {
 			#[cfg(target_family = "wasm")]
-			Spawner::Wasm(spawner) => spawner.spawn(task),
+			Backend::Wasm(spawner) => spawner.spawn(task),
 			#[cfg(not(target_family = "wasm"))]
-			Spawner::Tokio(spawner) => spawner.spawn(task),
-			Spawner::Blocking(spawner) => spawner.spawn(task),
+			Backend::Tokio(spawner) => spawner.spawn(task),
+			Backend::Blocking(spawner) => spawner.spawn(task),
 		}
 	}
 }
