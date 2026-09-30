@@ -917,12 +917,14 @@ impl NodeNetwork {
 			node.implementation = passthrough_node;
 
 			// Connect layer node to the group below
-			let removed_inputs = node.inputs.drain(1..);
+			let removed_inputs = node.inputs.split_off(1);
 
 			// Remove the dependants on the ignored inputs
 			for removed_input in removed_inputs {
 				if let NodeInput::Node { node_id, output_index } = removed_input
 					&& let Some(former_dependency) = self.nodes.get_mut(&node_id)
+					// Ensure that the other node inputs do not also reference the dependancy
+					&& !node.inputs.iter().any(|input| matches!(input, NodeInput::Node { node_id: other, .. } if *other == node_id))
 				{
 					former_dependency.original_location.dependants[output_index].retain(|&dependant| dependant != id);
 				}
@@ -1138,7 +1140,10 @@ impl NodeNetwork {
 
 		// Look at all downstream nodes
 		for &dependant_id in &node.original_location.dependants[0] {
-			let Some(dependant_node) = self.nodes.get_mut(&dependant_id) else { continue };
+			let Some(dependant_node) = self.nodes.get_mut(&dependant_id) else {
+				error!("remove_passthrough_node got a dependant id {dependant_id:?} that did not exist in the network\n{self:#?}");
+				continue;
+			};
 			for input in dependant_node.inputs.iter_mut() {
 				if matches!(input, NodeInput::Node { node_id, .. } if *node_id == passthrough_id) {
 					*input = node.inputs[0].clone();
