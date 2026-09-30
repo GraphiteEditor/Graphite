@@ -244,20 +244,27 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 }
 
 pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
-	let mut transform = document
+	let transform = document
 		.network_interface
 		.selected_nodes()
 		.selected_visible_and_unlocked_layers(&document.network_interface)
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+		.map(|layer| {
+			let transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			if transform.matrix2.determinant() == 0. {
+				document.metadata().document_to_viewport
+			} else {
+				transform
+			}
+		})
 		.unwrap_or_default();
 
-	// Fallback to identity if the transform is singular (e.g. zero width or height)
-	let mut transform_tampered = false;
-	if transform.matrix2.determinant() == 0. {
-		transform = DAffine2::IDENTITY;
-		transform_tampered = true;
-	}
+	let transform_tampered = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.any(|layer| document.metadata().transform_to_viewport(layer).matrix2.determinant() == 0.);
 
 	let bounds = document
 		.network_interface
@@ -265,9 +272,13 @@ pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mu
 		.selected_visible_and_unlocked_layers(&document.network_interface)
 		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 		.filter_map(|layer| {
-			document
-				.metadata()
-				.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+			let layer_transform = document.metadata().transform_to_viewport(layer);
+			let relative_transform = if layer_transform.matrix2.determinant() == 0. {
+				transform.inverse() * document.metadata().document_to_viewport
+			} else {
+				transform.inverse() * layer_transform
+			};
+			document.metadata().bounding_box_with_transform(layer, relative_transform)
 		})
 		.reduce(graphene_std::renderer::Quad::combine_bounds);
 

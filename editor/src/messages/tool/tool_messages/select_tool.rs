@@ -721,7 +721,14 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.selected_nodes()
 		.selected_visible_and_unlocked_layers(&document.network_interface)
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+		.map(|layer| {
+			let transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			if transform.matrix2.determinant() == 0. {
+				document.metadata().document_to_viewport
+			} else {
+				transform
+			}
+		})
 		.unwrap_or_default()
 }
 
@@ -763,14 +770,13 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let mut transform = create_bounding_box_transform(document);
-
-				// Fallback to identity if the transform is singular (e.g. zero width or height)
-				let mut transform_tampered = false;
-				if transform.matrix2.determinant() == 0. {
-					transform = DAffine2::IDENTITY;
-					transform_tampered = true;
-				}
+				let transform = create_bounding_box_transform(document);
+				let transform_tampered = document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_and_unlocked_layers(&document.network_interface)
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+					.any(|layer| document.metadata().transform_to_viewport(layer).matrix2.determinant() == 0.);
 
 				let bounds = document
 					.network_interface
@@ -778,9 +784,13 @@ impl Fsm for SelectToolFsmState {
 					.selected_visible_and_unlocked_layers(&document.network_interface)
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 					.filter_map(|layer| {
-						document
-							.metadata()
-							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+						let layer_transform = document.metadata().transform_to_viewport(layer);
+						let relative_transform = if layer_transform.matrix2.determinant() == 0. {
+							transform.inverse() * document.metadata().document_to_viewport
+						} else {
+							transform.inverse() * layer_transform
+						};
+						document.metadata().bounding_box_with_transform(layer, relative_transform)
 					})
 					.reduce(graphene_std::renderer::Quad::combine_bounds);
 
