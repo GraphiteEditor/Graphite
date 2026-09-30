@@ -2,6 +2,7 @@ use crate::consts::{MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG, MAX_UNSAVED_DOCUMENTS_IN
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
+use std::borrow::Cow;
 use std::fmt::Write;
 
 /// A dialog for confirming the closing of all documents viewable via `File -> Close All` in the menu bar.
@@ -40,11 +41,9 @@ impl LayoutHolder for CloseAllDocumentsDialog {
 				.take(MAX_UNSAVED_DOCUMENTS_IN_DIALOG)
 				.map(|name| {
 					if name.chars().count() > MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG {
-						let mut truncated: String = name.chars().take(MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG).collect();
-						truncated.push('…');
-						truncated
+						Cow::Owned(name.chars().take(MAX_DOCUMENT_NAME_LENGTH_IN_DIALOG).chain(std::iter::once('…')).collect())
 					} else {
-						name.clone()
+						Cow::Borrowed(name.as_str())
 					}
 				})
 				.collect::<Vec<_>>()
