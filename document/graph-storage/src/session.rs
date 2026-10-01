@@ -862,7 +862,7 @@ impl Session {
 	/// Give a minted copy every attribute of the delta it stands for, each with the stamp it had, and when the
 	/// original was retired.
 	fn carry_attributes(&mut self, original: &Delta, copy: Rev) {
-		if let Some(wall_ms) = original.retired_at {
+		if let Some(wall_ms) = original.retired_at() {
 			self.document.history.set_retired_at(copy, wall_ms);
 		}
 		for (key, value) in crate::attributes::live(&original.attributes) {
