@@ -132,7 +132,7 @@ impl ResourceEntry {
 	}
 
 	/// The live sources in precedence order, tombstones skipped.
-	pub fn live_sources(&self) -> impl Iterator<Item = (&SourceKey, &SourceValue)> {
+	pub(crate) fn live_sources(&self) -> impl Iterator<Item = (&SourceKey, &SourceValue)> {
 		self.sources.iter().filter(|(_, value)| !value.deleted).map(|(key, value)| (key, value))
 	}
 

@@ -149,7 +149,7 @@ impl Replica {
 		if self.peers.values().any(|remote| remote.peer < self.peer) {
 			return None;
 		}
-		log::info!("Join handshake: no host greeted, becoming the host");
+		log::debug!("Join handshake: no host greeted, becoming the host");
 		self.become_host();
 		Some(Role::Host)
 	}
@@ -163,7 +163,7 @@ impl Replica {
 		let Some((&host, _)) = self.peers.iter().find(|(_, remote)| remote.role == Role::Host) else {
 			return Ok(());
 		};
-		log::info!("Join handshake: sync request sent to the host");
+		log::debug!("Join handshake: sync request sent to the host");
 		self.sync_requested_from = Some(host);
 		self.transport.send(host, &SyncPacket::SyncRequest { known_revs: target.known_revs() })
 	}
@@ -181,7 +181,7 @@ impl Replica {
 		if self.synced_from == Some(host) {
 			return Ok(());
 		}
-		log::info!("Syncing from {host:?}, a host this peer has not synced from");
+		log::debug!("Syncing from {host:?}, a host this peer has not synced from");
 		self.sync = SyncState::AwaitingSync { pending: Vec::new() };
 		self.sync_requested_from = None;
 		self.ensure_sync_requested(target)
@@ -625,7 +625,7 @@ impl Replica {
 			epoch: self.epoch,
 			seq: self.seq,
 		};
-		log::info!("Join handshake: hello sent to {transport_peer:?} as {:?}", self.role);
+		log::debug!("Join handshake: hello sent to {transport_peer:?} as {:?}", self.role);
 		self.transport.send(transport_peer, &hello)?;
 		self.greeted.insert(transport_peer, self.role);
 		if !self.name.is_empty() {
@@ -637,7 +637,7 @@ impl Replica {
 	fn handle_packet(&mut self, from: TransportPeerId, packet: SyncPacket, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
 		match packet {
 			SyncPacket::Hello { peer, user, role, epoch, seq } => {
-				log::info!("Join handshake: hello from {peer:?} ({role:?}), synced {}", self.is_synced());
+				log::debug!("Join handshake: hello from {peer:?} ({role:?}), synced {}", self.is_synced());
 				// A peer greeting again over the same link and incarnation is announcing a role, not arriving:
 				// anchoring its progress again would strand broadcasts of its still waiting on their dependencies.
 				let known = self.peers.contains_key(&from) && self.delivered.get(&peer).is_some_and(|progress| progress.epoch == epoch);
@@ -732,7 +732,7 @@ impl Replica {
 					return Ok(());
 				}
 				let shares_history = known_revs.iter().any(|&rev| target.contains_rev(rev));
-				log::info!("Join handshake: sync request from {from:?}, shares history {shares_history}");
+				log::debug!("Join handshake: sync request from {from:?}, shares history {shares_history}");
 				let sync = SyncPayload {
 					registry: (!shares_history).then(|| target.retired_registry()),
 					deltas: target.deltas_unknown_to(&known_revs),
@@ -745,11 +745,11 @@ impl Replica {
 					document_id: target.document_id(),
 					metadata: target.metadata(),
 				};
-				log::info!("Join handshake: sync answered with {} deltas and {} hot ops", sync.deltas.len(), sync.hot_log.len());
+				log::debug!("Join handshake: sync answered with {} deltas and {} hot ops", sync.deltas.len(), sync.hot_log.len());
 				self.transport.send(from, &SyncPacket::Sync(Box::new(sync)))?;
 			}
 			SyncPacket::Sync(sync) => {
-				log::info!("Join handshake: sync received with {} deltas, full registry {}", sync.deltas.len(), sync.registry.is_some());
+				log::debug!("Join handshake: sync received with {} deltas, full registry {}", sync.deltas.len(), sync.registry.is_some());
 				self.sync_requested_from = None;
 				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
 					return Ok(());

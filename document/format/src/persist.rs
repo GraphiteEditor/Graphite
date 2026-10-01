@@ -520,7 +520,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Retire the given closed transactions, each as one interaction, in one history append and one
 	/// broadcast. A no-op for a peer that leaves retirement to the session host.
-	pub fn retire_transactions(&mut self, transactions: &[document_graph_storage::ClosedTransaction]) -> Result<Vec<Rev>, Error> {
+	pub(crate) fn retire_transactions(&mut self, transactions: &[document_graph_storage::ClosedTransaction]) -> Result<Vec<Rev>, Error> {
 		if !self.retires_locally() || transactions.is_empty() {
 			return Ok(Vec::new());
 		}

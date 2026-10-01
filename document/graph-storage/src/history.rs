@@ -21,8 +21,6 @@ pub struct History {
 	deltas: Vec<Delta>,
 	/// `Rev` to its position in `deltas`. Kept in sync with `deltas` by every mutator.
 	index: HashMap<Rev, usize>,
-	/// The timestamps the deltas were authored at.
-	timestamps: HashSet<TimeStamp>,
 	/// Every rev some delta names as a parent.
 	referenced: HashSet<Rev>,
 	/// Deltas no other delta names as a parent.
@@ -58,11 +56,6 @@ impl History {
 		self.index.contains_key(&rev)
 	}
 
-	/// Whether history holds a delta authored at `timestamp`.
-	pub fn contains_timestamp(&self, timestamp: TimeStamp) -> bool {
-		self.timestamps.contains(&timestamp)
-	}
-
 	/// The content hashes named by any resource addition or removal in history.
 	pub fn resource_hashes(&self) -> &HashSet<ResourceHash> {
 		&self.resource_hashes
@@ -75,7 +68,7 @@ impl History {
 	/// The sort emits, among the deltas whose parents are all out, the lowest rev. A chain on the last
 	/// delta is alone in that set at every step, so it sorts where it was appended. A tail whose root
 	/// hangs off an earlier delta competes with that delta's later siblings and may sort before them.
-	pub fn extends_canonically(&self, from: usize) -> bool {
+	pub(crate) fn extends_canonically(&self, from: usize) -> bool {
 		let Some(tail) = self.deltas.get(from..) else { return true };
 		let mut previous = from.checked_sub(1).map(|position| self.deltas[position].id);
 		for delta in tail {
@@ -99,7 +92,6 @@ impl History {
 	/// (idempotent re-apply) overwrites the existing entry in place rather than appending, so the
 	/// order and index are unchanged.
 	pub fn push(&mut self, delta: Delta) {
-		self.timestamps.insert(delta.timestamp);
 		match &delta.kind {
 			RegistryDelta::AddResource { entry, .. } => self.resource_hashes.extend(entry.hash),
 			RegistryDelta::RemoveResource { snapshot, .. } => self.resource_hashes.extend(snapshot.hash),
@@ -135,7 +127,7 @@ impl History {
 	///
 	/// Deterministic: two peers that absorb the same delta set end up with byte-identical history, not two
 	/// different valid orderings. Arrival order is erased.
-	pub fn canonical_sort(&mut self) {
+	pub(crate) fn canonical_sort(&mut self) {
 		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
 		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());
 		let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
@@ -190,13 +182,13 @@ impl History {
 		seen
 	}
 
-	pub fn is_ancestor(&self, ancestor: Rev, descendant: Rev) -> bool {
+	pub(crate) fn is_ancestor(&self, ancestor: Rev, descendant: Rev) -> bool {
 		self.ancestors([descendant]).contains(&ancestor)
 	}
 
 	/// `tip` plus the revs at first-parent distance 1, 2, 4, 8, ... behind it. Sent to a remote peer
 	/// so it can locate the divergence point within a factor of two of the true distance.
-	pub fn sample_chain(&self, tip: Rev) -> Vec<Rev> {
+	pub(crate) fn sample_chain(&self, tip: Rev) -> Vec<Rev> {
 		let mut samples = vec![tip];
 		let mut current = tip;
 		let mut distance = 0;
@@ -247,7 +239,7 @@ impl History {
 
 	/// Record when a retired delta entered history, in place; outside its `Rev`, so the index stays valid. Returns
 	/// whether the delta was found.
-	pub fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
+	pub(crate) fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
 		match self.index.get(&rev) {
 			Some(&position) => {
 				self.deltas[position].retired_at_ms = wall_ms;

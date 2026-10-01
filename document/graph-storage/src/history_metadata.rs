@@ -115,7 +115,7 @@ impl HistoryMetadata {
 		self.users.binary_search_by_key(&user, |record| record.user).ok().map(|index| &self.users[index])
 	}
 
-	pub fn user_attribute(&self, user: UserId, key: &str) -> Option<&Fact> {
+	pub(crate) fn user_attribute(&self, user: UserId, key: &str) -> Option<&Fact> {
 		self.user(user)?.attributes.get(key)
 	}
 
@@ -128,7 +128,7 @@ impl HistoryMetadata {
 		self.revs.binary_search_by_key(&rev, |record| record.rev).ok().map(|index| &self.revs[index])
 	}
 
-	pub fn rev_attribute(&self, rev: Rev, key: &str) -> Option<&Fact> {
+	pub(crate) fn rev_attribute(&self, rev: Rev, key: &str) -> Option<&Fact> {
 		self.rev(rev)?.attributes.get(key)
 	}
 
@@ -181,7 +181,7 @@ impl HistoryMetadata {
 
 	/// Take on one fact as stated elsewhere: it lands unless an equal or newer stamp stands for the same thing.
 	/// Returns whether it landed.
-	pub fn absorb(&mut self, fact: MetadataFact) -> bool {
+	pub(crate) fn absorb(&mut self, fact: MetadataFact) -> bool {
 		let attributes = self.attributes_mut(fact.subject);
 		if attributes.get(&fact.key).is_some_and(|mine| fact.stamp <= mine.stamp) {
 			return false;

@@ -5,7 +5,7 @@ pub mod crdt;
 pub mod delta;
 pub mod document;
 pub mod history;
-pub mod history_metadata;
+mod history_metadata;
 pub mod ids;
 pub mod model;
 pub mod registry;

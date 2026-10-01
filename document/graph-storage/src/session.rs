@@ -1237,7 +1237,7 @@ impl RetiredHotOps {
 	}
 
 	/// Take on `remote`'s coverage as well as this one's.
-	pub fn absorb(&mut self, remote: &Self) {
+	pub(crate) fn absorb(&mut self, remote: &Self) {
 		for (&peer, &remote_through) in &remote.retired_up_to {
 			let through = self.retired_up_to.entry(peer).or_default();
 			*through = (*through).max(remote_through);

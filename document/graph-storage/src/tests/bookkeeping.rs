@@ -54,7 +54,7 @@ fn the_tip_set_follows_pushes_merges_and_sorts() {
 	let reloaded = History::from_ordered(a.cloned_deltas());
 	assert_eq!(reloaded.tips(), a.document.history.tips());
 	for delta in a.history() {
-		assert!(reloaded.contains_timestamp(delta.timestamp));
+		assert!(reloaded.contains(delta.id));
 	}
 }
 

@@ -263,7 +263,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					for event in events {
 						match event {
 							Event::Synced => {
-								log::info!("Join handshake: synced, applying the host's state");
+								log::debug!("Join handshake: synced, applying the host's state");
 								refresh_session_views(responses);
 								self.dirty.insert(document_id);
 								self.fit_after_sync.insert(document_id);
@@ -282,7 +282,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 								self.dirty.insert(document_id);
 							}
 							Event::RoleChanged { role } => {
-								log::info!("Session role is now {role:?}");
+								log::debug!("Session role is now {role:?}");
 								refresh_session_views(responses);
 							}
 							Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
@@ -358,7 +358,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 						}
 						if self.fit_after_sync.remove(&document_id) && Some(document_id) == active_document_id {
-							log::info!("Join handshake: the host's state is applied, fitting the viewport after the graph runs");
+							log::debug!("Join handshake: the host's state is applied, fitting the viewport after the graph runs");
 							// The bounds come from the render, so the fit waits for the graph to run on the new document.
 							responses.add(DeferMessage::AfterGraphRun {
 								messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
