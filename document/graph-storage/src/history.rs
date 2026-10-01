@@ -3,10 +3,8 @@
 //! [`History`] owns the deltas in topological order (every parent precedes its children) plus an
 //! index from [`Rev`] to position for O(1) lookup. The order is a valid replay order, so it is what
 //! gets serialized to the on-disk history file and what [`crate::Session::replay_from_history`]
-//! consumes. Retired commits have a single writer in every regime (solo editing, or leader-ordered
-//! collaboration where the leader serializes retired commits), so appending preserves the order by
-//! construction. The only operation that introduces out-of-order deltas is [`merge`](History::merge),
-//! which re-sorts the combined set into the canonical order to restore the invariant.
+//! consumes. Appending a commit keeps the order; deltas arriving out of it are put back by
+//! a canonical sort.
 
 use std::collections::{HashMap, HashSet};
 
@@ -58,7 +56,7 @@ impl History {
 	}
 
 	/// Whether the deltas from `from` on already sit in canonical order, as a single-parent chain off the delta
-	/// before them (what a hosted retirement appends) does: each link is the sort's only candidate at its step.
+	/// before them, as a retirement appends: each link is the sort's only candidate at its step.
 	pub(crate) fn extends_canonically(&self, from: usize) -> bool {
 		(from..self.deltas.len()).all(|position| {
 			let delta = &self.deltas[position];

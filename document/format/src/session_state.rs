@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, SettledHotOps, UserId, Value};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, SettledMarks, UserId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -16,7 +16,6 @@ pub struct SessionState {
 	#[serde(default)]
 	pub peer_id: PeerId,
 	/// The person using this device, registered in the CRDT so undo and authorship follow them across peer ids.
-	/// `0` until one is known.
 	#[serde(default)]
 	pub user_id: UserId,
 	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
@@ -43,15 +42,16 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
-	/// Hot ops this peer has authored, feeding [`document_graph_storage::HotOp::sequence`], so a reopen never
-	/// reuses a spent sequence. Appended last: a positional codec decodes fields in declaration order.
+	/// The last hot op sequence this peer authored, so a reopen never reuses one.
 	#[serde(default)]
-	pub next_hot_sequence: HotSequence,
+	pub last_hot_sequence: HotSequence,
 	/// Whether the document was in its room when last persisted, so a reopen reconnects.
 	#[serde(default)]
 	pub shared: bool,
-	/// Which hot ops are retired or taken back, so a late copy a peer re-sends after a reopen is dropped rather than
-	/// retired a second time. About one sequence per author; runs only for ops in flight when saved.
+	/// The settled hot op marks, so a late copy re-sent after a reopen is dropped rather than retired again.
 	#[serde(default)]
-	pub settled: SettledHotOps,
+	pub settled_marks: SettledMarks,
+	/// The Lamport counter, so a reopen never mints a spent stamp.
+	#[serde(default)]
+	pub clock_counter: u64,
 }

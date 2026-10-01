@@ -5,7 +5,7 @@
 
 use document_graph_storage::{
 	AttributeDelta, Delta, HeadMove, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId,
-	Rev, Session, SettledHotOps, SourceKey, TimeStamp, UserId,
+	Rev, Session, SettledMarks, SourceKey, TimeStamp, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
@@ -72,8 +72,8 @@ impl SyncTarget for SimTarget {
 		SyncTarget::contains_rev(&self.session, rev)
 	}
 
-	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta> {
-		SyncTarget::deltas_unknown_to(&self.session, known)
+	fn deltas_unknown_to(&mut self, known: &[Rev]) -> Vec<Delta> {
+		SyncTarget::deltas_unknown_to(&mut self.session, known)
 	}
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
@@ -123,11 +123,11 @@ impl SyncTarget for SimTarget {
 		result
 	}
 
-	fn settled_marks(&self) -> SettledHotOps {
+	fn settled_marks(&self) -> SettledMarks {
 		SyncTarget::settled_marks(&self.session)
 	}
 
-	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError> {
+	fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> Result<(), TargetError> {
 		SyncTarget::absorb_settled_marks(&mut self.session, remote)
 	}
 
@@ -232,7 +232,7 @@ impl Peer {
 	}
 
 	fn stage(&mut self, op: RegistryDelta) {
-		let hot_ops = self.target.session.stage_ops([op]).expect("stage");
+		let hot_ops = self.target.session.stage_computed_ops(vec![op]).expect("stage");
 
 		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
 	}
@@ -352,7 +352,7 @@ impl Peer {
 	}
 }
 
-/// Node-level ops, reaching the input-slot LWW arms and the resurrection path a concurrent remove triggers.
+/// Node-level ops, reaching the input-slot LWW arms and the revival a concurrent remove triggers.
 /// `None` when the registry holds nothing the drawn op could target.
 fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<RegistryDelta> {
 	let registry = session.registry();
@@ -388,7 +388,7 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 			let node = registry.node_instances.get(&node_id)?;
 			let index = network.random_below(node.inputs().len().max(1)) as u32;
 
-			// Wiring to a node live here can land on a peer that concurrently removed it, driving resurrection.
+			// Wiring to a node live here can land on a peer that concurrently removed it, driving a revival.
 			let wire_to = pick(network, &live_nodes).copied();
 			let new_input = match wire_to {
 				Some(target) if network.random_below(3) > 0 => NodeInput::Node { id: target, index: 0 },
@@ -667,7 +667,7 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 				let retired = peer.session().settled_marks();
 				let mut through: Vec<_> = retired.settled_up_to.iter().map(|(peer, sequence)| (peer.0, sequence.0)).collect();
 				through.sort();
-				let mut above: Vec<_> = retired.settled_beyond.iter().map(|(peer, runs)| (peer.0, runs.len())).collect();
+				let mut above: Vec<_> = retired.settled_runs.iter().map(|(peer, runs)| (peer.0, runs.len())).collect();
 				above.sort();
 				format!("{through:?} above {above:?}")
 			}
@@ -683,7 +683,7 @@ fn assert_open_transactions_stay_hot(seed: u64, peers: &[Peer]) {
 		for author in peers {
 			let through = marks.settled_up_to.get(&author.peer).copied().unwrap_or(HotSequence::NONE);
 			let beyond = marks
-				.settled_beyond
+				.settled_runs
 				.get(&author.peer)
 				.and_then(|runs| runs.iter().map(|&(_, end)| end).max())
 				.unwrap_or(HotSequence::NONE);
@@ -997,7 +997,7 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	quiesce(&mut network, &mut peers);
 
 	let retired = peers[0].session().settled_marks();
-	assert!(retired.settled_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
+	assert!(retired.settled_runs.is_empty(), "a contiguous run retires wholly into the prefix");
 	assert_converged(0, &peers);
 }
 

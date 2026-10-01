@@ -4,15 +4,13 @@ use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
-	/// The latest addition or write, so a concurrent removal resolves by last-writer-wins rather than
-	/// arrival order. See [`Registry::removed_nodes`](crate::Registry::removed_nodes).
+	/// The latest addition or write, so a concurrent removal resolves by stamp; see [`Registry::removed_nodes`](crate::Registry::removed_nodes).
 	#[serde(default)]
 	pub(crate) presence: TimeStamp,
 	/// When the node was last added, which decides its network between concurrent additions of one id.
 	#[serde(default)]
-	pub(crate) added: TimeStamp,
-	/// When the input list last changed shape, so whole-list and per-slot writes resolve the same in either
-	/// order: the list follows the newer write, and a slot both lists held keeps its newer value.
+	pub(crate) network_timestamp: TimeStamp,
+	/// When the input list last changed shape, so list and slot writes resolve alike in either order.
 	#[serde(default)]
 	pub(crate) inputs_timestamp: TimeStamp,
 	pub(crate) implementation: Implementation,
@@ -67,7 +65,7 @@ impl Node {
 	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
 		Self {
 			presence: TimeStamp::ORIGIN,
-			added: TimeStamp::ORIGIN,
+			network_timestamp: TimeStamp::ORIGIN,
 			inputs_timestamp: TimeStamp::ORIGIN,
 			implementation,
 			implementation_timestamp: TimeStamp::ORIGIN,
@@ -97,8 +95,8 @@ pub struct InputSlot {
 }
 
 impl InputSlot {
-	/// A slot holding nothing, stamped `at`.
-	pub fn unset(at: TimeStamp) -> Self {
+	/// A slot holding nothing, stamped `timestamp`.
+	pub fn unset(timestamp: TimeStamp) -> Self {
 		// `to_runtime` reads this back as a `TaggedValue`, whose unit `None` variant encodes as this string.
 		// Pinned by `unset_input_slot_deserializes_as_tagged_value_none`.
 		Self {
@@ -106,9 +104,9 @@ impl InputSlot {
 				value: Value::Str("None".to_string()),
 				exposed: false,
 			},
-			timestamp: at,
+			timestamp,
 			attributes: Attributes::new(),
-			attributes_timestamp: at,
+			attributes_timestamp: timestamp,
 		}
 	}
 }
@@ -142,9 +140,9 @@ pub enum Implementation {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Network {
-	/// When the network was last added; see [`Registry`](crate::Registry).
+	/// The latest addition or write; see [`Node::presence`](crate::Node).
 	#[serde(default)]
-	pub presence: TimeStamp,
+	pub(crate) presence: TimeStamp,
 	pub exports: Vec<ExportSlot>,
 	/// Per-network `ui::*` state (navigation, previewing). Separate from `Node.attributes` so
 	/// view-state edits LWW independently.

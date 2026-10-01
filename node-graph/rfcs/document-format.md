@@ -28,24 +28,35 @@ pub struct Registry {
     pub resources: ResourceStore,                               // content-addressable resources (images, fonts, declarations)
     pub peer_users: HashMap<PeerId, PeerRegistration>,          // per-device → per-human identity, LWW
     pub attributes: Attributes,                                 // document-level metadata
+    pub removed_nodes: HashMap<NodeId, Tombstone<Node>>,       // removed content and the removal's stamp
+    pub removed_networks: HashMap<NetworkId, Tombstone<Network>>,
+    pub removed_resources: HashMap<ResourceId, Tombstone<ResourceEntry>>,
 }
 
 pub struct Node {
-    pub implementation: Implementation,     // ProtoNode(ResourceId) or Network(net)
-    pub inputs: Vec<InputSlot>,
-    pub attributes: Attributes,
-    pub network: NetworkId,
+    presence: TimeStamp,                    // latest addition or write
+    network_timestamp: TimeStamp,           // decides `network` between concurrent additions
+    implementation: Implementation,         // ProtoNode(ResourceId) or Network(net)
+    implementation_timestamp: TimeStamp,
+    inputs: Vec<InputSlot>,
+    inputs_timestamp: TimeStamp,            // when the list last changed shape
+    attributes: Attributes,
+    attributes_timestamp: TimeStamp,        // floor of the last whole-map write
+    network: NetworkId,
 }
 
 pub struct InputSlot {
     pub input: NodeInput,
     pub timestamp: TimeStamp,
     pub attributes: Attributes,             // per-input metadata, LWW per key
+    pub attributes_timestamp: TimeStamp,
 }
 
 pub struct Network {
+    presence: TimeStamp,
     pub exports: Vec<ExportSlot>,
     pub attributes: Attributes,              // per-network ui::* (navigation, previewing)
+    pub attributes_timestamp: TimeStamp,
 }
 
 pub struct ExportSlot {
@@ -165,7 +176,7 @@ History has two tiers:
 - **Hot ops** are speculative, intended to be broadcast per-keystroke for live collaboration (broadcast transport is not yet implemented, so today they stay local). They carry only a Lamport timestamp, with no parents and no content-addressed `Rev`. They live in `Document.hot_log`, are GC'd at retirement, and are persisted as a sidecar for crash recovery. They may pass through non-compiling intermediate states.
 - **Retired commits** are `Delta`s produced by retirement. Every retired commit compiles in the retiring peer's local view. They are content-addressed, durable, browseable, and replayable.
 
-Retirement promotes a window of hot ops (those with timestamp at or before a cutoff) into retired deltas, re-applied with a single fresh retirement timestamp per field so LWW arms bump to `T_retire` and the original hot-op timestamps are discarded. Today retirement is one retired delta per hot op. The interfaces are in place for coarsening a window into fewer, semantically-equivalent commits (one per logical `(node, field)` group), but that grouping is not yet implemented.
+Retirement promotes a window of hot ops (those with timestamp at or before a cutoff) into retired deltas, each keeping the timestamp it was authored at, so retiring changes no field's stamp and a peer's concurrent write still orders against it the same way. Each hot op also carries its author's `HotSequence`, a gap-free count; the ops a peer knows are done with form its `SettledMarks`, a per-author prefix plus runs for gaps still in flight, persisted in `session.json` so a late copy of a retired op is dropped rather than retired again. Today retirement is one retired delta per hot op. The interfaces are in place for coarsening a window into fewer, semantically-equivalent commits (one per logical `(node, field)` group), but that grouping is not yet implemented.
 
 In a collaborative session a leader-elected peer would own retirement. That election is designed to be gossip-based (the lowest `PeerId` among peers whose `retirement_tip` matches the session max) and best-effort, needing no quorum because content-addressed `Rev`s make concurrent retirements that converge dedupe by construction. The `retirement_tip` heartbeat field exists but is inert until broadcast transport lands. Today every session retires its own hot ops (see solo retirement below).
 
@@ -178,13 +189,13 @@ Solo retirement is the same mechanism with a session of one, so history compacti
 Undo/redo operate on the delta history rather than full-interface snapshots. A commit's undo behavior depends on whether it has been broadcast to other peers, tracked by `last_broadcast_rev: Option<Rev>` on `Document` (the latest commit shared with at least one peer, or `None`, and thus the entire history, during solo editing):
 
 - **Silent zone:** commits after `last_broadcast_rev`. No other peer has seen them, so they can be rewound in place.
-- **Published zone:** commits at or before `last_broadcast_rev`. Shared history is never rewound. Undoing one is a *new* forward commit applying the inverse with a fresh timestamp, so concurrent peers converge by LWW.
+- **Published zone:** commits at or before `last_broadcast_rev`, which another peer holds. Shared history is never rewound in place; undoing a published step is a collaboration operation on the shared head and lands with the transport.
 
-The silent zone is the implemented path (solo editing has no transport yet). The published-zone forward-undo lands with collaboration.
+The silent zone is the implemented path (solo editing has no transport yet).
 
 **Silent-zone cursor.** `head: Option<Rev>` is a movable pointer into the append-only DAG (`None` on an empty document with no commits yet). Undo/redo move it but never delete deltas (that would make redo impossible and discard branch history). The extra state is a redo stack `Vec<Rev>`, the checkpoints the user has undone past, because the DAG alone cannot say which child a `head` was undone *from*. New state persists in `session.json` alongside `head`, so redo survives reopen. A new edit while the redo stack is non-empty clears it (the undone-forward branch stays physically in the DAG but is no longer reachable via redo).
 
-**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
+**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary, a merge, another user's delta, or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
 
 **Restore, not reverse ops.** A delta's `reverse` is a list of `Prior`s: the state of every slot the op wrote, as it was just before, stamps included (a whole node, network, or resource where the op added, removed, or landed on a tombstone; otherwise one field plus the entity's presence stamp). Undo writes these back as they were, bypassing LWW, so the registry is again exactly the fold of history up to the new `head`. An op applied at its own timestamp could not express that: it can only write a value or a tombstone at that timestamp, while the prior state may be an older stamp or no entry at all, and a stamp the history does not account for decides later concurrent writes differently on different peers. Redo re-applies the forward ops with plain LWW, which folds them in exactly as retirement did. Both are O(steps moved), no clock advances, and identities are unchanged. Undo only takes this user's own interactions and never one containing a merge, since restoring past another peer's write would rewind it.
 
@@ -192,7 +203,7 @@ The silent zone is the implemented path (solo editing has no transport yet). The
 
 ## Concurrency model: CmRDT
 
-The format uses an operation-based CRDT. The transport layer delivers ops in causal order exactly once (TCP plus the parent links threading the `Delta` DAG). The storage layer assumes this and requires only that concurrent op pairs commute. It does not need idempotency, state-merge, or out-of-order replay.
+The format uses an operation-based CRDT. The transport layer delivers ops in causal order exactly once (TCP plus the parent links threading the `Delta` DAG). Every registry field, an entity's existence included, is last-writer-wins on the op's timestamp, so the same ops fold to the same registry in any order and replaying an op changes nothing; causal order matters only for the parent links of history.
 
 Graph-shape invariants (the graph remaining a DAG, the result compiling) are best-effort. Conflicts that produce a non-compiling graph surface as wiring or type errors rather than being masked by the CRDT.
 
@@ -346,15 +357,15 @@ Because inputs are stamped, `NodeInput::Node` references are set directly via `C
 - **Timestamps.** `TimeStamp { counter: u64, peer: PeerId }` is a Lamport counter with a peer-ID tiebreak. Comparison is lexicographic (counter first, then peer). Wall-clock time is not used.
 - **NodeId identity.** Every new `AddNode` issues a peer-scoped ID, so concurrent creates cannot collide.
 - **Causal delivery.** `apply_delta` requires that every parent of the delta (its `parent` plus any `Merge` extra parents) is already in local history. The storage layer does not buffer, and out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` plus history) before streaming deltas.
-- **Removal.** Physical, with no tombstones. If a later op targets an absent node or network, the receiver searches its ancestry (from `head`, following all parents) for the delta that removed the entity, the one whose `reverse` is the matching `AddNode` or `AddNetwork`, and re-applies that reverse before applying the incoming op. `RemoveNode` and `RemoveNetwork` each carry a `snapshot` of the removed entity inside that reverse so the rebuild is O(1) and needs no further history walk. The snapshot is required because retirement recomputes an op's reverse *after* the hot op already applied the removal, when the live entity is gone. Removal is therefore non-durable under concurrent edits, since any concurrent reference to a removed node revives it.
-- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
-- **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an ordered LWW-element-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add or a remove at the same key is LWW on the per-`Delta` timestamp (no tombstones, so a same-key add/remove is order-sensitive only without causal delivery). Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs (`RemoveResource` snapshots the entry for O(1) reverse).
+- **Existence.** Last-writer-wins like any field. Each node, network and resource carries a `presence` stamp, its latest addition or write. A removal moves the entity into a tombstone map (`removed_nodes`, `removed_networks`, `removed_resources`) holding its content and the removal's stamp: an op stamped earlier lands on the tombstone, and an addition, write or reference stamped later revives the entity from it. A write to an entity never seen lands on a placeholder tombstone that stays dead until its addition folds in, so ops land the same in any order and nothing is buffered. `RemoveNode`, `RemoveNetwork` and `RemoveResource` carry the removed content, which folds in like any write, so a removal of an entity this peer never saw still lands.
+- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. A whole-map write (an addition) also stamps the map's floor (`attributes_timestamp`), deleting every key it does not hold without a tombstone per key. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
+- **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an ordered LWW-element-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add or a remove at the same key is LWW on the per-`Delta` timestamp, a removal leaving a `deleted` tombstone so either order resolves alike. Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs.
 
 The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetNetworkExport`s with different targets resolve by LWW, but the resulting wiring may be wrong, and downstream consumers see it as a compile or wiring error.
 
 ## History storage
 
-`History` is a `Vec<Delta>` in topological order (parents before children) with a `HashMap<Rev, usize>` index for lookup. The append order is canonical, which is what lets history serialize byte-identically across peers that absorbed the same delta set. `Document` adds a `head: Option<Rev>` (the local cursor, which advances only on local commits, `None` until the first commit) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`, and this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent, and a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
+`History` is a `Vec<Delta>` in topological order (parents before children) with a `HashMap<Rev, usize>` index for lookup. The append order is canonical, which is what lets history serialize byte-identically across peers that absorbed the same delta set. `Document` adds a `head: Option<Rev>` (the local cursor, `None` until the first commit) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`, and this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent, and a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
 
 ## Editor metadata
 
@@ -368,7 +379,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 - **Diffing two full `Registry`s on every autosave is O(N) in document size.** This is the interim cost of treating storage as a serialization layer derived from the runtime. It is currently triggered at autosave boundaries (`commit_storage_snapshot`) rather than per gesture, and addressed long-term by computing deltas directly on runtime mutations.
 - **Attributes as `Value` carry per-value overhead.** This is mitigable with a typed fast path for hot keys without changing the design.
 - **Single global format version is a sharp edge** when libraries diverge: a breaking change in one library bumps the version for documents that do not use it.
-- **`RemoveNode` is non-durable under concurrency.** Any concurrent reference to a removed node revives it from history.
+- **Removal yields to newer writes.** A write or reference stamped after a removal revives the entity from its tombstone, so a removal does not stick against a concurrent edit that happens to stamp later.
 
 # Rationale and alternatives
 
@@ -378,7 +389,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **Merkle `Rev` (parent in the hash) vs. a position-independent content id.** A `Rev` hashes `(parent, author, timestamp, kind)`, and since `parent` is itself a `Rev`, every `Rev` transitively commits to its whole ancestry. This is the Git commit-hash model: a Git commit folds its parent SHA, tree, author, committer, and message into its own SHA, so changing any ancestor rewrites every descendant hash. We keep that model for the same two reasons Git gets value from it. First, tamper-evidence: rehashing detects any rewrite of history (see [Deltas](#deltas)). Second, the chain doubles as the causal structure the CRDT already needs. We then diverge from Git in one deliberate place: a `Merge` is hashed over its sorted parent set alone, with author and timestamp excluded, so two peers merging the same tips mint the *identical* `Rev` and it dedups into one shared node. Git does the opposite (its merge commits carry author/time/message and so never converge), because Git reconciles through a human pushing and pulling rather than through automatic DAG convergence. The cost of parent-in-hash is the one Git also pays: reordering or rebasing an op rewrites every descendant `Rev`, so identity is not stable across [history linearization](#future-possibilities). A pure content-derived id (no parent) would survive reordering but would forfeit both convergence-by-construction and free tamper-evidence, so it is the wrong primary identity. The position-independent use case is better served by a separate, computed id (see the patch-id analogue under [Future possibilities](#future-possibilities)) rather than by weakening `Rev`.
 
-**Ad-hoc resurrection vs. tombstones.** Tombstones add a permanent footprint to the data model and a GC policy question. Resurrection reuses the history log already needed for undo as the recovery mechanism, keeping the live `Registry` lean. The cost is that `RemoveNode` is not durable under concurrent edits.
+**Tombstones vs. resurrection from history.** Reviving a removed entity from the history log keeps the live `Registry` lean, but a removal and a concurrent write then fold differently depending on which arrives first, and a reference anywhere revives what was removed. Tombstones cost a permanent entry per removed entity (collecting them is future work) and buy order-independence: every field, existence included, is last-writer-wins.
 
 **Type-erased attributes vs. typed metadata fields.** Migrations operate on attribute values without keeping old Rust struct shapes alive. The cost is per-value overhead, mitigable without changing the model.
 

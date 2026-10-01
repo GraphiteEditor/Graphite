@@ -758,7 +758,7 @@ fn cyclic_network_reference_is_rejected() {
 		crate::NodeId(0),
 		Node {
 			presence: Default::default(),
-			added: Default::default(),
+			network_timestamp: Default::default(),
 			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(child_network_id),
 			implementation_timestamp: Default::default(),
@@ -772,7 +772,7 @@ fn cyclic_network_reference_is_rejected() {
 		crate::NodeId(1),
 		Node {
 			presence: Default::default(),
-			added: Default::default(),
+			network_timestamp: Default::default(),
 			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(crate::ROOT_NETWORK),
 			implementation_timestamp: Default::default(),

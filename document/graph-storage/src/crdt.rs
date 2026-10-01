@@ -7,9 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Content-addressed delta: `id` is `blake3_128(parents, author, timestamp, delta_type)`.
 ///
-/// `reverse` is state-dependent undo bookkeeping (what the op overwrote, captured as it applied), so it's
-/// serialized for storage but excluded from the identity hash: two peers applying the same forward delta to
-/// different local states would otherwise compute different Revs for the same logical op.
+/// `reverse` is undo bookkeeping that depends on local state, so it is stored but left out of the identity hash.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
 	pub id: Rev,
@@ -25,9 +23,8 @@ pub struct Delta {
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default)]
 	pub attributes: Attributes,
-	/// When the delta entered history, in Unix milliseconds by its retirer's clock; display only, and outside
-	/// the rev like `attributes`. Zero means unrecorded, saving the tag byte an `Option` costs per delta; read
-	/// it through [`retired_at`](Self::retired_at). Last, since the history codec is positional.
+	/// When the delta entered history, in Unix milliseconds by the retiring peer's clock; display only and outside the rev.
+	/// Zero means unrecorded, saving the tag byte of an `Option`. Last, since the history codec is positional.
 	#[serde(default)]
 	pub(crate) retired_at_ms: u64,
 }
@@ -86,7 +83,7 @@ impl Delta {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
 	}
 
-	/// When the delta entered history in wall-clock milliseconds, if its retirer recorded it.
+	/// When the delta entered history in wall-clock milliseconds, if the peer that retired it recorded it.
 	pub fn retired_at(&self) -> Option<u64> {
 		(self.retired_at_ms != 0).then_some(self.retired_at_ms)
 	}
@@ -200,8 +197,7 @@ pub enum RegistryDelta {
 		id: ResourceId,
 		key: SourceKey,
 	},
-	/// Registers a device's `PeerId` to the `UserId` behind it. LWW per peer, so a device that changes person
-	/// registers again and the newest registration wins wherever it lands.
+	/// Registers a device's `PeerId` to the `UserId` behind it; the newest registration wins.
 	RegisterPeer {
 		peer: PeerId,
 		user: UserId,
@@ -230,8 +226,7 @@ pub struct AttributeDelta {
 	pub value: Option<Value>,
 }
 
-/// Lands a single-key write. `floor` is the map's `attributes_timestamp`; see [`Attributes`]. A deletion
-/// leaves a tombstone.
+/// Lands a single-key write against the map's `floor`, its `attributes_timestamp`. A deletion leaves a tombstone.
 pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, attributes: &mut Attributes, floor: TimeStamp) {
 	let AttributeDelta { key, value } = delta;
 	let decided = attributes.get(&key).map_or(floor, |existing| existing.timestamp);
@@ -250,7 +245,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn a_missing_retirement_time_costs_what_a_zero_costs_and_round_trips() {
+	fn unrecorded_retired_at_costs_one_byte_and_round_trips() {
 		let base = Delta::new(None, PeerId(1), TimeStamp { counter: 1, peer: PeerId(1) }, RegistryDelta::EndTransaction, Vec::new());
 		let mut stamped = base.clone();
 		stamped.retired_at_ms = 1_790_000_000_000;

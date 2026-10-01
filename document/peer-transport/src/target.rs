@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, Rev, Session, SettledHotOps};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, Rev, Session, SettledMarks};
 use std::collections::HashSet;
 
 pub type TargetError = Box<dyn std::error::Error>;
@@ -19,12 +19,13 @@ pub trait SyncTarget {
 	fn hot_log(&self) -> Vec<HotOp>;
 	fn known_revs(&self) -> Vec<Rev>;
 	fn contains_rev(&self, rev: Rev) -> bool;
-	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta>;
+	/// What a peer holding `known` lacks. Handing it out publishes it. See [`Session::deltas_unknown_to`].
+	fn deltas_unknown_to(&mut self, known: &[Rev]) -> Vec<Delta>;
 
 	/// Which hot ops are retired or taken back. See [`Session::settled_marks`].
-	fn settled_marks(&self) -> SettledHotOps;
+	fn settled_marks(&self) -> SettledMarks;
 	/// Take on a peer's marks, dropping what they cover from the hot log.
-	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError>;
+	fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> Result<(), TargetError>;
 
 	/// The history's users and their names, merged last-writer-wins. Empty for a target that keeps none.
 	fn metadata(&self) -> HistoryMetadata {
@@ -104,13 +105,13 @@ impl SyncTarget for Session {
 		self.delta(rev).is_some()
 	}
 
-	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta> {
-		Session::deltas_unknown_to(self, known.iter().copied()).into_iter().cloned().collect()
+	fn deltas_unknown_to(&mut self, known: &[Rev]) -> Vec<Delta> {
+		Session::deltas_unknown_to(self, known.iter().copied())
 	}
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
 		// A spent sequence must not come round again, or a new op of this peer's would be taken as retired.
-		let spent = self.next_hot_sequence();
+		let spent = self.last_hot_sequence();
 		*self = Session::load(self.peer(), self.user(), registry, history, head, Vec::new(), self.next_node_counter());
 		self.restore_hot_sequence(spent);
 		Ok(())
@@ -145,11 +146,11 @@ impl SyncTarget for Session {
 		Ok(absorbed)
 	}
 
-	fn settled_marks(&self) -> SettledHotOps {
+	fn settled_marks(&self) -> SettledMarks {
 		Session::settled_marks(self).clone()
 	}
 
-	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError> {
+	fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> Result<(), TargetError> {
 		Session::absorb_settled_marks(self, remote);
 		Ok(())
 	}

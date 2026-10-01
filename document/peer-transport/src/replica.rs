@@ -513,7 +513,7 @@ impl Replica {
 
 		self.broadcast_hot_ops(&unsettled)?;
 		// A retraction in flight when a peer joined never reached it and nothing re-sends it, so the marks go round too.
-		if settled.settled_up_to.is_empty() && settled.settled_beyond.is_empty() {
+		if settled.settled_up_to.is_empty() && settled.settled_runs.is_empty() {
 			return Ok(());
 		}
 		self.broadcast(BroadcastBody::SettledMarks(settled))

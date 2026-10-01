@@ -212,11 +212,7 @@ impl<L: Layout> Gdd<L> {
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
 
 		let peer = session_state.peer_id;
-		// With no stored user, the peer stands for itself until one is set.
-		let user = match session_state.user_id {
-			UserId(0) => UserId(peer.0),
-			user => user,
-		};
+		let user = session_state.user_id;
 		let mut session = match (has_registry, has_history) {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
@@ -236,9 +232,10 @@ impl<L: Layout> Gdd<L> {
 			session.publish_up_to(rev);
 		}
 		// Every arm must continue this peer's authored-op count too.
-		session.restore_hot_sequence(session_state.next_hot_sequence);
-		// Before the hot log, so a settled op it still holds from an interrupted write is dropped.
-		session.absorb_settled_marks(&session_state.settled);
+		session.restore_hot_sequence(session_state.last_hot_sequence);
+		session.restore_clock_counter(session_state.clock_counter);
+		// Before the hot log replays, so a settled op in it is dropped rather than staged again.
+		session.absorb_settled_marks(&session_state.settled_marks);
 
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 

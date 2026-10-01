@@ -43,7 +43,9 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 		sequence: crate::HotSequence(1),
 	};
 
-	document.apply_hot_op(hot_op).expect("RemoveNode on absent node is a no-op, not an error");
+	document
+		.stage_hot_op(hot_op, crate::document::ApplyMode::Strict)
+		.expect("RemoveNode on absent node is a no-op, not an error");
 
 	assert!(
 		document.clock.counter >= observed.counter,
@@ -158,80 +160,13 @@ fn history_is_causal_and_deterministic() {
 	}
 }
 
-fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
+pub(super) fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
 		delta: crate::AttributeDelta {
 			key: key.to_string(),
 			value: Some(Value::Int(value.into())),
 		},
 	}
-}
-
-/// Two peers that each integrate the other's concurrent branch converge to byte-identical history:
-/// the merge commit is parent-set-addressed (same `Rev` on both) and the canonical sort erases the
-/// arrival-order difference. Exercises `Session::merge`, the `Merge` variant, and `canonical_sort`.
-#[test]
-fn merge_converges_to_identical_history() {
-	// Shared base commit, then a concurrent edit on each peer's own clone of that base.
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b.commit_op_for_test(set_document_attribute("compute::b", 2)).expect("B edit");
-
-	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
-	let deltas_a = session_a.cloned_deltas();
-	let deltas_b = session_b.cloned_deltas();
-	let merge_a = session_a.merge(deltas_b).expect("merge into A failed");
-	let merge_b = session_b.merge(deltas_a).expect("merge into B failed");
-
-	assert!(matches!(merge_a, crate::MergeOutcome::Merged(_)), "divergent branches must produce a merge delta");
-	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
-
-	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
-	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
-	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
-	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
-}
-
-/// A write to a network removed on a merged-in branch revives it: the removal keeps the network as a
-/// tombstone, and the write is newer than the removal.
-#[test]
-fn resurrection_reaches_across_a_merge() {
-	let network_id = NetworkId(7);
-
-	// Shared base, then peer B adds and removes network 7 on its own branch.
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b
-		.commit_op_for_test(RegistryDelta::AddNetwork {
-			id: network_id,
-			network: Network::default(),
-		})
-		.expect("B AddNetwork");
-	session_b
-		.commit_op_for_test(RegistryDelta::RemoveNetwork {
-			id: network_id,
-			snapshot: Network::default(),
-		})
-		.expect("B RemoveNetwork");
-
-	// A merges B's branch: 7's AddNetwork now lives only under the merge's secondary parent.
-	session_a.merge(session_b.cloned_deltas()).expect("merge failed");
-
-	// A SetNetworkExport on 7 is newer than its removal, so it brings 7 back from its tombstone.
-	session_a
-		.commit_op_for_test(RegistryDelta::SetNetworkExport {
-			id: network_id,
-			index: 0,
-			export: None,
-		})
-		.expect("a write newer than the removal revives the network");
-	assert!(session_a.retired_registry().networks.contains_key(&network_id));
 }
 
 /// Committing the same NodeNetwork twice must produce zero history entries on the second commit.
@@ -291,7 +226,7 @@ fn first_contribution_registers_the_peer() {
 
 /// A SetExport newer than a network's removal revives the network from its tombstone instead of erroring.
 #[test]
-fn set_export_resurrects_absent_network() {
+fn set_network_export_revives_a_removed_network() {
 	let mut document = fresh_document(PeerId(1));
 	let network_id = NetworkId(7);
 
@@ -309,7 +244,7 @@ fn set_export_resurrects_absent_network() {
 			snapshot: Network::default(),
 		},
 	);
-	assert!(!document.working_registry.networks.contains_key(&network_id), "network should be removed before the resurrection test");
+	assert!(!document.working_registry.networks.contains_key(&network_id), "network should be removed before the revival");
 
 	commit_op(
 		&mut document,
@@ -320,12 +255,12 @@ fn set_export_resurrects_absent_network() {
 		},
 	);
 
-	assert!(document.working_registry.networks.contains_key(&network_id), "SetExport should have resurrected the network");
+	assert!(document.working_registry.networks.contains_key(&network_id), "SetExport should have revived the network");
 }
 
 /// An addition into a removed network is evidence the network exists, so it brings the network back.
 #[test]
-fn add_node_resurrects_owning_network() {
+fn add_node_revives_its_removed_network() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
@@ -350,17 +285,13 @@ fn add_node_resurrects_owning_network() {
 	let node = Node { network: network_id, ..Node::dummy() };
 	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node });
 
-	assert!(
-		document.working_registry.networks.contains_key(&network_id),
-		"AddNode should have cascaded a resurrection of the owning network"
-	);
+	assert!(document.working_registry.networks.contains_key(&network_id), "AddNode should have revived the owning network");
 	assert!(document.working_registry.node_instances.contains_key(&node_id), "the node itself should also be present");
 }
 
-/// The same revival arriving twice, from two peers reverting one removal, lands once: the second copy
-/// is not newer than what the first wrote.
+/// Two peers reverting one removal: the second revival is not newer than the first, so it lands once.
 #[test]
-fn concurrent_resurrection_via_revert_is_idempotent() {
+fn the_same_revival_arriving_twice_lands_once() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
@@ -377,7 +308,7 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 	let node = Node { network: network_id, ..Node::dummy() };
 	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node: node.clone() });
 	commit_op(&mut document, RegistryDelta::RemoveNode { id: node_id, snapshot: node });
-	assert!(!document.working_registry.node_instances.contains_key(&node_id), "node should be removed before the resurrection test");
+	assert!(!document.working_registry.node_instances.contains_key(&node_id), "node should be removed before the revival");
 
 	let revive = RegistryDelta::AddNode {
 		id: node_id,
@@ -526,8 +457,7 @@ fn register_resource_hash_is_last_writer_wins() {
 	assert_eq!(document.working_registry.resources.get(&id).unwrap().hash, Some(hash_b), "later resolve wins");
 }
 
-/// Undo puts back exactly what an op overwrote, stamps, tombstones and placeholders included, for every kind of
-/// op and wherever it lands: on a live entity, a removed one, or one never seen.
+/// For every kind of op, landing on a live entity, a removed one or one never seen.
 #[test]
 fn restoring_what_an_op_overwrote_gives_back_the_registry_exactly() {
 	use crate::{AttributeDelta, Implementation, Network, NodeInput, ROOT_NETWORK};
@@ -903,7 +833,7 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 
 		Node {
 			presence: Default::default(),
-			added: Default::default(),
+			network_timestamp: Default::default(),
 			inputs_timestamp: Default::default(),
 			implementation: implementation.clone(),
 			implementation_timestamp: Default::default(),
@@ -945,9 +875,8 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
 }
 
-/// Commit a retired delta and mirror it onto the working registry; `commit_op_for_test` alone only
-/// advances the snapshot zone.
-fn commit_retired(session: &mut Session, op: RegistryDelta) {
+/// Commit a retired delta and mirror it onto the working registry, which `commit_op_for_test` leaves alone.
+pub(super) fn commit_retired(session: &mut Session, op: RegistryDelta) {
 	let before = session.history().count();
 	session.commit_op_for_test(op).expect("commit failed");
 
@@ -961,7 +890,7 @@ fn add_network(id: u64) -> RegistryDelta {
 	RegistryDelta::AddNetwork { id: NetworkId(id), network }
 }
 
-fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
+pub(super) fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
 	let delta = crate::AttributeDelta {
 		key: key.into(),
 		value: Some(Value::from(value)),
@@ -978,43 +907,16 @@ fn hot_op(op: RegistryDelta, counter: u64, peer: u64, sequence: u64) -> HotOp {
 	}
 }
 
-/// The raw ops are arrival-order dependent (change-first leaves the node gone, remove-first revives it), so
-/// merge has to fold both orders onto one retired registry.
+/// An op past a gap is covered without the gap, a filled gap joins the prefix, and absorbing is a union.
 #[test]
-fn a_concurrent_remove_and_attribute_change_commute() {
-	let node = Node::new(NetworkId(5), crate::Implementation::Network(NetworkId(5)), 0);
-	let mut base = Session::with_peer(PeerId(1));
-	commit_retired(&mut base, add_network(5));
-	commit_retired(&mut base, RegistryDelta::AddNode { id: NodeId(7), node: node.clone() });
-
-	let mut remover = base.clone();
-	commit_retired(&mut remover, RegistryDelta::RemoveNode { id: NodeId(7), snapshot: node });
-	let mut changer = Session::with_peer(PeerId(2));
-	changer.merge(base.cloned_deltas()).expect("changer adopts the base");
-	commit_retired(&mut changer, change_node_attribute(NodeId(7), "tint", serde_json::json!(75)));
-
-	// One delta from each branch, neither an ancestor of the other.
-	let removal = remover.cloned_deltas().pop().expect("removal delta");
-	let change = changer.cloned_deltas().pop().expect("change delta");
-	let merged = |order: [&Delta; 2]| {
-		let mut session = base.clone();
-		session.merge(order.map(Delta::clone).to_vec()).expect("merge failed");
-		session.retired_registry().clone()
-	};
-	assert_eq!(merged([&removal, &change]), merged([&change, &removal]));
-}
-
-/// Retired-op marks are a per-author prefix plus runs past gaps: an op past a gap is covered without claiming
-/// the gap, a filled gap folds into the prefix, a gap that never fills stays one run, and absorbing is a union.
-#[test]
-fn retired_marks_keep_a_prefix_and_runs_past_gaps() {
+fn settled_marks_keep_a_prefix_and_runs_past_gaps() {
 	let author = PeerId(1);
 	let id = |sequence: u64| crate::HotOpId {
 		peer: author,
 		sequence: crate::HotSequence(sequence),
 	};
 	let marks_of = |batches: &[&[u64]]| {
-		let mut marks = crate::SettledHotOps::default();
+		let mut marks = crate::SettledMarks::default();
 		batches.iter().for_each(|batch| marks.extend(batch.iter().map(|&sequence| id(sequence))));
 		marks
 	};
@@ -1035,7 +937,7 @@ fn retired_marks_keep_a_prefix_and_runs_past_gaps() {
 		marks.absorb(&marks_of(absorbed));
 		let up_to = marks.settled_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
 		assert_eq!(up_to, crate::HotSequence(prefix), "{batches:?}");
-		assert_eq!(marks.settled_beyond.get(&author).map(Vec::len), runs, "{batches:?}");
+		assert_eq!(marks.settled_runs.get(&author).map(Vec::len), runs, "{batches:?}");
 		for sequence in 1..=21 {
 			let retired = batches.iter().chain(absorbed).any(|batch| batch.contains(&sequence));
 			assert_eq!(marks.covers(id(sequence)), retired, "{batches:?}: sequence {sequence}");
@@ -1043,24 +945,22 @@ fn retired_marks_keep_a_prefix_and_runs_past_gaps() {
 	}
 }
 
-/// Retirement drains the hot log, so a retirer that never received an author's earlier op still retires the
-/// later one, past the author's prefix.
+/// A retirer that never received an author's earlier op still retires the later one, past the author's prefix.
 #[test]
 fn retiring_over_a_gap_lands_beyond_the_prefix() {
 	let mut host = Session::with_peer(PeerId(1));
 	// Sequence 1 was lost with the link that carried it.
 	let second = hot_op(set_document_attribute("late", 1), 9, 2, 2);
-	host.apply_hot_op(second.clone()).expect("apply");
+	host.replay_hot_op(second.clone()).expect("apply");
 	host.retire(second.timestamp).expect("retire");
 
 	let marks = host.settled_marks();
 	assert_eq!(marks.settled_up_to.get(&PeerId(2)).copied().unwrap_or(crate::HotSequence::NONE), crate::HotSequence::NONE);
-	assert_eq!(marks.settled_beyond.get(&PeerId(2)).map(Vec::len), Some(1));
+	assert_eq!(marks.settled_runs.get(&PeerId(2)).map(Vec::len), Some(1));
 	assert!(marks.covers(second.id()));
 }
 
-/// Undo and redo move only the retired zone and never promote the hot tail into it, a fold skips the undone
-/// delta kept in the DAG for redo, and a published commit is not silently rewound since peers hold it.
+/// Undo and redo never promote the hot tail, a fold skips undone deltas, and a published commit is not rewound.
 #[test]
 fn undo_and_redo_move_only_unpublished_retired_history() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1085,25 +985,17 @@ fn undo_and_redo_move_only_unpublished_retired_history() {
 	assert!(holds(&session.registry().attributes, "hot"));
 }
 
-/// `#[serde(transparent)]`, so persisted state and the wire carry a bare number.
-#[test]
-fn hot_sequence_serializes_as_a_bare_number() {
-	assert_eq!(serde_json::to_string(&crate::HotSequence(7)).expect("serialize"), "7");
-	assert_eq!(serde_json::from_str::<crate::HotSequence>("7").expect("deserialize"), crate::HotSequence(7));
-}
-
-/// A retired delta keeps its op's authoring stamp, so the snapshot and a replay of history keep the LWW winner
-/// the live view did, whether the losing straggler retires with the winner or after it.
+/// So the snapshot and a replay keep the LWW winner the live view did, whether the straggler retires with it or after.
 #[test]
 fn retirement_preserves_the_live_lww_winner() {
 	for straggler_retires_alone in [false, true] {
 		let mut host = Session::with_peer(PeerId(1));
 		let winner = hot_op(set_document_attribute("k", 1), 10, 2, 1);
-		host.apply_hot_op(winner.clone()).expect("apply winner");
+		host.replay_hot_op(winner.clone()).expect("apply winner");
 		if straggler_retires_alone {
 			host.retire(winner.timestamp).expect("retire winner");
 		}
-		host.apply_hot_op(hot_op(set_document_attribute("k", 2), 5, 3, 1)).expect("apply straggler");
+		host.replay_hot_op(hot_op(set_document_attribute("k", 2), 5, 3, 1)).expect("apply straggler");
 		host.retire(winner.timestamp).expect("retire");
 
 		let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
@@ -1113,11 +1005,8 @@ fn retirement_preserves_the_live_lww_winner() {
 	}
 }
 
-/// Every registry field, entity existence included, is last-writer-wins on a timestamp, so a set of ops
-/// folds to one registry in any order. Random structural and field ops, attribute deletions included, over
-/// a few ids so they collide, folded in random orders with ops naming an unseen entity retried after the rest.
-/// Removal snapshots are either constant or, as a remover would send them, a fold of some of the ops before.
-/// Along the way, restoring what each op overwrote gives back the registry it applied to.
+/// Random ops over a few colliding ids fold to one registry in any order. Removal snapshots are constant or, as a remover
+/// sends them, a fold of some earlier ops; restoring each op's priors gives back the registry it applied to.
 #[test]
 fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 	use crate::{Implementation, Priority, ResourceEntry, SourceKey, SourceValue, UserId};
@@ -1131,28 +1020,19 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 		}
 	}
 
-	/// Folds the ops in the order given, retrying the ones that name an entity not yet seen until no
-	/// retry lands, and returns the working registry. `check_restore` also restores each landed op's priors
-	/// on a copy and compares it with the registry the op applied to.
+	/// Folds the ops in order; `check_restore` also checks each op's priors restore the registry it applied to.
 	fn fold(ops: &[(RegistryDelta, TimeStamp)], check_restore: bool) -> crate::Registry {
 		let mut document = fresh_document(PeerId(9));
-		let mut pending: Vec<&(RegistryDelta, TimeStamp)> = ops.iter().collect();
-		loop {
-			let before = pending.len();
-			pending.retain(|(op, at)| {
-				let prior = check_restore.then(|| (document.working_registry.clone(), crate::prior::capture(&document.working_registry, op)));
-				let landed = document.apply_op_idempotent(op.clone(), *at).is_ok();
-				if let (true, Some((registry, priors))) = (landed, prior) {
-					let mut restored = document.working_registry.clone();
-					crate::prior::restore(&mut restored, &priors);
-					assert_eq!(restored, registry, "restoring what {op:?} overwrote");
-				}
-				!landed
-			});
-			if pending.is_empty() || pending.len() == before {
-				return document.working_registry;
+		for (op, at) in ops {
+			let before = check_restore.then(|| (document.working_registry.clone(), crate::prior::capture(&document.working_registry, op)));
+			document.apply_op_idempotent(op.clone(), *at).unwrap_or_else(|error| panic!("{op:?} at {at:?}: {error}"));
+			if let Some((registry, priors)) = before {
+				let mut restored = document.working_registry.clone();
+				crate::prior::restore(&mut restored, &priors);
+				assert_eq!(restored, registry, "restoring what {op:?} overwrote");
 			}
 		}
+		document.working_registry
 	}
 
 	fn random_op(rng: &mut Lcg, at: TimeStamp, seen: &[(RegistryDelta, TimeStamp)], real_snapshots: bool) -> RegistryDelta {
@@ -1320,8 +1200,7 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 	}
 }
 
-/// A removal's snapshot carries the addition's stamps, and an entry stamped at its map's floor was written by
-/// the op that set the floor, so folding the snapshot keeps it. Pins a revived node losing `reflection_metadata`.
+/// An entry stamped at its map's floor was written with it, so folding a removal's snapshot keeps it.
 #[test]
 fn a_removal_snapshot_keeps_the_attributes_the_addition_wrote() {
 	use crate::{AttributesRead, AttributesWrite};
@@ -1354,10 +1233,8 @@ fn a_removal_snapshot_keeps_the_attributes_the_addition_wrote() {
 	assert_eq!(replayed.working_registry, document.working_registry);
 }
 
-/// An op rejected partway leaves the registry as it was, including the nodes it references, which a landed op
-/// would bring back.
 #[test]
-fn a_rejected_op_changes_nothing() {
+fn a_refused_replayed_op_changes_nothing() {
 	use crate::{Implementation, NodeInput};
 	let mut document = fresh_document(PeerId(1));
 	let node = Node::new(NetworkId(1), Implementation::Network(NetworkId(1)), 1);

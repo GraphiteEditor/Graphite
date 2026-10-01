@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, Rev, SettledHotOps, UserId};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, Rev, SettledMarks, UserId};
 use serde::{Deserialize, Serialize};
 
 /// The host is the single peer that retires hot ops.
@@ -80,7 +80,7 @@ pub struct SyncPayload {
 	pub seen: Vec<PeerSeq>,
 	/// Which hot ops are retired or taken back, so the requester drops any it holds rather than re-entering it as
 	/// live work.
-	pub settled: SettledHotOps,
+	pub settled: SettledMarks,
 	/// Adopted by a peer that started empty, so opening its own copy later reconnects to the same room.
 	#[serde(default)]
 	pub document_id: Option<u64>,
@@ -111,7 +111,7 @@ pub enum BroadcastBody {
 	Retract(Vec<HotOpId>),
 	/// Everything a peer knows is settled, re-announced with hot ops on a membership change so a peer that joined
 	/// during a retirement or retraction still hears of it.
-	SettledMarks(SettledHotOps),
+	SettledMarks(SettledMarks),
 	/// The host dropped a retired interaction out of the line: every peer walks back and follows the head.
 	HeadMove(HeadMove),
 }

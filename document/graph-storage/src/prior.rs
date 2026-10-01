@@ -6,24 +6,22 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::hash::Hash;
 
-/// What a slot held before a delta wrote it, with its own stamps. Undo puts these back as they were, bypassing
-/// LWW, so the registry is again exactly what folding history up to the delta's parent gives. Never sent or
-/// applied as an op.
+/// What a slot held before a delta wrote it, stamps included. Undo puts it back bypassing LWW, so the registry is again
+/// the fold of history up to the delta's parent. Never sent or applied as an op.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Prior {
-	/// The whole entity, live or tombstoned. `None, None` means it didn't exist, so undoing an addition leaves no
-	/// tombstone behind.
-	Node {
+	/// The whole entity, live or tombstoned; `None, None` means it didn't exist, so undoing an addition leaves no tombstone.
+	WholeNode {
 		id: NodeId,
 		live: Option<Node>,
 		removed: Option<Tombstone<Node>>,
 	},
-	Network {
+	WholeNetwork {
 		id: NetworkId,
 		live: Option<Network>,
 		removed: Option<Tombstone<Network>>,
 	},
-	Resource {
+	WholeResource {
 		id: ResourceId,
 		live: Option<ResourceEntry>,
 		removed: Option<Tombstone<ResourceEntry>>,
@@ -99,7 +97,7 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 	};
 	match op {
 		RegistryDelta::AddNode { id, node } => {
-			priors.push(network_field(registry, node.network, || NetworkField::Presence));
+			priors.push(network_field(registry, node.network, |_| NetworkField::Presence));
 			priors.push(whole_node(registry, *id));
 		}
 		RegistryDelta::RemoveNode { id, .. } => priors.push(whole_node(registry, *id)),
@@ -126,7 +124,7 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 		}
 		RegistryDelta::SetNodeImplementation { id, implementation } => {
 			if let Implementation::Network(network) = implementation {
-				priors.push(network_field(registry, *network, || NetworkField::Presence));
+				priors.push(network_field(registry, *network, |_| NetworkField::Presence));
 			}
 			priors.push(node_field(registry, *id, |node| NodeField::Implementation {
 				previous: node.implementation.clone(),
@@ -145,20 +143,21 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 			})
 		})),
 		RegistryDelta::SetNetworkExport { id, export, .. } => {
-			let exports = registry.networks.get(id).map(|network| network.exports.clone()).unwrap_or_default();
-			priors.push(network_field(registry, *id, || NetworkField::Exports { previous: exports }));
+			priors.push(network_field(registry, *id, |network| NetworkField::Exports { previous: network.exports.clone() }));
 			priors.extend(export.as_ref().and_then(node_input).map(|referenced| node_field(registry, referenced, |_| NodeField::Presence)));
 		}
 		RegistryDelta::AddNetwork { id, .. } | RegistryDelta::RemoveNetwork { id, .. } => priors.push(whole_network(registry, *id)),
 		RegistryDelta::ChangeNetworkAttribute { id, delta } => {
-			let previous = registry.networks.get(id).and_then(|network| network.attributes.get(&delta.key).cloned());
-			priors.push(network_field(registry, *id, || NetworkField::Attribute { key: delta.key.clone(), previous }));
+			priors.push(network_field(registry, *id, |network| NetworkField::Attribute {
+				key: delta.key.clone(),
+				previous: network.attributes.get(&delta.key).cloned(),
+			}));
 		}
 		RegistryDelta::AddResource { id, .. }
 		| RegistryDelta::RemoveResource { id, .. }
 		| RegistryDelta::SetResourceHash { id, .. }
 		| RegistryDelta::AddSource { id, .. }
-		| RegistryDelta::RemoveSource { id, .. } => priors.push(Prior::Resource {
+		| RegistryDelta::RemoveSource { id, .. } => priors.push(Prior::WholeResource {
 			id: *id,
 			live: registry.resources.get(id).cloned(),
 			removed: registry.removed_resources.get(id).cloned(),
@@ -180,15 +179,18 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 pub(crate) fn restore(registry: &mut Registry, priors: &[Prior]) {
 	for prior in priors.iter().rev() {
 		match prior {
-			Prior::Node { id, live, removed } => put_whole(&mut registry.node_instances, &mut registry.removed_nodes, *id, live, removed),
-			Prior::Network { id, live, removed } => put_whole(&mut registry.networks, &mut registry.removed_networks, *id, live, removed),
-			Prior::Resource { id, live, removed } => put_whole(&mut registry.resources, &mut registry.removed_resources, *id, live, removed),
+			Prior::WholeNode { id, live, removed } => put_whole(&mut registry.node_instances, &mut registry.removed_nodes, *id, live.as_ref(), removed.as_ref()),
+			Prior::WholeNetwork { id, live, removed } => put_whole(&mut registry.networks, &mut registry.removed_networks, *id, live.as_ref(), removed.as_ref()),
+			Prior::WholeResource { id, live, removed } => put_whole(&mut registry.resources, &mut registry.removed_resources, *id, live.as_ref(), removed.as_ref()),
 			Prior::NodeField { id, presence, field } => {
-				let Some(node) = registry.node_instances.get_mut(id) else { continue };
+				let Some(node) = registry.node_instances.get_mut(id) else {
+					debug_assert!(false, "a field prior is taken from a live node, which the later priors put back");
+					continue;
+				};
 				node.presence = *presence;
 				match field {
 					NodeField::Presence => {}
-					NodeField::Attribute { key, previous } => put_attribute(&mut node.attributes, key, previous),
+					NodeField::Attribute { key, previous } => put_attribute(&mut node.attributes, key, previous.as_ref()),
 					NodeField::Input { index, previous } => {
 						if let Some(slot) = node.inputs.get_mut(*index as usize) {
 							*slot = previous.clone();
@@ -196,7 +198,7 @@ pub(crate) fn restore(registry: &mut Registry, priors: &[Prior]) {
 					}
 					NodeField::InputAttribute { index, key, previous } => {
 						if let Some(slot) = node.inputs.get_mut(*index as usize) {
-							put_attribute(&mut slot.attributes, key, previous);
+							put_attribute(&mut slot.attributes, key, previous.as_ref());
 						}
 					}
 					NodeField::Inputs { previous, inputs_timestamp } => {
@@ -210,15 +212,18 @@ pub(crate) fn restore(registry: &mut Registry, priors: &[Prior]) {
 				}
 			}
 			Prior::NetworkField { id, presence, field } => {
-				let Some(network) = registry.networks.get_mut(id) else { continue };
+				let Some(network) = registry.networks.get_mut(id) else {
+					debug_assert!(false, "a field prior is taken from a live network, which the later priors put back");
+					continue;
+				};
 				network.presence = *presence;
 				match field {
 					NetworkField::Presence => {}
-					NetworkField::Attribute { key, previous } => put_attribute(&mut network.attributes, key, previous),
+					NetworkField::Attribute { key, previous } => put_attribute(&mut network.attributes, key, previous.as_ref()),
 					NetworkField::Exports { previous } => network.exports = previous.clone(),
 				}
 			}
-			Prior::DocumentAttribute { key, previous } => put_attribute(&mut registry.attributes, key, previous),
+			Prior::DocumentAttribute { key, previous } => put_attribute(&mut registry.attributes, key, previous.as_ref()),
 			Prior::PeerUser { peer, previous } => match previous {
 				Some(registration) => _ = registry.peer_users.insert(*peer, *registration),
 				None => _ = registry.peer_users.remove(peer),
@@ -228,7 +233,7 @@ pub(crate) fn restore(registry: &mut Registry, priors: &[Prior]) {
 }
 
 fn whole_node(registry: &Registry, id: NodeId) -> Prior {
-	Prior::Node {
+	Prior::WholeNode {
 		id,
 		live: registry.node_instances.get(&id).cloned(),
 		removed: registry.removed_nodes.get(&id).cloned(),
@@ -236,15 +241,14 @@ fn whole_node(registry: &Registry, id: NodeId) -> Prior {
 }
 
 fn whole_network(registry: &Registry, id: NetworkId) -> Prior {
-	Prior::Network {
+	Prior::WholeNetwork {
 		id,
 		live: registry.networks.get(&id).cloned(),
 		removed: registry.removed_networks.get(&id).cloned(),
 	}
 }
 
-/// One field of a live node; anything else, a write that lands on a tombstone or a placeholder, records the
-/// whole entity.
+/// One field of a live node; a write landing on a tombstone or placeholder records the whole entity instead.
 fn node_field(registry: &Registry, id: NodeId, field: impl FnOnce(&Node) -> NodeField) -> Prior {
 	match registry.node_instances.get(&id) {
 		Some(node) => Prior::NodeField {
@@ -256,12 +260,12 @@ fn node_field(registry: &Registry, id: NodeId, field: impl FnOnce(&Node) -> Node
 	}
 }
 
-fn network_field(registry: &Registry, id: NetworkId, field: impl FnOnce() -> NetworkField) -> Prior {
+fn network_field(registry: &Registry, id: NetworkId, field: impl FnOnce(&Network) -> NetworkField) -> Prior {
 	match registry.networks.get(&id) {
 		Some(network) => Prior::NetworkField {
 			id,
 			presence: network.presence,
-			field: field(),
+			field: field(network),
 		},
 		None => whole_network(registry, id),
 	}
@@ -278,7 +282,7 @@ fn input_field(node: &Node, index: u32, field: impl FnOnce(&InputSlot) -> NodeFi
 	}
 }
 
-fn put_whole<K: Hash + Eq + Copy, T: Clone>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, was_live: &Option<T>, was_removed: &Option<Tombstone<T>>) {
+fn put_whole<K: Hash + Eq + Copy, T: Clone>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, was_live: Option<&T>, was_removed: Option<&Tombstone<T>>) {
 	match was_live {
 		Some(content) => _ = live.insert(id, content.clone()),
 		None => _ = live.remove(&id),
@@ -289,7 +293,7 @@ fn put_whole<K: Hash + Eq + Copy, T: Clone>(live: &mut HashMap<K, T>, dead: &mut
 	}
 }
 
-fn put_attribute(attributes: &mut crate::Attributes, key: &str, previous: &Option<AttributeValue>) {
+fn put_attribute(attributes: &mut crate::Attributes, key: &str, previous: Option<&AttributeValue>) {
 	match previous {
 		Some(value) => _ = attributes.insert(key.to_string(), value.clone()),
 		None => _ = attributes.remove(key),

@@ -3,7 +3,7 @@
 //!
 //! Over-approximate on purpose: an op is recorded whether or not it changed anything, and the mirror
 //! settles the outcome by comparing each entity's stored and mirrored forms. That is cheaper than having
-//! every apply arm report its outcome, and stays correct when an op resurrects an entity it only references.
+//! every apply arm report its outcome, and stays correct when an op revives an entity it only references.
 
 use std::collections::BTreeSet;
 
@@ -19,7 +19,7 @@ pub struct Touched {
 
 impl Touched {
 	/// Records every entity `op` names: its target, and any node it references, since applying it can
-	/// resurrect a referenced node that was concurrently removed.
+	/// revive a referenced node that was concurrently removed.
 	pub fn record(&mut self, op: &RegistryDelta) {
 		match op {
 			RegistryDelta::AddNode { id, node } => {

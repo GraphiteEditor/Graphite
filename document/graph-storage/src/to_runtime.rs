@@ -463,8 +463,7 @@ fn convert_node(
 fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
 		NodeInput::Node { id: node_id, index: output_index } => {
-			// A node removed concurrently keeps its id, as the editor holds a dangling input; only a node
-			// never seen has no id to map to.
+			// A node removed concurrently keeps its id, as the editor holds a dangling input.
 			let referenced = registry.node_or_removed(*node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
 
 			// Runtime references are local to one network. A cross-network reference would remap to a

@@ -8,7 +8,7 @@ pub mod history;
 mod history_metadata;
 pub mod ids;
 pub mod model;
-pub mod prior;
+mod prior;
 pub mod registry;
 pub mod resources;
 pub mod session;
@@ -52,4 +52,5 @@ mod tests {
 	mod crdt;
 	mod projection;
 	mod round_trip;
+	mod sessions;
 }

@@ -22,10 +22,9 @@ fn network_with_one_node() -> NodeNetwork {
 	}
 }
 
-/// A whole-document stage after a recorded batch must not restate the batch, which failed on the node the batch
-/// added and kept failing, so no later edit reached storage.
+/// A whole-document stage after a recorded batch stages nothing new: restating the batch would fail on the node it added.
 #[test]
-fn a_whole_document_stage_after_a_recorded_batch_stages_nothing_new() {
+fn restaging_the_whole_document_after_a_batch_stages_nothing() {
 	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(21), UserId(21), 1, "ed".into(), "std".into()).unwrap();
 	let store = HashMapResourceStorage::new();
 	let resources = ResourceRegistry::new();
@@ -70,8 +69,7 @@ fn a_reopen_keeps_unretired_hot_ops_out_of_the_retired_snapshot() {
 	});
 }
 
-/// A reopen continues this peer's run of hot op sequences, both with ops still hot and after they all retired, since
-/// a reused sequence would let a peer's retirement marks drop the new op.
+/// A reused sequence would let a peer's settled marks drop the new op.
 #[test]
 fn a_reopen_continues_the_hot_op_sequence() {
 	use document_graph_storage::{AttributeDelta, RegistryDelta, Value};
@@ -94,9 +92,11 @@ fn a_reopen_continues_the_hot_op_sequence() {
 
 		let up_to = reopened.session().hot_log().last().unwrap().timestamp;
 		reopened.retire(up_to).unwrap();
-		let last = reopened.session().next_hot_sequence();
+		let last = reopened.session().last_hot_sequence();
+		let clock = reopened.session().clock_counter();
 		let (working, layout) = reopened.into_storage();
 		let mut reopened = GddV1::open_in(working, layout).await.unwrap();
+		assert_eq!(reopened.session().clock_counter(), clock, "the clock carries over");
 		assert_eq!(reopened.stage_ops([set(4)]).unwrap()[0].sequence.0, last.0 + 1);
 	});
 }

@@ -461,7 +461,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 
 	Ok(Node {
 		presence: timestamp,
-		added: timestamp,
+		network_timestamp: timestamp,
 		inputs_timestamp: timestamp,
 		implementation,
 		implementation_timestamp: timestamp,

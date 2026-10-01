@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use crate::{
 	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId,
-	NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, Rev, SettledHotOps, SourceValue, TimeStamp, Tombstone, UserId, apply_attribute_delta,
+	NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, Rev, SettledMarks, SourceValue, TimeStamp, Tombstone, UserId, apply_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -17,13 +17,12 @@ pub struct Document {
 	pub(crate) hot_log: Vec<HotOp>,
 	/// The stamps of the hot log's ops, so a re-announced op is recognised without a scan.
 	pub(crate) hot_timestamps: HashSet<TimeStamp>,
-	/// Which hot ops are done with, retired into history or taken back by their author, so a late copy is dropped;
-	/// retired deltas keep no link back to their hot ops.
-	pub(crate) settled: SettledHotOps,
+	/// Which hot ops are done with (retired, or taken back by their author), so a late copy is dropped.
+	pub(crate) settled: SettledMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
-	/// hot-polluted working state) and advances it. It agrees with the working registry by value whenever
-	/// the hot log is empty.
+	/// hot-polluted working state) and advances it. It equals the working registry whenever the hot log is
+	/// empty.
 	pub(crate) retired_snapshot: Registry,
 	/// User's cursor in their local history chain. `None` on an empty document (no commits yet).
 	pub(crate) head: Option<Rev>,
@@ -36,20 +35,17 @@ pub struct Document {
 	pub(crate) peer: PeerId,
 	/// The person behind this peer; what `RegisterPeer` records for it.
 	pub(crate) user: UserId,
-	/// Latest retired commit on the local chain that has been broadcast to at least one peer.
-	/// Commits after this can be rewritten silently; commits at or before this are published
-	/// and require forward reverse-delta ops to undo. `None` means nothing broadcast yet.
+	/// The latest retired commit a peer holds: commits after it undo silently, commits up to it stay.
 	pub(crate) last_broadcast_rev: Option<Rev>,
 	/// Shared-monotonic counter feeding `next_node_id`. Bumped on every mint regardless of which
 	/// peer is calling; collision avoidance comes from hashing `(self.peer, counter)`, so two peers
 	/// reading the same counter still produce distinct IDs.
 	pub(crate) next_node_counter: u64,
 	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
-	pub(crate) next_hot_sequence: HotSequence,
+	pub(crate) last_hot_sequence: HotSequence,
 }
 
 impl Document {
-	/// An empty document for `peer`, at the origin of its clock.
 	pub(crate) fn empty(peer: PeerId, user: UserId) -> Self {
 		Self {
 			working_registry: Registry::default(),
@@ -57,7 +53,7 @@ impl Document {
 			history: History::new(),
 			hot_log: Vec::new(),
 			hot_timestamps: HashSet::new(),
-			settled: SettledHotOps::default(),
+			settled: SettledMarks::default(),
 			head: None,
 			redo_stack: Vec::new(),
 			clock: LamportClock::new(peer),
@@ -65,7 +61,7 @@ impl Document {
 			user,
 			last_broadcast_rev: None,
 			next_node_counter: 0,
-			next_hot_sequence: HotSequence::NONE,
+			last_hot_sequence: HotSequence::NONE,
 		}
 	}
 
@@ -81,8 +77,7 @@ impl Document {
 		NodeId(u64::from_le_bytes(truncated))
 	}
 
-	/// Put back what a delta overwrote in the retired snapshot (silent-zone undo), leaving it as folding history up
-	/// to the delta's parent would. The working registry follows: it is the same registry when nothing is hot.
+	/// Undo `delta` by putting back what it overwrote: in the snapshot, and in the working registry when nothing is hot.
 	pub(crate) fn revert_delta(&mut self, delta: &Delta) {
 		crate::prior::restore(&mut self.retired_snapshot, &delta.reverse);
 		if self.hot_log.is_empty() {
@@ -90,30 +85,25 @@ impl Document {
 		}
 	}
 
-	/// Apply a locally staged op: LWW into the registry, append to the hot log, leave history and `head`
-	/// alone. Skips the retirement check, so staging never silently drops local work; outside callers use
-	/// [`Session::apply_hot_op`](crate::Session::apply_hot_op).
-	pub(crate) fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.apply_op(hot_op.op.clone(), hot_op.timestamp)?;
+	/// Stage a local op onto the working registry and the hot log, skipping the settled check so local work is never dropped.
+	pub(crate) fn stage_hot_op(&mut self, hot_op: HotOp, mode: ApplyMode) -> Result<(), CrdtError> {
+		self.apply_op_with(RegistryTarget::Working, hot_op.op.clone(), hot_op.timestamp, mode)?;
 		self.hot_timestamps.insert(hot_op.timestamp);
 		self.hot_log.push(hot_op);
 		Ok(())
 	}
 
-	/// Replay a hot op recovered from persisted state or received from a peer. Replaying one already
-	/// reflected in the registry changes nothing.
+	/// Replay a persisted or received hot op. One already settled or held changes nothing.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		// Re-adding a settled op would leave a hot log entry no retirement will ever name.
 		if self.settled.covers(hot_op.id()) {
 			return Ok(());
 		}
-		// A re-announcement of a held op must not become a second copy.
 		if self.hot_timestamps.contains(&hot_op.timestamp) {
 			return Ok(());
 		}
-		// Replaying our own ops is what carries the sequence counter across a reload.
+		// Our own ops raise the sequence counter too, should the persisted one lag.
 		if hot_op.timestamp.peer == self.peer {
-			self.next_hot_sequence = self.next_hot_sequence.max(hot_op.sequence);
+			self.last_hot_sequence = self.last_hot_sequence.max(hot_op.sequence);
 		}
 
 		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
@@ -129,7 +119,7 @@ impl Document {
 	}
 
 	/// Take on a peer's marks as well as this peer's. Returns what the dropped ops named.
-	pub(crate) fn absorb_settled(&mut self, remote: &SettledHotOps) -> crate::Touched {
+	pub(crate) fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> crate::Touched {
 		self.settled.absorb(remote);
 		self.drop_settled_hot_ops()
 	}
@@ -157,19 +147,17 @@ impl Document {
 		self.hot_timestamps = self.hot_log.iter().map(|hot_op| hot_op.timestamp).collect();
 	}
 
-	/// Re-derive the working registry as the retired snapshot plus every hot op, for a change that cannot
-	/// be applied in place. O(N + L), for rare paths only.
+	/// Re-derive working as the snapshot plus every hot op, for a change that cannot apply in place. O(registry), so rare.
 	pub(crate) fn rebuild_working(&mut self) {
 		self.working_registry = self.retired_snapshot.clone();
 		for hot_op in std::mem::take(&mut self.hot_log) {
-			// Nothing is deferred, so this cannot fail on a referent; don't strand the op over anything else.
+			// No op fails on a referent, and one failing otherwise must not be lost.
 			let _ = self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp);
 			self.hot_log.push(hot_op);
 		}
 	}
 
-	/// Drop settled hot ops and re-derive the working registry without them. Whether an op retired or was taken
-	/// back needs no telling apart: a retired op's effect comes back through its delta, a retracted one's stays gone.
+	/// Drop settled hot ops and re-derive working without them: a retired op's effect returns with its delta.
 	fn drop_settled_hot_ops(&mut self) -> crate::Touched {
 		let settled = &self.settled;
 		let dropped: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| settled.covers(hot_op.id())).collect();
@@ -198,20 +186,21 @@ impl Document {
 	fn registry_mut(&mut self, target: RegistryTarget) -> &mut Registry {
 		match target {
 			RegistryTarget::Working => &mut self.working_registry,
-			RegistryTarget::Snapshot => &mut self.retired_snapshot,
+			RegistryTarget::Retired => &mut self.retired_snapshot,
 		}
 	}
 
 	pub(crate) fn registry_ref(&self, target: RegistryTarget) -> &Registry {
 		match target {
 			RegistryTarget::Working => &self.working_registry,
-			RegistryTarget::Snapshot => &self.retired_snapshot,
+			RegistryTarget::Retired => &self.retired_snapshot,
 		}
 	}
 
-	/// A fresh local edit against the working registry; see [`ApplyMode::Live`].
+	/// A fresh local edit against the working registry; see [`ApplyMode::Strict`].
+	#[cfg(test)]
 	pub(crate) fn apply_op(&mut self, op: RegistryDelta, timestamp: TimeStamp) -> Result<(), CrdtError> {
-		self.apply_op_with(RegistryTarget::Working, op, timestamp, ApplyMode::Live)
+		self.apply_op_with(RegistryTarget::Working, op, timestamp, ApplyMode::Strict)
 	}
 
 	/// An op from a peer or from persisted state, against the working registry.
@@ -219,33 +208,27 @@ impl Document {
 		self.apply_op_with(RegistryTarget::Working, op, timestamp, ApplyMode::Idempotent)
 	}
 
-	/// Applies one op. Every field of the registry is last-writer-wins on a timestamp, whether an entity
-	/// exists included, so the registry folds to the same values whatever order the ops land in:
-	///
-	/// - An addition writes every field of the entity at its stamp, and is evidence it exists from then.
-	/// - A removal is evidence the entity does not exist from its stamp. Its content stays as a tombstone,
-	///   and the removal's snapshot folds in like any other write.
-	/// - A write, or a reference from another entity's op, is evidence the entity exists at its stamp, so it
-	///   revives an older removal; an older write lands on the tombstone, for a later revival to see.
-	/// - A write to an entity never seen lands on a placeholder until its addition arrives; see [`write()`].
+	/// Applies one op. Every field, existence included, is last-writer-wins on a timestamp, so ops fold alike in any order:
+	/// an addition writes every field, a removal keeps the content as a tombstone, a newer write or reference revives an
+	/// older removal, and a write to an entity never seen lands on a placeholder until its addition arrives.
 	pub(crate) fn apply_op_with(&mut self, target: RegistryTarget, op: RegistryDelta, timestamp: TimeStamp, mode: ApplyMode) -> Result<(), CrdtError> {
 		// Advance the local clock past every observed op, including ones that subsequently no-op or
 		// error. Observation is about causality knowledge, not about whether the op took effect.
 		self.clock.observe(timestamp);
 
-		let live = mode == ApplyMode::Live;
+		let strict = mode == ApplyMode::Strict;
 
 		let registry = self.registry_mut(target);
 		match op {
 			RegistryDelta::AddNode { id, node } => {
-				if live && registry.node_instances.contains_key(&id) {
+				if strict && registry.node_instances.contains_key(&id) {
 					return Err(CrdtError::NodeAlreadyExists(id));
 				}
 				write_network(registry, node.network, timestamp, mode, |_| Ok(()))?;
-				add(&mut registry.node_instances, &mut registry.removed_nodes, id, node, timestamp);
+				add_entity(&mut registry.node_instances, &mut registry.removed_nodes, id, node, timestamp);
 			}
 			RegistryDelta::RemoveNode { id, snapshot } => {
-				remove(&mut registry.node_instances, &mut registry.removed_nodes, id, snapshot, timestamp);
+				remove_entity(&mut registry.node_instances, &mut registry.removed_nodes, id, snapshot, timestamp);
 			}
 			RegistryDelta::SetNodeInputs { id, mut inputs } => {
 				inputs.iter_mut().for_each(|slot| stamp_slot(slot, timestamp));
@@ -256,6 +239,7 @@ impl Document {
 						_ => None,
 					})
 					.collect();
+				ensure_seen(registry, &referenced, mode)?;
 				write_node(registry, id, timestamp, mode, |node| {
 					merge_inputs(node, inputs, timestamp);
 					Ok(())
@@ -269,6 +253,7 @@ impl Document {
 					NodeInput::Node { id, .. } => Some(id),
 					_ => None,
 				};
+				ensure_seen(registry, referenced.as_slice(), mode)?;
 				write_node(registry, id, timestamp, mode, |node| {
 					let Some(input) = slot_for_write(node, index as usize, timestamp, mode)? else { return Ok(()) };
 					if timestamp > input.timestamp {
@@ -282,6 +267,7 @@ impl Document {
 				}
 			}
 			RegistryDelta::SetNodeImplementation { id, implementation } => {
+				ensure_seen(registry, &[id], mode)?;
 				if let Implementation::Network(network) = implementation {
 					write_network(registry, network, timestamp, mode, |_| Ok(()))?;
 				}
@@ -311,6 +297,7 @@ impl Document {
 					Some(NodeInput::Node { id, .. }) => Some(id),
 					_ => None,
 				};
+				ensure_seen(registry, referenced.as_slice(), mode)?;
 				write_network(registry, id, timestamp, mode, |net| {
 					let slot_idx = index as usize;
 					if slot_idx >= net.exports.len() {
@@ -332,13 +319,13 @@ impl Document {
 				}
 			}
 			RegistryDelta::AddNetwork { id, network } => {
-				if live && registry.networks.contains_key(&id) {
+				if strict && registry.networks.contains_key(&id) {
 					return Err(CrdtError::NetworkAlreadyExists(id));
 				}
-				add(&mut registry.networks, &mut registry.removed_networks, id, network, timestamp);
+				add_entity(&mut registry.networks, &mut registry.removed_networks, id, network, timestamp);
 			}
 			RegistryDelta::RemoveNetwork { id, snapshot } => {
-				remove(&mut registry.networks, &mut registry.removed_networks, id, snapshot, timestamp);
+				remove_entity(&mut registry.networks, &mut registry.removed_networks, id, snapshot, timestamp);
 			}
 			RegistryDelta::ChangeNetworkAttribute { id, delta } => {
 				write_network(registry, id, timestamp, mode, |net| {
@@ -347,7 +334,7 @@ impl Document {
 				})?;
 			}
 			RegistryDelta::SetResourceHash { id, hash } => {
-				upsert_resource(registry, id, timestamp, mode, |entry| {
+				upsert_resource(registry, id, timestamp, |entry| {
 					if timestamp > entry.hash_timestamp {
 						entry.hash = hash;
 						entry.hash_timestamp = timestamp;
@@ -355,27 +342,27 @@ impl Document {
 				});
 			}
 			RegistryDelta::AddSource { id, key, source } => {
-				upsert_resource(registry, id, timestamp, mode, |entry| {
+				upsert_resource(registry, id, timestamp, |entry| {
 					let value = SourceValue { source, timestamp, deleted: false };
 					entry.set_source(key, value);
 				});
 			}
 			RegistryDelta::RemoveSource { id, key } => {
 				// An upsert, so a removal for an entry never seen leaves a tombstone its addition loses to.
-				upsert_resource(registry, id, timestamp, mode, |entry| {
+				upsert_resource(registry, id, timestamp, |entry| {
 					entry.remove_source(&key, timestamp);
 				});
 			}
 			RegistryDelta::AddResource { id, entry } => {
-				add(&mut registry.resources, &mut registry.removed_resources, id, entry, timestamp);
+				add_entity(&mut registry.resources, &mut registry.removed_resources, id, entry, timestamp);
 			}
 			RegistryDelta::RemoveResource { id, snapshot } => {
-				remove(&mut registry.resources, &mut registry.removed_resources, id, snapshot, timestamp);
+				remove_entity(&mut registry.resources, &mut registry.removed_resources, id, snapshot, timestamp);
 			}
 			RegistryDelta::RegisterPeer { peer, user } => {
 				// The newest registration of a device wins, whatever order they land in.
-				if registry.peer_users.get(&peer).is_none_or(|existing| timestamp > existing.at) {
-					registry.peer_users.insert(peer, PeerRegistration { user, at: timestamp });
+				if registry.peer_users.get(&peer).is_none_or(|existing| timestamp > existing.timestamp) {
+					registry.peer_users.insert(peer, PeerRegistration { user, timestamp });
 				}
 			}
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
@@ -389,41 +376,40 @@ impl Document {
 }
 
 /// An entity whose existence and every field are last-writer-wins on a timestamp.
-pub(crate) trait Presence: Sized {
+pub(crate) trait Entity: Sized {
 	/// The newest stamp of an addition or a write: the latest evidence the entity exists.
 	fn presence(&self) -> TimeStamp;
-	fn set_presence(&mut self, at: TimeStamp);
-	/// Stamps every field at `at`, the way an addition writes all of them.
-	fn stamp_all(&mut self, at: TimeStamp);
+	fn set_presence(&mut self, timestamp: TimeStamp);
+	/// Stamps every field at `timestamp`, the way an addition writes all of them.
+	fn stamp_all(&mut self, timestamp: TimeStamp);
 	/// Folds `other` in, keeping whichever value of each field is newer.
 	fn merge(&mut self, other: Self);
-	/// Dead content for an entity nothing has added yet, for writes to land on until an addition comes.
-	/// Every field is at the origin, so the addition's values win.
+	/// Content for writes to land on before the addition, every field at the origin so the addition's win.
 	fn placeholder() -> Self;
 }
 
-impl Presence for Node {
+impl Entity for Node {
 	fn presence(&self) -> TimeStamp {
 		self.presence
 	}
-	fn set_presence(&mut self, at: TimeStamp) {
-		self.presence = at;
+	fn set_presence(&mut self, timestamp: TimeStamp) {
+		self.presence = timestamp;
 	}
 	fn placeholder() -> Self {
 		Node::new(crate::ROOT_NETWORK, Implementation::ProtoNode(ResourceId::from(0)), 0)
 	}
-	fn stamp_all(&mut self, at: TimeStamp) {
-		self.presence = at;
-		self.added = at;
-		self.inputs_timestamp = at;
-		self.implementation_timestamp = at;
-		self.inputs.iter_mut().for_each(|slot| stamp_slot(slot, at));
-		stamp_attributes(&mut self.attributes, &mut self.attributes_timestamp, at);
+	fn stamp_all(&mut self, timestamp: TimeStamp) {
+		self.presence = timestamp;
+		self.network_timestamp = timestamp;
+		self.inputs_timestamp = timestamp;
+		self.implementation_timestamp = timestamp;
+		self.inputs.iter_mut().for_each(|slot| stamp_slot(slot, timestamp));
+		stamp_attributes(&mut self.attributes, &mut self.attributes_timestamp, timestamp);
 	}
 	fn merge(&mut self, other: Self) {
-		if other.added > self.added {
+		if other.network_timestamp > self.network_timestamp {
 			self.network = other.network;
-			self.added = other.added;
+			self.network_timestamp = other.network_timestamp;
 		}
 		if other.implementation_timestamp > self.implementation_timestamp {
 			self.implementation = other.implementation;
@@ -435,20 +421,20 @@ impl Presence for Node {
 	}
 }
 
-impl Presence for Network {
+impl Entity for Network {
 	fn presence(&self) -> TimeStamp {
 		self.presence
 	}
-	fn set_presence(&mut self, at: TimeStamp) {
-		self.presence = at;
+	fn set_presence(&mut self, timestamp: TimeStamp) {
+		self.presence = timestamp;
 	}
 	fn placeholder() -> Self {
 		Network::default()
 	}
-	fn stamp_all(&mut self, at: TimeStamp) {
-		self.presence = at;
-		self.exports.iter_mut().for_each(|slot| slot.timestamp = at);
-		stamp_attributes(&mut self.attributes, &mut self.attributes_timestamp, at);
+	fn stamp_all(&mut self, timestamp: TimeStamp) {
+		self.presence = timestamp;
+		self.exports.iter_mut().for_each(|slot| slot.timestamp = timestamp);
+		stamp_attributes(&mut self.attributes, &mut self.attributes_timestamp, timestamp);
 	}
 	fn merge(&mut self, other: Self) {
 		let len = self.exports.len().max(other.exports.len());
@@ -463,20 +449,20 @@ impl Presence for Network {
 	}
 }
 
-impl Presence for ResourceEntry {
+impl Entity for ResourceEntry {
 	fn presence(&self) -> TimeStamp {
 		self.presence
 	}
-	fn set_presence(&mut self, at: TimeStamp) {
-		self.presence = at;
+	fn set_presence(&mut self, timestamp: TimeStamp) {
+		self.presence = timestamp;
 	}
 	fn placeholder() -> Self {
 		ResourceEntry::default()
 	}
-	fn stamp_all(&mut self, at: TimeStamp) {
-		self.presence = at;
-		self.hash_timestamp = at;
-		self.stamp_sources(at);
+	fn stamp_all(&mut self, timestamp: TimeStamp) {
+		self.presence = timestamp;
+		self.hash_timestamp = timestamp;
+		self.stamp_sources(timestamp);
 	}
 	fn merge(&mut self, other: Self) {
 		if other.hash_timestamp > self.hash_timestamp {
@@ -488,21 +474,20 @@ impl Presence for ResourceEntry {
 	}
 }
 
-fn stamp_slot(slot: &mut InputSlot, at: TimeStamp) {
-	slot.timestamp = at;
-	stamp_attributes(&mut slot.attributes, &mut slot.attributes_timestamp, at);
+fn stamp_slot(slot: &mut InputSlot, timestamp: TimeStamp) {
+	slot.timestamp = timestamp;
+	stamp_attributes(&mut slot.attributes, &mut slot.attributes_timestamp, timestamp);
 }
 
-/// Writes the map whole at `at`: the floor deletes every other key without a tombstone per key.
-fn stamp_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, at: TimeStamp) {
+/// Writes the map whole at `timestamp`: the floor deletes every other key without a tombstone per key.
+fn stamp_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, timestamp: TimeStamp) {
 	attributes.retain(|_, value| !value.deleted);
-	attributes.values_mut().for_each(|value| value.timestamp = at);
-	*floor = at;
+	attributes.values_mut().for_each(|value| value.timestamp = timestamp);
+	*floor = timestamp;
 }
 
-/// Folds `other` in key by key. A key only one map holds is dead when the other map's floor is newer, since
-/// that map was written whole after it; an entry stamped exactly at a floor was written by that whole-map
-/// write and survives. Where both hold a key, the newer entry wins.
+/// Folds `other` in key by key: the newer entry wins, and a key only one map holds dies if the other map's floor is
+/// newer, as that map was written whole after it.
 fn merge_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, other: Attributes, other_floor: TimeStamp) {
 	attributes.retain(|_, value| value.timestamp >= other_floor);
 	for (key, value) in other {
@@ -517,13 +502,11 @@ fn merge_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, other: A
 	*floor = (*floor).max(other_floor);
 }
 
-/// Folds an input list stamped `at` into the node's. The newer list decides the slot count, except that a
-/// slot written after that shape still exists, with the gap up to it filled by unset slots stamped by the
-/// shape. A slot both lists hold keeps its newer value, and its attributes fold key by key. A whole-list
-/// write and a per-slot write thus land the same in either order.
-fn merge_inputs(node: &mut Node, other: Vec<InputSlot>, at: TimeStamp) {
-	let (mut newer, shape, older) = if at > node.inputs_timestamp {
-		(other, at, std::mem::take(&mut node.inputs))
+/// Folds an input list stamped `timestamp` into the node's: the newer list decides the slot count, a slot written after that
+/// shape survives past it, and a slot both hold keeps its newer value, so list and slot writes land alike in any order.
+fn merge_inputs(node: &mut Node, other: Vec<InputSlot>, timestamp: TimeStamp) {
+	let (mut newer, shape, older) = if timestamp > node.inputs_timestamp {
+		(other, timestamp, std::mem::take(&mut node.inputs))
 	} else {
 		(std::mem::take(&mut node.inputs), node.inputs_timestamp, other)
 	};
@@ -553,15 +536,13 @@ fn slot_newest(slot: &InputSlot) -> TimeStamp {
 		.fold(slot.timestamp.max(slot.attributes_timestamp), TimeStamp::max)
 }
 
-/// The slot at `index` for a write at `at`. A slot past the end comes into being when the write is newer
-/// than the list's shape, as in [`merge_inputs`], and is `None` when the shape is newer. For a fresh local
-/// edit the index is out of bounds.
-fn slot_for_write(node: &mut Node, index: usize, at: TimeStamp, mode: ApplyMode) -> Result<Option<&mut InputSlot>, CrdtError> {
+/// The slot at `index` for a write at `timestamp`; past the end it exists only if the write is newer than the list's shape.
+fn slot_for_write(node: &mut Node, index: usize, timestamp: TimeStamp, mode: ApplyMode) -> Result<Option<&mut InputSlot>, CrdtError> {
 	if index >= node.inputs.len() {
-		if index >= MAX_INPUT_SLOTS || mode == ApplyMode::Live {
+		if index >= MAX_INPUT_SLOTS || mode == ApplyMode::Strict {
 			return Err(CrdtError::InputIndexOutOfBounds(index));
 		}
-		if at <= node.inputs_timestamp {
+		if timestamp <= node.inputs_timestamp {
 			return Ok(None);
 		}
 		let shape = node.inputs_timestamp;
@@ -575,18 +556,17 @@ fn content_mut<'a, K: Hash + Eq + Copy, T>(live: &'a mut HashMap<K, T>, dead: &'
 	live.get_mut(&id).or_else(|| dead.get_mut(&id).map(|mark| &mut mark.content))
 }
 
-/// Brings a removed entity back when its presence has grown past its removal. A placeholder stays dead
-/// whatever its presence.
-fn settle<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K) {
-	if dead.get(&id).is_some_and(|mark| !mark.placeholder && mark.content.presence() > mark.at) {
+/// Revives a removed entity whose presence has grown past its removal. A placeholder stays dead.
+fn revive_if_newer<K: Hash + Eq + Copy, T: Entity>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K) {
+	if dead.get(&id).is_some_and(|mark| !mark.placeholder && mark.content.presence() > mark.timestamp) {
 		let mark = dead.remove(&id).expect("checked above");
 		live.insert(id, mark.content);
 	}
 }
 
-/// Folds `content` into whatever is held under `id`, or holds it as new. Content comes from an addition or
-/// a removal's snapshot, so it proves the entity was added and a placeholder holding it stops being one.
-fn fold<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, content: T) {
+/// Folds an addition's or removal's content into what is held under `id`. It proves the entity was added, so a placeholder
+/// holding it stops being one.
+fn merge_entity<K: Hash + Eq + Copy, T: Entity>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, content: T) {
 	if let Some(mark) = dead.get_mut(&id).filter(|mark| mark.placeholder) {
 		// The placeholder holds only early writes: they land on the real content as if the addition came first.
 		let early = std::mem::replace(&mut mark.content, content);
@@ -597,96 +577,113 @@ fn fold<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut H
 	} else {
 		live.insert(id, content);
 	}
-	settle(live, dead, id);
+	revive_if_newer(live, dead, id);
 }
 
-/// An addition at `at`: every field of `content` is written at `at`, and the entity exists from then
-/// unless a newer removal holds it dead.
-fn add<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, mut content: T, at: TimeStamp) {
-	content.stamp_all(at);
-	fold(live, dead, id, content);
+/// An addition at `timestamp`: every field written at `timestamp`, live unless a newer removal holds it dead.
+fn add_entity<K: Hash + Eq + Copy, T: Entity>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, mut content: T, timestamp: TimeStamp) {
+	content.stamp_all(timestamp);
+	merge_entity(live, dead, id, content);
 }
 
-/// A removal at `at`: the entity is dead from then unless a newer addition or write holds it live. The
-/// snapshot folds in first, so a removal of an entity never seen still lands and its addition loses when
-/// it arrives.
-fn remove<K: Hash + Eq + Copy, T: Presence>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, snapshot: T, at: TimeStamp) {
-	fold(live, dead, id, snapshot);
+/// A removal at `timestamp`: dead unless a newer addition or write holds it live. The snapshot folds in first, so a removal of an
+/// entity never seen still lands.
+fn remove_entity<K: Hash + Eq + Copy, T: Entity>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, snapshot: T, timestamp: TimeStamp) {
+	merge_entity(live, dead, id, snapshot);
 	if let Some(mark) = dead.get_mut(&id) {
-		mark.at = mark.at.max(at);
-	} else if live.get(&id).is_some_and(|content| at > content.presence()) {
+		mark.timestamp = mark.timestamp.max(timestamp);
+	} else if live.get(&id).is_some_and(|content| timestamp > content.presence()) {
 		let content = live.remove(&id).expect("checked above");
-		dead.insert(id, Tombstone { content, at, placeholder: false });
+		dead.insert(
+			id,
+			Tombstone {
+				content,
+				timestamp,
+				placeholder: false,
+			},
+		);
 	}
 }
 
-/// A write at `at` to the entity under `id`, applied by `write` to its content wherever it sits. The
-/// write is evidence the entity exists at `at`, so it revives an older removal. A write to an entity
-/// never seen lands on a placeholder tombstone that stays dead until an addition folds into it, so ops
-/// land the same in any order and nothing is deferred. For a fresh local edit the entity is `missing()`.
-fn write<K: Hash + Eq + Copy, T: Presence>(
+/// A write at `timestamp` to the entity under `id`, wherever its content sits: it revives an older removal, and lands on a
+/// placeholder for an entity never seen. A fresh local edit on one gets `missing()` instead.
+fn write_entity<K: Hash + Eq + Copy, T: Entity>(
 	live: &mut HashMap<K, T>,
 	dead: &mut HashMap<K, Tombstone<T>>,
 	id: K,
-	at: TimeStamp,
+	timestamp: TimeStamp,
 	mode: ApplyMode,
 	missing: impl FnOnce() -> CrdtError,
-	write: impl FnOnce(&mut T) -> Result<(), CrdtError>,
+	f: impl FnOnce(&mut T) -> Result<(), CrdtError>,
 ) -> Result<(), CrdtError> {
 	let unseen = !live.contains_key(&id) && !dead.contains_key(&id);
 	if unseen {
-		if mode == ApplyMode::Live {
+		if mode == ApplyMode::Strict {
 			return Err(missing());
 		}
 		dead.insert(
 			id,
 			Tombstone {
 				content: T::placeholder(),
-				at: TimeStamp::ORIGIN,
+				timestamp: TimeStamp::ORIGIN,
 				placeholder: true,
 			},
 		);
 	}
 	let content = content_mut(live, dead, id).expect("held above");
-	if let Err(error) = write(content) {
+	if let Err(error) = f(content) {
 		// A rejected op changes nothing, so the placeholder made for it goes too.
 		if unseen {
 			dead.remove(&id);
 		}
 		return Err(error);
 	}
-	content.set_presence(content.presence().max(at));
-	settle(live, dead, id);
+	content.set_presence(content.presence().max(timestamp));
+	revive_if_newer(live, dead, id);
 	Ok(())
 }
 
-/// [`write()`] to a node; with a no-op `f`, records a reference to it.
-fn write_node(registry: &mut Registry, id: NodeId, at: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut Node) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
-	write(&mut registry.node_instances, &mut registry.removed_nodes, id, at, mode, || CrdtError::TargetNodeDoesNotExist(id), f)
+/// A fresh local edit cannot name a node never seen. Checked before an op's first write, so a refused op changes nothing.
+fn ensure_seen(registry: &Registry, ids: &[NodeId], mode: ApplyMode) -> Result<(), CrdtError> {
+	let unseen = |id: &&NodeId| !registry.node_instances.contains_key(id) && !registry.removed_nodes.contains_key(id);
+	match ids.iter().find(unseen) {
+		Some(&id) if mode == ApplyMode::Strict => Err(CrdtError::TargetNodeDoesNotExist(id)),
+		_ => Ok(()),
+	}
 }
 
-fn write_network(registry: &mut Registry, id: NetworkId, at: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut Network) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
-	write(&mut registry.networks, &mut registry.removed_networks, id, at, mode, || CrdtError::NetworkDoesNotExist(id), f)
+/// [`write_entity()`] to a node; with a no-op `f`, records a reference to it.
+fn write_node(registry: &mut Registry, id: NodeId, timestamp: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut Node) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
+	write_entity(
+		&mut registry.node_instances,
+		&mut registry.removed_nodes,
+		id,
+		timestamp,
+		mode,
+		|| CrdtError::TargetNodeDoesNotExist(id),
+		f,
+	)
 }
 
-/// Like [`write()`] for a resource, except that an entry never seen is created first, since single-field
-/// resource ops are upserts. Every other field starts at the origin, so a later addition fills them in.
-fn upsert_resource(registry: &mut Registry, id: ResourceId, at: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut ResourceEntry)) {
+fn write_network(registry: &mut Registry, id: NetworkId, timestamp: TimeStamp, mode: ApplyMode, f: impl FnOnce(&mut Network) -> Result<(), CrdtError>) -> Result<(), CrdtError> {
+	write_entity(&mut registry.networks, &mut registry.removed_networks, id, timestamp, mode, || CrdtError::NetworkDoesNotExist(id), f)
+}
+
+/// [`write_entity()`] for a resource, creating an entry never seen first, since single-field resource ops are upserts.
+fn upsert_resource(registry: &mut Registry, id: ResourceId, timestamp: TimeStamp, f: impl FnOnce(&mut ResourceEntry)) {
 	if !registry.resources.contains_key(&id) && !registry.removed_resources.contains_key(&id) {
 		registry.resources.insert(
 			id,
 			ResourceEntry {
-				presence: at,
+				presence: timestamp,
 				..ResourceEntry::default()
 			},
 		);
 	}
-	let missing = || CrdtError::ResourceDoesNotExist(id);
-	write(&mut registry.resources, &mut registry.removed_resources, id, at, mode, missing, |entry| {
-		f(entry);
-		Ok(())
-	})
-	.expect("added above");
+	let entry = content_mut(&mut registry.resources, &mut registry.removed_resources, id).expect("held above");
+	f(entry);
+	entry.set_presence(entry.presence().max(timestamp));
+	revive_if_newer(&mut registry.resources, &mut registry.removed_resources, id);
 }
 
 /// Which of a [`Document`]'s two registries an apply targets: the working copy (retired state plus
@@ -695,15 +692,14 @@ fn upsert_resource(registry: &mut Registry, id: ResourceId, at: TimeStamp, mode:
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RegistryTarget {
 	Working,
-	Snapshot,
+	Retired,
 }
 
 /// How [`Document::apply_op_with`] treats what it finds.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ApplyMode {
-	/// A fresh local edit: adding what exists, or writing to what was never seen, is an error, since a local
-	/// edit cannot mean either.
-	Live,
+	/// A fresh local edit: adding what exists or writing to what was never seen is an error.
+	Strict,
 	/// An op from a peer or from persisted state: every arm is a timestamp comparison.
 	Idempotent,
 }

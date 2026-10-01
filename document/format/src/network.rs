@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, Rev, Session, SettledHotOps, Touched, UserId};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, Rev, Session, SettledMarks, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -170,8 +170,11 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		self.session.delta(rev).is_some()
 	}
 
-	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta> {
-		<Session as SyncTarget>::deltas_unknown_to(&self.session, known)
+	fn deltas_unknown_to(&mut self, known: &[Rev]) -> Vec<Delta> {
+		let deltas = <Session as SyncTarget>::deltas_unknown_to(&mut self.session, known);
+		// The published frontier moved; it persists with the session state.
+		self.pending_persist.snapshot |= !deltas.is_empty();
+		deltas
 	}
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
@@ -189,7 +192,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		// An op naming an entity not yet here is handed back for retry; only applied ops reach the hot frame log.
 		let mut deferred = Vec::new();
 		for hot_op in ops {
-			// Recorded even if the apply fails: it may still have resurrected what it references.
+			// Recorded even if the apply fails: it may still have revived what it references.
 			self.remote_changes.touched.record(&hot_op.op);
 			if self.session.replay_hot_op(hot_op.clone()).is_err() {
 				deferred.push(hot_op);
@@ -251,11 +254,11 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(absorbed)
 	}
 
-	fn settled_marks(&self) -> SettledHotOps {
+	fn settled_marks(&self) -> SettledMarks {
 		SyncTarget::settled_marks(&self.session)
 	}
 
-	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError> {
+	fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> Result<(), TargetError> {
 		let touched = self.session.absorb_settled_marks(remote);
 		if !touched.is_empty() {
 			self.remote_changes.touched.extend(touched);

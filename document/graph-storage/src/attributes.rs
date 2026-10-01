@@ -8,8 +8,7 @@ use std::collections::BTreeMap;
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
 pub mod attr;
 
-/// A type-erased attribute value paired with the timestamp at which it was last set. A deleted key
-/// stays as a stamped tombstone, so an older write loses in either arrival order; readers see it as absent.
+/// An attribute value and when it was last set. A deleted key stays as a stamped tombstone, which readers see as absent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeValue {
 	pub value: Value,
@@ -34,9 +33,8 @@ impl AttributeValue {
 	}
 }
 
-/// Attribute maps. Each entity carries an `attributes_timestamp`: when its map was last written whole, by an
-/// addition or a whole-list input write. A key absent from the map is deleted as of that stamp, so an older
-/// write is dropped and an older tombstone is redundant.
+/// Attribute maps. A key absent from an entity's map is deleted as of its `attributes_timestamp`, when the map was last
+/// written whole, so an older write to it is dropped.
 pub type Attributes = BTreeMap<String, AttributeValue>;
 
 /// The live entries of an attribute map: every key that is not a tombstone.

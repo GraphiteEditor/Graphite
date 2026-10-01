@@ -104,7 +104,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Stage raw registry ops as hot ops, for callers that don't go through the runtime diff.
 	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, Error> {
-		let hot_ops = self.session.stage_ops(ops)?;
+		let hot_ops = self.session.stage_computed_ops(ops.into_iter().collect())?;
 		self.persist_staged(&hot_ops)?;
 		Ok(hot_ops)
 	}
@@ -148,7 +148,7 @@ impl<L: Layout> Gdd<L> {
 	/// advanced past what the working copy reflects, so the caller should treat the document as needing
 	/// re-persist (mirrors [`stage_runtime_snapshot`](Self::stage_runtime_snapshot)).
 	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), Error> {
-		self.session.apply_hot_op(op.clone())?;
+		self.session.replay_hot_op(op.clone())?;
 		self.append_hot_frame(&op)?;
 		Ok(())
 	}
@@ -274,9 +274,10 @@ impl<L: Layout> Gdd<L> {
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
-			next_hot_sequence: self.session.next_hot_sequence(),
+			last_hot_sequence: self.session.last_hot_sequence(),
 			shared: self.shared,
-			settled: self.session.settled_marks().clone(),
+			settled_marks: self.session.settled_marks().clone(),
+			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};
@@ -457,8 +458,8 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Retire every transaction the policy says is due at `now_ms`, the wall clock in milliseconds that retirements also record: closed
-	/// transactions that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS), once
+	/// Retire every transaction the policy says is due at `now_ms`, the wall clock in milliseconds that retirements
+	/// also record: closed transactions that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS), once
 	/// [`RETIRE_AFTER_TRANSACTIONS`](Self::RETIRE_AFTER_TRANSACTIONS) of them are waiting or the oldest has waited
 	/// [`RETIRE_MAX_AGE_MS`](Self::RETIRE_MAX_AGE_MS). Open transactions never retire. The editor calls this every
 	/// frame with whether it is between steps; a peer that does not retire only closes its own quiet transaction.
@@ -547,7 +548,7 @@ impl<L: Layout> Gdd<L> {
 			self.session.stamp_retired_at(new_revs, wall_ms as u64);
 		}
 		// These deltas are about to reach peers, so the published frontier moves with them: rewinding a commit
-		// peers hold would silently diverge, so undo past it must use forward inverse ops. Set before the
+		// peers hold would silently diverge, so undo past it moves the shared head instead. Set before the
 		// persists below so it survives a reopen.
 		#[cfg(feature = "network")]
 		if self.network.is_some()

@@ -18,8 +18,7 @@ pub struct SourceKey {
 pub struct SourceValue {
 	pub source: Value,
 	pub timestamp: TimeStamp,
-	/// A removed source stays as a stamped tombstone, so an older addition loses in either arrival order;
-	/// readers see it as absent.
+	/// A removed source stays as a stamped tombstone, which readers see as absent.
 	#[serde(default)]
 	pub deleted: bool,
 }
@@ -41,12 +40,11 @@ impl SourceValue {
 /// resource agree by construction, since the hash is content-derived).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ResourceEntry {
-	/// When the entry was last added; see [`Node::presence`](crate::Node).
-	pub presence: TimeStamp,
+	/// The latest addition or write; see [`Node::presence`](crate::Node).
+	pub(crate) presence: TimeStamp,
 	/// Fallback chain kept sorted by `SourceKey`, so iteration yields highest-priority first.
 	pub sources: Vec<(SourceKey, SourceValue)>,
-	/// When `sources` was last written whole, by an addition of the entry. A key the chain does not hold is
-	/// deleted as of then, as with [`Attributes`](crate::Attributes).
+	/// When `sources` was last written whole, by an addition; a key the chain lacks is deleted as of then.
 	pub sources_timestamp: TimeStamp,
 	pub hash: Option<ResourceHash>,
 	pub hash_timestamp: TimeStamp,
@@ -137,7 +135,7 @@ impl ResourceEntry {
 	}
 
 	/// The stamp that decides a write to `key`: its entry's, tombstone included, or the chain's floor.
-	fn decided(&self, key: &SourceKey) -> TimeStamp {
+	fn deciding_timestamp(&self, key: &SourceKey) -> TimeStamp {
 		self.find(key).map_or(self.sources_timestamp, |index| self.sources[index].1.timestamp)
 	}
 
@@ -148,15 +146,14 @@ impl ResourceEntry {
 		}
 	}
 
-	/// Writes the chain whole at `at`: the floor deletes every other key without a tombstone per key.
-	pub(crate) fn stamp_sources(&mut self, at: TimeStamp) {
+	/// Writes the chain whole at `timestamp`: the floor deletes every other key without a tombstone per key.
+	pub(crate) fn stamp_sources(&mut self, timestamp: TimeStamp) {
 		self.sources.retain(|(_, value)| !value.deleted);
-		self.sources.iter_mut().for_each(|(_, value)| value.timestamp = at);
-		self.sources_timestamp = at;
+		self.sources.iter_mut().for_each(|(_, value)| value.timestamp = timestamp);
+		self.sources_timestamp = timestamp;
 	}
 
-	/// Folds another chain in key by key, the way attribute maps merge: a key only one chain holds is
-	/// dead when the other chain's floor is newer than it, and the newer entry wins where both hold a key.
+	/// Folds another chain in key by key, as attribute maps merge.
 	pub(crate) fn merge_sources(&mut self, other: Vec<(SourceKey, SourceValue)>, other_floor: TimeStamp) {
 		self.sources.retain(|(_, value)| value.timestamp >= other_floor);
 		for (key, value) in other {
@@ -169,10 +166,9 @@ impl ResourceEntry {
 		self.sources_timestamp = self.sources_timestamp.max(other_floor);
 	}
 
-	/// Insert or LWW-overwrite the entry at `key`. A re-set at an existing key wins only if `value`'s
-	/// timestamp is strictly newer; a fresh key is inserted in sorted position.
+	/// Insert or LWW-overwrite the entry at `key`; a re-set wins only with a strictly newer stamp.
 	pub fn set_source(&mut self, key: SourceKey, value: SourceValue) {
-		if value.timestamp > self.decided(&key) {
+		if value.timestamp > self.deciding_timestamp(&key) {
 			self.put(key, value);
 		}
 	}
@@ -182,10 +178,9 @@ impl ResourceEntry {
 		self.put(key, value);
 	}
 
-	/// Remove the source at `key` if what decides it is strictly older than `timestamp` (LWW), leaving a
-	/// tombstone. Returns whether the removal landed.
+	/// Remove the source at `key` if `timestamp` is newer than what decides it, leaving a tombstone. Returns whether it landed.
 	pub fn remove_source(&mut self, key: &SourceKey, timestamp: TimeStamp) -> bool {
-		if timestamp <= self.decided(key) {
+		if timestamp <= self.deciding_timestamp(key) {
 			return false;
 		}
 		self.put(*key, SourceValue::deleted(timestamp));

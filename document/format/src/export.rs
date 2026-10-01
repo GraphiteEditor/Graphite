@@ -153,8 +153,9 @@ impl<L: Layout> Gdd<L> {
 			next_node_counter: self.session.next_node_counter(),
 			// An export is a copy taken out of the room; it does not reconnect on its own.
 			shared: false,
-			next_hot_sequence: self.session.next_hot_sequence(),
-			settled: self.session.settled_marks().clone(),
+			last_hot_sequence: self.session.last_hot_sequence(),
+			settled_marks: self.session.settled_marks().clone(),
+			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};

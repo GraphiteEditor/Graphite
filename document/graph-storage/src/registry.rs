@@ -2,12 +2,9 @@ use crate::{Attributes, Network, NetworkId, Node, NodeId, PeerId, ResourceEntry,
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// The live document: what exists and what it holds.
-///
-/// Every field is last-writer-wins on a timestamp, including whether an entity exists, so the registry
-/// depends on the set of ops applied and not their order. A removed entity keeps a tombstone stamped with
-/// the removal: an op stamped earlier is dropped in either arrival order, and one stamped later revives the
-/// entity from it. The live maps hold only what exists.
+/// The live document. Every field, existence included, is last-writer-wins on a timestamp, so the registry depends on the
+/// set of ops applied and not their order. A removed entity keeps a tombstone: an older op lands on it, a newer one
+/// revives the entity.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Registry {
 	pub node_instances: HashMap<NodeId, Node>,
@@ -15,9 +12,7 @@ pub struct Registry {
 	/// Content-addressable resources (images, fonts, eventually proto-node declarations) referenced
 	/// by `ResourceId`. See [`ResourceStore`].
 	pub resources: ResourceStore,
-	/// Which person each device is, registered via `RegistryDelta::RegisterPeer` by a device's first
-	/// contribution and whenever its user changes. Lets undo and history authorship scope by person across
-	/// the peer ids one person accumulates.
+	/// Which person each device is, from `RegistryDelta::RegisterPeer`, so undo and authorship scope by person.
 	pub peer_users: HashMap<PeerId, PeerRegistration>,
 	pub attributes: Attributes,
 	/// Tombstones of removed nodes, so an op on one is ordered against its removal whichever arrives first.
@@ -35,24 +30,21 @@ pub struct Registry {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerRegistration {
 	pub user: UserId,
-	pub at: TimeStamp,
+	pub timestamp: TimeStamp,
 }
 
-/// A removed entity: its content, for reviving it, and when it was removed, for ordering later-arriving
-/// ops against the removal.
+/// A removed entity's content, for reviving it, and its removal stamp.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tombstone<T> {
 	pub content: T,
-	pub at: TimeStamp,
-	/// Nothing has added the entity yet, so it stays dead until an addition folds in; the content only holds
-	/// writes that arrived ahead of it. See [`Registry::removed_nodes`].
+	pub timestamp: TimeStamp,
+	/// Nothing has added the entity yet: it stays dead until an addition folds in, the content holding writes that came first.
 	#[serde(default)]
 	pub placeholder: bool,
 }
 
 impl Registry {
-	/// The node under `id`, live or as it was when removed. For a reference to a node the runtime cannot
-	/// hold, which still needs the id the node had there.
+	/// The node under `id`, live or as removed, for a reference to a node the runtime cannot hold.
 	#[cfg(any(feature = "conversion", test))]
 	pub(crate) fn node_or_removed(&self, id: NodeId) -> Option<&Node> {
 		self.node_instances.get(&id).or_else(|| self.removed_nodes.get(&id).map(|mark| &mark.content))
@@ -68,7 +60,9 @@ impl Registry {
 	/// ops land, so registries agreeing on values but not on marks will diverge.
 	pub fn removal_marks_equal(&self, other: &Self) -> bool {
 		fn same<K: std::hash::Hash + Eq, T>(a: &HashMap<K, Tombstone<T>>, b: &HashMap<K, Tombstone<T>>) -> bool {
-			a.len() == b.len() && a.iter().all(|(id, mark)| b.get(id).is_some_and(|other| other.at == mark.at && other.placeholder == mark.placeholder))
+			a.len() == b.len()
+				&& a.iter()
+					.all(|(id, mark)| b.get(id).is_some_and(|other| other.timestamp == mark.timestamp && other.placeholder == mark.placeholder))
 		}
 		same(&self.removed_nodes, &other.removed_nodes) && same(&self.removed_networks, &other.removed_networks) && same(&self.removed_resources, &other.removed_resources)
 	}
