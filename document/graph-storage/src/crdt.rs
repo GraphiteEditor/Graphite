@@ -27,12 +27,12 @@ pub struct Delta {
 	pub attributes: Attributes,
 	/// When the delta entered history, in wall-clock milliseconds since the Unix epoch as its retirer saw them.
 	/// For showing when a step happened; order always comes from the graph. Outside the rev like the attributes,
-	/// and a plain field rather than one of them since every retired delta carries it. `None` when not recorded,
-	/// by a copy with no clock. Written as a bare integer with zero for `None`, which serde's `Option` would
-	/// not do: it spends a tag byte whatever the niche, and no retirement happens at the epoch. Last, since
-	/// the history codec is positional.
-	#[serde(default, with = "zero_as_none")]
-	pub retired_at: Option<std::num::NonZeroU64>,
+	/// and a plain field rather than one of them since every retired delta carries it. Zero when not recorded,
+	/// by a copy with no clock: no retirement happens at the epoch, and an `Option` would cost a tag byte on
+	/// every stamped delta. Private so the zero never escapes; read it through [`retired_at`](Self::retired_at).
+	/// Last, since the history codec is positional.
+	#[serde(default)]
+	pub(crate) retired_at_ms: u64,
 }
 
 impl Delta {
@@ -46,7 +46,7 @@ impl Delta {
 			kind,
 			reverse,
 			attributes: Attributes::default(),
-			retired_at: None,
+			retired_at_ms: 0,
 		}
 	}
 
@@ -67,7 +67,7 @@ impl Delta {
 			reverse: kind.clone(),
 			kind,
 			attributes: Attributes::default(),
-			retired_at: None,
+			retired_at_ms: 0,
 		}
 	}
 
@@ -91,7 +91,7 @@ impl Delta {
 
 	/// When the delta entered history in wall-clock milliseconds, if its retirer recorded it.
 	pub fn retired_at(&self) -> Option<u64> {
-		self.retired_at.map(std::num::NonZeroU64::get)
+		(self.retired_at_ms != 0).then_some(self.retired_at_ms)
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
@@ -258,21 +258,6 @@ pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp,
 	attributes.insert(key, entry);
 }
 
-/// An `Option<NonZeroU64>` as a bare integer, zero standing for `None`, so it costs no more on the wire than
-/// the integer itself.
-mod zero_as_none {
-	use serde::{Deserialize, Deserializer, Serializer};
-	use std::num::NonZeroU64;
-
-	pub fn serialize<S: Serializer>(value: &Option<NonZeroU64>, serializer: S) -> Result<S::Ok, S::Error> {
-		serializer.serialize_u64(value.map_or(0, NonZeroU64::get))
-	}
-
-	pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<NonZeroU64>, D::Error> {
-		Ok(NonZeroU64::new(u64::deserialize(deserializer)?))
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -281,7 +266,7 @@ mod tests {
 	fn a_missing_retirement_time_costs_what_a_zero_costs_and_round_trips() {
 		let base = Delta::new(None, PeerId(1), TimeStamp { counter: 1, peer: PeerId(1) }, RegistryDelta::EndTransaction, RegistryDelta::EndTransaction);
 		let mut stamped = base.clone();
-		stamped.retired_at = std::num::NonZeroU64::new(1_790_000_000_000);
+		stamped.retired_at_ms = 1_790_000_000_000;
 
 		let bare_base = postcard::to_allocvec(&base).expect("encode");
 		let bare_stamped = postcard::to_allocvec(&stamped).expect("encode");

@@ -250,7 +250,7 @@ impl History {
 	pub fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
 		match self.index.get(&rev) {
 			Some(&position) => {
-				self.deltas[position].retired_at = std::num::NonZeroU64::new(wall_ms);
+				self.deltas[position].retired_at_ms = wall_ms;
 				true
 			}
 			None => false,
