@@ -1,6 +1,6 @@
 use crate::{
 	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value,
-	attr, compute_rev, from_value,
+	attr, compute_rev,
 };
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
@@ -25,6 +25,12 @@ pub struct Delta {
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default)]
 	pub attributes: Attributes,
+	/// When the delta entered history, in wall-clock milliseconds since the Unix epoch as its retirer saw them.
+	/// For showing when a step happened; order always comes from the graph. Outside the rev like the attributes,
+	/// and a plain field rather than one of them since every retired delta carries it. Last, since the history
+	/// codec is positional.
+	#[serde(default)]
+	pub retired_at: Option<u64>,
 }
 
 impl Delta {
@@ -38,6 +44,7 @@ impl Delta {
 			kind,
 			reverse,
 			attributes: Attributes::default(),
+			retired_at: None,
 		}
 	}
 
@@ -58,6 +65,7 @@ impl Delta {
 			reverse: kind.clone(),
 			kind,
 			attributes: Attributes::default(),
+			retired_at: None,
 		}
 	}
 
@@ -81,7 +89,7 @@ impl Delta {
 
 	/// When the delta entered history in wall-clock milliseconds, if its retirer recorded it.
 	pub fn retired_at(&self) -> Option<u64> {
-		self.attributes.get(attr::delta::RETIRED_AT).and_then(|recorded| from_value::<u64>(&recorded.value).ok())
+		self.retired_at
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built

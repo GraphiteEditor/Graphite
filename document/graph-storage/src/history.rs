@@ -245,6 +245,18 @@ impl History {
 		}
 	}
 
+	/// Record when a retired delta entered history, in place; outside its `Rev`, so the index stays valid. Returns
+	/// whether the delta was found.
+	pub fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
+		match self.index.get(&rev) {
+			Some(&position) => {
+				self.deltas[position].retired_at = Some(wall_ms);
+				true
+			}
+			None => false,
+		}
+	}
+
 	/// Set a local annotation attribute (e.g. a commit message) on a retired delta in place. Excluded
 	/// from the delta's `Rev`, so identity and the index are unchanged. Returns whether the delta was found.
 	pub fn annotate(&mut self, rev: Rev, key: &str, value: Value, timestamp: TimeStamp) -> bool {

@@ -852,16 +852,19 @@ impl Session {
 	}
 
 	/// Record when these retired deltas entered history, in wall-clock milliseconds as the retirer saw them,
-	/// as an attribute outside their revs: for showing when a step happened, never for ordering.
+	/// outside their revs: for showing when a step happened, never for ordering.
 	pub fn stamp_retired_at(&mut self, revs: &[Rev], wall_ms: u64) {
-		let timestamp = self.document.clock.tick();
 		for &rev in revs {
-			self.document.history.annotate(rev, crate::attributes::attr::delta::RETIRED_AT, Value::Int(wall_ms as i128), timestamp);
+			self.document.history.set_retired_at(rev, wall_ms);
 		}
 	}
 
-	/// Give a minted copy every attribute of the delta it stands for, each with the stamp it had.
+	/// Give a minted copy every attribute of the delta it stands for, each with the stamp it had, and when the
+	/// original was retired.
 	fn carry_attributes(&mut self, original: &Delta, copy: Rev) {
+		if let Some(wall_ms) = original.retired_at {
+			self.document.history.set_retired_at(copy, wall_ms);
+		}
 		for (key, value) in crate::attributes::live(&original.attributes) {
 			self.document.history.annotate(copy, key, value.value.clone(), value.timestamp);
 		}
