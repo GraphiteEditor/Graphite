@@ -68,7 +68,8 @@ impl EditorTestUtils {
 
 	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
 	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, String> {
-		loop {
+		const MAX_ITERATIONS: usize = 16;
+		for _iteration in 0..MAX_ITERATIONS {
 			let execution_id = self.portfolio_message_handler().executor.current_execution_id();
 			let result = self.eval_graph_once().await?;
 			// If there have been no other executions queued (other than the one we just queued ourselves above) then finish
@@ -76,6 +77,7 @@ impl EditorTestUtils {
 				return Ok(result);
 			}
 		}
+		return Err(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping"));
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {

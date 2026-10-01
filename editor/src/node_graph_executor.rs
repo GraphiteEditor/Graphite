@@ -117,7 +117,7 @@ impl NodeGraphExecutor {
 		(node_runtime, node_executor)
 	}
 
-	/// Allows the test runner to see if any more exeuctions have been queued.
+	/// Allows the test runner to see if any more executions have been queued.
 	#[cfg(test)]
 	pub fn current_execution_id(&self) -> u64 {
 		self.current_execution_id
