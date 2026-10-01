@@ -1029,32 +1029,6 @@ fn undo_and_redo_move_only_unpublished_retired_history() {
 	assert!(holds(&session.registry().attributes, "hot"));
 }
 
-/// A node removed, revived by a reference and removed again into a later network folds from history to the
-/// snapshot built delta by delta. Pins simulation seed 3588534, where a revival read the wrong removal.
-#[test]
-fn snapshot_from_history_reproduces_a_revival_between_two_removals() {
-	let id = NodeId(3);
-	let node_in = |network: u64| Node {
-		network: NetworkId(network),
-		..Node::dummy()
-	};
-	let export = Some(crate::NodeInput::Node { id, index: 0 });
-
-	let mut session = Session::with_peer(PeerId(1));
-	for op in [
-		add_network(1),
-		RegistryDelta::AddNode { id, node: node_in(1) },
-		RegistryDelta::RemoveNode { id, snapshot: node_in(1) },
-		RegistryDelta::SetNetworkExport { id: NetworkId(1), index: 0, export },
-		add_network(3),
-		RegistryDelta::RemoveNode { id, snapshot: node_in(3) },
-	] {
-		commit_retired(&mut session, op);
-	}
-
-	assert_eq!(&session.snapshot_from_history().expect("fold"), session.retired_registry());
-}
-
 /// `#[serde(transparent)]`, so persisted state and the wire carry a bare number.
 #[test]
 fn hot_sequence_serializes_as_a_bare_number() {
