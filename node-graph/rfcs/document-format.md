@@ -26,7 +26,7 @@ pub struct Registry {
     pub node_instances: HashMap<NodeId, Node>,                 // all nodes, flat
     pub networks: HashMap<NetworkId, Network>,                  // exports + per-network attrs
     pub resources: ResourceStore,                               // content-addressable resources (images, fonts, declarations)
-    pub peer_users: HashMap<PeerId, UserId>,                    // per-device → per-human identity
+    pub peer_users: HashMap<PeerId, PeerRegistration>,          // per-device → per-human identity, LWW
     pub attributes: Attributes,                                 // document-level metadata
 }
 
@@ -56,7 +56,7 @@ pub struct ExportSlot {
 pub const ROOT_NETWORK: NetworkId = NetworkId(0);
 ```
 
-`peer_users` records the append-only `PeerId → UserId` mapping written by each device's first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
+`peer_users` records the `PeerId → UserId` mapping each device registers with its first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
 
 The renderable graph lives in `networks[&ROOT_NETWORK]`. By convention the renderer consumes slot 0 of its exports. The editor can pick a different slot via type-based heuristics or user choice.
 
@@ -131,7 +131,7 @@ pub struct Delta {
     pub author: PeerId,
     pub timestamp: TimeStamp,
     pub kind: RegistryDelta,
-    pub reverse: RegistryDelta,      // precomputed for undo; excluded from id
+    pub reverse: Vec<Prior>,         // what the op overwrote, stamps included; excluded from id
     pub attributes: Attributes,      // mutable local annotations; excluded from id
 }
 ```
@@ -186,9 +186,9 @@ The silent zone is the implemented path (solo editing has no transport yet). The
 
 **Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
 
-**Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `kind`). These carry the *original* timestamp, which would tie (and so lose) the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
+**Restore, not reverse ops.** A delta's `reverse` is a list of `Prior`s: the state of every slot the op wrote, as it was just before, stamps included (a whole node, network, or resource where the op added, removed, or landed on a tombstone; otherwise one field plus the entity's presence stamp). Undo writes these back as they were, bypassing LWW, so the registry is again exactly the fold of history up to the new `head`. An op applied at its own timestamp could not express that: it can only write a value or a tombstone at that timestamp, while the prior state may be an older stamp or no entry at all, and a stamp the history does not account for decides later concurrent writes differently on different peers. Redo re-applies the forward ops with plain LWW, which folds them in exactly as retirement did. Both are O(steps moved), no clock advances, and identities are unchanged. Undo only takes this user's own interactions and never one containing a merge, since restoring past another peer's write would rewind it.
 
-**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal *by value* (their LWW field timestamps can differ, since retirement re-stamps the snapshot at a fresh time), and undo/redo restore that equality by resyncing the snapshot to the rewound working registry.
+**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal, and undo/redo restore both; with ops still hot, the working registry is rebuilt as the rewound snapshot plus them.
 
 ## Concurrency model: CmRDT
 
@@ -196,7 +196,7 @@ The format uses an operation-based CRDT. The transport layer delivers ops in cau
 
 Graph-shape invariants (the graph remaining a DAG, the result compiling) are best-effort. Conflicts that produce a non-compiling graph surface as wiring or type errors rather than being masked by the CRDT.
 
-Identity is two-tier. `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping). `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes an append-only entry to `Registry.peer_users`. Causal delivery guarantees the registration arrives before any of that peer's other ops. The mapping is permanent (first write wins, a conflicting re-registration errors, and an identical one is a no-op), so `RegisterPeer` is its own reverse: replaying it during undo is a no-op rather than needing a distinct removal variant.
+Identity is two-tier. `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping). `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes the peer's entry in `Registry.peer_users` along with its timestamp. Causal delivery guarantees the registration arrives before any of that peer's other ops. A device that changes person registers again, and the entry is last-writer-wins by timestamp, so every peer settles on the newest registration whatever order they arrive in. Registrations aren't undoable: `RegisterPeer` is its own reverse, so undo leaves the entry standing.
 
 ## Editor pipeline
 

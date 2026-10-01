@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, UserId, Value};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, SettledHotOps, UserId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -50,4 +50,8 @@ pub struct SessionState {
 	/// Whether the document was in its room when last persisted, so a reopen reconnects.
 	#[serde(default)]
 	pub shared: bool,
+	/// Which hot ops are retired or taken back, so a late copy a peer re-sends after a reopen is dropped rather than
+	/// retired a second time. About one sequence per author; runs only for ops in flight when saved.
+	#[serde(default)]
+	pub settled: SettledHotOps,
 }

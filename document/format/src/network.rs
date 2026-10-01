@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredHotOps, Rev, Session, Touched, UserId};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, Rev, Session, SettledHotOps, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -251,25 +251,16 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(absorbed)
 	}
 
-	fn retired_marks(&self) -> RetiredHotOps {
-		SyncTarget::retired_marks(&self.session)
+	fn settled_marks(&self) -> SettledHotOps {
+		SyncTarget::settled_marks(&self.session)
 	}
 
-	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		SyncTarget::absorb_retired_marks(&mut self.session, remote)?;
-		self.pending_persist.hot_log = true;
-		Ok(())
-	}
-
-	fn retracted_marks(&self) -> RetiredHotOps {
-		SyncTarget::retracted_marks(&self.session)
-	}
-
-	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		let touched = self.session.absorb_retracted_marks(remote);
+	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError> {
+		let touched = self.session.absorb_settled_marks(remote);
 		if !touched.is_empty() {
 			self.remote_changes.touched.extend(touched);
 			self.pending_persist.hot_log = true;
+			// Also writes the session state, which carries the marks.
 			self.pending_persist.snapshot = true;
 		}
 		Ok(())

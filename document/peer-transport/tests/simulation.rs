@@ -5,7 +5,7 @@
 
 use document_graph_storage::{
 	AttributeDelta, Delta, HeadMove, HotOp, HotOpId, HotSequence, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Priority, Registry, RegistryDelta, ResourceHash, ResourceId,
-	RetiredHotOps, Rev, Session, SourceKey, TimeStamp, UserId,
+	Rev, Session, SettledHotOps, SourceKey, TimeStamp, UserId,
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
@@ -123,20 +123,12 @@ impl SyncTarget for SimTarget {
 		result
 	}
 
-	fn retired_marks(&self) -> RetiredHotOps {
-		SyncTarget::retired_marks(&self.session)
+	fn settled_marks(&self) -> SettledHotOps {
+		SyncTarget::settled_marks(&self.session)
 	}
 
-	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		SyncTarget::absorb_retired_marks(&mut self.session, remote)
-	}
-
-	fn retracted_marks(&self) -> RetiredHotOps {
-		SyncTarget::retracted_marks(&self.session)
-	}
-
-	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		SyncTarget::absorb_retracted_marks(&mut self.session, remote)
+	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError> {
+		SyncTarget::absorb_settled_marks(&mut self.session, remote)
 	}
 
 	fn retract_hot_ops(&mut self, ops: &[HotOpId]) -> Result<(), TargetError> {
@@ -190,7 +182,8 @@ struct Peer {
 	transport: TransportPeerId,
 	/// Gone for good, unlike a rejoin; no longer asserted on.
 	departed: bool,
-	/// The marker closing this peer's latest transaction, `NONE` before the first. Nothing past it may retire.
+	/// The marker closing this peer's latest transaction, or its latest retracted op if later; `NONE` before the first.
+	/// Nothing past it may settle: an open transaction stays hot.
 	last_closed: HotSequence,
 	/// This peer's retired interactions it undid, newest last, for a redo to name.
 	dropped: Vec<Rev>,
@@ -275,6 +268,7 @@ impl Peer {
 	/// Undo this peer's latest transaction while hot: the ops leave every hot log and never become history.
 	fn retract(&mut self) {
 		if let Some(retraction) = self.target.session.retract_transaction().expect("retract") {
+			self.last_closed = retraction.ids.iter().map(|id| id.sequence).fold(self.last_closed, HotSequence::max);
 			self.replica.broadcast_retraction(&retraction.ids).expect("broadcast retraction");
 		}
 	}
@@ -670,10 +664,10 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 				.map(|h| format!("{}:{}#{}", h.timestamp.peer.0, h.timestamp.counter, h.sequence.0))
 				.collect::<Vec<_>>(),
 			{
-				let retired = peer.session().retired_marks();
-				let mut through: Vec<_> = retired.retired_up_to.iter().map(|(peer, sequence)| (peer.0, sequence.0)).collect();
+				let retired = peer.session().settled_marks();
+				let mut through: Vec<_> = retired.settled_up_to.iter().map(|(peer, sequence)| (peer.0, sequence.0)).collect();
 				through.sort();
-				let mut above: Vec<_> = retired.retired_beyond.iter().map(|(peer, runs)| (peer.0, runs.len())).collect();
+				let mut above: Vec<_> = retired.settled_beyond.iter().map(|(peer, runs)| (peer.0, runs.len())).collect();
 				above.sort();
 				format!("{through:?} above {above:?}")
 			}
@@ -681,21 +675,21 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 	}
 }
 
-/// Nothing past an author's last closing marker is in any peer's retired marks: an open transaction stays hot
-/// however many later ones retired around it.
+/// Nothing past an author's last closing marker or retraction is in any peer's settled marks: an open transaction
+/// stays hot however many later ones settled around it.
 fn assert_open_transactions_stay_hot(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
-		let marks = peer.session().retired_marks();
+		let marks = peer.session().settled_marks();
 		for author in peers {
-			let through = marks.retired_up_to.get(&author.peer).copied().unwrap_or(HotSequence::NONE);
+			let through = marks.settled_up_to.get(&author.peer).copied().unwrap_or(HotSequence::NONE);
 			let beyond = marks
-				.retired_beyond
+				.settled_beyond
 				.get(&author.peer)
 				.and_then(|runs| runs.iter().map(|&(_, end)| end).max())
 				.unwrap_or(HotSequence::NONE);
 			assert!(
 				through <= author.last_closed && beyond <= author.last_closed,
-				"seed {seed}: peer {index} retired op {:?} of {:?} past its last closed transaction {:?}",
+				"seed {seed}: peer {index} settled op {:?} of {:?} past its last closed or retracted transaction {:?}",
 				through.max(beyond),
 				author.peer,
 				author.last_closed
@@ -1002,8 +996,8 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	peers[0].retire();
 	quiesce(&mut network, &mut peers);
 
-	let retired = peers[0].session().retired_marks();
-	assert!(retired.retired_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
+	let retired = peers[0].session().settled_marks();
+	assert!(retired.settled_beyond.is_empty(), "a contiguous run retires wholly into the prefix");
 	assert_converged(0, &peers);
 }
 

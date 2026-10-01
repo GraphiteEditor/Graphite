@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredHotOps, Rev, Session};
+use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, Rev, Session, SettledHotOps};
 use std::collections::HashSet;
 
 pub type TargetError = Box<dyn std::error::Error>;
@@ -21,14 +21,10 @@ pub trait SyncTarget {
 	fn contains_rev(&self, rev: Rev) -> bool;
 	fn deltas_unknown_to(&self, known: &[Rev]) -> Vec<Delta>;
 
-	/// Highest hot-op counter retired per author.
-	fn retired_marks(&self) -> RetiredHotOps;
-	/// Which hot ops were taken back by their authors. See [`Session::retracted_marks`].
-	fn retracted_marks(&self) -> RetiredHotOps;
-	/// Take on a peer's retirement marks, dropping any hot op they show as already retired.
-	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError>;
-	/// Take on a peer's retractions, dropping what they cover from the hot log.
-	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError>;
+	/// Which hot ops are retired or taken back. See [`Session::settled_marks`].
+	fn settled_marks(&self) -> SettledHotOps;
+	/// Take on a peer's marks, dropping what they cover from the hot log.
+	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError>;
 
 	/// The history's users and their names, merged last-writer-wins. Empty for a target that keeps none.
 	fn metadata(&self) -> HistoryMetadata {
@@ -135,35 +131,26 @@ impl SyncTarget for Session {
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError> {
 		self.follow(deltas, head)?;
-		self.discard_hot_ops(retires)?;
+		self.discard_hot_ops(retires);
 		Ok(())
 	}
 
 	fn merge_divergent(&mut self, deltas: Vec<Delta>, retires: &[HotOpId]) -> Result<Vec<Delta>, TargetError> {
 		let mut absorbed: Vec<Delta> = deltas.iter().filter(|delta| !self.contains_rev(delta.id)).cloned().collect();
 		let outcome = self.merge(deltas)?;
-		self.discard_hot_ops(retires)?;
+		self.discard_hot_ops(retires);
 		if let document_graph_storage::MergeOutcome::Merged(rev) = outcome {
 			absorbed.extend(self.delta(rev).cloned());
 		}
 		Ok(absorbed)
 	}
 
-	fn retired_marks(&self) -> RetiredHotOps {
-		Session::retired_marks(self).clone()
+	fn settled_marks(&self) -> SettledHotOps {
+		Session::settled_marks(self).clone()
 	}
 
-	fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		Session::absorb_retired_marks(self, remote)?;
-		Ok(())
-	}
-
-	fn retracted_marks(&self) -> RetiredHotOps {
-		Session::retracted_marks(self).clone()
-	}
-
-	fn absorb_retracted_marks(&mut self, remote: &RetiredHotOps) -> Result<(), TargetError> {
-		Session::absorb_retracted_marks(self, remote);
+	fn absorb_settled_marks(&mut self, remote: &SettledHotOps) -> Result<(), TargetError> {
+		Session::absorb_settled_marks(self, remote);
 		Ok(())
 	}
 

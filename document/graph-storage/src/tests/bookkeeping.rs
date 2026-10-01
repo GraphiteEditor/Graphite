@@ -255,7 +255,7 @@ fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
 	guest.document.working_registry = guest.document.retired_snapshot.clone();
 	guest.apply_hot_op(late).expect("the host's op reached the guest");
 	assert!(guest.registry().networks.contains_key(&NetworkId(9)));
-	let touched = guest.absorb_retracted_marks(host.retracted_marks());
+	let touched = guest.absorb_settled_marks(host.settled_marks());
 	assert!(touched.networks.contains(&NetworkId(9)));
 	assert!(!guest.registry().networks.contains_key(&NetworkId(9)));
 	assert!(guest.hot_log().is_empty());
@@ -318,7 +318,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	let undone = *revs.last().expect("the guest's step");
 	host.mark_interaction_end(undone);
 	catch_up(&mut guest, &host);
-	guest.discard_hot_ops(&guest_ids).expect("discard");
+	guest.discard_hot_ops(&guest_ids);
 
 	// A later step by the host writes the shared key.
 	host.commit_op_for_test(set_attribute("shared", 2)).expect("later step");
@@ -563,4 +563,165 @@ fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
 	guest.apply_head_move(&moved).expect("follow");
 	assert_eq!(guest.head_rev(), Some(first));
 	assert!(guest.retired_registry().value_equal(host.retired_registry()), "the follower folds to the same state");
+}
+
+#[test]
+fn a_batch_past_the_last_sequence_is_refused_whole() {
+	let mut session = Session::with_peer(PeerId(1));
+	session.restore_hot_sequence(crate::HotSequence(u64::MAX - 1));
+	assert!(matches!(session.stage_ops([set_attribute("k", 1)]), Err(crate::CrdtError::SequencesExhausted)));
+	assert!(session.hot_log().is_empty());
+}
+
+#[test]
+fn a_retraction_settles_its_sequences_so_later_transactions_stay_contiguous() {
+	let mut session = Session::with_peer(PeerId(1));
+	session.stage_ops([set_attribute("a", 1)]).unwrap();
+	session.end_transaction().unwrap();
+	let up_to = session.hot_log().last().unwrap().timestamp;
+	session.retire(up_to).unwrap();
+	session.stage_ops([set_attribute("b", 1)]).unwrap();
+	session.retract_transaction().unwrap();
+
+	session.stage_ops([set_attribute("c", 1)]).unwrap();
+	session.end_transaction().unwrap();
+	let closed = session.closed_transactions();
+	assert!(closed[0].contiguous, "the retracted sequences are not a gap");
+	session.retire_transaction(&closed[0]).unwrap();
+	let marks = session.settled_marks();
+	assert!(marks.settled_beyond.is_empty(), "retired and retracted together leave one prefix");
+	assert_eq!(marks.settled_up_to[&PeerId(1)], session.next_hot_sequence());
+}
+
+#[test]
+fn a_late_copy_of_a_followed_line_leaves_the_head_but_a_known_step_ahead_moves_it() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("a", 1)).unwrap();
+	host.commit_op_for_test(set_attribute("b", 1)).unwrap();
+	let deltas = host.cloned_deltas();
+	let (first, second) = (deltas[0].id, deltas[1].id);
+
+	let mut guest = Session::with_peer(PeerId(2));
+	guest.follow(deltas.clone(), None).unwrap();
+	assert_eq!(guest.head_rev(), Some(second));
+
+	// The first step again, as a broadcast delayed past the second arrives.
+	assert!(matches!(guest.follow(vec![deltas[0].clone()], None).unwrap(), MergeOutcome::NoOp));
+	assert_eq!(guest.head_rev(), Some(second));
+
+	// The host moves back and then restores the step, which mints the same delta again.
+	guest.follow(Vec::new(), Some(first)).unwrap();
+	assert_eq!(guest.head_rev(), Some(first));
+	guest.follow(vec![deltas[1].clone()], None).unwrap();
+	assert_eq!(guest.head_rev(), Some(second));
+	assert!(guest.retired_registry().value_equal(&host.snapshot_from_history().unwrap()));
+}
+
+/// Commits `op` as one interaction, the working registry following as it does when nothing is hot.
+fn step(session: &mut Session, op: RegistryDelta) -> Rev {
+	session.commit_op_for_test(op).expect("commit");
+	session.document.working_registry = session.document.retired_snapshot.clone();
+	let rev = session.head_rev().expect("committed");
+	session.mark_interaction_end(rev);
+	rev
+}
+
+fn sync(from: &Session, to: &mut Session) -> MergeOutcome {
+	let deltas = from.deltas_unknown_to(to.known_revs()).into_iter().cloned().collect::<Vec<_>>();
+	to.merge(deltas).expect("merge")
+}
+
+fn document_attribute(session: &Session, key: &str) -> Option<Value> {
+	session.retired_registry().attributes.get(key).filter(|value| !value.deleted).map(|value| value.value.clone())
+}
+
+/// Undo puts back what the step overwrote rather than writing over it at the step's stamp, so a concurrent write
+/// stamped between lands the same here as on a peer that never saw the step.
+#[test]
+fn an_undone_step_leaves_no_stamp_behind_for_a_concurrent_write_to_lose_to() {
+	let mut a = Session::with_peer(PeerId(3));
+	step(&mut a, set_attribute("base", 1));
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&a, &mut b);
+	let concurrent = b.stage_ops([set_attribute("k", 20)]).unwrap().last().unwrap().timestamp;
+
+	step(&mut a, set_attribute("k", 10));
+	a.undo().unwrap();
+	step(&mut a, set_attribute("other", 1));
+	sync(&a, &mut b);
+	b.retire(concurrent).unwrap();
+	sync(&b, &mut a);
+
+	assert_eq!(document_attribute(&a, "k"), document_attribute(&b, "k"));
+	assert_eq!(a.retired_registry(), &a.snapshot_from_history().unwrap());
+}
+
+/// A peer's line built on a step undone here brings that step back into the snapshot when the head moves onto it.
+#[test]
+fn a_fast_forward_onto_an_undone_step_folds_it_back_in() {
+	let mut a = Session::with_peer(PeerId(1));
+	let first = step(&mut a, set_attribute("first", 1));
+	step(&mut a, set_attribute("second", 2));
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&a, &mut b);
+	a.undo().unwrap();
+	assert_eq!(a.head_rev(), Some(first));
+
+	let third = step(&mut b, set_attribute("third", 3));
+	assert!(matches!(sync(&b, &mut a), MergeOutcome::FastForward(rev) if rev == third));
+	assert!(document_attribute(&a, "second").is_some());
+	assert!(a.retired_registry().value_equal(&a.snapshot_from_history().unwrap()));
+	assert!(!a.can_redo(), "the undone step is on the line again");
+}
+
+/// Undo rewinds this user's own steps only, and never across a merge, since either would rewind another peer's write.
+#[test]
+fn undo_takes_only_this_users_own_steps_and_stops_at_a_merge() {
+	let mut a = Session::with_peer(PeerId(1));
+	step(&mut a, set_attribute("first", 1));
+	step(&mut a, set_attribute("second", 2));
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&a, &mut b);
+	assert!(!b.can_undo(), "the steps are the other user's");
+	assert!(matches!(b.undo(), Err(crate::CrdtError::NothingToUndo)));
+
+	step(&mut a, set_attribute("a", 1));
+	step(&mut b, set_attribute("b", 1));
+	assert!(matches!(sync(&b, &mut a), MergeOutcome::Merged(_)));
+	assert!(!a.can_undo(), "the head is a merge");
+}
+
+/// The settled marks carry over a reopen, so a late copy of a retired op is dropped rather than retired again.
+#[test]
+fn a_reopened_session_drops_a_late_copy_of_a_retired_op() {
+	let op = crate::HotOp {
+		op: set_attribute("k", 1),
+		timestamp: crate::TimeStamp { counter: 3, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	let mut host = Session::with_peer(PeerId(1));
+	host.apply_hot_op(op.clone()).unwrap();
+	host.retire(op.timestamp).unwrap();
+
+	let mut reopened = Session::load(PeerId(1), UserId(1), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	reopened.absorb_settled_marks(host.settled_marks());
+	reopened.apply_hot_op(op.clone()).unwrap();
+	assert!(reopened.hot_log().is_empty());
+	assert!(reopened.retire(op.timestamp).unwrap().is_empty());
+	assert_eq!(reopened.history_len(), host.history_len());
+}
+
+/// Dropping hot ops another peer retired re-derives the working registry without them until their deltas arrive.
+#[test]
+fn discarded_hot_ops_leave_the_working_registry_at_the_snapshot() {
+	let op = crate::HotOp {
+		op: set_attribute("k", 1),
+		timestamp: crate::TimeStamp { counter: 3, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	let mut session = Session::with_peer(PeerId(1));
+	session.apply_hot_op(op.clone()).unwrap();
+	session.discard_hot_ops(&[op.id()]);
+	assert!(session.hot_log().is_empty());
+	assert_eq!(session.registry(), session.retired_registry());
 }

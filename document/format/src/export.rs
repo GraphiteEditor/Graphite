@@ -154,6 +154,7 @@ impl<L: Layout> Gdd<L> {
 			// An export is a copy taken out of the room; it does not reconnect on its own.
 			shared: false,
 			next_hot_sequence: self.session.next_hot_sequence(),
+			settled: self.session.settled_marks().clone(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};

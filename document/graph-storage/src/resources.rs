@@ -177,8 +177,7 @@ impl ResourceEntry {
 		}
 	}
 
-	/// Like [`set_source`](Self::set_source) but assigns unconditionally (silent-zone rewind), where the
-	/// precomputed reverse/forward value is authoritative even if its timestamp ties what it replaces.
+	/// Like [`set_source`](Self::set_source) but assigns unconditionally, for building an entry.
 	pub fn force_set_source(&mut self, key: SourceKey, value: SourceValue) {
 		self.put(key, value);
 	}
@@ -191,17 +190,6 @@ impl ResourceEntry {
 		}
 		self.put(*key, SourceValue::deleted(timestamp));
 		true
-	}
-
-	/// Like [`remove_source`](Self::remove_source) but removes unconditionally (silent-zone rewind).
-	pub fn force_remove_source(&mut self, key: &SourceKey) -> bool {
-		match self.sources.binary_search_by(|(candidate, _)| candidate.cmp(key)) {
-			Ok(index) => {
-				self.sources.remove(index);
-				true
-			}
-			_ => false,
-		}
 	}
 
 	/// True if the chain already carries a `DataSource::Embedded` source. Decodes each source body into

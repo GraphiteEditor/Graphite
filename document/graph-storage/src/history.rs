@@ -40,7 +40,7 @@ impl History {
 	}
 
 	/// Where `rev` sits in the file order, if it is here.
-	pub fn position(&self, rev: Rev) -> Option<usize> {
+	pub(crate) fn position(&self, rev: Rev) -> Option<usize> {
 		self.index.get(&rev).copied()
 	}
 
@@ -104,7 +104,7 @@ impl History {
 	}
 
 	/// The delta at `position` in topological order.
-	pub fn at(&self, position: usize) -> Option<&Delta> {
+	pub(crate) fn at(&self, position: usize) -> Option<&Delta> {
 		self.deltas.get(position)
 	}
 
@@ -154,7 +154,7 @@ impl History {
 	}
 
 	/// `roots` and everything reachable from them through all parent links. Unknown roots are skipped.
-	pub fn ancestors(&self, roots: impl IntoIterator<Item = Rev>) -> HashSet<Rev> {
+	pub(crate) fn ancestors(&self, roots: impl IntoIterator<Item = Rev>) -> HashSet<Rev> {
 		let mut seen = HashSet::new();
 		let mut stack: Vec<Rev> = roots.into_iter().filter(|rev| self.contains(*rev)).collect();
 		while let Some(rev) = stack.pop() {

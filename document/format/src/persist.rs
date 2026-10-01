@@ -276,6 +276,7 @@ impl<L: Layout> Gdd<L> {
 			next_node_counter: self.session.next_node_counter(),
 			next_hot_sequence: self.session.next_hot_sequence(),
 			shared: self.shared,
+			settled: self.session.settled_marks().clone(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};
@@ -283,12 +284,10 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Re-snapshot the materialized working registry to `registry.bin`. `Session::load` trusts the stored
-	/// registry to match the persisted `head`, so any cursor move (undo/redo) that rewinds the working
-	/// registry without retiring must re-persist it or a reopen would read a registry inconsistent with
-	/// `head`. Synchronous and hot-path-safe (`write_non_blocking`).
+	/// Re-snapshot the retired registry to `registry.bin`. `Session::load` trusts it to match the persisted `head`
+	/// and replays the hot log on top, so it must hold no hot op, and any cursor move must re-persist it.
 	pub(crate) fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
-		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
+		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.retired_registry())?;
 		Ok(())
 	}
 

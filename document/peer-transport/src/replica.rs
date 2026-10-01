@@ -508,16 +508,15 @@ impl Replica {
 	/// Re-announce every hot op held here that history does not cover, whoever wrote it, since this peer may hold
 	/// the only copy of another's op. Covered ops are no-ops on every receiver.
 	fn reannounce_hot_ops(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
-		let retired = target.retired_marks();
-		let unretired: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !retired.covers(hot_op.id())).collect();
+		let settled = target.settled_marks();
+		let unsettled: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !settled.covers(hot_op.id())).collect();
 
-		self.broadcast_hot_ops(&unretired)?;
-		// A retraction in flight when a peer joined never reached it and nothing re-sends it, so its marks go round too.
-		let retracted = target.retracted_marks();
-		if retracted.retired_up_to.is_empty() && retracted.retired_beyond.is_empty() {
+		self.broadcast_hot_ops(&unsettled)?;
+		// A retraction in flight when a peer joined never reached it and nothing re-sends it, so the marks go round too.
+		if settled.settled_up_to.is_empty() && settled.settled_beyond.is_empty() {
 			return Ok(());
 		}
-		self.broadcast(BroadcastBody::RetractedMarks(retracted))
+		self.broadcast(BroadcastBody::SettledMarks(settled))
 	}
 
 	/// Retry ops held back for a missing referent, every poll, since any later op can supply it.
@@ -702,8 +701,7 @@ impl Replica {
 					hot_log: target.hot_log(),
 					known_revs: target.known_revs(),
 					seen: self.seen_vector(),
-					retired: target.retired_marks(),
-					retracted: target.retracted_marks(),
+					settled: target.settled_marks(),
 					document_id: target.document_id(),
 					metadata: target.metadata(),
 				};
@@ -733,8 +731,7 @@ impl Replica {
 				{
 					target.adopt_document_id(document_id)?;
 				}
-				target.absorb_retired_marks(&sync.retired)?;
-				target.absorb_retracted_marks(&sync.retracted)?;
+				target.absorb_settled_marks(&sync.settled)?;
 				if target.absorb_metadata(&sync.metadata)? {
 					events.push(Event::MetadataChanged);
 				}
@@ -926,9 +923,9 @@ impl Replica {
 					self.deferred.retain(|hot_op| !ops.contains(&hot_op.id()));
 					target.retract_hot_ops(&ops)
 				}
-				BroadcastBody::RetractedMarks(marks) => {
+				BroadcastBody::SettledMarks(marks) => {
 					self.deferred.retain(|hot_op| !marks.covers(hot_op.id()));
-					target.absorb_retracted_marks(&marks)
+					target.absorb_settled_marks(&marks)
 				}
 				BroadcastBody::HeadMove(moved) => target.apply_head_move(&moved),
 			};

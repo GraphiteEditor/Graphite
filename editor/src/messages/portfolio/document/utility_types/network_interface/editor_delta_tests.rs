@@ -611,6 +611,26 @@ async fn swapping_an_implementation_leaves_the_node_in_place() {
 		!deltas.iter().any(|delta| matches!(delta, EditorDelta::NodeMetadataSnapshot { node_id, .. } if *node_id == node)),
 		"the node's own metadata should not be restated by a swap that did not write it"
 	);
+
+	// The slots that survive the swap keep the names and descriptions the registry holds for them.
+	let Some((id, inputs)) = ops.iter().find_map(|op| match op {
+		RegistryDelta::SetNodeInputs { id, inputs } => Some((id, inputs)),
+		_ => None,
+	}) else {
+		panic!("the swap should restate the slots")
+	};
+	let held: Vec<_> = working.node_instances[id]
+		.inputs()
+		.iter()
+		.take(inputs.len())
+		.flat_map(|slot| document_graph_storage::attributes::live(&slot.attributes).filter(|(key, _)| key.starts_with("ui::")))
+		.collect();
+	assert!(!held.is_empty(), "the surviving slots should hold ui attributes for this to check anything");
+	for (index, slot) in inputs.iter().enumerate() {
+		for (key, value) in document_graph_storage::attributes::live(&working.node_instances[id].inputs()[index].attributes).filter(|(key, _)| key.starts_with("ui::")) {
+			assert_eq!(slot.attributes.get(key), Some(value), "slot {index} lost {key}");
+		}
+	}
 }
 
 /// What a peer receives must bring its interface to what the editing peer holds: the recorded deltas become storage ops on

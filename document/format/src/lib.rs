@@ -237,6 +237,8 @@ impl<L: Layout> Gdd<L> {
 		}
 		// Every arm must continue this peer's authored-op count too.
 		session.restore_hot_sequence(session_state.next_hot_sequence);
+		// Before the hot log, so a settled op it still holds from an interrupted write is dropped.
+		session.absorb_settled_marks(&session_state.settled);
 
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 
