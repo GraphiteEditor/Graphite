@@ -5,10 +5,9 @@ use std::collections::HashMap;
 /// The live document: what exists and what it holds.
 ///
 /// Every field is last-writer-wins on a timestamp, including whether an entity exists, so the registry
-/// is a function of the set of ops applied and not of their order. An entity that was removed keeps a
-/// tombstone here with the removal's timestamp: an addition or a write stamped earlier is recognised as
-/// older and dropped whichever order it arrives in, and a write stamped later revives the entity from
-/// the tombstone. The live maps hold only what exists, so a reader never sees a tombstone.
+/// depends on the set of ops applied and not their order. A removed entity keeps a tombstone stamped with
+/// the removal: an op stamped earlier is dropped in either arrival order, and one stamped later revives the
+/// entity from it. The live maps hold only what exists.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Registry {
 	pub node_instances: HashMap<NodeId, Node>,
@@ -16,16 +15,18 @@ pub struct Registry {
 	/// Content-addressable resources (images, fonts, eventually proto-node declarations) referenced
 	/// by `ResourceId`. See [`ResourceStore`].
 	pub resources: ResourceStore,
-	/// Which person each device is: a per-device `PeerId` to a per-human `UserId`, registered by a device's
-	/// first contribution via `RegistryDelta::RegisterPeer` and again whenever its user changes. Last writer
-	/// wins on the stamp like every other field, so undo and history authorship scope by person across the
-	/// peer ids one person accumulates.
+	/// Which person each device is, registered via `RegistryDelta::RegisterPeer` by a device's first
+	/// contribution and whenever its user changes. Lets undo and history authorship scope by person across
+	/// the peer ids one person accumulates.
 	pub peer_users: HashMap<PeerId, PeerRegistration>,
 	pub attributes: Attributes,
+	/// Tombstones of removed nodes, so an op on one is ordered against its removal whichever arrives first.
 	#[serde(default)]
 	pub removed_nodes: HashMap<NodeId, Tombstone<Node>>,
+	/// Tombstones of removed networks; see [`removed_nodes`](Self::removed_nodes).
 	#[serde(default)]
 	pub removed_networks: HashMap<NetworkId, Tombstone<Network>>,
+	/// Tombstones of removed resources; see [`removed_nodes`](Self::removed_nodes).
 	#[serde(default)]
 	pub removed_resources: HashMap<ResourceId, Tombstone<ResourceEntry>>,
 }
@@ -37,14 +38,14 @@ pub struct PeerRegistration {
 	pub at: TimeStamp,
 }
 
-/// A removed entity: its content as of the removal, for reviving it, and when it was removed, for
-/// deciding whether a later-arriving op is older or newer than the removal.
+/// A removed entity: its content, for reviving it, and when it was removed, for ordering later-arriving
+/// ops against the removal.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tombstone<T> {
 	pub content: T,
 	pub at: TimeStamp,
-	/// Nothing has added the entity yet: the content only holds writes that arrived ahead of the addition,
-	/// and the entity stays dead until one folds in. See [`Registry::removed_nodes`].
+	/// Nothing has added the entity yet, so it stays dead until an addition folds in; the content only holds
+	/// writes that arrived ahead of it. See [`Registry::removed_nodes`].
 	#[serde(default)]
 	pub placeholder: bool,
 }
@@ -61,9 +62,8 @@ impl Registry {
 		self.networks.get(&id).or_else(|| self.removed_networks.get(&id).map(|mark| &mark.content))
 	}
 
-	/// Whether both registries removed the same entities at the same times. The removal marks decide
-	/// how ops still to arrive land, so two registries that agree on their values but not on these
-	/// will not stay agreed.
+	/// Whether both registries removed the same entities at the same times. The marks decide how future
+	/// ops land, so registries agreeing on values but not on marks will diverge.
 	pub fn removal_marks_equal(&self, other: &Self) -> bool {
 		fn same<K: std::hash::Hash + Eq, T>(a: &HashMap<K, Tombstone<T>>, b: &HashMap<K, Tombstone<T>>) -> bool {
 			a.len() == b.len() && a.iter().all(|(id, mark)| b.get(id).is_some_and(|other| other.at == mark.at && other.placeholder == mark.placeholder))

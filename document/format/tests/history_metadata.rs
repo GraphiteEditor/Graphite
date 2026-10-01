@@ -1,6 +1,5 @@
-// The record kept beside the history: what people state about the document's users, persisted with the
-// working copy and merged with every copy met. Needs the network feature for a session and the runtime
-// conversion for staging ops.
+// History metadata: persisted with the working copy and merged with every copy met.
+// Needs the network feature for a session and the runtime conversion for staging ops.
 #![cfg(all(feature = "conversion", feature = "network"))]
 
 use document_container::AnyContainer;
@@ -16,7 +15,7 @@ async fn document(peer: u64, user: u64) -> GddV1 {
 	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), UserId(user), 1, "editor".into(), "stdlib".into()).expect("create")
 }
 
-/// Let the room settle: greetings, the sync handshake and whatever was broadcast, however many rounds it takes.
+/// Let the room settle: greetings, the sync handshake and whatever was broadcast.
 fn settle(network: &mut MockNetwork, peers: &mut [&mut GddV1]) {
 	for _ in 0..16 {
 		for peer in peers.iter_mut() {

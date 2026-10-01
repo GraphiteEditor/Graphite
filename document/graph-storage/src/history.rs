@@ -12,9 +12,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{AttributesWrite, CrdtError, Delta, RegistryDelta, ResourceHash, Rev, TimeStamp, Value};
 
-/// The indexes are maintained by every mutator, so the questions the per-frame and per-interaction
-/// paths ask (is this timestamp retired, what are the tips, which hashes does history name) are probes
-/// rather than scans of a history that only ever grows.
+/// Every mutator maintains the indexes, so asking for the tips or the named hashes is a probe rather than
+/// a scan of a history that only grows.
 #[derive(Clone, Debug, Default)]
 pub struct History {
 	/// Deltas in topological order. Mutated only via [`push`](Self::push).
@@ -61,13 +60,11 @@ impl History {
 		&self.resource_hashes
 	}
 
-	/// Whether the deltas from `from` on extend the canonical order as they stand: a chain, each the
-	/// first's child in turn, hanging off the last delta before them. Such a tail is what every
-	/// retirement in a hosted session appends, and needs no re-sort.
+	/// Whether the deltas from `from` on already sit in canonical order: a single-parent chain hanging off
+	/// the last delta before them, which is what a hosted retirement appends, needs no re-sort.
 	///
-	/// The sort emits, among the deltas whose parents are all out, the lowest rev. A chain on the last
-	/// delta is alone in that set at every step, so it sorts where it was appended. A tail whose root
-	/// hangs off an earlier delta competes with that delta's later siblings and may sort before them.
+	/// The sort emits the lowest rev among the deltas whose parents are all out. A chain on the last delta is
+	/// alone in that set at every step; a tail rooted on an earlier delta competes with that delta's later siblings.
 	pub(crate) fn extends_canonically(&self, from: usize) -> bool {
 		let Some(tail) = self.deltas.get(from..) else { return true };
 		let mut previous = from.checked_sub(1).map(|position| self.deltas[position].id);
@@ -125,8 +122,8 @@ impl History {
 	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
 	/// children, and among deltas whose parents are all emitted the lowest `Rev` goes first. O(V + E).
 	///
-	/// Deterministic: two peers that absorb the same delta set end up with byte-identical history, not two
-	/// different valid orderings. Arrival order is erased.
+	/// Deterministic: peers that absorb the same delta set end up with byte-identical history, whatever the
+	/// arrival order.
 	pub(crate) fn canonical_sort(&mut self) {
 		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
 		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());
@@ -202,8 +199,8 @@ impl History {
 				next_sample_distance *= 2;
 			}
 		}
-		// The root always: two copies of one document share it however far their lines have diverged, so
-		// a peer answering the sample can tell a divergent copy from a stranger and merge rather than replace.
+		// Always the root: copies of one document share it however far they diverged, so the answering peer
+		// can tell a divergent copy from a stranger and merge rather than replace.
 		if samples.last() != Some(&current) {
 			samples.push(current);
 		}
@@ -237,8 +234,8 @@ impl History {
 		}
 	}
 
-	/// Record when a retired delta entered history, in place; outside its `Rev`, so the index stays valid. Returns
-	/// whether the delta was found.
+	/// Record when a retired delta entered history. Outside its `Rev`, so the index stays valid. Returns whether
+	/// the delta was found.
 	pub(crate) fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
 		match self.index.get(&rev) {
 			Some(&position) => {

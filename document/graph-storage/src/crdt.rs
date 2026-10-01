@@ -25,12 +25,11 @@ pub struct Delta {
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default)]
 	pub attributes: Attributes,
-	/// When the delta entered history, in wall-clock milliseconds since the Unix epoch as its retirer saw them.
-	/// For showing when a step happened; order always comes from the graph. Outside the rev like the attributes,
-	/// and a plain field rather than one of them since every retired delta carries it. Zero when not recorded,
-	/// by a copy with no clock: no retirement happens at the epoch, and an `Option` would cost a tag byte on
-	/// every stamped delta. Private so the zero never escapes; read it through [`retired_at`](Self::retired_at).
-	/// Last, since the history codec is positional.
+	/// When the delta entered history, in Unix wall-clock milliseconds as its retirer saw them. Display only;
+	/// order always comes from the graph. Outside the rev like `attributes`, but a plain field since every retired
+	/// delta carries it. Zero means unrecorded: no retirement happens at the epoch, and an `Option` would cost a
+	/// tag byte per delta. Private so the zero never escapes; see [`retired_at`](Self::retired_at). Last, since the
+	/// history codec is positional.
 	#[serde(default)]
 	pub(crate) retired_at_ms: u64,
 }
@@ -222,8 +221,8 @@ pub enum RegistryDelta {
 	Merge {
 		extra_parents: Vec<Rev>,
 	},
-	/// The last op of its author's transaction. Changes nothing; retirement takes an author's ops through
-	/// one of these as one unit and drops the marker itself. See [`Session::closed_transactions`](crate::Session::closed_transactions).
+	/// The last op of its author's transaction. Changes nothing; retirement takes the author's ops through it
+	/// as one unit and drops the marker. See [`Session::closed_transactions`](crate::Session::closed_transactions).
 	EndTransaction,
 	// Allow for future delta types without a model change
 	Other(Value),
@@ -243,8 +242,8 @@ pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attri
 	}
 }
 
-/// Lands a single-key write. `floor` is when the map was last written whole: a key the map does not
-/// hold is deleted as of then, so a write older than it is dropped. A deletion leaves a tombstone.
+/// Lands a single-key write. `floor` is the map's `attributes_timestamp`; see [`Attributes`]. A deletion
+/// leaves a tombstone.
 pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes, floor: TimeStamp) {
 	let AttributeDelta { key, value } = delta;
 	let decided = attributes.get(&key).map_or(floor, |existing| existing.timestamp);
@@ -270,8 +269,7 @@ mod tests {
 
 		let bare_base = postcard::to_allocvec(&base).expect("encode");
 		let bare_stamped = postcard::to_allocvec(&stamped).expect("encode");
-		// Everything before the field is the same, so the difference is the integer's varint: one byte for zero, six
-		// for today's milliseconds, and no tag byte in either.
+		// Only the integer's varint differs: one byte for zero, six for today's milliseconds, no tag byte in either.
 		assert_eq!(bare_stamped.len() - bare_base.len(), postcard::to_allocvec(&1_790_000_000_000u64).unwrap().len() - 1);
 
 		let decoded: Delta = postcard::from_bytes(&bare_stamped).expect("decode");

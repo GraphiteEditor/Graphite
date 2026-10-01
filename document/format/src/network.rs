@@ -1,7 +1,6 @@
 //! Live collaboration on the [`Gdd`] handle. `share` / `join` attach a [`Replica`]; the persist path
-//! then broadcasts staged hot ops and (as host) retired deltas, and `poll_peers` applies what peers
-//! send through the [`SyncTarget`] impl below, which persists inbound state the same way local
-//! edits are.
+//! then broadcasts staged hot ops, and retired deltas when hosting. `poll_peers` applies what peers
+//! send through the [`SyncTarget`] impl below, which persists it like local edits.
 
 use std::collections::HashSet;
 
@@ -12,13 +11,13 @@ use crate::error::Error;
 use crate::layout::Layout;
 use crate::{Gdd, PendingPersist};
 
-/// What peers changed in the working registry since the editor last asked. The editor keeps a runtime
-/// mirror of the registry and brings just the touched entities back into line, unless the registry was
-/// rederived wholesale, when the touched set no longer bounds what changed.
+/// What peers changed in the working registry since the editor last asked, so the editor can reconcile
+/// just the touched entities of its runtime mirror.
 #[derive(Clone, Debug, Default)]
 pub struct RemoteChanges {
 	pub touched: Touched,
-	/// The working registry was replaced wholesale by a full sync, so the mirror has to be rebuilt from it.
+	/// A full sync replaced the working registry, so the touched set no longer bounds what changed and the mirror
+	/// must be rebuilt.
 	pub rebuilt: bool,
 }
 
@@ -45,8 +44,7 @@ impl<L: Layout> Gdd<L> {
 		self.network = Some(Replica::host(transport, self.session.peer(), user));
 	}
 
-	/// Connect to the room every copy of this document shares, host or guest as the room calls for, and
-	/// remember that the document is shared so a reopen reconnects on its own.
+	/// Connect to this document's room as host or guest, and remember it is shared so a reopen reconnects.
 	pub fn connect(&mut self, transport: impl Transport + 'static, user: UserId) -> Result<(), Error> {
 		self.network = Some(Replica::connect(transport, self.session.peer(), user));
 		self.shared = true;
@@ -58,8 +56,7 @@ impl<L: Layout> Gdd<L> {
 		self.shared
 	}
 
-	/// For a connection still undecided after the grace period: take the host role if no host is there. See
-	/// [`Replica::decide_role`].
+	/// Take the host role if none is present once the grace period ends. See [`Replica::decide_role`].
 	pub fn decide_role(&mut self) -> Option<Role> {
 		self.network.as_mut().and_then(Replica::decide_role)
 	}
@@ -68,8 +65,8 @@ impl<L: Layout> Gdd<L> {
 		self.network = Some(Replica::guest(transport, self.session.peer(), user));
 	}
 
-	/// Leaves the room. A host retires every closed transaction first, so what peers finished is in
-	/// history before the retirer goes away.
+	/// Leaves the room. A host first retires every closed transaction, so finished work reaches history before
+	/// the retirer leaves.
 	pub fn leave(&mut self) {
 		self.shared = false;
 		if let Err(error) = self.persist_session_state() {
@@ -78,8 +75,7 @@ impl<L: Layout> Gdd<L> {
 		self.disconnect();
 	}
 
-	/// Drops the connection but keeps the document shared, for a transport that went down: a reopen
-	/// reconnects on its own, and the Session panel offers to reconnect now.
+	/// Drops the connection but keeps the document shared, for a transport that went down, so a reopen reconnects.
 	pub fn disconnect(&mut self) {
 		let closed = self.session.closed_transactions();
 		if let Err(error) = self.retire_transactions(&closed) {
@@ -190,11 +186,10 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn apply_remote_hot_ops(&mut self, ops: Vec<HotOp>) -> Result<Vec<HotOp>, TargetError> {
-		// An op naming an entity that has not arrived here yet is handed back for a later retry, so only
-		// what actually applied reaches the hot frame log.
+		// An op naming an entity not yet here is handed back for retry; only applied ops reach the hot frame log.
 		let mut deferred = Vec::new();
 		for hot_op in ops {
-			// Recorded whether or not it applies: a failed apply can still have resurrected what it references.
+			// Recorded even if the apply fails: it may still have resurrected what it references.
 			self.remote_changes.touched.record(&hot_op.op);
 			if self.session.replay_hot_op(hot_op.clone()).is_err() {
 				deferred.push(hot_op);
@@ -214,14 +209,13 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		}
 		SyncTarget::merge_remote(&mut self.session, deltas, retires, head)?;
 
-		// Whatever a peer sent is shared by definition, so it sits behind the published frontier too: a
-		// guest must no more silently rewind the host's history than the host may rewind its own.
+		// Whatever a peer sent is already shared, so it sits behind the published frontier and cannot be silently rewound.
 		if let Some(head) = self.session.head_rev() {
 			self.session.publish_up_to(head);
 		}
 
-		// A batch that extended canonical history at the end, with any merge delta joining it there, extends
-		// the file the same way. One that sorted earlier deltas after it rewrites the file.
+		// A batch that only extended history, plus any merge delta joining it, is appended to the file; one that
+		// sorted earlier deltas after it rewrites the file.
 		let tail: Vec<Rev> = self.session.history().skip(length_before).map(|delta| delta.id).collect();
 		let appended = tail
 			.iter()
@@ -245,8 +239,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 			self.session.publish_up_to(head);
 		}
 
-		// The absorbed deltas and the merge joining them are the batch; a sort that moved earlier deltas
-		// after them rewrites the file.
+		// Appended when the tail is just the absorbed deltas and their merge; see `merge_remote`.
 		let absorbed_ids: HashSet<Rev> = absorbed.iter().map(|delta| delta.id).collect();
 		let tail: Vec<Rev> = self.session.history().skip(length_before).map(|delta| delta.id).collect();
 		match tail.iter().all(|rev| absorbed_ids.contains(rev)) {

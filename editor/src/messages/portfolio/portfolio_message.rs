@@ -89,8 +89,7 @@ pub enum PortfolioMessage {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		content: Vec<u8>,
-		/// Give the copy a document id of its own, so everyone opening the same distributed file, a demo artwork
-		/// say, does not share one session room.
+		/// Give the copy a document id of its own, so everyone opening the same distributed file does not share one session room.
 		fresh_identity: bool,
 	},
 	DocumentFileLoaded {

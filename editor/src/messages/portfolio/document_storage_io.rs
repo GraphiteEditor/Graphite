@@ -163,7 +163,7 @@ pub(super) async fn open_document_file(
 			(None, None)
 		}
 	};
-	// The session room is derived from the manifest's id, so a copy of a distributed file, a demo artwork say, gets its own.
+	// The session room derives from the manifest's id, so a copy of a distributed file such as a demo artwork gets its own.
 	if fresh_identity {
 		let storage = match gdd.as_mut() {
 			Some(gdd) => Some(gdd),

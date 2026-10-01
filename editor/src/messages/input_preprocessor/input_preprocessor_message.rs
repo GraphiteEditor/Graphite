@@ -27,8 +27,7 @@ pub enum InputPreprocessorMessage {
 		editor_mouse_state: EditorPointerState,
 		modifier_keys: ModifierKeys,
 	},
-	/// The pointer moved over GUI that covers the canvas, the node graph say: only the position is recorded, for
-	/// presence and the like, and no tool hears of it.
+	/// The pointer moved over GUI covering the canvas, such as the node graph: only the position is recorded, for presence.
 	PointerHover {
 		editor_mouse_state: EditorPointerState,
 	},

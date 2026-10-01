@@ -704,8 +704,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	// Second autosave: again verifies the round-trip, and the edit, once its transaction is closed and
-	// retired, must produce new retired history. Retirement follows a policy rather than the commit.
+	// Second autosave verifies the round-trip again; retirement follows a policy, not the commit, so retire before expecting history.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
@@ -891,8 +890,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 	);
 }
 
-/// Undoing a step that is still hot takes it back rather than moving the cursor: the hot log empties,
-/// history gains nothing, and the interface follows the registry. Redo stages the same ops afresh.
+/// Undoing a hot step takes it back rather than moving the cursor, and redo stages the same ops afresh.
 #[tokio::test]
 async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	let mut editor = EditorTestUtils::create();
@@ -915,8 +913,7 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
 	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
-	// The step's declaration bytes are named by nothing in storage now, so garbage collection would drop
-	// them and a redo could not be served to peers; the step held for redo keeps them alive.
+	// Nothing in storage names the step's declaration bytes, so the step held for redo must keep them from garbage collection.
 	assert!(
 		editor.active_document().retracted_resource_hashes().next().is_some(),
 		"the retracted step names its declaration resource"

@@ -121,8 +121,8 @@ impl Viewer {
 			return Ok(());
 		};
 
-		// The document is rendered once it is on hand and compiled; until then the window still presents
-		// its background, since a Wayland surface that never commits a buffer is never shown at all.
+		// Until the document is compiled the window still presents its background, since a Wayland surface that
+		// never commits a buffer is never shown.
 		let frame = match &self.executor {
 			Some(executor) => {
 				let mut render_config = RenderConfig {

@@ -332,8 +332,7 @@ fn line(session: &Session, from: Option<Rev>, until: Option<Rev>, limit: usize) 
 }
 
 /// Group a line, newest first, into interactions: each starts at an interaction end and runs back to the
-/// delta after the previous end. A line whose newest delta is not an end, work retired mid-interaction,
-/// opens a group of its own.
+/// delta after the previous end. A newest delta that is not an end, from work retired mid-interaction, opens a group of its own.
 fn interactions(deltas: &[Delta]) -> Vec<Vec<&Delta>> {
 	let mut groups: Vec<Vec<&Delta>> = Vec::new();
 	for delta in deltas {

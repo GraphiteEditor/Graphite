@@ -67,8 +67,8 @@ fn find_node<'a>(network: &'a NodeNetwork, path: &[RuntimeNodeId], id: RuntimeNo
 	nested.nodes.get(&id).expect("the node should exist")
 }
 
-/// A node projected on its own must be what the whole-document conversion holds for it, metadata
-/// included, since a mirror patched from projections has to match a mirror rebuilt whole.
+/// A node projected alone must match the whole-document conversion, metadata included, since a mirror
+/// patched from projections has to match one rebuilt whole.
 #[test]
 fn projecting_a_node_matches_the_whole_conversion() {
 	let resources = graphene_resource::ResourceRegistry::new();

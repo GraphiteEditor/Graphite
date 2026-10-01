@@ -26,8 +26,7 @@ pub enum SyncMessage {
 	/// The transport loop of a document's session ended. `generation` names the connection it drove, so the end of
 	/// a connection the document already left, or replaced by a fork, is nothing to act on.
 	Disconnected { document_id: DocumentId, generation: u32 },
-	/// A declaration a remote change names was already on hand and was read from the byte store to be
-	/// decoded; `None` when the store turned out not to hold it after all.
+	/// A declaration a remote change names, read from the byte store to be decoded; `None` when the store did not hold it.
 	DeclarationLoaded { document_id: DocumentId, hash: ResourceHash, bytes: Option<Vec<u8>> },
 	/// A resource a peer asked for was read from the byte store.
 	ResourceLoaded {

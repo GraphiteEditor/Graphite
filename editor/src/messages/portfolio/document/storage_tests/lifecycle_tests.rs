@@ -154,8 +154,7 @@ async fn unchanged_content_keeps_cursor_and_redo_across_restart() {
 	let network_before = editor.active_document().document_network().clone();
 	editor.draw_rect(0., 0., 100., 100.).await;
 	dispatch(&mut editor, PortfolioMessage::AutoSaveDocument { document_id: id });
-	// The step retires as the frame tick would retire it once quiet; a step still hot is taken back on undo
-	// instead and never enters history, so there would be no cursor to keep.
+	// Retire as the frame tick would: a hot step is taken back on undo and never enters history, leaving no cursor to keep.
 	editor.active_document_mut().retire_storage_interaction();
 
 	editor.handle_message(DocumentMessage::Undo).await;

@@ -1,11 +1,9 @@
-//! Which entities a run of ops named, for a runtime mirror of the registry to bring back into line
-//! without being rebuilt from the whole registry.
+//! Which entities a run of ops named, so a runtime mirror of the registry can be brought back into line
+//! without a full rebuild.
 //!
-//! The set is over-approximate on purpose: an op is recorded whether or not it changed anything, so a
-//! late-writer-wins loser, an idempotent replay and a failed apply all land here. What the op did to the
-//! registry is settled by comparing the entity's stored and mirrored forms afterwards, which is cheaper
-//! than having every apply arm report its outcome and stays correct when an op resurrects an entity it
-//! only references.
+//! Over-approximate on purpose: an op is recorded whether or not it changed anything, and the mirror
+//! settles the outcome by comparing each entity's stored and mirrored forms. That is cheaper than having
+//! every apply arm report its outcome, and stays correct when an op resurrects an entity it only references.
 
 use std::collections::BTreeSet;
 

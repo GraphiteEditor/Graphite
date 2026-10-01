@@ -106,8 +106,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
 					return;
 				};
-				// Retirement runs on the frame tick for every document, in a session or not, so history grows as steps
-				// close rather than waiting for the first undo.
+				// Retirement runs on the frame tick, so every document polls, shared or not.
 				self.start_polling(responses);
 				if let Some(token) = self.pending_join.take() {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
@@ -193,16 +192,14 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				let resources = resource_storage.resources_mut();
 				for (&document_id, document) in documents.iter_mut() {
-					// Retirement follows the working copy's policy on every document, in a session or not: closed
-					// transactions retire once enough have waited long enough, never on a gesture.
+					// Closed transactions retire by the working copy's policy, once enough have waited long enough, never on a gesture.
 					let idle = document.network_interface.transaction_status() == TransactionStatus::Finished;
 					if let Some(gdd) = document.storage_mut()
 						&& let Err(error) = gdd.retire_due(now_ms(), idle)
 					{
 						log::error!("Retirement failed: {error}");
 					}
-					// The person behind this copy goes on the document's record of its users, so whoever opens it later
-					// can name the author of every step; a no-op once the name is on record.
+					// Record the person behind this copy in the document's users, so whoever opens it later can name every step's author.
 					if let Some(gdd) = document.storage_mut() {
 						record_profile(gdd, preferences);
 					}
@@ -233,8 +230,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					} else {
 						self.undecided_since.remove(&document_id);
 					}
-					// Each movement reaches peers as it happens: what the interface recorded since the last
-					// frame is staged, and so broadcast, ahead of this frame's poll.
+					// Stage, and so broadcast, what the interface recorded since the last frame, so each movement reaches peers live.
 					document.stage_pending_edits(&resources);
 					// Presence rides outside the causal broadcast: the name whenever it changed, and the pointer
 					// over the active document once per frame when it moved, `None` for every other document.
@@ -422,9 +418,8 @@ impl SyncMessageHandler {
 		Some(token)
 	}
 
-	/// Poll `document_id`'s room as packets arrive, not only per frame: a hidden browser tab gets about one
-	/// frame a second, which made a host answer each step of a join a second late. The wake rides on the
-	/// editor's future plumbing, so it works the same on the desktop as in the browser.
+	/// Poll `document_id`'s room as packets arrive, not only per frame: a hidden browser tab gets about one frame a second,
+	/// which would delay each step of a join by that. The wake rides on the editor's future plumbing, so desktop works alike.
 	fn attach(&mut self, document_id: DocumentId, incoming: Incoming, responses: &mut VecDeque<Message>) {
 		self.connections += 1;
 		self.incoming.insert(document_id, (self.connections, incoming));
@@ -654,8 +649,7 @@ fn peer_row(name: &str, anonymous: bool) -> LayoutGroup {
 	LayoutGroup::row(vec![TextLabel::new(name).italic(anonymous).widget_instance()])
 }
 
-/// Put this user's display name on the document's record of its users; a no-op when it is already there. An
-/// unnamed user is not recorded until a name to clear stands.
+/// Put this user's display name on the document's record of its users. An empty name is recorded only to clear one on record.
 fn record_profile(gdd: &mut document_format::GddV1, preferences: &PreferencesMessageHandler) {
 	let name = preferences.user_name.trim();
 	let user = UserId(preferences.user_id);

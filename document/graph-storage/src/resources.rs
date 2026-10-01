@@ -18,8 +18,8 @@ pub struct SourceKey {
 pub struct SourceValue {
 	pub source: Value,
 	pub timestamp: TimeStamp,
-	/// A removed source stays as a stamped tombstone, so an addition older than the removal is recognised
-	/// as older whichever order the two land in; readers see a tombstone as absent.
+	/// A removed source stays as a stamped tombstone, so an older addition loses in either arrival order;
+	/// readers see it as absent.
 	#[serde(default)]
 	pub deleted: bool,
 }
@@ -45,8 +45,8 @@ pub struct ResourceEntry {
 	pub presence: TimeStamp,
 	/// Fallback chain kept sorted by `SourceKey`, so iteration yields highest-priority first.
 	pub sources: Vec<(SourceKey, SourceValue)>,
-	/// When `sources` was last written whole, by an addition of the entry: a key the chain does not hold
-	/// is deleted as of then, the way [`Attributes`](crate::Attributes) work.
+	/// When `sources` was last written whole, by an addition of the entry. A key the chain does not hold is
+	/// deleted as of then, as with [`Attributes`](crate::Attributes).
 	pub sources_timestamp: TimeStamp,
 	pub hash: Option<ResourceHash>,
 	pub hash_timestamp: TimeStamp,
@@ -151,8 +151,8 @@ impl ResourceEntry {
 		}
 	}
 
-	/// Writes the chain whole at `at`: every source is written then and every other key is deleted as of
-	/// then, which the floor records without a tombstone per key.
+	/// Writes the chain whole at `at`. Every other key is deleted as of then through the floor, without a
+	/// tombstone per key.
 	pub(crate) fn stamp_sources(&mut self, at: TimeStamp) {
 		self.sources.retain(|(_, value)| !value.deleted);
 		for (_, value) in &mut self.sources {

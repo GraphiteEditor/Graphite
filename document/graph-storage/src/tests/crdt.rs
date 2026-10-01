@@ -312,7 +312,7 @@ fn first_contribution_registers_the_peer() {
 	assert_eq!(fresh.registry().peer_users, peers_before, "a no-op batch must not add a registration");
 }
 
-/// A SetExport newer than a network.s removal revives the network from its tombstone rather than error.
+/// A SetExport newer than a network's removal revives the network from its tombstone instead of erroring.
 #[test]
 fn set_export_resurrects_absent_network() {
 	let mut document = fresh_document(PeerId(1));
@@ -723,7 +723,7 @@ fn compute_deltas_diffs_resources_and_round_trips() {
 	// Apply the diff to a document seeded with `from`, then check it matches `to` by value.
 	let mut document = fresh_document(PeerId(1));
 	document.working_registry = registry_with_resources(from);
-	// A clock is past every stamp in the registry it edits, as a session.s persisted clock is.
+	// A clock is past every stamp in the registry it edits, as a session's persisted clock is.
 	document.clock.observe(ts(1, 1));
 	for op in deltas {
 		let timestamp = document.clock.tick();
@@ -1034,8 +1034,8 @@ fn absorbing_marks_keeps_both_sides_coverage() {
 	}
 }
 
-/// Undo rewinds retired history and must leave the hot tail alone: copying the working registry onto
-/// the snapshot promotes unretired work. Hot ops exist between staging and retirement even solo.
+/// Undo rewinds retired history and must leave the hot tail alone, or unretired work is promoted into the
+/// snapshot. Hot ops exist between staging and retirement even solo.
 #[test]
 fn undo_does_not_promote_hot_ops_into_the_retired_snapshot() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1076,8 +1076,8 @@ fn redo_restores_the_retired_snapshot_without_the_hot_tail() {
 	assert!(holds(&session.registry().attributes, "hot"), "the hot op must survive an undo/redo round trip");
 }
 
-/// Silent undo emits nothing, so it is only legal while a commit is unpublished. Once peers hold it, a
-/// rewind would diverge from them for good.
+/// Silent undo emits nothing, so it is only legal on an unpublished commit; rewinding one peers hold would
+/// diverge from them for good.
 #[test]
 fn publishing_a_commit_disables_silent_undo() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1116,8 +1116,8 @@ fn snapshot_from_history_ignores_undone_deltas() {
 }
 
 /// A node removed, revived by a reference and removed again with a snapshot placing it elsewhere folds
-/// to the same snapshot whether the deltas land one by one or all at once (simulation seed 3588534,
-/// which once caught a revival reading the wrong removal).
+/// to the same snapshot whether the deltas land one by one or all at once. Pins simulation
+/// seed 3588534, where a revival read the wrong removal.
 #[test]
 fn snapshot_from_history_reproduces_a_revival_between_two_removals() {
 	let node_id = NodeId(3);
@@ -1267,8 +1267,8 @@ fn retirement_preserves_the_live_lww_winner() {
 	);
 }
 
-/// A straggler LWW discarded still retires, and must not return by doing so: stamped at retirement it
-/// would outrank the op that beat it, putting the discarded value into history itself.
+/// A straggler LWW discarded still retires, and must not come back by doing so: stamped at retirement it
+/// would outrank the op that beat it.
 #[test]
 fn retiring_a_straggler_leaves_the_discarded_value_behind() {
 	let mut host = Session::with_peer(PeerId(1));
@@ -1302,10 +1302,9 @@ fn retiring_a_straggler_leaves_the_discarded_value_behind() {
 	assert_eq!(value(&replayed), Some(Value::from(serde_json::json!(1))), "nor may history replay to the discarded value");
 }
 
-/// Every field of the registry is last-writer-wins on a timestamp, whether an entity exists included, so
-/// a set of ops folds to one registry whatever order it lands in. Random sets of structural and field
-/// ops, attribute deletions included, over a few ids so additions, removals and writes collide, folded
-/// in random orders with an op naming an entity not yet seen retried after the rest.
+/// Every registry field, entity existence included, is last-writer-wins on a timestamp, so a set of ops
+/// folds to one registry in any order. Random structural and field ops, attribute deletions included, over
+/// a few ids so they collide, folded in random orders with ops naming an unseen entity retried after the rest.
 #[test]
 fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 	use crate::Priority;
@@ -1475,7 +1474,7 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 
 /// A removal's snapshot is a copy of the node, stamped exactly as the addition stamped it. Folding it in
 /// must keep what the addition wrote: an entry stamped at a map's floor was written by the same op that
-/// set the floor, not before it. Caught in the editor as a revived node missing `reflection_metadata`.
+/// set the floor, not before it. Pins a revived node losing `reflection_metadata`.
 #[test]
 fn a_removal_snapshot_keeps_the_attributes_the_addition_wrote() {
 	use crate::{AttributesRead, AttributesWrite};

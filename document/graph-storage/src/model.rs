@@ -4,17 +4,16 @@ use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
-	/// When the node was last added, so a concurrent addition of the same id and a removal resolve by
-	/// last-writer-wins rather than by arrival order. See [`Registry::removed_nodes`](crate::Registry::removed_nodes).
+	/// When the node was last added, so an addition and a concurrent removal resolve by last-writer-wins
+	/// rather than arrival order. See [`Registry::removed_nodes`](crate::Registry::removed_nodes).
 	#[serde(default)]
 	pub(crate) presence: TimeStamp,
-	/// When the node was last added, which is what decides its network between concurrent additions
-	/// of one id; every other field carries its own timestamp.
+	/// When the node was last added, which decides its network between concurrent additions of one id;
+	/// every other field carries its own timestamp.
 	#[serde(default)]
 	pub(crate) added: TimeStamp,
-	/// When the input list last changed shape, so a whole-list write and a per-slot write resolve the
-	/// same whichever lands first: the list follows the newer of the two, and a slot the older list also
-	/// held keeps whichever of its values is newer.
+	/// When the input list last changed shape, so whole-list and per-slot writes resolve the same in either
+	/// order: the list follows the newer write, and a slot both lists held keeps its newer value.
 	#[serde(default)]
 	pub(crate) inputs_timestamp: TimeStamp,
 	pub(crate) implementation: Implementation,
@@ -162,7 +161,7 @@ pub enum Implementation {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Network {
-	/// When the network was last added; see [`Node::presence`].
+	/// When the network was last added; see [`Registry`](crate::Registry).
 	#[serde(default)]
 	pub presence: TimeStamp,
 	pub exports: Vec<ExportSlot>,

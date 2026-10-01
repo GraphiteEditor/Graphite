@@ -97,7 +97,7 @@ enum Command {
 		document: PathBuf,
 	},
 
-	/// Host a collaborative session on a .gdd document (or an empty one), driven from stdin.
+	/// Host a collaborative session on a .gdd document, or an empty one, driven from stdin.
 	Host {
 		document: Option<PathBuf>,
 		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]

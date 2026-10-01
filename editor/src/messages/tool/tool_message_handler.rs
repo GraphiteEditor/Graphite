@@ -381,8 +381,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
-	/// The icon name of the active tool, for showing other peers what this one holds. The shapes share the
-	/// Shape tool, so the shelf's highlighted shape names the icon rather than the tool.
+	/// The icon name of the active tool, shown to other peers. The shapes share the Shape tool, so the shelf's highlighted
+	/// shape names the icon.
 	pub fn active_tool_icon(&self) -> String {
 		let tool_data = &self.tool_state.tool_data;
 		match tool_data.active_shape_type {

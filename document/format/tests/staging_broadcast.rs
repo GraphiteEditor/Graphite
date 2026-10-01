@@ -8,8 +8,8 @@ use document_graph_storage::from_runtime::DeclarationBytes;
 use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, UserId};
 use peer_transport::mock::MockNetwork;
 
-/// Every staging path has to reach the room. The recorded-batch path once appended its hot frames and
-/// stopped there, so an edit made through the interface was persisted and never sent.
+/// Every staging path has to reach the room. Pins a regression where the recorded-batch path persisted its hot frames
+/// but never sent them.
 #[test]
 fn staging_a_constructed_batch_reaches_the_room() {
 	futures::executor::block_on(async {
@@ -23,7 +23,7 @@ fn staging_a_constructed_batch_reaches_the_room() {
 		network.connect(host_id);
 		network.connect(guest_id);
 
-		// Greeting the guest is what lets the host send to it; the hello itself is then out of the way.
+		// Greet the guest so the host can send to it, and get the hello out of the way.
 		host.poll_peers();
 		network.deliver_all();
 		assert_eq!(network.pending(), 0);

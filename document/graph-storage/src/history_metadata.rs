@@ -1,9 +1,8 @@
-//! What people say about a document's history, kept beside it rather than in it: who its users are, what
-//! its steps are called and which are tagged. None of it is folded into the document, so moving the head
-//! never changes it and stating it never rewrites a delta. Every statement is a [`MetadataFact`] with a
-//! wall-clock stamp, the newer of two about the same thing winning, which makes the record a state that
-//! merges the same in any order and any number of times. On disk the facts are appended one per line and
-//! folded on read, so a rename appends one line and nothing is ever rewritten.
+//! What people say about a document's history, kept beside it rather than in it: user names, step labels
+//! and tags. None of it is folded into the document, so moving the head never changes it and stating it
+//! never rewrites a delta. Each [`MetadataFact`] carries a wall-clock stamp and the newer of two about the
+//! same thing wins, so the record merges the same in any order and any number of times. On disk the facts
+//! are appended one per line and folded on read, so nothing is ever rewritten.
 
 use crate::ids::{PeerId, Rev, UserId};
 use serde::{Deserialize, Serialize};
@@ -46,7 +45,7 @@ pub struct UserRecord {
 	pub attributes: BTreeMap<String, Fact>,
 }
 
-/// Everything on record about one rev: the interaction it closes, in the History panel's terms.
+/// Everything on record about one rev, which stands for the interaction it closes.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RevRecord {
 	pub rev: Rev,
@@ -148,9 +147,8 @@ impl HistoryMetadata {
 			.collect()
 	}
 
-	/// State a fact about a user. Nothing changes when the same value already stands, whatever its stamp;
-	/// otherwise the fact is stamped no earlier than the one it replaces, so a clock behind a peer's still
-	/// gets its say. Returns the fact as stated, for appending to the file and telling the room.
+	/// State a fact about a user. A no-op when the same value already stands; otherwise stamped after the fact it
+	/// replaces, so a clock behind a peer's still wins. Returns the fact as stated, for appending and broadcasting.
 	pub fn set_user_attribute(&mut self, user: UserId, key: &str, value: serde_json::Value, stamp: WallStamp) -> Option<MetadataFact> {
 		self.state(Subject::User(user), key, value, stamp)
 	}
@@ -179,8 +177,8 @@ impl HistoryMetadata {
 		})
 	}
 
-	/// Take on one fact as stated elsewhere: it lands unless an equal or newer stamp stands for the same thing.
-	/// Returns whether it landed.
+	/// Take on a fact stated elsewhere unless an equal or newer stamp stands for the same thing. Returns whether
+	/// it landed.
 	pub(crate) fn absorb(&mut self, fact: MetadataFact) -> bool {
 		let attributes = self.attributes_mut(fact.subject);
 		if attributes.get(&fact.key).is_some_and(|mine| fact.stamp <= mine.stamp) {

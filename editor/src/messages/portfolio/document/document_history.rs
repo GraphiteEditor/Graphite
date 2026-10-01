@@ -35,8 +35,8 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
-	/// For each step on the legacy redo stack, how storage undid it, so redo takes the matching way back
-	/// rather than diffing a snapshot that predates what peers wrote meanwhile.
+	/// For each step on the legacy redo stack, how storage undid it, so redo takes the matching way back rather than
+	/// diffing a snapshot that predates what peers wrote since.
 	retracted_undos: Vec<UndoNote>,
 }
 
@@ -138,9 +138,8 @@ impl DocumentHistory {
 		self.declarations.clear();
 	}
 
-	/// Close the open storage transaction at an undo-step boundary (a new `StartTransaction`), so the
-	/// per-`CommitTransaction` staging since the last boundary is one unit for retirement and undo, aligned
-	/// with the legacy step. Retirement itself follows the working copy's policy. No-op while unmounted.
+	/// Close the open storage transaction at an undo-step boundary, so the staging since the last boundary is one unit
+	/// for retirement and undo, aligned with the legacy step. No-op while unmounted.
 	pub fn end_storage_transaction(&mut self) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.end_transaction() {
@@ -148,8 +147,8 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Undo the latest storage transaction while it is still hot by taking it back, so it leaves every hot
-	/// log and never becomes a history step. `false` when the step already retired. No-op while unmounted.
+	/// Undo the latest storage transaction while it is still hot by taking it back, so it never becomes a history step.
+	/// `None` when the step already retired or nothing is mounted.
 	pub fn retract_storage_transaction(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
 		let storage = self.storage.as_mut()?;
 		match storage.retract_transaction() {
@@ -161,8 +160,7 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Stage ops a retraction took back, as a fresh transaction: the redo of a step taken back. What they
-	/// name lands in the remote changes, for the interface to follow.
+	/// Redo a step taken back by staging its ops as a fresh transaction. What they name lands in the remote changes.
 	pub fn restage_ops(&mut self, ops: Vec<document_graph_storage::RegistryDelta>) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.restage_ops(ops) {
@@ -180,8 +178,8 @@ impl DocumentHistory {
 		!self.legacy_redo_stack.is_empty()
 	}
 
-	/// The resource bytes the steps taken back still name, so garbage collection keeps them for a redo:
-	/// once taken back, nothing in the registry or history refers to them any more.
+	/// The resource bytes the steps taken back still name. Nothing in the registry or history refers to them,
+	/// so garbage collection must keep them for a redo.
 	pub fn retracted_resource_hashes(&self) -> impl Iterator<Item = graph_craft::application_io::resource::ResourceHash> + '_ {
 		self.retracted_undos
 			.iter()
@@ -197,8 +195,7 @@ impl DocumentHistory {
 			})
 	}
 
-	/// Whether the next redo step is one storage undid on its own, taken back or dropped, so the caller can
-	/// decide how to redo before it moves the legacy stacks.
+	/// Whether the next redo step was taken back or dropped rather than cursor-undone, checked before the legacy stacks move.
 	pub fn next_redo_is_storage_driven(&self) -> bool {
 		!matches!(self.retracted_undos.last(), None | Some(UndoNote::Cursor))
 	}
@@ -257,9 +254,7 @@ impl DocumentHistory {
 		self.retracted_undos.clear();
 	}
 
-	/// Close this peer's open transaction and retire every closed one into durable Gdd history, so the
-	/// interaction being undone is in history. Called before undo/redo and after the first commit of a
-	/// newly mounted document. No-op while unmounted.
+	/// Close this peer's open transaction and retire every closed one into durable Gdd history. No-op while unmounted.
 	pub fn retire_storage_interaction(&mut self) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.retire_pending_interaction() {
@@ -279,10 +274,8 @@ impl DocumentHistory {
 		self.persist_view_state(interface, view_settings);
 	}
 
-	/// The graph half of [`stage_snapshot`](Self::stage_snapshot), without the view state. A session
-	/// does this every frame, so a peer sees each movement of a drag as its own hot op rather than
-	/// whatever the autosave timer happened to catch; retirement coarsens them later. Returns whether the
-	/// working copy is mounted and took the batch.
+	/// The graph half of [`stage_snapshot`](Self::stage_snapshot), without the view state. A session stages every frame,
+	/// so peers see each movement of a drag; retirement coarsens them later. Returns whether the working copy took the batch.
 	pub fn stage_graph(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> bool {
 		let needs_whole_document_stage = self.needs_whole_document_stage;
 		let Some(storage) = self.storage.as_mut() else { return false };
@@ -393,7 +386,7 @@ impl DocumentHistory {
 	}
 
 	/// Build a fresh interface from the working registry, using the declaration cache so no resource load
-	/// is needed. `None` (logged) when the registry does not convert.
+	/// is needed. `None` when the registry does not convert.
 	pub fn rebuild_interface(&self) -> Option<NodeNetworkInterface> {
 		let storage = self.storage.as_ref()?;
 
@@ -413,8 +406,7 @@ impl DocumentHistory {
 	}
 
 	/// The hashes of declaration resources the working copy names but holds no decoded declaration for.
-	/// A remote change can name a declaration whose bytes are already in the byte store from an earlier
-	/// session, so it is never requested from a peer and has to be decoded from what is on hand.
+	/// A remote change can name a declaration whose bytes the byte store already holds, so no peer is asked for them.
 	pub fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
 		let Some(storage) = self.storage.as_ref() else { return Vec::new() };
 
@@ -430,7 +422,7 @@ impl DocumentHistory {
 	}
 
 	/// Cache a resource that arrived from a peer as a proto-node declaration, under every declaration
-	/// resource referencing its hash. Ignores resources no declaration refers to (images, fonts).
+	/// resource referencing its hash. Ignores resources no declaration refers to, such as images and fonts.
 	pub fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) {
 		let Some(storage) = self.storage.as_ref() else { return };
 

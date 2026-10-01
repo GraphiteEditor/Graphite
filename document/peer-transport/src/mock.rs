@@ -1,6 +1,5 @@
-//! In-process transport for deterministic simulation. Every packet sits in a per-(sender, receiver)
-//! queue until `step` delivers it, so interleavings across peers are driven by the seed while each
-//! pair stays ordered like a reliable channel.
+//! In-process transport for deterministic simulation. Packets wait in per-pair queues until `step` delivers
+//! one, so the seed drives interleavings while each pair stays ordered like a reliable channel.
 
 use crate::packet::{PacketError, SyncPacket};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
@@ -90,9 +89,7 @@ impl MockNetwork {
 		while self.step() {}
 	}
 
-	/// Deliver everything in flight to one peer, leaving every other peer's queues untouched. Random
-	/// stepping cannot target a receiver, so this is how a test puts a packet in one peer's hands and
-	/// not another's.
+	/// Deliver everything in flight to one peer only, so a test can put a packet in one peer's hands and not another's.
 	pub fn deliver_to(&mut self, to: TransportPeerId) {
 		let mut shared = self.shared.lock().unwrap();
 		let queues: Vec<_> = shared.in_flight.keys().copied().filter(|&(_, receiver)| receiver == to).collect();
@@ -110,8 +107,8 @@ impl MockNetwork {
 	}
 }
 
-/// Like a real socket, an endpoint only knows the peers whose connect events it has polled, so it
-/// can't send to a peer before it had the chance to greet it.
+/// Like a real socket, an endpoint knows only the peers whose connect events it has polled, so it can't send to
+/// a peer before greeting it.
 pub struct MockEndpoint {
 	id: TransportPeerId,
 	shared: Arc<Mutex<Shared>>,

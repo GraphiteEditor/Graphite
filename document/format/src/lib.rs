@@ -55,7 +55,7 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
 /// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
-/// The metadata file is a log of facts appended one per line and folded on read, so nothing is ever rewritten.
+/// Facts are appended one per line and folded on read, so the file is never rewritten.
 pub const METADATA_CODEC: Codec = Codec::JsonLines;
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
@@ -71,7 +71,7 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 /// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
 /// `Session` is cloned (a snapshot copy); the container is shared. A live collaboration session is
-/// not carried over, so a clone is a read-only copy for asynchronous writes.
+/// not carried over.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: AnyContainer,
@@ -80,11 +80,11 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
 	/// and synchronous.
 	pub(crate) manifest: Manifest,
-	/// What people state about the history: its users and their names, later labels and tags. Kept beside
-	/// the history in its own file, merged last-writer-wins with every copy met, never folded and never undone.
+	/// What people state about the history, such as user names. Kept in its own file, merged last-writer-wins
+	/// with every copy met, never folded or undone.
 	pub(crate) metadata: HistoryMetadata,
-	/// The wall clock as the editor last reported it, in milliseconds since the Unix epoch, so retirements can
-	/// record when they happened. `None` for a copy nothing ticks, the CLI or a test.
+	/// Wall clock in Unix-epoch milliseconds as the editor last reported it, so retirements can record when
+	/// they happened. `None` when nothing ticks, as in the CLI or tests.
 	pub(crate) wall_clock_ms: Option<f64>,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
@@ -92,33 +92,30 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
-	/// Where this document's resource bytes live. `None` means the working copy's own content-addressed
-	/// store, which is what a standalone handle uses. The editor points this at its application-wide
-	/// cache, the single store resources are kept in there.
+	/// Where resource bytes live. `None` means the working copy's own content-addressed store; the editor
+	/// points this at its application-wide cache.
 	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
 	#[cfg(feature = "network")]
 	pub(crate) network: Option<peer_transport::Replica>,
 	#[cfg(feature = "network")]
 	pub(crate) pending_persist: PendingPersist,
-	/// What peers changed since the editor last took it, so it can bring its runtime mirror into line
-	/// with the registry without rebuilding it.
+	/// What peers changed since the editor last took it, so it can reconcile its runtime mirror without a rebuild.
 	#[cfg(feature = "network")]
 	pub(crate) remote_changes: network::RemoteChanges,
-	/// When each closed transaction was first seen here, by its marker, so the retirement policy can age
-	/// it. Not persisted: after a reopen everything pending is old enough.
+	/// When each closed transaction was first seen, by marker, so the retirement policy can age it. Not
+	/// persisted: after a reopen everything pending is old enough.
 	pub(crate) transactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
-	/// When this peer last staged an op, so an open transaction the editor never closed can be closed
-	/// once it has gone quiet.
+	/// When this peer last staged an op, so a transaction the editor left open can be closed once quiet.
 	pub(crate) own_last_staged_ms: Option<f64>,
 	/// Whether an op of this peer's own was staged since the last policy tick.
 	pub(crate) own_staged_since_tick: bool,
-	/// Whether the document is meant to be in its room: set by sharing, cleared by disconnecting, and
-	/// persisted so a reopened document reconnects on its own.
+	/// Whether the document should be in its room: set by sharing, cleared by disconnecting, persisted so
+	/// a reopen reconnects.
 	pub(crate) shared: bool,
 }
 
-/// Whole-file rewrites the sync path defers to the end of a poll, so one batch of remote packets costs
-/// one rewrite of each file rather than one per packet.
+/// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per
+/// file, not one per packet.
 #[cfg(feature = "network")]
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct PendingPersist {
@@ -215,7 +212,7 @@ impl<L: Layout> Gdd<L> {
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
 
 		let peer = session_state.peer_id;
-		// A copy written before identities were stored has no user; the peer stands for itself until one is set.
+		// With no stored user, the peer stands for itself until one is set.
 		let user = match session_state.user_id {
 			UserId(0) => UserId(peer.0),
 			user => user,

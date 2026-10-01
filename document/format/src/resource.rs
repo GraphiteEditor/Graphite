@@ -92,8 +92,7 @@ impl<L: Layout> Gdd<L> {
 		ResourceProxy(self.working.clone(), self.layout.clone())
 	}
 
-	/// Point resource lookups at an external store instead of the working copy, for an embedder that
-	/// already keeps one cache for every open document.
+	/// Point resource lookups at an external store, for an embedder keeping one cache for every open document.
 	pub fn set_byte_store(&mut self, byte_store: Arc<dyn ResourceStorage>) {
 		self.byte_store = Some(byte_store);
 	}

@@ -613,11 +613,9 @@ async fn swapping_an_implementation_leaves_the_node_in_place() {
 	);
 }
 
-/// What a peer receives must bring its interface to what the editing peer holds: the recorded deltas are
-/// constructed into storage ops, applied to the peer's registry, and the touched entities reconciled
-/// into a clone of the interface taken before the edit. Anything the reconcile expresses wrongly, or
-/// not at all, shows here as a difference from the edited interface, and the reconciled interface has
-/// to convert back to the registry it was reconciled from.
+/// What a peer receives must bring its interface to what the editing peer holds: the recorded deltas become storage ops on
+/// the peer's registry, the touched entities are reconciled into a pre-edit clone, and that must equal the edited interface
+/// and convert back to the registry it was reconciled from.
 async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUtils)) {
 	use document_graph_storage::Touched;
 
@@ -821,8 +819,7 @@ async fn reconciling_an_input_value_edit_reproduces_the_interface() {
 	.await;
 }
 
-/// A touched node the registry holds unchanged, which is what a late-writer-wins loser leaves behind,
-/// must not disturb the interface.
+/// A touched node the registry holds unchanged, as a late-writer-wins loser leaves it, must not disturb the interface.
 #[tokio::test]
 async fn reconciling_an_untouched_node_changes_nothing() {
 	use document_graph_storage::Touched;

@@ -18,8 +18,7 @@ static TOTAL_EXPORTS: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_INPUT_ATTRIBUTES: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_SOURCES: AtomicUsize = AtomicUsize::new(0);
 
-/// A peer's document plus the byte store the editor keeps application-wide. Bare `Session` takes the
-/// trait's no-op resource defaults, which would leave the whole request path unexercised.
+/// A peer's document plus the editor's byte store, since bare `Session`'s no-op resource defaults leave the request path unexercised.
 struct SimTarget {
 	session: Session,
 	resources: HashMap<ResourceHash, Vec<u8>>,
@@ -157,8 +156,7 @@ impl SyncTarget for SimTarget {
 	}
 
 	fn flush(&mut self) -> Result<(), TargetError> {
-		// History is append-only. Hot ops are explicitly transient and a rejoin may drop the lot, but a
-		// retired delta is the durable record, so losing one is data loss no convergence check would see.
+		// History is append-only: losing a retired delta is data loss no convergence check would see.
 		let current: HashSet<Rev> = self.history_revs().into_iter().collect();
 		if let Some(dropped) = self.seen_revs.iter().find(|rev| !current.contains(rev)) {
 			panic!("seed {}: peer {:?} dropped retired delta {dropped:?} from history", self.seed, self.session.peer());
@@ -190,12 +188,11 @@ struct Peer {
 	peer: PeerId,
 	user: UserId,
 	transport: TransportPeerId,
-	/// Gone for good, unlike a rejoin. Its document stops taking part and stops being asserted on.
+	/// Gone for good, unlike a rejoin; no longer asserted on.
 	departed: bool,
-	/// The sequence of the marker closing this peer's latest transaction, `NONE` before the first. Nothing
-	/// past it may ever retire.
+	/// The marker closing this peer's latest transaction, `NONE` before the first. Nothing past it may retire.
 	last_closed: HotSequence,
-	/// Retired interactions of this peer's own it undid, newest last, for a redo to name.
+	/// This peer's retired interactions it undid, newest last, for a redo to name.
 	dropped: Vec<Rev>,
 }
 
@@ -220,9 +217,8 @@ impl Peer {
 		}
 	}
 
-	/// Drop off the room, keeping the document. The editor rebuilds the `Replica` on a reconnect but
-	/// reuses the `Gdd`'s persisted `PeerId`, so protocol state resets while document state does not.
-	/// A reconnect never assumes a role, host included: whoever hosts by now greets it as a guest.
+	/// Drop off the room and reconnect with the same `PeerId` and document but a fresh `Replica`, as the editor does.
+	/// A reconnect never assumes a role, even for a former host.
 	fn rejoin(&mut self, network: &mut MockNetwork) {
 		network.disconnect(self.transport);
 
@@ -232,8 +228,7 @@ impl Peer {
 		network.connect(self.transport);
 	}
 
-	/// Close the tab. The peer is never heard from again, so the room has to settle without whatever
-	/// it alone knew.
+	/// Close the tab for good, so the room settles without whatever this peer alone knew.
 	fn depart(&mut self, network: &mut MockNetwork) {
 		network.disconnect(self.transport);
 		self.departed = true;
@@ -254,9 +249,8 @@ impl Peer {
 		let hash = ResourceHash::from(bytes.as_slice());
 		self.target.resources.insert(hash, bytes);
 
-		// Each peer names its resources itself, the way live resources get a fresh `ResourceId`. Deriving
-		// the id from the content instead would collide across peers, which `AddResource` resolves by
-		// replay order rather than by merging.
+		// Per-peer ids, as live resources get a fresh `ResourceId`; content-derived ids would collide across
+		// peers, which `AddResource` resolves by replay order rather than merging.
 		let id = ResourceId::from(u64::from(ResourceId::from_hash(&hash)) ^ self.peer.0);
 		let hot_ops = self.target.session.stage_embedded_resource(id, hash).expect("stage resource");
 		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
@@ -269,7 +263,7 @@ impl Peer {
 		self.retire_up_to(up_to);
 	}
 
-	/// Close this peer's open transaction, the way the editor does at an undo-step boundary.
+	/// Close this peer's open transaction, as the editor does at an undo-step boundary.
 	fn end_transaction(&mut self) {
 		let staged = self.target.session.end_transaction().expect("end transaction");
 		if let Some(marker) = staged.last() {
@@ -278,16 +272,14 @@ impl Peer {
 		}
 	}
 
-	/// Undo this peer's latest transaction while it is hot, the way the editor does for a step not yet
-	/// retired: the ops leave every hot log and never become history.
+	/// Undo this peer's latest transaction while hot: the ops leave every hot log and never become history.
 	fn retract(&mut self) {
 		if let Some(retraction) = self.target.session.retract_transaction().expect("retract") {
 			self.replica.broadcast_retraction(&retraction.ids).expect("broadcast retraction");
 		}
 	}
 
-	/// Undo this peer's latest retired step, the way the editor does once a step is in history: the host
-	/// drops it out of the line itself, a guest asks the host to.
+	/// Undo this peer's latest retired step: the host drops it out of the line itself, a guest asks the host to.
 	fn undo_retired(&mut self) {
 		let Some(rev) = self.target.session.latest_own_interaction() else { return };
 		if self.replica.role() == Role::Host {
@@ -318,9 +310,8 @@ impl Peer {
 		}
 	}
 
-	/// Retire up to `count` of the closed transactions in the hot log, the earliest closed first, as the
-	/// policy does. Open transactions stay hot, so a later transaction of one author retires while an
-	/// earlier one of another is still in progress.
+	/// Retire up to `count` closed transactions, earliest closed first, as the policy does. Open ones stay hot,
+	/// so one author's later transaction can retire while another's earlier one is in progress.
 	fn retire_closed(&mut self, count: usize) {
 		let closed: Vec<_> = self.target.session.closed_transactions().into_iter().filter(|transaction| transaction.contiguous).take(count).collect();
 		let mut revs = Vec::new();
@@ -367,8 +358,8 @@ impl Peer {
 	}
 }
 
-/// Node-level ops, which reach the input-slot LWW arms and the resurrection path a concurrent remove
-/// triggers. `None` when the registry holds nothing the drawn op could target.
+/// Node-level ops, reaching the input-slot LWW arms and the resurrection path a concurrent remove triggers.
+/// `None` when the registry holds nothing the drawn op could target.
 fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<RegistryDelta> {
 	let registry = session.registry();
 	let node_id = NodeId(1 + network.random_below(4) as u64);
@@ -403,8 +394,7 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 			let node = registry.node_instances.get(&node_id)?;
 			let index = network.random_below(node.inputs().len().max(1)) as u32;
 
-			// Wiring to a node that is live here can still land on a peer that concurrently removed it,
-			// which is what drives the resurrection path.
+			// Wiring to a node live here can land on a peer that concurrently removed it, driving resurrection.
 			let wire_to = pick(network, &live_nodes).copied();
 			let new_input = match wire_to {
 				Some(target) if network.random_below(3) > 0 => NodeInput::Node { id: target, index: 0 },
@@ -425,8 +415,7 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 	}
 }
 
-/// Resource-lifecycle ops past creation. `AddResource` already rides the staged-resource path, so
-/// these cover the rest of the chain: the resolved hash, the source fallback list, and removal.
+/// Resource-lifecycle ops past `AddResource`: the resolved hash, the source fallback list, and removal.
 /// `None` when the registry holds no resource to target.
 fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<RegistryDelta> {
 	let session = &target.session;
@@ -434,16 +423,14 @@ fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<R
 	let live: Vec<ResourceId> = sorted(registry.resources.keys().copied());
 	let id = *pick(network, &live)?;
 
-	// A small pool of priorities, so concurrent adds sometimes collide on a key and sometimes stack up
-	// as distinct entries in the same chain.
+	// A small pool of priorities, so concurrent adds sometimes collide on a key and sometimes stack up in the chain.
 	let key = SourceKey {
 		priority: Priority::new(network.random_below(3) as f64).expect("a whole number is finite"),
 		peer: session.peer(),
 	};
 
 	Some(match network.random_below(5) {
-		// Only a hash this peer holds the bytes for: a resolved hash is content derived, so in the editor
-		// the peer that resolves a resource is the one that fetched it.
+		// Only a hash whose bytes this peer holds, since in the editor the resolving peer is the one that fetched it.
 		0 => {
 			let held: Vec<ResourceHash> = sorted(target.resources.keys().copied());
 			RegistryDelta::SetResourceHash {
@@ -465,15 +452,15 @@ fn random_resource_op(network: &mut MockNetwork, target: &SimTarget) -> Option<R
 	})
 }
 
-/// One element at random, or `None` when there is nothing to choose from.
-/// Collect into a sorted `Vec`. Every list the generator indexes with the seeded RNG comes from a hashed
-/// registry map, whose order varies per process, so without this the seed would not fix the edit.
+/// Collect into a sorted `Vec`, since the generator's lists come from hashed registry maps whose order would
+/// otherwise let the process, not the seed, pick the edit.
 fn sorted<T: Ord>(values: impl Iterator<Item = T>) -> Vec<T> {
 	let mut values: Vec<T> = values.collect();
 	values.sort_unstable();
 	values
 }
 
+/// One element at random, or `None` when there is nothing to choose from.
 fn pick<'a, T>(network: &mut MockNetwork, options: &'a [T]) -> Option<&'a T> {
 	(!options.is_empty()).then(|| &options[network.random_below(options.len())])
 }
@@ -497,8 +484,7 @@ fn random_op(network: &mut MockNetwork, target: &SimTarget) -> RegistryDelta {
 	}
 
 	match network.random_below(6) {
-		// Export slots resize on demand and LWW per slot, and clearing one leaves a tombstone that must
-		// still compare equal to the slot being absent.
+		// Export slots resize on demand and LWW per slot; a cleared slot's tombstone must compare equal to absence.
 		4 | 5 if session.registry().networks.contains_key(&network_id) => {
 			let live_nodes: Vec<NodeId> = sorted(session.registry().node_instances.keys().copied());
 			let export = match pick(network, &live_nodes).copied() {
@@ -545,9 +531,8 @@ fn present_host(peers: &[Peer]) -> Option<usize> {
 	peers.iter().position(|peer| !peer.departed && peer.replica.role() == Role::Host)
 }
 
-/// Run until nothing is in flight and no peer reports progress. Resource transfers need several
-/// rounds (request out, bytes back), so this is not a fixed number of passes. A room that went idle
-/// without a host has its grace period elapse, the way the editor's clock does, and settles again.
+/// Run until nothing is in flight and no peer reports progress, since resource transfers take several rounds.
+/// A room idle without a host has its grace period elapse and settles again.
 fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) {
 	for _ in 0..1000 {
 		network.deliver_all();
@@ -590,25 +575,21 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			0..=2 if peers[index].replica.is_synced() => {
 				let op = random_op(&mut network, &peers[index].target);
 				peers[index].stage(op);
-				// A gesture is a few ops long; closing it is what lets it retire.
+				// A gesture is a few ops long; closing it lets it retire.
 				if network.random_below(3) == 0 {
 					peers[index].end_transaction();
 				}
 			}
-			// An undo of a step still hot takes it back everywhere.
 			11 if peers[index].replica.is_synced() => peers[index].retract(),
-			// An undo of a step already retired drops it out of the shared line, and a redo puts it back on top.
 			12 if peers[index].replica.is_synced() => peers[index].undo_retired(),
 			13 if peers[index].replica.is_synced() && !peers[index].dropped.is_empty() => peers[index].redo_retired(),
-			// A small pool of distinct payloads, so peers sometimes introduce the same resource
-			// concurrently and sometimes one nobody else can serve.
+			// A small payload pool, so peers sometimes introduce the same resource concurrently.
 			8 if peers[index].replica.is_synced() => {
 				let bytes = format!("resource-{}", network.random_below(5)).into_bytes();
 				peers[index].stage_resource(bytes);
 			}
 			0..=2 | 8 => {}
-			// A few closed transactions at a time, so the host's history lags its hot log the way a real one
-			// does, and never an open one.
+			// A few closed transactions at a time, so the host's history lags its hot log as a real one does.
 			3 => {
 				if let Some(host) = present_host(&peers) {
 					let count = 1 + network.random_below(4);
@@ -619,10 +600,9 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			4..=7 => {
 				network.step();
 			}
-			// Anyone drops and comes back, the host included: the room elects a new one while it is away
-			// and greets it back as a guest.
+			// Anyone rejoins, the host included: the room elects another meanwhile and greets it back as a guest.
 			9 => peers[index].rejoin(&mut network),
-			// Keep one peer around, so the room stays a room.
+			// Keep one peer around.
 			10 if present_peers(&peers) > 1 => peers[index].depart(&mut network),
 			11 => {
 				let endpoint = network.endpoint();
@@ -630,8 +610,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 				peers.push(Peer::new(endpoint, Role::Guest, peers.len() as u64 + 1, seed));
 				network.connect(id);
 			}
-			// The grace period elapses on a peer still undecided. The period outlasts any hello in flight, so
-			// it only elapses here once nothing is.
+			// The grace period elapses on an undecided peer; it outlasts any hello, so only once nothing is in flight.
 			12 if network.pending() == 0 => {
 				peers[index].replica.decide_role();
 			}
@@ -655,7 +634,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 	peers[host].retire_closed(usize::MAX);
 	assert_open_transactions_stay_hot(seed, &peers);
 	quiesce(&mut network, &mut peers);
-	// What departed peers left open retires with everything else, so the end state is checked in full.
+	// What departed peers left open retires too, so the end state is checked in full.
 	let host = present_host(&peers).unwrap_or_else(|| {
 		panic!(
 			"seed {seed}: an idle room has no host: {:?}",
@@ -702,13 +681,8 @@ fn dump_if_requested(seed: u64, peers: &[Peer]) {
 	}
 }
 
-/// The working registry is what the editor renders: a peer's snapshot plus its hot tail. With the tail
-/// empty it should hold exactly what the snapshot holds. The two zones apply the same ops in different
-/// orders, the working registry in arrival order and the snapshot in canonical history order, and
-/// structural ops carry no timestamp to arbitrate that, so whatever drops a hot op the snapshot now
-/// covers owes a refold. Compared by value, since a refold re-stamps what it replays.
-/// Nothing past an author's last closing marker is in any peer's retired marks: an open transaction stays
-/// hot however old it is and however many later ones from other authors retired around it.
+/// Nothing past an author's last closing marker is in any peer's retired marks: an open transaction stays hot
+/// however many later ones retired around it.
 fn assert_open_transactions_stay_hot(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
 		let marks = peer.session().retired_marks();
@@ -744,6 +718,9 @@ fn reachable_history(session: &Session) -> Vec<Rev> {
 	session.history().map(|delta| delta.id).filter(|rev| reachable.contains(rev)).collect()
 }
 
+/// With the hot tail empty, the working registry holds exactly what the snapshot holds. The two zones apply ops in
+/// different orders with no timestamp to arbitrate structural ones, so whatever drops a hot op the snapshot now
+/// covers owes a refold. Compared by value, since a refold re-stamps what it replays.
 fn assert_zones_agree(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
 		if !peer.session().hot_log().is_empty() {
@@ -762,9 +739,8 @@ fn assert_zones_agree(seed: u64, peers: &[Peer]) {
 	}
 }
 
-/// The retired snapshot has to be exactly what canonical history produces, holding no trace of which
-/// order deltas arrived in or which hot ops this peer happens to hold. Convergence alone does not say
-/// this: every peer can agree on a snapshot that none of their histories accounts for.
+/// The retired snapshot is exactly what canonical history produces. Convergence alone does not show this:
+/// every peer can agree on a snapshot none of their histories accounts for.
 fn assert_snapshot_matches_history(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate().filter(|(_, peer)| !peer.departed) {
 		let replayed = peer
@@ -776,8 +752,7 @@ fn assert_snapshot_matches_history(seed: u64, peers: &[Peer]) {
 	}
 }
 
-/// A hot op is identified by its timestamp, so holding one twice means some path appended a copy of
-/// something already there, which then replays and re-broadcasts as if it were new work.
+/// A hot op is identified by its timestamp, so holding one twice means a copy would replay as new work.
 fn assert_no_duplicate_hot_ops(seed: u64, peers: &[Peer]) {
 	for (index, peer) in peers.iter().enumerate() {
 		let mut seen = HashSet::new();
@@ -795,8 +770,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 
 	let present = || peers.iter().enumerate().filter(|(_, peer)| !peer.departed);
 
-	// A sparse `known_revs` sample only describes a peer's state if history is parent-complete, so a
-	// hole makes the host under-send on the next resync.
+	// A sparse `known_revs` sample assumes parent-complete history; a hole makes the host under-send on resync.
 	for (index, peer) in present() {
 		let present_revs: HashSet<Rev> = peer.session().history().map(|delta| delta.id).collect();
 		for delta in peer.session().history() {
@@ -806,7 +780,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		}
 	}
 
-	// One host, whoever it is by now, and nobody left undecided once the room is idle.
+	// One host, and nobody undecided once the room is idle.
 	let hosts: Vec<usize> = present().filter(|(_, peer)| peer.replica.role() == Role::Host).map(|(index, _)| index).collect();
 	assert_eq!(hosts.len(), 1, "seed {seed}: the room has hosts {hosts:?}");
 	for (index, peer) in present() {
@@ -814,8 +788,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		assert!(peer.replica.is_synced(), "seed {seed}: peer {index} never synced");
 	}
 	let host = &peers[hosts[0]];
-	// What a peer can reach from its head is what it holds in common with the room: a branch the cursor
-	// walked away from is only ever sent to peers that were there when it was live.
+	// Compared by what the head reaches, since an abandoned branch only reached peers present while it was live.
 	let host_history = reachable_history(host.session());
 	for (index, guest) in present().filter(|(index, _)| *index != hosts[0]) {
 		let guest_history = reachable_history(guest.session());
@@ -825,12 +798,10 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		assert!(guest.session().hot_log().is_empty(), "seed {seed}: guest {index} still holds hot ops");
 	}
 
-	// Bytes that left with a departed peer are gone for good, so the room is only answerable for the
-	// resources someone still in it could have served.
+	// Bytes that left with a departed peer are gone, so only resources a present peer holds must be served.
 	let servable: HashSet<ResourceHash> = present().flat_map(|(_, peer)| peer.target.resources.keys().copied()).collect();
 
-	// An idle room with anything outstanding is stuck, which convergence of content alone can miss:
-	// a broadcast held forever behind a dependency that will never arrive changes nothing observable.
+	// An idle room with anything outstanding is stuck, which content convergence can miss.
 	for (index, peer) in present() {
 		assert_eq!(peer.replica.held_broadcasts(), 0, "seed {seed}: peer {index} still holds undelivered broadcasts");
 		assert_eq!(peer.replica.deferred_ops(), 0, "seed {seed}: peer {index} still holds ops waiting on a referent");
@@ -843,7 +814,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 
 #[test]
 fn peers_converge_under_random_interleavings() {
-	// The committed corpus is the first 1000 seeds; `SIM_SEEDS` pushes the frontier further by hand.
+	// The committed corpus is the first 1000 seeds; `SIM_SEEDS` runs more.
 	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(1000);
 
 	for seed in 0..seeds {
@@ -865,15 +836,13 @@ fn peers_converge_under_random_interleavings() {
 			let input_attributes = registry.node_instances.values().flat_map(|node| node.inputs()).filter(|slot| !slot.attributes.is_empty()).count();
 			TOTAL_INPUT_ATTRIBUTES.fetch_add(input_attributes, Ordering::Relaxed);
 
-			// More than one source on a resource can only come from `AddSource`, which the staging path
-			// never emits, so this is what proves the resource-chain ops reach the registry.
+			// A second source can only come from `AddSource`, proving the resource-chain ops reach the registry.
 			let stacked_sources = registry.resources.values().filter(|entry| entry.sources.len() > 1).count();
 			TOTAL_SOURCES.fetch_add(stacked_sources, Ordering::Relaxed);
 		}
 		assert_converged(seed, &peers);
 	}
-	// The node ops are guarded on what the registry holds, so a generator change can quietly stop
-	// producing them. Without nodes wired to other nodes nothing reaches the resurrection path.
+	// The generator's ops are guarded on registry state, so a change can quietly stop producing them.
 	assert!(TOTAL_NODES.load(Ordering::Relaxed) > 0, "the corpus produced no nodes");
 	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
 	assert!(TOTAL_EXPORTS.load(Ordering::Relaxed) > 0, "the corpus set no network exports");
@@ -881,9 +850,8 @@ fn peers_converge_under_random_interleavings() {
 	assert!(TOTAL_SOURCES.load(Ordering::Relaxed) > 0, "the corpus never stacked a second source on a resource");
 }
 
-/// A guest that drops and comes back keeps its `PeerId` but gets a fresh `Replica`, so its broadcast
-/// sequence restarts. The room must follow the restart rather than keep waiting on the sequence the
-/// old connection had reached.
+/// A rejoining guest keeps its `PeerId` but restarts its broadcast sequence, which the room must follow
+/// rather than wait on the old connection's.
 #[test]
 fn a_rejoining_guest_is_still_heard() {
 	let mut network = MockNetwork::new(0);
@@ -942,9 +910,8 @@ fn inspect_seed() {
 	assert_converged(seed, &peers);
 }
 
-/// A hot op can reach one guest and not the host, and its author can then leave for good. The guest
-/// holds the only copy, so unless it passes the op on the work is lost with the peer that made it.
-/// Random delivery reaches this only by luck, so it is built by hand.
+/// A hot op reaches one guest but not the host, and its author leaves for good; the guest must pass on the
+/// only copy. Built by hand, since random delivery reaches this only by luck.
 #[test]
 fn a_guest_holding_the_only_copy_gets_it_retired() {
 	let mut network = MockNetwork::new(0);
@@ -975,7 +942,7 @@ fn a_guest_holding_the_only_copy_gets_it_retired() {
 	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)), "the witness must have received the op");
 	assert!(peers[0].session().hot_log().is_empty(), "the host must not have received it yet");
 
-	// The author leaves for good, taking its own copy and its undelivered packets with it.
+	// The author leaves for good with its own copy and undelivered packets.
 	network.disconnect(author_transport);
 	peers[1].departed = true;
 
@@ -990,9 +957,8 @@ fn a_guest_holding_the_only_copy_gets_it_retired() {
 	assert_converged(0, &peers);
 }
 
-/// A peer that alone received an author's early ops passes them on when the author rejoins, so the run
-/// reaches the host contiguously even though the author's own copies were dropped by the resync. This
-/// is why a gap usually never forms: measured over 200000 seeds, 30 formed and 27 closed.
+/// A peer that alone received an author's early ops passes them on when the author rejoins and its resync drops
+/// its own copies, so the run reaches the host contiguously. Over 200000 seeds, 30 gaps formed and 27 closed.
 #[test]
 fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	let mut network = MockNetwork::new(0);
@@ -1020,7 +986,7 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)), "the witness holds the early op");
 	assert!(peers[0].session().hot_log().is_empty(), "the host does not");
 
-	// The author rejoins, which resyncs it from the host and drops its own hot log, then writes again.
+	// The author rejoins, resyncing and dropping its own hot log, then writes again.
 	peers[1].rejoin(&mut network);
 	quiesce(&mut network, &mut peers);
 	peers[1].stage(RegistryDelta::AddNetwork {
@@ -1041,10 +1007,8 @@ fn a_witness_closes_an_authors_run_before_a_gap_forms() {
 	assert_converged(0, &peers);
 }
 
-/// A seed has to fix the run. Hashed collections hand out a different iteration order per instance, so
-/// anything that lets that order pick an edit target or reach the wire makes a seed unreproducible, and
-/// then every seed named in a bug report means nothing. Running the same seeds twice in one process is
-/// enough to catch it, since the two runs' maps are keyed differently.
+/// A seed has to fix the run, or a seed named in a bug report means nothing. Hash order differs per map
+/// instance, so running the same seeds twice in one process catches any that leaks into an edit or the wire.
 #[test]
 fn a_seed_fixes_the_run() {
 	let run = |seeds: u64| {
@@ -1081,9 +1045,8 @@ fn a_seed_fixes_the_run() {
 	}
 }
 
-/// Two copies of a document connect to their room without knowing who hosts. Neither greets as host,
-/// so after the grace period the lower peer id takes the role and greets again; the other, settled
-/// as a guest by that hello, syncs. A third copy that connects once a host is there is a guest at once.
+/// Two undecided copies of a document connect: after the grace period the lower id hosts and the other syncs
+/// as its guest. A third copy connecting once a host is there is a guest at once.
 #[test]
 fn undecided_peers_settle_on_a_host_and_the_rest_sync() {
 	let mut network = MockNetwork::new(0);
@@ -1096,8 +1059,7 @@ fn undecided_peers_settle_on_a_host_and_the_rest_sync() {
 			peer
 		})
 		.collect();
-	// Hellos alone decide nothing; the grace period elapsing on both (which `quiesce` stands in for once
-	// the room is idle without a host) has only the lower id take the role.
+	// Hellos alone decide nothing; `quiesce` elapses the grace period once the room is idle without a host.
 	quiesce(&mut network, &mut peers);
 	assert_eq!(peers[0].replica.role(), Role::Host);
 	assert_eq!(peers[1].replica.role(), Role::Guest);
@@ -1120,9 +1082,8 @@ fn undecided_peers_settle_on_a_host_and_the_rest_sync() {
 	assert!(peers[2].session().registry().networks.contains_key(&NetworkId(9)));
 }
 
-/// The host leaves a room of two synced guests and one that was greeted but never synced. The lowest
-/// synced id takes the role over and keeps retiring the line; the unsynced one steps aside and syncs
-/// from the new host; the old host comes back as a guest of the new one.
+/// The host leaves two synced guests and one greeted but unsynced. The lowest synced id takes over and keeps
+/// retiring; the unsynced one syncs from it; the old host returns as its guest.
 #[test]
 fn the_host_leaving_hands_the_role_to_the_lowest_synced_guest() {
 	let mut network = MockNetwork::new(0);
@@ -1150,7 +1111,7 @@ fn the_host_leaving_hands_the_role_to_the_lowest_synced_guest() {
 	assert!(first > 0, "the host retired the step");
 	assert!(peers.iter().all(|peer| peer.session().history().count() == first), "the room shares the retired step");
 
-	// A fourth peer hears the host's greeting and asks for a sync, and the host leaves before answering.
+	// A fourth peer asks the host for a sync, and the host leaves before answering.
 	let endpoint = network.endpoint();
 	let late = endpoint.id();
 	peers.push(Peer::new(endpoint, Role::Undecided, 4, 0));
@@ -1184,7 +1145,7 @@ fn the_host_leaving_hands_the_role_to_the_lowest_synced_guest() {
 	assert!(second > first, "the new host retired the guest's step");
 	assert!(peers.iter().skip(1).all(|peer| peer.session().history().count() == second), "and everyone present has it");
 
-	// The old host returns, and is a guest of the new one with the step it missed.
+	// The old host returns as a guest, with the step it missed.
 	peers[0].departed = false;
 	peers[0].rejoin(&mut network);
 	quiesce(&mut network, &mut peers);

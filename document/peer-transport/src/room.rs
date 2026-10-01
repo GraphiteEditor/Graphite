@@ -13,11 +13,9 @@ const CHUNK_BYTES: usize = 16 * 1024;
 const FRAME_FINAL: u8 = 1;
 const FRAME_MORE: u8 = 0;
 
-/// Split a packet into `[flag][bytes]` chunks, the last carrying [`FRAME_FINAL`] so a receiver finds
-/// the packet boundary without a length prefix.
+/// Split a packet into `[flag][bytes]` chunks, the last carrying [`FRAME_FINAL`] so no length prefix is needed.
 fn frames(bytes: &[u8]) -> Vec<Box<[u8]>> {
-	// An empty packet still gets one frame. Chunking it would yield none at all, and the packet would
-	// leave no trace on the wire rather than arriving empty.
+	// An empty packet still gets one frame, since chunking it would yield none.
 	let chunks: Vec<&[u8]> = if bytes.is_empty() { vec![&[]] } else { bytes.chunks(CHUNK_BYTES).collect() };
 
 	chunks
@@ -30,15 +28,14 @@ fn frames(bytes: &[u8]) -> Vec<Box<[u8]>> {
 		.collect()
 }
 
-/// Per-peer reassembly of framed packets. The channel is reliable and ordered per peer, so chunks
-/// arrive in the order they were sent and a packet ends at the first [`FRAME_FINAL`].
+/// Per-peer reassembly of framed packets. The channel is ordered per peer, so a packet ends at the first [`FRAME_FINAL`].
 #[derive(Default)]
 struct Reassembler {
 	partial: HashMap<TransportPeerId, Vec<u8>>,
 }
 
 impl Reassembler {
-	/// The packet's bytes once its final chunk lands, or `None` while more are still to come.
+	/// The packet's bytes once its final chunk lands.
 	fn accept(&mut self, peer: TransportPeerId, frame: &[u8]) -> Option<Vec<u8>> {
 		let (&flag, chunk) = frame.split_first()?;
 		let buffer = self.partial.entry(peer).or_default();
@@ -47,7 +44,7 @@ impl Reassembler {
 		(flag == FRAME_FINAL).then(|| std::mem::take(buffer))
 	}
 
-	/// Drop a peer's half-received packet, which nothing will ever complete.
+	/// Drop a peer's half-received packet, which nothing will complete.
 	fn forget(&mut self, peer: TransportPeerId) {
 		self.partial.remove(&peer);
 	}
@@ -66,17 +63,15 @@ fn lock(inbox: &Mutex<Inbox>) -> std::sync::MutexGuard<'_, Inbox> {
 	inbox.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-/// A handle onto a room's inbox that resolves when a packet is waiting, so the room is polled as packets
-/// arrive rather than once per frame. A hidden browser tab gets about one frame a second, which made a
-/// host answer each step of a join a second late while the data channel itself delivered on time.
+/// A handle onto a room's inbox that resolves when a packet is waiting, so the room is polled as packets arrive
+/// rather than once per frame, which a hidden browser tab gets only about once a second.
 #[derive(Clone, Debug)]
 pub struct Incoming {
 	inbox: Arc<Mutex<Inbox>>,
 }
 
 impl Incoming {
-	/// Resolves to `true` once a packet is waiting, and to `false` once the room's loop has ended and
-	/// nothing more can arrive, so the caller knows not to wait again.
+	/// Resolves to `true` once a packet is waiting, `false` once the room's loop has ended and nothing more can arrive.
 	pub async fn wait(&self) -> bool {
 		std::future::poll_fn(|cx| self.poll_ready(cx)).await
 	}
@@ -94,8 +89,7 @@ impl Incoming {
 	}
 }
 
-/// One matchbox room over WebRTC. Packets are split into `[flag][bytes]` chunks; the reliable
-/// channel is ordered per peer, so the receiver reassembles by appending until the final flag.
+/// One matchbox room over WebRTC, with packets split into `[flag][bytes]` chunks and reassembled per peer.
 /// The returned future must be polled continuously by the caller.
 pub struct Room {
 	socket: WebRtcSocket,
@@ -114,8 +108,8 @@ impl Room {
 		let (outgoing, mut received) = socket.take_channel(CHANNEL).expect("a reliable socket has its one channel").split();
 		let inbox = Arc::new(Mutex::new(Inbox::default()));
 
-		// Arrivals move into the inbox as they happen and wake whoever waits on it. The forwarder ends with
-		// the socket loop, which drops its senders when it returns; the loop's result stays the driver's.
+		// Arrivals move into the inbox and wake its waiter. The forwarder ends when the socket loop returns and
+		// drops its senders; the loop's result stays the driver's.
 		let forwarder = {
 			let inbox = Arc::clone(&inbox);
 			async move {
@@ -157,7 +151,7 @@ impl Room {
 	fn send_chunks(&mut self, bytes: &[u8], peers: &[TransportPeerId]) {
 		for frame in frames(bytes) {
 			for &peer in peers {
-				// A send only fails once the socket loop has ended, which the loop's own future reports.
+				// Fails only once the socket loop has ended, which the loop's future reports.
 				if self.outgoing.unbounded_send((peer, frame.clone())).is_err() {
 					return;
 				}
@@ -220,8 +214,7 @@ mod tests {
 		TransportPeerId(uuid::Uuid::from_u128(byte))
 	}
 
-	/// The inbox handle resolves on an arrival and once more when the loop ends, and is pending otherwise,
-	/// so a poll driven by it runs on packets rather than on frames.
+	/// The inbox handle resolves on an arrival and once more when the loop ends, and is pending otherwise.
 	#[test]
 	fn the_inbox_wakes_on_arrival_and_reports_the_end() {
 		let inbox = Arc::new(Mutex::new(Inbox::default()));
@@ -240,7 +233,7 @@ mod tests {
 		assert_eq!(incoming.wait().now_or_never(), Some(false), "the end of the loop resolves the wait for good");
 	}
 
-	/// Push every frame at a reassembler and collect whatever packets come back out.
+	/// Push every frame at a reassembler and collect the packets that come out.
 	fn round_trip(bytes: &[u8]) -> Vec<Vec<u8>> {
 		let mut incoming = Reassembler::default();
 
@@ -258,8 +251,7 @@ mod tests {
 		assert_eq!(round_trip(&bytes), vec![bytes]);
 	}
 
-	/// Chunking an empty packet yields no chunks at all, so it needs a frame of its own or it would
-	/// leave no trace on the wire.
+	/// Chunking an empty packet yields no chunks, so it needs a frame of its own or it leaves no trace on the wire.
 	#[test]
 	fn an_empty_packet_still_produces_one_frame() {
 		let framed = frames(&[]);
@@ -269,8 +261,7 @@ mod tests {
 		assert_eq!(round_trip(&[]), vec![Vec::<u8>::new()]);
 	}
 
-	/// The boundary either side of the SCTP limit: exactly one chunk stays one frame, one byte more
-	/// splits, and both rebuild byte for byte.
+	/// Either side of the SCTP limit: exactly one chunk stays one frame, one byte more splits, and both rebuild exactly.
 	#[test]
 	fn packets_around_the_chunk_boundary_round_trip() {
 		for length in [CHUNK_BYTES - 1, CHUNK_BYTES, CHUNK_BYTES + 1, CHUNK_BYTES * 3 + 7] {
@@ -286,8 +277,7 @@ mod tests {
 		}
 	}
 
-	/// Two peers' chunks interleave on one channel, so reassembly is per peer or one packet would be
-	/// spliced into the other.
+	/// Two peers' chunks interleave on one channel, so reassembly is per peer or one packet is spliced into the other.
 	#[test]
 	fn interleaved_peers_reassemble_separately() {
 		let (first, second) = (peer(1), peer(2));
@@ -306,8 +296,7 @@ mod tests {
 		assert_eq!(incoming.accept(first, &long_frames[1]), Some(long));
 	}
 
-	/// A peer that drops mid-packet leaves a partial buffer, which must not be prepended to whatever
-	/// the next peer to reuse that id sends.
+	/// A peer dropping mid-packet leaves a partial buffer that must not prefix the next packet under that id.
 	#[test]
 	fn forgetting_a_peer_discards_its_partial_packet() {
 		let sender = peer(1);

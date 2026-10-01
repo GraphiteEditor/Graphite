@@ -2,13 +2,12 @@
 //! batch costs deltas for what changed rather than a rebuild of the whole interface.
 //!
 //! Each touched node is projected to its runtime form and compared with what the interface holds. The
-//! difference is applied as the same `EditorDelta`s a local edit records, through `apply`, which mirrors
-//! without recording, so nothing here is offered back to the peer that sent it. A node held on one side
-//! only is added or removed whole. What a comparison cannot express as a field write, a changed
-//! implementation or scope injection, replaces the node.
+//! difference is applied through `apply` as the `EditorDelta`s a local edit records, mirrored without
+//! recording so nothing is offered back to its sender. A node held on one side only is added or removed
+//! whole, and what no field write expresses, such as a changed implementation or scope injection, replaces it.
 //!
-//! The touched set is an over-approximation: a late-writer-wins loser or an op that failed to apply
-//! names an entity that did not change, and the comparison finds nothing to emit for it.
+//! The touched set over-approximates: a late-writer-wins loser or a failed op names an unchanged entity,
+//! for which the comparison emits nothing.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -55,9 +54,8 @@ type StorageIndex = HashMap<StorageNodeId, (Vec<NodeId>, NodeId)>;
 impl NodeNetworkInterface {
 	/// Applies to the interface whatever the registry holds differently for the touched entities.
 	///
-	/// Can fail part-way through, leaving some of them reconciled. That is safe to retry with the same
-	/// touched set, since a reconciled node compares equal and emits nothing, which is what the caller
-	/// does when a declaration is still on its way; on any other error it rebuilds from the whole registry.
+	/// Can fail part-way through. Retrying with the same touched set is safe, since a reconciled node compares equal
+	/// and emits nothing; the caller retries when a declaration is on its way and otherwise rebuilds from the registry.
 	pub(crate) fn reconcile_remote(&mut self, registry: &Registry, declarations: &Declarations, touched: &Touched, peer: document_graph_storage::PeerId) -> Result<Reconciled, ReconcileError> {
 		let projection = registry.runtime_projection(declarations);
 		let index = self.pin_storage_identities(peer);
@@ -120,8 +118,7 @@ impl NodeNetworkInterface {
 		id: StorageNodeId,
 		reconciled: &mut Reconciled,
 	) -> Result<(), ReconcileError> {
-		// The interface holds the node somewhere else: under another id, or in a network it has since
-		// left. That copy goes before the one the registry describes is put in place.
+		// The interface holds the node elsewhere, under another id or in a network it has left; that copy goes first.
 		if let Some((held_path, held_id)) = index.get(&id)
 			&& (held_path.as_slice() != path || *held_id != local_id)
 			&& self.holds_node(held_path, *held_id)

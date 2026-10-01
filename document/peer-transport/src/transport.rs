@@ -10,7 +10,7 @@ pub enum TransportEvent {
 }
 
 /// Packet delivery between the peers of one session. Delivery must be reliable and ordered per
-/// sender, which is what lets the `Replica` skip acknowledgements and buffering.
+/// sender, which is what lets the `Replica` skip acknowledgement and retransmission.
 pub trait Transport: Send + Sync {
 	fn send(&mut self, to: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError>;
 	fn broadcast_except(&mut self, excluded: Option<TransportPeerId>, packet: &SyncPacket) -> Result<(), PacketError>;

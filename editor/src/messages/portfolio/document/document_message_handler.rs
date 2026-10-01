@@ -158,9 +158,8 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore")]
 	pub(crate) container: Option<AnyContainer>,
-	/// What peers changed in the working registry that the interface does not show yet. Applied once every
-	/// declaration it needs is cached. Local edits stage meanwhile: they are constructed against the
-	/// registry rather than diffed from the interface, so nothing here reads as reverting them.
+	/// What peers changed in the working registry that the interface does not show yet, applied once every declaration it
+	/// needs is cached. Local edits are constructed against the registry, not diffed from the interface, so none reverts these.
 	#[serde(skip)]
 	pub(crate) pending_remote: document_format::network::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
@@ -2038,8 +2037,8 @@ impl DocumentMessageHandler {
 		&self.breadcrumb_network_path
 	}
 
-	/// Write the document's name into its registry as a document attribute, so peers in a session see it and a
-	/// rename reaches them; a no-op without a working copy or when the registry already holds this name.
+	/// Write the document's name into its registry as [`DOCUMENT_NAME_ATTRIBUTE`]. No-op without a working copy or when the
+	/// registry already holds this name.
 	pub fn stage_name_attribute(&mut self) {
 		let name = self.name.clone();
 		let Some(gdd) = self.storage_mut() else { return };
@@ -2136,8 +2135,7 @@ impl DocumentMessageHandler {
 		let view_settings = self.storage_view_settings();
 		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
 
-		// The interface is behind the registry by what peers changed, so the two are only expected to
-		// agree once that is applied.
+		// The interface lags the registry by what peers changed, so the two only agree once that is applied.
 		if validate && self.pending_remote.is_empty() {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
 		}
@@ -2205,9 +2203,8 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Rebuild the runtime resource registry from storage, which holds each resource's id, content hash
-	/// and sources. The preprocessor resolves a node's `Resource` input through it, so an interface
-	/// swapped in from storage needs it refreshed alongside. Keeps the current registry on failure.
+	/// Rebuild the runtime resource registry from storage. The preprocessor resolves `Resource` inputs through it, so an
+	/// interface swapped in from storage needs it refreshed alongside. Keeps the current registry on failure.
 	fn refresh_resource_registry(&mut self) {
 		let Some(storage) = self.history.storage() else { return };
 
@@ -2217,8 +2214,8 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Stages what the interface recorded since the last drain, so a session sends each movement in the
-	/// frame it was made rather than at the next commit or autosave. Nothing else a commit does is done here.
+	/// Stages what the interface recorded since the last drain, so a session sends each movement in the frame it was made
+	/// rather than at the next commit. Nothing else a commit does is done here.
 	pub(crate) fn stage_pending_edits(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
 		let deltas = self.network_interface.take_deltas();
 		if deltas.is_empty() {
@@ -2230,8 +2227,7 @@ impl DocumentMessageHandler {
 	/// Brings the interface into line with what peers changed in the registry. Returns whether nothing is
 	/// left pending: a declaration still on its way keeps the changes for a later call.
 	///
-	/// The touched entities are reconciled in place. Only a registry rederived wholesale, or a reconcile
-	/// that fails for some other reason, costs a rebuild of the whole interface.
+	/// The touched entities are reconciled in place; only a registry rederived wholesale or a failed reconcile rebuilds it all.
 	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
 		let changes = std::mem::take(&mut self.pending_remote);
 		if changes.is_empty() {
@@ -2620,9 +2616,8 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
-		// A step still hot is taken back and never becomes history. The legacy snapshot is not installed: it
-		// predates whatever peers wrote in the meantime, so the interface keeps what it holds and follows the
-		// registry on just the entities the step named. Only a retired step moves the cursor.
+		// A hot step is taken back and never becomes history. Its legacy snapshot predates what peers wrote since, so the
+		// interface follows the registry on just the entities the step named instead. Only a retired step moves the cursor.
 		if self.history.has_undo_step()
 			&& let Some(ops) = self.history.retract_storage_transaction()
 		{
@@ -2660,8 +2655,8 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
-	/// An action from the History panel: storage performs it and records what it named, the interface follows on
-	/// just those entities, and the legacy snapshots go since they describe states off the line the head is on now.
+	/// An action from the History panel: storage performs it, the interface follows on the entities it named, and the
+	/// legacy snapshots go since they describe states off the head's line.
 	fn apply_history_action(&mut self, action: impl FnOnce(&mut super::document_history::DocumentHistory), responses: &mut VecDeque<Message>) {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
@@ -2675,9 +2670,8 @@ impl DocumentMessageHandler {
 		responses.add(EventMessage::SelectionChanged);
 	}
 
-	/// Bring the interface into line with what storage just changed under it, a step taken back or staged
-	/// again, by reconciling the entities those ops named, the way remote changes are applied. Anything a
-	/// peer wrote meanwhile stays as the interface holds it.
+	/// Bring the interface into line with what storage just changed under it by reconciling the entities those ops named,
+	/// as for remote changes. Anything a peer wrote meanwhile stays as the interface holds it.
 	fn follow_storage_changes(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(gdd) = self.history.storage_mut() {
 			let changes = gdd.take_remote_changes();
@@ -2726,8 +2720,7 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
-		// A step that was taken back is staged afresh from the ops themselves: they are gone from every hot log,
-		// so redo is a new edit, and the interface follows the registry on what they name, as for the undo.
+		// A step taken back is gone from every hot log, so its redo stages the ops afresh as a new edit, followed as for the undo.
 		if self.history.has_redo_step() && self.history.next_redo_is_storage_driven() {
 			if let Some(snapshot) = self.history.pop_redo() {
 				self.history.push_undo(snapshot);

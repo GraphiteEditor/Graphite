@@ -76,8 +76,8 @@ fn history_names_the_resource_hashes_it_carries() {
 	assert!(session.all_referenced_resource_hashes().contains(&hash), "a removed resource's hash is still referenced from history");
 }
 
-/// A retirement from the host chains off the guest's last delta, so it is placed without a sort and
-/// without walking ancestry, and the result is exactly what the sort would have produced.
+/// A host retirement chains off the guest's last delta, so it is placed without a sort or ancestry walk,
+/// exactly where the sort would put it.
 #[test]
 fn a_chain_off_the_last_delta_fast_forwards_without_sorting() {
 	let mut host = Session::with_peer(PeerId(1));
@@ -120,13 +120,13 @@ fn a_batch_off_an_earlier_delta_is_sorted_into_place() {
 	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
 }
 
-/// Retirement takes the ops under the cutoff whatever order the log applied them in: every op commutes,
-/// so the snapshot folds to the working registry's values with a later-stamped op left hot.
+/// Retirement takes the ops under the cutoff in any log order: every op commutes, so the snapshot folds to
+/// the working registry's values with a later-stamped op left hot.
 #[test]
 fn retirement_takes_the_ops_under_the_cutoff_in_any_applied_order() {
 	let mut host = Session::with_peer(PeerId(1));
-	// A guest's op stamped late sits first in the log, ahead of an op stamped earlier: the log is in
-	// arrival order, and stamps are the authors' clocks, not the arrival order.
+	// A guest's late-stamped op sits ahead of an earlier-stamped one: the log is in arrival order, stamps
+	// are the authors' clocks.
 	let late = crate::HotOp {
 		op: add_network(9),
 		timestamp: crate::TimeStamp { counter: 50, peer: PeerId(2) },
@@ -153,9 +153,8 @@ fn retirement_takes_the_ops_under_the_cutoff_in_any_applied_order() {
 	assert!(host.registry().value_equal(host.retired_registry()));
 }
 
-/// A transaction closes with a marker its author stages, and only closed transactions retire: an author's
-/// ops past its last marker stay hot however old they are, while a later transaction from someone else
-/// retires around them.
+/// Only closed transactions retire: an author's ops past its last marker stay hot however old, while a
+/// later transaction from someone else retires around them.
 #[test]
 fn only_closed_transactions_retire_and_an_open_one_stays_hot() {
 	let mut host = Session::with_peer(PeerId(1));
@@ -224,9 +223,8 @@ fn a_transaction_with_a_gap_is_not_contiguous_until_the_gap_fills() {
 	assert_eq!(closed[0].ops.len(), 3);
 }
 
-/// Taking a hot transaction back removes its ops for good and re-derives what they touched from the
-/// snapshot and the other hot ops, so a concurrent write to the same entity survives; the ops never
-/// retire, and a late copy is dropped.
+/// Retracting a hot transaction removes its ops for good and re-derives what they touched from the snapshot
+/// and the other hot ops, so a concurrent write to the same entity survives. The ops never retire, and a late copy is dropped.
 #[test]
 fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
 	let mut host = Session::with_peer(PeerId(1));
@@ -326,9 +324,9 @@ fn an_undone_branch_is_kept_to_itself() {
 	assert!(!peer.retired_registry().attributes.contains_key("undone"), "the undone step never reached the peer");
 }
 
-/// Undoing a retired step in a session drops it out of the shared line: the later steps are minted again
-/// on its parent, the head moves, every peer that follows the move holds the same history and registry,
-/// a field a later step wrote keeps that value, and the dropped step comes back on redo as a copy on top.
+/// Undoing a retired step in a session drops it out of the shared line: later steps are minted again on its
+/// parent, every peer following the head move converges, a field a later step wrote keeps that value, and
+/// redo brings the step back as a copy on top.
 #[test]
 fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	let mut host = Session::with_peer(PeerId(1));
@@ -336,8 +334,8 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	let base = host.head_rev().expect("rev");
 	host.mark_interaction_end(base);
 
-	// The guest's step, retired by the host: it writes its own key and one the host writes after it. A
-	// guest of its own, clock included, so its ops carry its authorship.
+	// The guest's step, retired by the host, writes its own key and one the host writes after it. The guest has
+	// its own session and clock, so its ops carry its authorship.
 	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
 	let guest_ops = [set_attribute("guest", 1), set_attribute("shared", 1)];
 	let hot = guest.stage_ops(guest_ops).expect("stage");
@@ -402,9 +400,8 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 }
 
-/// An author's ops can reach the retirer out of order, the later ones first through a re-announcement
-/// after a lapsed link. Coarsening keeps the newest write by stamp, not by position in the log, so the
-/// retired delta carries the value every working registry shows.
+/// An author's ops can reach the retirer out of order through a re-announcement after a lapsed link.
+/// Coarsening keeps the newest write by stamp, not log position, so the retired delta matches every working registry.
 #[test]
 fn a_transaction_that_arrived_out_of_order_retires_to_its_newest_write() {
 	let mut author = Session::with_peer(PeerId(2));
@@ -488,9 +485,8 @@ fn a_transaction_retires_to_one_delta_per_field() {
 	assert!(host.history().last().is_some_and(|delta| delta.is_interaction_end()));
 }
 
-/// A merge delta joins a line this peer holds as a branch it walked away from. Following it as a plain
-/// extension of the line would leave that branch's effects out of the snapshot, so the snapshot is
-/// folded from the joined head's whole ancestry instead, and matches the host's.
+/// A merge delta can join a branch this peer walked away from. Following it as a plain extension would leave
+/// that branch's effects out, so the snapshot is folded from the joined head's whole ancestry and matches the host's.
 #[test]
 fn following_a_merge_refolds_the_branch_it_joins() {
 	let mut host = Session::with_peer(PeerId(1));

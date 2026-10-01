@@ -188,8 +188,8 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 	);
 }
 
-/// A `u64` written as a decimal string, since the preferences pass through JSON in the browser, where a
-/// number this wide loses precision or, as a BigInt, cannot be written at all. Reads a number too.
+/// A `u64` written as a decimal string, since the browser's JSON loses precision on a number this wide and cannot write a
+/// BigInt. Reads a number too.
 mod u64_as_string {
 	use serde::{Deserialize, Deserializer, Serializer};
 

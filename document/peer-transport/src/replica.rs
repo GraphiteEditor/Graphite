@@ -12,8 +12,7 @@ pub enum Event {
 	PeerLeft {
 		peer: PeerId,
 	},
-	/// This peer's own role changed: it took the host role over from a host that left, stepped aside as
-	/// an unsynced guest, or yielded to a host with a lower id.
+	/// This peer's own role changed: it took over from a departed host, stepped aside unsynced, or yielded to a lower id.
 	RoleChanged {
 		role: Role,
 	},
@@ -56,9 +55,9 @@ pub struct RemotePeer {
 	pub peer: PeerId,
 	pub user: UserId,
 	pub role: Role,
-	/// The display name it announced; empty until its profile arrives.
+	/// Empty until its profile arrives.
 	pub name: String,
-	/// Its pointer in document space, `None` when it is not over the viewport.
+	/// In document space; `None` when not over the viewport.
 	pub cursor: Option<CursorPosition>,
 }
 
@@ -69,8 +68,7 @@ struct PeerProgress {
 	seq: u64,
 }
 
-/// Broadcasts that arrive before the host's `Sync` are held back, since they target state the guest
-/// doesn't have yet.
+/// Broadcasts arriving before the host's `Sync` are held back, since they target state the guest doesn't have yet.
 enum SyncState {
 	Synced,
 	AwaitingSync { pending: Vec<(PeerId, Broadcast)> },
@@ -85,34 +83,30 @@ pub struct Replica {
 	role: Role,
 	peer: PeerId,
 	user: UserId,
-	/// This peer's display name, sent with every hello and on change.
+	/// Sent with every hello and on change.
 	name: String,
 	peers: HashMap<TransportPeerId, RemotePeer>,
-	/// The role each link was last greeted with, so a peer whose hello arrives after this one's role
-	/// changed is greeted again rather than left believing the old role.
+	/// The role each link was last greeted with, so a link greeted before a role change is greeted again.
 	greeted: HashMap<TransportPeerId, Role>,
 	sync: SyncState,
-	/// This incarnation, drawn fresh so a reconnect or a reload never reuses one. See [`PeerSeq`].
+	/// Drawn fresh so a reconnect or a reload never reuses one. See [`PeerSeq`].
 	epoch: u64,
 	seq: u64,
 	delivered: HashMap<PeerId, PeerProgress>,
 	held: Vec<(PeerId, Broadcast)>,
-	/// Hot ops whose referents had not arrived when they did, retried as later ops fill the gaps.
-	/// A missing entity is not distinguishable from one that was concurrently removed, so the op is
-	/// kept rather than applied against state it does not fit.
+	/// Hot ops whose referents had not arrived, retried as later ops fill the gaps. A missing entity is
+	/// indistinguishable from a concurrently removed one, so the op waits rather than applying against state it does not fit.
 	deferred: Vec<HotOp>,
-	/// Resources asked for and not yet received, so a standing request is not resent every poll.
+	/// Asked for and not yet received, so a standing request is not resent every poll.
 	requested_resources: HashSet<ResourceHash>,
-	/// Requests that arrived before the bytes did, answered once they turn up here.
+	/// Requests that arrived before the bytes did, answered once they turn up.
 	owed_resources: HashMap<ResourceHash, HashSet<TransportPeerId>>,
-	/// Whether the target's resource references may have moved since they were last examined.
+	/// Whether the target's resource references may have moved since last examined.
 	resources_stale: bool,
-	/// The link a sync was asked of and not yet answered by, so the request is made once, and again only
-	/// when that peer stops being the host before answering.
+	/// The unanswered sync request's link, so it is asked again only if that peer stops hosting first.
 	sync_requested_from: Option<TransportPeerId>,
-	/// The host whose line this peer holds: the one it last synced from, or itself. A greeting from a host
-	/// other than this one, elected while this peer was away or the winner of a tie, calls for a sync from
-	/// it, since what it retired may never have been broadcast here.
+	/// The host whose line this peer holds: the one it last synced from, or itself. Any other host calls for a
+	/// sync from it, since what it retired may never have been broadcast here. See [`Self::follow_current_host`].
 	synced_from: Option<PeerId>,
 }
 
@@ -121,24 +115,20 @@ impl Replica {
 		Self::new(Box::new(transport), Role::Host, peer, user, SyncState::Synced)
 	}
 
-	/// Join through a link, expecting a host. The role is still undecided until that host greets: a guest
-	/// is a peer with a host, so a link into a room whose host is gone ends up electing like anyone else
-	/// rather than waiting for a greeting that never comes and blocking the room's own election.
+	/// Join through a link, expecting a host. The role stays undecided until that host greets, so a link into a room
+	/// whose host is gone elects like anyone else rather than waiting for a greeting that never comes.
 	pub fn guest(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
 		Self::connect(transport, peer, user)
 	}
 
-	/// Connect to the room every copy of the document shares, taking whichever role the room calls for: a
-	/// host's hello makes this peer a guest that syncs, and [`decide_role`](Self::decide_role) makes it the
-	/// host once it has waited long enough for one to greet it.
+	/// Connect to the document's room in whichever role it calls for: a host's hello makes this peer a guest, and
+	/// [`decide_role`](Self::decide_role) makes it the host if none greets in time.
 	pub fn connect(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
 		Self::new(Box::new(transport), Role::Undecided, peer, user, SyncState::AwaitingSync { pending: Vec::new() })
 	}
 
-	/// For a peer still undecided after the grace period: become the host unless another undecided peer
-	/// with a lower id is there to become it, in which case its hello as host is on its way. A room with
-	/// guests in it is never seized: they hold the line and elect among themselves when their host leaves.
-	/// Returns the role taken, if one was.
+	/// For a peer still undecided after the grace period: become the host unless an undecided peer with a lower id
+	/// will. A room with guests is never seized; they elect among themselves when their host leaves. Returns the role taken.
 	pub fn decide_role(&mut self) -> Option<Role> {
 		if self.role != Role::Undecided {
 			return None;
@@ -154,8 +144,7 @@ impl Replica {
 		Some(Role::Host)
 	}
 
-	/// An unsynced peer asks the host it knows for a sync: once, and again only once the peer it asked has
-	/// stopped hosting or left. Nothing to do while synced, while an answer is due, or with no host known.
+	/// An unsynced peer asks the known host for a sync, again only if that peer stops hosting or leaves first.
 	fn ensure_sync_requested(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
 		if self.is_synced() || self.sync_requested_from.is_some() {
 			return Ok(());
@@ -168,9 +157,8 @@ impl Replica {
 		self.transport.send(host, &SyncPacket::SyncRequest { known_revs: target.known_revs() })
 	}
 
-	/// A synced guest whose room's host is not the one it synced from, elected while this peer was away, the
-	/// winner of a tie, or simply not the host that answered, syncs from it: what it retired may never have
-	/// been broadcast here. The sync merges onto what is held.
+	/// A synced guest whose host is not the one it synced from syncs from it, since what that host retired may never
+	/// have been broadcast here. The sync merges onto what is held.
 	fn follow_current_host(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
 		if self.role != Role::Guest || !self.is_synced() {
 			return Ok(());
@@ -187,9 +175,8 @@ impl Replica {
 		self.ensure_sync_requested(target)
 	}
 
-	/// Ask the host for its line again, with what is held here so it sends only the rest. Broadcasts that
-	/// arrive meanwhile are buffered as on a first sync. Nothing to do while a sync is already on its way
-	/// or no host is known to ask.
+	/// Ask the host for its line again, naming what is held so it sends only the rest. Broadcasts arriving meanwhile
+	/// are buffered as on a first sync.
 	fn request_resync(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
 		if self.role == Role::Host || !self.is_synced() {
 			return Ok(());
@@ -203,8 +190,8 @@ impl Replica {
 		self.transport.send(host, &SyncPacket::SyncRequest { known_revs: target.known_revs() })
 	}
 
-	/// Take the host role and tell the room. Broadcasts buffered against a sync that now never comes are
-	/// kept for delivery, or the sender's later ones would wait on them forever.
+	/// Take the host role and tell the room. Broadcasts buffered for a sync that now never comes are kept for
+	/// delivery, or the sender's later ones would wait on them forever.
 	fn become_host(&mut self) {
 		self.role = Role::Host;
 		self.synced_from = Some(self.peer);
@@ -215,7 +202,7 @@ impl Replica {
 		self.announce_role();
 	}
 
-	/// Greet every peer again with the current role. A peer already known takes it as a role change only.
+	/// Greet every peer again with the current role; a known peer takes it as a role change only.
 	fn announce_role(&mut self) {
 		let peers: Vec<TransportPeerId> = self.peers.keys().copied().collect();
 		for transport_peer in peers {
@@ -225,11 +212,9 @@ impl Replica {
 		}
 	}
 
-	/// A guest whose room has no host in it, because the host's link closed or because it yielded the
-	/// role: the synced guest with the lowest id takes the role over. Every peer applies the same rule to
-	/// the same membership, so they agree. An unsynced guest has nothing to serve and steps aside as
-	/// undecided, which takes it out of the candidates, re-runs the rule on the rest through its greeting,
-	/// and has it sync from whoever takes over. Nothing to do while a host is present.
+	/// In a room left without a host, the synced guest with the lowest id takes the role; every peer applies the
+	/// same rule to the same membership, so they agree. An unsynced guest has nothing to serve, so it steps aside as
+	/// undecided, which re-runs the rule on the rest through its greeting and has it sync from whoever takes over.
 	fn settle_without_host(&mut self, events: &mut Vec<Event>) {
 		if self.role != Role::Guest || self.peers.values().any(|remote| remote.role == Role::Host) {
 			return;
@@ -281,8 +266,7 @@ impl Replica {
 		matches!(self.sync, SyncState::Synced)
 	}
 
-	/// The display name this peer announces. Sent to everyone in the room when it changes, and with every
-	/// hello, so a newcomer learns it at once.
+	/// The display name this peer announces, sent to the room on change and with every hello.
 	pub fn set_name(&mut self, name: &str) -> Result<(), PacketError> {
 		if self.name == name {
 			return Ok(());
@@ -294,7 +278,7 @@ impl Replica {
 		self.transport.broadcast_except(None, &SyncPacket::Profile { name: self.name.clone() })
 	}
 
-	/// Tell the room what this peer has on record about the history, after it changed here.
+	/// Tell the room this peer's history metadata after it changed here.
 	pub fn send_metadata(&mut self, metadata: &HistoryMetadata) -> Result<(), PacketError> {
 		if self.peers.is_empty() {
 			return Ok(());
@@ -302,8 +286,8 @@ impl Replica {
 		self.transport.broadcast_except(None, &SyncPacket::Metadata(metadata.clone()))
 	}
 
-	/// Tell the room where this peer's pointer is, `None` once it left the viewport. The
-	/// caller coalesces: one call per frame at most, and none when nothing moved.
+	/// Tell the room where this peer's pointer is, `None` once it left the viewport. The caller coalesces to at
+	/// most one call per frame.
 	pub fn send_cursor(&mut self, position: Option<CursorPosition>) -> Result<(), PacketError> {
 		if self.peers.is_empty() {
 			return Ok(());
@@ -354,8 +338,7 @@ impl Replica {
 			return Ok(());
 		}
 
-		// A local edit can name a resource whose bytes are not here, a pasted node referencing a font for
-		// instance, so the references are worth re-examining even though nothing arrived from the wire.
+		// A local edit can name a resource whose bytes are not here, such as a pasted node's font.
 		self.resources_stale = true;
 
 		self.broadcast(BroadcastBody::HotOps(ops.to_vec()))
@@ -386,8 +369,7 @@ impl Replica {
 		self.broadcast(BroadcastBody::HeadMove(moved))
 	}
 
-	/// Take back hot ops of this peer's own, so every peer drops them. The ops have already left the
-	/// local log; this is what makes them leave the others.
+	/// Take back this peer's own hot ops, already gone from the local log, so every other peer drops them too.
 	pub fn broadcast_retraction(&mut self, ops: &[HotOpId]) -> Result<(), PacketError> {
 		if ops.is_empty() {
 			return Ok(());
@@ -404,8 +386,7 @@ impl Replica {
 			return Ok(());
 		}
 
-		// Retirement moves ops into history, which referenced resources are read from as well as from the
-		// registry, so a hash the registry has since overwritten becomes referenced again from here.
+		// References are read from history as well as the registry, so retiring can re-reference a hash the registry overwrote.
 		self.resources_stale = true;
 
 		self.broadcast(BroadcastBody::Deltas {
@@ -453,10 +434,8 @@ impl Replica {
 		let mut events = Vec::new();
 		let transport_events = self.transport.poll();
 
-		// Greet every new peer before handling anything else in the batch. A transport adds them to its
-		// send set for the whole batch up front, so a broadcast made while handling an earlier event
-		// would reach a peer that has not been greeted; the hello that followed would then carry a
-		// sequence number covering it, and the receiver would rightly treat those ops as unneeded.
+		// Greet every new peer before handling the batch. The transport adds them to its send set up front, so a
+		// broadcast made meanwhile would reach them before a hello whose seq already covers it, and be skipped.
 		for transport_event in &transport_events {
 			if let TransportEvent::PeerConnected(transport_peer) = transport_event
 				&& let Err(error) = self.send_hello(*transport_peer)
@@ -478,16 +457,15 @@ impl Replica {
 					if let Some(remote) = &departed {
 						events.push(Event::PeerLeft { peer: remote.peer });
 					}
-					// A peer that left may have been the one still owing bytes, so let the rest be asked again.
+					// The departed peer may have owed bytes, so let the rest be asked.
 					self.requested_resources.clear();
 					self.resources_stale = true;
 
 					match departed {
 						Some(remote) => {
 							let closed = self.close_epoch(remote.peer, target, &mut events);
-							// The line needs a retirer; the guests it left settle on one. Any departure can be the one
-							// that decides it: a guest that deferred to a lower id is the candidate once that id is
-							// gone. A peer that had asked the departed one for a sync asks whoever else hosts.
+							// Any departure can settle the election, since a guest that deferred to a lower id is the
+							// candidate once that id is gone. A sync asked of the departed peer goes to whoever hosts.
 							self.settle_without_host(&mut events);
 							closed.and_then(|()| self.ensure_sync_requested(&*target).map_err(ReplicaError::from))
 						}
@@ -506,8 +484,7 @@ impl Replica {
 			}
 		}
 
-		// Broadcasts can become deliverable without a packet arriving, when a role decision releases the
-		// ones buffered for a sync that never comes.
+		// A role decision can release broadcasts buffered for a sync that never comes, with no packet arriving.
 		if !self.held.is_empty()
 			&& let Err(error) = self.deliver_held(target, &mut events)
 		{
@@ -528,16 +505,14 @@ impl Replica {
 		events
 	}
 
-	/// Re-announce every hot op held here that history does not yet cover, whoever wrote it. A peer can
-	/// hold the only copy of another's op, so replaying only our own would leave that one to die with the
-	/// connection it arrived on. Ops the marks cover replay as no-ops on every receiver.
+	/// Re-announce every hot op held here that history does not cover, whoever wrote it, since this peer may hold
+	/// the only copy of another's op. Covered ops are no-ops on every receiver.
 	fn reannounce_hot_ops(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
 		let retired = target.retired_marks();
 		let unretired: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !retired.covers(hot_op.id())).collect();
 
 		self.broadcast_hot_ops(&unretired)?;
-		// A retraction in flight when a peer joined never reached it, and nothing holds it to re-send, so the
-		// marks that record it go round again with the ops.
+		// A retraction in flight when a peer joined never reached it and nothing re-sends it, so its marks go round too.
 		let retracted = target.retracted_marks();
 		if retracted.retired_up_to.is_empty() && retracted.retired_beyond.is_empty() {
 			return Ok(());
@@ -545,8 +520,7 @@ impl Replica {
 		self.broadcast(BroadcastBody::RetractedMarks(retracted))
 	}
 
-	/// Retry ops held back for a missing referent. A later op can supply the entity an earlier one
-	/// named, so this runs once per poll rather than only where the op arrived.
+	/// Retry ops held back for a missing referent, every poll, since any later op can supply it.
 	fn retry_deferred(&mut self, target: &mut dyn SyncTarget, events: &mut Vec<Event>) {
 		if self.deferred.is_empty() {
 			return;
@@ -556,8 +530,7 @@ impl Replica {
 		let waiting = pending.len();
 		match target.apply_remote_hot_ops(pending) {
 			Ok(deferred) => {
-				// One that finally applied can name a resource nobody here has seen, and leaves the target
-				// changed, neither of which anything else in the poll would notice.
+				// Nothing else in the poll notices that one applied, changing the target and maybe naming a new resource.
 				if deferred.len() < waiting {
 					self.resources_stale = true;
 					events.push(Event::Changed);
@@ -568,9 +541,8 @@ impl Replica {
 		}
 	}
 
-	/// Ask the room for referenced bytes nobody here has yet. Runs after every batch of packets rather
-	/// than once at sync, since an op delivered later can reference a resource this peer has never seen.
-	/// Only the hashes without a standing request go out, so a slow transfer is not re-requested.
+	/// Ask the room for referenced bytes not held here, after every batch since any delivered op can reference
+	/// a new resource. Hashes with a standing request are skipped.
 	fn request_missing_resources(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
 		if !self.resources_stale {
 			return Ok(());
@@ -578,12 +550,10 @@ impl Replica {
 		self.resources_stale = false;
 
 		let missing = target.missing_resources();
-		// A resource that turned up some other way, staged here for instance, leaves its request behind.
-		// Clearing those keeps a later ask for the same hash from being suppressed.
+		// A resource that turned up some other way leaves its request behind, which would suppress a later ask.
 		self.requested_resources.retain(|hash| missing.contains(hash));
 
-		// Sorted because `missing_resources` answers with a `HashSet`, whose order varies per process and
-		// would otherwise reach the wire, making a seeded run unreproducible.
+		// Sorted so `HashSet` order does not reach the wire and make a seeded run unreproducible.
 		let mut unasked: Vec<ResourceHash> = missing.into_iter().filter(|hash| !self.requested_resources.contains(hash)).collect();
 		unasked.sort_unstable();
 		if unasked.is_empty() {
@@ -594,15 +564,14 @@ impl Replica {
 		self.transport.broadcast(&SyncPacket::ResourceRequest(unasked))
 	}
 
-	/// Answer requests that arrived before their bytes did. A resource can turn up locally rather than
-	/// over the wire, so this runs every poll; a requester never asks twice, so nothing else would.
+	/// Answer requests that arrived before their bytes did. Runs every poll, since bytes can turn up locally and a
+	/// requester never asks twice.
 	fn serve_owed_resources(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
 		if self.owed_resources.is_empty() {
 			return Ok(());
 		}
 
-		// Both loops run in sorted order: the collections are hashed, so their iteration order varies per
-		// process and would decide send order, leaving a seeded run unreproducible.
+		// Both loops run sorted so hash order does not decide send order and make a seeded run unreproducible.
 		let mut ready: Vec<(ResourceHash, Vec<u8>)> = self.owed_resources.keys().filter_map(|&hash| target.resource_bytes(hash).map(|bytes| (hash, bytes))).collect();
 		ready.sort_unstable_by_key(|(hash, _)| *hash);
 
@@ -638,8 +607,7 @@ impl Replica {
 		match packet {
 			SyncPacket::Hello { peer, user, role, epoch, seq } => {
 				log::debug!("Join handshake: hello from {peer:?} ({role:?}), synced {}", self.is_synced());
-				// A peer greeting again over the same link and incarnation is announcing a role, not arriving:
-				// anchoring its progress again would strand broadcasts of its still waiting on their dependencies.
+				// A re-greeting over the same link and epoch announces a role; re-anchoring would strand its held broadcasts.
 				let known = self.peers.contains_key(&from) && self.delivered.get(&peer).is_some_and(|progress| progress.epoch == epoch);
 				// A re-greeting keeps the presence the link already announced.
 				let presence = self.peers.remove(&from);
@@ -656,7 +624,7 @@ impl Replica {
 				if !known {
 					self.anchor_delivered(peer, epoch, seq);
 
-					// The anchor can unblock broadcasts held against the counter an earlier link reached.
+					// Can unblock broadcasts held against an earlier link's counter.
 					self.deliver_held(target, events)?;
 					self.reannounce_hot_ops(&*target)?;
 					events.push(Event::PeerJoined { peer, user });
@@ -665,38 +633,33 @@ impl Replica {
 					self.resources_stale = true;
 				}
 
-				// A host greeting an undecided peer settles it: it is a guest of that host.
 				if role == Role::Host && self.role == Role::Undecided {
 					self.role = Role::Guest;
 					events.push(Event::RoleChanged { role: self.role });
 				}
-				// Two hosts can meet for an instant when an election ran on differing memberships. The lower id
-				// keeps the role; the other becomes its guest.
+				// Two hosts meet briefly when elections ran on differing memberships; the lower id keeps the role.
 				if role == Role::Host && self.role == Role::Host && peer < self.peer {
 					log::info!("Yielding the host role to {peer:?}, which has the lower id");
 					self.role = Role::Guest;
-					// Its line is the room's now: sync from it below, as any guest does, and hand it whatever
-					// this peer retired on its own in the meantime. The room hears of the change, so nobody keeps
-					// asking this peer for what only a host answers.
+					// Sync from it below, handing over what this peer retired alone, and tell the room so nobody
+					// keeps asking this peer for what only a host answers.
 					self.sync = SyncState::AwaitingSync { pending: Vec::new() };
 					self.sync_requested_from = None;
 					self.announce_role();
 					events.push(Event::RoleChanged { role: self.role });
 				}
 				self.follow_current_host(&*target)?;
-				// A link greeted with an earlier role, before its own hello arrived and made it a known peer to
-				// announce to, hears the current one now, or a guest joining a room whose host just changed
-				// would never learn who hosts.
+				// A link greeted with an earlier role before it became a known peer hears the current one, or a
+				// guest joining as the host changes would never learn who hosts.
 				if self.greeted.get(&from) != Some(&self.role) {
 					self.send_hello(from)?;
 				}
-				// The peer asked for a sync stopped hosting before answering: ask whoever hosts now.
+				// The peer asked for a sync stopped hosting before answering.
 				if self.sync_requested_from == Some(from) && role != Role::Host {
 					self.sync_requested_from = None;
 				}
 				self.ensure_sync_requested(&*target)?;
-				// A host yielding or a guest stepping aside can leave this peer in a room without a host, or make
-				// it the lowest candidate for one.
+				// A host yielding or a guest stepping aside can leave the room hostless or make this peer the lowest candidate.
 				if role != Role::Host {
 					self.settle_without_host(events);
 				}
@@ -705,8 +668,7 @@ impl Replica {
 				if self.role != Role::Host {
 					return Ok(());
 				}
-				// Applying is best effort, as for any op: a request naming a step this host no longer has on its
-				// line is reported and dropped.
+				// Best effort: a request naming a step no longer on this host's line is reported and dropped.
 				let outcome: Result<(), TargetError> = if restore {
 					target.restore_interaction(rev).and_then(|deltas| self.broadcast_retired(&deltas, &[]).map_err(TargetError::from))
 				} else {
@@ -755,11 +717,9 @@ impl Replica {
 					return Ok(());
 				};
 				self.synced_from = self.peers.get(&from).map(|remote| remote.peer);
-				// A full registry replaces the session of a fresh copy, hot log included, so the unretired ops
-				// held here are kept and replayed back on top. They are the only copy of whatever never reached
-				// the host. A copy with retired history of its own is never replaced, whatever the host sent:
-				// its line merges with the host's, and what the host lacks goes back below. A host that took
-				// the role over an empty document, say, would otherwise wipe a returning member's history.
+				// A full registry replaces a fresh copy's session, so its unretired ops, possibly the only copy of
+				// what never reached the host, are replayed on top. A copy with retired history is never replaced,
+				// or a host over an empty document would wipe it; its line merges and what the host lacks goes back.
 				let full = sync.registry.is_some() && target.known_revs().is_empty();
 				let held = if full { target.hot_log() } else { Vec::new() };
 
@@ -767,8 +727,7 @@ impl Replica {
 					(true, Some(registry)) => target.load(registry, sync.deltas, sync.head)?,
 					_ => target.merge_remote(sync.deltas, &[], sync.head)?,
 				}
-				// The room is the document's: a copy that joined by link takes the id whatever state it brought, or its
-				// own link would name a room nobody else is in.
+				// A copy that joined by link takes the room's document id, or its own link would name an empty room.
 				if let Some(document_id) = sync.document_id
 					&& target.document_id() != Some(document_id)
 				{
@@ -779,7 +738,7 @@ impl Replica {
 				if target.absorb_metadata(&sync.metadata)? {
 					events.push(Event::MetadataChanged);
 				}
-				// What this copy had on record, a name given while apart say, reaches the room the same way.
+				// Metadata recorded here while apart reaches the room too.
 				let own = target.metadata();
 				if !own.is_empty() {
 					self.transport.broadcast_except(None, &SyncPacket::Metadata(own))?;
@@ -789,15 +748,13 @@ impl Replica {
 				self.deferred.extend(target.apply_remote_hot_ops(sync.hot_log)?);
 				self.resources_stale = true;
 
-				// The host's hot log is not a superset of the room's: this peer may hold the only copy of an
-				// op that never reached the host, and history is the only way it survives.
+				// This peer may hold the only copy of an op that never reached the host.
 				self.reannounce_hot_ops(&*target)?;
 
-				// Broadcasts the host had delivered before answering are already reflected in the snapshot.
+				// Broadcasts the host delivered before answering are in the snapshot.
 				for mark in sync.seen {
 					self.observe_delivered(mark);
 				}
-				// An earlier seq is baked into the snapshot already.
 				let worth_holding: Vec<(PeerId, Broadcast)> = pending.into_iter().filter(|(sender, broadcast)| self.worth_holding(*sender, broadcast)).collect();
 				self.held.extend(worth_holding);
 				self.deliver_held(target, events)?;
@@ -809,19 +766,17 @@ impl Replica {
 						retires: Vec::new(),
 					})?;
 				}
-				// The answer may be from a host that yielded while it was on its way; the line is the current host's.
+				// The answering host may have yielded meanwhile.
 				self.follow_current_host(&*target)?;
 
-				// Hot ops only ever existed in flight, so a drop loses them where retired work survives in
-				// history. Re-announce the ones authored here.
+				// Unlike retired work, hot ops exist only in flight, so a drop loses them. Re-announce our own.
 				let own_hot_ops: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| hot_op.timestamp.peer == self.peer).collect();
 				self.broadcast_hot_ops(&own_hot_ops)?;
 
 				events.push(Event::Synced);
 			}
 			SyncPacket::Broadcast(broadcast) => {
-				// A sender greets every peer before it broadcasts and the channel is ordered per pair, so a
-				// hello always lands first. Reaching this means the transport stopped being ordered.
+				// Senders greet before broadcasting over a per-pair ordered channel, so this means the transport reordered.
 				let Some(remote) = self.peers.get(&from) else {
 					log::error!("Dropping a broadcast from a peer that never said hello");
 					return Ok(());
@@ -838,7 +793,7 @@ impl Replica {
 				}
 			}
 			SyncPacket::Profile { name } => {
-				// Presence from a link that has not said hello has nobody to belong to yet.
+				// Presence from a link that has not said hello belongs to nobody yet.
 				if let Some(remote) = self.peers.get_mut(&from)
 					&& remote.name != name
 				{
@@ -884,8 +839,8 @@ impl Replica {
 		Ok(())
 	}
 
-	/// Record that a peer's broadcasts up to `mark` need not be waited for. Monotonic, since a hello
-	/// and a host's `seen` vector can carry the same fact in either order.
+	/// Record that a peer's broadcasts up to `mark` need not be waited for. Monotonic, since a hello and a host's
+	/// `seen` vector can carry the same fact in either order.
 	fn observe_delivered(&mut self, mark: PeerSeq) {
 		if mark.peer == self.peer {
 			return;
@@ -899,8 +854,8 @@ impl Replica {
 		}
 	}
 
-	/// Set where a peer's broadcasts resume on a newly opened link. Nothing before its hello was ever
-	/// sent here, so this replaces rather than raises.
+	/// Set where a peer's broadcasts resume on a new link. Replaces rather than raises, since nothing before its
+	/// hello was sent here.
 	fn anchor_delivered(&mut self, peer: PeerId, epoch: u64, seq: u64) {
 		if peer == self.peer {
 			return;
@@ -908,12 +863,10 @@ impl Replica {
 		self.delivered.insert(peer, PeerProgress { epoch, seq });
 	}
 
-	/// Settle up after a peer leaves: its own held broadcasts can never fill their gaps, and anything
-	/// waiting on it is now free to go.
+	/// Settle up after a peer leaves: its held broadcasts can never fill their gaps, and anything waiting on it is free.
 	fn close_epoch(&mut self, peer: PeerId, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
-		// Buffered broadcasts go too, in both queues. Applying them after their author left would mint a
-		// fresh orphan with no departure left to clean it up, and nothing has been applied yet, so
-		// dropping them breaks no dependency. Anything else waiting on this peer is released instead.
+		// Applying its buffered broadcasts would mint orphans no departure is left to clean up, and dropping
+		// them breaks no dependency since none applied yet.
 		if let SyncState::AwaitingSync { pending } = &mut self.sync {
 			pending.retain(|(sender, _)| *sender != peer);
 		}
@@ -921,19 +874,17 @@ impl Replica {
 
 		self.deliver_held(target, events)?;
 
-		// The departed peer's unretired work reached some peers and not others, and it cannot re-announce
-		// the difference itself. Passing on the whole hot tail covers it and anything depending on it.
+		// The departed peer's unretired work reached only some peers, and it cannot re-announce it itself.
 		self.reannounce_hot_ops(&*target)?;
 		Ok(())
 	}
 
-	/// Whether a link to this peer is open, meaning more of its broadcasts may still turn up.
+	/// Whether a link to this peer is open, so more of its broadcasts may turn up.
 	fn is_connected(&self, peer: PeerId) -> bool {
 		self.peers.values().any(|remote| remote.peer == peer)
 	}
 
-	/// Deliver every held broadcast whose causal dependencies are met, repeating since each delivery
-	/// can unblock others.
+	/// Deliver every held broadcast whose causal dependencies are met, repeating since each can unblock others.
 	fn deliver_held(&mut self, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
 		while let Some(index) = self.held.iter().position(|(sender, broadcast)| self.is_deliverable(*sender, broadcast)) {
 			let (sender, broadcast) = self.held.remove(index);
@@ -945,15 +896,11 @@ impl Replica {
 				},
 			);
 
-			// Applying is best effort: the ops that did land still have to be accounted for, so a failure
-			// is reported rather than abandoning the bookkeeping and the rest of the queue.
+			// Best effort: a failure is reported rather than abandoning the bookkeeping and the rest of the queue.
 			let applied = match broadcast.body {
 				BroadcastBody::HotOps(ops) => target.apply_remote_hot_ops(ops).map(|deferred| self.deferred.extend(deferred)),
-				// A retired step built on one this peer never got, because its sync came from a host that
-				// had no history yet or from one that has since yielded, cannot be applied. A guest asks the
-				// host for its line again rather than dropping the step. The host lacks part of the sender's
-				// line instead, which arrives whole when the sender syncs from it, as a yielded host or a
-				// returning guest does, so the host lets this copy go.
+				// A retired step whose parent never arrived here cannot apply. A guest resyncs from the host; a host
+				// lets it go, since the sender's whole line arrives when the sender syncs from it.
 				BroadcastBody::Deltas { deltas, .. }
 					if deltas
 						.iter()
@@ -966,8 +913,7 @@ impl Replica {
 						self.request_resync(&*target).map_err(TargetError::from)
 					}
 				}
-				// The host joins a line that diverged from its own, a guest's retired while apart or a yielded
-				// host's, with a merge delta, and the room follows to the joined head. A guest follows.
+				// The host joins a diverged line with a merge delta, and the room follows to the joined head.
 				BroadcastBody::Deltas { deltas, retires } if self.role == Role::Host => target.merge_divergent(deltas, &retires).and_then(|minted| {
 					if minted.is_empty() {
 						return Ok(());
@@ -1005,14 +951,12 @@ impl Replica {
 		broadcast.seen.iter().all(|&mark| mark.peer == sender || self.has_delivered(mark))
 	}
 
-	/// Whether a broadcast can still come up for delivery. A stale epoch or an already-delivered seq
-	/// never will, so holding one would park it for good.
+	/// Whether a broadcast can still come up for delivery; a stale epoch or delivered seq never will.
 	fn worth_holding(&self, sender: PeerId, broadcast: &Broadcast) -> bool {
 		self.delivered.get(&sender).is_none_or(|progress| progress.epoch == broadcast.epoch && broadcast.seq > progress.seq)
 	}
 
-	/// Whether one of a broadcast's dependencies is met. Dependencies that can never be met count as
-	/// met, rather than stalling their sender for good.
+	/// Whether a broadcast's dependency is met. One that never can be counts as met rather than stalling its sender.
 	fn has_delivered(&self, mark: PeerSeq) -> bool {
 		if mark.peer == self.peer {
 			return mark.epoch != self.epoch || mark.seq <= self.seq;

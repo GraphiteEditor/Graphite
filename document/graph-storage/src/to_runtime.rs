@@ -109,15 +109,14 @@ impl<'a> ConversionContext<'a> {
 	}
 }
 
-/// The id the node had in the runtime it was converted from, which storage keeps as an attribute so a
-/// conversion back lands the node under the id the editor's metadata is keyed by.
+/// The id the node had in the runtime it was converted from, kept as an attribute so a conversion back
+/// lands it under the id the editor's metadata is keyed by.
 fn runtime_node_id(global_id: NodeId, node: &Node) -> RuntimeNodeId {
 	RuntimeNodeId(node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0))
 }
 
 /// One node in runtime form together with the metadata for it and everything nested under it, as
-/// [`RuntimeProjection::node`] produces it. Entry paths are absolute, the way a whole-document
-/// conversion writes them.
+/// [`RuntimeProjection::node`] produces it. Entry paths are absolute, as in a whole-document conversion.
 pub struct ProjectedNode {
 	/// The runtime path of the network the node sits in.
 	pub network_path: Vec<RuntimeNodeId>,
@@ -138,9 +137,8 @@ pub struct ProjectedNetwork {
 	pub metadata: NetworkMetadataEntry,
 }
 
-/// Converts single entities of the registry to their runtime form, for a caller keeping a runtime
-/// mirror in step with the registry rather than rebuilding it. Owner relationships are gathered once at
-/// construction so each address lookup is a probe.
+/// Converts single registry entities to runtime form, for keeping a runtime mirror in step without
+/// rebuilding it. Owners are gathered once at construction so each address lookup is a probe.
 pub struct RuntimeProjection<'a> {
 	context: ConversionContext<'a>,
 	/// The node whose implementation each nested network is.
@@ -222,8 +220,7 @@ impl RuntimeProjection<'_> {
 	/// The network's exports, scope injections and metadata, without its nodes.
 	pub fn network_entry(&self, id: NetworkId) -> Result<ProjectedNetwork, ConversionError> {
 		let registry = self.context.registry;
-		// A network removed concurrently with a write into it renders as it was, so the nodes still in it
-		// keep their place.
+		// A network removed concurrently with a write into it renders as it was, so its nodes keep their place.
 		let network = registry.network_or_removed(id).ok_or(ConversionError::NetworkNotFound(id))?;
 		let network_path = self.network_path(id).ok_or(ConversionError::NetworkNotFound(id))?;
 
@@ -472,8 +469,8 @@ fn convert_node(
 fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
 		NodeInput::Node { id: node_id, index: output_index } => {
-			// A reference to a node removed concurrently keeps the id it had, the way the editor holds a
-			// dangling input; only a node never seen has no id to map to.
+			// A node removed concurrently keeps its id, as the editor holds a dangling input; only a node
+			// never seen has no id to map to.
 			let referenced = registry.node_or_removed(*node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
 
 			// Runtime references are local to one network. A cross-network reference would remap to a

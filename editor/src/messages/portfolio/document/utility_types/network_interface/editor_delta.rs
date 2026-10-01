@@ -384,8 +384,8 @@ fn construct_structural_additions(
 		// wrote to its name, lock or pin.
 		match batch.node(id) {
 			Some(held) => {
-				// The swap did not write the slots' `ui::*` attributes, and a whole-slot assignment would
-				// otherwise drop the names and descriptions this peer holds for the slots that survive it.
+				// The swap did not write the slots' `ui::*` attributes; a whole-slot assignment would drop the
+				// names and descriptions held for the slots that survive it.
 				let inputs = node
 					.inputs()
 					.iter()

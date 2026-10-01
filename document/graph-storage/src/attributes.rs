@@ -9,13 +9,12 @@ use std::collections::BTreeMap;
 pub mod attr;
 
 /// A type-erased attribute value paired with the timestamp at which it was last set. A deleted key
-/// stays as a stamped tombstone, so a write older than the deletion is recognised as older whichever
-/// order the two land in; readers see a tombstone as absent.
+/// stays as a stamped tombstone, so an older write loses in either arrival order; readers see it as absent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeValue {
 	pub value: Value,
 	pub timestamp: TimeStamp,
-	// No skipping: the registry is positional on disk, so every field is always present.
+	// No skipping: the registry is positional on disk.
 	#[serde(default)]
 	pub deleted: bool,
 }
@@ -35,9 +34,9 @@ impl AttributeValue {
 	}
 }
 
-/// Attribute maps. Each entity carries an `attributes_timestamp` next to its map: when the map was last
-/// written whole, by an addition or a whole-list input write. A key absent from the map is deleted as of
-/// that stamp, so a write older than it is dropped, and a tombstone older than it is redundant.
+/// Attribute maps. Each entity carries an `attributes_timestamp`: when its map was last written whole, by an
+/// addition or a whole-list input write. A key absent from the map is deleted as of that stamp, so an older
+/// write is dropped and an older tombstone is redundant.
 pub type Attributes = BTreeMap<String, AttributeValue>;
 
 /// The live entries of an attribute map: every key that is not a tombstone.

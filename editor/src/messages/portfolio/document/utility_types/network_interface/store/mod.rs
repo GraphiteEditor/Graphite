@@ -331,9 +331,8 @@ impl NodeNetworkInterface {
 
 	/// Pins every node to the identity storage addresses it by, returning where each is held.
 	///
-	/// A node the interface built from storage is already pinned; one created here is addressed by a
-	/// hash of its location until now, which is what a conversion derives for it anyway. Pinning changes
-	/// no document content, so nothing is recorded: the identity is a fact about the node, not an edit.
+	/// A node created here is addressed by a hash of its location until pinned, the identity a conversion derives anyway.
+	/// Pinning changes no document content, so nothing is recorded.
 	pub(crate) fn pin_storage_identities(&mut self, peer: document_graph_storage::PeerId) -> HashMap<document_graph_storage::NodeId, (Vec<NodeId>, NodeId)> {
 		let mut index = HashMap::new();
 		let mut unpinned = Vec::new();

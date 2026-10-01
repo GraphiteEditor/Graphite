@@ -29,8 +29,8 @@ pub struct InvalidSessionToken;
 impl FromStr for SessionToken {
 	type Err = InvalidSessionToken;
 
-	/// Parses the bare token, or a share link carrying it as the `session` query parameter, so a pasted link
-	/// works wherever a token does: the editor's join field, the CLI, a URL scheme.
+	/// Parses the bare token or a share link carrying it as the `session` query parameter, so a pasted link works
+	/// wherever a token does.
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let s = s.trim();
 		let s = match s.split_once("session=") {
@@ -70,10 +70,8 @@ mod tests {
 }
 
 impl SessionToken {
-	/// The token every copy of one document shares: derived from the document's id, so a copy edited
-	/// apart reconnects to the same room as the others by opening the same file, with no link to pass
-	/// around. Document ids are random 64-bit values, so the room is no more guessable than the id; the
-	/// mixing only spreads the id over the token's width.
+	/// The token every copy of a document shares, so a copy edited apart reconnects by opening the file. Document
+	/// ids are random, so the room is as unguessable as the id; the mixing only spreads it over the token's width.
 	pub fn for_document(document_id: u64) -> Self {
 		fn mix(mut value: u64) -> u64 {
 			value = value.wrapping_add(0x9E37_79B9_7F4A_7C15);
@@ -92,7 +90,6 @@ impl SessionToken {
 mod derived_token_tests {
 	use super::SessionToken;
 
-	/// Every copy of a document derives the same token, and different documents different ones.
 	#[test]
 	fn a_document_id_derives_one_token() {
 		assert_eq!(SessionToken::for_document(7), SessionToken::for_document(7));

@@ -15,8 +15,8 @@ pub struct SessionState {
 	/// tiebreaking and minting peer-scoped IDs.
 	#[serde(default)]
 	pub peer_id: PeerId,
-	/// The person using this device, from the editor's preferences: what the peer registers as in the CRDT,
-	/// so undo and authorship follow the person across the peer ids they accumulate. `0` until one is known.
+	/// The person using this device, registered in the CRDT so undo and authorship follow them across peer ids.
+	/// `0` until one is known.
 	#[serde(default)]
 	pub user_id: UserId,
 	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
@@ -43,12 +43,11 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
-	/// How many hot ops this peer has authored, feeding [`document_graph_storage::HotOp::sequence`]. A
-	/// reopen continues the run instead of reusing a spent sequence. Appended last: a positional codec
-	/// decodes these fields in declaration order.
+	/// Hot ops this peer has authored, feeding [`document_graph_storage::HotOp::sequence`], so a reopen never
+	/// reuses a spent sequence. Appended last: a positional codec decodes fields in declaration order.
 	#[serde(default)]
 	pub next_hot_sequence: HotSequence,
-	/// Whether the document was in its room when it was last persisted, so a reopen reconnects by itself.
+	/// Whether the document was in its room when last persisted, so a reopen reconnects.
 	#[serde(default)]
 	pub shared: bool,
 }
