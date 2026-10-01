@@ -12,8 +12,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{AttributesWrite, CrdtError, Delta, RegistryDelta, ResourceHash, Rev, TimeStamp, Value};
 
-/// Every mutator maintains the indexes, so asking for the tips or the named hashes is a probe rather than
-/// a scan of a history that only grows.
+/// Every mutator maintains the indexes, so the tips and named hashes are probes, not scans of a growing history.
 #[derive(Clone, Debug, Default)]
 pub struct History {
 	/// Deltas in topological order. Mutated only via [`push`](Self::push).
@@ -36,9 +35,7 @@ impl History {
 	/// Build from deltas already in topological order (the on-disk load path), indexing them in place.
 	pub fn from_ordered(deltas: Vec<Delta>) -> Self {
 		let mut history = Self::default();
-		for delta in deltas {
-			history.push(delta);
-		}
+		deltas.into_iter().for_each(|delta| history.push(delta));
 		history
 	}
 
@@ -60,21 +57,13 @@ impl History {
 		&self.resource_hashes
 	}
 
-	/// Whether the deltas from `from` on already sit in canonical order: a single-parent chain hanging off
-	/// the last delta before them, which is what a hosted retirement appends, needs no re-sort.
-	///
-	/// The sort emits the lowest rev among the deltas whose parents are all out. A chain on the last delta is
-	/// alone in that set at every step; a tail rooted on an earlier delta competes with that delta's later siblings.
+	/// Whether the deltas from `from` on already sit in canonical order, as a single-parent chain off the delta
+	/// before them (what a hosted retirement appends) does: each link is the sort's only candidate at its step.
 	pub(crate) fn extends_canonically(&self, from: usize) -> bool {
-		let Some(tail) = self.deltas.get(from..) else { return true };
-		let mut previous = from.checked_sub(1).map(|position| self.deltas[position].id);
-		for delta in tail {
-			if delta.parent != previous || matches!(delta.kind, RegistryDelta::Merge { .. }) {
-				return false;
-			}
-			previous = Some(delta.id);
-		}
-		true
+		(from..self.deltas.len()).all(|position| {
+			let delta = &self.deltas[position];
+			delta.parent == position.checked_sub(1).map(|previous| self.deltas[previous].id) && !matches!(delta.kind, RegistryDelta::Merge { .. })
+		})
 	}
 
 	pub fn len(&self) -> usize {
@@ -169,10 +158,9 @@ impl History {
 		let mut seen = HashSet::new();
 		let mut stack: Vec<Rev> = roots.into_iter().filter(|rev| self.contains(*rev)).collect();
 		while let Some(rev) = stack.pop() {
-			if !seen.insert(rev) {
-				continue;
-			}
-			if let Some(delta) = self.get(rev) {
+			if seen.insert(rev)
+				&& let Some(delta) = self.get(rev)
+			{
 				stack.extend(delta.all_parents());
 			}
 		}
@@ -188,15 +176,12 @@ impl History {
 	pub(crate) fn sample_chain(&self, tip: Rev) -> Vec<Rev> {
 		let mut samples = vec![tip];
 		let mut current = tip;
-		let mut distance = 0;
-		let mut next_sample_distance = 1;
-
+		let mut distance = 0_usize;
 		while let Some(parent) = self.get(current).and_then(|delta| delta.parent) {
 			current = parent;
 			distance += 1;
-			if distance == next_sample_distance {
+			if distance.is_power_of_two() {
 				samples.push(current);
-				next_sample_distance *= 2;
 			}
 		}
 		// Always the root: copies of one document share it however far they diverged, so the answering peer
@@ -204,7 +189,6 @@ impl History {
 		if samples.last() != Some(&current) {
 			samples.push(current);
 		}
-
 		samples
 	}
 
@@ -234,16 +218,11 @@ impl History {
 		}
 	}
 
-	/// Record when a retired delta entered history. Outside its `Rev`, so the index stays valid. Returns whether
-	/// the delta was found.
+	/// Record when a retired delta entered history (outside its `Rev`). Returns whether the delta was found.
 	pub(crate) fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
-		match self.index.get(&rev) {
-			Some(&position) => {
-				self.deltas[position].retired_at_ms = wall_ms;
-				true
-			}
-			None => false,
-		}
+		let Some(&position) = self.index.get(&rev) else { return false };
+		self.deltas[position].retired_at_ms = wall_ms;
+		true
 	}
 
 	/// Set a local annotation attribute (e.g. a commit message) on a retired delta in place. Excluded

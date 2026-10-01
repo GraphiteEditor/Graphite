@@ -51,9 +51,6 @@ impl Registry {
 		let mut node_metadata = Some(Vec::new());
 		let mut network_metadata = Some(Vec::new());
 
-		// Nodes are grouped by their owning network in one pass, so each `convert_network` call (one per
-		// network, including nested ones) takes its node list by lookup instead of rescanning the whole
-		// flat `node_instances` map, which would be quadratic on graphs with many networks.
 		let context = ConversionContext::new(self, declarations);
 
 		// Reject cycles up front so the recursive conversion below can assume the network reference
@@ -183,7 +180,6 @@ impl RuntimeProjection<'_> {
 			chain.push(owner);
 			current = node.network;
 		}
-
 		Some(chain.into_iter().rev().map(|owner| runtime_node_id(owner, &self.context.registry.node_instances[&owner])).collect())
 	}
 
@@ -206,12 +202,10 @@ impl RuntimeProjection<'_> {
 
 		let mut node_entries = Some(vec![extract_ui_metadata(node, id, &network_path, local_id)]);
 		let mut network_entries = Some(Vec::new());
-		let document_node = convert_node(&self.context, node, &network_path, local_id, &mut node_entries, &mut network_entries)?;
-
 		Ok(ProjectedNode {
+			node: convert_node(&self.context, node, &network_path, local_id, &mut node_entries, &mut network_entries)?,
 			network_path,
 			local_id,
-			node: document_node,
 			node_entries: node_entries.expect("seeded above"),
 			network_entries: network_entries.expect("seeded above"),
 		})

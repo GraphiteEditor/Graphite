@@ -25,11 +25,9 @@ pub struct Delta {
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default)]
 	pub attributes: Attributes,
-	/// When the delta entered history, in Unix wall-clock milliseconds as its retirer saw them. Display only;
-	/// order always comes from the graph. Outside the rev like `attributes`, but a plain field since every retired
-	/// delta carries it. Zero means unrecorded: no retirement happens at the epoch, and an `Option` would cost a
-	/// tag byte per delta. Private so the zero never escapes; see [`retired_at`](Self::retired_at). Last, since the
-	/// history codec is positional.
+	/// When the delta entered history, in Unix milliseconds by its retirer's clock; display only, and outside
+	/// the rev like `attributes`. Zero means unrecorded, saving the tag byte an `Option` costs per delta; read
+	/// it through [`retired_at`](Self::retired_at). Last, since the history codec is positional.
 	#[serde(default)]
 	pub(crate) retired_at_ms: u64,
 }

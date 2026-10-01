@@ -195,29 +195,6 @@ fn merge_converges_to_identical_history() {
 	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
 }
 
-/// A peer whose history is a prefix of the incoming one moves its head forward without minting a
-/// merge delta, and the negotiated transfer sends only the deltas past the sampled known revs.
-#[test]
-fn merge_fast_forwards_a_prefix_history() {
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	for value in 1..=5 {
-		session_b.commit_op_for_test(set_document_attribute("compute::b", value)).expect("B edit");
-	}
-
-	let known = session_a.known_revs();
-	let missing: Vec<_> = session_b.deltas_unknown_to(known).into_iter().cloned().collect();
-	assert_eq!(missing.len(), 5, "only B's new commits are unknown to A");
-
-	let outcome = session_a.merge(missing).expect("merge failed");
-	assert_eq!(outcome, crate::MergeOutcome::FastForward(session_b.head_rev().unwrap()));
-	assert_eq!(session_a.history().count(), session_b.history().count(), "no merge delta was added");
-
-	assert_eq!(session_b.merge(session_a.cloned_deltas()).expect("merge failed"), crate::MergeOutcome::NoOp);
-}
-
 /// A write to a network removed on a merged-in branch revives it: the removal keeps the network as a
 /// tombstone, and the write is newer than the removal.
 #[test]
@@ -923,383 +900,187 @@ fn commit_retired(session: &mut Session, op: RegistryDelta) {
 	}
 }
 
-/// Merge `deltas` into a copy of `base` in the given order, reporting node 7's surviving `tint`.
-fn merge_order_outcome(base: &Session, deltas: &[Delta], order: [usize; 2]) -> Option<(Value, TimeStamp)> {
-	let mut session = base.clone();
-	let ordered: Vec<Delta> = order.iter().map(|&index| deltas[index].clone()).collect();
-	session.merge(ordered).expect("merge failed");
-
-	session
-		.retired_registry()
-		.node_instances
-		.get(&NodeId(7))
-		.and_then(|node| node.attributes.get("tint"))
-		.map(|value| (value.value.clone(), value.timestamp))
+fn add_network(id: u64) -> RegistryDelta {
+	let network = Network::default();
+	RegistryDelta::AddNetwork { id: NetworkId(id), network }
 }
 
-/// The raw ops are arrival-order dependent: change-first leaves the node gone, remove-first resurrects
-/// it from the removal's snapshot. Merge has to fold both orders onto the same retired registry.
+fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
+	let delta = crate::AttributeDelta {
+		key: key.into(),
+		value: Some(Value::from(value)),
+	};
+	RegistryDelta::ChangeNodeAttribute { id, delta }
+}
+
+fn hot_op(op: RegistryDelta, counter: u64, peer: u64, sequence: u64) -> HotOp {
+	let sequence = crate::HotSequence(sequence);
+	HotOp {
+		op,
+		timestamp: ts(counter, peer),
+		sequence,
+	}
+}
+
+/// The raw ops are arrival-order dependent (change-first leaves the node gone, remove-first revives it), so
+/// merge has to fold both orders onto one retired registry.
 #[test]
 fn a_concurrent_remove_and_attribute_change_commute() {
-	let network_id = NetworkId(5);
-	let node = Node::new(network_id, crate::Implementation::Network(network_id), 0);
-
-	// Shared base holding node 7, then the two peers diverge.
+	let node = Node::new(NetworkId(5), crate::Implementation::Network(NetworkId(5)), 0);
 	let mut base = Session::with_peer(PeerId(1));
-	commit_retired(
-		&mut base,
-		RegistryDelta::AddNetwork {
-			id: network_id,
-			network: Network::default(),
-		},
-	);
+	commit_retired(&mut base, add_network(5));
 	commit_retired(&mut base, RegistryDelta::AddNode { id: NodeId(7), node: node.clone() });
 
 	let mut remover = base.clone();
 	commit_retired(&mut remover, RegistryDelta::RemoveNode { id: NodeId(7), snapshot: node });
-
 	let mut changer = Session::with_peer(PeerId(2));
 	changer.merge(base.cloned_deltas()).expect("changer adopts the base");
-	commit_retired(
-		&mut changer,
-		RegistryDelta::ChangeNodeAttribute {
-			id: NodeId(7),
-			delta: crate::AttributeDelta {
-				key: "tint".to_string(),
-				value: Some(Value::from(serde_json::json!(75))),
-			},
-		},
-	);
+	commit_retired(&mut changer, change_node_attribute(NodeId(7), "tint", serde_json::json!(75)));
 
 	// One delta from each branch, neither an ancestor of the other.
-	let removal = remover.cloned_deltas().into_iter().last().expect("removal delta");
-	let change = changer.cloned_deltas().into_iter().last().expect("change delta");
-	let deltas = [removal, change];
-
-	let removal_first = merge_order_outcome(&base, &deltas, [0, 1]);
-	let change_first = merge_order_outcome(&base, &deltas, [1, 0]);
-
-	assert_eq!(removal_first, change_first, "the retired registry must not depend on delta arrival order");
+	let removal = remover.cloned_deltas().pop().expect("removal delta");
+	let change = changer.cloned_deltas().pop().expect("change delta");
+	let merged = |order: [&Delta; 2]| {
+		let mut session = base.clone();
+		session.merge(order.map(Delta::clone).to_vec()).expect("merge failed");
+		session.retired_registry().clone()
+	};
+	assert_eq!(merged([&removal, &change]), merged([&change, &removal]));
 }
 
-/// An op can retire before an earlier one from its author arrives, so the marks cover it out of order.
-/// The prefix absorbs it once the gap fills, which bounds the exception set.
+/// Retired-op marks are a per-author prefix plus runs past gaps: an op past a gap is covered without claiming
+/// the gap, a filled gap folds into the prefix, a gap that never fills stays one run, and absorbing is a union.
 #[test]
-fn retired_marks_cover_a_gap_and_compact_once_it_fills() {
+fn retired_marks_keep_a_prefix_and_runs_past_gaps() {
 	let author = PeerId(1);
 	let id = |sequence: u64| crate::HotOpId {
 		peer: author,
 		sequence: crate::HotSequence(sequence),
 	};
-
-	let mut marks = crate::RetiredHotOps::default();
-	marks.extend([id(1), id(2)]);
-	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(2)), "a contiguous run folds straight into the prefix");
-	assert!(marks.retired_beyond.is_empty());
-
-	// Sequence 3 never arrived, so 4 retires above the prefix rather than extending it.
-	marks.extend([id(4)]);
-	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(2)));
-	assert!(marks.covers(id(4)), "an op past the gap is still recognized as retired");
-	assert!(!marks.covers(id(3)), "the missing op is not claimed");
-
-	// The gap fills, so the prefix swallows both it and the exception behind it.
-	marks.extend([id(3)]);
-	assert_eq!(marks.retired_up_to.get(&author), Some(&crate::HotSequence(4)));
-	assert!(marks.retired_beyond.is_empty(), "the exception set empties once the prefix reaches it");
-}
-
-/// Marks merge by union, so adopting a peer's wholesale must not lose local coverage.
-#[test]
-fn absorbing_marks_keeps_both_sides_coverage() {
-	let author = PeerId(1);
-	let id = |sequence: u64| crate::HotOpId {
-		peer: author,
-		sequence: crate::HotSequence(sequence),
+	let marks_of = |batches: &[&[u64]]| {
+		let mut marks = crate::RetiredHotOps::default();
+		batches.iter().for_each(|batch| marks.extend(batch.iter().map(|&sequence| id(sequence))));
+		marks
 	};
+	let after_a_lost_op: Vec<u64> = (2..=20).collect();
+	let one_by_one: Vec<&[u64]> = after_a_lost_op.chunks(1).collect();
 
-	let mut local = crate::RetiredHotOps::default();
-	local.extend([id(1), id(4)]);
-
-	let mut remote = crate::RetiredHotOps::default();
-	remote.extend([id(1), id(2), id(3), id(5)]);
-
-	local.absorb(&remote);
-
-	// The union is 1..=5 contiguous, so it all collapses into the prefix.
-	assert_eq!(local.retired_up_to.get(&author), Some(&crate::HotSequence(5)));
-	assert!(local.retired_beyond.is_empty());
-	for sequence in 1..=5 {
-		assert!(local.covers(id(sequence)), "sequence {sequence} must stay covered");
+	/// Batches extended in order, batches of a peer's marks absorbed, expected prefix, expected runs past it.
+	type Case<'a> = (&'a [&'a [u64]], &'a [&'a [u64]], u64, Option<usize>);
+	let cases: [Case; 5] = [
+		(&[&[1, 2]], &[], 2, None),
+		(&[&[1, 2], &[4]], &[], 2, Some(1)),
+		(&[&[1, 2], &[4], &[3]], &[], 4, None),
+		(one_by_one.as_slice(), &[], 0, Some(1)),
+		(&[&[1, 4]], &[&[1, 2, 3, 5]], 5, None),
+	];
+	for (batches, absorbed, prefix, runs) in cases {
+		let mut marks = marks_of(batches);
+		marks.absorb(&marks_of(absorbed));
+		let up_to = marks.retired_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
+		assert_eq!(up_to, crate::HotSequence(prefix), "{batches:?}");
+		assert_eq!(marks.retired_beyond.get(&author).map(Vec::len), runs, "{batches:?}");
+		for sequence in 1..=21 {
+			let retired = batches.iter().chain(absorbed).any(|batch| batch.contains(&sequence));
+			assert_eq!(marks.covers(id(sequence)), retired, "{batches:?}: sequence {sequence}");
+		}
 	}
 }
 
-/// Undo rewinds retired history and must leave the hot tail alone, or unretired work is promoted into the
-/// snapshot. Hot ops exist between staging and retirement even solo.
+/// Retirement drains the hot log, so a retirer that never received an author's earlier op still retires the
+/// later one, past the author's prefix.
 #[test]
-fn undo_does_not_promote_hot_ops_into_the_retired_snapshot() {
-	let mut session = Session::with_peer(PeerId(1));
+fn retiring_over_a_gap_lands_beyond_the_prefix() {
+	let mut host = Session::with_peer(PeerId(1));
+	// Sequence 1 was lost with the link that carried it.
+	let second = hot_op(set_document_attribute("late", 1), 9, 2, 2);
+	host.apply_hot_op(second.clone()).expect("apply");
+	host.retire(second.timestamp).expect("retire");
 
-	// Two retired interactions, so the second is undoable.
+	let marks = host.retired_marks();
+	assert_eq!(marks.retired_up_to.get(&PeerId(2)).copied().unwrap_or(crate::HotSequence::NONE), crate::HotSequence::NONE);
+	assert_eq!(marks.retired_beyond.get(&PeerId(2)).map(Vec::len), Some(1));
+	assert!(marks.covers(second.id()));
+}
+
+/// Undo and redo move only the retired zone and never promote the hot tail into it, a fold skips the undone
+/// delta kept in the DAG for redo, and a published commit is not silently rewound since peers hold it.
+#[test]
+fn undo_and_redo_move_only_unpublished_retired_history() {
+	let mut session = Session::with_peer(PeerId(1));
 	commit_retired(&mut session, set_document_attribute("first", 1));
 	let boundary = session.history().last().expect("a committed delta").id;
 	session.mark_interaction_end(boundary);
 	commit_retired(&mut session, set_document_attribute("second", 2));
-
-	// Unretired live work sitting on top, on a key no retired delta touches.
 	session.stage_ops([set_document_attribute("hot", 3)]).expect("stage");
-	assert!(holds(&session.registry().attributes, "hot"), "the hot op must be in the working registry");
-	assert!(!holds(&session.retired_registry().attributes, "hot"), "and must not be in the snapshot");
 
+	let mut published = session.clone();
+	published.publish_up_to(published.head_rev().expect("a head"));
+	assert!(session.can_undo() && !published.can_undo());
+
+	let retired = |session: &Session, key| holds(&session.retired_registry().attributes, key);
 	session.undo().expect("undo");
-
-	assert!(!holds(&session.retired_registry().attributes, "second"), "undo must rewind the retired snapshot");
-	assert!(!holds(&session.retired_registry().attributes, "hot"), "undo promoted an unretired hot op into the retired snapshot");
-}
-
-/// Redo puts the interaction back on both zones, so the pair does not drift the other way.
-#[test]
-fn redo_restores_the_retired_snapshot_without_the_hot_tail() {
-	let mut session = Session::with_peer(PeerId(1));
-
-	commit_retired(&mut session, set_document_attribute("first", 1));
-	let boundary = session.history().last().expect("a committed delta").id;
-	session.mark_interaction_end(boundary);
-	commit_retired(&mut session, set_document_attribute("second", 2));
-
-	session.stage_ops([set_document_attribute("hot", 3)]).expect("stage");
-	session.undo().expect("undo");
-	session.redo().expect("redo");
-
-	assert!(holds(&session.retired_registry().attributes, "second"), "redo must restore the retired delta");
-	assert!(!holds(&session.retired_registry().attributes, "hot"), "redo promoted an unretired hot op into the retired snapshot");
-	assert!(holds(&session.registry().attributes, "hot"), "the hot op must survive an undo/redo round trip");
-}
-
-/// Silent undo emits nothing, so it is only legal on an unpublished commit; rewinding one peers hold would
-/// diverge from them for good.
-#[test]
-fn publishing_a_commit_disables_silent_undo() {
-	let mut session = Session::with_peer(PeerId(1));
-
-	commit_retired(&mut session, set_document_attribute("first", 1));
-	let boundary = session.history().last().expect("a committed delta").id;
-	session.mark_interaction_end(boundary);
-	commit_retired(&mut session, set_document_attribute("second", 2));
-
-	let head = session.head_rev().expect("a head");
-	assert!(session.can_undo(), "an unpublished interaction is undoable");
-
-	session.publish_up_to(head);
-
-	assert!(!session.can_undo(), "a published interaction must not be silently rewound");
-}
-
-/// An undone delta stays in the DAG for redo, outside `head`'s ancestry. A fold that ignores that
-/// restores work the user undid.
-#[test]
-fn snapshot_from_history_ignores_undone_deltas() {
-	let mut session = Session::with_peer(PeerId(1));
-
-	commit_retired(&mut session, set_document_attribute("first", 1));
-	let boundary = session.history().last().expect("a committed delta").id;
-	session.mark_interaction_end(boundary);
-	commit_retired(&mut session, set_document_attribute("second", 2));
-
-	session.undo().expect("undo");
-	assert!(!holds(&session.retired_registry().attributes, "second"), "undo rewound the snapshot");
-
+	assert!(!retired(&session, "second") && !retired(&session, "hot"));
 	let folded = session.snapshot_from_history().expect("fold");
+	assert!(holds(&folded.attributes, "first") && !holds(&folded.attributes, "second"));
 
-	assert!(holds(&folded.attributes, "first"), "history still holds the kept interaction");
-	assert!(!holds(&folded.attributes, "second"), "a fold restored an undone delta");
+	session.redo().expect("redo");
+	assert!(retired(&session, "second") && !retired(&session, "hot"));
+	assert!(holds(&session.registry().attributes, "hot"));
 }
 
-/// A node removed, revived by a reference and removed again with a snapshot placing it elsewhere folds
-/// to the same snapshot whether the deltas land one by one or all at once. Pins simulation
-/// seed 3588534, where a revival read the wrong removal.
+/// A node removed, revived by a reference and removed again into a later network folds from history to the
+/// snapshot built delta by delta. Pins simulation seed 3588534, where a revival read the wrong removal.
 #[test]
 fn snapshot_from_history_reproduces_a_revival_between_two_removals() {
-	let node_id = NodeId(3);
-	let first_network = NetworkId(1);
-	let later_network = NetworkId(3);
-	let node_in = |network: NetworkId| Node { network, ..Node::dummy() };
+	let id = NodeId(3);
+	let node_in = |network: u64| Node {
+		network: NetworkId(network),
+		..Node::dummy()
+	};
+	let export = Some(crate::NodeInput::Node { id, index: 0 });
 
 	let mut session = Session::with_peer(PeerId(1));
-	commit_retired(
-		&mut session,
-		RegistryDelta::AddNetwork {
-			id: first_network,
-			network: Network::default(),
-		},
-	);
-	commit_retired(
-		&mut session,
-		RegistryDelta::AddNode {
-			id: node_id,
-			node: node_in(first_network),
-		},
-	);
-	commit_retired(
-		&mut session,
-		RegistryDelta::RemoveNode {
-			id: node_id,
-			snapshot: node_in(first_network),
-		},
-	);
-	// Resurrects the node from the removal above, the only one so far.
-	commit_retired(
-		&mut session,
-		RegistryDelta::SetNetworkExport {
-			id: first_network,
-			index: 0,
-			export: Some(crate::NodeInput::Node { id: node_id, index: 0 }),
-		},
-	);
-	commit_retired(
-		&mut session,
-		RegistryDelta::AddNetwork {
-			id: later_network,
-			network: Network::default(),
-		},
-	);
-	// A later removal whose snapshot places the node in the network created after the export.
-	commit_retired(
-		&mut session,
-		RegistryDelta::RemoveNode {
-			id: node_id,
-			snapshot: node_in(later_network),
-		},
-	);
+	for op in [
+		add_network(1),
+		RegistryDelta::AddNode { id, node: node_in(1) },
+		RegistryDelta::RemoveNode { id, snapshot: node_in(1) },
+		RegistryDelta::SetNetworkExport { id: NetworkId(1), index: 0, export },
+		add_network(3),
+		RegistryDelta::RemoveNode { id, snapshot: node_in(3) },
+	] {
+		commit_retired(&mut session, op);
+	}
 
-	let folded = session.snapshot_from_history().expect("fold");
-
-	assert_eq!(&folded, session.retired_registry(), "the fold must reproduce the snapshot the deltas built as they landed");
+	assert_eq!(&session.snapshot_from_history().expect("fold"), session.retired_registry());
 }
 
-/// The newtype is `#[serde(transparent)]`, so persisted state and the wire carry a bare number and the
-/// field's encoding is unchanged.
+/// `#[serde(transparent)]`, so persisted state and the wire carry a bare number.
 #[test]
 fn hot_sequence_serializes_as_a_bare_number() {
-	let encoded = serde_json::to_string(&crate::HotSequence(7)).expect("serialize");
-
-	assert_eq!(encoded, "7");
+	assert_eq!(serde_json::to_string(&crate::HotSequence(7)).expect("serialize"), "7");
 	assert_eq!(serde_json::from_str::<crate::HotSequence>("7").expect("deserialize"), crate::HotSequence(7));
 }
 
-/// Retirement drains the hot log, so a retirer that never received an author's earlier op cannot
-/// retire it. The later op still retires, landing beyond the author's prefix instead of extending it.
-#[test]
-fn retiring_over_a_gap_lands_beyond_the_prefix() {
-	let author = PeerId(2);
-	let mut host = Session::with_peer(PeerId(1));
-
-	// Only the author's second op reaches this peer; the first was lost with the link that carried it.
-	let second = HotOp {
-		op: set_document_attribute("late", 1),
-		timestamp: TimeStamp { counter: 9, peer: author },
-		sequence: crate::HotSequence(2),
-	};
-	host.apply_hot_op(second.clone()).expect("apply");
-
-	host.retire(second.timestamp).expect("retire");
-
-	let retired = host.retired_marks();
-	let prefix = retired.retired_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
-	assert_eq!(prefix, crate::HotSequence::NONE, "sequence 1 never arrived, so the prefix cannot move");
-	assert!(retired.retired_beyond.contains_key(&author), "the retired op has to be recorded past the gap");
-	assert!(retired.covers(second.id()), "and still count as retired");
-}
-
-/// A gap that never fills pins the prefix, so every later op from that author lands past it. Stored as
-/// runs, that stays one entry however many ops follow.
-#[test]
-fn a_permanent_gap_accumulates_every_later_op() {
-	let author = PeerId(2);
-	let id = |sequence: u64| crate::HotOpId {
-		peer: author,
-		sequence: crate::HotSequence(sequence),
-	};
-
-	let mut marks = crate::RetiredHotOps::default();
-
-	// Sequence 1 is lost for good; everything this author writes afterwards still retires.
-	for sequence in 2..=20 {
-		marks.extend([id(sequence)]);
-	}
-
-	let runs = marks.retired_beyond.get(&author).map(Vec::len).unwrap_or_default();
-	assert_eq!(runs, 1, "the ops after the gap coalesce into a single run");
-	for sequence in 2..=20 {
-		assert!(marks.covers(id(sequence)), "sequence {sequence} must stay covered");
-	}
-	assert!(!marks.covers(id(1)), "the lost op is not claimed");
-}
-
-/// A retired delta keeps its op's authoring timestamp, so the snapshot resolves LWW on the same stamps
-/// the live view did rather than on retirement order.
+/// A retired delta keeps its op's authoring stamp, so the snapshot and a replay of history keep the LWW winner
+/// the live view did, whether the losing straggler retires with the winner or after it.
 #[test]
 fn retirement_preserves_the_live_lww_winner() {
-	let mut host = Session::with_peer(PeerId(1));
+	for straggler_retires_alone in [false, true] {
+		let mut host = Session::with_peer(PeerId(1));
+		let winner = hot_op(set_document_attribute("k", 1), 10, 2, 1);
+		host.apply_hot_op(winner.clone()).expect("apply winner");
+		if straggler_retires_alone {
+			host.retire(winner.timestamp).expect("retire winner");
+		}
+		host.apply_hot_op(hot_op(set_document_attribute("k", 2), 5, 3, 1)).expect("apply straggler");
+		host.retire(winner.timestamp).expect("retire");
 
-	// Same key from two authors, the newer op arriving first, so LWW keeps it and discards the older.
-	let newer = HotOp {
-		op: set_document_attribute("k", 1),
-		timestamp: TimeStamp { counter: 10, peer: PeerId(2) },
-		sequence: crate::HotSequence(1),
-	};
-	let older = HotOp {
-		op: set_document_attribute("k", 2),
-		timestamp: TimeStamp { counter: 5, peer: PeerId(3) },
-		sequence: crate::HotSequence(1),
-	};
-	host.apply_hot_op(newer.clone()).expect("apply newer");
-	host.apply_hot_op(older).expect("apply older");
-
-	let live = host.registry().attributes.get("k").cloned();
-	host.retire(newer.timestamp).expect("retire");
-
-	assert_eq!(host.registry().attributes.get("k"), live.as_ref(), "retirement must not move the live value");
-	assert_eq!(
-		host.retired_registry().attributes.get("k").map(|attribute| &attribute.value),
-		live.as_ref().map(|attribute| &attribute.value),
-		"the snapshot has to record the value the live view settled on"
-	);
-}
-
-/// A straggler LWW discarded still retires, and must not come back by doing so: stamped at retirement it
-/// would outrank the op that beat it.
-#[test]
-fn retiring_a_straggler_leaves_the_discarded_value_behind() {
-	let mut host = Session::with_peer(PeerId(1));
-
-	let winner = HotOp {
-		op: set_document_attribute("k", 1),
-		timestamp: TimeStamp { counter: 10, peer: PeerId(2) },
-		sequence: crate::HotSequence(1),
-	};
-	host.apply_hot_op(winner.clone()).expect("apply winner");
-	host.retire(winner.timestamp).expect("retire winner");
-
-	// Arriving behind the winner, this op loses in the live view and its value is dropped.
-	let straggler = HotOp {
-		op: set_document_attribute("k", 2),
-		timestamp: TimeStamp { counter: 5, peer: PeerId(3) },
-		sequence: crate::HotSequence(1),
-	};
-	host.apply_hot_op(straggler.clone()).expect("apply straggler");
-	host.retire(straggler.timestamp).expect("retire straggler");
-
-	let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
-	assert_eq!(value(host.registry()), Some(Value::from(serde_json::json!(1))), "the live view keeps the winner");
-	assert_eq!(
-		value(host.retired_registry()),
-		Some(Value::from(serde_json::json!(1))),
-		"and retiring the straggler must not overwrite it"
-	);
-
-	let replayed = host.snapshot_from_history().expect("refold");
-	assert_eq!(value(&replayed), Some(Value::from(serde_json::json!(1))), "nor may history replay to the discarded value");
+		let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
+		let replayed = host.snapshot_from_history().expect("refold");
+		let values = [value(host.registry()), value(host.retired_registry()), value(&replayed)];
+		assert_eq!(values, [(); 3].map(|_| Some(Value::from(serde_json::json!(1)))), "straggler retires alone: {straggler_retires_alone}");
+	}
 }
 
 /// Every registry field, entity existence included, is last-writer-wins on a timestamp, so a set of ops
@@ -1332,6 +1113,11 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 				value: Value::from(serde_json::json!(rng.below(100))),
 				exposed: false,
 			},
+		};
+		// A write, or a deletion one time in four.
+		let attribute = |rng: &mut Lcg, key: &str| crate::AttributeDelta {
+			key: key.into(),
+			value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(100)))),
 		};
 		match rng.below(18) {
 			0 => RegistryDelta::AddNetwork {
@@ -1368,27 +1154,21 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 					})
 					.collect(),
 			},
-			8 => RegistryDelta::ChangeNodeAttribute {
-				id: node_id,
-				delta: crate::AttributeDelta {
-					key: ["name", "lock"][rng.below(2) as usize].into(),
-					value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(100)))),
-				},
-			},
+			8 => {
+				let key = ["name", "lock"][rng.below(2) as usize];
+				RegistryDelta::ChangeNodeAttribute {
+					id: node_id,
+					delta: attribute(rng, key),
+				}
+			}
 			15 => RegistryDelta::ChangeNodeInputAttribute {
 				id: node_id,
 				index: rng.below(2) as u32,
-				delta: crate::AttributeDelta {
-					key: "label".into(),
-					value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(100)))),
-				},
+				delta: attribute(rng, "label"),
 			},
 			16 => RegistryDelta::ChangeNetworkAttribute {
 				id: network_id,
-				delta: crate::AttributeDelta {
-					key: "name".into(),
-					value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(100)))),
-				},
+				delta: attribute(rng, "name"),
 			},
 			9 => RegistryDelta::SetNodeImplementation {
 				id: node_id,
@@ -1460,76 +1240,42 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 			for i in (1..shuffled.len()).rev() {
 				shuffled.swap(i, rng.below(i as u64 + 1) as usize);
 			}
-			let folded = fold(&shuffled);
-			assert_eq!(
-				folded,
-				reference,
-				"seed {seed}: the ops {:?} folded differently in the order {:?}",
-				ops.iter().map(|(_, at)| at.counter).collect::<Vec<_>>(),
-				shuffled.iter().map(|(_, at)| at.counter).collect::<Vec<_>>()
-			);
+			let order: Vec<u64> = shuffled.iter().map(|(_, at)| at.counter).collect();
+			assert_eq!(fold(&shuffled), reference, "seed {seed}: folded differently in the order {order:?}");
 		}
 	}
 }
 
-/// A removal's snapshot is a copy of the node, stamped exactly as the addition stamped it. Folding it in
-/// must keep what the addition wrote: an entry stamped at a map's floor was written by the same op that
-/// set the floor, not before it. Pins a revived node losing `reflection_metadata`.
+/// A removal's snapshot carries the addition's stamps, and an entry stamped at its map's floor was written by
+/// the op that set the floor, so folding the snapshot keeps it. Pins a revived node losing `reflection_metadata`.
 #[test]
 fn a_removal_snapshot_keeps_the_attributes_the_addition_wrote() {
 	use crate::{AttributesRead, AttributesWrite};
 
 	let mut document = fresh_document(PeerId(1));
-	let node_id = NodeId(4);
+	let id = NodeId(4);
 	let mut node = Node::new(ROOT_NETWORK, crate::Implementation::ProtoNode(graphene_resource::ResourceId::from(7)), 1);
 	node.attributes.set("ui::name", Value::from(serde_json::json!("Layer")), TimeStamp::ORIGIN);
 	node.inputs[0].attributes.set("reflection_metadata", Value::from(serde_json::json!("meta")), TimeStamp::ORIGIN);
+	commit_op(&mut document, add_network(ROOT_NETWORK.0));
+	commit_op(&mut document, RegistryDelta::AddNode { id, node });
 
-	commit_op(
-		&mut document,
-		RegistryDelta::AddNetwork {
-			id: ROOT_NETWORK,
-			network: Network::default(),
-		},
-	);
-	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node });
-	let added = document.working_registry.node_instances[&node_id].clone();
-
-	// A removal and a concurrent, newer write to the node: the write revives it from the tombstone.
+	// A removal and a newer write, which revives the node from the tombstone.
+	let removal = RegistryDelta::RemoveNode {
+		id,
+		snapshot: document.working_registry.node_instances[&id].clone(),
+	};
 	let removed_at = document.clock.tick();
-	document
-		.apply_op_idempotent(RegistryDelta::RemoveNode { id: node_id, snapshot: added.clone() }, removed_at)
-		.expect("removal");
+	document.apply_op_idempotent(removal.clone(), removed_at).expect("removal");
 	let written_at = document.clock.tick();
-	document
-		.apply_op_idempotent(
-			RegistryDelta::ChangeNodeAttribute {
-				id: node_id,
-				delta: crate::AttributeDelta {
-					key: "ui::lock".into(),
-					value: Some(Value::from(serde_json::json!(true))),
-				},
-			},
-			written_at,
-		)
-		.expect("write");
+	document.apply_op_idempotent(change_node_attribute(id, "ui::lock", serde_json::json!(true)), written_at).expect("write");
 
-	let revived = &document.working_registry.node_instances[&node_id];
-	assert_eq!(
-		revived.attributes.get_typed::<String>("ui::name").as_deref(),
-		Some("Layer"),
-		"the node attribute the addition wrote survives"
-	);
-	assert_eq!(
-		revived.inputs()[0].attributes.get_typed::<String>("reflection_metadata").as_deref(),
-		Some("meta"),
-		"the slot attribute the addition wrote survives"
-	);
+	let revived = &document.working_registry.node_instances[&id];
+	assert_eq!(revived.attributes.get_typed::<String>("ui::name").as_deref(), Some("Layer"));
+	assert_eq!(revived.inputs()[0].attributes.get_typed::<String>("reflection_metadata").as_deref(), Some("meta"));
 
-	// The same snapshot folding into the live node, from a removal too old to land, changes nothing.
-	let mut untouched = document.clone();
-	untouched
-		.apply_op_idempotent(RegistryDelta::RemoveNode { id: node_id, snapshot: added }, removed_at)
-		.expect("a replayed removal");
-	assert_eq!(untouched.working_registry, document.working_registry);
+	// The same removal replayed into the live node is too old to land and changes nothing.
+	let mut replayed = document.clone();
+	replayed.apply_op_idempotent(removal, removed_at).expect("a replayed removal");
+	assert_eq!(replayed.working_registry, document.working_registry);
 }

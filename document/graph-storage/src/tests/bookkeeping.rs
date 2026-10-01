@@ -38,86 +38,64 @@ fn branched_pair() -> (Session, Session) {
 	(a, b)
 }
 
+/// The maintained tips and resource hashes follow pushes and merges, keep a removed resource's hash, and a
+/// reload rebuilds them from the ordered deltas.
 #[test]
-fn the_tip_set_follows_pushes_merges_and_sorts() {
+fn history_indexes_follow_pushes_merges_and_reloads() {
 	let (mut a, b) = branched_pair();
 	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
-
 	a.merge(b.cloned_deltas()).expect("merge");
-	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history), "after a merge joining two branches");
+	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
 	assert_eq!(a.document.history.tips().len(), 1, "the merge delta is the one tip");
 
-	a.commit_op_for_test(set_attribute("after", 3)).expect("edit after the merge");
+	let (id, hash) = (ResourceId::new(), ResourceHash::from(b"bytes".as_slice()));
+	let entry = ResourceEntry::embedded(hash, PeerId(1), crate::TimeStamp::ORIGIN);
+	a.commit_op_for_test(RegistryDelta::AddResource { id, entry }).expect("add");
 	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
+	let snapshot = a.retired_registry().resources[&id].clone();
+	a.commit_op_for_test(RegistryDelta::RemoveResource { id, snapshot }).expect("remove");
+	assert!(a.all_referenced_resource_hashes().contains(&hash), "a removed resource's hash is still referenced from history");
 
-	// A reload builds the same indexes from the ordered deltas.
 	let reloaded = History::from_ordered(a.cloned_deltas());
 	assert_eq!(reloaded.tips(), a.document.history.tips());
-	for delta in a.history() {
-		assert!(reloaded.contains(delta.id));
-	}
+	assert!(reloaded.resource_hashes().contains(&hash));
+	assert!(a.history().all(|delta| reloaded.contains(delta.id)));
 }
 
+/// A merge leaves history in canonical order: a chain off the receiver's last delta fast-forwards by
+/// appending, sending only what the receiver lacks, and a batch off an earlier delta is sorted into place.
 #[test]
-fn history_names_the_resource_hashes_it_carries() {
-	let hash = ResourceHash::from(b"bytes".as_slice());
-	let id = ResourceId::new();
-	let mut session = Session::with_peer(PeerId(1));
-	session
-		.commit_op_for_test(RegistryDelta::AddResource {
-			id,
-			entry: ResourceEntry::embedded(hash, PeerId(1), crate::TimeStamp::ORIGIN),
-		})
-		.expect("add");
-	assert!(session.document.history.resource_hashes().contains(&hash));
-
-	let entry = session.retired_registry().resources[&id].clone();
-	session.commit_op_for_test(RegistryDelta::RemoveResource { id, snapshot: entry }).expect("remove");
-	assert!(session.all_referenced_resource_hashes().contains(&hash), "a removed resource's hash is still referenced from history");
-}
-
-/// A host retirement chains off the guest's last delta, so it is placed without a sort or ancestry walk,
-/// exactly where the sort would put it.
-#[test]
-fn a_chain_off_the_last_delta_fast_forwards_without_sorting() {
+fn a_merge_appends_a_chain_and_sorts_a_branch_into_place() {
 	let mut host = Session::with_peer(PeerId(1));
 	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
 	let mut guest = host.clone();
 	guest.document.peer = PeerId(2);
+	for op in [set_attribute("x", 1), add_network(5), set_attribute("y", 2)] {
+		host.commit_op_for_test(op).expect("host step");
+	}
+	let (a, b) = branched_pair();
 
-	host.commit_op_for_test(set_attribute("x", 1)).expect("x");
-	host.commit_op_for_test(add_network(5)).expect("network");
-	host.commit_op_for_test(set_attribute("y", 2)).expect("y");
-	let incoming: Vec<Delta> = host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect();
-	assert!(guest.document.history.extends_canonically(guest.history_len()), "an empty tail extends trivially");
+	let ids = |history: &History| history.iter().map(|delta| delta.id).collect::<Vec<_>>();
+	for (mut receiver, mut sender, missing, fast_forward) in [(guest, host, 3, true), (a, b, 1, false)] {
+		let before = receiver.history_len();
+		let incoming: Vec<Delta> = sender.deltas_unknown_to(receiver.known_revs()).into_iter().cloned().collect();
+		assert_eq!(incoming.len(), missing, "only what the receiver lacks is sent");
+		let outcome = receiver.merge(incoming).expect("merge");
 
-	let outcome = guest.merge(incoming).expect("merge");
-
-	assert!(matches!(outcome, MergeOutcome::FastForward(rev) if Some(rev) == host.head_rev()), "{outcome:?}");
-	assert_eq!(guest.history().map(|delta| delta.id).collect::<Vec<_>>(), host.history().map(|delta| delta.id).collect::<Vec<_>>());
-
-	let mut sorted = guest.document.history.clone();
-	sorted.canonical_sort();
-	assert_eq!(
-		sorted.iter().map(|delta| delta.id).collect::<Vec<_>>(),
-		guest.history().map(|delta| delta.id).collect::<Vec<_>>(),
-		"the appended order was already canonical"
-	);
-	assert!(guest.retired_registry().value_equal(host.retired_registry()));
-}
-
-#[test]
-fn a_batch_off_an_earlier_delta_is_sorted_into_place() {
-	let (mut a, b) = branched_pair();
-	let before = a.history_len();
-	let incoming: Vec<Delta> = b.cloned_deltas().into_iter().filter(|delta| a.delta(delta.id).is_none()).collect();
-	a.merge(incoming).expect("merge");
-
-	assert!(!a.document.history.extends_canonically(before), "b's delta hangs off the base, not off a's last delta");
-	let mut sorted = a.document.history.clone();
-	sorted.canonical_sort();
-	assert_eq!(sorted.iter().map(|delta| delta.id).collect::<Vec<_>>(), a.history().map(|delta| delta.id).collect::<Vec<_>>());
-	assert_eq!(a.document.history.tips(), scanned_tips(&a.document.history));
+		let mut sorted = receiver.document.history.clone();
+		sorted.canonical_sort();
+		assert_eq!(ids(&sorted), ids(&receiver.document.history));
+		assert_eq!(receiver.document.history.extends_canonically(before), fast_forward);
+		assert_eq!(receiver.document.history.tips(), scanned_tips(&receiver.document.history));
+		if fast_forward {
+			assert_eq!(outcome, MergeOutcome::FastForward(sender.head_rev().expect("head")));
+			assert_eq!(ids(&receiver.document.history), ids(&sender.document.history), "no merge delta");
+			assert!(receiver.retired_registry().value_equal(sender.retired_registry()));
+			assert_eq!(sender.merge(receiver.cloned_deltas()).expect("merge back"), MergeOutcome::NoOp);
+		} else {
+			assert!(matches!(outcome, MergeOutcome::Merged(_)), "{outcome:?}");
+		}
+	}
 }
 
 /// Retirement takes the ops under the cutoff in any log order: every op commutes, so the snapshot folds to
@@ -127,19 +105,14 @@ fn retirement_takes_the_ops_under_the_cutoff_in_any_applied_order() {
 	let mut host = Session::with_peer(PeerId(1));
 	// A guest's late-stamped op sits ahead of an earlier-stamped one: the log is in arrival order, stamps
 	// are the authors' clocks.
-	let late = crate::HotOp {
-		op: add_network(9),
-		timestamp: crate::TimeStamp { counter: 50, peer: PeerId(2) },
+	let hot = |op, counter, peer| crate::HotOp {
+		op,
+		timestamp: crate::TimeStamp { counter, peer: PeerId(peer) },
 		sequence: crate::HotSequence(1),
 	};
-	let own = crate::HotOp {
-		op: set_attribute("x", 1),
-		timestamp: crate::TimeStamp { counter: 20, peer: PeerId(3) },
-		sequence: crate::HotSequence(1),
-	};
+	let (late, own) = (hot(add_network(9), 50, 2), hot(set_attribute("x", 1), 20, 3));
 	host.apply_hot_op(late.clone()).expect("the late-stamped op lands first");
 	host.apply_hot_op(own.clone()).expect("the earlier-stamped op lands second");
-
 	assert_eq!(host.hot_ops_up_to(own.timestamp).len(), 1, "only the op under the cutoff retires");
 
 	host.retire(own.timestamp).expect("retire");
@@ -272,7 +245,7 @@ fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
 		timestamp: crate::TimeStamp { counter: 2, peer: PeerId(1) },
 		sequence: own[1].sequence,
 	};
-	host.replay_hot_op(late).expect("dropped, not an error");
+	host.replay_hot_op(late.clone()).expect("dropped, not an error");
 	assert_eq!(host.hot_log().len(), 1);
 	assert!(host.closed_transactions().is_empty());
 
@@ -280,13 +253,7 @@ fn a_retracted_transaction_leaves_no_trace_and_keeps_what_others_wrote() {
 	let mut guest = Session::with_peer(PeerId(2));
 	guest.commit_op_for_test(add_network(3)).expect("base");
 	guest.document.working_registry = guest.document.retired_snapshot.clone();
-	guest
-		.apply_hot_op(crate::HotOp {
-			op: add_network(9),
-			timestamp: crate::TimeStamp { counter: 2, peer: PeerId(1) },
-			sequence: own[1].sequence,
-		})
-		.expect("the host's op reached the guest");
+	guest.apply_hot_op(late).expect("the host's op reached the guest");
 	assert!(guest.registry().networks.contains_key(&NetworkId(9)));
 	let touched = guest.absorb_retracted_marks(host.retracted_marks());
 	assert!(touched.networks.contains(&NetworkId(9)));
@@ -329,6 +296,10 @@ fn an_undone_branch_is_kept_to_itself() {
 /// redo brings the step back as a copy on top.
 #[test]
 fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
+	fn catch_up(guest: &mut Session, host: &Session) {
+		let missing: Vec<Delta> = host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect();
+		guest.merge(missing).expect("merge");
+	}
 	let mut host = Session::with_peer(PeerId(1));
 	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
 	let base = host.head_rev().expect("rev");
@@ -346,9 +317,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	let revs = host.retire_hot_ops(&guest_ids).expect("retire");
 	let undone = *revs.last().expect("the guest's step");
 	host.mark_interaction_end(undone);
-	guest
-		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
-		.expect("merge");
+	catch_up(&mut guest, &host);
 	guest.discard_hot_ops(&guest_ids).expect("discard");
 
 	// A later step by the host writes the shared key.
@@ -356,9 +325,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	let later = host.head_rev().expect("rev");
 	host.mark_interaction_end(later);
 	host.stamp_retired_at(&[later], 1_234);
-	guest
-		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
-		.expect("merge");
+	catch_up(&mut guest, &host);
 	assert_eq!(guest.head_rev(), host.head_rev());
 	assert_eq!(guest.latest_own_interaction(), Some(undone));
 
@@ -393,9 +360,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(restored.len(), 3, "RegisterPeer and the two writes come back");
 	assert!(host.retired_registry().attributes.get("guest").is_some_and(|value| value.value == Value::from(serde_json::json!(1))));
 	assert_eq!(host.retired_registry().attributes.get("shared").map(|value| &value.value), Some(&Value::from(serde_json::json!(2))));
-	guest
-		.merge(host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect::<Vec<Delta>>())
-		.expect("merge the copies");
+	catch_up(&mut guest, &host);
 	assert_eq!(guest.head_rev(), host.head_rev());
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 }
@@ -575,15 +540,12 @@ fn undo_in_a_session_finds_the_users_step_from_another_peer() {
 #[test]
 fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
 	let mut host = Session::with_identity(PeerId(1), UserId(1));
-	host.commit_op_for_test(set_attribute("a", 1)).expect("first");
-	let first = host.head_rev().expect("rev");
-	host.mark_interaction_end(first);
-	host.commit_op_for_test(set_attribute("b", 2)).expect("second");
-	let second = host.head_rev().expect("rev");
-	host.mark_interaction_end(second);
-	host.commit_op_for_test(set_attribute("c", 3)).expect("third");
-	let third = host.head_rev().expect("rev");
-	host.mark_interaction_end(third);
+	let [first, second, third] = [("a", 1), ("b", 2), ("c", 3)].map(|(key, value)| {
+		host.commit_op_for_test(set_attribute(key, value)).expect("step");
+		let rev = host.head_rev().expect("rev");
+		host.mark_interaction_end(rev);
+		rev
+	});
 	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
 
 	let (moved, touched) = host.move_head_to(first).expect("move");

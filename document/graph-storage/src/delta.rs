@@ -196,16 +196,15 @@ fn nodes_have_same_implementation(a: &Node, b: &Node) -> bool {
 fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) -> Vec<AttributeDelta> {
 	let mut deltas = Vec::new();
 
-	let held = |attributes: &crate::Attributes, key: &str| attributes.get(key).filter(|value| !value.deleted).map(|value| value.value.clone());
 	for (key, _) in crate::attributes::live(from) {
-		if held(to, key).is_none() {
+		if to.get(key).is_none_or(|value| value.deleted) {
 			deltas.push(AttributeDelta { key: key.clone(), value: None });
 		}
 	}
 
 	// Compare by `value` only; the per-entry `timestamp` is derived from the diff, not part of it.
 	for (key, to_value) in crate::attributes::live(to) {
-		if held(from, key).is_none_or(|from_value| from_value != to_value.value) {
+		if from.get(key).is_none_or(|from_value| from_value.deleted || from_value.value != to_value.value) {
 			deltas.push(AttributeDelta {
 				key: key.clone(),
 				value: Some(to_value.value.clone()),

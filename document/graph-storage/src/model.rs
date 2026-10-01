@@ -4,12 +4,11 @@ use std::borrow::Cow;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Node {
-	/// When the node was last added, so an addition and a concurrent removal resolve by last-writer-wins
-	/// rather than arrival order. See [`Registry::removed_nodes`](crate::Registry::removed_nodes).
+	/// The latest addition or write, so a concurrent removal resolves by last-writer-wins rather than
+	/// arrival order. See [`Registry::removed_nodes`](crate::Registry::removed_nodes).
 	#[serde(default)]
 	pub(crate) presence: TimeStamp,
-	/// When the node was last added, which decides its network between concurrent additions of one id;
-	/// every other field carries its own timestamp.
+	/// When the node was last added, which decides its network between concurrent additions of one id.
 	#[serde(default)]
 	pub(crate) added: TimeStamp,
 	/// When the input list last changed shape, so whole-list and per-slot writes resolve the same in either
@@ -66,40 +65,22 @@ impl Node {
 	/// `ChangeNodeInput`. The slot count is fixed at creation, since changing an input addresses a
 	/// slot by position.
 	pub fn new(network: NetworkId, implementation: Implementation, inputs: usize) -> Self {
-		let slot = InputSlot::unset(TimeStamp::ORIGIN);
-
 		Self {
 			presence: TimeStamp::ORIGIN,
 			added: TimeStamp::ORIGIN,
 			inputs_timestamp: TimeStamp::ORIGIN,
 			implementation,
 			implementation_timestamp: TimeStamp::ORIGIN,
-			inputs: vec![slot; inputs],
+			inputs: vec![InputSlot::unset(TimeStamp::ORIGIN); inputs],
 			attributes: Attributes::new(),
 			attributes_timestamp: TimeStamp::ORIGIN,
 			network,
 		}
 	}
 
-	/// Dead content for a node nothing has added yet, so a write arriving ahead of the addition has
-	/// somewhere to land. Every field is at the origin, so the addition's values win when it comes.
-	pub(crate) fn placeholder() -> Self {
-		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(ResourceId::from(0)), 0)
-	}
-
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
-		Self {
-			presence: TimeStamp::ORIGIN,
-			added: TimeStamp::ORIGIN,
-			inputs_timestamp: TimeStamp::ORIGIN,
-			implementation: Implementation::ProtoNode(ResourceId::new()),
-			implementation_timestamp: TimeStamp::default(),
-			inputs: vec![],
-			attributes: Attributes::new(),
-			attributes_timestamp: TimeStamp::ORIGIN,
-			network: crate::ROOT_NETWORK,
-		}
+		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(ResourceId::new()), 0)
 	}
 }
 
@@ -195,7 +176,7 @@ impl Network {
 
 /// One positional export slot. `target == None` marks an empty/removed slot. Timestamp drives LWW
 /// on concurrent `SetExport` ops.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ExportSlot {
 	pub target: Option<NodeInput>,
 	pub timestamp: TimeStamp,

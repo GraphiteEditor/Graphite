@@ -65,10 +65,8 @@ impl Session {
 
 	/// The person a peer is registered to, if its registration has landed here.
 	pub fn user_of(&self, peer: PeerId) -> Option<UserId> {
-		if peer == self.document.peer {
-			return Some(self.document.user);
-		}
-		self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user)
+		let registered = || self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user);
+		(peer == self.document.peer).then_some(self.document.user).or_else(registered)
 	}
 
 	/// Whether `peer` is this person: this device, or another registered to the same user. Undo in a
@@ -109,7 +107,6 @@ impl Session {
 		// The base moves only once the ops are staged, so a failure leaves the next diff covering them.
 		let hot_ops = self.stage_ops(ops)?;
 		self.runtime_base = Some(conversion.registry.clone());
-
 		Ok((hot_ops, conversion))
 	}
 
@@ -183,10 +180,9 @@ impl Session {
 			return Ok(Vec::new());
 		}
 
-		let registered = self.document.working_registry.peer_users.get(&self.document.peer).map(|registration| registration.user);
-		if registered != Some(self.document.user) {
-			let user = self.document.user;
-			pending.insert(0, RegistryDelta::RegisterPeer { peer: self.document.peer, user });
+		let (peer, user) = (self.document.peer, self.document.user);
+		if self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
+			pending.insert(0, RegistryDelta::RegisterPeer { peer, user });
 		}
 
 		let mut staged = Vec::with_capacity(pending.len());
@@ -199,7 +195,6 @@ impl Session {
 				sequence,
 			};
 			self.document.apply_hot_op(hot_op.clone())?;
-
 			self.document.next_hot_sequence = sequence;
 			staged.push(hot_op);
 		}
@@ -317,14 +312,12 @@ impl Session {
 		self.document.hot_log.retain(|hot_op| !retired_ids.contains(&hot_op.id()));
 		// How a peer that did not retire these learns they are in history.
 		self.document.mark_retired(retired.iter().copied());
-
 		Ok(())
 	}
 
-	/// Take back this peer's latest transaction while it is still hot: its ops since the previous marker,
-	/// closed or not. They leave every hot log and never retire, so an accidental gesture and its undo leave
-	/// no step in history. `None` when nothing is hot, or when the transaction already retired somewhere this
-	/// peer knows of, which makes it an undo of a retired step. Returns the ids to send and what they named.
+	/// Take back this peer's latest transaction (its ops since the previous marker) while it is still hot, so an
+	/// accidental gesture and its undo leave no step in history. `None` when nothing is hot or the transaction
+	/// already retired somewhere this peer knows of, which makes it an undo of a retired step.
 	pub fn retract_transaction(&mut self) -> Result<Option<Retraction>, CrdtError> {
 		let peer = self.document.peer;
 		let mut own: Vec<&HotOp> = self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp.peer == peer).collect();
@@ -371,12 +364,10 @@ impl Session {
 		}
 	}
 
-	/// Undo a retired interaction in a session by dropping it out of the shared line. The snapshot refolds to
-	/// the interaction's parent, the head moves there, and the later steps are minted again on it with the
-	/// same author, stamp and kind, so every peer that follows the move holds identical revs. The interaction
-	/// and the originals stay as an abandoned branch. Since every op commutes, a field a later step wrote
-	/// keeps that value. Returns the move to broadcast and what the dropped ops named. Only the retirer does
-	/// this; a guest asks it to.
+	/// Undo a retired interaction in a session by dropping it out of the shared line: the head moves to its parent
+	/// and the later steps are minted again there with the same author, stamp and kind, so every follower holds
+	/// identical revs; the originals stay as an abandoned branch. Returns the move to broadcast and what the
+	/// dropped ops named. Only the retirer does this; a guest asks it to.
 	pub fn drop_interaction(&mut self, undone: Rev) -> Result<(HeadMove, Touched), CrdtError> {
 		let from = self.document.head;
 		let base = self.interaction_start_parent(undone).ok_or(CrdtError::NotUndoable(undone))?;
@@ -401,10 +392,7 @@ impl Session {
 		self.document.retired_snapshot = self.snapshot_from_history()?;
 
 		let mut touched = Touched::default();
-		for delta in &walked[position..] {
-			touched.record(&delta.kind);
-		}
-
+		walked[position..].iter().for_each(|delta| touched.record(&delta.kind));
 		let mut copies = Vec::new();
 		for original in walked[..position].iter().rev() {
 			let revs = self.commit_ops_authored_at([(original.kind.clone(), Some(original.timestamp))], true)?;
@@ -472,17 +460,13 @@ impl Session {
 		}
 		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
 
-		let mut walked = Vec::new();
+		let mut touched = Touched::default();
 		let mut current = self.document.head;
 		while current != base {
 			let rev = current.ok_or(CrdtError::NothingToUndo)?;
-			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
-			current = delta.parent;
-			walked.push(delta);
-		}
-		let mut touched = Touched::default();
-		for delta in &walked {
+			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?;
 			touched.record(&delta.kind);
+			current = delta.parent;
 		}
 		// Fold from history rather than walking back, as `drop_interaction` does.
 		self.document.head = base;
@@ -525,8 +509,7 @@ impl Session {
 			originals.push(delta);
 		}
 		originals.reverse();
-		let ops: Vec<_> = originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))).collect();
-		let revs = self.commit_ops_authored_at(ops, true)?;
+		let revs = self.commit_ops_authored_at(originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))), true)?;
 		// The copies keep the originals' attributes and retirement times.
 		if revs.len() == originals.len() {
 			for (original, &rev) in originals.iter().zip(&revs) {
@@ -565,7 +548,6 @@ impl Session {
 	/// Take on a peer's retirement marks, dropping any hot op they show as already retired.
 	pub fn absorb_retired_marks(&mut self, remote: &RetiredHotOps) -> Result<(), CrdtError> {
 		self.document.absorb_retired(remote);
-
 		Ok(())
 	}
 
@@ -592,10 +574,9 @@ impl Session {
 		self.document.history.len()
 	}
 
-	/// Take a retirer's deltas on and put the head where the retirer's is, minting nothing: a guest in a
-	/// session follows the host's line rather than merging with it. A batch that extends this head applies
-	/// in place; otherwise, as when the host moved the line while this peer was away, the snapshot refolds to
-	/// the new head and the old tip stays as an abandoned branch. `head` defaults to the batch's last delta.
+	/// Take a retirer's deltas on and put the head where the retirer's is, minting nothing: a guest follows the
+	/// host's line rather than merging with it. A batch not extending this head (the host moved the line) refolds
+	/// the snapshot, leaving the old tip as an abandoned branch. `head` defaults to the batch's last delta.
 	pub fn follow(&mut self, incoming: Vec<Delta>, head: Option<Rev>) -> Result<MergeOutcome, CrdtError> {
 		let before = self.document.head;
 		let length_before = self.document.history.len();
@@ -605,10 +586,8 @@ impl Session {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
-			for parent in delta.all_parents() {
-				if !self.document.history.contains(parent) {
-					return Err(CrdtError::NotFoundInHistory(parent));
-				}
+			if let Some(parent) = delta.all_parents().find(|&parent| !self.document.history.contains(parent)) {
+				return Err(CrdtError::NotFoundInHistory(parent));
 			}
 			self.document.history.push(delta);
 		}
@@ -662,15 +641,14 @@ impl Session {
 	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<MergeOutcome, CrdtError> {
 		let length_before = self.document.history.len();
 
-		// Each delta lands on both registries once. Every field, presence included, is last-writer-wins, so
-		// the batch's order decides nothing.
+		// Working is snapshot plus hot tail, so each delta lands on both (cloning would promote hot ops). Every
+		// field, presence included, is last-writer-wins, so the batch's order decides nothing.
 		let mut absorbed_ids = HashSet::new();
 		for delta in incoming {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
 			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			// Working is snapshot plus hot tail, so a delta lands on both; cloning would promote hot ops.
 			self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 			absorbed_ids.insert(delta.id);
 			self.document.history.push(delta);
@@ -679,9 +657,8 @@ impl Session {
 			return Ok(MergeOutcome::NoOp);
 		}
 
-		// A batch chaining off the last delta, as every host retirement does, is already in canonical order.
-		// Anything else is re-sorted over all of history. The order matters to the history file and `Rev`
-		// determinism only, not to the registries.
+		// A batch chaining off the last delta, as every host retirement does, is already in canonical order. The
+		// order matters to the history file and `Rev` determinism only, not to the registries.
 		let extends = self.document.history.extends_canonically(length_before);
 		if !extends {
 			self.document.history.canonical_sort();
@@ -723,10 +700,9 @@ impl Session {
 		Ok(outcome)
 	}
 
-	/// Closes this peer's open transaction with a [`RegistryDelta::EndTransaction`] marker, so the retirer
-	/// can take the ops before it as one unit. Returns what was staged, the marker last: a peer whose
-	/// registration left the line, say on a dropped step, registers again ahead of it, and that op must reach
-	/// the other peers too or its run has a gap. Empty when this peer has no op past its last marker.
+	/// Closes this peer's open transaction with a [`RegistryDelta::EndTransaction`] marker, so the retirer can
+	/// take the ops before it as one unit. Returns everything staged, the marker last, since a re-registration
+	/// may precede it and must reach the other peers too. Empty when this peer has no op past its last marker.
 	pub fn end_transaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
 		let peer = self.document.peer;
 		let open = self
@@ -742,9 +718,8 @@ impl Session {
 		self.stage_ops([RegistryDelta::EndTransaction])
 	}
 
-	/// Every author's closed transactions in the hot log, the earliest closed first. An author's ops past its
-	/// last marker are its open transaction and never appear here, so a gesture in progress stays hot while a
-	/// later one from someone else retires; every op commutes, so retirement order does not bear on the registry.
+	/// Every author's closed transactions in the hot log, the earliest closed first. Ops past an author's last
+	/// marker are still open and never appear; every op commutes, so retirement order does not bear on the registry.
 	pub fn closed_transactions(&self) -> Vec<ClosedTransaction> {
 		let mut by_author: HashMap<PeerId, Vec<&HotOp>> = HashMap::new();
 		for hot_op in &self.document.hot_log {
@@ -780,10 +755,8 @@ impl Session {
 		closed
 	}
 
-	/// Retire one closed transaction as one interaction, coarsened: of the writes to one field only the newest
-	/// becomes a delta, since the earlier ones have no effect on the fold; structural ops stay. The last delta
-	/// is marked as the interaction's end, and every op is marked retired, dropped ones included. Returns the
-	/// new revs.
+	/// Retire one closed transaction as one interaction, coarsened, marking its last delta as the
+	/// interaction's end. Every op is marked retired, dropped ones included. Returns the new revs.
 	pub fn retire_transaction(&mut self, transaction: &ClosedTransaction) -> Result<Vec<Rev>, CrdtError> {
 		let revs = self.retire_hot_ops_with(&transaction.ops, true)?;
 		if let Some(&last) = revs.last() {
@@ -792,9 +765,8 @@ impl Session {
 		Ok(revs)
 	}
 
-	/// The hot ops stamped at or before `up_to`, which is what [`retire`](Self::retire) drains. Sent with
-	/// the deltas for peers to drop exactly these; the cutoff alone doesn't transfer, since a lagging op
-	/// can arrive below it afterwards.
+	/// The hot ops stamped at or before `up_to`, which [`retire`](Self::retire) drains. Sent with the deltas,
+	/// since a lagging op can arrive below the cutoff afterwards.
 	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
 		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
 	}
@@ -919,7 +891,6 @@ impl Session {
 			self.document.revert_delta(RegistryTarget::Working, delta.clone())?;
 			// Working is snapshot plus hot tail, so rewind both; copying would promote unretired hot ops.
 			self.document.revert_delta(RegistryTarget::Snapshot, delta)?;
-
 			self.document.head = parent;
 
 			match parent {
@@ -1194,28 +1165,23 @@ pub struct RetiredHotOps {
 /// Sort and coalesce runs, joining any that touch or abut.
 fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
 	runs.sort_unstable();
-
-	let mut merged: Vec<(HotSequence, HotSequence)> = Vec::with_capacity(runs.len());
-	for &(start, end) in runs.iter() {
-		match merged.last_mut() {
-			Some((_, last_end)) if start <= last_end.next() => *last_end = (*last_end).max(end),
-			_ => merged.push((start, end)),
+	runs.dedup_by(|(start, end), (_, last_end)| {
+		let joins = *start <= last_end.next();
+		if joins {
+			*last_end = (*last_end).max(*end);
 		}
-	}
-
-	*runs = merged;
+		joins
+	});
 }
 
 impl RetiredHotOps {
 	/// Whether history already holds this hot op.
 	pub fn covers(&self, id: HotOpId) -> bool {
-		if self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through) {
-			return true;
-		}
-
-		self.retired_beyond
-			.get(&id.peer)
-			.is_some_and(|runs| runs.iter().any(|&(start, end)| id.sequence >= start && id.sequence <= end))
+		self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)
+			|| self
+				.retired_beyond
+				.get(&id.peer)
+				.is_some_and(|runs| runs.iter().any(|&(start, end)| (start..=end).contains(&id.sequence)))
 	}
 
 	/// Take on `remote`'s coverage as well as this one's.
@@ -1227,7 +1193,6 @@ impl RetiredHotOps {
 		for (&peer, runs) in &remote.retired_beyond {
 			self.retired_beyond.entry(peer).or_default().extend(runs.iter().copied());
 		}
-
 		self.compact();
 	}
 
@@ -1236,7 +1201,6 @@ impl RetiredHotOps {
 		for id in retired {
 			self.retired_beyond.entry(id.peer).or_default().push((id.sequence, id.sequence));
 		}
-
 		self.compact();
 	}
 
@@ -1244,18 +1208,15 @@ impl RetiredHotOps {
 	fn compact(&mut self) {
 		for (&peer, runs) in &mut self.retired_beyond {
 			coalesce(runs);
-
 			let mut through = self.retired_up_to.get(&peer).copied().unwrap_or(HotSequence::NONE);
 			while runs.first().is_some_and(|&(start, _)| start <= through.next()) {
 				let (_, end) = runs.remove(0);
 				through = through.max(end);
 			}
-
 			if through != HotSequence::NONE {
 				self.retired_up_to.insert(peer, through);
 			}
 		}
-
 		self.retired_beyond.retain(|_, runs| !runs.is_empty());
 	}
 }
@@ -1342,10 +1303,9 @@ fn references_of(op: &RegistryDelta) -> Vec<u64> {
 	}
 }
 
-/// Coarsens one transaction's ops, in application order: a write to a field that a later write in the
-/// same transaction also lands on has no effect on the fold and is dropped, unless it refers to
-/// something the later write does not. A whole-list input write supersedes every earlier input write on
-/// its node. Structural ops stay.
+/// Coarsens one transaction's ops: a field write that a later write in it supersedes has no effect on the fold
+/// and is dropped, unless it refers to something the later write does not. A whole-list input write
+/// supersedes every earlier input write on its node. Structural ops stay.
 fn coarsen(mut ops: Vec<HotOp>) -> Vec<HotOp> {
 	// Newest by stamp, which is the author's order. The hot log holds arrival order, and a re-announcement
 	// after a lapsed link delivers later ops first, so log order would retire a value the registry never showed.
@@ -1360,11 +1320,9 @@ fn coarsen(mut ops: Vec<HotOp>) -> Vec<HotOp> {
 		if let FieldKey::NodeInputs(id) = field {
 			latest.retain(|key, &mut earlier| {
 				let same_node = matches!(key, FieldKey::NodeInput(node, _) | FieldKey::NodeInputAttribute(node, _, _) | FieldKey::NodeInputs(node) if *node == id);
-				if same_node && supersedes(&ops[earlier]) {
-					keep[earlier] = false;
-					return false;
-				}
-				true
+				let superseded = same_node && supersedes(&ops[earlier]);
+				keep[earlier] &= !superseded;
+				!superseded
 			});
 		} else if let Some(&earlier) = latest.get(&field)
 			&& supersedes(&ops[earlier])

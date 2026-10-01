@@ -124,11 +124,7 @@ impl ResourceEntry {
 
 	/// The live source stored under `key`, if any; a tombstone is absent.
 	pub fn source(&self, key: &SourceKey) -> Option<&SourceValue> {
-		self.sources
-			.binary_search_by(|(candidate, _)| candidate.cmp(key))
-			.ok()
-			.map(|index| &self.sources[index].1)
-			.filter(|value| !value.deleted)
+		self.find(key).ok().map(|index| &self.sources[index].1).filter(|value| !value.deleted)
 	}
 
 	/// The live sources in precedence order, tombstones skipped.
@@ -136,28 +132,26 @@ impl ResourceEntry {
 		self.sources.iter().filter(|(_, value)| !value.deleted).map(|(key, value)| (key, value))
 	}
 
+	fn find(&self, key: &SourceKey) -> Result<usize, usize> {
+		self.sources.binary_search_by(|(candidate, _)| candidate.cmp(key))
+	}
+
 	/// The stamp that decides a write to `key`: its entry's, tombstone included, or the chain's floor.
 	fn decided(&self, key: &SourceKey) -> TimeStamp {
-		self.sources
-			.binary_search_by(|(candidate, _)| candidate.cmp(key))
-			.ok()
-			.map_or(self.sources_timestamp, |index| self.sources[index].1.timestamp)
+		self.find(key).map_or(self.sources_timestamp, |index| self.sources[index].1.timestamp)
 	}
 
 	fn put(&mut self, key: SourceKey, value: SourceValue) {
-		match self.sources.binary_search_by(|(candidate, _)| candidate.cmp(&key)) {
+		match self.find(&key) {
 			Ok(index) => self.sources[index].1 = value,
 			Err(index) => self.sources.insert(index, (key, value)),
 		}
 	}
 
-	/// Writes the chain whole at `at`. Every other key is deleted as of then through the floor, without a
-	/// tombstone per key.
+	/// Writes the chain whole at `at`: the floor deletes every other key without a tombstone per key.
 	pub(crate) fn stamp_sources(&mut self, at: TimeStamp) {
 		self.sources.retain(|(_, value)| !value.deleted);
-		for (_, value) in &mut self.sources {
-			value.timestamp = at;
-		}
+		self.sources.iter_mut().for_each(|(_, value)| value.timestamp = at);
 		self.sources_timestamp = at;
 	}
 
@@ -166,17 +160,10 @@ impl ResourceEntry {
 	pub(crate) fn merge_sources(&mut self, other: Vec<(SourceKey, SourceValue)>, other_floor: TimeStamp) {
 		self.sources.retain(|(_, value)| value.timestamp >= other_floor);
 		for (key, value) in other {
-			match self.sources.binary_search_by(|(candidate, _)| candidate.cmp(&key)) {
-				Ok(index) => {
-					if value.timestamp > self.sources[index].1.timestamp {
-						self.sources[index].1 = value;
-					}
-				}
-				Err(index) => {
-					if value.timestamp >= self.sources_timestamp {
-						self.sources.insert(index, (key, value));
-					}
-				}
+			match self.find(&key) {
+				Ok(index) if value.timestamp > self.sources[index].1.timestamp => self.sources[index].1 = value,
+				Err(index) if value.timestamp >= self.sources_timestamp => self.sources.insert(index, (key, value)),
+				_ => {}
 			}
 		}
 		self.sources_timestamp = self.sources_timestamp.max(other_floor);
