@@ -16,7 +16,7 @@ use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session};
+use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::ResourceHash;
@@ -141,18 +141,19 @@ impl<L: Layout> Gdd<L> {
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
 
 		let peer = session_state.peer_id;
+		let user = session_state.user_id;
 		let mut session = match (has_registry, has_history) {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
+				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(peer, registry)?
+				Session::bootstrap_from_registry(peer, user, registry)?
 			}
-			(false, _) => Session::replay_from_history(peer, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
 		};
 
 		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
@@ -160,6 +161,10 @@ impl<L: Layout> Gdd<L> {
 			session.publish_up_to(rev);
 		}
 
+		session.restore_hot_sequence(session_state.last_hot_sequence);
+		session.restore_clock(session_state.clock);
+		// Before the hot log replays, so a settled op in it is dropped rather than staged again.
+		session.absorb_settled_marks(&session_state.settled);
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 
 		Ok(Self {
@@ -178,7 +183,11 @@ impl<L: Layout> Gdd<L> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
-		let session_state = SessionState { peer_id: peer, ..Default::default() };
+		let session_state = SessionState {
+			peer_id: peer,
+			user_id: UserId(peer.0),
+			..Default::default()
+		};
 		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
 
 		let session = Session::with_peer(peer);

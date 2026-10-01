@@ -29,28 +29,39 @@ impl Session {
 		Self::with_peer(PeerId(core_types::uuid::generate_uuid()))
 	}
 
-	/// Construct a session bound to a specific `PeerId`. Used by tests; production code wants
-	/// `Session::new`.
+	/// A session for `peer` standing for itself as a person. For tests and tools without a stored identity;
+	/// a working copy wants [`with_identity`](Self::with_identity).
 	pub fn with_peer(peer: PeerId) -> Self {
+		Self::with_identity(peer, UserId(peer.0))
+	}
+
+	/// A session for device `peer` used by person `user`. The user is what the peer's registration records,
+	/// and what undo and history authorship scope by.
+	pub fn with_identity(peer: PeerId, user: UserId) -> Self {
 		Self {
-			document: Document {
-				working_registry: Registry::default(),
-				retired_snapshot: Registry::default(),
-				history: History::new(),
-				hot_log: Vec::new(),
-				head: None,
-				redo_stack: Vec::new(),
-				clock: LamportClock::new(peer),
-				peer,
-				last_broadcast_rev: None,
-				next_node_counter: 0,
-			},
+			document: Document::empty(peer, user),
 			remote_tips: HashMap::new(),
 		}
 	}
 
 	pub fn peer(&self) -> PeerId {
 		self.document.peer
+	}
+
+	pub fn user(&self) -> UserId {
+		self.document.user
+	}
+
+	/// The person a peer is registered to, if its registration has landed here.
+	pub fn user_of(&self, peer: PeerId) -> Option<UserId> {
+		let registered = || self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user);
+		(peer == self.document.peer).then_some(self.document.user).or_else(registered)
+	}
+
+	/// Whether `peer` is this person: this device, or another registered to the same user. Undo in a
+	/// session scopes by this, so a fresh copy of a document still undoes what its user did from another.
+	pub fn is_mine(&self, peer: PeerId) -> bool {
+		self.user_of(peer) == Some(self.document.user)
 	}
 
 	pub fn registry(&self) -> &Registry {
@@ -142,25 +153,45 @@ impl Session {
 	///
 	/// The peer's first contribution is preceded by a `RegisterPeer` op, so the device's
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
-	/// before any of its edits. A no-op batch doesn't register — registration rides a real edit.
-	fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+	/// before any of its edits. A no-op batch doesn't register, since registration rides a real edit.
+	pub(crate) fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+		// A batch is staged whole or not at all: a refused op takes back the ones before it, which reached nothing yet.
 		let mut pending: Vec<RegistryDelta> = ops.into_iter().collect();
 		if pending.is_empty() {
 			return Ok(Vec::new());
 		}
 
-		if !self.document.working_registry.peer_users.contains_key(&self.document.peer) {
-			let user = UserId(self.document.peer.0);
-			pending.insert(0, RegistryDelta::RegisterPeer { peer: self.document.peer, user });
+		let (peer, user) = (self.document.peer, self.document.user);
+		if self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
+			pending.insert(0, RegistryDelta::RegisterPeer { peer, user });
 		}
 
+		// Reusing a sequence would let retirement marks drop the new op, so a batch that would run past the end is refused whole.
+		if self.document.last_hot_sequence.0.checked_add(pending.len() as u64).is_none() {
+			return Err(CrdtError::SequencesExhausted);
+		}
+
+		let sequence_before = self.document.last_hot_sequence;
 		let mut staged = Vec::with_capacity(pending.len());
 		for op in pending {
+			let sequence = HotSequence(self.document.last_hot_sequence.0 + 1);
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
+				sequence,
 			};
-			self.document.apply_hot_op(hot_op.clone())?;
+			if let Err(error) = self.document.apply_hot_op(hot_op.clone(), ApplyMode::Live) {
+				// The run continues where it was, so no sequence goes unused.
+				self.document.last_hot_sequence = sequence_before;
+				if !staged.is_empty() {
+					let taken: HashSet<HotOpId> = staged.iter().map(HotOp::id).collect();
+					self.document.hot_log.retain(|hot_op| !taken.contains(&hot_op.id()));
+					self.document.resync_hot_timestamps();
+					self.document.rebuild_working();
+				}
+				return Err(error);
+			}
+			self.document.last_hot_sequence = sequence;
 			staged.push(hot_op);
 		}
 		Ok(staged)
@@ -168,19 +199,26 @@ impl Session {
 
 	/// Wrap each op as a `Delta`, apply it, and chain it onto the local history. One tick per op.
 	///
-	/// Operates on the *retired snapshot*: reverses are computed against and forward ops applied to it,
-	/// so each `reverse` captures the true pre-op value rather than the hot-polluted working state. The
+	/// Operates on the *retired snapshot*: each `reverse` is captured from it and the forward op applied to it, so
+	/// the reverse holds the true pre-op state rather than the hot-polluted working state. The
 	/// working registry already reflects these ops (they were staged as hot ops before retirement, or
 	/// equal the snapshot when there are none), so it is left untouched.
 	///
 	/// `idempotent`: pass `true` when the snapshot already reflects the op (retirement of an already-
 	/// applied hot op) so duplicate structural inserts no-op rather than error.
 	fn commit_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
+		self.commit_ops_authored_at(ops.into_iter().map(|op| (op, None)), idempotent)
+	}
+
+	/// [`commit_ops`](Self::commit_ops) for ops authored elsewhere, paired with the timestamp they were
+	/// authored at (`None` to mint one). The delta's timestamp is what the registry resolves LWW on, so
+	/// retirement passes the op's own.
+	fn commit_ops_authored_at(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Option<TimeStamp>)>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
 		let target = RegistryTarget::Snapshot;
 		let ops = ops.into_iter();
 		let mut produced = Vec::with_capacity(ops.size_hint().0);
 
-		for op in ops {
+		for (op, authored_at) in ops {
 			// A new edit abandons any undone-forward branch: those revs stay in the DAG but are no
 			// longer reachable via redo. (Mirrors the legacy editor clearing its redo history on
 			// commit.) Done on the first real op so a no-op commit doesn't silently disable redo.
@@ -188,10 +226,10 @@ impl Session {
 				self.document.redo_stack.clear();
 			}
 
-			let reverse = self.document.compute_reverse_delta(target, &op)?;
-			let timestamp = self.document.clock.tick();
+			let reverse = crate::prior::capture(self.document.registry_ref(target), &op);
+			let timestamp = authored_at.unwrap_or_else(|| self.document.clock.tick());
 			let parent = self.document.head;
-			let author = self.document.peer;
+			let author = timestamp.peer;
 
 			let delta = Delta::new(parent, author, timestamp, op, reverse);
 			let rev = delta.id;
@@ -215,7 +253,7 @@ impl Session {
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
 	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in on-disk
 	/// (topological) order.
-	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
+	pub fn load(peer: PeerId, user: UserId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
 		for delta in &history {
 			clock.observe(delta.timestamp);
@@ -228,13 +266,11 @@ impl Session {
 				retired_snapshot: registry.clone(),
 				working_registry: registry,
 				history: History::from_ordered(history),
-				hot_log: Vec::new(),
 				head,
 				redo_stack,
 				clock,
-				peer,
-				last_broadcast_rev: None,
 				next_node_counter,
+				..Document::empty(peer, user)
 			},
 			remote_tips: HashMap::new(),
 		}
@@ -242,8 +278,8 @@ impl Session {
 
 	/// Rebuild the registry from scratch by applying every delta in causal order.
 	/// `deltas` must be in causal order (every parent before its children).
-	pub fn replay_from_history(peer: PeerId, deltas: impl IntoIterator<Item = Delta>, next_node_counter: u64) -> Result<Self, CrdtError> {
-		let mut session = Self::with_peer(peer);
+	pub fn replay_from_history(peer: PeerId, user: UserId, deltas: impl IntoIterator<Item = Delta>, next_node_counter: u64) -> Result<Self, CrdtError> {
+		let mut session = Self::with_identity(peer, user);
 		session.document.next_node_counter = next_node_counter;
 
 		for delta in deltas {
@@ -258,9 +294,21 @@ impl Session {
 		Ok(session)
 	}
 
-	/// Apply a hot op without going through the broadcast stream.
+	/// Apply a hot op from another peer. Idempotent, and a no-op for one history already covers: a late
+	/// delivery must not put a retired op back in the hot log.
 	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.document.apply_hot_op(hot_op)
+		self.document.replay_hot_op(hot_op)
+	}
+
+	/// Which hot ops are done with, for a peer catching up and for persisting. See [`SettledHotOps`].
+	pub fn settled_marks(&self) -> &SettledHotOps {
+		&self.document.settled
+	}
+
+	/// Take on a peer's marks, or this peer's persisted ones: whatever they cover that the hot log still holds is
+	/// dropped, and the working registry re-derived without it.
+	pub fn absorb_settled_marks(&mut self, remote: &SettledHotOps) {
+		self.document.absorb_settled(remote);
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -269,57 +317,52 @@ impl Session {
 		self.document.replay_hot_op(hot_op)
 	}
 
-	/// Integrate `incoming` retired deltas from another branch and emit a [`RegistryDelta::Merge`]
-	/// joining the resulting tips, returning the new merge `Rev` (or `None` if `incoming` adds nothing).
-	/// Applies each incoming op to the registry, then hands the set to [`History::merge`]. Incoming
-	/// deltas must arrive in causal order.
-	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<Option<Rev>, CrdtError> {
-		let mut absorbed: Vec<Delta> = Vec::new();
-		for delta in incoming {
-			if self.document.history.contains(delta.id) {
-				continue;
-			}
-			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			absorbed.push(delta);
+	/// The retired snapshot as history alone produces it, independent of arrival order and the hot log.
+	/// Folded over `head`'s ancestry only: an undone delta stays in the DAG for redo to find, and folding
+	/// all of history would restore work the user undid.
+	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
+		// Every op lands the same whatever order it arrives in, so applying each once is the fold.
+		let reachable = self.document.history.ancestors(self.document.head);
+		let mut scratch = Document::empty(self.document.peer, self.document.user);
+		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
+			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 		}
-		if absorbed.is_empty() {
-			return Ok(None);
-		}
-
-		self.document.history.merge(absorbed);
-		let tips = self.document.history.tips();
-		let timestamp = self.document.clock.tick();
-		let merge = Delta::merge(tips, self.document.peer, timestamp);
-		let merge_rev = merge.id;
-		// The merge's parents are the current tips, so it sorts last: `push` preserves the canonical
-		// order without re-sorting the whole history.
-		self.document.history.push(merge);
-		self.document.head = Some(merge_rev);
-
-		// Merge runs with an empty hot log; keep the retired snapshot in step with the working registry.
-		self.document.retired_snapshot = self.document.working_registry.clone();
-		Ok(Some(merge_rev))
+		Ok(scratch.working_registry)
 	}
 
-	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, re-applied with fresh
-	/// retirement timestamps so LWW arms bump field timestamps to `T_retire`.
+	pub fn history_len(&self) -> usize {
+		self.document.history.len()
+	}
+
+	/// The hot ops stamped at or before `up_to`, which [`retire`](Self::retire) drains. Sent with the deltas,
+	/// since a lagging op can arrive below the cutoff afterwards.
+	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
+		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
+	}
+
+	/// Promote the given hot ops into retired deltas, in hot-log order, each keeping the timestamp it was
+	/// authored at. Markers commit nothing. Ops not in the log are ignored.
 	///
-	/// Today: one retired delta per hot op. Coarsening is a future step.
-	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
-		let mut drained = Vec::new();
-		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
-		for hot_op in self.document.hot_log.drain(..) {
-			if hot_op.timestamp <= up_to {
-				drained.push(hot_op);
-			} else {
-				remaining.push(hot_op);
-			}
-		}
-		self.document.hot_log = remaining;
+	/// One retired delta per hot op.
+	pub fn retire_hot_ops(&mut self, ids: &[HotOpId]) -> Result<Vec<Rev>, CrdtError> {
+		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
+		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
+		self.document.hot_log = kept;
+		self.document.resync_hot_timestamps();
+		self.document.settled.extend(drained.iter().map(HotOp::id));
 
-		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
+		let ops = drained
+			.into_iter()
+			.filter(|hot_op| !matches!(hot_op.op, RegistryDelta::EndTransaction))
+			.map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
+		self.commit_ops_authored_at(ops, true)
 	}
 
+	/// Promote every hot op stamped at or before `up_to`, whatever its author.
+	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
+		let ids = self.hot_ops_up_to(up_to);
+		self.retire_hot_ops(&ids)
+	}
 	/// Mark a retired delta as the end of a user interaction, so the undo cursor treats it as a checkpoint.
 	/// Called once per interaction by the editor-facing commit path (not by resource/internal commits).
 	pub fn mark_interaction_end(&mut self, rev: Rev) {
@@ -335,33 +378,31 @@ impl Session {
 		self.document.history.annotate(rev, key, value, timestamp)
 	}
 
-	/// Whether there is a retired commit at `head` that can be undone in the silent zone (a commit
-	/// after `last_broadcast_rev`). `head == 0` is the empty history; published commits aren't
-	/// silently undoable (that needs a forward reverse-delta op, deferred until transport lands).
-	///
-	/// The earliest interaction (the document's loaded/created base) is *not* undoable: undoing it would
-	/// rewind into the pre-base state, which legacy never offers (opening a document gives an empty undo
-	/// history). We detect "head is on the earliest interaction" by walking `head`'s interaction back along
-	/// first-parents and checking whether it bottoms out at the root with no earlier interaction boundary to
-	/// land on. If so, there is nothing before this interaction to undo to, so undo is disabled.
+	/// Whether the interaction at `head` can be undone in the silent zone: it is this user's own, holds no merge, and
+	/// nothing in it was published, since rewinding a step peers hold would diverge from them. The document's first
+	/// interaction is not undoable, as opening a document starts with an empty undo history.
 	pub fn can_undo(&self) -> bool {
-		let Some(head) = self.document.head else { return false };
-		if self.document.last_broadcast_rev == Some(head) {
-			return false;
-		}
-		self.interaction_start_parent(head).is_some()
+		self.document.head.is_some_and(|head| self.interaction_start_parent(head, true).is_some())
 	}
 
-	/// Walk the interaction containing `rev` back along first-parents to its first delta, returning the
-	/// rev the cursor would rest on after undoing this interaction, or `None` if that is the root (the
-	/// earliest interaction, which is not undoable). Mirrors the boundary condition in [`undo`](Self::undo):
-	/// stop when the parent is an `interaction_end` boundary or the root.
-	fn interaction_start_parent(&self, rev: Rev) -> Option<Rev> {
-		let mut current = rev;
+	/// The rev the cursor rests on once the interaction ending at `end` is undone: the parent where the previous
+	/// interaction ended, a merge, or another user's delta begins. `None` when `end` is a merge, the interaction starts
+	/// at the root, or, for a `silent` undo, it is not this user's or holds a published delta.
+	fn interaction_start_parent(&self, end: Rev, silent: bool) -> Option<Rev> {
+		let history = &self.document.history;
+		let mut current = history.get(end)?;
+		let user = self.user_of(current.author);
+		if matches!(current.kind, RegistryDelta::Merge { .. }) || (silent && user != Some(self.document.user)) {
+			return None;
+		}
+		let boundary = |delta: &Delta| delta.is_interaction_end() || matches!(delta.kind, RegistryDelta::Merge { .. }) || self.user_of(delta.author) != user;
 		loop {
-			let parent = self.document.history.get(current)?.parent?;
-			if self.document.history.get(parent).is_some_and(|d| d.is_interaction_end()) {
-				return Some(parent);
+			if silent && self.document.last_broadcast_rev == Some(current.id) {
+				return None;
+			}
+			let parent = history.get(current.parent?)?;
+			if boundary(parent) {
+				return Some(parent.id);
 			}
 			current = parent;
 		}
@@ -371,37 +412,22 @@ impl Session {
 		!self.document.redo_stack.is_empty()
 	}
 
-	/// Silent-zone undo of one *interaction*: revert deltas walking `head` back along first-parents until
-	/// it reaches the previous interaction boundary (a delta marked `interaction_end`) or the empty root. One
-	/// interaction spans several deltas (one `commit_from_runtime` batch), so undo reverts the whole run,
-	/// not a single delta — matching the legacy per-interaction undo granularity. The undone interaction's
-	/// `head` rev is pushed onto the redo stack. Reflog semantics: the DAG is never rewritten.
+	/// Silent-zone undo of one interaction: put back what its deltas overwrote, newest first, until `head` rests where it
+	/// began (see [`can_undo`](Self::can_undo)). Its `head` rev goes on the redo stack; the DAG is not rewritten.
 	pub fn undo(&mut self) -> Result<Rev, CrdtError> {
-		if !self.can_undo() {
-			return Err(CrdtError::NothingToUndo);
-		}
 		let checkpoint = self.document.head.ok_or(CrdtError::NothingToUndo)?;
+		let base = self.interaction_start_parent(checkpoint, true).ok_or(CrdtError::NothingToUndo)?;
 
-		// Revert this interaction's last delta, then keep going back until `head` rests on the previous
-		// interaction's boundary (its `interaction_end` delta) or the root.
-		loop {
-			let rev = self.document.head.ok_or(CrdtError::NothingToUndo)?;
+		while let Some(rev) = self.document.head.filter(|&rev| rev != base) {
 			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
-			let parent = delta.parent;
-
-			self.document.revert_delta(RegistryTarget::Working, delta)?;
-			self.document.head = parent;
-
-			match parent {
-				None => break,
-				Some(parent) if self.document.history.get(parent).is_some_and(|d| d.is_interaction_end()) => break,
-				Some(_) => {}
-			}
+			self.document.revert_delta(&delta);
+			self.document.head = delta.parent;
 		}
 
-		// Undo runs with an empty hot log, so keep the retired snapshot in lockstep with the rewound
-		// working registry (the next interaction's reverses are computed against it).
-		self.document.retired_snapshot = self.document.working_registry.clone();
+		// With ops hot, working is the rewound snapshot plus them.
+		if !self.document.hot_log.is_empty() {
+			self.document.rebuild_working();
+		}
 		self.document.redo_stack.push(checkpoint);
 		Ok(checkpoint)
 	}
@@ -421,23 +447,28 @@ impl Session {
 			forward.push(delta);
 		}
 
-		// Force-apply so each forward value wins the LWW tie against the reverse that undo force-applied
-		// at the same timestamp. Symmetric with `revert_delta`.
+		// Undo left the snapshot exactly at the fold up to `head`, so applying the deltas as retirement did folds
+		// them in again, a newer write merged in before them still winning over theirs.
+		let hot = !self.document.hot_log.is_empty();
 		for delta in forward.into_iter().rev() {
-			self.document.force_apply_op(delta.kind.clone(), delta.timestamp)?;
+			self.document.apply_op_with(RegistryTarget::Snapshot, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
+			if !hot {
+				self.document.apply_op_with(RegistryTarget::Working, delta.kind, delta.timestamp, ApplyMode::Idempotent)?;
+			}
+		}
+		if hot {
+			self.document.rebuild_working();
 		}
 		self.document.head = Some(checkpoint);
 
-		// Redo runs with an empty hot log; keep the retired snapshot in lockstep with the working registry.
-		self.document.retired_snapshot = self.document.working_registry.clone();
 		Ok(checkpoint)
 	}
 
 	/// Build a synthetic linear history whose replay reproduces `registry`. Each op gets a
 	/// freshly-ticked clock timestamp and chains to the previous op's `Rev`.
-	pub fn bootstrap_from_registry(peer: PeerId, registry: Registry) -> Result<Self, CrdtError> {
+	pub fn bootstrap_from_registry(peer: PeerId, user: UserId, registry: Registry) -> Result<Self, CrdtError> {
 		let ops = crate::delta::compute_deltas(&Registry::default(), &registry);
-		let mut session = Self::with_peer(peer);
+		let mut session = Self::with_identity(peer, user);
 		session.commit_ops(ops, false)?;
 		// No hot ops on this path, so the working registry must mirror the freshly-built snapshot.
 		session.document.working_registry = session.document.retired_snapshot.clone();
@@ -468,15 +499,7 @@ impl Session {
 	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
-
-		for delta in self.document.history.iter() {
-			match &delta.kind {
-				RegistryDelta::AddResource { entry, .. } => hashes.extend(entry.hash),
-				RegistryDelta::RemoveResource { snapshot, .. } => hashes.extend(snapshot.hash),
-				_ => {}
-			}
-		}
-
+		hashes.extend(self.document.history.resource_hashes());
 		hashes
 	}
 
@@ -542,7 +565,7 @@ impl Session {
 	}
 
 	/// Test-only: commit a single op as a retired delta on the local chain, returning the result so a
-	/// test can observe a resurrection failure (e.g. `NotFoundInHistory`).
+	/// test can observe a failure (e.g. `NotFoundInHistory`).
 	#[cfg(test)]
 	pub(crate) fn commit_op_for_test(&mut self, op: RegistryDelta) -> Result<(), CrdtError> {
 		self.commit_ops(std::iter::once(op), false).map(|_| ())
@@ -554,6 +577,29 @@ impl Session {
 
 	pub fn next_node_counter(&self) -> u64 {
 		self.document.next_node_counter
+	}
+
+	/// The sequence of the last hot op this peer authored, which is how many it has. Carried across a reload, so no
+	/// sequence is spent twice.
+	pub fn last_hot_sequence(&self) -> HotSequence {
+		self.document.last_hot_sequence
+	}
+
+	/// The Lamport counter, persisted so a reopen never mints a stamp it already spent, even one no op in history or
+	/// the hot log carries any more.
+	pub fn clock_counter(&self) -> u64 {
+		self.document.clock.counter
+	}
+
+	/// Continue the Lamport clock after a load. Raises only, like observing an op.
+	pub fn restore_clock(&mut self, counter: u64) {
+		self.document.clock.counter = self.document.clock.counter.max(counter);
+	}
+
+	/// Restore the authored-op count after a load, keeping a fresh op off a spent sequence. Raises only:
+	/// replaying a persisted hot log afterwards cannot lower it.
+	pub fn restore_hot_sequence(&mut self, sequence: HotSequence) {
+		self.document.last_hot_sequence = self.document.last_hot_sequence.max(sequence);
 	}
 }
 
@@ -580,10 +626,122 @@ impl Default for Session {
 pub struct HotOp {
 	pub op: RegistryDelta,
 	pub timestamp: TimeStamp,
+	/// Position in its author's run. See [`HotSequence`].
+	pub sequence: HotSequence,
+}
+
+impl HotOp {
+	/// Identifies the op in the settled marks, which track a contiguous prefix per author.
+	pub fn id(&self) -> HotOpId {
+		HotOpId {
+			peer: self.timestamp.peer,
+			sequence: self.sequence,
+		}
+	}
+}
+
+/// Position in one author's run of hot ops, counting from 1 with no gaps. Kept apart from the Lamport
+/// counter, which skips on observing a higher remote timestamp and so cannot bound a contiguous prefix.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct HotSequence(pub u64);
+
+impl HotSequence {
+	/// Before this author has written anything, covering no op.
+	pub const NONE: Self = Self(0);
+
+	/// The position after this one, for adjacency. Saturates: a run ending at the last position has no successor.
+	pub fn next(self) -> Self {
+		Self(self.0.saturating_add(1))
+	}
+}
+
+/// One hot op's author and position in its run. Retirement names promoted ops by these, which tells a
+/// receiver which prefix history covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct HotOpId {
+	pub peer: PeerId,
+	pub sequence: HotSequence,
+}
+
+/// Which hot ops are retired into history: `settled_up_to` is each author's gap-free prefix, and `settled_beyond`
+/// the settled ops past it. Gaps exist only while ops are in flight, so an author collapses to its prefix. Replicated and persisted, so a
+/// late copy of a settled op is dropped wherever it lands.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettledHotOps {
+	pub settled_up_to: HashMap<PeerId, HotSequence>,
+	/// Settled ops past their author's prefix, as inclusive runs, one per gap in flight.
+	pub settled_beyond: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
+}
+
+/// Sort and coalesce runs, joining any that touch or abut.
+fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
+	runs.sort_unstable();
+	runs.dedup_by(|(start, end), (_, last_end)| {
+		let joins = *start <= last_end.next();
+		if joins {
+			*last_end = (*last_end).max(*end);
+		}
+		joins
+	});
+}
+
+impl SettledHotOps {
+	/// Whether history already holds this hot op.
+	pub fn covers(&self, id: HotOpId) -> bool {
+		self.settled_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)
+			|| self
+				.settled_beyond
+				.get(&id.peer)
+				.is_some_and(|runs| runs.iter().any(|&(start, end)| (start..=end).contains(&id.sequence)))
+	}
+
+	/// Take on `remote`'s coverage as well as this one's.
+	pub(crate) fn absorb(&mut self, remote: &Self) {
+		for (&peer, &remote_through) in &remote.settled_up_to {
+			let through = self.settled_up_to.entry(peer).or_default();
+			*through = (*through).max(remote_through);
+		}
+		for (&peer, runs) in &remote.settled_beyond {
+			self.settled_beyond.entry(peer).or_default().extend(runs.iter().copied());
+		}
+		self.compact();
+	}
+
+	/// Record newly settled ops.
+	pub fn extend(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
+		for id in retired {
+			self.settled_beyond.entry(id.peer).or_default().push((id.sequence, id.sequence));
+		}
+		self.compact();
+	}
+
+	/// Fold runs that continue their author's prefix into `settled_up_to`, leaving only those past a gap.
+	fn compact(&mut self) {
+		for (&peer, runs) in &mut self.settled_beyond {
+			coalesce(runs);
+			let mut through = self.settled_up_to.get(&peer).copied().unwrap_or(HotSequence::NONE);
+			let joined = runs.iter().take_while(|&&(start, end)| {
+				let joins = start <= through.next();
+				if joins {
+					through = through.max(end);
+				}
+				joins
+			});
+			let joined = joined.count();
+			runs.drain(..joined);
+			if through != HotSequence::NONE {
+				self.settled_up_to.insert(peer, through);
+			}
+		}
+		self.settled_beyond.retain(|_, runs| !runs.is_empty());
+	}
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum CrdtError {
+	#[error("This peer has authored every hot op sequence there is")]
+	SequencesExhausted,
 	#[error("Target node {0} does not exist")]
 	TargetNodeDoesNotExist(NodeId),
 	#[error("Network {0} does not exist")]
@@ -594,10 +752,6 @@ pub enum CrdtError {
 	ExportSlotOutOfBounds(u32),
 	#[error("Delta {0} not found in history")]
 	NotFoundInHistory(Rev),
-	#[error("No history entry resurrects node {0}")]
-	NodeNotInHistory(NodeId),
-	#[error("No history entry resurrects network {0}")]
-	NetworkNotInHistory(NetworkId),
 	#[error("Nothing to undo")]
 	NothingToUndo,
 	#[error("Nothing to redo")]
@@ -606,9 +760,6 @@ pub enum CrdtError {
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]
 	NetworkAlreadyExists(NetworkId),
-	/// PeerId is already registered to a different UserId.
-	#[error("Peer {0:?} is already registered to a different user")]
-	PeerRegistrationConflict(PeerId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
 }

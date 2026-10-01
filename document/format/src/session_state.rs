@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{NetworkId, PeerId, Rev, Value};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, SettledHotOps, UserId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -15,6 +15,10 @@ pub struct SessionState {
 	/// tiebreaking and minting peer-scoped IDs.
 	#[serde(default)]
 	pub peer_id: PeerId,
+	/// The person using this device, which the peer registers as, so authorship and undo follow the person
+	/// across the peer ids they accumulate.
+	#[serde(default)]
+	pub user_id: UserId,
 	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
 	/// document (no commits yet).
 	#[serde(default)]
@@ -31,6 +35,10 @@ pub struct SessionState {
 	/// collide on minted IDs.
 	#[serde(default)]
 	pub next_node_counter: u64,
+	/// The sequence of the last hot op this peer authored, feeding [`document_graph_storage::HotOp::sequence`], so a
+	/// reopen never reuses a spent sequence.
+	#[serde(default)]
+	pub last_hot_sequence: HotSequence,
 	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
 	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
 	#[serde(default)]
@@ -39,4 +47,12 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
+	/// Which hot ops are retired, so a late copy a peer re-sends after a reopen is dropped rather than retired a second
+	/// time. About one sequence per author; runs only for ops in flight when saved.
+	#[serde(default)]
+	pub settled: SettledHotOps,
+	/// The Lamport counter, so a reopen never mints a stamp already spent, even one no op in history or the hot log
+	/// carries any more.
+	#[serde(default)]
+	pub clock: u64,
 }
