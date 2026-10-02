@@ -346,6 +346,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 		Network {
 			presence: TimeStamp::ORIGIN,
 			exports,
+			exports_timestamp: TimeStamp::ORIGIN,
 			attributes,
 			attributes_timestamp: TimeStamp::ORIGIN,
 		},
@@ -832,6 +833,7 @@ impl<'m> ScopedConversion<'m> {
 			Network {
 				presence: TimeStamp::ORIGIN,
 				exports,
+				exports_timestamp: TimeStamp::ORIGIN,
 				attributes,
 				attributes_timestamp: TimeStamp::ORIGIN,
 			},

@@ -98,7 +98,14 @@ impl Session {
 		resources: &graphene_resource::ResourceRegistry,
 	) -> Result<(Vec<HotOp>, from_runtime::RuntimeConversion), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
-		let base = self.runtime_base.as_ref().unwrap_or(&self.document.working_registry);
+		let rendered;
+		let base = match &self.runtime_base {
+			Some(base) => base,
+			None => {
+				rendered = self.document.working_registry.as_rendered();
+				&rendered
+			}
+		};
 		let ops = crate::delta::compute_deltas(base, &conversion.registry);
 
 		// The base moves only once the ops are staged, so a failure leaves the next diff covering them. Lenient, as the
@@ -110,7 +117,7 @@ impl Session {
 
 	/// Record that the runtime now reflects the working registry, after the caller rebuilt it from there.
 	pub fn mark_runtime_current(&mut self) {
-		self.runtime_base = Some(self.document.working_registry.clone());
+		self.runtime_base = Some(self.document.working_registry.as_rendered());
 	}
 
 	/// Resolve each runtime `network_path` to its stable [`NetworkId`] for this document's peer, so the

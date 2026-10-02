@@ -1,6 +1,6 @@
 use super::DocumentNodePersistentMetadata;
 use super::InputConnector;
-use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange, construct_batch};
+use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange, construct_batch, ui_attribute_writes};
 use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
@@ -874,4 +874,19 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 
 	assert!(reconciled.networks.is_empty(), "nothing differed, so nothing should have been applied: {:?}", reconciled.networks);
 	assert_eq!(editor.active_document().network_interface, before);
+}
+
+/// A `ui::` key the registry already holds as deleted is not cleared again on every snapshot.
+#[test]
+fn a_deleted_ui_key_is_not_cleared_again() {
+	use document_graph_storage::{AttributeValue, Attributes, TimeStamp, Value};
+	let at = TimeStamp { counter: 3, peer: PeerId(1) };
+	let current: Attributes = [
+		("ui::name".to_string(), AttributeValue::deleted(at)),
+		("ui::locked".to_string(), AttributeValue::new(Value::Bool(true), at)),
+	]
+	.into_iter()
+	.collect();
+	let writes = ui_attribute_writes(Some(&current), &Attributes::new());
+	assert_eq!(writes.iter().map(|write| write.key.as_str()).collect::<Vec<_>>(), ["ui::locked"]);
 }

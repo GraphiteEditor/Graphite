@@ -231,7 +231,7 @@ impl Document {
 				remove_entity(&mut registry.node_instances, &mut registry.removed_nodes, id, snapshot, timestamp);
 			}
 			RegistryDelta::SetNodeInputs { id, mut inputs } => {
-				inputs.iter_mut().for_each(|slot| stamp_slot(slot, timestamp));
+				inputs.iter_mut().for_each(|slot| stamp_listed_slot(slot, timestamp));
 				let referenced: Vec<NodeId> = inputs
 					.iter()
 					.filter_map(|slot| match slot.input {
@@ -304,7 +304,12 @@ impl Document {
 						if slot_idx >= MAX_EXPORT_SLOTS {
 							return Err(CrdtError::ExportSlotOutOfBounds(index));
 						}
-						net.exports.resize(slot_idx + 1, ExportSlot::default());
+						// Past the end of a newer list the slot is gone, as with input slots.
+						if timestamp <= net.exports_timestamp {
+							return Ok(());
+						}
+						let shape = net.exports_timestamp;
+						net.exports.resize_with(slot_idx + 1, || ExportSlot { target: None, timestamp: shape });
 					}
 
 					let existing = &mut net.exports[slot_idx];
@@ -433,17 +438,30 @@ impl Entity for Network {
 	}
 	fn stamp_all(&mut self, timestamp: TimeStamp) {
 		self.presence = timestamp;
+		self.exports_timestamp = timestamp;
 		self.exports.iter_mut().for_each(|slot| slot.timestamp = timestamp);
 		stamp_attributes(&mut self.attributes, &mut self.attributes_timestamp, timestamp);
 	}
 	fn merge(&mut self, other: Self) {
-		let len = self.exports.len().max(other.exports.len());
-		self.exports.resize_with(len, ExportSlot::default);
-		for (slot, incoming) in self.exports.iter_mut().zip(other.exports) {
-			if incoming.timestamp > slot.timestamp {
-				*slot = incoming;
+		// As `merge_inputs`: the newer list decides the slot count, and a slot written after that shape survives past it.
+		let (mut newer, shape, older) = if other.exports_timestamp > self.exports_timestamp {
+			(other.exports, other.exports_timestamp, std::mem::take(&mut self.exports))
+		} else {
+			(std::mem::take(&mut self.exports), self.exports_timestamp, other.exports)
+		};
+		for (index, incoming) in older.into_iter().enumerate() {
+			if index >= newer.len() {
+				if incoming.timestamp <= shape {
+					continue;
+				}
+				newer.resize_with(index + 1, || ExportSlot { target: None, timestamp: shape });
+			}
+			if incoming.timestamp > newer[index].timestamp {
+				newer[index] = incoming;
 			}
 		}
+		self.exports = newer;
+		self.exports_timestamp = shape;
 		merge_attributes(&mut self.attributes, &mut self.attributes_timestamp, other.attributes, other.attributes_timestamp);
 		self.presence = self.presence.max(other.presence);
 	}
@@ -479,6 +497,19 @@ fn stamp_slot(slot: &mut InputSlot, timestamp: TimeStamp) {
 	stamp_attributes(&mut slot.attributes, &mut slot.attributes_timestamp, timestamp);
 }
 
+/// Stamps a slot of a written input list. Attributes carried over with their own stamps keep them, and a floor carried
+/// with them, so they only win where they already did; what arrives unstamped is written at `timestamp`.
+fn stamp_listed_slot(slot: &mut InputSlot, timestamp: TimeStamp) {
+	if slot.attributes_timestamp == TimeStamp::ORIGIN {
+		return stamp_slot(slot, timestamp);
+	}
+	slot.timestamp = timestamp;
+	slot.attributes
+		.values_mut()
+		.filter(|value| value.timestamp == TimeStamp::ORIGIN)
+		.for_each(|value| value.timestamp = timestamp);
+}
+
 /// Writes the map whole at `timestamp`: the floor deletes every other key without a tombstone per key.
 fn stamp_attributes(attributes: &mut Attributes, floor: &mut TimeStamp, timestamp: TimeStamp) {
 	attributes.retain(|_, value| !value.deleted);
@@ -510,6 +541,11 @@ fn merge_inputs(node: &mut Node, other: Vec<InputSlot>, timestamp: TimeStamp) {
 	} else {
 		(std::mem::take(&mut node.inputs), node.inputs_timestamp, other)
 	};
+	// A slot the older list lacks was absent as of that list's shape, as a write past its end would find it.
+	let older_shape = if shape == timestamp { node.inputs_timestamp } else { timestamp };
+	for slot in newer.iter_mut().skip(older.len()) {
+		merge_attributes(&mut slot.attributes, &mut slot.attributes_timestamp, Attributes::new(), older_shape);
+	}
 	for (index, incoming) in older.into_iter().enumerate() {
 		if index >= newer.len() {
 			if slot_newest(&incoming) <= shape {

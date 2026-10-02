@@ -55,6 +55,7 @@ pub struct InputSlot {
 pub struct Network {
     presence: TimeStamp,
     pub exports: Vec<ExportSlot>,
+    exports_timestamp: TimeStamp,            // when the list last changed shape
     pub attributes: Attributes,              // per-network ui::* (navigation, previewing)
     pub attributes_timestamp: TimeStamp,
 }
@@ -67,7 +68,7 @@ pub struct ExportSlot {
 pub const ROOT_NETWORK: NetworkId = NetworkId(0);
 ```
 
-`peer_users` records the `PeerId → UserId` mapping each device registers with its first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
+`peer_users` records the latest `PeerId → UserId` mapping registered for each device (see [Concurrency model](#concurrency-model-cmrdt)).
 
 The renderable graph lives in `networks[&ROOT_NETWORK]`. By convention the renderer consumes slot 0 of its exports. The editor can pick a different slot via type-based heuristics or user choice.
 
@@ -358,7 +359,7 @@ Because inputs are stamped, `NodeInput::Node` references are set directly via `C
 - **NodeId identity.** Every new `AddNode` issues a peer-scoped ID, so concurrent creates cannot collide.
 - **Causal delivery.** `apply_delta` requires that every parent of the delta (its `parent` plus any `Merge` extra parents) is already in local history. The storage layer does not buffer, and out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` plus history) before streaming deltas.
 - **Existence.** Last-writer-wins like any field. Each node, network and resource carries a `presence` stamp, its latest addition or write. A removal moves the entity into a tombstone map (`removed_nodes`, `removed_networks`, `removed_resources`) holding its content and the removal's stamp: an op stamped earlier lands on the tombstone, and an addition, write or reference stamped later revives the entity from it. A write to an entity never seen lands on a placeholder tombstone that stays dead until its addition folds in, so ops land the same in any order and nothing is buffered. `RemoveNode`, `RemoveNetwork` and `RemoveResource` carry the removed content, which folds in like any write, so a removal of an entity this peer never saw still lands.
-- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. A whole-map write (an addition) also stamps the map's floor (`attributes_timestamp`), deleting every key it does not hold without a tombstone per key. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
+- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. A whole-map write (an addition) also stamps the map's floor (`attributes_timestamp`), deleting every key it does not hold without a tombstone per key. A whole-list write (an addition, `SetNodeInputs`) likewise stamps the list's shape (`inputs_timestamp`, `exports_timestamp`): a slot past the end of a newer list is gone unless written after it. Slot attributes a list write carries over keep their own stamps and floor, so they only win where they already did. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
 - **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an ordered LWW-element-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add or a remove at the same key is LWW on the per-`Delta` timestamp, a removal leaving a `deleted` tombstone so either order resolves alike. Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs.
 
 The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetNetworkExport`s with different targets resolve by LWW, but the resulting wiring may be wrong, and downstream consumers see it as a compile or wiring error.

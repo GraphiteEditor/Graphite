@@ -1062,10 +1062,19 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 		// which a fabricated snapshot only does by being constant.
 		let saw = |rng: &mut Lcg| fold(&seen.iter().filter(|_| rng.below(2) == 0).cloned().collect::<Vec<_>>(), false);
 		match rng.below(22) {
-			0 => RegistryDelta::AddNetwork {
-				id: network_id,
-				network: Network::default(),
-			},
+			0 => {
+				// An export list of its own, so additions of different lengths meet.
+				let exports = (0..rng.below(3))
+					.map(|_| crate::ExportSlot {
+						target: Some(input(rng)),
+						timestamp: TimeStamp::ORIGIN,
+					})
+					.collect();
+				RegistryDelta::AddNetwork {
+					id: network_id,
+					network: Network { exports, ..Default::default() },
+				}
+			}
 			1 => {
 				let snapshot = if real_snapshots { saw(rng).networks.get(&network_id).cloned() } else { Some(Network::default()) };
 				snapshot.map_or(RegistryDelta::EndTransaction, |snapshot| RegistryDelta::RemoveNetwork { id: network_id, snapshot })
@@ -1087,11 +1096,28 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 			7 => RegistryDelta::SetNodeInputs {
 				id: node_id,
 				inputs: (0..1 + rng.below(3))
-					.map(|_| InputSlot {
-						input: input(rng),
-						timestamp: TimeStamp::ORIGIN,
-						attributes: Default::default(),
-						attributes_timestamp: TimeStamp::ORIGIN,
+					.map(|_| {
+						let mut slot = InputSlot {
+							input: input(rng),
+							timestamp: TimeStamp::ORIGIN,
+							attributes: Default::default(),
+							attributes_timestamp: TimeStamp::ORIGIN,
+						};
+						// Half the time a slot carries attributes over with earlier stamps, as an implementation swap does.
+						if rng.below(2) == 0 {
+							let floor = TimeStamp {
+								counter: 1 + rng.below(at.counter),
+								peer: PeerId(1 + rng.below(3)),
+							};
+							let label = TimeStamp {
+								counter: floor.counter + rng.below(at.counter - floor.counter + 1),
+								..floor
+							};
+							slot.attributes
+								.insert("label".into(), crate::AttributeValue::new(Value::from(serde_json::json!(rng.below(100))), label));
+							slot.attributes_timestamp = floor;
+						}
+						slot
 					})
 					.collect(),
 			},
@@ -1255,4 +1281,105 @@ fn a_refused_replayed_op_changes_nothing() {
 	};
 	assert!(document.apply_op_idempotent(out_of_bounds, ts(5, 5)).is_err());
 	assert_eq!(document.working_registry, before);
+}
+
+/// An implementation swap carries a slot's `ui::*` attributes over as the editor held them; a concurrent rename and a
+/// concurrent first-time attribute on that slot both survive it, whichever lands first.
+#[test]
+fn an_implementation_swap_keeps_concurrent_slot_attribute_writes() {
+	use crate::Implementation;
+	use graphene_resource::ResourceId;
+	let slot_attribute = |key: &str, value: &str| RegistryDelta::ChangeNodeInputAttribute {
+		id: NodeId(1),
+		index: 0,
+		delta: crate::AttributeDelta {
+			key: key.into(),
+			value: Some(Value::from(serde_json::json!(value))),
+		},
+	};
+	let mut base = fresh_document(PeerId(1));
+	commit_op(&mut base, add_network(1));
+	let node = Node::new(NetworkId(1), Implementation::ProtoNode(ResourceId::from(7)), 1);
+	commit_op(&mut base, RegistryDelta::AddNode { id: NodeId(1), node });
+	commit_op(&mut base, slot_attribute("ui::name", "a"));
+
+	// The swap as the editor builds it: the new slot with the held slot's `ui::*` attributes and floor carried over.
+	let held = base.working_registry.node_instances[&NodeId(1)].inputs()[0].clone();
+	let mut carried = InputSlot::unset(TimeStamp::ORIGIN);
+	carried.attributes_timestamp = held.attributes_timestamp;
+	carried.attributes.extend(held.attributes.into_iter().filter(|(key, value)| key.starts_with("ui::") && !value.deleted));
+	let swap = (RegistryDelta::SetNodeInputs { id: NodeId(1), inputs: vec![carried] }, ts(20, 1));
+	let rename = (slot_attribute("ui::name", "b"), ts(10, 2));
+	let describe = (slot_attribute("ui::description", "d"), ts(11, 2));
+
+	for order in [[&swap, &rename, &describe], [&rename, &describe, &swap]] {
+		let mut document = base.clone();
+		for (op, at) in order {
+			document.apply_op_idempotent(op.clone(), *at).expect("apply");
+		}
+		let slot = &document.working_registry.node_instances[&NodeId(1)].inputs()[0];
+		assert_eq!(
+			slot.attributes.get("ui::name").map(|value| value.value.clone()),
+			Some(Value::from(serde_json::json!("b"))),
+			"the rename survives"
+		);
+		assert!(slot.attributes.get("ui::description").is_some_and(|value| !value.deleted), "the first-time attribute survives");
+	}
+}
+
+/// Re-adding a removed network with a shorter export list drops the slots past its end, whichever lands first.
+#[test]
+fn a_network_re_added_shorter_keeps_only_its_own_exports() {
+	use crate::ExportSlot;
+	let export = |node: u64| ExportSlot {
+		target: Some(crate::NodeInput::Node { id: NodeId(node), index: 0 }),
+		timestamp: TimeStamp::ORIGIN,
+	};
+	let network = |exports: Vec<ExportSlot>| Network { exports, ..Default::default() };
+	let added = (
+		RegistryDelta::AddNetwork {
+			id: NetworkId(1),
+			network: network(vec![export(1), export(2)]),
+		},
+		ts(1, 1),
+	);
+	let removed = (
+		RegistryDelta::RemoveNetwork {
+			id: NetworkId(1),
+			snapshot: network(vec![export(1), export(2)]),
+		},
+		ts(2, 1),
+	);
+	let re_added = (
+		RegistryDelta::AddNetwork {
+			id: NetworkId(1),
+			network: network(vec![export(3)]),
+		},
+		ts(3, 2),
+	);
+	for order in [[&added, &removed, &re_added], [&re_added, &removed, &added]] {
+		let mut document = fresh_document(PeerId(9));
+		for (op, at) in order {
+			document.apply_op_idempotent(op.clone(), *at).expect("apply");
+		}
+		let exports = &document.working_registry.networks[&NetworkId(1)].exports;
+		assert_eq!(exports.iter().map(|slot| slot.target.clone()).collect::<Vec<_>>(), vec![export(3).target]);
+	}
+}
+
+/// Two registries ordering a removal differently against a write are not order-consistent, though their values agree.
+#[test]
+fn order_consistency_covers_removal_stamps() {
+	let with_removal_at = |counter: u64| {
+		let mut document = fresh_document(PeerId(1));
+		let node = Node::new(NetworkId(1), crate::Implementation::ProtoNode(graphene_resource::ResourceId::from(7)), 0);
+		document.apply_op_idempotent(RegistryDelta::AddNode { id: NodeId(2), node: node.clone() }, ts(3, 1)).expect("add");
+		document
+			.apply_op_idempotent(RegistryDelta::RemoveNode { id: NodeId(1), snapshot: node }, ts(counter, 1))
+			.expect("remove");
+		document.working_registry
+	};
+	let (earlier, later) = (with_removal_at(2), with_removal_at(4));
+	assert!(earlier.value_equal(&later));
+	assert!(!earlier.order_consistent(&later));
 }

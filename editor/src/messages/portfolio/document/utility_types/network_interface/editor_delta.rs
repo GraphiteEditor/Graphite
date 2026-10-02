@@ -4,7 +4,7 @@ use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
-use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
+use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
 use document_graph_storage::{convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::NodeId;
@@ -384,7 +384,9 @@ fn construct_structural_additions(
 		// wrote to its name, lock or pin.
 		match batch.node(id) {
 			Some(held) => {
-				// The swap did not write the slots' `ui::*` attributes, so they carry over to the slots that survive it.
+				// The swap did not write the slots' `ui::*` attributes, so they carry over to the slots that survive it with
+				// their stamps and the held floor, losing to a concurrent write. The other attributes the new implementation
+				// lacks go by tombstone instead.
 				let inputs = node
 					.inputs()
 					.iter()
@@ -392,13 +394,14 @@ fn construct_structural_additions(
 					.map(|(index, slot)| {
 						let mut slot = slot.clone();
 						if let Some(previous) = held.inputs().get(index) {
-							slot.attributes.extend(
-								previous
-									.attributes
-									.iter()
-									.filter(|(key, value)| key.starts_with("ui::") && !value.deleted)
-									.map(|(key, value)| (key.clone(), value.clone())),
-							);
+							for (key, value) in previous.attributes.iter().filter(|(_, value)| !value.deleted) {
+								if key.starts_with("ui::") {
+									slot.attributes.insert(key.clone(), value.clone());
+								} else if !slot.attributes.contains_key(key) {
+									slot.attributes.insert(key.clone(), AttributeValue::deleted(TimeStamp::ORIGIN));
+								}
+							}
+							slot.attributes_timestamp = previous.attributes_timestamp;
 						}
 						slot
 					})
@@ -553,19 +556,19 @@ fn construct_metadata_snapshot(
 	Ok(())
 }
 
-/// Every `ui::` attribute of `encoded`, plus a clear for each `ui::` key of `current` that `encoded`
+/// Every `ui::` attribute of `encoded`, plus a clear for each live `ui::` key of `current` that `encoded`
 /// does not carry. Values are compared only to decide what to clear, never to skip a write.
 ///
 /// Restating a value that already matches looks redundant but is load-bearing: `current` is the
 /// registry as it stood before the batch, and these writes follow an op in the same batch that
 /// rebuilt what they describe. A value the pre-batch state agrees with may already have been cleared
 /// by that op, so skipping it would leave the attribute missing.
-fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
+pub(super) fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
 	let owned = |key: &str| key.starts_with("ui::");
 	let mut deltas = Vec::new();
 
 	if let Some(current) = current {
-		for key in current.keys() {
+		for (key, _) in document_graph_storage::live(current) {
 			if owned(key) && !encoded.contains_key(key) {
 				deltas.push(AttributeDelta { key: key.clone(), value: None });
 			}

@@ -144,6 +144,9 @@ pub struct Network {
 	#[serde(default)]
 	pub(crate) presence: TimeStamp,
 	pub exports: Vec<ExportSlot>,
+	/// When the export list last changed shape; see [`Node::inputs_timestamp`](crate::Node).
+	#[serde(default)]
+	pub(crate) exports_timestamp: TimeStamp,
 	/// Per-network `ui::*` state (navigation, previewing). Separate from `Node.attributes` so
 	/// view-state edits LWW independently.
 	pub attributes: Attributes,

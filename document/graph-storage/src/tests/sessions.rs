@@ -1004,3 +1004,65 @@ fn a_concurrent_remove_and_attribute_change_commute() {
 	};
 	assert_eq!(merged([&removal, &change]), merged([&change, &removal]));
 }
+
+/// A peer removes a node and its nested network while another keeps writing to the node, which the newer write keeps
+/// alive. Rebuilding the runtime and staging it back unchanged must not bring the removed network back.
+#[test]
+fn restaging_an_unchanged_runtime_does_not_revive_a_nested_network_removed_under_a_live_owner() {
+	let resources = graphene_resource::ResourceRegistry::new();
+	let outer = NodeNetwork {
+		exports: vec![RuntimeInput::node(RuntimeNodeId(0), 0)],
+		nodes: [(
+			RuntimeNodeId(0),
+			DocumentNode {
+				implementation: DocumentNodeImplementation::Network(runtime_network([1, 2])),
+				..Default::default()
+			},
+		)]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
+	let mut a = Session::with_peer(PeerId(1));
+	let (_, conversion) = a.stage_from_runtime(&outer, &NoMetadata, &resources).expect("first stage");
+	let up_to = a.hot_log().last().unwrap().timestamp;
+	a.retire(up_to).unwrap();
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&mut a, &mut b);
+
+	let (&owner, owner_node) = b
+		.registry()
+		.node_instances
+		.iter()
+		.find(|(_, node)| matches!(node.implementation(), Implementation::Network(_)))
+		.expect("the owner");
+	let Implementation::Network(nested) = *owner_node.implementation() else { unreachable!() };
+	let mut removal = vec![RegistryDelta::RemoveNode {
+		id: owner,
+		snapshot: owner_node.clone(),
+	}];
+	for (&id, node) in b.registry().node_instances.iter().filter(|(_, node)| node.network() == nested) {
+		removal.push(RegistryDelta::RemoveNode { id, snapshot: node.clone() });
+	}
+	removal.push(RegistryDelta::RemoveNetwork {
+		id: nested,
+		snapshot: b.registry().networks[&nested].clone(),
+	});
+	let removal = b.stage_ops(removal).unwrap();
+
+	// A writes to the owner later than the removal, so the owner stays and only the nested network goes.
+	for _ in 0..10 {
+		a.document.clock.tick();
+	}
+	a.stage_ops([change_node_attribute(owner, "tint", serde_json::json!(1))]).unwrap();
+	for hot_op in removal {
+		a.replay_hot_op(hot_op).unwrap();
+	}
+	assert!(a.registry().node_instances.contains_key(&owner));
+	assert!(!a.registry().networks.contains_key(&nested));
+
+	let (runtime, _) = a.registry().to_runtime_with_metadata(&conversion.declarations).expect("to runtime");
+	a.mark_runtime_current();
+	a.stage_from_runtime(&runtime, &NoMetadata, &resources).expect("restage");
+	assert!(!a.registry().networks.contains_key(&nested), "the removed network stays removed");
+}
