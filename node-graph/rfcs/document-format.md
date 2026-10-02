@@ -143,7 +143,7 @@ pub struct Delta {
     pub author: PeerId,
     pub timestamp: TimeStamp,
     pub kind: RegistryDelta,
-    pub reverse: RegistryDelta,      // precomputed for undo; excluded from id
+    pub reverse: Vec<Prior>,         // what the op overwrote, stamps included; excluded from id
     pub attributes: Attributes,      // mutable local annotations; excluded from id
 }
 ```
@@ -196,14 +196,11 @@ The silent zone is the implemented path (solo editing has no transport yet).
 
 **Silent-zone cursor.** `head: Option<Rev>` is a movable pointer into the append-only DAG (`None` on an empty document with no commits yet). Undo/redo move it but never delete deltas (that would make redo impossible and discard branch history). The extra state is a redo stack `Vec<Rev>`, the checkpoints the user has undone past, because the DAG alone cannot say which child a `head` was undone *from*. New state persists in `session.json` alongside `head`, so redo survives reopen. A new edit while the redo stack is non-empty clears it (the undone-forward branch stays physically in the DAG but is no longer reachable via redo).
 
-**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
+**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary, a merge, another user's delta, or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
 
+**Restore, not reverse ops.** A delta's `reverse` is a list of `Prior`s: the state of every slot the op wrote, as it was just before, stamps included (a whole node, network, or resource where the op added, removed, or landed on a tombstone; otherwise one field plus the entity's presence stamp). Undo writes these back as they were, bypassing LWW, so the registry is again exactly the fold of history up to the new `head`. An op applied at its own timestamp could not express that: it can only write a value or a tombstone at that timestamp, while the prior state may be an older stamp or no entry at all, and a stamp the history does not account for decides later concurrent writes differently on different peers. Redo re-applies the forward ops with plain LWW, which folds them in exactly as retirement did. Both are O(steps moved), no clock advances, and identities are unchanged. Undo only takes this user's own interactions and never one containing a merge, since restoring past another peer's write would rewind it.
 
-**Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `kind`). These carry the *original* timestamp, which would tie (and so lose) the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
-
-
-**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal *by value* (their LWW field timestamps can differ, since retirement re-stamps the snapshot at a fresh time), and undo/redo rewind both.
-
+**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal, and undo/redo restore both; with ops still hot, the working registry is rebuilt as the rewound snapshot plus them.
 
 ## Concurrency model: CmRDT
 
