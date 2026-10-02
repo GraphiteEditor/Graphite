@@ -1,7 +1,10 @@
-use crate::{Attributes, Network, NetworkId, Node, NodeId, PeerId, ResourceId, ResourceStore, SourceKey, TimeStamp, UserId};
+use crate::{Attributes, Network, NetworkId, Node, NodeId, PeerId, ResourceEntry, ResourceId, ResourceStore, SourceKey, TimeStamp, UserId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+/// The live document. Every field, existence included, is last-writer-wins on a timestamp, so the registry depends on the
+/// set of ops applied and not their order. A removed entity keeps a tombstone: an older op lands on it, a newer one
+/// revives the entity.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Registry {
 	pub node_instances: HashMap<NodeId, Node>,
@@ -12,6 +15,15 @@ pub struct Registry {
 	/// Which person each device is, from `RegistryDelta::RegisterPeer`, so undo and authorship scope by person.
 	pub peer_users: HashMap<PeerId, PeerRegistration>,
 	pub attributes: Attributes,
+	/// Tombstones of removed nodes, so an op on one is ordered against its removal whichever arrives first.
+	#[serde(default)]
+	pub removed_nodes: HashMap<NodeId, Tombstone<Node>>,
+	/// Tombstones of removed networks; see [`removed_nodes`](Self::removed_nodes).
+	#[serde(default)]
+	pub removed_networks: HashMap<NetworkId, Tombstone<Network>>,
+	/// Tombstones of removed resources; see [`removed_nodes`](Self::removed_nodes).
+	#[serde(default)]
+	pub removed_resources: HashMap<ResourceId, Tombstone<ResourceEntry>>,
 }
 
 /// A device's registration to a person, and when it was made.
@@ -21,7 +33,27 @@ pub struct PeerRegistration {
 	pub timestamp: TimeStamp,
 }
 
+/// A removed entity's content, for reviving it, and its removal stamp.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Tombstone<T> {
+	pub content: T,
+	pub timestamp: TimeStamp,
+	/// Nothing has added the entity yet: it stays dead until an addition folds in, the content holding writes that came first.
+	#[serde(default)]
+	pub placeholder: bool,
+}
+
 impl Registry {
+	/// The node under `id`, live or as removed, for a reference to a node the runtime cannot hold.
+	pub(crate) fn node_or_removed(&self, id: NodeId) -> Option<&Node> {
+		self.node_instances.get(&id).or_else(|| self.removed_nodes.get(&id).map(|mark| &mark.content))
+	}
+
+	/// The network under `id`, live or as it was when removed.
+	pub(crate) fn network_or_removed(&self, id: NetworkId) -> Option<&Network> {
+		self.networks.get(&id).or_else(|| self.removed_networks.get(&id).map(|mark| &mark.content))
+	}
+
 	/// True if both registries agree on every value-bearing field, ignoring per-slot and
 	/// per-attribute timestamps. Mirrors `compute_deltas`'s value-only semantics, so unchanged
 	/// state at a stamped slot doesn't count as drift. `peer_users` is excluded: it isn't diffed by
@@ -91,10 +123,10 @@ impl Registry {
 }
 
 pub(crate) fn attributes_value_equal(a: &Attributes, b: &Attributes) -> bool {
-	if a.len() != b.len() {
+	if crate::attributes::live(a).count() != crate::attributes::live(b).count() {
 		return false;
 	}
-	a.iter().all(|(key, value)| b.get(key).is_some_and(|other| value.value == other.value))
+	crate::attributes::live(a).all(|(key, value)| b.get(key).is_some_and(|other| !other.deleted && value.value == other.value))
 }
 
 /// Value-level resource comparison: same resolved hashes and same source chains (keyed by
@@ -106,58 +138,90 @@ pub(crate) fn resources_value_equal(a: &ResourceStore, b: &ResourceStore) -> boo
 	a.iter().all(|(id, entry)| {
 		b.get(id).is_some_and(|other| {
 			entry.hash == other.hash
-				&& entry.sources.len() == other.sources.len()
-				&& entry.sources.iter().all(|(key, value)| other.source(key).is_some_and(|other_value| value.source == other_value.source))
+				&& entry.live_sources().count() == other.live_sources().count()
+				&& entry.live_sources().all(|(key, value)| other.source(key).is_some_and(|other_value| value.source == other_value.source))
 		})
 	})
 }
 
-/// Stable identity for any timestamped slot in a `Registry`. Used by `order_consistent`.
+/// Stable identity for any timestamp in a `Registry`, tombstoned content and existence stamps included. Used by
+/// `order_consistent`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 enum TimestampKey {
+	/// A whole-entity stamp under its field name: presence, a shape or floor, a removal.
+	Node(NodeId, &'static str),
 	NodeInput(NodeId, usize),
+	NodeInputFloor(NodeId, usize),
 	NodeInputAttribute(NodeId, usize, String),
 	NodeAttribute(NodeId, String),
+	Network(NetworkId, &'static str),
 	NetworkExport(NetworkId, usize),
 	NetworkAttribute(NetworkId, String),
 	DocumentAttribute(String),
-	ResourceHash(ResourceId),
+	Resource(ResourceId, &'static str),
 	ResourceSource(ResourceId, SourceKey),
 	PeerRegistration(PeerId),
 }
 
 fn collect_timestamps(registry: &Registry) -> HashMap<TimestampKey, TimeStamp> {
 	let mut out = HashMap::new();
-	for (node_id, node) in &registry.node_instances {
+	let nodes = registry.node_instances.iter().chain(registry.removed_nodes.iter().map(|(id, mark)| (id, &mark.content)));
+	for (&id, node) in nodes {
+		for (field, timestamp) in [
+			("presence", node.presence),
+			("network", node.network_timestamp),
+			("inputs", node.inputs_timestamp),
+			("implementation", node.implementation_timestamp),
+			("attributes", node.attributes_timestamp),
+		] {
+			out.insert(TimestampKey::Node(id, field), timestamp);
+		}
 		for (i, slot) in node.inputs.iter().enumerate() {
-			out.insert(TimestampKey::NodeInput(*node_id, i), slot.timestamp);
+			out.insert(TimestampKey::NodeInput(id, i), slot.timestamp);
+			out.insert(TimestampKey::NodeInputFloor(id, i), slot.attributes_timestamp);
 			for (key, value) in &slot.attributes {
-				out.insert(TimestampKey::NodeInputAttribute(*node_id, i, key.clone()), value.timestamp);
+				out.insert(TimestampKey::NodeInputAttribute(id, i, key.clone()), value.timestamp);
 			}
 		}
 		for (key, value) in &node.attributes {
-			out.insert(TimestampKey::NodeAttribute(*node_id, key.clone()), value.timestamp);
+			out.insert(TimestampKey::NodeAttribute(id, key.clone()), value.timestamp);
 		}
 	}
-	for (network_id, network) in &registry.networks {
+	let networks = registry.networks.iter().chain(registry.removed_networks.iter().map(|(id, mark)| (id, &mark.content)));
+	for (&id, network) in networks {
+		for (field, timestamp) in [("presence", network.presence), ("exports", network.exports_timestamp), ("attributes", network.attributes_timestamp)] {
+			out.insert(TimestampKey::Network(id, field), timestamp);
+		}
 		for (i, slot) in network.exports.iter().enumerate() {
-			out.insert(TimestampKey::NetworkExport(*network_id, i), slot.timestamp);
+			out.insert(TimestampKey::NetworkExport(id, i), slot.timestamp);
 		}
 		for (key, value) in &network.attributes {
-			out.insert(TimestampKey::NetworkAttribute(*network_id, key.clone()), value.timestamp);
+			out.insert(TimestampKey::NetworkAttribute(id, key.clone()), value.timestamp);
 		}
 	}
 	for (key, value) in &registry.attributes {
 		out.insert(TimestampKey::DocumentAttribute(key.clone()), value.timestamp);
 	}
-	for (id, entry) in &registry.resources {
-		out.insert(TimestampKey::ResourceHash(*id), entry.hash_timestamp);
+	let resources = registry.resources.iter().chain(registry.removed_resources.iter().map(|(id, mark)| (id, &mark.content)));
+	for (&id, entry) in resources {
+		for (field, timestamp) in [("presence", entry.presence), ("hash", entry.hash_timestamp), ("sources", entry.sources_timestamp)] {
+			out.insert(TimestampKey::Resource(id, field), timestamp);
+		}
 		for (source_key, source_value) in &entry.sources {
-			out.insert(TimestampKey::ResourceSource(*id, *source_key), source_value.timestamp);
+			out.insert(TimestampKey::ResourceSource(id, *source_key), source_value.timestamp);
 		}
 	}
-	for (peer, registration) in &registry.peer_users {
-		out.insert(TimestampKey::PeerRegistration(*peer), registration.timestamp);
+	for (&id, mark) in &registry.removed_nodes {
+		out.insert(TimestampKey::Node(id, "removed"), mark.timestamp);
+	}
+	for (&id, mark) in &registry.removed_networks {
+		out.insert(TimestampKey::Network(id, "removed"), mark.timestamp);
+	}
+	for (&id, mark) in &registry.removed_resources {
+		out.insert(TimestampKey::Resource(id, "removed"), mark.timestamp);
+	}
+	for (&peer, registration) in &registry.peer_users {
+		out.insert(TimestampKey::PeerRegistration(peer), registration.timestamp);
 	}
 	out
 }

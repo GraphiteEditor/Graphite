@@ -1,6 +1,6 @@
 use super::DocumentNodePersistentMetadata;
 use super::InputConnector;
-use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange, construct_batch};
+use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange, construct_batch, ui_attribute_writes};
 use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
@@ -611,4 +611,39 @@ async fn swapping_an_implementation_leaves_the_node_in_place() {
 		!deltas.iter().any(|delta| matches!(delta, EditorDelta::NodeMetadataSnapshot { node_id, .. } if *node_id == node)),
 		"the node's own metadata should not be restated by a swap that did not write it"
 	);
+
+	// The slots that survive the swap keep the names and descriptions the registry holds for them.
+	let Some((id, inputs)) = ops.iter().find_map(|op| match op {
+		RegistryDelta::SetNodeInputs { id, inputs } => Some((id, inputs)),
+		_ => None,
+	}) else {
+		panic!("the swap should restate the slots")
+	};
+	let held: Vec<_> = working.node_instances[id]
+		.inputs()
+		.iter()
+		.take(inputs.len())
+		.flat_map(|slot| document_graph_storage::attributes::live(&slot.attributes).filter(|(key, _)| key.starts_with("ui::")))
+		.collect();
+	assert!(!held.is_empty(), "the surviving slots should hold ui attributes for this to check anything");
+	for (index, slot) in inputs.iter().enumerate() {
+		for (key, value) in document_graph_storage::attributes::live(&working.node_instances[id].inputs()[index].attributes).filter(|(key, _)| key.starts_with("ui::")) {
+			assert_eq!(slot.attributes.get(key), Some(value), "slot {index} lost {key}");
+		}
+	}
+}
+
+/// A `ui::` key the registry already holds as deleted is not cleared again on every snapshot.
+#[test]
+fn a_deleted_ui_key_is_not_cleared_again() {
+	use document_graph_storage::{AttributeValue, Attributes, TimeStamp, Value};
+	let at = TimeStamp { counter: 3, peer: PeerId(1) };
+	let current: Attributes = [
+		("ui::name".to_string(), AttributeValue::deleted(at)),
+		("ui::locked".to_string(), AttributeValue::new(Value::Bool(true), at)),
+	]
+	.into_iter()
+	.collect();
+	let writes = ui_attribute_writes(Some(&current), &Attributes::new());
+	assert_eq!(writes.iter().map(|write| write.key.as_str()).collect::<Vec<_>>(), ["ui::locked"]);
 }

@@ -8,20 +8,39 @@ use std::collections::BTreeMap;
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
 pub mod attr;
 
-/// A type-erased attribute value paired with the timestamp at which it was last set.
+/// An attribute value and when it was last set. A deleted key stays as a stamped tombstone, which readers see as absent.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeValue {
 	pub value: Value,
 	pub timestamp: TimeStamp,
+	// No skipping: the registry is positional on disk.
+	#[serde(default)]
+	pub deleted: bool,
 }
 
 impl AttributeValue {
 	pub fn new(value: Value, timestamp: TimeStamp) -> Self {
-		Self { value, timestamp }
+		Self { value, timestamp, deleted: false }
+	}
+
+	/// The tombstone of a key deleted at `timestamp`.
+	pub fn deleted(timestamp: TimeStamp) -> Self {
+		Self {
+			value: Value::None,
+			timestamp,
+			deleted: true,
+		}
 	}
 }
 
+/// Attribute maps. A key absent from an entity's map is deleted as of its `attributes_timestamp`, when the map was last
+/// written whole, so an older write to it is dropped.
 pub type Attributes = BTreeMap<String, AttributeValue>;
+
+/// The live entries of an attribute map: every key that is not a tombstone.
+pub fn live(attributes: &Attributes) -> impl Iterator<Item = (&String, &AttributeValue)> {
+	attributes.iter().filter(|(_, value)| !value.deleted)
+}
 
 /// Write helpers for `Attributes`.
 pub trait AttributesWrite {
@@ -44,7 +63,7 @@ pub trait AttributesWrite {
 
 impl AttributesWrite for Attributes {
 	fn set(&mut self, key: &str, value: Value, timestamp: TimeStamp) {
-		self.insert(key.to_string(), AttributeValue { value, timestamp });
+		self.insert(key.to_string(), AttributeValue::new(value, timestamp));
 	}
 }
 
@@ -66,6 +85,6 @@ pub trait AttributesRead {
 
 impl AttributesRead for Attributes {
 	fn get_typed<T: serde::de::DeserializeOwned>(&self, key: &str) -> Option<T> {
-		self.get(key).and_then(|v| from_value(&v.value).ok())
+		self.get(key).filter(|v| !v.deleted).and_then(|v| from_value(&v.value).ok())
 	}
 }
