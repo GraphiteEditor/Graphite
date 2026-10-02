@@ -1,6 +1,6 @@
 use crate::{
-	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value,
-	attr, compute_rev,
+	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Prior, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId,
+	Value, attr, compute_rev,
 };
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,8 @@ pub struct Delta {
 	pub author: PeerId,
 	pub timestamp: TimeStamp,
 	pub kind: RegistryDelta,
-	pub reverse: RegistryDelta,
+	/// What every slot `kind` wrote held before it, stamps included, in write order. See [`Prior`].
+	pub reverse: Vec<Prior>,
 	/// Local, mutable annotations on this commit (interaction-end marker, future commit messages / labels).
 	/// Deliberately excluded from `compute_rev`: relabeling a commit must not change its content-addressed
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
@@ -29,7 +30,7 @@ pub struct Delta {
 }
 
 impl Delta {
-	pub fn new(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: RegistryDelta) -> Self {
+	pub fn new(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: Vec<Prior>) -> Self {
 		let id = compute_rev(parent, author, timestamp, &kind);
 		Self {
 			id,
@@ -57,7 +58,7 @@ impl Delta {
 			parent,
 			author,
 			timestamp,
-			reverse: kind.clone(),
+			reverse: Vec::new(),
 			kind,
 			attributes: Attributes::default(),
 			retired_at_ms: 0,
@@ -224,18 +225,11 @@ pub struct AttributeDelta {
 	pub value: Option<Value>,
 }
 
-pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
-	AttributeDelta {
-		key: delta.key.clone(),
-		value: attributes.get(&delta.key).filter(|previous| !previous.deleted).map(|previous| previous.value.clone()),
-	}
-}
-
 /// Lands a single-key write against the map's `floor`, its `attributes_timestamp`. A deletion leaves a tombstone.
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes, floor: TimeStamp) {
+pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, attributes: &mut Attributes, floor: TimeStamp) {
 	let AttributeDelta { key, value } = delta;
 	let decided = attributes.get(&key).map_or(floor, |existing| existing.timestamp);
-	if !force && timestamp <= decided {
+	if timestamp <= decided {
 		return;
 	}
 	let entry = match value {
@@ -251,7 +245,7 @@ mod tests {
 
 	#[test]
 	fn unrecorded_retired_at_costs_one_byte_and_round_trips() {
-		let base = Delta::new(None, PeerId(1), TimeStamp { counter: 1, peer: PeerId(1) }, RegistryDelta::EndTransaction, RegistryDelta::EndTransaction);
+		let base = Delta::new(None, PeerId(1), TimeStamp { counter: 1, peer: PeerId(1) }, RegistryDelta::EndTransaction, Vec::new());
 		let mut stamped = base.clone();
 		stamped.retired_at_ms = 1_790_000_000_000;
 
