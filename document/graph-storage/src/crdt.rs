@@ -7,10 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Content-addressed delta: `id` is `blake3_128(parents, author, timestamp, delta_type)`.
 ///
-/// `reverse` is state-dependent undo bookkeeping (it captures pre-state at the moment the forward
-/// op was applied), so it's serialized for storage but excluded from the identity hash — two peers
-/// observing the same forward delta against different local states would otherwise compute
-/// different Revs for the same logical op.
+/// `reverse` is undo bookkeeping that depends on local state, so it is stored but left out of the identity hash.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
 	pub id: Rev,
@@ -101,8 +98,7 @@ pub enum RegistryDelta {
 		id: NodeId,
 		node: Node,
 	},
-	/// `snapshot` lets the reverse `AddNode` rebuild without reading the (already-removed) node from
-	/// the registry, mirroring `RemoveNetwork`.
+	/// `snapshot` is the node as removed, which folds in like any write so a removal of a node never seen still lands.
 	RemoveNode {
 		id: NodeId,
 		snapshot: Node,
@@ -155,13 +151,12 @@ pub enum RegistryDelta {
 		id: NetworkId,
 		network: Network,
 	},
-	/// `snapshot` lets the reverse delta rebuild without re-walking history.
+	/// `snapshot` is the network as removed; see [`RemoveNode`](Self::RemoveNode).
 	RemoveNetwork {
 		id: NetworkId,
 		snapshot: Network,
 	},
-	/// Register a whole resource entry at once. Overwrites any existing entry for `id`; the reverse
-	/// of `RemoveResource`, the way `AddNetwork` pairs with `RemoveNetwork`.
+	/// Register a whole resource entry at once, the way `AddNetwork` pairs with `RemoveNetwork`.
 	AddResource {
 		id: ResourceId,
 		entry: ResourceEntry,
@@ -219,28 +214,20 @@ pub struct AttributeDelta {
 pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
 	AttributeDelta {
 		key: delta.key.clone(),
-		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
+		value: attributes.get(&delta.key).filter(|previous| !previous.deleted).map(|previous| previous.value.clone()),
 	}
 }
 
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {
+/// Lands a single-key write against the map's `floor`, its `attributes_timestamp`. A deletion leaves a tombstone.
+pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes, floor: TimeStamp) {
 	let AttributeDelta { key, value } = delta;
-	match value {
-		Some(value) => match attributes.entry(key) {
-			std::collections::btree_map::Entry::Occupied(mut entry) => {
-				if force || timestamp > entry.get().timestamp {
-					entry.insert(AttributeValue { value, timestamp });
-				}
-			}
-			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(AttributeValue { value, timestamp });
-			}
-		},
-		None => {
-			let should_remove = force || attributes.get(&key).is_none_or(|existing| timestamp > existing.timestamp);
-			if should_remove {
-				attributes.remove(&key);
-			}
-		}
+	let decided = attributes.get(&key).map_or(floor, |existing| existing.timestamp);
+	if !force && timestamp <= decided {
+		return;
 	}
+	let entry = match value {
+		Some(value) => AttributeValue::new(value, timestamp),
+		None => AttributeValue::deleted(timestamp),
+	};
+	attributes.insert(key, entry);
 }

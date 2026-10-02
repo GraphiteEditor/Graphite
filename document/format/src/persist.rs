@@ -134,7 +134,7 @@ impl<L: Layout> Gdd<L> {
 	/// advanced past what the working copy reflects, so the caller should treat the document as needing
 	/// re-persist (mirrors [`stage_runtime_snapshot`](Self::stage_runtime_snapshot)).
 	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), Error> {
-		self.session.apply_hot_op(op.clone())?;
+		self.session.replay_hot_op(op.clone())?;
 		self.append_hot_frame(&op)?;
 		Ok(())
 	}
