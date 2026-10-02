@@ -1,4 +1,4 @@
-// Staging a whole document after a recorded batch.
+// Staging a whole document after a recorded batch, and what a reopen must carry over.
 #![cfg(feature = "conversion")]
 
 use document_container::AnyContainer;
@@ -39,4 +39,31 @@ fn restaging_the_whole_document_after_a_batch_stages_nothing() {
 	gdd.stage_runtime_snapshot(&network_with_one_node(), &NoMetadata, &resources, &store)
 		.expect("the runtime already matches what was staged");
 	assert_eq!(gdd.session().hot_log().len(), hot_before, "nothing new to stage");
+}
+
+/// `registry.bin` is the retired snapshot the hot log replays onto, so an op still hot at save time must stay out of it.
+#[test]
+fn a_reopen_keeps_unretired_hot_ops_out_of_the_retired_snapshot() {
+	use document_graph_storage::{AttributeDelta, HotOp, RegistryDelta, TimeStamp, Value};
+	let set = |value: u32, counter: u64| HotOp {
+		op: RegistryDelta::ChangeDocumentAttribute {
+			delta: AttributeDelta {
+				key: "k".into(),
+				value: Some(Value::from(serde_json::json!(value))),
+			},
+		},
+		timestamp: TimeStamp { counter, peer: PeerId(22) },
+	};
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(22), 1, "ed".into(), "std".into()).unwrap();
+		gdd.apply_hot_op(set(1, 1)).unwrap();
+		gdd.apply_hot_op(set(2, 2)).unwrap();
+		gdd.retire(TimeStamp { counter: 1, peer: PeerId(22) }).unwrap();
+
+		let retired = gdd.session().retired_registry().clone();
+		let (working, layout) = gdd.into_storage();
+		let reopened = GddV1::open_in(working, layout).await.unwrap();
+		assert!(reopened.session().retired_registry().value_equal(&retired), "the hot op leaked into the retired snapshot");
+		assert_eq!(reopened.session().hot_log().len(), 1);
+	});
 }

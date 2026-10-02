@@ -894,6 +894,30 @@ fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> Reg
 	RegistryDelta::ChangeNodeAttribute { id, delta }
 }
 
+fn hot_op(op: RegistryDelta, counter: u64, peer: u64) -> HotOp {
+	HotOp { op, timestamp: ts(counter, peer) }
+}
+
+/// So the snapshot and a replay keep the LWW winner the live view did, whether the straggler retires with it or after.
+#[test]
+fn retirement_preserves_the_live_lww_winner() {
+	for straggler_retires_alone in [false, true] {
+		let mut host = Session::with_peer(PeerId(1));
+		let winner = hot_op(set_document_attribute("k", 1), 10, 2);
+		host.replay_hot_op(winner.clone()).expect("apply winner");
+		if straggler_retires_alone {
+			host.retire(winner.timestamp).expect("retire winner");
+		}
+		host.replay_hot_op(hot_op(set_document_attribute("k", 2), 5, 3)).expect("apply straggler");
+		host.retire(winner.timestamp).expect("retire");
+
+		let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
+		let replayed = host.snapshot_from_history().expect("refold");
+		let values = [value(host.registry()), value(host.retired_registry()), value(&replayed)];
+		assert_eq!(values, [(); 3].map(|_| Some(Value::from(serde_json::json!(1)))), "straggler retires alone: {straggler_retires_alone}");
+	}
+}
+
 /// Random ops over a few colliding ids fold to one registry in any order. Removal snapshots are constant or, as a remover
 /// sends them, a fold of some earlier ops.
 #[test]
@@ -960,7 +984,7 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 			}
 			1 => {
 				let snapshot = if real_snapshots { saw(rng).networks.get(&network_id).cloned() } else { Some(Network::default()) };
-				snapshot.map_or(RegistryDelta::Other(Value::None), |snapshot| RegistryDelta::RemoveNetwork { id: network_id, snapshot })
+				snapshot.map_or(RegistryDelta::EndTransaction, |snapshot| RegistryDelta::RemoveNetwork { id: network_id, snapshot })
 			}
 			2 | 3 => RegistryDelta::AddNode {
 				id: node_id,
@@ -969,7 +993,7 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 			4 => {
 				let fabricated = || Node::new(NetworkId(1), Implementation::ProtoNode(ResourceId::from(7)), 2);
 				let snapshot = if real_snapshots { saw(rng).node_instances.get(&node_id).cloned() } else { Some(fabricated()) };
-				snapshot.map_or(RegistryDelta::Other(Value::None), |snapshot| RegistryDelta::RemoveNode { id: node_id, snapshot })
+				snapshot.map_or(RegistryDelta::EndTransaction, |snapshot| RegistryDelta::RemoveNode { id: node_id, snapshot })
 			}
 			5 | 6 => RegistryDelta::ChangeNodeInput {
 				id: node_id,
@@ -1036,7 +1060,7 @@ fn a_set_of_ops_folds_to_one_registry_in_any_order() {
 				} else {
 					Some(ResourceEntry::default())
 				};
-				snapshot.map_or(RegistryDelta::Other(Value::None), |snapshot| RegistryDelta::RemoveResource { id: resource_id, snapshot })
+				snapshot.map_or(RegistryDelta::EndTransaction, |snapshot| RegistryDelta::RemoveResource { id: resource_id, snapshot })
 			}
 			13 => RegistryDelta::SetResourceHash {
 				id: resource_id,
