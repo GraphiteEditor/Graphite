@@ -16,8 +16,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_OVERLINE,
+	ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_UNDERLINE,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -3028,6 +3028,9 @@ fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAf
 	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let underline: bool = item.attribute_cloned_or(ATTR_UNDERLINE, false);
+	let overline: bool = item.attribute_cloned_or(ATTR_OVERLINE, false);
+	let strikethrough: bool = item.attribute_cloned_or(ATTR_STRIKETHROUGH, false);
 
 	let typesetting = text_nodes::TypesettingConfig {
 		font_size,
@@ -3037,6 +3040,9 @@ fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAf
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let (width, height) = text_nodes::TextContext::with_thread_local(|ctx| {
@@ -3149,6 +3155,9 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
+	let underline: bool = item.attribute_cloned_or(ATTR_UNDERLINE, false);
+	let overline: bool = item.attribute_cloned_or(ATTR_OVERLINE, false);
+	let strikethrough: bool = item.attribute_cloned_or(ATTR_STRIKETHROUGH, false);
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 	let typesetting = text_nodes::TypesettingConfig {
@@ -3159,6 +3168,9 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let mut glyph_paths: Vec<String> = Vec::new();
@@ -3166,11 +3178,25 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	text_nodes::TextContext::with_thread_local(|ctx| {
 		let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 		let tilt_tan = letter_tilt.to_radians().tan();
+		let scale = layout.scale() as f64;
 
 		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
 			draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
 				glyph_paths.push(bez_path.to_svg());
 			});
+
+			// Decorations are emitted here too, matching how the vector shaper draws them, so rendering or exporting a Text node
+			// directly shows the same lines as the Text to Vector chain.
+			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, typesetting) {
+				let mut rect = BezPath::new();
+				rect.move_to(to_point(min.min(max)));
+				rect.line_to(to_point(DVec2::new(max.x, min.y)));
+				rect.line_to(to_point(max.max(min)));
+				rect.line_to(to_point(DVec2::new(min.x, max.y)));
+				rect.close_path();
+				rect.apply_affine(Affine::scale(1. / scale));
+				glyph_paths.push(rect.to_svg());
+			}
 		});
 	});
 
@@ -3230,6 +3256,9 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
+	let underline: bool = item.attribute_cloned_or(ATTR_UNDERLINE, false);
+	let overline: bool = item.attribute_cloned_or(ATTR_OVERLINE, false);
+	let strikethrough: bool = item.attribute_cloned_or(ATTR_STRIKETHROUGH, false);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -3243,6 +3272,9 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 		max_width,
 		max_height,
 		align,
+		underline,
+		overline,
+		strikethrough,
 	};
 
 	let affine = Affine::new((transform * item_transform).to_cols_array());
@@ -3271,6 +3303,24 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 					scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
 				}
 			});
+
+			// Decorations are drawn here too, matching how the vector shaper emits them, so a Text node rendered directly shows
+			// the same lines as the Text to Vector chain.
+			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, typesetting) {
+				let mut rect = kurbo::BezPath::new();
+				rect.move_to(to_point(min.min(max)));
+				rect.line_to(to_point(DVec2::new(max.x, min.y)));
+				rect.line_to(to_point(max.max(min)));
+				rect.line_to(to_point(DVec2::new(min.x, max.y)));
+				rect.close_path();
+				rect.apply_affine(kurbo::Affine::scale(1. / layout.scale() as f64));
+				if let RenderMode::Outline = render_params.render_mode {
+					let (outline_stroke, outline_color) = get_outline_styles(render_params);
+					scene.stroke(&outline_stroke, affine, outline_color, None, &rect);
+				} else {
+					scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, &rect);
+				}
+			}
 		});
 
 		if needs_layer {

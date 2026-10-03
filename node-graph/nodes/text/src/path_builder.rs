@@ -1,3 +1,5 @@
+use super::TypesettingConfig;
+use super::text_context::decoration_rects;
 use core_types::list::{Item, List};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
@@ -21,6 +23,8 @@ pub struct PathBuilder {
 	merged_click_target_baselines: Vec<f64>,
 	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
 	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
+	/// The winding direction of the glyph contours in merged (single-item) mode, so decoration rectangles can match it.
+	glyphs_are_counter_clockwise: Option<bool>,
 	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
 	text_frame_size: DVec2,
 	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
@@ -37,6 +41,7 @@ impl PathBuilder {
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
+			glyphs_are_counter_clockwise: None,
 			text_frame_size,
 			first_glyph_offset,
 			scale,
@@ -86,6 +91,8 @@ impl PathBuilder {
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
+			self.record_glyph_winding();
+
 			// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
 			self.vector_list.element_mut(0).unwrap().append_bezpath(core::mem::take(&mut self.glyph_bezpath));
 
@@ -154,6 +161,58 @@ impl PathBuilder {
 				}
 			}
 		}
+	}
+
+	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, typesetting: TypesettingConfig, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
+		for (min, max) in decoration_rects(glyph_run, x_offset, space_extra, typesetting) {
+			let rect = rectangle_bezpath(min * self.scale, max * self.scale);
+
+			if per_glyph_items {
+				let translation = min;
+				let frame = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -translation);
+				let item = Item::new_from_element(Vector::from_bezpath(rect))
+					.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(translation))
+					.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame);
+				self.vector_list.push(item);
+				self.per_glyph_bboxes.push(None);
+			} else {
+				// TrueType outlines wind one way and CFF/OTF the other. Merging a rectangle wound the opposite way into the
+				// compound path would cancel under the nonzero fill rule, cutting a gap through the glyphs, so match the
+				// direction the glyph contours already use.
+				let rect = match self.glyphs_are_counter_clockwise {
+					Some(true) => rectangle_bezpath(max * self.scale, min * self.scale),
+					_ => rect,
+				};
+				self.vector_list.element_mut(0).unwrap().append_bezpath(rect);
+			}
+		}
+	}
+
+	/// Records the winding direction of the first glyph's contours, taken once from the glyph being merged into the compound path.
+	///
+	/// TrueType outlines wind one way and CFF/OTF the other, so a decoration rectangle has to match rather than assume.
+	fn record_glyph_winding(&mut self) {
+		if self.glyphs_are_counter_clockwise.is_some() {
+			return;
+		}
+
+		let points = self
+			.glyph_bezpath
+			.iter()
+			.filter_map(|element| match element {
+				vector_types::kurbo::PathEl::MoveTo(point) | vector_types::kurbo::PathEl::LineTo(point) => Some(DVec2::new(point.x, point.y)),
+				_ => None,
+			})
+			.collect::<Vec<_>>();
+		if points.len() < 3 {
+			return;
+		}
+
+		let area = points.iter().enumerate().fold(0., |sum, (index, &point)| {
+			let next = points[(index + 1) % points.len()];
+			sum + point.x * next.y - next.x * point.y
+		});
+		self.glyphs_are_counter_clockwise = (area != 0.).then_some(area < 0.);
 	}
 
 	pub fn finalize(mut self) -> List<Vector> {

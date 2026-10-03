@@ -4,7 +4,7 @@ use core_types::blending::BlendMode;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_EDITOR_LAYER_PATH, ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL,
-	ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
+	ATTR_OVERLINE, ATTR_STRIKETHROUGH, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_UNDERLINE,
 };
 use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
@@ -46,6 +46,9 @@ pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> List<Vecto
 		max_width: item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.),
 		max_height: item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.),
 		align: item.attribute_cloned_or(ATTR_TEXT_ALIGN, defaults.align),
+		underline: item.attribute_cloned_or(ATTR_UNDERLINE, defaults.underline),
+		overline: item.attribute_cloned_or(ATTR_OVERLINE, defaults.overline),
+		strikethrough: item.attribute_cloned_or(ATTR_STRIKETHROUGH, defaults.strikethrough),
 	};
 
 	let vectors = to_path(text, &font, typesetting, separate_glyphs);

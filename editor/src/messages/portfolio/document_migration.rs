@@ -998,9 +998,14 @@ pub fn document_migration_string_preprocessing(document_serialized_content: Stri
 
 /// Rebuilds the old 13-input "Text" node template from the current `text` template plus the trailing `separate_glyphs` input it dropped,
 /// so the staged input-count migrations can still upgrade old text nodes before the split.
+///
+/// The current template is truncated to its first 12 inputs first, so later additions to the node (such as the decoration
+/// booleans) don't change what the legacy shape means.
 fn legacy_text_node_template() -> Option<NodeTemplate> {
 	let mut template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?.default_node_template();
 	template.implementation = NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::text::TextNode"));
+	template.inputs.truncate(12);
+	template.input_metadata.truncate(12);
 	template.inputs.push(NodeInput::value(TaggedValue::Bool(false), false));
 	template.input_metadata.push(Default::default());
 	Some(template)
@@ -1410,8 +1415,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 
 	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> converter pair, which reuses the same proto
-	// identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current 12-input
-	// node by the trailing `separate_glyphs` input (index 12): forward inputs 0..=11 onto the new node and splice the matching converter after it.
+	// identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current node by the
+	// trailing `separate_glyphs` input (index 12): forward inputs 0..=11 onto the new node and splice the matching converter after it.
+	// Only 13 inputs is legacy. The current node now also has a `Bool` at index 12 (underline), so a wider node is a current node, not a legacy one.
 	let old_text_nodes: Vec<(NodeId, Vec<NodeId>)> = document
 		.network_interface
 		.document_network()
@@ -1424,7 +1430,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 	for (node_id, network_path) in &old_text_nodes {
-		// Convert the old node in place to the current `text` node (12 inputs), capturing its old inputs.
+		// Pre-load `outward_wires` so the splice below resolves the original downstream wiring from cache rather than a mutated state.
+		let _ = document.network_interface.outward_wires(network_path);
+
+		// Convert the old node in place to the current `text` node, capturing its old inputs.
 		let Some(text_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) else {
 			continue;
 		};
@@ -1441,6 +1450,12 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			if let Some(input) = old_inputs.get(legacy_index) {
 				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, new_index), input.clone(), network_path);
 			}
+		}
+		// New decoration inputs at 12,13,14 default to false for migrated nodes.
+		for index in 12..=14 {
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, index), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 		}
 		// A `true` toggle at index 12 chose per-glyph geometry, which is now the dedicated "Text to Vector Glyphs" node
 		let separate_glyphs = matches!(old_inputs.get(12).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
@@ -2224,6 +2239,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 
 		inputs_count = 13;
+	}
+
+	// Insert text decoration parameters: underline, overline, and strikethrough.
+	// A 12-input node gains the three decoration booleans at 12, 13 and 14 to reach the current 15-input shape. Nodes that already
+	// have the decorations, or a wider legacy node, are left alone.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 12 {
+		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+
+		// Copy the original inputs into the new node by position. The appended decorations keep their template defaults.
+		for (index, input) in old_inputs.iter().enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
@@ -3342,13 +3371,13 @@ mod tests {
 
 			let network = document.network_interface.document_network();
 			let text_node = network.nodes.get(&text_id).expect("the upgraded text node should keep its ID");
-			assert_eq!(text_node.inputs.len(), 12, "a {shape}-input text node should reach the current shape");
+			assert_eq!(text_node.inputs.len(), 15, "a {shape}-input text node should reach the current shape");
 
 			// The converter is a new node, so it is found by identity rather than by ID
 			let converter = network
 				.nodes
 				.iter()
-				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::text::text_to_vector::IDENTIFIER))
+				.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::text::text_to_vector::IDENTIFIER || *identifier == graphene_std::text::text_to_vector_glyphs::IDENTIFIER))
 				.map(|(converter_id, _)| *converter_id)
 				.unwrap_or_else(|| panic!("a {shape}-input text node should gain a string converter"));
 			assert_eq!(
@@ -3379,6 +3408,98 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	// A 12-input text node predates the decoration booleans, so it gains them at 12, 13 and 14. It must not then be mistaken for a
+	// legacy geometry node by the split pass, which would reorder its inputs and splice a second converter onto its output.
+	#[test]
+	fn a_twelve_input_text_node_gains_its_decorations_without_being_split() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+		use graphene_std::text::Font;
+
+		let (text_id, consumer_id) = (NodeId(1), NodeId(2));
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(
+			text_id,
+			NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::text::text::IDENTIFIER),
+				inputs: vec![
+					NodeInput::scope("editor-api"),
+					NodeInput::value(TaggedValue::String("Lorem".into()), false),
+					NodeInput::value(TaggedValue::Font(Font::new("Lato".to_string(), "Regular (400)".to_string())), false),
+					NodeInput::value(TaggedValue::Number(48.), false),
+					NodeInput::value(TaggedValue::Number(1.5), false),
+					NodeInput::value(TaggedValue::Number(2.), false),
+					NodeInput::value(TaggedValue::Number(0.), false),
+					NodeInput::value(TaggedValue::Number(0.), false),
+					NodeInput::value(TaggedValue::Number(10.), false),
+					NodeInput::value(TaggedValue::Bool(false), false),
+					NodeInput::value(TaggedValue::None, false),
+					NodeInput::value(TaggedValue::None, false),
+				],
+				..Default::default()
+			},
+			&[],
+		);
+		document.network_interface.insert_node(
+			consumer_id,
+			NodeTemplate {
+				inputs: vec![NodeInput::value(TaggedValue::None, false)],
+				..Default::default()
+			},
+			&[],
+		);
+		document.network_interface.set_input(&InputConnector::node_at_index(consumer_id, 0), NodeInput::node(text_id, 0), &[]);
+
+		migrate(&mut document);
+
+		let network = document.network_interface.document_network();
+		let text_node = network.nodes.get(&text_id).expect("the text node should keep its ID");
+		assert_eq!(text_node.inputs.len(), 15, "the node should gain its three decoration inputs");
+		assert_eq!(text_node.inputs.get(3), Some(&NodeInput::value(TaggedValue::Number(48.), false)), "its size should survive by position");
+
+		assert!(
+			!network.nodes.values().any(|node| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::text::text_to_vector::IDENTIFIER || *identifier == graphene_std::text::text_to_vector_glyphs::IDENTIFIER)),
+			"a current text node must not be split by the geometry migration"
+		);
+		assert_eq!(
+			network.nodes[&consumer_id].inputs.first(),
+			Some(&NodeInput::node(text_id, 0)),
+			"the consumer should stay wired to the text node"
+		);
+	}
+
+	// A current 15-input text node is already correct, so migrating again must leave it exactly as it was.
+	#[test]
+	fn a_current_text_node_is_left_alone() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+
+		let text_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))
+			.expect("the Text node should be registered")
+			.default_node_template();
+		assert_eq!(template.inputs.len(), 15, "the current Text node should have 15 inputs");
+		document.network_interface.insert_node(
+			text_id,
+			NodeTemplate {
+				inputs: template.inputs.clone(),
+				..template
+			},
+			&[],
+		);
+
+		// Mark it so any rewrite of its inputs would be visible.
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(text_id, 3), NodeInput::value(TaggedValue::Number(48.), false), &[]);
+
+		migrate(&mut document);
+
+		let network = document.network_interface.document_network();
+		let text_node = network.nodes.get(&text_id).expect("the text node should keep its ID");
+		assert_eq!(text_node.inputs.len(), 15, "a current text node should keep its shape");
+		assert_eq!(text_node.inputs.get(3), Some(&NodeInput::value(TaggedValue::Number(48.), false)), "its size should be untouched");
 	}
 
 	// An expression node saved before the output-type witness input had only its value and expression inputs

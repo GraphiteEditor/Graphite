@@ -66,6 +66,29 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 	}
 }
 
+/// Yields the rectangle of each enabled text decoration line for a glyph run, in layout units with y growing downward.
+///
+/// Justification only stretches spaces, so the line's width grows by `space_extra` per space, not per glyph. Shared by the vector
+/// shaper and the SVG/Vello text renderers so the placement logic lives in one place.
+pub fn decoration_rects(glyph_run: &GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, typesetting: TypesettingConfig) -> Vec<(DVec2, DVec2)> {
+	let metrics = glyph_run.run().metrics();
+	let baseline = glyph_run.baseline() as f64;
+	let start = (glyph_run.offset() + x_offset) as f64;
+	// Justification distributes its extra space across the run's spaces, matching `for_each_styled_glyph_run`.
+	let space_count = glyph_run.glyphs().filter(|glyph| glyph.advance > 0.).count();
+	let end = start + (glyph_run.advance() + space_extra * space_count as f32) as f64;
+
+	[
+		(typesetting.underline, baseline - metrics.underline_offset as f64, metrics.underline_size as f64),
+		(typesetting.overline, baseline - metrics.ascent as f64, metrics.underline_size as f64),
+		(typesetting.strikethrough, baseline - metrics.strikethrough_offset as f64, metrics.strikethrough_size as f64),
+	]
+	.into_iter()
+	.filter(|(enabled, _, _)| *enabled)
+	.map(|(_, y, thickness)| (DVec2::new(start, y), DVec2::new(end, y + thickness)))
+	.collect()
+}
+
 /// Unified thread-local text processing context that combines font and layout management
 /// for efficient text rendering operations.
 #[derive(Default)]
@@ -155,7 +178,15 @@ impl TextContext {
 		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
 		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+			path_builder.render_decoration_run(glyph_run, typesetting, per_glyph_items, x_offset, space_extra);
 			path_builder.render_glyph_run(glyph_run, typesetting.letter_tilt, per_glyph_items, x_offset, space_extra);
+			// Strikethrough is drawn after the glyphs so it sits on top of them.
+			let strikethrough_only = TypesettingConfig {
+				underline: false,
+				overline: false,
+				..typesetting
+			};
+			path_builder.render_decoration_run(glyph_run, strikethrough_only, per_glyph_items, x_offset, space_extra);
 		});
 
 		path_builder.finalize()
