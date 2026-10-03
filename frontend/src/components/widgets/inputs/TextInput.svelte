@@ -16,10 +16,12 @@
 	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
-	// Tooltips
+		// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
+	// Behavior
+	export let selectAllOnFocus = true;
 
 	let className = "";
 	export { className as class };
@@ -28,10 +30,10 @@
 	let self: FieldInput | undefined;
 	let editing = false;
 
-	function onTextFocused() {
+		function onTextFocused() {
 		editing = true;
 
-		self?.selectAllText(value);
+		if (selectAllOnFocus) self?.selectAllText(value);
 	}
 
 	// Called only when `value` is changed from the <input> element via user input and committed, either with the
