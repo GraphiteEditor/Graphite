@@ -39,6 +39,7 @@ pub enum FrontendMessage {
 	},
 	DisplayEditableTextbox {
 		text: String,
+		editable: bool,
 		#[serde(rename = "lineHeightRatio")]
 		line_height_ratio: f64,
 		#[serde(rename = "fontSize")]
