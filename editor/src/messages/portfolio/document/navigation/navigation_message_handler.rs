@@ -31,6 +31,7 @@ pub struct NavigationMessageHandler {
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
 	abortable_pan_start: Option<f64>,
+	document_ptz_override: bool,
 }
 
 #[message_handler_data]
@@ -80,8 +81,13 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
 
 				self.mouse_position = ipp.mouse.position;
-				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						return;
+					};
+					ptz
 				};
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
@@ -91,6 +97,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				};
 				// If the node graph is open, prevent tilt and instead start panning
 				if graph_view_overlay_open {
+					self.document_ptz_override = true;
 					responses.add(NavigationMessage::BeginCanvasPan);
 				} else {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
@@ -110,9 +117,15 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					self.finish_operation_with_click = was_dispatched_from_menu;
 				}
 			}
-			NavigationMessage::BeginCanvasZoom => {
-				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					return;
+			NavigationMessage::BeginCanvasZoom { document_ptz_override } => {
+				let ptz = if document_ptz_override {
+					self.document_ptz_override = document_ptz_override;
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						return;
+					};
+					ptz
 				};
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
@@ -130,28 +143,45 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				self.mouse_position = ipp.mouse.position;
 			}
 			NavigationMessage::CanvasPan { delta } => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get PTZ in CanvasPan");
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get PTZ in CanvasPan");
+						return;
+					};
+					ptz
 				};
 				let document_to_viewport = self.calculate_offset_transform(viewport.center_in_viewport_space().into_dvec2(), ptz);
 				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta);
 
 				ptz.pan += transformed_delta;
 				responses.add(EventMessage::CanvasTransformed);
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 			}
 			NavigationMessage::CanvasPanAbortPrepare { x_not_y_axis } => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get PTZ in CanvasPanAbortPrepare");
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get PTZ in CanvasPanAbortPrepare");
+						return;
+					};
+					ptz
 				};
 				self.abortable_pan_start = Some(if x_not_y_axis { ptz.pan.x } else { ptz.pan.y });
 			}
 			NavigationMessage::CanvasPanAbort { x_not_y_axis } => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get PTZ in CanvasPanAbort");
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get PTZ in CanvasPanAbort");
+						return;
+					};
+					ptz
 				};
 				if let Some(abortable_pan_start) = self.abortable_pan_start {
 					if x_not_y_axis {
@@ -161,18 +191,27 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					}
 				}
 				self.abortable_pan_start = None;
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 			}
 			NavigationMessage::CanvasPanByViewportFraction { delta } => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
+						return;
+					};
+					ptz
 				};
 				let document_to_viewport = self.calculate_offset_transform(viewport.center_in_viewport_space().into_dvec2(), ptz);
 				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * viewport.size().into_dvec2());
 
 				ptz.pan += transformed_delta;
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
 				// On Mac, the OS already converts Shift+scroll into horizontal scrolling
@@ -195,7 +234,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 			}
 			NavigationMessage::CanvasTiltSet { angle_radians } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -203,7 +244,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					return;
 				};
 				ptz.set_tilt(angle_radians);
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 				if !graph_view_overlay_open {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(MenuBarMessage::SendLayout);
@@ -261,19 +304,26 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} else {
 					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 				};
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in CanvasZoomSet");
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get mutable PTZ in CanvasZoomSet");
+						return;
+					};
+					ptz
 				};
 				let zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
 				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, viewport);
 				ptz.set_zoom(zoom);
-				if graph_view_overlay_open {
+				if graph_view_overlay_open && !self.document_ptz_override {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 			}
 			NavigationMessage::CanvasFlip => {
 				if graph_view_overlay_open {
@@ -286,15 +336,22 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				ptz.flip = !ptz.flip;
 
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 				responses.add(EventMessage::CanvasTransformed);
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in EndCanvasPTZ");
-					return;
+				let ptz = if self.document_ptz_override {
+					document_ptz
+				} else {
+					let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						log::error!("Could not get mutable PTZ in EndCanvasPTZ");
+						return;
+					};
+					ptz
 				};
 				// If an abort was requested, reset the active PTZ value to its original state
 				if abort_transform && self.navigation_operation != NavigationOperation::None {
@@ -315,7 +372,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				// Final chance to apply snapping if the key was pressed during this final frame
 				ptz.set_tilt(self.snapped_tilt(ptz.tilt()));
 				ptz.set_zoom(self.snapped_zoom(ptz.zoom()));
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 				} else {
@@ -323,6 +382,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
+				self.document_ptz_override = false;
 
 				// Send the final messages to close out the operation
 				responses.add(EventMessage::CanvasTransformed);
@@ -381,7 +441,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate {
+					document_ptz_override: self.document_ptz_override,
+				});
 			}
 			// Fully zooms in on the selected
 			NavigationMessage::FitViewportToSelection => {
@@ -461,9 +523,14 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, viewport)
 						};
-						let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-							log::error!("Could not get mutable PTZ in Zoom");
-							return;
+						let ptz = if self.document_ptz_override {
+							document_ptz
+						} else {
+							let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+								log::error!("Could not get mutable PTZ in Zoom");
+								return;
+							};
+							ptz
 						};
 						ptz.set_zoom(self.snapped_zoom(zoom_raw_not_snapped));
 

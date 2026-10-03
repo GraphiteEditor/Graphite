@@ -8,7 +8,7 @@ pub enum NavigationMessage {
 	// Messages
 	BeginCanvasPan,
 	BeginCanvasTilt { was_dispatched_from_menu: bool },
-	BeginCanvasZoom,
+	BeginCanvasZoom { document_ptz_override: bool },
 	CanvasPan { delta: DVec2 },
 	CanvasPanAbortPrepare { x_not_y_axis: bool },
 	CanvasPanAbort { x_not_y_axis: bool },
