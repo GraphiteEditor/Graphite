@@ -8,7 +8,7 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
 use syn::{Error, Expr, ExprPath, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
-static NODE_ID: AtomicU64 = AtomicU64::new(0);
+pub(crate) static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
 pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
@@ -533,6 +533,34 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#serialize_impl
 	};
 
+	// The output a framed variant collects into. A map kernel pushes one item per frame slot and a `Destructure` struct appends its
+	// fields to its mapped struct. An expander kernel, returning `List<U>`, has its lists concatenated since nested lists aren't supported.
+	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
+		match (parsed.output_element.as_ref(), peel_list(output_type)) {
+			(Some(element_ty), _) => (
+				quote!(#core_types::list::List<#element_ty>),
+				quote!(#core_types::list::List::with_capacity(__frame_length)),
+				quote!(__output.push(__result);),
+				quote!(#core_types::list::List::new()),
+			),
+			(None, Some(_)) => (
+				quote!(#output_type),
+				quote!(#core_types::list::List::new()),
+				quote!(__output.extend(__result);),
+				quote!(#core_types::list::List::new()),
+			),
+			(None, None) => {
+				let destructure = quote!(<#output_type as #core_types::registry::Destructure>);
+				(
+					quote!(#destructure::Mapped),
+					quote!(#destructure::mapped_with_capacity(__frame_length)),
+					quote!(#core_types::registry::Destructure::push_into(__result, &mut __output);),
+					quote!(#destructure::mapped_with_capacity(0)),
+				)
+			}
+		}
+	};
+
 	// The mapped variant zips every ranked connector by frame slot (longest-list, last-element repeats), broadcasting bare and environment parameters by clone
 	let mapped_eval_impl = mapped_variant.then(|| {
 		let ranked_names: Vec<_> = regular_fields
@@ -563,15 +591,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			false => quote!(__input.clone()),
 		};
 
-		// An expander kernel (returning `List<U>`) flat-maps under the frame per the rank-2 force-flatten rule; a map kernel pushes one item per slot
-		let (mapped_output_type, initial_output, collect_result) = match parsed.output_element.as_ref() {
-			Some(element_ty) => (
-				quote!(#core_types::list::List<#element_ty>),
-				quote!(#core_types::list::List::with_capacity(__frame_length)),
-				quote!(__output.push(__result);),
-			),
-			None => (quote!(#output_type), quote!(#core_types::list::List::new()), quote!(__output.extend(__result);)),
-		};
+		let (mapped_output_type, initial_output, collect_result, empty_output) = framed_output();
 
 		quote! {
 			type Output = #core_types::registry::DynFuture<'n, #mapped_output_type>;
@@ -583,7 +603,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 					let __frame_length = [#(#ranked_names.len()),*].into_iter().max().unwrap_or(0);
 					if [#(#ranked_names.len()),*].into_iter().any(|length| length == 0) {
-						return #core_types::list::List::new();
+						return #empty_output;
 					}
 
 					let mut __output = #initial_output;
@@ -631,19 +651,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect();
 
-		let (list_content_output_type, initial_output, collect_result) = match parsed.output_element.as_ref() {
-			Some(element_ty) => (
-				quote!(#core_types::list::List<#element_ty>),
-				quote!(#core_types::list::List::with_capacity(__frame_length)),
-				quote!(__output.push(__result);),
-			),
-			None => (quote!(#output_type), quote!(#core_types::list::List::new()), quote!(__output.extend(__result);)),
-		};
+		let (list_content_output_type, initial_output, collect_result, empty_output) = framed_output();
 
 		let empty_param_check = (!ranked_names.is_empty()).then(|| {
 			quote! {
 				if [#(#ranked_names.len()),*].into_iter().any(|__length| __length == 0) {
-					return #core_types::list::List::new();
+					return #empty_output;
 				}
 			}
 		});
@@ -694,6 +707,17 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
 	let inject_scope_flag = attributes.inject_scope;
+	// A node returning a `Destructure` struct records its fields as output connectors
+	let output_fields = match may_return_destructure_struct(parsed) {
+		true => {
+			let output_type = substitute_lifetimes(output_type.clone(), "static");
+			quote! {{
+				use gcore::registry::{DestructureOutputFields as _, NoOutputFields as _};
+				(&gcore::registry::OutputFields::<#output_type>(core::marker::PhantomData)).output_fields()
+			}}
+		}
+		false => quote!(None),
+	};
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
 	let node_input_accessor = generate_node_input_references(parsed, &field_idents, core_types, &identifier, &cfg);
@@ -908,6 +932,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
 					inject_scope: #inject_scope_flag,
+					output_fields: #output_fields,
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -1090,6 +1115,18 @@ fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
 /// Whether the type is the unit type `()`, which marks a generator with no primary input.
 fn is_unit_type(ty: &syn::Type) -> bool {
 	matches!(ty, syn::Type::Tuple(tuple) if tuple.elems.is_empty())
+}
+
+/// Whether the node's return type could be a `Destructure` struct, meaning a concrete type other than `()` or a ranked wrapper.
+fn may_return_destructure_struct(parsed: &ParsedNodeFn) -> bool {
+	let output_type = &parsed.output_type;
+	let ranked = peel_item(output_type).is_some() || peel_list(output_type).is_some() || matches!(output_type, Type::Path(path) if path.path.is_ident("ListDyn"));
+	let generic = parsed
+		.fn_generics
+		.iter()
+		.any(|param| matches!(param, syn::GenericParam::Type(type_param) if type_contains_ident(output_type, &type_param.ident)));
+
+	!ranked && !generic && !is_unit_type(output_type) && !matches!(output_type, Type::ImplTrait(_))
 }
 
 /// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).

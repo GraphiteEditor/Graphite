@@ -377,6 +377,20 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Whether a multi-output node is framed over a list, which happens when a list reaches any input its single-item variant takes as an `Item`.
+	fn multi_output_node_is_mapped(&self, node_id: &NodeId, identifier: &ProtoNodeIdentifier, mapped_type: &Type, network_path: &[NodeId]) -> bool {
+		let Some(implementations) = NODE_REGISTRY.get(identifier) else { return false };
+		let Some(single_item_variant) = implementations.keys().find(|node_io| node_io.return_value.nested_type() != mapped_type) else {
+			return false;
+		};
+
+		single_item_variant
+			.inputs
+			.iter()
+			.enumerate()
+			.any(|(input_index, declared_type)| matches!(declared_type.nested_type(), Type::Item(_)) && self.input_type(&InputConnector::node_at_index(*node_id, input_index), network_path).is_list())
+	}
+
 	pub fn output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
 		match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
@@ -395,10 +409,26 @@ impl NodeNetworkInterface {
 					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => {
 						self.input_type(&InputConnector::primary_input(*node_id), network_path)
 					}
-					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
-						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
-						None => TypeSource::Unknown,
-					},
+					DocumentNodeImplementation::ProtoNode(identifier) => {
+						// A multi-output proto node's field output types are recorded in the registry, as lists in its mapped variant.
+						// The hidden primary output has no field, so it falls through to the compiled types below.
+						if let Some(metadata) = graphene_std::registry::MULTI_OUTPUT_NODES.get(identifier)
+							&& let Some(field_index) = metadata.field_index_for_output(*output_index)
+						{
+							return match metadata.fields.get(field_index) {
+								Some(field) => {
+									let is_mapped = self.multi_output_node_is_mapped(node_id, identifier, &metadata.mapped_type, network_path);
+									TypeSource::Compiled(if is_mapped { field.mapped_ty.clone() } else { field.ty.clone() })
+								}
+								None => TypeSource::Error("Output index out of range for proto node"),
+							};
+						}
+
+						match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
+							Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
+							None => TypeSource::Unknown,
+						}
+					}
 					DocumentNodeImplementation::Extract => TypeSource::Compiled(concrete!(())),
 				}
 			}
