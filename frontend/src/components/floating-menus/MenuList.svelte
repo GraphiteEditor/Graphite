@@ -11,6 +11,7 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import { targetIsTextField } from "/src/utility-functions/input";
 	import type { MenuListEntry, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let self: FloatingMenu | undefined;
@@ -34,9 +35,12 @@
 	export let direction: MenuDirection = "Bottom";
 	export let minWidth = 0;
 	export let drawIcon = false;
+	export let monospace = false;
 	export let interactive = false;
 	export let scrollableY = false;
 	export let virtualScrolling = false;
+	// Whether the highlight moves to each new active entry given while the menu is open
+	export let highlightFollowsActiveEntry = false;
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
@@ -44,6 +48,7 @@
 	let search = "";
 	let reactiveEntries = entries;
 	let highlighted: MenuListEntry | undefined = activeEntry;
+	let lastActiveEntry: { value: string | undefined; entriesHash: bigint } = { value: activeEntry?.value, entriesHash };
 	let virtualScrollingEntriesStart = 0;
 	let keydownListenerAdded = false;
 	let destroyed = false;
@@ -59,6 +64,7 @@
 	$: watchEntriesHash(entriesHash);
 	$: watchRemeasureWidth(filteredEntries, drawIcon);
 	$: watchHighlightedWithSearch(filteredEntries, open);
+	$: watchActiveEntry(activeEntry, entriesHash);
 
 	$: virtualScrollingEntryHeight = virtualScrolling ? 20 : 0;
 	$: filteredEntries = reactiveEntries.map((section) => section.filter((entry) => inSearch(search, entry)));
@@ -103,10 +109,31 @@
 		}
 	}
 
+	// An active entry given while the menu is open takes the highlight and is scrolled into view, unless it's the same one among the same
+	// entries given again, as any layout update does, which leaves the highlight wherever it was moved
+	function watchActiveEntry(activeEntry: MenuListEntry | undefined, entriesHash: bigint) {
+		const given = { value: activeEntry?.value, entriesHash };
+		const repeated = given.value === lastActiveEntry.value && given.entriesHash === lastActiveEntry.entriesHash;
+		lastActiveEntry = given;
+		if (!highlightFollowsActiveEntry || !open || !activeEntry || repeated) return;
+
+		highlighted = activeEntry;
+		// Once its row is drawn, unless the highlight has moved on by then
+		tick().then(() => {
+			if (open && highlighted?.value === activeEntry.value) setHighlighted(activeEntry);
+		});
+	}
+
 	// Detect when the user types, which creates a search box
 	async function startSearch(e: KeyboardEvent) {
 		// Only accept single-character symbol inputs other than space
 		if (e.key.length !== 1 || e.key === " ") return;
+		// Nor a shortcut's key, though AltGr, which also reports Ctrl, types characters
+		if ((e.ctrlKey || e.metaKey) && !e.getModifierState("AltGraph")) {
+			// The browser's own action for it, like saving the page, stays held back, except a text field's editing shortcuts
+			if (!targetIsTextField(e.target || undefined)) e.preventDefault();
+			return;
+		}
 
 		// Stop shortcuts being activated
 		e.stopPropagation();
@@ -365,9 +392,7 @@
 
 		// Click on a highlighted entry with the enter key
 		if (menuOpen && highlighted && e.key === "Enter") {
-			// Handle clicking on an option if enter is pressed
-			if (!highlighted.children?.length) onEntryClick(highlighted);
-			else openSubmenu(highlighted);
+			pickHighlighted();
 
 			// Stop the event from triggering a press on a new dialog
 			e.preventDefault();
@@ -413,26 +438,34 @@
 		return false;
 	}
 
+	// Picks the highlighted entry as clicking it would, returning whether there was one to pick
+	export function pickHighlighted(): boolean {
+		if (!open || !highlighted) return false;
+
+		if (!highlighted.children?.length) onEntryClick(highlighted);
+		else openSubmenu(highlighted);
+		return true;
+	}
+
 	export function setHighlighted(newHighlight: MenuListEntry | undefined) {
 		highlighted = newHighlight;
 
 		// Scroll into view
 		let container = scroller?.div?.();
 		if (!container || !highlighted) return;
-		let containerBoundingRect = container.getBoundingClientRect();
-		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry.value === highlighted?.value);
+		const highlightedIndex = filteredEntries.flat().findIndex((entry) => entry.value === highlighted?.value);
 
-		let selectedBoundingRect = new DOMRect();
-		if (virtualScrollingEntryHeight) {
-			// Special case for virtual scrolling
-			selectedBoundingRect.y = highlightedIndex * virtualScrollingEntryHeight - container.scrollTop + containerBoundingRect.y;
-			selectedBoundingRect.height = virtualScrollingEntryHeight;
-		} else {
-			let entries = Array.from(container.children).filter((element) => element.classList.contains("row"));
-			let element = entries[highlightedIndex - startIndex];
-			if (!element) return;
-			containerBoundingRect = element.getBoundingClientRect();
+		// Without virtual scrolling, every row exists and the floating menu around them is what scrolls, so the row is brought into its view
+		if (!virtualScrollingEntryHeight) {
+			const rows = Array.from(container.children).filter((element) => element.classList.contains("row"));
+			rows[highlightedIndex - startIndex]?.scrollIntoView({ block: "nearest" });
+			return;
 		}
+
+		const containerBoundingRect = container.getBoundingClientRect();
+		const selectedBoundingRect = new DOMRect();
+		selectedBoundingRect.y = highlightedIndex * virtualScrollingEntryHeight - container.scrollTop + containerBoundingRect.y;
+		selectedBoundingRect.height = virtualScrollingEntryHeight;
 
 		if (containerBoundingRect.y > selectedBoundingRect.y) {
 			container.scrollBy(0, selectedBoundingRect.y - containerBoundingRect.y);
@@ -482,6 +515,7 @@
 					tooltipLabel={entry.tooltipLabel}
 					tooltipDescription={entry.tooltipDescription}
 					tooltipShortcut={entry.tooltipShortcut}
+					tooltipCode={entry.tooltipCode}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
@@ -507,6 +541,7 @@
 
 					<TextLabel
 						class="entry-label"
+						{monospace}
 						classes={{
 							"font-preview": Boolean(entry.font),
 							"font-loaded": loadedFontsGeneration >= 0 && loadedFonts.has(entry.value),
@@ -518,11 +553,13 @@
 
 					{#if entry.tooltipShortcut?.shortcut.length}
 						<ShortcutLabel shortcut={entry.tooltipShortcut} />
+					{:else if entry.annotation}
+						<TextLabel class="entry-annotation">{entry.annotation}</TextLabel>
 					{/if}
 
 					{#if entry.children?.length}
 						<IconLabel class="submenu-arrow" icon="DropdownArrow" />
-					{:else}
+					{:else if !entry.annotation || entry.tooltipShortcut?.shortcut.length}
 						<div class="no-submenu-arrow"></div>
 					{/if}
 
@@ -542,6 +579,7 @@
 							entriesHash={entry.childrenHash || 0n}
 							{minWidth}
 							{drawIcon}
+							{monospace}
 							{scrollableY}
 							bind:this={childReferences[sectionIndex][entryIndex + startIndex]}
 						/>
@@ -564,6 +602,13 @@
 
 		.floating-menu-container .floating-menu-content.floating-menu-content {
 			padding: 4px 0;
+			// A row scrolled into view at either end keeps the padding beyond it in view too
+			scroll-padding: 4px 0;
+
+			// Where the menu itself scrolls, its entries keep their full height so the padding after them is reached too
+			> .layout-col:not(.scrollable-y) {
+				flex-shrink: 0;
+			}
 
 			.separator {
 				margin: 4px 0;
@@ -609,8 +654,15 @@
 					margin: 0 4px;
 				}
 
-				.shortcut-label {
+				.shortcut-label,
+				.entry-annotation {
 					margin-left: 12px;
+				}
+
+				// Styled like a shortcut's keys, which it takes the place of, but inset from the row's end like the label from its start
+				.entry-annotation {
+					margin-right: 4px;
+					color: var(--color-8-uppergray);
 				}
 
 				.submenu-arrow {

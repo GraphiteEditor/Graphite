@@ -12,6 +12,7 @@
 	import ColorInput from "/src/components/widgets/inputs/ColorInput.svelte";
 	import ColorPresetsInput from "/src/components/widgets/inputs/ColorPresetsInput.svelte";
 	import DropdownInput from "/src/components/widgets/inputs/DropdownInput.svelte";
+	import MathExpressionInput from "/src/components/widgets/inputs/MathExpressionInput.svelte";
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
 	import ReferencePointInput from "/src/components/widgets/inputs/ReferencePointInput.svelte";
@@ -213,6 +214,21 @@
 			getProps: (props, index) => ({
 				...props,
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
+			}),
+		},
+		MathExpressionInput: {
+			component: MathExpressionInput,
+			getProps: (props, index) => ({
+				...props,
+				widgetId: widgets[index].widgetId,
+				analyze: (source: string, caret?: number, asked = false) => editor.analyzeMathExpression(layoutTarget, widgets[index].widgetId, source, caret, asked),
+				evaluate: (source: string) => editor.evaluateMathExpression(widgets[index].widgetId, source),
+				$$events: {
+					commitText: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
+					updateText: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
+					startHistoryTransaction: () => widgetValueCommit(index, props.value),
+					commitHistoryTransaction: () => editor.endTransaction(),
+				},
 			}),
 		},
 		NodeCatalog: {

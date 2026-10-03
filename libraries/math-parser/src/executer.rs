@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Clause, Literal, Local, MatrixNode, Node, SortedCase, UnaryOp, ValueNode};
-use crate::constants::{Builtin, MatrixToValue, ValueOfRegions, builtin_function, suffixed_function};
+use crate::constants::{Builtin, MatrixToValue, SuffixedFunction, ValueOfRegions, builtin_function, suffixed_function};
 use crate::context::{EvalContext, FunctionProvider, ValueProvider};
 use crate::lexer::Constant;
 use crate::matrix::{Matrix, Region};
@@ -38,7 +38,7 @@ pub enum EvalError {
 	#[error("A singular matrix has no inverse")]
 	SingularMatrix,
 
-	#[error("A matrix power must be a whole number")]
+	#[error("A matrix power must be an integer")]
 	FractionalMatrixPower,
 
 	#[error("A singular range has no interior")]
@@ -50,7 +50,7 @@ pub enum EvalError {
 	#[error("A smoothstep across a flat range has no width to ease over")]
 	FlatSmoothstep,
 
-	#[error("A smoothstep's continuity is a whole number from 0 to 3")]
+	#[error("A smoothstep's continuity is an integer from 0 to 3")]
 	SmoothstepContinuity,
 
 	#[error("Only a matrix without translation has a transpose")]
@@ -405,10 +405,10 @@ impl ValueNode {
 					settle(canonical_host_value(bare_name, value)?)
 				} else if let Some(Builtin::Values { function, .. }) = builtin_function(bare_name) {
 					settle(function(values).ok_or(EvalError::TypeError)?)
-				} else if let Some((function, base)) = suffixed_function(bare_name) {
+				} else if let Some(SuffixedFunction { function, argument, .. }) = suffixed_function(bare_name) {
 					// A base-suffixed call like `log10(x)` runs the two-argument form with the suffix baked in as its second argument
 					let [value] = values else { return Err(EvalError::TypeError) };
-					settle(function(&[*value, Value::from_f64(base)]).ok_or(EvalError::TypeError)?)
+					settle(function(&[*value, Value::from_f64(argument)]).ok_or(EvalError::TypeError)?)
 				} else if let Some(value) = resolve_value(scope.context, name)
 					&& let [Value::Number(argument)] = values
 				{
