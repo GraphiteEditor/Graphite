@@ -1,7 +1,8 @@
 use crate::application::Editor;
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::keyboard::{Key, KeyStates, ModifierKeys};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
-use crate::messages::input_mapper::utility_types::pointer::{MouseButton, MouseKeys, PointerState};
+use crate::messages::input_mapper::utility_types::pointer::{MouseButton, MouseKeys, PointerState, ViewportPosition};
 use crate::messages::prelude::*;
 use std::time::Duration;
 
@@ -17,6 +18,15 @@ pub struct InputPreprocessorMessageHandler {
 	pub keyboard: KeyStates,
 	pub mouse: PointerState,
 	pointer_down_time: f64,
+	software_cursor: Option<SoftwareCursor>,
+}
+
+// The cursor the editor tracks while G/R/S wraps it around the viewport, since the OS cursor is locked in place
+#[derive(Debug, Clone, Copy)]
+struct SoftwareCursor {
+	position: ViewportPosition,
+	last_absolute: ViewportPosition,
+	tracking_deltas: bool,
 }
 
 #[message_handler_data]
@@ -69,8 +79,10 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
+				let mut pointer_state = editor_mouse_state.to_pointer_state(viewport);
+				pointer_state.position = self.update_pointer_position(pointer_state.position);
 				self.mouse.position = pointer_state.position;
+				self.send_software_cursor(viewport, responses);
 
 				responses.add(InputMapperMessage::PointerMove);
 
@@ -92,6 +104,42 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.mouse.position = pointer_state.position;
 
 				responses.add(InputMapperMessage::PointerShake);
+			}
+			InputPreprocessorMessage::PointerLockMove { delta } => {
+				let Some(cursor) = &mut self.software_cursor else { return };
+
+				cursor.position += delta;
+				cursor.tracking_deltas = true;
+				self.mouse.position = cursor.position;
+				self.send_software_cursor(viewport, responses);
+
+				responses.add(InputMapperMessage::PointerMove);
+			}
+			InputPreprocessorMessage::BeginSoftwareCursor { position } => {
+				if self.software_cursor.is_some() {
+					return;
+				}
+
+				self.software_cursor = Some(SoftwareCursor {
+					position,
+					last_absolute: position,
+					tracking_deltas: false,
+				});
+				self.mouse.position = position;
+
+				self.send_software_cursor(viewport, responses);
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
+				responses.add(AppWindowMessage::PointerLock);
+			}
+			InputPreprocessorMessage::EndSoftwareCursor => {
+				let Some(cursor) = self.software_cursor.take() else { return };
+
+				responses.add(FrontendMessage::UpdateSoftwareCursor { visible: false, x: 0., y: 0. });
+				// Let the active tool re-emit its cursor
+				responses.add(ToolMessage::UpdateCursor);
+				// Leave the pointer where the software cursor ended, not where the lock began
+				let position = wrap_software_cursor(cursor.position, viewport.size().into_dvec2());
+				responses.add(AppWindowMessage::PointerUnlock { x: position.x, y: position.y });
 			}
 			InputPreprocessorMessage::CurrentTime { timestamp } => {
 				responses.add(AnimationMessage::SetTime { time: timestamp as f64 });
@@ -117,6 +165,37 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
+	// Advances the tracked pointer by the motion reported since the last absolute position, or by the locked pointer deltas while G/R/S wraps the cursor around the viewport
+	fn update_pointer_position(&mut self, reported: ViewportPosition) -> ViewportPosition {
+		let Some(cursor) = &mut self.software_cursor else { return reported };
+
+		let motion = reported - cursor.last_absolute;
+		cursor.last_absolute = reported;
+
+		if motion != ViewportPosition::ZERO {
+			// The OS cursor only reappears once the lock is lost, and that jump is not movement to apply
+			if cursor.tracking_deltas {
+				cursor.tracking_deltas = false;
+			} else {
+				cursor.position += motion;
+			}
+		}
+
+		cursor.position
+	}
+
+	// Tells the frontend where to draw the software cursor, which wraps around the viewport while the OS cursor is locked
+	fn send_software_cursor(&self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
+		let Some(cursor) = self.software_cursor else { return };
+
+		let position = wrap_software_cursor(cursor.position, viewport.size().into_dvec2());
+		responses.add(FrontendMessage::UpdateSoftwareCursor {
+			visible: true,
+			x: position.x,
+			y: position.y,
+		});
+	}
+
 	fn translate_mouse_event(&mut self, mut new_state: PointerState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		let click_mappings = [
 			(MouseKeys::LEFT, Key::MouseLeft),
@@ -191,11 +270,90 @@ impl InputPreprocessorMessageHandler {
 	}
 }
 
+/// Wraps a software cursor position into the viewport bounds
+fn wrap_software_cursor(position: ViewportPosition, size: ViewportPosition) -> ViewportPosition {
+	if size.x > 0. && size.y > 0. { position.rem_euclid(size) } else { position }
+}
+
 #[cfg(test)]
 mod test {
 	use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
-	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, ViewportPosition};
 	use crate::messages::prelude::*;
+
+	fn pointer_state(x: f64, y: f64) -> EditorPointerState {
+		EditorPointerState {
+			editor_position: ViewportPosition::new(x, y),
+			..Default::default()
+		}
+	}
+
+	#[test]
+	fn software_cursor_tracks_locked_deltas_and_ignores_the_reported_position() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let viewport = ViewportMessageHandler::default();
+		let mut responses = VecDeque::new();
+		let context = || InputPreprocessorMessageContext { viewport: &viewport };
+		let moved = |x: f64, y: f64| InputPreprocessorMessage::PointerMove {
+			editor_mouse_state: pointer_state(x, y),
+			modifier_keys: ModifierKeys::empty(),
+		};
+
+		let begin = InputPreprocessorMessage::BeginSoftwareCursor {
+			position: ViewportPosition::new(10., 10.),
+		};
+		input_preprocessor.process_message(begin, &mut responses, context());
+
+		input_preprocessor.process_message(moved(10., 10.), &mut responses, context());
+		assert_eq!(
+			input_preprocessor.mouse.position,
+			ViewportPosition::new(10., 10.),
+			"The frozen OS position reported by a locked pointer is not movement"
+		);
+
+		let delta = InputPreprocessorMessage::PointerLockMove {
+			delta: ViewportPosition::new(25., -5.),
+		};
+		input_preprocessor.process_message(delta, &mut responses, context());
+		assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(35., 5.), "A locked delta moves the tracked pointer");
+		assert!(
+			responses.contains(&FrontendMessage::UpdateSoftwareCursor { visible: true, x: 35., y: 5. }.into()),
+			"A locked delta moves the drawn software cursor"
+		);
+
+		input_preprocessor.process_message(moved(10., 10.), &mut responses, context());
+		assert_eq!(
+			input_preprocessor.mouse.position,
+			ViewportPosition::new(35., 5.),
+			"The frozen position is still not movement after a locked delta"
+		);
+
+		input_preprocessor.process_message(moved(0., 0.), &mut responses, context());
+		assert_eq!(
+			input_preprocessor.mouse.position,
+			ViewportPosition::new(35., 5.),
+			"The restored OS position is adopted without moving the pointer"
+		);
+
+		input_preprocessor.process_message(moved(0., 4.), &mut responses, context());
+		assert_eq!(
+			input_preprocessor.mouse.position,
+			ViewportPosition::new(35., 9.),
+			"Movement is tracked relative to the restored position once the lock is lost"
+		);
+	}
+
+	#[test]
+	fn test_wrap_software_cursor() {
+		let size = ViewportPosition::new(100., 50.);
+		assert_eq!(super::wrap_software_cursor(ViewportPosition::new(10., 20.), size), ViewportPosition::new(10., 20.));
+		assert_eq!(super::wrap_software_cursor(ViewportPosition::new(110., -10.), size), ViewportPosition::new(10., 40.));
+		assert_eq!(
+			super::wrap_software_cursor(ViewportPosition::new(10., 20.), ViewportPosition::ZERO),
+			ViewportPosition::new(10., 20.),
+			"A zero-sized viewport leaves the position untouched"
+		);
+	}
 
 	#[test]
 	fn process_action_mouse_move_handle_modifier_keys() {

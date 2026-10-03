@@ -1,5 +1,5 @@
 use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
-use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, ViewportPosition};
 use crate::messages::prelude::*;
 
 #[impl_message(Message, InputPreprocessor)]
@@ -12,6 +12,9 @@ pub enum InputPreprocessorMessage {
 	PointerMove { editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys },
 	PointerUp { editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys },
 	PointerShake { editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys },
+	PointerLockMove { delta: ViewportPosition },
+	BeginSoftwareCursor { position: ViewportPosition },
+	EndSoftwareCursor,
 	CurrentTime { timestamp: u64 },
 	WheelScroll { editor_mouse_state: EditorPointerState, modifier_keys: ModifierKeys },
 }

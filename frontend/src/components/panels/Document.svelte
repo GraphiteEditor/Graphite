@@ -77,25 +77,6 @@
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
 
-	function handleSoftwareCursorWebMove(e: PointerEvent) {
-		if (!$softwareCursor.visible || !isWeb || window.document.pointerLockElement !== viewport) return;
-		const dx = e.movementX;
-		const dy = e.movementY;
-		if (dx === 0 && dy === 0) return;
-		try {
-			editor.appWindowPointerLockMove(dx, dy);
-		} catch {
-			// The wrapper may not be ready yet
-		}
-	}
-
-	function handleSoftwareCursorPointerLockChange() {
-		if (isWeb && $softwareCursor.visible && window.document.pointerLockElement !== viewport) {
-			editor.onKeyDown("Escape", 0, false);
-			editor.onKeyUp("Escape", 0, false);
-		}
-	}
-
 	// Gradient stop color picker
 	let gradientStopPickerColor: SRGBA8 | undefined = undefined;
 	let gradientStopPickerPosition: { x: number; y: number } | undefined = undefined;
@@ -563,9 +544,6 @@
 			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
 		});
 
-		window.addEventListener("pointermove", handleSoftwareCursorWebMove);
-		window.document.addEventListener("pointerlockchange", handleSoftwareCursorPointerLockChange);
-
 		// Text entry
 		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
@@ -613,8 +591,6 @@
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
 		addedFontFaces.forEach((face) => window.document.fonts.delete(face));
-		window.removeEventListener("pointermove", handleSoftwareCursorWebMove);
-		window.document.removeEventListener("pointerlockchange", handleSoftwareCursorPointerLockChange);
 		cleanupInputField(editor);
 
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentArtwork");

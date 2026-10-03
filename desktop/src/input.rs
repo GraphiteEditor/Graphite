@@ -26,7 +26,7 @@ pub(crate) struct InputState {
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
-	software_cursor: Option<(f64, f64)>,
+	software_cursor: Option<glam::DVec2>,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
 }
@@ -54,7 +54,7 @@ impl InputState {
 		self.direct_input = enabled;
 	}
 
-	pub(crate) fn set_software_cursor(&mut self, cursor: Option<(f64, f64)>) {
+	pub(crate) fn set_software_cursor(&mut self, cursor: Option<glam::DVec2>) {
 		self.software_cursor = cursor;
 	}
 
@@ -99,24 +99,25 @@ impl InputState {
 		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
-	pub(crate) fn window_position(&self, x: f64, y: f64) -> Option<PhysicalPosition<f64>> {
+	/// Converts a position in viewport coordinates into the equivalent window coordinates, clamped to the viewport bounds.
+	pub(crate) fn window_position(&self, position: glam::DVec2) -> Option<PhysicalPosition<f64>> {
 		let viewport = self.viewport_info.as_ref()?;
-		if !x.is_finite() || !y.is_finite() {
+		if !position.is_finite() {
 			return None;
 		}
 
-		let (x, y) = (viewport.x + x * viewport.scale, viewport.y + y * viewport.scale);
-		let (left, top, right, bottom) = (viewport.x, viewport.y, viewport.x + viewport.width, viewport.y + viewport.height);
+		let (left, top) = (viewport.x, viewport.y);
+		let (right, bottom) = (left + viewport.width, top + viewport.height);
+		let position = glam::DVec2::new(left, top) + position * viewport.scale;
 
 		Some(PhysicalPosition::new(
-			if right > left { x.clamp(left, right) } else { x },
-			if bottom > top { y.clamp(top, bottom) } else { y },
+			if right > left { position.x.clamp(left, right) } else { position.x },
+			if bottom > top { position.y.clamp(top, bottom) } else { position.y },
 		))
 	}
 
 	fn locked_position(&self) -> Option<PhysicalPosition<f64>> {
-		let (x, y) = self.software_cursor?;
-		self.window_position(x, y)
+		self.window_position(self.software_cursor?)
 	}
 
 	pub(crate) fn modifiers(&self) -> ModifiersState {
@@ -128,7 +129,7 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
-				// A locked pointer only reports the frozen or warp-back OS location, so the editor follows the locked deltas instead
+				// A locked pointer reports the OS cursor frozen at the lock origin (or warped back to it), which is not movement, so the editor follows the relative deltas instead
 				if self.pointer_locked() {
 					return;
 				}
@@ -148,9 +149,7 @@ impl InputState {
 				match route {
 					Route::Ui => ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).build()),
 					Route::Editor => {
-						if !self.pointer_locked() {
-							ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).observe_only().build());
-						}
+						ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).observe_only().build());
 						let editor_mouse_state = match source {
 							PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
 							_ => self.pointer_state(),

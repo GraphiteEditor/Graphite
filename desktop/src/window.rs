@@ -188,7 +188,10 @@ impl Window {
 
 	pub(crate) fn start_pointer_lock(&self) -> bool {
 		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
-		self.winit_window.set_cursor_visible(false);
+		// Never hide the cursor unless the grab actually took: platforms that refuse the lock (notably Wayland) would otherwise leave the app with no usable cursor
+		if locked {
+			self.winit_window.set_cursor_visible(false);
+		}
 		locked
 	}
 

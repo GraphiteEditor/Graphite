@@ -3,7 +3,7 @@ import type { DialogStore } from "/src/stores/dialog";
 import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
-import { softwareCursorClientPosition } from "/src/stores/software-cursor";
+import { softwareCursor, softwareCursorClientPosition } from "/src/stores/software-cursor";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
@@ -116,13 +116,21 @@ function isObserveOnly(e: MouseEvent): boolean {
 
 // A locked pointer stays frozen where the lock began, so report events at the software cursor
 function pointerEventPosition(e: MouseEvent): { x: number; y: number } {
-	const softwareCursor = inPointerLock ? softwareCursorClientPosition() : undefined;
-	return softwareCursor ?? { x: e.clientX, y: e.clientY };
+	const cursorPosition = inPointerLock ? softwareCursorClientPosition() : undefined;
+	return cursorPosition ?? { x: e.clientX, y: e.clientY };
+}
+
+// A locked pointer only reports a frozen position, so its movement deltas are what go to the backend
+function forwardLockedPointerDeltas(e: PointerEvent, editor: EditorWrapper): void {
+	if (get(softwareCursor).visible && (e.movementX !== 0 || e.movementY !== 0)) editor.appWindowPointerLockMove(e.movementX, e.movementY);
 }
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
-	if (inPointerLock) return;
+	if (inPointerLock) {
+		forwardLockedPointerDeltas(e, editor);
+		return;
+	}
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
@@ -232,8 +240,15 @@ export function onContextMenu(e: MouseEvent) {
 	}
 }
 
-export function onPointerLockChange() {
+export function onPointerLockChange(editor: EditorWrapper) {
+	const wasLocked = inPointerLock;
 	inPointerLock = Boolean(window.document.pointerLockElement);
+
+	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it
+	if (wasLocked && !inPointerLock && get(softwareCursor).visible) {
+		editor.onKeyDown("Escape", 0, false);
+		editor.onKeyUp("Escape", 0, false);
+	}
 }
 
 // Wheel events

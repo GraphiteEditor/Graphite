@@ -346,11 +346,11 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::PointerUnlock { x, y } => {
-				let destination = self.input_state.window_position(x, y);
+				let destination = self.input_state.window_position(glam::DVec2::new(x, y));
 				self.unlock_pointer(destination);
 			}
 			DesktopFrontendMessage::UpdateSoftwareCursor { visible, x, y } => {
-				self.input_state.set_software_cursor(visible.then_some((x, y)));
+				self.input_state.set_software_cursor(visible.then_some(glam::DVec2::new(x, y)));
 			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::Exit);
