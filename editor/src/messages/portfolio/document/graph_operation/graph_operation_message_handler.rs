@@ -502,7 +502,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+				let tree = match usvg::Tree::from_str(&svg, &usvg_options()) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DialogMessage::DisplayDialogError {
@@ -809,8 +809,8 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		usvg::Node::Path(path) => {
 			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
+		usvg::Node::Image(image) => {
+			import_usvg_image(modify_inputs, node, image, layer);
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
@@ -860,8 +860,8 @@ fn import_usvg_node_inner(
 			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 			0
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
+		usvg::Node::Image(image) => {
+			import_usvg_image(modify_inputs, node, image, layer);
 			0
 		}
 		usvg::Node::Text(text) => {
@@ -1067,9 +1067,81 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 	};
 }
 
+/// usvg options for parsing SVGs pasted into or opened by the editor.
+///
+/// Only images embedded as data URIs are imported. Any other `href` is refused rather than resolved, because usvg's
+/// default resolver reads it as a local file path, which would silently embed the user's local files into a document.
+fn usvg_options() -> usvg::Options<'static> {
+	usvg::Options {
+		image_href_resolver: usvg::ImageHrefResolver {
+			resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+			resolve_string: Box::new(|_, _| None),
+		},
+		..Default::default()
+	}
+}
+
+fn import_usvg_image(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, image: &usvg::Image, layer: LayerNodeIdentifier) {
+	// usvg hands us the already-encoded bytes, which we store as an embedded resource.
+	let Some(image_data) = (match image.kind() {
+		usvg::ImageKind::JPEG(data) | usvg::ImageKind::PNG(data) | usvg::ImageKind::GIF(data) | usvg::ImageKind::WEBP(data) => Some(data.as_slice()),
+		// Nested SVG images are preprocessed by usvg into a tree of their own, which we don't import here.
+		// Non-default `preserveAspectRatio` slicing and clipping are also not reproduced.
+		usvg::ImageKind::SVG(_) => None,
+	}) else {
+		log::warn!("Skipping SVG image: only embedded raster data URI images are imported");
+		return;
+	};
+
+	let transform_node_id = modify_inputs.insert_image_data(image_data.into(), layer);
+
+	// `abs_transform` already accounts for the image's x, y, width, height and aspect-ratio alignment, so scaling by the
+	// pixel size reproduces the source raster at its native resolution.
+	let pixel_size = DVec2::new(image.size().width() as f64, image.size().height() as f64);
+	let final_transform = usvg_transform(node.abs_transform()) * DAffine2::from_scale(pixel_size);
+
+	if final_transform != DAffine2::IDENTITY {
+		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, final_transform);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// A 1x1 transparent PNG, embedded as a data URI.
+	const PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+	fn count_image_nodes(tree: &usvg::Tree) -> usize {
+		fn walk(group: &usvg::Group, count: &mut usize) {
+			for node in group.children() {
+				match node {
+					usvg::Node::Image(_) => *count += 1,
+					// Only groups nest further children.
+					usvg::Node::Group(nested) => walk(nested, count),
+					_ => {}
+				}
+			}
+		}
+		let mut count = 0;
+		walk(tree.root(), &mut count);
+		count
+	}
+
+	#[test]
+	fn svg_data_uri_images_are_imported() {
+		let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="{PNG_DATA_URI}" width="10" height="10"/></svg>"#);
+		let tree = usvg::Tree::from_str(&svg, &usvg_options()).expect("an embedded data URI image should parse");
+		assert_eq!(count_image_nodes(&tree), 1, "the embedded image should survive parsing");
+	}
+
+	#[test]
+	fn svg_local_file_image_references_are_not_resolved() {
+		// A local path must not be read and embedded, or pasting an SVG could leak files from the user's disk.
+		let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="C:/Users/someone/Pictures/private.png" width="10" height="10"/></svg>"#;
+		let tree = usvg::Tree::from_str(svg, &usvg_options()).expect("an unresolvable image reference shouldn't fail the whole parse");
+		assert_eq!(count_image_nodes(&tree), 0, "a non-data-URI reference should not become an image node");
+	}
 
 	#[tokio::test]
 	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {
