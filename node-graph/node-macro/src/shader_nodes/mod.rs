@@ -36,6 +36,8 @@ pub(crate) enum ShaderNodeType {
 	/// recursively generating more gpu nodes. But it still counts as a gpu node and will get the
 	/// `#[cfg(feature = "std")]` feature gate around it's impl.
 	ShaderNode,
+	/// A per-pixel color adjustment compiled to a fragment shader. Its parameters are declared `f64` and `i64` like the rest
+	/// of the catalog, and the fn is emitted a second time with their `f32` and `i32` counterparts for the shader build.
 	PerPixelAdjust(PerPixelAdjust),
 }
 

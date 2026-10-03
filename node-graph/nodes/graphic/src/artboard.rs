@@ -24,8 +24,10 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	)]
 	content: impl Node<Context<'static>, Output = T>,
 	/// Coordinate of the top-left corner of the artboard within the document.
+	#[unit(" px")]
 	location: Item<DVec2>,
 	/// Width and height of the artboard within the document.
+	#[unit(" px")]
 	dimensions: Item<DVec2>,
 	/// Color of the artboard background.
 	background: Item<Color>,

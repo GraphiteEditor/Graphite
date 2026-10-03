@@ -42,7 +42,7 @@
 			editor.openColorPicker(colorOrGradient, allowNone, disabled);
 			// Auto-select the hex color code text input. Deferred so the layout has time to render after the picker opens.
 			setTimeout(() => {
-				const hexInput = self?.div()?.querySelector(".text-input input");
+				const hexInput = self?.div()?.querySelector("[data-text-input] [data-input-element]");
 				if (hexInput instanceof HTMLInputElement) hexInput.select();
 			}, 0);
 		} else if (!isOpen && lastOpen) {

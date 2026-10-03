@@ -53,7 +53,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.88"
+rust-version = "1.98"
 edition = "2024"
 authors = ["Graphite Authors <contact@graphite.art>"]
 homepage = "https://graphite.art"
@@ -114,7 +114,7 @@ rustc-hash = "2.0"
 bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
-rmp-serde = "1.3"
+postcard = { version = "1.1", default-features = false, features = ["use-std"] }
 serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
@@ -172,7 +172,6 @@ tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-mult
 kurbo = { version = "0.13", features = ["serde"] }
 vello = "0.10"
 vello_encoding = "0.10"
-resvg = "0.47"
 usvg = "0.47"
 simplecss = "0.2"
 parley = { version = "0.9", default-features = false, features = ["std"] }
@@ -182,10 +181,12 @@ color = "0.3"
 # Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
-glam = { version = "0.32.1", default-features = false, features = [
+glam = { version = "0.33", default-features = false, features = [
 	"nostd-libm",
 	"scalar-math",
 	"bytemuck",
+	"debug-glam-assert",
+	"all-types",
 ] }
 base64 = "0.22"
 blake3 = "1.5"
@@ -239,8 +240,12 @@ rfd = "0.17"
 open = "5.3"
 spin = "0.10"
 clap = "4.5"
-spirv-std = { version = "0.10.0-alpha.1", features = ["bytemuck"] }
-cargo-gpu-install = { version = "0.10.0-alpha.1", default-features = false }
+
+# Ensure these are kept in sync with .nix/deps/rust-gpu.nix
+# Git commit required for glam=0.33 support (TODO: use release when new version is published. Last publish was Apr 17)
+spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "2fff75a21a1909945ac85f5818843dd9960004d7", features = ["bytemuck"] }
+cargo-gpu-install = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "2fff75a21a1909945ac85f5818843dd9960004d7", default-features = false }
+
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"

@@ -12,6 +12,7 @@
 	import { createDialogStore, destroyDialogStore } from "/src/stores/dialog";
 	import { createDocumentStore, destroyDocumentStore } from "/src/stores/document";
 	import { createFullscreenStore, destroyFullscreenStore } from "/src/stores/fullscreen";
+	import { createMathExpressionStore, destroyMathExpressionStore } from "/src/stores/math-expression";
 	import { createNodeGraphStore, destroyNodeGraphStore } from "/src/stores/node-graph";
 	import { createPortfolioStore, destroyPortfolioStore } from "/src/stores/portfolio";
 	import { createTooltipStore, destroyTooltipStore } from "/src/stores/tooltip";
@@ -33,6 +34,7 @@
 		portfolio: createPortfolioStore(subscriptions, editor),
 		appWindow: createAppWindowStore(subscriptions),
 		colorPicker: createColorPickerStore(subscriptions),
+		mathExpression: createMathExpressionStore(subscriptions),
 	};
 	Object.entries(stores).forEach(([key, store]) => setContext(key, store));
 
@@ -62,6 +64,7 @@
 		destroyPortfolioStore();
 		destroyAppWindowStore();
 		destroyColorPickerStore();
+		destroyMathExpressionStore();
 
 		// Managers
 		destroyClipboardManager();
@@ -375,5 +378,13 @@
 		font-style: normal;
 		font-stretch: normal;
 		src: url("/node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "STIX Two Math";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("/node_modules/@fontsource/stix-two-math/files/stix-two-math-latin-400-normal.woff2") format("woff2");
 	}
 </style>

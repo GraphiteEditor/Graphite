@@ -10,6 +10,7 @@ use graph_craft::document::NodeId;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
+use graphene_std::core_types::misc::format_f64;
 use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
@@ -214,10 +215,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Gradient>,
 		List<String>,
 		List<f64>,
-		List<f32>,
-		List<u32>,
-		List<u64>,
-		List<i32>,
 		List<i64>,
 		List<bool>,
 		List<DVec2>,
@@ -274,10 +271,6 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<Gradient>,
 		Item<String>,
 		Item<f64>,
-		Item<f32>,
-		Item<u32>,
-		Item<u64>,
-		Item<i32>,
 		Item<i64>,
 		Item<bool>,
 		Item<DVec2>,
@@ -576,7 +569,7 @@ impl TableItemLayout for Coverage {
 
 impl TableItemLayout for TransferCurve {
 	fn type_name() -> &'static str {
-		"Transfer Curve"
+		"TransferCurve"
 	}
 	fn identifier(&self) -> String {
 		let points = self.points().len();
@@ -841,30 +834,17 @@ impl TableItemLayout for Gradient {
 	}
 }
 
-macro_rules! impl_table_item_layout_for_number {
-	($($ty:ty => $type_name:literal),* $(,)?) => {
-		$(
-			impl TableItemLayout for $ty {
-				fn type_name() -> &'static str {
-					$type_name
-				}
-				fn identifier(&self) -> String {
-					format!("{self}")
-				}
-				fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-					vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
-				}
-			}
-		)*
+impl TableItemLayout for i64 {
+	fn type_name() -> &'static str {
+		"Integer"
+	}
+	fn identifier(&self) -> String {
+		format!("{self}")
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
 	}
 }
-impl_table_item_layout_for_number!(
-	f32 => "Number (f32)",
-	u32 => "Number (u32)",
-	i32 => "Number (i32)",
-	u64 => "Number (u64)",
-	i64 => "Number (i64)",
-);
 
 // Denoised so 0.1 + 0.2 reads as 0.3 rather than 0.30000000000000004. We don't do this for f32 because it lacks precision to reliably distinguish between intentional digits and noise.
 impl TableItemLayout for f64 {
@@ -872,7 +852,7 @@ impl TableItemLayout for f64 {
 		"Number"
 	}
 	fn identifier(&self) -> String {
-		format!("{}", round_away_float_noise(*self))
+		format_f64(round_away_float_noise(*self))
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
@@ -953,26 +933,6 @@ fn string_preview(value: &str) -> String {
 	}
 
 	first_line.chars().take(MAX_CHARACTERS - 1).chain(['…']).collect()
-}
-
-impl TableItemLayout for Option<f64> {
-	fn type_name() -> &'static str {
-		"Option<f64>"
-	}
-	fn identifier(&self) -> String {
-		"Option<f64>".to_string()
-	}
-	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
-		let text = match self {
-			Some(value) => format!("Some({})", round_away_float_noise(*value)),
-			None => "None".to_string(),
-		};
-
-		vec![TextLabel::new(text).selectable(true).narrow(true).widget_instance()]
-	}
-	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), _data))]
-	}
 }
 
 impl TableItemLayout for DVec2 {
@@ -1259,13 +1219,8 @@ macro_rules! known_item_types {
 			DVec2,
 			Affine2,
 			Vec2,
-			Option<f64>,
 			f64,
-			f32,
 			u8,
-			u32,
-			u64,
-			i32,
 			i64,
 			bool,
 			String,

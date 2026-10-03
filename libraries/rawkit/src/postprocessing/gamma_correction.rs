@@ -24,7 +24,7 @@ impl Image<u16> {
 	}
 }
 
-/// `max_intensity` must be non-zero.
+/// `max_intensity` must be nonzero.
 fn generate_gamma_curve(power: f64, threshold: f64, max_intensity: f64) -> Vec<u16> {
 	debug_assert!(max_intensity != 0.);
 

@@ -3,6 +3,8 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "/src/managers/input";
+	import { clampedDigit, compareDecimal, digitAt, digitIndex, formatDecimal, parseDecimal, roundDecimal, sameDigit, stepDigit } from "/src/utility-functions/decimal";
+	import type { Decimal, Digit } from "/src/utility-functions/decimal";
 	import { roundAwayFloatNoise } from "/src/utility-functions/numbers";
 	import { browserVersion } from "/src/utility-functions/platform";
 	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -14,6 +16,8 @@
 
 	const dispatch = createEventDispatcher<{
 		value: number | undefined;
+		exactValue: string;
+		digit: Digit;
 		commitText: string;
 		startHistoryTransaction: undefined;
 		commitHistoryTransaction: undefined;
@@ -51,6 +55,12 @@
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
 	export let unitIsHiddenWhenEditing = true;
+	/// When given, the value as exact decimal text like `-2.50` or `1.5e-3`, shown as written and stepped digit by digit with no float rounding.
+	/// New text is emitted with `exactValue`, and typed text that isn't a number with `commitText`. Only the "Increment" mode with the "Add" behavior and no label supports it.
+	export let exact: string | undefined = undefined;
+	/// With `exact`, the digit that dragging and the arrows step, which is underlined. Dragging the underline onto another digit emits that
+	/// digit with `digit`.
+	export let digit: Digit = { part: "mantissa", place: 0 };
 
 	// Sizing
 	export let minWidth = 0;
@@ -65,7 +75,7 @@
 
 	let self: FieldInput | undefined;
 	let inputRangeElement: HTMLInputElement | undefined;
-	let text = displayText(value, unit);
+	let text = exact ?? displayText(value, unit);
 	let editing = false;
 	let isDragging = false;
 	let pressingArrow = false;
@@ -83,6 +93,17 @@
 	let rangeSliderClickDragState: "Ready" | "Deciding" | "Dragging" | "Aborted" = "Ready";
 	// Stores the initial value upon beginning to drag so it can be restored upon aborting. Set to `undefined` when not dragging.
 	let initialValueBeforeDragging: number | undefined = undefined;
+	// The exact mode's counterpart to `initialValueBeforeDragging`.
+	let initialExactBeforeDragging: string | undefined = undefined;
+	// The exact mode's value a drag steps from, and whether it steps the digit after the stepped one, with Shift.
+	let exactDragBase: { text: string; finer: boolean } | undefined = undefined;
+	// The exact mode's copy of the text drawing the stepped digit's underline, and the digit that underline is being dragged to.
+	let digitMark: HTMLSpanElement | undefined;
+	let markDragDigit: Digit | undefined = undefined;
+	// The digit a drag or arrow press steps throughout, which the underline shows unclamped until it ends.
+	let steppingDigit: Digit | undefined = undefined;
+	let markDragStartX = 0;
+	let markDragMoved = false;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
 	let cumulativeDragDelta = 0;
 	// Track whether the Shift key is currently held down.
@@ -100,6 +121,10 @@
 	let sliderAbortTimeout2: ReturnType<typeof setTimeout> | undefined;
 
 	$: watchValue(value, unit);
+	$: if (exact !== undefined && !editing) text = exact;
+	$: present = exact !== undefined || value !== undefined;
+	// A number of only one digit, like `0` or `-1`, has no other digit to move the underline to, so it isn't shown
+	$: markedDigit = exact !== undefined && writtenDigits(text).length > 1 ? digitIndex(text, markDragDigit || steppingDigit || clampedDigit(text, digit)) : undefined;
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
@@ -163,6 +188,9 @@
 		// Don't update if the slider is currently being dragged (we don't want the backend fighting with the user's drag)
 		if (rangeSliderClickDragState === "Dragging") return;
 
+		// Exact mode shows its own text instead
+		if (exact !== undefined) return;
+
 		// Draw a dash if the value is undefined
 		if (value === undefined) {
 			text = "-";
@@ -181,18 +209,23 @@
 		text = displayText(sanitized, unit);
 	}
 
+	// Rounds half away from zero, the graph's one Number to Integer rule, where `Math.round` would carry -1.5 up to -1
+	function roundToInteger(value: number): number {
+		return Math.sign(value) * Math.round(Math.abs(value));
+	}
+
 	// Called internally to update the value indirectly by informing the parent component of the new value,
 	// so it can update the prop for this component, finally yielding the value change.
 	function updateValue(newValue: number | undefined): number | undefined {
 		// Check if the new value is valid, otherwise we use the old value (rounded if it's an integer)
-		const oldValue = value !== undefined && isInteger ? Math.round(value) : value;
+		const oldValue = value !== undefined && isInteger ? roundToInteger(value) : value;
 		let newValueValidated = newValue !== undefined ? newValue : oldValue;
 
 		if (newValueValidated !== undefined) {
 			if (typeof min === "number" && !Number.isNaN(min)) newValueValidated = Math.max(newValueValidated, min);
 			if (typeof max === "number" && !Number.isNaN(max)) newValueValidated = Math.min(newValueValidated, max);
 
-			if (isInteger) newValueValidated = Math.round(newValueValidated);
+			if (isInteger) newValueValidated = roundToInteger(newValueValidated);
 
 			rangeSliderValue = newValueValidated;
 			rangeSliderValueAsRendered = newValueValidated;
@@ -204,6 +237,125 @@
 
 		// For any caller that needs to know what the value was changed to, we return it here
 		return newValueValidated;
+	}
+
+	// The exact mode's counterpart to `updateValue`, held within `min` and `max`, which returns the held number. It's written as `written`
+	// where that's its value, or as already written where it's unchanged, so a number like `.5` or `1E3` keeps its spelling.
+	function updateExact(decimal: Decimal, written?: string): Decimal {
+		const bound = (limit: number | undefined) => (typeof limit === "number" ? parseDecimal(`${limit}`) : undefined);
+		const [lower, upper] = [bound(min), bound(max)];
+
+		let held = decimal;
+		if (lower && compareDecimal(held, lower) < 0) held = lower;
+		if (upper && compareDecimal(held, upper) > 0) held = upper;
+
+		const current = exact === undefined ? undefined : parseDecimal(exact);
+		if (written !== undefined && compareDecimal(held, decimal) === 0) text = written;
+		else if (exact !== undefined && current && compareDecimal(held, current) === 0) text = exact;
+		else text = formatDecimal(held);
+
+		if (text !== exact) dispatch("exactValue", text);
+		return held;
+	}
+
+	// Pressing the stepped digit's underline starts dragging it onto another digit, which becomes the stepped one when released
+	function onMarkPointerDown(e: PointerEvent) {
+		if (disabled || e.button !== BUTTON_LEFT || !(e.currentTarget instanceof HTMLElement)) return;
+
+		// Keeps the focus where it is
+		e.preventDefault();
+		e.currentTarget.setPointerCapture(e.pointerId);
+		markDragDigit = clampedDigit(text, digit);
+		markDragStartX = e.clientX;
+		markDragMoved = false;
+	}
+
+	function onMarkPointerMove(e: PointerEvent) {
+		if (markDragDigit === undefined) return;
+
+		// A press only becomes a drag once it moves a few pixels
+		markDragMoved ||= Math.abs(e.clientX - markDragStartX) > 3;
+		if (markDragMoved) markDragDigit = digitNearest(e.clientX) || markDragDigit;
+	}
+
+	// A release ends a drag where it is, and a click that didn't drag moves the underline to the next digit on the right, or with Shift on
+	// the left, showing it can move
+	function onMarkPointerUp(released: boolean, backward = false) {
+		if (markDragDigit === undefined) return;
+
+		const chosen = released && !markDragMoved ? nextDigit(markDragDigit, backward) : markDragDigit;
+		if (!sameDigit(chosen, digit)) dispatch("digit", chosen);
+		markDragDigit = undefined;
+	}
+
+	// The digits of a number as written, left to right
+	function writtenDigits(written: string): Digit[] {
+		return Array.from(written).flatMap((_, index) => digitAt(written, index) || []);
+	}
+
+	// The digit after another, or before it going backward, wrapping around past either end
+	function nextDigit(from: Digit, backward: boolean): Digit {
+		const digits = writtenDigits(text);
+		const current = digits.findIndex((written) => sameDigit(written, from));
+		if (backward) return digits[current - 1] || digits[digits.length - 1] || from;
+		return digits[current + 1] || digits[0] || from;
+	}
+
+	// The digit the underline shows, which a drag or arrow press steps, kept as the chosen one where it was clamped onto the number's own digits
+	function useShownDigit(): Digit {
+		const shown = clampedDigit(text, digit);
+		if (!sameDigit(shown, digit)) dispatch("digit", shown);
+		return shown;
+	}
+
+	// The digit drawn nearest a horizontal position, measured on the underline's copy of the text
+	function digitNearest(x: number): Digit | undefined {
+		if (!digitMark) return undefined;
+
+		const walker = document.createTreeWalker(digitMark, NodeFilter.SHOW_TEXT);
+		const range = document.createRange();
+		let index = 0;
+		let nearest: { digit: Digit; distance: number } | undefined = undefined;
+		for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+			const length = node.textContent?.length || 0;
+			for (let offset = 0; offset < length; offset += 1, index += 1) {
+				const written = digitAt(text, index);
+				if (written === undefined) continue;
+
+				range.setStart(node, offset);
+				range.setEnd(node, offset + 1);
+				const { left, right } = range.getBoundingClientRect();
+				const distance = Math.abs((left + right) / 2 - x);
+				if (!nearest || distance < nearest.distance) nearest = { digit: written, distance };
+			}
+		}
+		return nearest?.digit;
+	}
+
+	// Steps the digit once per 10 pixels, or with Shift the digit after it, and with Ctrl rounds away the digits after it, both only in the
+	// mantissa since an exponent ends at its ones
+	function exactDragUpdate(delta: number, slow: boolean, snapping: boolean, initial: string) {
+		const stepping = steppingDigit || digit;
+		const finer = slow && stepping.part === "mantissa";
+
+		// Changing the speed partway through a drag steps on from the value shown
+		if (exactDragBase?.finer !== finer) {
+			exactDragBase = { text: exactDragBase ? text : initial, finer };
+			cumulativeDragDelta = 0;
+		}
+		const decimal = parseDecimal(exactDragBase.text);
+		if (!decimal) return;
+
+		cumulativeDragDelta += delta;
+		const steps = Math.trunc(cumulativeDragDelta / 10);
+		const stepped = stepDigit(decimal, finer ? { part: "mantissa", place: stepping.place - 1 } : stepping, steps);
+
+		// Dragging on past `min` or `max` builds up no movement, so dragging back steps on from the value it was held to
+		const wanted = snapping && stepping.part === "mantissa" ? roundDecimal(stepped, stepping.place) : stepped;
+		if (compareDecimal(updateExact(wanted), wanted) !== 0) {
+			exactDragBase = { text, finer };
+			cumulativeDragDelta = 0;
+		}
 	}
 
 	// ================
@@ -227,7 +379,13 @@
 			return `${sign}${unitlessDisplayValue.toFixed(decimalPlaces)}${unPluralize(unit, displayValue)}`;
 		}
 
-		return `${unitlessDisplayValue}${unPluralize(unit, displayValue)}`;
+		return `${numberText(unitlessDisplayValue)}${unPluralize(unit, displayValue)}`;
+	}
+
+	// Infinity is written as the math parser reads it, so a field showing it can be edited and committed unchanged
+	function numberText(number: number): string {
+		if (Math.abs(number) === Infinity) return number < 0 ? "-∞" : "∞";
+		return `${number}`;
 	}
 
 	// Removes the trailing "s" from a unit if the quantity is 1.
@@ -242,11 +400,12 @@
 
 	function onTextFocused() {
 		// The number shown when editing the field, with floating point imprecision noise removed
-		const noFloatingImprecisionValue = value === undefined ? undefined : roundAwayFloatNoise(value);
+		const noFloatingImprecisionText = value === undefined ? undefined : numberText(roundAwayFloatNoise(value));
 
-		if (value === undefined) text = "";
-		else if (unitIsHiddenWhenEditing) text = `${noFloatingImprecisionValue}`;
-		else text = `${noFloatingImprecisionValue}${unPluralize(unit, value)}`;
+		if (exact !== undefined) text = exact;
+		else if (value === undefined) text = "";
+		else if (unitIsHiddenWhenEditing) text = `${noFloatingImprecisionText}`;
+		else text = `${noFloatingImprecisionText}${unPluralize(unit, value)}`;
 
 		editing = true;
 
@@ -261,6 +420,21 @@
 		// The `unFocus()` call at the bottom of this function and in `onTextChangeCanceled()` causes this function to be run again, so this check skips a second run.
 		if (!editing) return;
 
+		// Exact mode keeps a typed number as written, and hands any other typed text to its owner to evaluate, showing the old value meanwhile
+		if (exact !== undefined) {
+			const typed = parseDecimal(text);
+			if (typed) {
+				updateExact(typed, text.trim());
+			} else {
+				dispatch("commitText", text);
+				text = exact;
+			}
+
+			editing = false;
+			self?.unFocus();
+			return;
+		}
+
 		// The backend evaluates the math, validates against this widget's constraints, and (only when changed) applies it within a history transaction before resending the widget.
 		dispatch("commitText", text);
 
@@ -272,6 +446,13 @@
 	}
 
 	function onTextChangeCanceled() {
+		if (exact !== undefined) {
+			text = exact;
+			editing = false;
+			self?.unFocus();
+			return;
+		}
+
 		updateValue(undefined);
 
 		const valueOrZero = value !== undefined ? value : 0;
@@ -288,10 +469,17 @@
 	// =============================
 
 	function onIncrementPointerDown(e: PointerEvent, direction: "Decrease" | "Increase") {
-		if (value === undefined || e.button !== BUTTON_LEFT) return;
+		if (!present || e.button !== BUTTON_LEFT) return;
 
 		const actions: Record<NumberInputIncrementBehavior, () => void> = {
 			Add: () => {
+				// Exact mode steps the underlined digit
+				const decimal = exact !== undefined ? parseDecimal(text) : undefined;
+				if (decimal) {
+					updateExact(stepDigit(decimal, steppingDigit || digit, direction === "Increase" ? 1 : -1));
+					return;
+				}
+
 				const directionAddend = direction === "Increase" ? step : -step;
 				const newValue = value !== undefined ? value + directionAddend : undefined;
 				updateValue(newValue);
@@ -319,6 +507,8 @@
 
 		pressingArrow = true;
 		initialValueBeforeDragging = value;
+		initialExactBeforeDragging = exact;
+		if (exact !== undefined) steppingDigit = useShownDigit();
 		let afterInitialDelay = false;
 		sendAction();
 		repeatTimeout = setTimeout(sendAction, PRESS_REPEAT_DELAY_MS);
@@ -327,11 +517,14 @@
 
 	function onIncrementPointerUp() {
 		pressingArrow = false;
+		steppingDigit = undefined;
 		clearTimeout(repeatTimeout);
+		removeEventListener("keydown", incrementPressAbort);
 	}
 
 	function incrementPressAbort(e: KeyboardEvent | MouseEvent) {
-		// Only abort if the user right clicks or presses Escape
+		// Only abort a press still in progress, if the user right clicks or presses Escape
+		if (!pressingArrow) return;
 		if (e instanceof KeyboardEvent && e.key !== "Escape") return;
 		if (e instanceof MouseEvent && e.button !== BUTTON_RIGHT) return;
 
@@ -339,8 +532,11 @@
 		if (element) preventEscapeClosingParentFloatingMenu(element);
 
 		pressingArrow = false;
+		steppingDigit = undefined;
 		clearTimeout(repeatTimeout);
-		updateValue(initialValueBeforeDragging);
+		const initialExact = initialExactBeforeDragging === undefined ? undefined : parseDecimal(initialExactBeforeDragging);
+		if (initialExact) updateExact(initialExact, initialExactBeforeDragging);
+		else updateValue(initialValueBeforeDragging);
 		removeEventListener("keydown", incrementPressAbort);
 	}
 
@@ -358,7 +554,7 @@
 
 	function onDragPointerDown(e: PointerEvent) {
 		// Only drag the number with left click (and when it's valid to do so)
-		if (e.button !== BUTTON_LEFT || mode !== "Increment" || value === undefined || disabled || editing) return;
+		if (e.button !== BUTTON_LEFT || mode !== "Increment" || !present || disabled || editing) return;
 
 		// Remove the text entry cursor from any other selected text field
 		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -428,6 +624,9 @@
 			editor.appWindowPointerLock();
 		}
 		initialValueBeforeDragging = value;
+		initialExactBeforeDragging = exact;
+		if (exact !== undefined) steppingDigit = useShownDigit();
+		exactDragBase = undefined;
 		cumulativeDragDelta = 0;
 
 		// Tell the backend that we are beginning a transaction for the history system
@@ -445,10 +644,16 @@
 			// Confirm on release by setting the reset value to the current value, so once the pointer lock ends,
 			// the value is set to itself instead of the initial (abort) value in the "pointerlockchange" event handler function.
 			initialValueBeforeDragging = value;
+			if (initialExactBeforeDragging !== undefined) initialExactBeforeDragging = text;
 			cumulativeDragDelta = 0;
 
 			if (usePointerLock) document.exitPointerLock();
 			else pointerLockChange();
+		};
+		// Moves the value by a drag's horizontal movement, in whichever mode the input is in
+		const dragUpdate = (delta: number, slow: boolean, snapping: boolean) => {
+			if (initialExactBeforeDragging !== undefined) exactDragUpdate(delta, slow, snapping, initialExactBeforeDragging);
+			else if (initialValueBeforeDragging !== undefined) pointerLockMoveUpdate(delta, slow, snapping, initialValueBeforeDragging);
 		};
 		const pointerMove = (e: PointerEvent) => {
 			// TODO: Display a fake cursor over the top of the page which wraps around the edges of the editor.
@@ -469,18 +674,13 @@
 			}
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
-			}
+			if (ignoredFirstMovement) dragUpdate(e.movementX, e.shiftKey, e.ctrlKey);
 			ignoredFirstMovement = true;
 		};
 		// On desktop we don't get `pointermove` events while in pointer lock (CEF doesn't support pointer lock).
 		// We have to listen for our custom `pointerlockmove` events instead.
 		const pointerLockMove = ({ detail }: WindowEventMap["pointerlockmove"]) => {
-			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const delta = detail.x;
-				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
-			}
+			if (ignoredFirstMovement) dragUpdate(detail.x, shiftKeyDown, ctrlKeyDown);
 			ignoredFirstMovement = true;
 		};
 		const pointerLockChange = () => {
@@ -491,8 +691,13 @@
 			if (isSafari) document.body.classList.remove("cursor-hidden");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
-			updateValue(initialValueBeforeDragging);
+			const initialExact = initialExactBeforeDragging === undefined ? undefined : parseDecimal(initialExactBeforeDragging);
+			if (initialExact) updateExact(initialExact, initialExactBeforeDragging);
+			else updateValue(initialValueBeforeDragging);
 			initialValueBeforeDragging = undefined;
+			initialExactBeforeDragging = undefined;
+			exactDragBase = undefined;
+			steppingDigit = undefined;
 			cumulativeDragDelta = 0;
 
 			// Clean up the event listeners.
@@ -523,7 +728,7 @@
 		cumulativeDragDelta += dragDelta;
 
 		const combined = initialValue + cumulativeDragDelta;
-		const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
+		const combineSnapped = snapping || isInteger ? roundToInteger(combined) : combined;
 
 		const newValue = updateValue(combineSnapped);
 
@@ -571,7 +776,7 @@
 		}
 
 		// Snap the slider value to the nearest integer if the Ctrl key is held, or the widget is set to integer mode.
-		const snappedValue = ctrlKeyDown || isInteger ? Math.round(roundedValue) : roundedValue;
+		const snappedValue = ctrlKeyDown || isInteger ? roundToInteger(roundedValue) : roundedValue;
 
 		// The first "input" event upon mousedown means we transition to a "Deciding" state, allowing us to wait for the
 		// next event to determine if the user is dragging (to slide the slider) or releasing (to edit the numerical text field).
@@ -780,7 +985,19 @@
 	spellcheck={false}
 	bind:this={self}
 >
-	{#if value !== undefined}
+	{#if markedDigit !== undefined}
+		<span class="digit-mark" class:dragging={markDragDigit !== undefined} bind:this={digitMark}
+			>{text.slice(0, markedDigit)}<span
+				class="marked"
+				role="presentation"
+				on:pointerdown={onMarkPointerDown}
+				on:pointermove={onMarkPointerMove}
+				on:pointerup={(e) => onMarkPointerUp(true, e.shiftKey)}
+				on:lostpointercapture={() => onMarkPointerUp(false)}>{text[markedDigit]}</span
+			>{text.slice(markedDigit + 1)}</span
+		>
+	{/if}
+	{#if present}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
 			<button
 				class="arrow left"
@@ -828,6 +1045,81 @@
 	.number-input {
 		&.narrow {
 			--widget-height: 20px;
+		}
+
+		// Laid out like the field's text, which it mirrors in transparent characters
+		.digit-mark {
+			position: absolute;
+			inset: 0;
+			margin: 0 8px;
+			padding: 3px 0;
+			line-height: calc(var(--widget-height) - 6px);
+			text-align: center;
+			white-space: pre;
+			overflow: hidden;
+			color: transparent;
+			pointer-events: none;
+
+			// Brightened while hovered or dragged
+			.marked {
+				position: relative;
+				text-decoration: underline;
+				text-decoration-color: var(--color-8-uppergray);
+				text-decoration-thickness: 1px;
+				text-underline-offset: 2px;
+
+				// The press target, a strip from about 6px above the underline down to the field's bottom edge
+				&::after {
+					content: "";
+					position: absolute;
+					left: 0;
+					right: 0;
+					top: calc(100% - 8px);
+					bottom: -3px;
+					pointer-events: auto;
+					cursor: pointer;
+				}
+			}
+
+			// Thickened by 1px both above and below, and its digit drawn over the dimmed field's own so it alone stays bright
+			.marked:hover,
+			&.dragging .marked {
+				color: var(--color-e-nearwhite);
+				text-decoration-color: var(--color-e-nearwhite);
+				text-decoration-thickness: 3px;
+				text-underline-offset: 1px;
+			}
+
+			// On the digit too, which holds the drag's pointer capture and so sets the cursor once the pointer moves
+			&.dragging .marked,
+			&.dragging .marked::after {
+				cursor: grabbing;
+			}
+		}
+
+		input[type="text"]:focus ~ .digit-mark {
+			display: none;
+		}
+
+		// A disabled field's underline only marks the stepped digit, with no press target to hover or drag
+		&.disabled .digit-mark .marked::after {
+			pointer-events: none;
+		}
+
+		// Hovering or dragging the underline dims the rest of the field, so it reads as what's being pointed at
+		&:has(.digit-mark .marked:hover),
+		&:has(.digit-mark.dragging) {
+			input[type="text"] {
+				color: var(--color-8-uppergray);
+			}
+
+			.arrow.right::before {
+				border-color: transparent transparent transparent var(--color-8-uppergray);
+			}
+
+			.arrow.left::after {
+				border-color: transparent var(--color-8-uppergray) transparent transparent;
+			}
 		}
 
 		&.increment {

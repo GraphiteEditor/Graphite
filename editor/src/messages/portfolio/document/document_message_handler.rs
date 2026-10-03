@@ -1,10 +1,10 @@
-use super::DocumentHistory;
 use super::document_diff::diff_networks;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
+use super::{CursorMoveError, DocumentHistory};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
@@ -32,6 +32,8 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
+use document_container::AnyContainer;
+use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
@@ -148,6 +150,10 @@ pub struct DocumentMessageHandler {
 	/// Undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor.
 	#[serde(skip)]
 	history: DocumentHistory,
+	/// The document's container in the document store. `None` for a document created this session until its store entry opens.
+	#[serde(skip)]
+	#[derivative(Debug = "ignore")]
+	pub(crate) container: Option<AnyContainer>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -199,6 +205,7 @@ impl Default for DocumentMessageHandler {
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
+			container: None,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -406,8 +413,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, resource_storage, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, resource_storage, responses),
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -563,6 +570,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
 					self.node_graph_handler.select_if_not_dragged = None;
+					self.node_graph_handler.duplicated_in_drag = false;
 				}
 				// Abort box selection
 				else if self.node_graph_handler.box_selection_start.is_some() {
@@ -813,7 +821,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					// Clipboard paste or drag-drop: center at cursor or viewport center.
 					// Convert the document-space cursor to the parent's local coordinate space so that
-					// an artboard at a non-zero position does not offset the placement.
+					// an artboard at a nonzero position does not offset the placement.
 					let parent_to_document = {
 						let metadata = self.metadata();
 						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
@@ -876,7 +884,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				} else {
 					// Clipboard paste or drag-drop: center at cursor or viewport center.
 					// Convert the document-space cursor to the parent's local coordinate space so that
-					// an artboard at a non-zero position does not offset the placement.
+					// an artboard at a nonzero position does not offset the placement.
 					let parent_to_document = {
 						let metadata = self.metadata();
 						metadata.document_to_viewport.inverse() * metadata.transform_to_viewport(layer_parent)
@@ -1808,7 +1816,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 impl DocumentMessageHandler {
 	/// Build a document handler from a `.gdd` working copy.
-	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, name: String, path: Option<std::path::PathBuf>) -> Self {
+	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, declarations: Declarations, name: String, path: Option<std::path::PathBuf>) -> Self {
 		let mut document = Self {
 			network_interface: interface,
 			name,
@@ -1821,7 +1829,7 @@ impl DocumentMessageHandler {
 			Ok(resource_registry) => document.resources.registry = resource_registry,
 			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
 		}
-		document.history.set_storage(Some(storage));
+		document.history.set_storage(storage, declarations);
 
 		document
 	}
@@ -1832,6 +1840,12 @@ impl DocumentMessageHandler {
 			self.network_interface.validate_input_metadata(node_id, node, &path);
 			self.network_interface.validate_output_names(node_id, node, &path);
 		}
+
+		// Restoring the parallel-array invariant is how the document arrives, not an edit to it, so what the
+		// fix-ups recorded must not ride along in the first real commit. They still have to reach storage,
+		// so the next commit converts the whole document rather than staging the batch that follows them.
+		self.network_interface.discard_deltas();
+		self.history.require_whole_document_stage();
 
 		self.network_interface.load_structure();
 	}
@@ -2016,9 +2030,14 @@ impl DocumentMessageHandler {
 		self.history.storage_mut()
 	}
 
-	/// Attach (or clear) the `Gdd` working copy once the mount future resolves.
-	pub fn set_storage(&mut self, storage: Option<document_format::GddV1>) {
-		self.history.set_storage(storage);
+	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
+	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+		self.history.set_storage(storage, declarations);
+	}
+
+	/// Detach the `Gdd` working copy.
+	pub fn clear_storage(&mut self) {
+		self.history.clear_storage();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
@@ -2026,15 +2045,36 @@ impl DocumentMessageHandler {
 		self.history.retire_storage_interaction();
 	}
 
-	/// Stages the runtime network into the `Gdd` working copy.
-	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
-		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
+	/// Marks the working copy as needing a whole-document stage on its next commit, for a change to the
+	/// runtime that went unrecorded.
+	pub(crate) fn require_whole_document_stage(&mut self) {
+		self.history.require_whole_document_stage();
+	}
 
+	/// Stages what the store recorded since the last commit into the `Gdd` working copy.
+	///
+	/// The batch boundary: everything the interface recorded since the last one is this commit's batch.
+	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
+	/// session that never mounts one.
+	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;
 		}
 
-		let view_settings = DocumentSettings {
+		let view_settings = self.storage_view_settings();
+		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
+
+		if validate {
+			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// The per-peer view settings that ride along with either kind of staging.
+	fn storage_view_settings(&self) -> std::collections::BTreeMap<String, document_graph_storage::Value> {
+		use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::DocumentSettings;
+
+		DocumentSettings {
 			document_ptz: &self.document_ptz,
 			render_mode: &self.render_mode,
 			overlays_visibility: &self.overlays_visibility_settings,
@@ -2042,24 +2082,15 @@ impl DocumentMessageHandler {
 			snapping_state: &self.snapping_state,
 			collapsed: &self.collapsed,
 		}
-		.to_view_map();
-
-		let legacy_document = self.serialize_document();
-
-		self.history
-			.stage_snapshot(&self.network_interface, &self.resources.registry, view_settings, legacy_document.as_str(), byte_store);
-
-		if validate {
-			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
-		}
+		.to_view_map()
 	}
 
 	/// Restore `view_settings` map into the document.
-	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, serde_json::Value>) {
+	pub fn apply_stored_document_settings(&mut self, view_settings: &std::collections::BTreeMap<String, document_graph_storage::Value>) {
 		use document_graph_storage::attr::session::doc;
 
-		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, serde_json::Value>, key: &str) -> Option<T> {
-			view_settings.get(key).and_then(|value| serde_json::from_value(value.clone()).ok())
+		fn decode<T: serde::de::DeserializeOwned>(view_settings: &std::collections::BTreeMap<String, document_graph_storage::Value>, key: &str) -> Option<T> {
+			view_settings.get(key).and_then(|value| document_graph_storage::from_value(value).ok())
 		}
 
 		if let Some(value) = decode(view_settings, doc::PTZ) {
@@ -2082,24 +2113,27 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Move the `Gdd` undo/redo cursor and spawn the async future that rebuilds the
-	/// interface from the cursor and swaps it in. `had_oracle` records whether the legacy snapshot already
-	/// applied, so the completion can compare; it travels with the spawned message. Returns whether the
-	/// cursor moved, so callers know a rebuild is pending.
-	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, resource_storage: &ResourceStorageMessageHandler, had_oracle: bool, undo: bool, responses: &mut VecDeque<Message>) -> bool {
-		let Some(gdd) = self.history.move_cursor(undo) else { return false };
-
-		responses.add(crate::messages::portfolio::document_storage_io::rebuild_gdd_cursor(
-			gdd,
-			resource_storage.resources_mut(),
-			document_id,
-			had_oracle,
-		));
-		true
+	/// Move the `Gdd` undo/redo cursor, swap in the interface rebuilt from it, and autosave so the legacy
+	/// document matches the cursor. `had_oracle` records whether the legacy snapshot already applied, so the
+	/// rebuild can be compared against it.
+	fn drive_storage_undo_redo(&mut self, document_id: DocumentId, had_oracle: bool, undo: bool, validate: bool, responses: &mut VecDeque<Message>) {
+		match self.history.move_cursor(undo) {
+			Ok(rebuilt) => {
+				self.apply_gdd_cursor_rebuild(rebuilt, had_oracle, validate, responses);
+				responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			}
+			Err(CursorMoveError::NotMoved) => {}
+			// Without the legacy snapshot the interface stayed put, so the cursor has to follow it back.
+			Err(CursorMoveError::RebuildFailed) => {
+				if !had_oracle {
+					self.history.revert_cursor(undo);
+				}
+			}
+		}
 	}
 
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
-	pub(crate) fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
+	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
 		std::mem::swap(&mut rebuilt.resolved_types, &mut self.network_interface.resolved_types);
 		rebuilt.load_structure();
@@ -2410,7 +2444,7 @@ impl DocumentMessageHandler {
 		paths
 	}
 
-	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
 			true
@@ -2418,7 +2452,7 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, true, responses);
+		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2452,7 +2486,7 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
-	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, resource_storage: &ResourceStorageMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
 			true
@@ -2460,7 +2494,7 @@ impl DocumentMessageHandler {
 			false
 		};
 
-		self.drive_storage_undo_redo(document_id, resource_storage, legacy_applied, false, responses);
+		self.drive_storage_undo_redo(document_id, legacy_applied, false, validate, responses);
 	}
 
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
@@ -2778,7 +2812,7 @@ impl DocumentMessageHandler {
 			let appearance = self.network_interface.document_metadata().layer_appearance_attributes.get(&layer);
 
 			let has_fill = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
-			// A visible stroke needs both renderable geometry (non-zero weight) and paint that draws something
+			// A visible stroke needs both renderable geometry (nonzero weight) and paint that draws something
 			let has_stroke = appearance.is_some_and(|appearance| {
 				appearance.first_coverage_of(Cover::Stroke).is_some_and(|coverage| coverage.stroke_params().has_renderable_stroke())
 					&& appearance.first_paint_of(Cover::Stroke).is_some_and(|paint| !paint.is_guaranteed_fully_transparent())
@@ -2795,9 +2829,9 @@ impl DocumentMessageHandler {
 			self.network_interface.move_node_to_chain_start(&solidify_id, layer, &[], false);
 
 			if has_fill && has_stroke {
-				let (existing_index, new_index) = (0_f64, 1_f64);
+				let (existing_index, new_index) = (0_i64, 1_i64);
 
-				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(existing_index), false))]);
+				let existing_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Integer(existing_index), false))]);
 				let existing_index_id = NodeId::new();
 				self.network_interface.insert_node(existing_index_id, existing_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&existing_index_id, layer, &[], false);
@@ -2819,7 +2853,7 @@ impl DocumentMessageHandler {
 					self.network_interface.set_display_name(&new_layer_id, original_name, &[]);
 				}
 
-				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(new_index), false))]);
+				let new_index_template = item_at_index_definition.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Integer(new_index), false))]);
 				let new_index_id = NodeId::new();
 				self.network_interface.insert_node(new_index_id, new_index_template, &[]);
 				self.network_interface.move_node_to_chain_start(&new_index_id, new_layer, &[], false);
@@ -3751,7 +3785,7 @@ impl DocumentMessageHandler {
 		let first_or_last_selected_layer = match relative_index_offset.signum() {
 			-1 => selected_layers.next(),
 			1 => selected_layers.last(),
-			_ => panic!("selected_layers_reorder() must be given a non-zero value"),
+			_ => panic!("selected_layers_reorder() must be given a nonzero value"),
 		};
 
 		let Some(pivot_layer) = first_or_last_selected_layer else {
@@ -4106,10 +4140,11 @@ mod document_message_handler_tests {
 		async fn get_layer_by_bounds(editor: &mut EditorTestUtils, min_x: f64, min_y: f64) -> Option<LayerNodeIdentifier> {
 			let document = editor.active_document();
 			for layer in document.metadata().all_layers() {
-				if let Some(bbox) = document.metadata().bounding_box_viewport(layer) {
-					if (bbox[0].x - min_x).abs() < 1. && (bbox[0].y - min_y).abs() < 1. {
-						return Some(layer);
-					}
+				if let Some(bbox) = document.metadata().bounding_box_viewport(layer)
+					&& (bbox[0].x - min_x).abs() < 1.
+					&& (bbox[0].y - min_y).abs() < 1.
+				{
+					return Some(layer);
 				}
 			}
 			None
@@ -4166,7 +4201,6 @@ mod document_message_handler_tests {
 		// The operation completed without crashing
 		// Verifying application still functions by performing another operation
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
-		assert!(true, "Application didn't crash after folder move operation");
 	}
 
 	// Merging nodes whose output isn't wired downstream produces an encapsulating subnetwork with no exports.

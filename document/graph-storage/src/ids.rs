@@ -119,9 +119,9 @@ pub(crate) fn compute_rev(parent: Option<Rev>, author: PeerId, timestamp: TimeSt
 			let mut parents: Vec<Rev> = parent.into_iter().chain(extra_parents.iter().copied()).collect();
 			parents.sort_unstable();
 			parents.dedup();
-			rmp_serde::to_vec(&("merge", parents)).expect("Merge identity fields must serialize")
+			postcard::to_stdvec(&("merge", parents)).expect("Merge identity fields must serialize")
 		}
-		_ => rmp_serde::to_vec(&(parent, author, timestamp, delta_type)).expect("Delta identity fields must serialize"),
+		_ => postcard::to_stdvec(&(parent, author, timestamp, delta_type)).expect("Delta identity fields must serialize"),
 	};
 	hasher.update(&bytes);
 	let digest = hasher.finalize();

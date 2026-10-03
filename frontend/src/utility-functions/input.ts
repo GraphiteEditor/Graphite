@@ -396,7 +396,7 @@ function detectShake(e: PointerEvent | MouseEvent): boolean {
 	return false;
 }
 
-function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
+export function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
 	if (!(target instanceof HTMLElement)) return false;
 	return (
 		target.isContentEditable ||
@@ -410,11 +410,22 @@ function potentiallyClearTextSelection(e: PointerEvent) {
 	if (target && (targetIsTextField(target) || window.getComputedStyle(target).userSelect !== "none")) return;
 
 	// A text control's selection lives in its shadow tree, which the document's `Selection` reports as collapsed and cannot clear, so each control holding one is collapsed through its own API
+	// eslint-disable-next-line graphite/require-data-selectors -- Every text control is wanted here, whichever component drew it
 	const controls = window.document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input[type='text']");
 	controls.forEach((control) => {
 		const caret = control.selectionStart;
 		if (typeof caret === "number" && caret !== control.selectionEnd) control.setSelectionRange(caret, caret);
 	});
+
+	// A focused editable element's own caret is kept through a press that leaves the focus there, like on a popover's buttons, which only its mousedown decides
+	const focused = window.document.activeElement;
+	const anchor = window.getSelection()?.anchorNode;
+	if (focused instanceof HTMLElement && focused.isContentEditable && anchor && focused.contains(anchor)) {
+		setTimeout(() => {
+			if (window.document.activeElement !== focused) window.getSelection()?.removeAllRanges();
+		});
+		return;
+	}
 
 	window.getSelection()?.removeAllRanges();
 }

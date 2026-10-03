@@ -16,6 +16,7 @@ use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::core_types::misc::format_f64;
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::vector::algorithms::shapes::{arc_bezpath, regular_polygon_bezpath, star_polygon_bezpath};
 use graphene_std::vector::click_target::ClickTargetType;
@@ -88,11 +89,8 @@ impl ShapeType {
 	}
 
 	pub fn tooltip_description(&self) -> String {
-		(match self {
-			// TODO: Add descriptions to all the shape tools
-			_ => "",
-		})
-		.into()
+		// TODO: Add descriptions to all the shape tools
+		String::new()
 	}
 
 	pub fn icon_name(&self) -> String {
@@ -213,11 +211,8 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 	let sign_num = if end[1] > start[1] { 1. } else { -1. };
 	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
 
-	if new_layer
-		.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
-		.unwrap_or(&TaggedValue::U32(0))
-		.to_u32()
-		% 2 == 1
+	if let Some(&TaggedValue::Integer(sides)) = new_layer.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
+		&& sides % 2 != 0
 	{
 		let Some(polygon_node_id) = new_layer.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::regular_polygon::IDENTIFIER)) else {
 			return;
@@ -225,16 +220,13 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
-			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
+			input: NodeInput::value(TaggedValue::Number(sign_num * 0.5), false),
 		});
 		return;
 	}
 
-	if new_layer
-		.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
-		.unwrap_or(&TaggedValue::U32(0))
-		.to_u32()
-		% 2 == 1
+	if let Some(&TaggedValue::Integer(sides)) = new_layer.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
+		&& sides % 2 != 0
 	{
 		let Some(star_node_id) = new_layer.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::star::IDENTIFIER)) else {
 			return;
@@ -242,11 +234,11 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
-			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
+			input: NodeInput::value(TaggedValue::Number(sign_num * 0.5), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
-			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
+			input: NodeInput::value(TaggedValue::Number(sign_num * 0.25), false),
 		});
 	}
 }
@@ -309,13 +301,13 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64, f64)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(sides)), Some(&TaggedValue::F64(radius_1)), Some(&TaggedValue::F64(radius_2))) =
+	let (Some(&TaggedValue::Integer(sides)), Some(&TaggedValue::Number(radius_1)), Some(&TaggedValue::Number(radius_2))) =
 		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
 	else {
 		return None;
 	};
 
-	Some((sides, radius_1, radius_2))
+	Some((sides.max(0) as u32, radius_1, radius_2))
 }
 
 /// Extract the node input values of Polygon.
@@ -324,11 +316,11 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	let node_inputs =
 		NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
+	let (Some(&TaggedValue::Integer(n)), Some(&TaggedValue::Number(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
 		return None;
 	};
 
-	Some((n, radius))
+	Some((n.max(0) as u32, radius))
 }
 
 /// Extract the node input values of an arc.
@@ -336,7 +328,7 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, ArcType)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::arc::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::F64(radius)), Some(&TaggedValue::F64(start_angle)), Some(&TaggedValue::F64(sweep_angle)), Some(&TaggedValue::ArcType(arc_type))) = (
+	let (Some(&TaggedValue::Number(radius)), Some(&TaggedValue::Number(start_angle)), Some(&TaggedValue::Number(sweep_angle)), Some(&TaggedValue::ArcType(arc_type))) = (
 		node_inputs.get(1)?.as_value(),
 		node_inputs.get(2)?.as_value(),
 		node_inputs.get(3)?.as_value(),
@@ -357,11 +349,11 @@ pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &Document
 
 	let (
 		Some(&TaggedValue::SpiralType(spiral_type)),
-		Some(&TaggedValue::F64(start_angle)),
-		Some(&TaggedValue::F64(inner_radius)),
-		Some(&TaggedValue::F64(outer_radius)),
-		Some(&TaggedValue::F64(turns)),
-		Some(&TaggedValue::F64(angle_resolution)),
+		Some(&TaggedValue::Number(start_angle)),
+		Some(&TaggedValue::Number(inner_radius)),
+		Some(&TaggedValue::Number(outer_radius)),
+		Some(&TaggedValue::Number(turns)),
+		Some(&TaggedValue::Number(angle_resolution)),
 	) = (
 		parameters.value(SpiralTypeInput),
 		parameters.value(StartAngleInput),
@@ -405,7 +397,7 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
 	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::circle::IDENTIFIER))?;
 
-	let Some(&TaggedValue::F64(radius)) = node_inputs.get(1)?.as_value() else {
+	let Some(&TaggedValue::Number(radius)) = node_inputs.get(1)?.as_value() else {
 		return None;
 	};
 
@@ -558,6 +550,10 @@ pub fn wrap_to_tau(angle: f64) -> f64 {
 }
 
 pub fn format_rounded(value: f64, precision: usize) -> String {
+	if value.is_infinite() {
+		return format_f64(value);
+	}
+
 	// Denoised values within floating point noise of zero (including -0) display as unsigned zero, unless the precision is fine enough to display them
 	let value = round_away_float_noise(value);
 	let value = if value.abs() < f64::min(1e-12, 0.5 * 10_f64.powi(-(precision as i32))) { 0. } else { value };
@@ -598,7 +594,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 
 	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
-	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::U32(columns)), Some(&TaggedValue::U32(rows)), Some(&TaggedValue::DVec2(angles))) = (
+	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::Integer(columns)), Some(&TaggedValue::Integer(rows)), Some(&TaggedValue::DVec2(angles))) = (
 		parameters.value(GridTypeInput),
 		parameters.value(SpacingInput),
 		parameters.value(ColumnsInput),
@@ -608,7 +604,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 		return None;
 	};
 
-	Some((grid_type, spacing, columns, rows, angles))
+	Some((grid_type, spacing, columns.max(0) as u32, rows.max(0) as u32, angles))
 }
 
 #[cfg(test)]
@@ -636,6 +632,12 @@ mod tests {
 	fn format_rounded_denoises_before_judging_exactness() {
 		assert_eq!(format_rounded(29.999999999999996, 2), "30");
 		assert_eq!(format_rounded(45.00000000000001, 2), "45");
+	}
+
+	#[test]
+	fn format_rounded_spells_infinity_as_the_symbol() {
+		assert_eq!(format_rounded(f64::INFINITY, 2), "∞");
+		assert_eq!(format_rounded(f64::NEG_INFINITY, 2), "-∞");
 	}
 
 	#[test]

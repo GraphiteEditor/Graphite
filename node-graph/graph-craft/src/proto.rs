@@ -140,7 +140,7 @@ impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
 			identifier: graphene_core::ops::passthrough::IDENTIFIER,
-			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
+			construction_args: ConstructionArgs::Value(value::TaggedValue::Integer(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
@@ -170,17 +170,12 @@ impl ProtoNode {
 
 	/// Construct a new [`ProtoNode`] with the specified construction args and a `ClonedNode` implementation.
 	pub fn value(value: ConstructionArgs, path: Vec<NodeId>) -> Self {
-		let inputs_exposed = match &value {
-			ConstructionArgs::Nodes(nodes) => nodes.len() + 1,
-			_ => 2,
-		};
 		Self {
 			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
 				path: Some(path),
-				inputs_exposed: vec![false; inputs_exposed],
 				..Default::default()
 			},
 			skip_deduplication: false,
@@ -212,13 +207,6 @@ enum NodeState {
 }
 
 impl ProtoNetwork {
-	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
-		debug_assert!(
-			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
-			"Node with ID {id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
-		);
-	}
-
 	#[cfg(debug_assertions)]
 	pub fn example() -> (Self, NodeId, ProtoNode) {
 		let node_id = NodeId(1);
@@ -233,11 +221,15 @@ impl ProtoNetwork {
 
 	/// Construct a hashmap containing a list of the nodes that depend on this proto network.
 	pub fn collect_outwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
+		// Collecting the nodes beforehand avoids expensive rehashing (although it will create some unnecessary empty entries)
+		let mut edges: HashMap<NodeId, Vec<NodeId>> = self.nodes.iter().map(|(id, _)| (*id, Vec::new())).collect();
 		for (id, node) in &self.nodes {
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for ref_id in ref_nodes {
-					self.check_ref(ref_id, id);
+					debug_assert!(
+						edges.contains_key(ref_id),
+						"Node with ID {id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
+					);
 					edges.entry(*ref_id).or_default().push(*id)
 				}
 			}
@@ -260,21 +252,6 @@ impl ProtoNetwork {
 		}
 	}
 
-	// TODO: Remove
-	/// Create a hashmap with the list of nodes this proto network depends on/uses as inputs.
-	pub fn collect_inwards_edges(&self) -> HashMap<NodeId, Vec<NodeId>> {
-		let mut edges: HashMap<NodeId, Vec<NodeId>> = HashMap::new();
-		for (id, node) in &self.nodes {
-			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
-				for ref_id in ref_nodes {
-					self.check_ref(ref_id, id);
-					edges.entry(*id).or_default().push(*ref_id)
-				}
-			}
-		}
-		edges
-	}
-
 	fn collect_inwards_edges_with_mapping(&self) -> (Vec<Vec<usize>>, FxHashMap<NodeId, usize>) {
 		let id_map: FxHashMap<_, _> = self.nodes.iter().enumerate().map(|(idx, (id, _))| (*id, idx)).collect();
 
@@ -285,7 +262,10 @@ impl ProtoNetwork {
 
 			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
 				for ref_id in ref_nodes {
-					self.check_ref(ref_id, &NodeId(node_index as u64));
+					debug_assert!(
+						id_map.get(ref_id).and_then(|&index| self.nodes.get(index)).is_some_and(|(id, _)| id == ref_id),
+						"Node with ID {node_id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
+					);
 					inwards_edges[node_index].push(id_map[ref_id]);
 				}
 			}
@@ -486,16 +466,18 @@ impl ProtoNetwork {
 	fn is_topologically_sorted(&self) -> bool {
 		let mut visited = HashSet::new();
 
-		let inwards_edges = self.collect_inwards_edges();
-		for (id, _) in &self.nodes {
-			for &dependency in inwards_edges.get(id).unwrap_or(&Vec::new()) {
-				if !visited.contains(&dependency) {
-					dbg!(id, dependency);
-					dbg!(&visited);
-					dbg!(&self.nodes);
-					return false;
+		for (id, node) in &self.nodes {
+			if let ConstructionArgs::Nodes(ref_nodes) = &node.construction_args {
+				for &dependency in ref_nodes {
+					if !visited.contains(&dependency) {
+						dbg!(id, dependency);
+						dbg!(&visited);
+						dbg!(&self.nodes);
+						return false;
+					}
 				}
 			}
+
 			visited.insert(*id);
 		}
 		true
@@ -1059,7 +1041,7 @@ mod test {
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
 		assert_eq!(
 			ids,
-			vec![NodeId(9617677014563055585), NodeId(3306304180790283913), NodeId(4482673701109291121), NodeId(1535890178157254933)]
+			vec![NodeId(7074930193456627328), NodeId(651950451264872860), NodeId(15983493604836528424), NodeId(2458326405488235061)]
 		);
 	}
 
@@ -1109,7 +1091,7 @@ mod test {
 					ProtoNode {
 						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
-						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
+						construction_args: ConstructionArgs::Value(value::TaggedValue::Integer(2).into()),
 						..Default::default()
 					},
 				),

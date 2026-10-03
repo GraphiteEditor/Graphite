@@ -192,19 +192,14 @@
 		const bodyPanelId = panelBody && panelBody.getAttribute("data-panel-body");
 		if (bodyPanelId) {
 			const rect = panelBody.getBoundingClientRect();
-			let edge: DockingEdge | undefined = detectDockingEdge(e.clientX, e.clientY, rect);
 
 			// Center drops between different panels require both to be cross-panel-dockable (self-drops are always allowed as a no-op)
-			if (edge === "Center" && bodyPanelId !== panelId) {
-				const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
-				const sourceIsDockable = crossPanelDropAction !== undefined;
-				if (!sourceIsDockable || !targetIsDockable) edge = undefined;
-			}
+			const targetIsDockable = panelBody.hasAttribute("data-panel-dockable");
+			const sourceIsDockable = crossPanelDropAction !== undefined;
+			const centerAllowed = bodyPanelId === panelId || (sourceIsDockable && targetIsDockable);
 
-			if (edge) {
-				updateDockingHover(bodyPanelId, edge);
-				return;
-			}
+			updateDockingHover(bodyPanelId, detectDockingEdge(e.clientX, e.clientY, rect, centerAllowed));
+			return;
 		}
 
 		// Not hovering any drop target
@@ -286,13 +281,26 @@
 		return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
 	}
 
-	/// Detect which zone the pointer is in: the nearest edge (by diagonal quadrant) if within the 25% border, or center if interior.
-	function detectDockingEdge(clientX: number, clientY: number, rect: DOMRect): DockingEdge {
+	/// Detect which zone the pointer is in: the nearest edge (by diagonal quadrant) if within the 25% border, or center if interior and allowed.
+	function detectDockingEdge(clientX: number, clientY: number, rect: DOMRect, centerAllowed: boolean): DockingEdge {
 		const distLeft = clientX - rect.left;
 		const distRight = rect.right - clientX;
 		const distTop = clientY - rect.top;
 		const distBottom = rect.bottom - clientY;
-		const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+		if (!centerAllowed) {
+			// Without a center zone, split into four triangles along the panel's corner-to-corner diagonals
+			const fractionLeft = distLeft / rect.width;
+			const fractionRight = distRight / rect.width;
+			const fractionTop = distTop / rect.height;
+			const fractionBottom = distBottom / rect.height;
+			const minFraction = Math.min(fractionLeft, fractionRight, fractionTop, fractionBottom);
+
+			if (minFraction === fractionLeft) return "Left";
+			if (minFraction === fractionRight) return "Right";
+			if (minFraction === fractionTop) return "Top";
+			return "Bottom";
+		}
 
 		// If the nearest edge is beyond the 25% threshold, it's the center zone
 		const THRESHOLD = 0.25;
@@ -301,6 +309,7 @@
 		if (distLeft > edgeThresholdX && distRight > edgeThresholdX && distTop > edgeThresholdY && distBottom > edgeThresholdY) return "Center";
 
 		// Return whichever edge is closest (diagonal dividing lines between quadrants)
+		const minDist = Math.min(distLeft, distRight, distTop, distBottom);
 		if (minDist === distLeft) return "Left";
 		if (minDist === distRight) return "Right";
 		if (minDist === distTop) return "Top";

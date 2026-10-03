@@ -108,25 +108,64 @@ pub fn migrate_to_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 }
 
 // TODO: Eventually remove this document upgrade code
-pub fn migrate_to_f64_array<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
+pub fn migrate_to_numbers<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<f64>, D::Error> {
 	use serde::Deserialize;
 
 	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
 	#[cfg_attr(feature = "serde", serde(untagged))]
-	enum F64ArrayFormat {
+	enum NumbersFormat {
 		Array(Vec<f64>),
 		List(LegacyTable<f64>),
 	}
 
-	Ok(match F64ArrayFormat::deserialize(deserializer)? {
-		F64ArrayFormat::Array(values) => values,
-		F64ArrayFormat::List(list) => list.element,
+	Ok(match NumbersFormat::deserialize(deserializer)? {
+		NumbersFormat::Array(values) => values,
+		NumbersFormat::List(list) => list.element,
 	})
+}
+
+// TODO: Eventually remove this document upgrade code
+/// Reads an integer stored by the retired unsigned variants, whose upper range reached past [`i64::MAX`] and saturates there.
+pub fn migrate_to_i64<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<i64, D::Error> {
+	use serde::Deserialize;
+
+	#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+	#[cfg_attr(feature = "serde", serde(untagged))]
+	enum IntegerFormat {
+		Signed(i64),
+		Unsigned(u64),
+	}
+
+	Ok(match IntegerFormat::deserialize(deserializer)? {
+		IntegerFormat::Signed(value) => value,
+		IntegerFormat::Unsigned(value) => i64::try_from(value).unwrap_or(i64::MAX),
+	})
+}
+
+/// Parses a number from text, reading infinity as `∞` (optionally signed) as well as the `inf` and `infinity` spellings.
+pub fn parse_f64(text: &str) -> Option<f64> {
+	let (negative, unsigned) = match text.strip_prefix('-') {
+		Some(rest) => (true, rest),
+		None => (false, text.strip_prefix('+').unwrap_or(text)),
+	};
+	if unsigned == "∞" {
+		return Some(if negative { f64::NEG_INFINITY } else { f64::INFINITY });
+	}
+
+	text.parse().ok()
+}
+
+/// Writes a number as text, spelling infinity `∞` as the math expression language does rather than Rust's `inf`.
+pub fn format_f64(value: f64) -> String {
+	if value.is_infinite() {
+		return if value < 0. { "-∞" } else { "∞" }.to_string();
+	}
+	value.to_string()
 }
 
 /// Parses a comma or space separated list of numbers, skipping any pieces that fail to parse.
 pub fn parse_f64_list(text: &str) -> Vec<f64> {
-	text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(|piece| piece.parse::<f64>().ok()).collect()
+	text.split([',', ' ']).filter(|piece| !piece.is_empty()).filter_map(parse_f64).collect()
 }
 
 /// Parse a CSS color string (named color, hex, `rgb(...)`, `hsl(...)`, etc.) into a linear-light [`Color`] using the `color` crate's CSS Color 4 parser.
@@ -161,4 +200,31 @@ pub fn parse_css_color(input: &str) -> Option<crate::Color> {
 	// Reject out-of-gamut values that `color::parse_color` accepts for newer CSS syntax (e.g., `rgb(300 -50 200)`).
 	let in_gamut = alpha <= 1. && ![red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite());
 	in_gamut.then(|| crate::Color::from_gamma_srgb_channels(red, green, blue, alpha))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn parse_f64_reads_every_infinity_spelling() {
+		for text in ["∞", "+∞", "inf", "infinity"] {
+			assert_eq!(parse_f64(text), Some(f64::INFINITY), "`{text}`");
+		}
+		for text in ["-∞", "-inf", "-infinity"] {
+			assert_eq!(parse_f64(text), Some(f64::NEG_INFINITY), "`{text}`");
+		}
+		assert_eq!(parse_f64("-2.5"), Some(-2.5));
+		assert_eq!(parse_f64("∞∞"), None);
+	}
+
+	#[test]
+	fn format_f64_spells_infinity_as_the_symbol_and_round_trips() {
+		assert_eq!(format_f64(f64::INFINITY), "∞");
+		assert_eq!(format_f64(f64::NEG_INFINITY), "-∞");
+		assert_eq!(format_f64(2.5), "2.5");
+		for value in [f64::INFINITY, f64::NEG_INFINITY, 2.5, -0.1] {
+			assert_eq!(parse_f64(&format_f64(value)), Some(value));
+		}
+	}
 }

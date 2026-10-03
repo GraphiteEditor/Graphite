@@ -103,6 +103,10 @@ pub struct NodeNetworkTemplate {
 
 impl NodeTemplate {
 	/// Joins a [`DocumentNode`] and its persistent metadata into the unified template shape. Missing nested metadata is filled with defaults.
+	///
+	/// A template names no node, so the storage identity is dropped here and left unset by
+	/// [`Self::into_parts`]: a node inserted from a template is addressed by its location until storage
+	/// names it.
 	pub fn from_parts(document_node: DocumentNode, persistent_node_metadata: DocumentNodePersistentMetadata) -> Self {
 		let DocumentNode {
 			inputs,
@@ -114,6 +118,7 @@ impl NodeTemplate {
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
+			storage_id: _,
 			display_name,
 			input_metadata,
 			output_names,
@@ -196,6 +201,7 @@ impl NodeTemplate {
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {
+			storage_id: None,
 			display_name,
 			input_metadata,
 			output_names,

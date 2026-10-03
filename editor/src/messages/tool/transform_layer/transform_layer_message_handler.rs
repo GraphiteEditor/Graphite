@@ -10,6 +10,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
+use crate::messages::tool::common_functionality::utility_functions::is_almost_colinear;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -18,7 +19,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{Vector, VectorModificationType};
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::TAU;
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
 
@@ -582,12 +583,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
 							let end_offset = self.state.pivot_viewport(document) - mouse_position;
-							let angle = start_offset.angle_to(end_offset);
+							if let Some(angle) = start_offset.try_angle_to(end_offset) {
+								let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
-							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
-
-							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+								self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
+								self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+							}
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
@@ -835,14 +836,12 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 			let manipulator1 = handle1.to_manipulator_point();
 			let manipulator2 = handle2.to_manipulator_point();
 
-			let Some(anchor) = manipulator1.get_anchor_position(&vector) else { continue };
-			let Some(pos1) = manipulator1.get_position(&vector).map(|pos| pos - anchor) else { continue };
-			let Some(pos2) = manipulator2.get_position(&vector).map(|pos| pos - anchor) else { continue };
-
-			let angle = pos1.angle_to(pos2);
+			let Some(anchor_pos) = manipulator1.get_anchor_position(&vector) else { continue };
+			let Some(handle1_pos) = manipulator1.get_position(&vector) else { continue };
+			let Some(handle2_pos) = manipulator2.get_position(&vector) else { continue };
 
 			// Check if handles are not colinear (not approximately equal to +/- PI)
-			if (angle - PI).abs() > 1e-6 && (angle + PI).abs() > 1e-6 {
+			if !is_almost_colinear(anchor_pos, handle1_pos, handle2_pos) {
 				let modification_type = VectorModificationType::SetG1Continuous {
 					handles: [*handle1, *handle2],
 					enabled: false,
@@ -1280,8 +1279,8 @@ mod test_transform_layer {
 
 		let new_scale_x = final_transform.matrix2.x_axis.length();
 		let new_scale_y = final_transform.matrix2.y_axis.length();
-		assert!(new_scale_x > 0., "After rescaling, scale factor X should be non-zero");
-		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be non-zero");
+		assert!(new_scale_x > 0., "After rescaling, scale factor X should be nonzero");
+		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be nonzero");
 	}
 
 	#[tokio::test]

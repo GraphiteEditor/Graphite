@@ -90,6 +90,7 @@
 	{tooltipDescription}
 	{tooltipShortcut}
 	{placeholder}
+	data-text-input
 	bind:this={self}
 />
 

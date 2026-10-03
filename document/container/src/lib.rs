@@ -12,6 +12,7 @@
 
 pub mod archive;
 pub mod backends;
+pub mod store;
 
 pub enum ByteHolder {
 	/// Bytes synthesized in memory (decompressed from an archive, produced by serialization).
@@ -350,6 +351,7 @@ impl<C: Container + ?Sized> AsyncContainer for C {
 /// `AsyncContainer::read` returns `impl Future`, so `dyn AsyncContainer` is not object-safe.
 /// `AnyContainer` is the workaround: `Gdd` holds one of these by value, and the `AsyncContainer`
 /// impl forwards to the active variant.
+#[derive(Clone)]
 pub enum AnyContainer {
 	Memory(backends::memory::MemoryBackend),
 	#[cfg(not(target_family = "wasm"))]

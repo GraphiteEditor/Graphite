@@ -29,6 +29,7 @@ fn text(
 	/// 0 means all lines overlap. 1 means all lines are spaced by just the font size. 1.2 is a common default for readable text. 2 means double-spaced text.
 	#[unit("x")]
 	#[hard(0..)]
+	#[soft(..2)]
 	#[step(0.1)]
 	#[default(1.2)]
 	line_height: Item<f64>,
@@ -85,10 +86,10 @@ fn text(
 		item.set_attribute(ATTR_LETTER_TILT, letter_tilt);
 	}
 	if has_max_width {
-		item.set_attribute(ATTR_MAX_WIDTH, Some(max_width));
+		item.set_attribute(ATTR_MAX_WIDTH, max_width);
 	}
 	if has_max_height {
-		item.set_attribute(ATTR_MAX_HEIGHT, Some(max_height));
+		item.set_attribute(ATTR_MAX_HEIGHT, max_height);
 	}
 	if align != TextAlign::default() {
 		item.set_attribute(ATTR_TEXT_ALIGN, align);

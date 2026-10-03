@@ -12,6 +12,7 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::FallibleVec2Operations;
 use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
@@ -68,6 +69,7 @@ impl SpiralTurns {
 		self.handle_state == SpiralTurnsState::Dragging
 	}
 
+	#[expect(clippy::too_many_arguments, reason = "the gizmo records one value per spiral parameter, so grouping them would only move the argument list")]
 	pub fn store_initial_parameters(
 		&mut self,
 		layer: LayerNodeIdentifier,
@@ -149,11 +151,13 @@ impl SpiralTurns {
 		let viewport = document.metadata().transform_to_viewport(layer);
 		let center = viewport.transform_point2(DVec2::ZERO);
 
-		let angle_delta = viewport
-			.inverse()
-			.transform_vector2(input.mouse.position - center)
-			.angle_to(viewport.inverse().transform_vector2(self.previous_mouse_position - center))
-			.to_degrees();
+		let current_mouse_vector = viewport.inverse().transform_vector2(input.mouse.position - center);
+		let previous_mouse_vector = viewport.inverse().transform_vector2(self.previous_mouse_position - center);
+
+		let Some(angle_delta) = current_mouse_vector.try_angle_to(previous_mouse_vector).map(f64::to_degrees) else {
+			self.previous_mouse_position = input.mouse.position;
+			return;
+		};
 
 		// Skip update if angle calculation produced NaN or infinity (can happen when mouse is at center)
 		// Also skip very small angle changes to reduce jitter near center
@@ -190,15 +194,15 @@ impl SpiralTurns {
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, StartAngleInput),
-					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),
+					input: NodeInput::value(TaggedValue::Number(self.initial_start_angle + total_delta), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
-					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
+					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
 				});
 			}
 			GizmoType::End => {
@@ -207,11 +211,11 @@ impl SpiralTurns {
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
-					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
+					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
 				});
 			}
 			GizmoType::None => {

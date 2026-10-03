@@ -188,6 +188,28 @@ mod editor_commands {
 		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
 	}
 
+	/// Tokenizes a math expression widget's text as it is typed, for the reply to color and typeset it, and offers names to finish
+	/// the one at the caret, where the caret is given. Unless they're `asked` for, names are offered only once part of one is typed.
+	fn analyze_math_expression(layout_target: LayoutTarget, widget_id: u64, source: String, caret: Option<u32>, asked: bool) -> Message {
+		LayoutMessage::AnalyzeMathExpression {
+			layout_target,
+			widget_id: WidgetId(widget_id),
+			source,
+			caret,
+			asked,
+		}
+		.into()
+	}
+
+	/// Evaluates math typed in a math expression widget's number popover, for the reply to write its value in place of the number.
+	fn evaluate_math_expression(widget_id: u64, source: String) -> Message {
+		LayoutMessage::EvaluateMathExpression {
+			widget_id: WidgetId(widget_id),
+			source,
+		}
+		.into()
+	}
+
 	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
 	fn end_transaction() -> Message {
 		DocumentMessage::EndTransaction.into()
@@ -200,14 +222,6 @@ mod editor_commands {
 			return Message::NoOp;
 		};
 		PreferencesMessage::Load { preferences }.into()
-	}
-
-	fn load_document_content(document_id: u64, document: String) -> Message {
-		PersistentStateMessage::LoadDocument {
-			document_id: DocumentId(document_id),
-			document,
-		}
-		.into()
 	}
 
 	fn select_document(document_id: u64) -> Message {

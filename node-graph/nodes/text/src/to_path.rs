@@ -43,8 +43,8 @@ pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> List<Vecto
 		line_height_ratio: item.attribute_cloned_or(ATTR_LINE_HEIGHT, defaults.line_height_ratio),
 		letter_spacing: item.attribute_cloned_or(ATTR_LETTER_SPACING, defaults.letter_spacing),
 		letter_tilt: item.attribute_cloned_or(ATTR_LETTER_TILT, defaults.letter_tilt),
-		max_width: item.attribute_cloned_or::<Option<f64>>(ATTR_MAX_WIDTH, defaults.max_width),
-		max_height: item.attribute_cloned_or::<Option<f64>>(ATTR_MAX_HEIGHT, defaults.max_height),
+		max_width: item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.),
+		max_height: item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.),
 		align: item.attribute_cloned_or(ATTR_TEXT_ALIGN, defaults.align),
 	};
 

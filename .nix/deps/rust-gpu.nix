@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 let
-  toolchain = pkgs.rust-bin.nightly."2026-04-11".default.override {
+  toolchain = pkgs.rust-bin.nightly."2026-07-03".default.override {
     extensions = [
       "rust-src"
       "rust-analyzer"
@@ -32,11 +32,12 @@ let
       (finalAttrs: {
         pname = "rustc_codegen_spirv";
         version = "0.10.0-alpha.1";
-        src = pkgs.fetchCrate {
-          inherit (finalAttrs) pname version;
-          sha256 = "sha256-zJEpExkPgYzwo7fR4ge4GxJNj7H5yo4bJ4eTOw36+7c=";
+        src = pkgs.fetchgit {
+          url = "https://github.com/Rust-GPU/rust-gpu";
+          rev = "2fff75a21a1909945ac85f5818843dd9960004d7";
+          sha256 = "sha256-clUt4jUh4D9EmoXZFgur1RrMYob4X5jti2e2hvBnAx8=";
         };
-        cargoHash = "sha256-J1rtbfGqrL2NJ7Bu2pYfDwCdUmnECB/kzxrpYluA0kY=";
+        cargoHash = "sha256-9dGb+RDYpJKaIhkMPkZAx1M1VGE3gMfCD2T84i1VtV8=";
         cargoBuildFlags = [
           "-p"
           "rustc_codegen_spirv"

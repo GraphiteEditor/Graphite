@@ -19,3 +19,5 @@ pub mod node_graph_executor;
 pub mod test_utils;
 pub mod utility_traits;
 pub mod utility_types;
+
+pub use document_container::store as document_store;

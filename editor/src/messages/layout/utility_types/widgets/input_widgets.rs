@@ -138,6 +138,8 @@ pub struct MenuListEntry {
 	pub label: String,
 	#[widget_builder(string)]
 	pub icon: Option<IconName>,
+	/// Text at the row's right end, in the place of a shortcut, like the name of a completion.
+	pub annotation: String,
 	pub disabled: bool,
 
 	// Children
@@ -156,6 +158,9 @@ pub struct MenuListEntry {
 	pub tooltip_description: String,
 	#[serde(rename = "tooltipShortcut")]
 	pub tooltip_shortcut: Option<ActionShortcut>,
+	/// Code at the right of the tooltip's header, like a completion's signature.
+	#[serde(rename = "tooltipCode")]
+	pub tooltip_code: String,
 
 	// Callbacks
 	#[serde(skip)]
@@ -171,6 +176,7 @@ impl std::hash::Hash for MenuListEntry {
 		self.value.hash(state);
 		self.label.hash(state);
 		self.icon.hash(state);
+		self.annotation.hash(state);
 		self.disabled.hash(state);
 	}
 }
@@ -497,6 +503,153 @@ pub struct TextInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+}
+
+/// A math expression's text field, typeset with math italics and syntax highlighting as it is edited.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
+#[derivative(Debug, PartialEq, Default)]
+pub struct MathExpressionInput {
+	// Content
+	#[widget_builder(constructor)]
+	pub value: String,
+	/// The value's tokens, which the frontend colors and typesets, as it does the tokens sent for each edit while typing.
+	pub tokens: Vec<MathExpressionToken>,
+	/// What hovering each token shows, listed once each however many tokens share one.
+	pub tooltips: Vec<MathExpressionTooltip>,
+	/// The stretches of the value its parse errors point at, which the frontend underlines.
+	pub errors: Vec<MathExpressionRange>,
+	/// Whether a lone operator or function name like `+` or `max` is an expression, applied across a list as by the Math node.
+	#[serde(skip)]
+	pub accepts_reducers: bool,
+	pub disabled: bool,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<MathExpressionInput>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
+/// A stretch of a math expression with the role its spelling gives it, in the UTF-16 code units the frontend's strings use.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MathExpressionToken {
+	pub start: u32,
+	pub end: u32,
+	pub role: MathExpressionRole,
+	/// How many exponents deep it stands, 0 outside any.
+	pub superscript: u8,
+	/// Where a name's subscript begins, in code units from its start.
+	pub subscript: Option<u32>,
+	/// The index among the tokens of the delimiter pairing with this one.
+	pub partner: Option<u32>,
+	/// For a comma or semicolon, the index among the tokens of the opener of the group whose parts it separates.
+	pub separates: Option<u32>,
+	/// The index among the tooltips of what hovering the token shows: a builtin's, constant's, or operator's documentation, or the
+	/// drawing of a matrix or range literal.
+	pub tooltip: Option<u32>,
+	/// For a finite number, the literal it's part of, which the frontend can adjust as one value.
+	pub literal: Option<MathExpressionLiteral>,
+}
+
+/// A number as the frontend may adjust it as one value, written from its start to the end of the number's token.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MathExpressionLiteral {
+	/// Where it begins, at any sign right before the number.
+	pub start: u32,
+	/// Whether it follows an operand it multiplies, where a sign written before it would subtract instead.
+	#[serde(rename = "afterOperand")]
+	pub after_operand: bool,
+}
+
+/// A math expression token's hover text, in the tooltip Markdown subset.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MathExpressionTooltip {
+	pub label: String,
+	/// How it's written, like `sin(θ)`, `a + b`, or `π`, which the frontend shows beside the label.
+	pub form: Option<String>,
+	pub description: String,
+	/// The signature of a call or matrix literal, which its form shows, for the frontend to mark the argument or entry being typed in it.
+	pub signature: Option<MathExpressionSignature>,
+}
+
+/// A call's or matrix literal's parameters between its delimiters, like `sin(` and `)` or `[` and `]`.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MathExpressionSignature {
+	pub opening: String,
+	pub parameters: Vec<String>,
+	pub separator: String,
+	pub closing: String,
+	/// For a call, the range of its results, like `[0, ∞]`, written after an arrow.
+	pub range: String,
+	/// For a drawn matrix literal, the arrow pointing at each entry's row or column, for the frontend to draw at the one being typed.
+	pub pointers: Vec<MathExpressionPointer>,
+	/// For a call, the description line explaining each parameter, for the frontend to mark the one being typed.
+	pub lines: Vec<u32>,
+}
+
+/// An arrow to draw into a tooltip description's code block, at a character of one of its lines.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MathExpressionPointer {
+	pub line: u32,
+	pub column: u32,
+	pub arrow: String,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum MathExpressionRole {
+	Number,
+	Variable,
+	Matrix,
+	Basis,
+	Function,
+	Keyword,
+	Operator,
+	Bracket,
+	MatrixLiteral,
+	Error,
+}
+
+impl From<math_parser::highlight::Role> for MathExpressionRole {
+	fn from(role: math_parser::highlight::Role) -> Self {
+		use math_parser::highlight::Role;
+		match role {
+			Role::Number => Self::Number,
+			Role::Variable => Self::Variable,
+			Role::Matrix => Self::Matrix,
+			Role::Basis => Self::Basis,
+			Role::Function => Self::Function,
+			Role::Keyword => Self::Keyword,
+			Role::Operator => Self::Operator,
+			Role::Bracket => Self::Bracket,
+			Role::MatrixLiteral => Self::MatrixLiteral,
+			Role::Error => Self::Error,
+		}
+	}
+}
+
+/// A stretch of a math expression, in the UTF-16 code units the frontend's strings use.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct MathExpressionRange {
+	pub start: u32,
+	pub end: u32,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

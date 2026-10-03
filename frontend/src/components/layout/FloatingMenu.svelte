@@ -42,11 +42,17 @@
 	export let minWidth = 0;
 	export let escapeCloses = true;
 	export let strayCloses = true;
+	// Whether a popover points at what it's anchored to with a tail, which it leaves room for
+	export let tail = true;
+	// Whether a menu opening up or down lines up with the start of what it's anchored to, as a dropdown does by default, or centers on it
+	export let alignment: "Start" | "Center" | undefined = undefined;
+	// The space from what the menu is anchored to, in place of the room its type leaves for a tail or the pointer
+	export let gap: number | undefined = undefined;
 
 	const editor = getContext<EditorWrapper>("editor");
 	const menuId = String(Math.random()).substring(2);
 
-	let tail: HTMLDivElement | undefined;
+	let tailElement: HTMLDivElement | undefined;
 	let self: HTMLDivElement | undefined;
 	let floatingMenuContainer: HTMLDivElement | undefined;
 	let floatingMenuContent: LayoutCol | undefined;
@@ -58,6 +64,11 @@
 	// spawner widget to optionally set its min-size to the floating menu's natural width.
 	const containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
 		resizeObserverCallback(entries);
+	});
+
+	// The menu is placed again when its content resizes while open, since a change within the slot doesn't fire `afterUpdate()`
+	const contentResizeObserver = new ResizeObserver(() => {
+		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 
 	let dialogResizeObserver: ResizeObserver | undefined;
@@ -72,7 +83,8 @@
 	$: onFloatingMenuOpenChange(menuId, open && type !== "Tooltip" && type !== "Cursor", editor);
 
 	$: minWidthStyleValue = measuringOngoing ? "0" : `${Math.max(minWidth, minWidthParentWidth)}px`;
-	$: displayTail = open && type === "Popover";
+	$: displayTail = open && type === "Popover" && tail;
+	$: startAligned = (alignment || (type === "Dropdown" ? "Start" : "Center")) === "Start";
 	$: displayContainer = open || measuringOngoing;
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -107,12 +119,18 @@
 				containerResizeObserver.disconnect();
 				containerResizeObserver.observe(floatingMenuContainer);
 			}
+			const floatingMenuContentDiv = floatingMenuContent?.div?.();
+			if (floatingMenuContentDiv) {
+				contentResizeObserver.disconnect();
+				contentResizeObserver.observe(floatingMenuContentDiv);
+			}
 		}
 
 		// Switching from open to closed
 		if (!isOpen && wasOpen) {
 			// Clean up observation of the now-closed floating menu
 			containerResizeObserver.disconnect();
+			contentResizeObserver.disconnect();
 
 			window.removeEventListener("pointermove", pointerMoveHandler);
 			window.removeEventListener("keydown", keyDownHandler);
@@ -160,11 +178,15 @@
 			});
 			dialogResizeObserver.observe(floatingMenuContentDiv);
 		}
+
+		// A menu created open never sees `open` change to start watching its content
+		if (open && floatingMenuContentDiv) contentResizeObserver.observe(floatingMenuContentDiv);
 	});
 
 	onDestroy(() => {
 		onFloatingMenuOpenChange(menuId, false, editor);
 		containerResizeObserver.disconnect();
+		contentResizeObserver.disconnect();
 		dialogResizeObserver?.disconnect();
 		window.removeEventListener("pointermove", pointerMoveHandler);
 		window.removeEventListener("keydown", keyDownHandler);
@@ -192,6 +214,12 @@
 
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
+
+		// A menu opening up or down is pinned to a window side only while it would cross that side, so it's measured unpinned, letting it go once it fits again
+		if (direction === "Top" || direction === "Bottom") {
+			floatingMenuContainer.style.setProperty("--content-left", "initial");
+			floatingMenuContainer.style.setProperty("--content-right", "initial");
+		}
 
 		const windowBounds = document.documentElement.getBoundingClientRect();
 		const floatingMenuBounds = self.getBoundingClientRect();
@@ -232,19 +260,20 @@
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 		const noPosition = Boolean(floatingMenuContainer.closest("[data-floating-menu-no-position]"));
 		if (!inParentFloatingMenu && !noPosition) {
-			let tailOffset = 0;
-			if (type === "Popover") tailOffset = 10;
-			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
+			let offset = 0;
+			if (type === "Popover" && tail) offset = 10;
+			if (type === "Tooltip") offset = direction === "Bottom" ? 20 : 10;
+			if (gap !== undefined) offset = gap;
 
-			if (direction === "Bottom") floatingMenuContainer.style.setProperty("--content-top", `${tailOffset + floatingMenuBounds.y}px`);
-			if (direction === "Top") floatingMenuContainer.style.setProperty("--content-bottom", `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`);
-			if (direction === "Right") floatingMenuContainer.style.setProperty("--content-left", `${tailOffset + floatingMenuBounds.x}px`);
-			if (direction === "Left") floatingMenuContainer.style.setProperty("--content-right", `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`);
+			if (direction === "Bottom") floatingMenuContainer.style.setProperty("--content-top", `${offset + floatingMenuBounds.y}px`);
+			if (direction === "Top") floatingMenuContainer.style.setProperty("--content-bottom", `${offset + (windowBounds.height - floatingMenuBounds.y)}px`);
+			if (direction === "Right") floatingMenuContainer.style.setProperty("--content-left", `${offset + floatingMenuBounds.x}px`);
+			if (direction === "Left") floatingMenuContainer.style.setProperty("--content-right", `${offset + (windowBounds.width - floatingMenuBounds.x)}px`);
 
-			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
-			if (tail && direction === "Top") tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
-			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
-			if (tail && direction === "Left") tail.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
+			if (tailElement && direction === "Bottom") tailElement.style.top = `${floatingMenuBounds.y}px`;
+			if (tailElement && direction === "Top") tailElement.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
+			if (tailElement && direction === "Right") tailElement.style.left = `${floatingMenuBounds.x}px`;
+			if (tailElement && direction === "Left") tailElement.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -496,12 +525,14 @@
 
 <div
 	class={`floating-menu ${direction.toLowerCase()} ${type.toLowerCase()} ${className} ${extraClasses}`.trim()}
+	class:no-tail={!tail}
+	class:start-aligned={startAligned}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	bind:this={self}
 	{...$$restProps}
 >
 	{#if displayTail}
-		<div class="tail" bind:this={tail}></div>
+		<div class="tail" bind:this={tailElement}></div>
 	{/if}
 	{#if displayContainer}
 		<div class="floating-menu-container" bind:this={floatingMenuContainer} on:wheel|stopPropagation>
@@ -618,12 +649,12 @@
 			}
 		}
 
-		&.top.dropdown .floating-menu-container,
-		&.bottom.dropdown .floating-menu-container {
+		&.top.start-aligned .floating-menu-container,
+		&.bottom.start-aligned .floating-menu-container {
 			justify-content: left;
 		}
 
-		&.popover {
+		&.popover:not(.no-tail) {
 			--floating-menu-content-offset: 10px;
 		}
 

@@ -8,6 +8,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	let validators: &[fn(&ParsedNodeFn)] = &[
 		// Add more validators here as needed
 		validate_implementations_for_generics,
+		validate_implementations_row_counts,
 		validate_primary_input_expose,
 		validate_min_max,
 		validate_range_slider_bounds,
@@ -221,6 +222,47 @@ fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, Str
 	}
 
 	violations
+}
+
+/// Implementations rows pair positionally, so every parameter list must hold the same number of rows.
+fn validate_implementations_row_counts(parsed: &ParsedNodeFn) {
+	for (span, message) in implementations_row_count_violations(parsed) {
+		emit_error!(span, "{}", message);
+	}
+}
+
+fn implementations_row_count_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
+	if parsed.attributes.skip_impl {
+		return Vec::new();
+	}
+
+	let field_rows = parsed.fields.iter().filter(|field| !field.is_data_field).map(|field| {
+		let rows = match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { implementations, .. }) => implementations.len(),
+			value => value.regular().expect("a non-node field is a value field").implementations.len(),
+		};
+		(&field.pat_ident, rows)
+	});
+	// An `impl Ctx` input gets one synthesized `Context` row, so the ctx input only counts when written out with more
+	let ctx_rows = (&parsed.input.pat_ident, parsed.input.implementations.len());
+	let rows_per_input: Vec<_> = std::iter::once(ctx_rows).filter(|(_, rows)| *rows > 1).chain(field_rows).collect();
+	let Some(&(longest, most_rows)) = rows_per_input.iter().max_by_key(|(_, rows)| *rows) else {
+		return Vec::new();
+	};
+
+	rows_per_input
+		.iter()
+		.filter(|(_, rows)| *rows != 0 && *rows != most_rows)
+		.map(|(pat_ident, rows)| {
+			(
+				pat_ident.span(),
+				format!(
+					"The #[implementations(...)] of `{}` lists {rows} rows while `{}` lists {most_rows}, but rows pair positionally so every list needs the same count",
+					pat_ident.ident, longest.ident
+				),
+			)
+		})
+		.collect()
 }
 
 /// Returns whether the type is exactly one of the function's generic parameters, like `T`.
@@ -601,5 +643,32 @@ mod tests {
 			),
 		);
 		assert_eq!(data_field_messages, Vec::<String>::new());
+	}
+
+	fn row_count_violations(input: TokenStream) -> Vec<String> {
+		let parsed = parse_node_fn(quote::quote!(category("Test")), input).expect("The test node fn should parse");
+		implementations_row_count_violations(&parsed).into_iter().map(|(_, message)| message).collect()
+	}
+
+	#[test]
+	fn parameters_without_an_implementations_list_pass_beside_any_length() {
+		let messages = row_count_violations(quote::quote!(
+			fn tag<T>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] list: List<T>, value: impl Node<Context, Output = Item<f64>>, label: Item<String>) -> List<T> {
+				list
+			}
+		));
+		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn mismatched_implementations_row_counts_are_rejected() {
+		let messages = row_count_violations(quote::quote!(
+			fn triple<A, B, C>(_: impl Ctx, #[implementations(f64, u32, DVec2)] a: Item<A>, #[implementations(f64, u32)] b: Item<B>, #[implementations(f64)] c: Item<C>) -> Item<A> {
+				a
+			}
+		));
+		assert_eq!(messages.len(), 2, "{messages:?}");
+		assert!(messages[0].contains("of `b` lists 2 rows while `a` lists 3"), "{messages:?}");
+		assert!(messages[1].contains("of `c` lists 1 rows while `a` lists 3"), "{messages:?}");
 	}
 }

@@ -677,7 +677,6 @@ mod tests {
 			down: [10., 15.].map(|y| Rect::from_square(DVec2::new(0., y), 2.)).to_vec(),
 			left: [-12., -15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
 			right: [12., 15.].map(|x| Rect::from_square(DVec2::new(x, 0.), 2.)).to_vec(),
-			..Default::default()
 		};
 		let source = Rect::from_square(DVec2::new(0.3, 0.4), 2.);
 		let snap_results = &mut SnapResults::default();

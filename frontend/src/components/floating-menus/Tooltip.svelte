@@ -5,16 +5,25 @@
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
+	import { parseMarkdown } from "/src/utility-functions/markdown";
 	import type { EditorWrapper, LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const editor = getContext<EditorWrapper>("editor");
 
+	// The tooltip a component shows for part of itself, given with the bounds of that part, rather than the hovered element's at the pointer
+	export let given: { label: string; description: string; code: string; bounds: { left: number; top: number; bottom: number } } | undefined = undefined;
+
 	let self: FloatingMenu | undefined;
 
-	$: label = parseMarkdown(filterTodo($tooltip.element?.getAttribute("data-tooltip-label")?.trim()));
-	$: description = parseMarkdown(filterTodo($tooltip.element?.getAttribute("data-tooltip-description")?.trim()));
-	$: shortcutJSON = $tooltip.element?.getAttribute("data-tooltip-shortcut")?.trim();
+	$: element = given ? undefined : $tooltip.element;
+	$: label = parseMarkdown(filterTodo((given?.label || element?.getAttribute("data-tooltip-label"))?.trim()));
+	$: description = parseMarkdown(filterTodo((given?.description || element?.getAttribute("data-tooltip-description"))?.trim()));
+	$: code = parseMarkdown((given?.code || element?.getAttribute("data-tooltip-code"))?.trim());
+	$: shortcutJSON = element?.getAttribute("data-tooltip-shortcut")?.trim();
+	// A given tooltip stands below its bounds from their left, or above them where there's no room below, rather than clearing the pointer below it
+	$: position = given ? { x: given.bounds.left, y: (given.bounds.top + given.bounds.bottom) / 2 } : $tooltip.position;
+	$: gap = given ? (given.bounds.bottom - given.bounds.top) / 2 : undefined;
 	$: shortcut = ((shortcutJSON) => {
 		if (!shortcutJSON) return undefined;
 		try {
@@ -32,40 +41,21 @@
 		if (text?.trim().toUpperCase() === "TODO" && !editor.inDevelopmentMode()) return "";
 		return text;
 	}
-
-	function parseMarkdown(markdown: string | undefined): string | undefined {
-		if (!markdown) return undefined;
-
-		let text = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-
-		return (
-			text
-				// .split("\n")
-				// .map((line) => line.trim())
-				// .join("\n")
-				// .split("\n\n")
-				// .map((paragraph) => paragraph.replaceAll("\n", " "))
-				// .join("\n\n")
-				// Bold
-				.replace(/\*\*((?:(?!\*\*).)+)\*\*/g, "<strong>$1</strong>")
-				// Italic
-				.replace(/\*([^*]+)\*/g, "<em>$1</em>")
-				// Backticks
-				.replace(/`([^`]+)`/g, "<code>$1</code>")
-		);
-	}
 </script>
 
 {#if label || description}
-	<div class="tooltip" style:top={`${$tooltip.position.y}px`} style:left={`${$tooltip.position.x}px`}>
-		<FloatingMenu open={true} type="Tooltip" direction="Bottom" bind:this={self}>
-			{#if label || shortcut}
+	<div class="tooltip" style:top={`${position.y}px`} style:left={`${position.x}px`}>
+		<FloatingMenu open={true} type="Tooltip" direction="Bottom" alignment={given ? "Start" : "Center"} {gap} bind:this={self}>
+			{#if label || shortcut || code}
 				<LayoutRow class="tooltip-header">
 					{#if label}
 						<TextLabel class="tooltip-label">{@html label}</TextLabel>
 					{/if}
 					{#if shortcut}
 						<ShortcutLabel shortcut={{ shortcut }} />
+					{/if}
+					{#if code}
+						<TextLabel class="tooltip-code" monospace={true}>{@html code}</TextLabel>
 					{/if}
 				</LayoutRow>
 			{/if}
@@ -96,6 +86,16 @@
 
 			.text-label + .shortcut-label {
 				margin-left: 8px;
+			}
+
+			.tooltip-code {
+				margin-left: auto;
+				padding-left: 8px;
+				color: var(--color-b-lightgray);
+
+				strong {
+					color: var(--color-e-nearwhite);
+				}
 			}
 
 			.tooltip-description {

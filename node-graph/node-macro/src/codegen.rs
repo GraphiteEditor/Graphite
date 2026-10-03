@@ -1,4 +1,5 @@
 use crate::parsing::*;
+use crate::shader_nodes::STD_FEATURE_GATE;
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
@@ -153,6 +154,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			value => value.regular().expect("a non-node field is a value field").ty.clone(),
 		})
 		.collect();
+	let shader_field_types: Vec<_> = regular_fields
+		.iter()
+		.zip(field_types.iter())
+		.map(|(field, field_type)| match field.ty.regular() {
+			Some(regular) => regular.body_ty().clone(),
+			None => field_type.clone(),
+		})
+		.collect();
+	let has_shader_variant = regular_fields.iter().any(|field| field.ty.regular().is_some_and(|regular| regular.narrowed_body_ty.is_some()));
 
 	// Only regular fields have UI metadata (data fields are internal state)
 	let widget_override: Vec<_> = regular_fields
@@ -223,14 +233,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					if let Some(element) = peel_list(implementation_ty) {
 						quote!(Some(#core_types::list!(#element)))
 					} else if let Some(element) = peel_item(implementation_ty) {
-						quote!(Some(#core_types::item!(#element, #element)))
+						quote!(Some(#core_types::item!(#element)))
 					} else {
 						quote!(Some(concrete!(#implementation_ty)))
 					}
 				}
-				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution); without one it keeps
-				// the structural `Type::Item` wire type, and `node_inputs` peels to `T` if no `Item` type default exists. Either way the element's alias stays
-				// on its descriptor so the rank-0 Properties widget still dispatches, e.g. `Progression`.
+				// A concrete ranked `Item<T>` param's scalar `#[default]` parses as a bare `T` literal (unranked, promoted at resolution);
+				// without one it keeps the structural `Type::Item` wire type, and `node_inputs` peels to `T` if no `Item` type default exists
 				None => match &field.ty {
 					ParsedFieldType::Item {
 						field: RegularParsedField { value_source, .. },
@@ -242,8 +251,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						// The fn's lifetimes are elided since the metadata registration fn declares none of them
 						let element = substitute_lifetimes(element.clone(), "_");
 						match value_source {
-							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element, #element))),
-							_ => quote!(Some(#core_types::item!(#element, #element))),
+							ParsedValueSource::Default(_) => quote!(Some(concrete!(#element))),
+							_ => quote!(Some(#core_types::item!(#element))),
 						}
 					}
 					_ => quote!(None),
@@ -279,6 +288,20 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let number_step: Vec<_> = regular_fields.iter().map(|field| field.number_step.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
 
 	let unit_suffix: Vec<_> = regular_fields.iter().map(|field| field.unit.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
+	let multiline: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let multiline = field.multiline;
+			quote!(#multiline)
+		})
+		.collect();
+	let progression: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let progression = field.progression;
+			quote!(#progression)
+		})
+		.collect();
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
@@ -782,11 +805,32 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	}
 
+	let node_fn = |field_types: &[Type]| {
+		quote! {
+			#(#description_doc_attrs)*
+			#[inline]
+			#[allow(clippy::too_many_arguments)]
+			#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
+		}
+	};
+	// A shader node's fn is emitted twice from the one body: as declared, in f64, for the CPU, and with the f32 parameter
+	// counterparts for the shader build, which cannot represent a 64-bit float. The body casts to f32 only where it meets a Color channel.
+	let node_fn = if has_shader_variant {
+		let cpu_fn = node_fn(&field_types);
+		let shader_fn = node_fn(&shader_field_types);
+		quote! {
+			#[cfg(feature = #STD_FEATURE_GATE)]
+			#cpu_fn
+
+			#[cfg(not(feature = #STD_FEATURE_GATE))]
+			#shader_fn
+		}
+	} else {
+		node_fn(&field_types)
+	};
+
 	Ok(quote! {
-		#(#description_doc_attrs)*
-		#[inline]
-		#[allow(clippy::too_many_arguments)]
-		#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
+		#node_fn
 
 		#cfg
 		#[automatically_derived]
@@ -883,6 +927,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								number_display_decimal_places: #number_display_decimal_places,
 								number_step: #number_step,
 								unit: #unit_suffix,
+								multiline: #multiline,
+								progression: #progression,
 							},
 						)*
 					],
@@ -1153,7 +1199,9 @@ fn generate_register_node_impl(
 					(WireWrapper::List.apply(&gcore, &element_ty), Some(quote!(List<#element_ty>)))
 				} else {
 					match (field_is_ranked, variant.param_wrap()) {
-						(true, Some(wrap)) => {
+						// A ranked field's bare rows take the variant's wire shape, or the field's own `Item` shape in a variant without one
+						(true, wrap) => {
+							let wrap = wrap.unwrap_or(WireWrapper::Item);
 							let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 							let signature = match wrap {
 								WireWrapper::List => quote!(List<#element_ty>),
@@ -1175,7 +1223,7 @@ fn generate_register_node_impl(
 					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
 				}
 				temp_constructors.push(downcast_node);
-				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type, alias: #signature_type)));
+				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type)));
 				panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
 			}
 			let input_type = match parsed.input.implementations.is_empty() {

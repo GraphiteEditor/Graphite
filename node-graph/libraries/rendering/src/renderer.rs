@@ -1,6 +1,7 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
+use core_types::FallibleVec2Operations;
 use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
@@ -219,7 +220,7 @@ impl SvgRender {
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
 		let svg_header = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,
-			defs = &self.svg_defs
+			defs = self.svg_defs
 		);
 		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
@@ -237,7 +238,7 @@ impl SvgRender {
 
 		let svg_header = format!(
 			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#,
-			defs = &self.svg_defs
+			defs = self.svg_defs
 		);
 		self.svg_defs = String::new();
 		self.svg.insert(0, svg_header.into());
@@ -521,7 +522,7 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientFor
 		GradientForm::Linear => {
 			let axis = transform.matrix2.x_axis;
 			let band_normal = transform.matrix2.y_axis.perp();
-			let line = if band_normal.length_squared() > 0. { axis.project_onto(band_normal) } else { axis };
+			let line = axis.try_project_onto(band_normal).unwrap_or(axis);
 			DAffine2 {
 				matrix2: DMat2::from_cols(line, line.perp()),
 				translation: transform.translation,
@@ -1455,7 +1456,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
-	// Only consider strokes with non-zero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
+	// Only consider strokes with nonzero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
 	let set_stroke_transform = has_real_stroke
@@ -2207,7 +2208,7 @@ impl Render for List<Vector> {
 	}
 }
 
-/// Build one multi-contour `Path` (non-zero fill rule, so holes like the inside of an "O" work
+/// Build one multi-contour `Path` (nonzero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, geometry: &Vector, transform: DAffine2) {
 	// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing
@@ -3023,8 +3024,8 @@ fn text_item_size_and_transform(item: ItemRef<'_, String>) -> Option<(DVec2, DAf
 	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
 	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
 	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width: Option<f64> = item.attribute_cloned_or(ATTR_MAX_WIDTH, None);
-	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
+	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
+	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
@@ -3144,8 +3145,8 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
 	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
 	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width: Option<f64> = item.attribute_cloned_or(ATTR_MAX_WIDTH, None);
-	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
+	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
+	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
@@ -3225,8 +3226,8 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 	let font_size: f64 = item.attribute_cloned_or(ATTR_FONT_SIZE, DEFAULT_FONT_SIZE);
 	let line_height: f64 = item.attribute_cloned_or(ATTR_LINE_HEIGHT, 1.2);
 	let letter_spacing: f64 = item.attribute_cloned_or(ATTR_LETTER_SPACING, 0.);
-	let max_width: Option<f64> = item.attribute_cloned_or(ATTR_MAX_WIDTH, None);
-	let max_height: Option<f64> = item.attribute_cloned_or(ATTR_MAX_HEIGHT, None);
+	let max_width = item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.);
+	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);

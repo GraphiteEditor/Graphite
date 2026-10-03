@@ -1,11 +1,12 @@
 use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
-use document_graph_storage::Registry;
+use document_graph_storage::{Declarations, Registry, Value};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
-use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, collect_network_view_settings};
+use super::utility_types::network_interface::editor_delta::{EditorDelta, construct_batch};
+use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
 
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
 /// becoming the authoritative history. Owns the dual-stack bookkeeping push/pop/clear and the cursor's stage/retire/move/verify
@@ -24,6 +25,25 @@ pub struct DocumentHistory {
 	/// future built by `load_document` resolves.
 	#[derivative(Debug = "ignore")]
 	storage: Option<document_format::GddV1>,
+	/// Decoded proto-node declarations for every registry state the cursor can reach, filled at mount
+	/// and extended on each staging, so a cursor rebuild never touches the byte store.
+	#[derivative(Debug = "ignore")]
+	declarations: Declarations,
+	/// Whether the next commit must convert the whole document rather than stage what the store recorded.
+	///
+	/// True when the working copy holds no baseline for a batch to apply to, and whenever the runtime has
+	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
+	/// part of the distance between the two.
+	needs_whole_document_stage: bool,
+}
+
+/// Why [`DocumentHistory::move_cursor`] produced no interface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CursorMoveError {
+	/// Nothing to move to, unmounted, or the move itself failed. The cursor did not move.
+	NotMoved,
+	/// The cursor moved but the rebuild from it failed. It stays moved unless the caller reverts it.
+	RebuildFailed,
 }
 
 impl DocumentHistory {
@@ -79,9 +99,23 @@ impl DocumentHistory {
 		self.storage.as_mut()
 	}
 
-	/// Attach (or clear) the `Gdd` working copy once the mount future resolves.
-	pub fn set_storage(&mut self, storage: Option<document_format::GddV1>) {
-		self.storage = storage;
+	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
+	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+		self.needs_whole_document_stage |= storage.registry().node_instances.is_empty();
+		self.storage = Some(storage);
+		self.declarations = declarations;
+	}
+
+	/// Marks the working copy as needing a whole-document stage on its next commit, for a change to the
+	/// runtime that went unrecorded and so cannot be described by the recorded batch.
+	pub fn require_whole_document_stage(&mut self) {
+		self.needs_whole_document_stage = true;
+	}
+
+	/// Detach the `Gdd` working copy, dropping its declaration cache with it.
+	pub fn clear_storage(&mut self) {
+		self.storage = None;
+		self.declarations.clear();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
@@ -94,35 +128,82 @@ impl DocumentHistory {
 		}
 	}
 
-	/// Stage the runtime snapshot into the `Gdd` working copy at each `CommitTransaction`. No-op while
-	/// unmounted. Proto-node declaration bytes go into `byte_store` (the app-global resource cache). The
-	/// staged hot ops are retired by [`retire_storage_interaction`](Self::retire_storage_interaction) at
-	/// undo-step boundaries. `validate` (the `validate_storage_round_trip` preference) gates the per-commit
-	/// round-trip check, off by default for its perf cost.
-	pub fn stage_snapshot(
-		&mut self,
-		interface: &NodeNetworkInterface,
-		registry: &ResourceRegistry,
-		view_settings: BTreeMap<String, serde_json::Value>,
-		legacy_document: &str,
-		byte_store: &dyn ResourceStorage,
-	) {
+	/// Stage a `CommitTransaction` into the `Gdd` working copy: the first commit writes the whole document,
+	/// every later one stages the `deltas` the store recorded. No-op while unmounted. Proto-node declaration
+	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
+	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
+	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
+		let needs_whole_document_stage = self.needs_whole_document_stage;
 		let Some(storage) = self.storage.as_mut() else { return };
 
-		let network = interface.document_network();
+		let staged = match needs_whole_document_stage {
+			true => Self::stage_whole_document(storage, interface, registry, byte_store),
+			// An autosave with nothing edited since the last commit still persists the view state below.
+			false if deltas.is_empty() => Ok(Declarations::new()),
+			// The batch is drained by the time it reaches here, so a failed staging would leave the working copy
+			// permanently behind. Converting the whole document restages the same edit from whatever the working
+			// copy holds, including a batch that failed partway through.
+			false => Self::stage_recorded(storage, deltas, interface, registry, byte_store).or_else(|error| {
+				log::error!("Staging recorded deltas failed, falling back to a whole document snapshot: {error}");
+				Self::stage_whole_document(storage, interface, registry, byte_store)
+			}),
+		};
+		match staged {
+			Ok(declarations) => {
+				self.declarations.extend(declarations);
+				self.needs_whole_document_stage = false;
+			}
+			Err(error) => {
+				log::error!("Storage snapshot staging failed: {error}");
+				return;
+			}
+		}
+
+		self.persist_view_state(interface, view_settings);
+	}
+
+	/// Converts the whole document and stages the difference from what the working copy holds.
+	///
+	/// Stages without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
+	/// step, so the ops accumulate in the hot log and coalesce at the next undo-step boundary.
+	fn stage_whole_document(storage: &mut document_format::GddV1, interface: &NodeNetworkInterface, registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> Result<Declarations, String> {
 		let metadata_view = StorageMetadataView::new(interface);
+		storage
+			.stage_runtime_snapshot(interface.document_network(), &metadata_view, registry, byte_store)
+			.map_err(|error| error.to_string())
+	}
+
+	/// Stages what the store recorded since the last drain.
+	///
+	/// This and the whole-document conversion produce the same registry for the same edit, which
+	/// `verify_round_trip` checks when the `validate_storage_round_trip` preference is on. They differ in
+	/// what they cost and in what they can miss: a conversion sees every change however it was made,
+	/// while this sees only what went through the store, so a write that bypasses it is not persisted.
+	fn stage_recorded(
+		storage: &mut document_format::GddV1,
+		deltas: &[EditorDelta],
+		interface: &NodeNetworkInterface,
+		registry: &ResourceRegistry,
+		byte_store: &dyn ResourceStorage,
+	) -> Result<Declarations, String> {
+		let peer = storage.session().peer();
+		let metadata_view = StorageMetadataView::new(interface);
+		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer).map_err(|error| error.to_string())?;
+
+		storage
+			.stage_constructed_ops(constructed.ops, &constructed.declarations.bytes, byte_store)
+			.map_err(|error| error.to_string())?;
+		Ok(constructed.declarations.decoded)
+	}
+
+	/// The parts of a commit that are not the graph: the per-peer and per-network view settings.
+	fn persist_view_state(&mut self, interface: &NodeNetworkInterface, view_settings: BTreeMap<String, Value>) {
+		let Some(storage) = self.storage.as_mut() else { return };
 
 		let network_view_settings = storage
-			.network_ids(network, &metadata_view)
+			.network_ids(interface.document_network(), &StorageMetadataView::new(interface))
 			.ok()
 			.map(|network_ids| collect_network_view_settings(interface, &network_ids));
-
-		// Stage without retiring: a tool drag fires several `CommitTransaction`s but is one legacy undo
-		// step, so the deltas accumulate as hot ops and coalesce at the next undo-step boundary.
-		if let Err(error) = storage.stage_runtime_snapshot(network, &metadata_view, registry, byte_store) {
-			log::error!("Storage snapshot staging failed: {error}");
-			return;
-		}
 
 		if let Err(error) = storage.set_view_settings(view_settings) {
 			log::error!("Persisting view settings failed: {error}");
@@ -133,40 +214,51 @@ impl DocumentHistory {
 		{
 			log::error!("Persisting per-network view settings failed: {error}");
 		}
-
-		// Dual-write soak: embed the legacy `.graphite` bytes so the new format
-		// can be validated against (and recovered from) the old one on open.
-		if let Err(error) = storage.store_legacy_document(legacy_document.as_bytes()) {
-			log::error!("Embedding legacy document into working copy failed: {error}");
-		}
 	}
 
 	/// Move the `Gdd` undo/redo cursor along the retired interaction chain, flushing any open interaction
-	/// first. Returns a clone of the post-move `Gdd` (`Arc`-shared) so a `'static` rebuild future can read
-	/// the rewound state while the live document keeps its cursor. `None` when there is nothing to move to,
-	/// unmounted, or the move failed.
-	pub fn move_cursor(&mut self, undo: bool) -> Option<document_format::GddV1> {
+	/// first, and rebuild the interface from the rewound registry using the declaration cache.
+	pub fn move_cursor(&mut self, undo: bool) -> Result<NodeNetworkInterface, CursorMoveError> {
 		self.retire_storage_interaction();
 
-		let storage = self.storage.as_mut()?;
+		let storage = self.storage.as_mut().ok_or(CursorMoveError::NotMoved)?;
 
 		let moved = if undo {
 			if !storage.can_undo() {
-				return None;
+				return Err(CursorMoveError::NotMoved);
 			}
 			storage.undo().map(|_| ())
 		} else {
 			if !storage.can_redo() {
-				return None;
+				return Err(CursorMoveError::NotMoved);
 			}
 			storage.redo().map(|_| ())
 		};
 		if let Err(error) = moved {
 			log::error!("Storage undo/redo cursor move failed: {error}");
-			return None;
+			return Err(CursorMoveError::NotMoved);
 		}
 
-		Some(storage.clone())
+		storage
+			.registry()
+			.to_runtime_with_full_metadata(&self.declarations)
+			.map_err(|error| error.to_string())
+			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
+			.map_err(|error| {
+				log::error!("Storage undo/redo rebuild failed: {error}");
+				CursorMoveError::RebuildFailed
+			})
+	}
+
+	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`
+	/// direction whose rebuild failed.
+	pub fn revert_cursor(&mut self, undo: bool) {
+		let Some(storage) = self.storage.as_mut() else { return };
+
+		let reverted = if undo { storage.redo() } else { storage.undo() };
+		if let Err(error) = reverted {
+			log::error!("Storage undo/redo cursor revert failed: {error}");
+		}
 	}
 
 	// Soak round-trip verification (runtime-gated by `validate_storage_round_trip`)
@@ -193,13 +285,7 @@ impl DocumentHistory {
 			}
 		};
 		let target = &conversion.registry;
-		let declarations = match conversion.declarations() {
-			Ok(declarations) => declarations,
-			Err(error) => {
-				log::error!("storage round-trip: declaration rebuild failed: {error}");
-				return;
-			}
-		};
+		let declarations = &conversion.declarations;
 
 		let stored = storage.registry();
 		if !stored.value_equal(target) {
@@ -213,7 +299,7 @@ impl DocumentHistory {
 			panic!("storage round-trip: timestamp order inconsistent between stored and target");
 		}
 
-		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(&declarations) {
+		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(declarations) {
 			Ok(result) => result,
 			Err(error) => {
 				log::error!("storage round-trip: to_runtime failed: {error}");

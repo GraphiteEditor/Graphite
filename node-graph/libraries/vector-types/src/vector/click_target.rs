@@ -59,7 +59,7 @@ impl FreePoint {
 #[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ClickTargetType {
-	/// One or more contours tested as one compound shape using the non-zero fill rule, so holes
+	/// One or more contours tested as one compound shape using the nonzero fill rule, so holes
 	/// (e.g. the inside of an "O") correctly count as outside the fill.
 	Path(BezPath),
 	FreePoint(FreePoint),
@@ -276,7 +276,7 @@ impl ClickTarget {
 					return true;
 				}
 
-				// Selection point inside the fill (non-zero rule).
+				// Selection point inside the fill (nonzero rule).
 				// Only closed contours contribute to the fill region; open segments would otherwise produce spurious winding on one side of the segment.
 				let fill_region = closed_contours(path);
 				if !fill_region.is_empty() && bezier_iter().next().is_some_and(|segment| fill_region.contains(segment.start())) {
