@@ -49,6 +49,7 @@
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
+	let activeEntryOnOpen: string | undefined = undefined;
 	let open = false;
 	let fileDragOver = false;
 
@@ -58,7 +59,18 @@
 	$: watchOpen(open);
 
 	function watchOpen(open: boolean) {
-		initialSelectedIndex = open ? selectedIndex : undefined;
+		if (open) {
+			initialSelectedIndex = selectedIndex;
+			activeEntryOnOpen = activeEntry.value;
+		} else {
+			// Suppress hoverOutEntry if a new selection was made
+			const selectionMade = activeEntryOnOpen !== undefined && activeEntry.value !== activeEntryOnOpen;
+			if (initialSelectedIndex !== undefined && !selectionMade) {
+				dispatch("hoverOutEntry", initialSelectedIndex);
+			}
+			initialSelectedIndex = undefined;
+			activeEntryOnOpen = undefined;
+		}
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component

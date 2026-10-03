@@ -695,12 +695,14 @@
 		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
-			margin: 0 4px;
+			padding-left: 4px;
+			padding-right: 15px;
+
 			border-bottom: 1px solid var(--color-2-mildblack);
-			justify-content: space-between;
+			justify-content: space-evenly;
 
 			.widget-span:first-child {
-				flex: 1 1 auto;
+				flex: 1 0.5 auto;
 			}
 
 			&:not(:has(*)) {

@@ -277,7 +277,6 @@
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
 		if (!menuListEntry.children?.length) {
-			dispatch("hoverOutEntry");
 			return;
 		}
 
@@ -288,6 +287,11 @@
 		} else {
 			dispatch("open", false);
 		}
+	}
+
+	function onPointerLeave() {
+		dispatch("hoverOutEntry");
+		return;
 	}
 
 	function includeSeparator(entries: MenuListEntry[][], section: MenuListEntry[], sectionIndex: number, search: string): boolean {
@@ -498,6 +502,7 @@
 		bind:this={scroller}
 		scrollableY={scrollableY && virtualScrollingEntryHeight !== 0}
 		on:scroll={onScroll}
+		on:pointerleave={onPointerLeave}
 		styles={{ "min-width": virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }}
 	>
 		{#if virtualScrollingEntryHeight}
