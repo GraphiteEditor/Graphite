@@ -244,6 +244,8 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn number_of_outputs(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
+			// A multi-output proto node (declared `destructure_output`) has an output for each field of the struct it returns
+			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).map_or(1, |metadata| metadata.number_of_outputs()),
 			_ => 1,
 		})
 	}
@@ -264,6 +266,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn hidden_primary_output(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(network) => network.exports.first().is_none_or(|input| !input.is_exposed()),
+			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).is_some_and(|metadata| metadata.hidden_primary_output()),
 			_ => false,
 		})
 	}

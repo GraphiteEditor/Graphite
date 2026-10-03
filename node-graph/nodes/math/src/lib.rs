@@ -1754,6 +1754,28 @@ fn combine_vec2(
 	Item::new_from_element(DVec2::new(*x.element(), *y.element()))
 }
 
+/// The X and Y components of a vec2, split into separate node outputs.
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, node_macro::Destructure)]
+pub struct Vec2Components {
+	/// The X component of the vec2.
+	pub x: Item<f64>,
+	/// The Y component of the vec2.
+	pub y: Item<f64>,
+}
+
+/// Decomposes the X and Y components of a vec2.
+///
+/// The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.
+#[node_macro::node(category("Math: Vec2"), name("Split Vec2"), destructure_output)]
+fn split_vec2(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Components {
+	let (vec2, attributes) = vec2.into_parts();
+
+	Vec2Components {
+		x: Item::from_parts(vec2.x, attributes.clone()),
+		y: Item::from_parts(vec2.y, attributes),
+	}
+}
+
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.
 ///
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).

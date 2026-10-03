@@ -3427,6 +3427,7 @@ name = "math-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
+ "dyn-any",
  "glam 0.33.10",
  "graphic-types",
  "log",
@@ -4397,10 +4398,15 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 name = "preprocessor"
 version = "0.0.0"
 dependencies = [
+ "core-types",
+ "dyn-any",
+ "futures",
+ "glam 0.33.10",
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
  "log",
+ "node-macro",
 ]
 
 [[package]]

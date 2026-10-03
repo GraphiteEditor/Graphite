@@ -17,6 +17,8 @@ pub struct NodeMetadata {
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
 	pub inject_scope: bool,
+	/// The output connectors of a `destructure_output` node, taken from the [`Destructure`] struct it returns.
+	pub output_fields: Option<DestructureMetadata>,
 }
 
 // Translation struct between macro and definition
@@ -62,11 +64,89 @@ pub enum RegistryValueSource {
 	Scope(&'static str),
 }
 
+/// Metadata for a `#[derive(node_macro::Destructure)]` struct, describing how its fields are broken out into individual node connectors.
+/// Produced by [`Destructure::metadata`] and stored in [`NodeMetadata::output_fields`] for each node declared `destructure_output`.
+#[derive(Clone, Debug)]
+pub struct DestructureMetadata {
+	/// The fields in output-connector order, starting with the one marked `#[primary]` if any.
+	pub fields: Vec<DestructureFieldMetadata>,
+	pub has_primary: bool,
+	/// The type of the struct's rank-lifted twin ([`Destructure::Mapped`]), which the node's mapped variant returns when framed over a list.
+	pub mapped_type: Type,
+}
+
+impl DestructureMetadata {
+	/// Whether output 0 is a hidden output carrying the whole struct, which is the case unless a field is marked `#[primary]` to take its place.
+	pub fn hidden_primary_output(&self) -> bool {
+		!self.has_primary
+	}
+
+	/// One output per field, preceded by the hidden struct output if there is one.
+	pub fn number_of_outputs(&self) -> usize {
+		self.fields.len() + usize::from(self.hidden_primary_output())
+	}
+
+	/// The index into [`Self::fields`] of the field exported at the given output, or `None` for the hidden struct output.
+	pub fn field_index_for_output(&self, output_index: usize) -> Option<usize> {
+		if self.hidden_primary_output() { output_index.checked_sub(1) } else { Some(output_index) }
+	}
+}
+
+// Translation struct between macro and definition
+#[derive(Clone, Debug)]
+pub struct DestructureFieldMetadata {
+	pub name: &'static str,
+	pub description: &'static str,
+	/// The generated proto node that extracts this field from the struct or from its rank-lifted twin.
+	pub extractor: ProtoNodeIdentifier,
+	/// The field's wire type as declared on the struct, `Item<T>` or `List<T>`.
+	pub ty: Type,
+	/// The field's wire type on the rank-lifted twin, always `List<T>`.
+	pub mapped_ty: Type,
+}
+
+/// A struct of wires returned by a multi-output node, implemented by `#[derive(node_macro::Destructure)]`.
+///
+/// Each field is an `Item<T>` or `List<T>` wire that becomes one output connector. The struct travels only within the network
+/// the Graphene preprocessor expands the node into, where a generated extractor node exports each field.
+pub trait Destructure: Sized {
+	/// The rank-lifted twin returned by the node's mapped variant when it is framed over a list: each `Item<T>` field
+	/// becomes `List<T>` and each `List<T>` field stays `List<T>`, flat-mapped per the rank-2 rule.
+	type Mapped;
+
+	fn metadata() -> DestructureMetadata;
+
+	/// An empty twin with each field's list sized for the given number of frame slots.
+	fn mapped_with_capacity(capacity: usize) -> Self::Mapped;
+
+	/// Appends this struct's fields to the twin as one frame slot, pushing each `Item<T>` field and extending with each `List<T>` field.
+	fn push_into(self, mapped: &mut Self::Mapped);
+}
+
+/// Moves one field out of a [`Destructure`] struct or its rank-lifted twin, by the field's output-connector index.
+/// The generated extractor nodes are written against this trait so one node serves both rank forms.
+pub trait DestructureField<const INDEX: usize> {
+	type Wire;
+
+	fn field(self) -> Self::Wire;
+}
+
 type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// All multi-output proto nodes (those declared `destructure_output`), keyed by their identifier.
+/// Snapshotted on first access, which must happen after startup registration of the node metadata completes.
+pub static MULTI_OUTPUT_NODES: LazyLock<HashMap<ProtoNodeIdentifier, DestructureMetadata>> = LazyLock::new(|| {
+	NODE_METADATA
+		.lock()
+		.unwrap()
+		.iter()
+		.filter_map(|(identifier, metadata)| metadata.output_fields.clone().map(|output_fields| (identifier.clone(), output_fields)))
+		.collect()
+});
 
 #[cfg(not(target_family = "wasm"))]
 pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
