@@ -217,6 +217,10 @@ pub enum DocumentMessage {
 	ToggleNodePropertiesSectionExpanded {
 		node_id: NodeId,
 	},
+	/// Sets every section currently shown in the Properties panel to expanded or collapsed.
+	SetAllNodePropertiesSectionsExpanded {
+		expanded: bool,
+	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
 	ToggleGridVisibility,

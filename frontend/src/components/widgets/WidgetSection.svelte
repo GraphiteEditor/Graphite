@@ -19,6 +19,15 @@
 	// A reorderable section is a Properties panel node section the user can drag to reorder (a layer chain's node, or a pinned node)
 	$: reorderable = layoutTarget === "PropertiesPanel" && widgetData.draggable;
 
+	// Alt+click toggles every section at once instead of just this one
+	function handleHeaderClick(event: MouseEvent) {
+		if (event.altKey) {
+			editor.setAllNodePropertiesSectionsExpanded(!expanded);
+		} else {
+			editor.toggleNodePropertiesSectionExpanded(widgetData.id);
+		}
+	}
+
 	const editor = getContext<EditorWrapper>("editor");
 </script>
 
@@ -28,7 +37,7 @@
 		class="header"
 		class:expanded
 		data-properties-reorder-handle={reorderable ? "" : undefined}
-		on:click|stopPropagation={() => editor.toggleNodePropertiesSectionExpanded(widgetData.id)}
+		on:click|stopPropagation={handleHeaderClick}
 		tabindex="0"
 	>
 		<div class="expand-arrow"></div>
