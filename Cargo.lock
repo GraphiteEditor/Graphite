@@ -6560,6 +6560,7 @@ dependencies = [
  "graphic-types",
  "kurbo",
  "log",
+ "math-parser",
  "node-macro",
  "qrcodegen",
  "rand",

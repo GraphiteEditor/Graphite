@@ -2,6 +2,7 @@ pub mod arc_shape;
 pub mod arrow_shape;
 pub mod circle_shape;
 pub mod ellipse_shape;
+pub mod function_plot;
 pub mod grid_shape;
 pub mod line_shape;
 pub mod polygon_shape;

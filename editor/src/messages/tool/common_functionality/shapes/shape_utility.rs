@@ -36,6 +36,7 @@ pub enum ShapeType {
 	Spiral,
 	Grid,
 	Arrow,
+	FunctionPlot,
 	Line,      // KEEP THIS AT THE END
 	Rectangle, // KEEP THIS AT THE END
 	Ellipse,   // KEEP THIS AT THE END
@@ -51,6 +52,7 @@ impl ShapeType {
 		ShapeType::Spiral,
 		ShapeType::Grid,
 		ShapeType::Arrow,
+		ShapeType::FunctionPlot,
 		ShapeType::Line,      // KEEP THIS AT THE END
 		ShapeType::Rectangle, // KEEP THIS AT THE END
 		ShapeType::Ellipse,   // KEEP THIS AT THE END
@@ -71,6 +73,7 @@ impl ShapeType {
 			Self::Spiral => "Spiral",
 			Self::Grid => "Grid",
 			Self::Arrow => "Arrow",
+			Self::FunctionPlot => "Function Plot",
 			Self::Line => "Line",           // KEEP THIS AT THE END
 			Self::Rectangle => "Rectangle", // KEEP THIS AT THE END
 			Self::Ellipse => "Ellipse",     // KEEP THIS AT THE END
