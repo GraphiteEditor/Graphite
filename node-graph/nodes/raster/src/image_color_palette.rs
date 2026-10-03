@@ -29,7 +29,7 @@ async fn image_color_palette(
 	// O(n) binning of the image's n pixels into an OkLab histogram, weighted by alpha so transparent pixels are ignored
 	let mut cumulative = vec![Moments::default(); TABLE_SIDE.pow(3)];
 	for pixel in image.element().data.iter() {
-		let weight = (pixel.a().clamp(0., 1.) * 255.).round() as i64;
+		let weight = (pixel.a().clamp(0., 1.) * f32::from(u16::MAX)).round() as i64;
 		if weight == 0 {
 			continue;
 		}
