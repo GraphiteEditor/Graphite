@@ -7,7 +7,7 @@ use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
+use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, GradientUnits, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, VectorModificationType};
 use std::sync::Arc;
 
@@ -28,6 +28,7 @@ pub enum GraphOperationMessage {
 		gradient: Gradient,
 		gradient_form: GradientForm,
 		gradient_settings: GradientSettings,
+		gradient_units: GradientUnits,
 		transform: DAffine2,
 	},
 	BlendingFillSet {

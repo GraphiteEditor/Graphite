@@ -17,6 +17,25 @@ pub enum GradientForm {
 	Radial,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum GradientUnits {
+	#[default]
+	UserSpaceOnUse,
+	ObjectBoundingBox,
+}
+
+impl GradientUnits {
+	pub fn svg_name(self) -> &'static str {
+		match self {
+			GradientUnits::UserSpaceOnUse => "userSpaceOnUse",
+			GradientUnits::ObjectBoundingBox => "objectBoundingBox",
+		}
+	}
+}
+
 /// A gradient's stops: a list of colors (linear, unassociated alpha) whose optional `position` and `midpoint`
 /// attributes place each stop along the 0 to 1 range. Stops lacking the `position` attribute distribute evenly,
 /// and stops lacking the `midpoint` attribute interpolate linearly (`0.5`).
