@@ -149,7 +149,7 @@ struct MmappedBytes(MemoryMappedFile);
 impl AsRef<[u8]> for MmappedBytes {
 	fn as_ref(&self) -> &[u8] {
 		let len = self.0.len();
-		match self.0.as_slice(0, len) {
+		match self.0.as_slice_bytes(0, len) {
 			Ok(slice) => slice,
 			Err(error) => {
 				log::error!("Failed to obtain mmap slice: {error}");
