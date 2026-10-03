@@ -9,10 +9,16 @@ pub struct Registry {
 	/// Content-addressable resources (images, fonts, eventually proto-node declarations) referenced
 	/// by `ResourceId`. See [`ResourceStore`].
 	pub resources: ResourceStore,
-	/// Append-only mapping from per-device `PeerId` to per-human `UserId`.
-	/// Registered by each device's first contribution via `RegistryDelta::RegisterPeer`.
-	pub peer_users: HashMap<PeerId, UserId>,
+	/// Which person each device is, from `RegistryDelta::RegisterPeer`, so undo and authorship scope by person.
+	pub peer_users: HashMap<PeerId, PeerRegistration>,
 	pub attributes: Attributes,
+}
+
+/// A device's registration to a person, and when it was made.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PeerRegistration {
+	pub user: UserId,
+	pub timestamp: TimeStamp,
 }
 
 impl Registry {
@@ -117,6 +123,7 @@ enum TimestampKey {
 	DocumentAttribute(String),
 	ResourceHash(ResourceId),
 	ResourceSource(ResourceId, SourceKey),
+	PeerRegistration(PeerId),
 }
 
 fn collect_timestamps(registry: &Registry) -> HashMap<TimestampKey, TimeStamp> {
@@ -148,6 +155,9 @@ fn collect_timestamps(registry: &Registry) -> HashMap<TimestampKey, TimeStamp> {
 		for (source_key, source_value) in &entry.sources {
 			out.insert(TimestampKey::ResourceSource(*id, *source_key), source_value.timestamp);
 		}
+	}
+	for (peer, registration) in &registry.peer_users {
+		out.insert(TimestampKey::PeerRegistration(*peer), registration.timestamp);
 	}
 	out
 }

@@ -42,6 +42,7 @@ pub use to_runtime::Declarations;
 
 #[cfg(test)]
 mod tests {
+	mod bookkeeping;
 	mod crdt;
 	mod round_trip;
 }
