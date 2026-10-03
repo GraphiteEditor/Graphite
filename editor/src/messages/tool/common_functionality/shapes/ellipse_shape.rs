@@ -64,7 +64,7 @@ mod test_ellipse {
 
 	async fn get_ellipse(editor: &mut EditorTestUtils) -> Vec<ResolvedEllipse> {
 		let instrumented = match editor.eval_graph().await {
-			Ok(instrumented) => instrumented,
+			Ok((instrumented, _)) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
 
