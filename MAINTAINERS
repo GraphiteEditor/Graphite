@@ -1,0 +1,115 @@
+List of maintainers
+===================
+
+Keavon:
+Discord: @Keavon
+Github: @Keavon
+email: keavon@keavon.com
+
+TrueDoctor:
+Discord: @TrueDoctor
+Github: @TrueDoctor
+email: dennis@kobert.dev
+
+Timon:
+Discord: @timokrates
+Github: @timon-schelling
+email: me@timon.zip
+
+
+
+
+Folders
+=======
+
+Example Structure:
+
+System Name - folder-path/*
+---------------------------
+General Maintainers
+
+Subsystem Name - folder-path/subsystem:
+Subsystem Maintainer
+
+
+Frontend Code - frontend/*
+--------------------------
+Keavon
+
+Frontend Wasm - frontend/wasm:
+Timon
+TrueDoctor
+
+
+Graphite Website - website/*
+-----------------------------
+Keavon
+
+
+Tooling - tools/*
+-----------------
+Crate hierarchy Visualization - tools/crate-hierarchy-viz:
+TrueDoctor
+
+Node Documentation Generation - tools/node-docs:
+Keavon
+
+
+Libraries - libraries/*
+-----------------------
+
+Path Bool - libraries/path-bool:
+TrueDoctor
+
+Dyn Any - libraries/dyn-any:
+TrueDoctor
+
+
+Editor - editor/*
+-----------------
+Keavon
+
+Node graph executor - editor/src/node_graph_executor*:
+TrueDoctor
+
+
+Desktop App - desktop/*
+-----------------------
+Timon
+TrueDoctor
+
+Platform specific Code: desktop/platform/*:
+Timon
+
+
+Node Graph - node-graph/*
+-------------------------
+TrueDoctor
+
+Preprocessor - node-graph/preprocessor:
+TrueDoctor
+
+Node Macro - node-graph/node-macro:
+TrueDoctor
+
+Graphene Compiler - node-graph/graph-craft:
+TrueDoctor
+
+Interpreted Runtime - node-graph/interpreted-executor:
+TrueDoctor
+
+Graphene Cli - node-graph/graphene-cli:
+TrueDoctor
+
+Node support Libraries - node-graph/libraries:
+----------------------------------------------
+
+Application io - node-graph/libraries/application-io:
+TrueDoctor
+
+Core types - node-graph/libraries/core-types:
+TrueDoctor
+
+Wgpu executor - node-graph/libraries/wgpu-executor:
+TrueDoctor
+
