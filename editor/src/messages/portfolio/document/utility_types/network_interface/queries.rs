@@ -1,4 +1,5 @@
 use super::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 
 /// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
 pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
@@ -776,6 +777,22 @@ impl NodeNetworkInterface {
 			);
 			layer
 		})
+	}
+
+	/// Filters out layers that share a `Transform` node with an earlier layer in the iterator.
+	///
+	/// Layers sharing a Transform node compose through it, so transforming each of them would apply the same change once
+	/// per layer. Keep only the first layer for each Transform node, or all of them when the layer has no Transform node.
+	pub fn layers_with_unique_transform_node<'a>(&'a self, layers: impl IntoIterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let mut seen_transform_nodes = HashSet::new();
+
+		layers
+			.into_iter()
+			.filter(move |&layer| match ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, layer, self) {
+				Some(transform_node_id) => seen_transform_nodes.insert(transform_node_id),
+				None => true,
+			})
 	}
 
 	pub fn shallowest_unique_layers_sorted(&self, network_path: &[NodeId]) -> Vec<LayerNodeIdentifier> {

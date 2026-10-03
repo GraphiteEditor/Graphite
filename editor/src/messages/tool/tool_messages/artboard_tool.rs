@@ -215,7 +215,8 @@ impl ArtboardToolData {
 
 		let translation = position.round() - self.dragging_current_artboard_location;
 		self.dragging_current_artboard_location = position.round();
-		for child in selected_artboard.children(document.metadata()) {
+		let children = selected_artboard.children(document.metadata()).collect::<Vec<_>>();
+		for child in document.network_interface.layers_with_unique_transform_node(children) {
 			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation);
 			responses.add(GraphOperationMessage::TransformChange {
 				layer: child,

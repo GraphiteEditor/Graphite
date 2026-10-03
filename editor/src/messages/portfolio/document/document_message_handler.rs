@@ -3009,7 +3009,8 @@ impl DocumentMessageHandler {
 		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
 		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
-		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+		let layers = self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)).collect::<Vec<_>>();
+		for layer in self.network_interface.layers_with_unique_transform_node(layers) {
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
 				transform,
@@ -4271,6 +4272,57 @@ mod document_message_handler_tests {
 
 		let rect_grandparent = rect_parent.parent(document.metadata()).unwrap();
 		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
+	}
+
+	// Layers that traverse to the same Transform node used to have the drag's translation applied once per layer.
+	// See https://github.com/GraphiteEditor/Graphite/issues/1529
+	#[tokio::test]
+	async fn drag_layers_sharing_a_transform_node_moves_them_once() {
+		use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+		use crate::messages::tool::common_functionality::graph_modification_utils;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let first = editor.get_selected_layer().await.unwrap();
+		editor.drag_tool(ToolType::Rectangle, 200., 0., 300., 100., ModifierKeys::empty()).await;
+		let second = editor.get_selected_layer().await.unwrap();
+
+		// Rewire the second layer to consume the first layer's Transform node, so both chains traverse to it.
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let first_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, first, &editor.active_document().network_interface).unwrap();
+		let second_stroke = graph_modification_utils::get_stroke_id(second, &editor.active_document().network_interface).unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::primary_input(second_stroke),
+				input: NodeInput::node(first_transform, 0),
+			})
+			.await;
+
+		// Confirm the premise: both layers resolve to the same Transform node.
+		let network_interface = &editor.active_document().network_interface;
+		let second_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, second, network_interface).unwrap();
+		assert_eq!(first_transform, second_transform, "The two layers should share one Transform node");
+
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![first.to_node(), second.to_node()],
+			})
+			.await;
+		let first_before = editor.active_document().metadata().transform_to_document(first).translation;
+		let second_before = editor.active_document().metadata().transform_to_document(second).translation;
+
+		// Drag the selection by 50px on each axis, starting on top of the first rectangle.
+		editor.drag_tool(ToolType::Select, 50., 50., 100., 100., ModifierKeys::empty()).await;
+
+		for (layer, before) in [(first, first_before), (second, second_before)] {
+			let delta = editor.active_document().metadata().transform_to_document(layer).translation - before;
+			assert!(
+				(delta - DVec2::new(50., 50.)).length() < 1e-6,
+				"Layer {layer:?} should have moved once by the drag delta, but moved by {delta}"
+			);
+		}
 	}
 
 	// TODO: Fix https://github.com/GraphiteEditor/Graphite/issues/2688 and reenable this as part of that fix.
