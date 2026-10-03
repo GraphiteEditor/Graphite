@@ -40,6 +40,7 @@ impl InputMapperMessageHandler {
 			.chain(self.mapping.key_up_no_repeat.iter())
 			.chain(self.mapping.key_down_no_repeat.iter())
 			.chain(self.mapping.double_click.iter())
+			.chain(self.mapping.double_tap.iter())
 			.chain(std::iter::once(&self.mapping.wheel_scroll))
 			.chain(std::iter::once(&self.mapping.pointer_move));
 		let all_mapping_entries = all_key_mapping_entries.flat_map(|entry| entry.0.iter());
@@ -69,6 +70,10 @@ impl InputMapperMessageHandler {
 			use InputMapperMessage as IMM;
 			match entry.input {
 				IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) => keys.push(key),
+				IMM::DoubleTap(key) => {
+					keys.push(Key::FakeKeyDouble);
+					keys.push(key);
+				}
 				_ => (),
 			}
 
