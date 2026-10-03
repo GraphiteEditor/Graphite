@@ -2822,16 +2822,8 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 	use graphene_std::text_nodes::string_capitalization::*;
 
 	// Read the current values before borrowing context mutably for widgets
-	let (is_simple_case, use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
+	let (use_joiner_enabled, joiner_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
-			let capitalization_input = document_node.input(CapitalizationInput);
-			let capitalization_exposed = capitalization_input.is_some_and(|input| input.is_exposed());
-			// When exposed, the capitalization mode may change dynamically, so we can't assume it's a simple (joiner-inapplicable) mode
-			let is_simple = !capitalization_exposed
-				&& matches!(
-					capitalization_input.and_then(|input| input.as_value()),
-					Some(TaggedValue::StringCapitalization(StringCapitalization::LowerCase | StringCapitalization::UpperCase))
-				);
 			let use_joiner = match document_node.input(UseJoinerInput).and_then(|input| input.as_value()) {
 				Some(&TaggedValue::Bool(x)) => x,
 				_ => true,
@@ -2840,16 +2832,13 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 				Some(TaggedValue::String(x)) => Some(x.clone()),
 				_ => None,
 			};
-			(is_simple, use_joiner, joiner)
+			(use_joiner, joiner)
 		}
 		Err(err) => {
 			log::error!("Could not get document node in string_capitalization_properties: {err}");
 			return Vec::new();
 		}
 	};
-
-	// The joiner controls are disabled when lowercase/UPPERCASE are selected (they don't use word boundaries)
-	let joiner_disabled = is_simple_case || !use_joiner_enabled;
 
 	let capitalization = enum_choice::<StringCapitalization>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput, true, context))
@@ -2863,7 +2852,6 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(use_joiner_enabled)
-				.disabled(is_simple_case)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, UseJoinerInput))
 				.on_commit(commit_value)
 				.widget_instance(),
@@ -2871,7 +2859,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(joiner)
 				.placeholder(if joiner_is_empty { "Empty" } else { "" })
-				.disabled(joiner_disabled)
+				.disabled(!use_joiner_enabled)
 				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, JoinerInput))
 				.on_commit(commit_value)
 				.widget_instance(),
@@ -2892,7 +2880,6 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 		joiner_preset_buttons.push(
 			TextButton::new(label)
 				.tooltip_description(tooltip)
-				.disabled(is_simple_case)
 				.on_update(move |_: &TextButton| Message::Batched {
 					messages: Box::new([
 						NodeGraphMessage::SetInputValue {

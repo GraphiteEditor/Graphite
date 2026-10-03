@@ -6,7 +6,7 @@ pub mod regex;
 mod text_context;
 mod to_path;
 
-use convert_case::{Boundary, Converter, pattern};
+use convert_case::{Boundary, Converter, Pattern};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
@@ -815,25 +815,22 @@ fn string_capitalization(
 	let joiner = joiner.element().clone();
 	let input = std::mem::take(string.element_mut());
 
-	// When the joiner is enabled, apply word-level casing and optionally reconnect words with the selected joiner
+	// When the joiner is enabled, apply word-level casing and reconnect words with the selected joiner
 	let result = if use_joiner {
 		match capitalization {
-			// Simple case mappings that preserve the string's existing structure
-			StringCapitalization::LowerCase => input.to_lowercase(),
-			StringCapitalization::UpperCase => input.to_uppercase(),
-
-			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
-			StringCapitalization::CapitalCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(&joiner).convert(&input),
+			StringCapitalization::LowerCase => Converter::new().set_pattern(Pattern::Lowercase).set_delimiter(joiner).convert(input),
+			StringCapitalization::UpperCase => Converter::new().set_pattern(Pattern::Uppercase).set_delimiter(joiner).convert(input),
+			StringCapitalization::CapitalCase => Converter::new().set_pattern(Pattern::Capital).set_delimiter(joiner).convert(input),
 			StringCapitalization::HeadlineCase => {
 				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
 				// then apply the titlecase crate for smart capitalization (lowercasing short words like "of", "the", etc.),
 				// then rejoin with the custom joiner without mangling the capitalization
-				let spaced = Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(" ").convert(&input);
+				let spaced = Converter::new().set_pattern(Pattern::Capital).set_delimiter(" ").convert(input);
 				let headline = titlecase::titlecase(&spaced);
-				Converter::new().set_boundaries(&[Boundary::SPACE]).set_pattern(pattern::noop).set_delim(&joiner).convert(&headline)
+				Converter::new().set_boundaries(&[Boundary::Space]).set_delimiter(joiner).convert(headline)
 			}
-			StringCapitalization::SentenceCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::sentence).set_delim(&joiner).convert(&input),
-			StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&input),
+			StringCapitalization::SentenceCase => Converter::new().set_pattern(Pattern::Sentence).set_delimiter(joiner).convert(input),
+			StringCapitalization::CamelCase => Converter::new().set_pattern(Pattern::Camel).set_delimiter(joiner).convert(input),
 		}
 	}
 	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
@@ -999,5 +996,36 @@ mod tests {
 		for text in ["", "3", "3, 4, 5", "3, four", "(3, 4.5]"] {
 			assert_eq!(parse(text), fallback, "{text:?} should fall back");
 		}
+	}
+
+	#[test]
+	fn string_capitalization_test() {
+		use StringCapitalization::*;
+		fn run(string: &str, capitalization: StringCapitalization, joiner: Option<&str>) -> String {
+			string_capitalization(
+				(),
+				Item::new_from_element(string.to_string()),
+				Item::new_from_element(capitalization),
+				Item::new_from_element(joiner.is_some()),
+				Item::new_from_element(joiner.map_or_default(|s| s.to_string())),
+			)
+			.into_element()
+		}
+
+		let sample_str = "Alice wAs_BeGinning to_getVery TIRED";
+
+		assert_eq!(run(sample_str, LowerCase, None), "alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, UpperCase, None), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run(sample_str, CapitalCase, None), "Alice WAs_BeGinning To_GetVery TIRED");
+		assert_eq!(run(sample_str, HeadlineCase, None), "Alice wAs_BeGinning to_getVery TIRED");
+		assert_eq!(run(sample_str, SentenceCase, None), "Alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, CamelCase, None), "alice Was_Beginning To_Getvery Tired");
+
+		assert_eq!(run(sample_str, LowerCase, Some(":")), "alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run(sample_str, UpperCase, Some(":")), "ALICE:W:AS:BE:GINNING:TO:GET:VERY:TIRED");
+		assert_eq!(run(sample_str, CapitalCase, Some(":")), "Alice:W:As:Be:Ginning:To:Get:Very:Tired");
+		assert_eq!(run(sample_str, HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
+		assert_eq!(run(sample_str, SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run(sample_str, CamelCase, Some(":")), "alice:W:As:Be:Ginning:To:Get:Very:Tired");
 	}
 }
