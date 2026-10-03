@@ -2445,6 +2445,33 @@ mod test_pen_tool {
 	const C: DVec2 = DVec2::new(200., 200.);
 	const D: DVec2 = DVec2::new(100., 200.);
 
+	async fn create_a_rectangle() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(D.x, D.y, C.x, C.x).await;
+
+		editor
+	}
+
+	#[tokio::test]
+	async fn offset_change_on_snap() {
+		let mut editor = create_a_rectangle().await;
+		// Ultimately brings the pointer over to D's location
+		let move_dir = A + DVec2::new(0., 100.);
+
+		click_pen(&mut editor, A).await;
+
+		// Process of snapping the pen to the rectangle
+		editor.move_mouse(A.x, A.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(A.x, A.y, ModifierKeys::empty()).await;
+		editor.move_mouse(move_dir.x, move_dir.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(move_dir.x, move_dir.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[A]);
+	}
+
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
 		let mut editor = EditorTestUtils::create();
