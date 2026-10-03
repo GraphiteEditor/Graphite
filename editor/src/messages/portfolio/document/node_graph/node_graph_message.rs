@@ -237,6 +237,10 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		pinned: bool,
 	},
+	SetCollapsed {
+		node_id: NodeId,
+		collapsed: bool,
+	},
 	SetVisibility {
 		node_id: NodeId,
 		network_path: Vec<NodeId>,

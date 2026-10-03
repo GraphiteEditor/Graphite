@@ -124,6 +124,7 @@ impl NodeTemplate {
 			output_names,
 			locked,
 			pinned,
+			collapsed: _,
 			node_type_metadata,
 			network_metadata,
 		} = persistent_node_metadata;
@@ -207,6 +208,7 @@ impl NodeTemplate {
 			output_names,
 			locked,
 			pinned,
+			collapsed: None,
 			node_type_metadata,
 			network_metadata,
 		};
