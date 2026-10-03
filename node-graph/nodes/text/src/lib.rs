@@ -4,6 +4,7 @@ pub mod json;
 mod path_builder;
 pub mod regex;
 mod text_context;
+pub mod text_on_path;
 mod to_path;
 
 use convert_case::{Boundary, Converter, Pattern};
@@ -22,6 +23,7 @@ pub use core_types as gcore;
 pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
 pub use text_context::{TextContext, for_each_styled_glyph_run};
+pub use text_on_path::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing, place_text_on_path};
 pub use to_path::*;
 pub use vector_types;
 
