@@ -10,6 +10,7 @@
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
+	export let tooltipCode: string | undefined = undefined;
 	// TODO: Add middle-click drag scrolling
 	export let scrollableX = false;
 	export let scrollableY = false;
@@ -33,6 +34,7 @@
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
+	data-tooltip-code={tooltipCode || undefined}
 	data-scrollable-x={scrollableX ? "" : undefined}
 	data-scrollable-y={scrollableY ? "" : undefined}
 	class={`layout-row ${className} ${extraClasses}`.trim()}

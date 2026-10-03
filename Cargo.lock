@@ -472,7 +472,7 @@ dependencies = [
 [[package]]
 name = "cargo-gpu-install"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=e53a94458e1e699f0d5f56acfcd71fc483c37da0#e53a94458e1e699f0d5f56acfcd71fc483c37da0"
+source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.21.0",
@@ -4612,6 +4612,7 @@ name = "raster-nodes"
 version = "0.0.0"
 dependencies = [
  "bytemuck",
+ "color",
  "core-types",
  "dyn-any",
  "fastnoise-lite",
@@ -5035,7 +5036,7 @@ checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 [[package]]
 name = "rustc_codegen_spirv-types"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=e53a94458e1e699f0d5f56acfcd71fc483c37da0#e53a94458e1e699f0d5f56acfcd71fc483c37da0"
+source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
 dependencies = [
  "rspirv",
  "semver",
@@ -5628,7 +5629,7 @@ dependencies = [
 [[package]]
 name = "spirv-builder"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=e53a94458e1e699f0d5f56acfcd71fc483c37da0#e53a94458e1e699f0d5f56acfcd71fc483c37da0"
+source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
 dependencies = [
  "cargo_metadata 0.21.0",
  "log",
@@ -5644,7 +5645,7 @@ dependencies = [
 [[package]]
 name = "spirv-std"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=e53a94458e1e699f0d5f56acfcd71fc483c37da0#e53a94458e1e699f0d5f56acfcd71fc483c37da0"
+source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -5661,7 +5662,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-macros"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=e53a94458e1e699f0d5f56acfcd71fc483c37da0#e53a94458e1e699f0d5f56acfcd71fc483c37da0"
+source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5672,7 +5673,7 @@ dependencies = [
 [[package]]
 name = "spirv-std-types"
 version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=e53a94458e1e699f0d5f56acfcd71fc483c37da0#e53a94458e1e699f0d5f56acfcd71fc483c37da0"
+source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
 
 [[package]]
 name = "stable_deref_trait"

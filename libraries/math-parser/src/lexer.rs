@@ -151,28 +151,41 @@ impl Constant {
 		}
 	}
 
-	/// The word and typeset spellings, matched exactly: constants are lowercase-only, since uppercase-initial names are reserved for matrices.
 	pub fn from_name(name: &str) -> Option<Constant> {
+		CONSTANT_SPELLINGS.into_iter().find_map(|(spelling, constant)| (name == spelling).then_some(constant))
+	}
+
+	/// The typeset spelling that stands for the constant alongside its words, which for infinity is the `∞` literal.
+	pub fn symbol(self) -> Option<&'static str> {
 		use Constant::*;
-		let spellings = [
-			("e", E),
-			("i", I),
-			("j", J),
-			("k", K),
-			("pi", Pi),
-			("π", Pi),
-			("tau", Tau),
-			("τ", Tau),
-			("phi", Phi),
-			("φ", Phi),
-			("inf", Inf),
-			("infinity", Inf),
-			("true", True),
-			("false", False),
-		];
-		spellings.into_iter().find_map(|(spelling, constant)| (name == spelling).then_some(constant))
+		match self {
+			Pi => Some("π"),
+			Tau => Some("τ"),
+			Phi => Some("φ"),
+			Inf => Some("∞"),
+			E | I | J | K | True | False => None,
+		}
 	}
 }
+
+/// The constants' word and typeset spellings, related constants together in the order an editor lists them, matched exactly: constants
+/// are lowercase-only, since uppercase-initial names are reserved for matrices.
+pub const CONSTANT_SPELLINGS: [(&str, Constant); 14] = [
+	("i", Constant::I),
+	("j", Constant::J),
+	("k", Constant::K),
+	("pi", Constant::Pi),
+	("π", Constant::Pi),
+	("tau", Constant::Tau),
+	("τ", Constant::Tau),
+	("phi", Constant::Phi),
+	("φ", Constant::Phi),
+	("e", Constant::E),
+	("inf", Constant::Inf),
+	("infinity", Constant::Inf),
+	("true", Constant::True),
+	("false", Constant::False),
+];
 
 impl fmt::Display for Constant {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -200,14 +213,12 @@ enum Bar {
 	Or,
 }
 
-/// The token of a reserved word, which is never a name, whoever would bind it.
+/// The reserved words with their tokens, which are never names, whoever would bind them.
+pub const KEYWORDS: [(&str, Token<'static>); 3] = [("if", Token::If), ("otherwise", Token::Otherwise), ("where", Token::Where)];
+
+/// The token of a reserved word.
 fn keyword(word: &str) -> Option<Token<'static>> {
-	match word {
-		"if" => Some(Token::If),
-		"otherwise" => Some(Token::Otherwise),
-		"where" => Some(Token::Where),
-		_ => None,
-	}
+	KEYWORDS.into_iter().find_map(|(spelling, token)| (word == spelling).then_some(token))
 }
 
 /// Whether a name is a matrix's by the case rule: an uppercase-initial identifier, read after the `\` prefix.
@@ -217,6 +228,17 @@ pub fn names_matrix(name: &str) -> bool {
 	match name.as_bytes().first() {
 		Some(byte) if byte.is_ascii() => byte.is_ascii_uppercase(),
 		_ => name.starts_with(char::is_uppercase),
+	}
+}
+
+/// Whether an operand has just ended after the token, given whether one had before it. A `!` leaves that as it was, since a factorial
+/// follows an operand and a not precedes one.
+pub(crate) fn operand_ended(token: &Token, after_operand: bool) -> bool {
+	match token {
+		Token::Bang => after_operand,
+		Token::Integer(_) | Token::Float(_) | Token::Ident(_) => true,
+		Token::RParen | Token::RBrace | Token::RBracket | Token::BarClose | Token::Transpose => true,
+		_ => false,
 	}
 }
 
@@ -296,6 +318,14 @@ impl<'a> Lexer<'a> {
 			pos: 0,
 			bars: classify_bars(input),
 		}
+	}
+
+	/// The next token with the byte range it was read from.
+	pub fn next_spanned(&mut self) -> Option<(Range<usize>, Token<'a>)> {
+		self.skip_ws();
+		let start = self.pos;
+		let token = self.next_token()?;
+		Some((start..self.pos, token))
 	}
 
 	/// The reading of the `|` at the given byte position.
@@ -436,7 +466,7 @@ impl<'a> Lexer<'a> {
 		let mut previous = first;
 		while let Some(c) = self.peek() {
 			let dot_between_digits = c == '.' && previous.is_ascii_digit() && self.input[self.pos + 1..].chars().next().is_some_and(|next| next.is_ascii_digit());
-			// The middle dot and its Greek twin are identifier characters in Unicode, but they would pass for the `⋅` operator mid-name
+			// The middle dot and its Greek twin are identifier characters in Unicode, but a reader would take `a·b` for a product
 			let middle_dot = matches!(c as u32, 0xB7 | 0x387);
 			if !((unicode_ident::is_xid_continue(c) && !middle_dot) || dot_between_digits) {
 				break;
@@ -510,9 +540,6 @@ impl<'a> Lexer<'a> {
 			'∞' => Float(f64::INFINITY),
 
 			// Typeset math symbol aliases
-			'−' => Minus,
-			'×' | '⋅' => Star,
-			'÷' => Slash,
 			'∧' => AndAnd,
 			'∨' => OrOr,
 			// Its own token rather than a `Bang` alias, since `!` is also the postfix factorial and `5¬` is not one
@@ -608,6 +635,12 @@ impl<'a> Iterator for Lexer<'a> {
 	}
 }
 
+/// The byte offset where a name borrowed directly from the source begins in it, as a lexed name always is, or `None` for one borrowed from elsewhere.
+pub(crate) fn offset_in(source: &str, name: &str) -> Option<usize> {
+	let start = (name.as_ptr() as usize).checked_sub(source.as_ptr() as usize)?;
+	(start + name.len() <= source.len()).then_some(start)
+}
+
 /// Replaces each whole identifier for which `rename` returns a new spelling, so `b` never matches inside `logb`, and leaves all other source text untouched.
 /// Returns `None` if the source fails to lex.
 pub fn rename_identifiers(source: &str, mut rename: impl FnMut(&str) -> Option<String>) -> Option<String> {
@@ -619,9 +652,9 @@ pub fn rename_identifiers(source: &str, mut rename: impl FnMut(&str) -> Option<S
 		match token {
 			Token::Error(_) => return None,
 			Token::Ident(name) => {
-				if let Some(new_name) = rename(name) {
-					// An `Ident` always borrows directly from the source, so its span is recoverable by pointer offset
-					let start = name.as_ptr() as usize - source.as_ptr() as usize;
+				if let Some(new_name) = rename(name)
+					&& let Some(start) = offset_in(source, name)
+				{
 					result.push_str(&source[copied_up_to..start]);
 					result.push_str(&new_name);
 					copied_up_to = start + name.len();

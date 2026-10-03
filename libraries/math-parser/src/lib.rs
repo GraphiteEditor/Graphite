@@ -1,7 +1,10 @@
 pub mod ast;
+pub mod completion;
 pub mod constants;
 pub mod context;
+pub mod documentation;
 pub mod executer;
+pub mod highlight;
 pub mod lexer;
 pub mod matrix;
 pub mod object;
@@ -110,7 +113,7 @@ mod tests {
 		}
 
 		// The quoted source is a part of its own, so a host can render it safely whatever it holds, backticks included, and the span
-		// stands apart from the prose, which a sort error has none of
+		// stands apart from the prose, which a sort error has only where it blames a name
 		use parser::MessagePart::{Code, Text};
 		let message = |input: &str| ast::Node::try_parse_from_str(input).unwrap_err().messages()[0].clone();
 		assert_eq!(message("`abc").parts(), [Code("`abc".into()), Text(" is not recognized".into())]);
@@ -122,6 +125,7 @@ mod tests {
 		assert_eq!(message("7 % 3").span(), Some(2..3));
 		assert_eq!(message("sin(I)").parts(), [Text("A matrix stands where a value is needed".into())]);
 		assert_eq!(message("sin(I)").span(), None);
+		assert_eq!(message("m where m = I").span(), Some(8..9));
 
 		// The tokens the parser library quotes are code too, as is the code a custom message writes between backticks
 		assert_eq!(
@@ -144,6 +148,46 @@ mod tests {
 			message("{1 if x, 2 otherwise, 3 otherwise}").parts(),
 			[Text("A piecewise has at most one ".into()), Code("otherwise".into()), Text(" case".into())]
 		);
+	}
+
+	#[test]
+	fn arithmetic_operators_have_no_typeset_spellings() {
+		// An editor typesets `-`, `*`, and `/` for display, so the language keeps one spelling of each
+		for input in ["5 − 3", "−5", "3 × 4", "3 ⋅ 4", "8 ÷ 2"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn an_expression_too_large_to_read_within_the_stack_is_refused() {
+		// At the limits, reading, highlighting, completing, and evaluating fit in half the stack WebAssembly gives
+		std::thread::Builder::new()
+			.stack_size(512 * 1024)
+			.spawn(|| {
+				let sum = vec!["x"; 64].join(" + ");
+				let negations = format!("{}1", "-".repeat(127));
+				// Each matrix in a product is evaluated a level deeper than the last, with the largest frames of any chain
+				let product = format!("{}1", "I ".repeat(127));
+				let nested = format!("{}1{}", "(".repeat(32), ")".repeat(32));
+				let bindings = (0..99).map(|n| format!("a{n} = I a{}", n + 1)).collect::<Vec<_>>().join(", ");
+				let bindings = format!("a0 where {bindings}, a99 = 1");
+				for source in [&sum, &negations, &product, &nested, &bindings] {
+					assert!(evaluate(source).is_ok(), "`{source}` should be read");
+					highlight::highlight(source, false);
+					completion::completions(source, source.len(), true);
+				}
+			})
+			.unwrap()
+			.join()
+			.unwrap();
+
+		// Past them, it's an error rather than a crash
+		let too_long = vec!["x"; 257].join(" + ");
+		let too_deep = format!("{}1", "I ".repeat(128));
+		let too_nested = format!("{}1{}", "(".repeat(33), ")".repeat(33));
+		assert_eq!(evaluate(&too_long).unwrap_err().to_string(), "The expression is too long to read");
+		assert_eq!(evaluate(&too_deep).unwrap_err().to_string(), "The expression is too long to read");
+		assert_eq!(evaluate(&too_nested).unwrap_err().to_string(), "The expression's brackets nest too deeply to read");
 	}
 
 	#[test]
@@ -524,6 +568,18 @@ mod tests {
 	}
 
 	#[test]
+	fn every_spelling_of_a_base_2_or_10_logarithm_is_exact() {
+		// A change of base misses by an ulp on some powers, where the logarithms of bases 2 and 10 are correctly rounded
+		let real = |source: &str| evaluate(source).unwrap().unwrap().as_real();
+		for source in ["log2(2^29)", "log_2(2^29)", "log(2^29, 2)"] {
+			assert_eq!(real(source), Some(29.), "`{source}`");
+		}
+		for source in ["log(1e15)", "log10(1e15)", "log_10(1e15)", "log(1e15, 10)"] {
+			assert_eq!(real(source), Some(15.), "`{source}`");
+		}
+	}
+
+	#[test]
 	fn xor_requires_logical_operands() {
 		// Logical operands must be exactly 0 or 1
 		for input in ["xor(2, 1)", "xor(0.5, 1)"] {
@@ -662,13 +718,13 @@ mod tests {
 		assert_eq!(real("a where a = b + 1, b = 2"), Some(3.));
 		assert_eq!(real("f(1) where f(t) = g(t) + c, g(t) = 2t, c = 1"), Some(3.));
 
-		// A cycle could never finish, whether through values, functions, or a nested clause
-		assert_eq!(error("x where x = x + 1"), "`x` is defined in terms of itself");
-		assert_eq!(error("f(1) where f(t) = f(t - 1)"), "`f` is defined in terms of itself");
-		assert_eq!(error("a where a = b, b = a"), "`a` and `b` are defined in terms of each other");
-		assert_eq!(error("f(1) where f(t) = g(t), g(t) = f(t)"), "`f` and `g` are defined in terms of each other");
-		assert_eq!(error("a where a = b, b = c, c = f(1), f(t) = a"), "`a`, `b`, `c`, and `f` are defined in terms of each other");
-		assert_eq!(error("a where a = (c where c = b), b = a"), "`a` and `b` are defined in terms of each other");
+		// A cycle could never finish, whether through values, functions, or a nested clause, and the error points at its first definition
+		assert_eq!(error("x where x = x + 1"), "`x` is defined in terms of itself, at 8..9");
+		assert_eq!(error("f(1) where f(t) = f(t - 1)"), "`f` is defined in terms of itself, at 11..12");
+		assert_eq!(error("a where a = b, b = a"), "`a` and `b` are defined in terms of each other, at 8..9");
+		assert_eq!(error("f(1) where f(t) = g(t), g(t) = f(t)"), "`f` and `g` are defined in terms of each other, at 11..12");
+		assert_eq!(error("a where a = b, b = c, c = f(1), f(t) = a"), "`a`, `b`, `c`, and `f` are defined in terms of each other, at 8..9");
+		assert_eq!(error("a where a = (c where c = b), b = a"), "`a` and `b` are defined in terms of each other, at 8..9");
 
 		// A parameter or an inner definition of the same name is another name, as is a function beside a value
 		assert_eq!(real("a where f(a) = a + 1, a = f(2)"), Some(3.));
@@ -751,8 +807,8 @@ mod tests {
 		assert_eq!(counted("0 where a = counted(2)"), (Some(0.), 0));
 
 		// So reads never multiply the work, however deeply calls nest
-		let nested = format!("{}1{} where f(t) = t + t", "f(".repeat(40), ")".repeat(40));
-		assert_eq!(evaluate(&nested).unwrap().unwrap().as_real(), Some(2_f64.powi(40)));
+		let nested = format!("{}1{} where f(t) = t + t", "f(".repeat(30), ")".repeat(30));
+		assert_eq!(evaluate(&nested).unwrap().unwrap().as_real(), Some(2_f64.powi(30)));
 	}
 
 	#[test]
@@ -765,23 +821,35 @@ mod tests {
 		assert_eq!(real("det(F(3)) where F(t) = t I"), Some(81.));
 		assert_eq!(real("f(2 I) where f(T) = det(T)"), Some(16.));
 
-		// A name of the wrong case is recased in the message where the case exists to flip
-		assert_eq!(error("m where m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`");
-		assert_eq!(error("Mass where Mass = 1"), "`Mass` is defined as a value, so rename it to begin with a lowercase letter, like `mass`");
-		assert_eq!(error("f(1) where f(t) = t I"), "`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`");
-		assert_eq!(error("あ where あ = I"), "`あ` is defined as a matrix, so rename it to begin with a capital letter");
-		assert_eq!(error("𝐀 where 𝐀 = 1"), "`𝐀` is defined as a value, so rename it to begin with a lowercase letter");
+		// A name of the wrong case is recased in the message where the case exists to flip, and the error points at its definition
+		assert_eq!(error("m where m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`, at 8..9");
+		assert_eq!(
+			error("Mass where Mass = 1"),
+			"`Mass` is defined as a value, so rename it to begin with a lowercase letter, like `mass`, at 11..15"
+		);
+		assert_eq!(
+			error("f(1) where f(t) = t I"),
+			"`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`, at 11..12"
+		);
+		assert_eq!(error("あ where あ = I"), "`あ` is defined as a matrix, so rename it to begin with a capital letter, at 10..13");
+		assert_eq!(error("𝐀 where 𝐀 = 1"), "`𝐀` is defined as a value, so rename it to begin with a lowercase letter, at 11..15");
 
 		// The definition is checked before any read of it, even one in an earlier definition, so a read never takes the blame
-		assert_eq!(error("det(m) where m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`");
-		assert_eq!(error("a where a = det(m), m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`");
+		assert_eq!(
+			error("det(m) where m = I"),
+			"`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`, at 13..14"
+		);
+		assert_eq!(
+			error("a where a = det(m), m = I"),
+			"`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`, at 20..21"
+		);
 		assert_eq!(
 			error("det(f(1)) where f(t) = t I"),
-			"`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`"
+			"`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`, at 16..17"
 		);
 		assert_eq!(
 			error("Width < 10 where Width = 5"),
-			"`Width` is defined as a value, so rename it to begin with a lowercase letter, like `width`"
+			"`Width` is defined as a value, so rename it to begin with a lowercase letter, like `width`, at 17..22"
 		);
 
 		// A definition agreeing with its name leaves a mismatched read the mistake, like a host's name
@@ -789,14 +857,23 @@ mod tests {
 		assert_eq!(error("det(f(1)) where f(t) = 2 t"), "A value stands where a matrix is needed");
 		assert_eq!(error("det(x)"), "A value stands where a matrix is needed");
 
-		// A parameter has no definition, so a read in its function's body decides its sort
-		assert_eq!(error("f(1) where f(t) = det(t)"), "`t` is used as a matrix, so rename it to begin with a capital letter, like `T`");
-		assert_eq!(error("f(2 I) where f(t) = t^T"), "`t` is used as a matrix, so rename it to begin with a capital letter, like `T`");
+		// A parameter has no definition, so a read in its function's body decides its sort, and the error points at the parameter
+		assert_eq!(
+			error("f(1) where f(t) = det(t)"),
+			"`t` is used as a matrix, so rename it to begin with a capital letter, like `T`, at 13..14"
+		);
+		assert_eq!(
+			error("f(2 I) where f(t) = t^T"),
+			"`t` is used as a matrix, so rename it to begin with a capital letter, like `T`, at 15..16"
+		);
 
-		// A call is blamed on the parameter where the body could take what's passed, and on the argument otherwise
-		assert_eq!(error("f(2 I) where f(t) = 2 t"), "`t` is passed a matrix, so rename it to begin with a capital letter, like `T`");
-		assert_eq!(error("f(1) where f(T) = det(T)"), "`f(T)` is passed a value for `T`, which its body uses as a matrix");
-		assert_eq!(error("f(I) where f(t) = sin(t)"), "`f(t)` is passed a matrix for `t`, which its body uses as a value");
+		// A call is blamed on the parameter where the body could take what's passed, and otherwise on the called name
+		assert_eq!(
+			error("f(2 I) where f(t) = 2 t"),
+			"`t` is passed a matrix, so rename it to begin with a capital letter, like `T`, at 15..16"
+		);
+		assert_eq!(error("f(1) where f(T) = det(T)"), "`f(T)` is passed a value for `T`, which its body uses as a matrix, at 0..1");
+		assert_eq!(error("f(I) where f(t) = sin(t)"), "`f(t)` is passed a matrix for `t`, which its body uses as a value, at 0..1");
 		assert!(evaluate("f(1) where f(t) = f(I)").is_err(), "a body testing a call to itself must still finish");
 
 		// One function serves every rung it's called with
@@ -808,13 +885,13 @@ mod tests {
 		let error = |source: &str| evaluate(source).unwrap_err().to_string();
 
 		// Each name is defined once per clause, where a function and a value may share one
-		assert_eq!(error("a where a = 1, a = 2"), "`a` is defined twice in one `where` clause");
-		assert_eq!(error("f(1) where f(t) = t, f(t, u) = t"), "`f` is defined twice in one `where` clause");
-		assert_eq!(error("f(1, 2) where f(t, t) = t"), "`f` has two parameters named `t`");
+		assert_eq!(error("a where a = 1, a = 2"), "`a` is defined twice in one `where` clause, at 15..16");
+		assert_eq!(error("f(1) where f(t) = t, f(t, u) = t"), "`f` is defined twice in one `where` clause, at 21..22");
+		assert_eq!(error("f(1, 2) where f(t, t) = t"), "`f` has two parameters named `t`, at 19..20");
 
 		// A function takes one argument per parameter, and has at least one parameter
-		assert_eq!(error("f(1, 2) where f(t) = t"), "`f` takes 1 argument");
-		assert_eq!(error("f(1) where f(a, b) = a"), "`f` takes 2 arguments");
+		assert_eq!(error("f(1, 2) where f(t) = t"), "`f` takes 1 argument, at 0..1");
+		assert_eq!(error("f(1) where f(a, b) = a"), "`f` takes 2 arguments, at 0..1");
 		assert!(evaluate("f(1) where f() = 1").is_err());
 
 		// The prefix always reaches the builtin, so no clause can define a name that has it
@@ -1029,12 +1106,12 @@ mod tests {
 		// Mathematical constants
 		constant_pi: "pi" => std::f64::consts::PI,
 		constant_e: "e" => std::f64::consts::E,
-		constant_phi: "phi" => 1.61803398875,
+		constant_phi: "phi" => std::f64::consts::GOLDEN_RATIO,
 		constant_tau: "tau" => 2. * std::f64::consts::PI,
 		constant_infinity: "{inf if inf == ∞, 0 otherwise}" => f64::INFINITY,
 		multiply_pi: "2 * pi" => 2. * std::f64::consts::PI,
 		add_e_constant: "e + 1" => std::f64::consts::E + 1.,
-		multiply_phi_constant: "phi * 2" => 1.61803398875 * 2.,
+		multiply_phi_constant: "phi * 2" => std::f64::consts::GOLDEN_RATIO * 2.,
 		exponent_tau: "2^tau" => 2f64.powf(2. * std::f64::consts::PI),
 		infinity_subtract_large_number: "inf - 1000" => f64::INFINITY,
 
@@ -1165,11 +1242,6 @@ mod tests {
 		mapping_max_variadic: "max(5, 2, 8, 4)" => 8.,
 
 		// Typeset math symbol aliases
-		alias_minus_sign: "5 − 3" => 2.,
-		alias_unary_minus_sign: "−5 + 6" => 1.,
-		alias_multiplication_sign: "3 × 4" => 12.,
-		alias_dot_operator: "3 ⋅ 4" => 12.,
-		alias_division_sign: "8 ÷ 2" => 4.,
 		alias_logical_and: "{2 if 1 ∧ 1, 3 otherwise}" => 2.,
 		alias_logical_or: "{2 if 0 ∨ 1, 3 otherwise}" => 2.,
 		alias_logical_not: "¬0" => 1.,
@@ -1801,7 +1873,7 @@ mod tests {
 		// Arguments are evaluated in order, so the range's error is raised before the continuity's
 		assert!(matches!(evaluate("smoothstep(1, x..1, y)").unwrap(), Err(EvalError::MissingValue(name)) if name == "x"));
 
-		// Matrix builtins check their argument counts as the expression is parsed
+		// Matrix builtins check their argument counts as the expression is parsed, blaming the function's name
 		for input in [
 			"within(1)",
 			"clamp(1, 0..1, 0..1)",
@@ -1813,7 +1885,8 @@ mod tests {
 			"scale()",
 			"matrix(1, 2)",
 		] {
-			assert_eq!(evaluate(input).unwrap_err().to_string(), "Invalid arguments for function call", "`{input}`");
+			let name_end = input.find('(').unwrap_or_default();
+			assert_eq!(evaluate(input).unwrap_err().to_string(), format!("Invalid arguments for function call, at 0..{name_end}"), "`{input}`");
 		}
 
 		// A range literal's corners bound it directly, so they may be infinite, while other regions with infinite entries have no inverse
@@ -2136,12 +2209,12 @@ mod tests {
 			assert_eq!(message(input), "The operator has no meaning for a matrix", "`{input}`");
 		}
 		assert_eq!(message("{I if 1, 2 otherwise}"), "A piecewise's cases must all be values or all be matrices");
-		assert_eq!(message("I(1, 2)"), "Invalid arguments for function call");
+		assert_eq!(message("I(1, 2)"), "Invalid arguments for function call, at 0..1");
 
 		// A fractional power, the inverse of a padded literal (whose zero rows make it singular), and the transpose of a translated matrix fail at evaluation
 		for input in ["I^0.5", "I^inf", "I^i"] {
 			let error = evaluate(input).unwrap().unwrap_err();
-			assert_eq!(error.to_string(), "A matrix power must be a whole number", "`{input}`");
+			assert_eq!(error.to_string(), "A matrix power must be an integer", "`{input}`");
 		}
 		for input in ["[i;j]^-1", "I / [i;j]", "[i;j]^-2"] {
 			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SingularMatrix)), "expected `{input}` to be singular");

@@ -131,7 +131,7 @@
 
 		await tick();
 
-		const query = list?.div?.()?.querySelector("[data-text-input]:not([disabled])");
+		const query = list?.div?.()?.querySelector("[data-layer-name-input]:enabled");
 		const textInput = (query instanceof HTMLInputElement && query) || undefined;
 		textInput?.select();
 	}
@@ -617,7 +617,7 @@
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
-							data-text-input
+							data-layer-name-input
 							type="text"
 							value={listing.entry.alias}
 							placeholder={listing.entry.implementationName}

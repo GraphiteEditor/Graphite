@@ -3,6 +3,7 @@ use super::utility_types::{MouseCursorIcon, PersistedState};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, FileType, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
+use crate::messages::layout::utility_types::math_expression::MathExpressionCompletions;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
@@ -206,6 +207,23 @@ pub enum FrontendMessage {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>, // TODO: Align this with what's generated
+	},
+	/// The tokens of what a math expression widget holds, for it to color and typeset once they arrive, and the names offered to
+	/// finish the one at the caret, where they were asked for.
+	UpdateMathExpressionAnalysis {
+		#[serde(rename = "widgetId")]
+		widget_id: WidgetId,
+		source: String,
+		tokens: Vec<MathExpressionToken>,
+		tooltips: Vec<MathExpressionTooltip>,
+		completions: Option<MathExpressionCompletions>,
+	},
+	/// The value of math typed in a math expression widget's number popover, written as a number, or `None` where it isn't a finite real number.
+	UpdateMathExpressionEvaluation {
+		#[serde(rename = "widgetId")]
+		widget_id: WidgetId,
+		source: String,
+		result: Option<String>,
 	},
 	UpdateImportReorderIndex {
 		#[serde(rename = "importIndex")]
