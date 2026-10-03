@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::pointer::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType, PivotSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
@@ -726,6 +726,40 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.unwrap_or_default()
 }
 
+/// Snaps the dragged pivot to the combined selection cage.
+///
+/// With a single selected layer, `LayerSnapper` already offers that layer's rotated bounding box, so this
+/// only adds value for multi-layer selections, where it provides the combined cage.
+fn snap_pivot_to_bounds(document: &DocumentMessageHandler, document_mouse: DVec2, selection_bounds: Option<&BoundingBoxManager>) -> Option<snapping::SnappedPoint> {
+	let bounds = selection_bounds?;
+
+	// Build the cage quad in document space
+	let cage_quad = document.metadata().document_to_viewport.inverse() * bounds.transform * Quad::from_box(bounds.bounds);
+
+	let mut candidates = Vec::new();
+	snapping::get_bbox_points(cage_quad, &mut candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
+
+	// Find the closest candidate to the current document-space mouse position
+	let tolerance = snapping::snap_tolerance(document);
+	candidates
+		.into_iter()
+		.map(|candidate| {
+			let distance = candidate.document_point.distance(document_mouse);
+			(candidate, distance)
+		})
+		.filter(|&(_, distance)| distance < tolerance)
+		.min_by(|(_, a), (_, b)| a.total_cmp(b))
+		.map(|(candidate, distance)| snapping::SnappedPoint {
+			snapped_point_document: candidate.document_point,
+			source: SnapSource::Pivot(PivotSnapSource::Custom),
+			target: candidate.target,
+			distance,
+			tolerance,
+			target_bounds: candidate.quad,
+			..Default::default()
+		})
+}
+
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
@@ -1268,6 +1302,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1403,10 +1438,23 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
+				let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse_position);
 
+				let snap_data = SnapData::new(document, input, viewport);
+				let point = SnapCandidatePoint::pivot_handle(document_mouse);
+				let mut snapped = tool_data.snap_manager.free_snap(&snap_data, &point, snapping::SnapTypeConfiguration::default());
+
+				if let Some(cage_snap) = snap_pivot_to_bounds(document, document_mouse, tool_data.bounding_box_manager.as_ref())
+					&& cage_snap.distance < snapped.distance
+				{
+					snapped = cage_snap;
+				}
+
+				let snapped_mouse_position = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+				tool_data.snap_manager.update_indicator(snapped);
 				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
 
+				responses.add(OverlaysMessage::Draw);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
