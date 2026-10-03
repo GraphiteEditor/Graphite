@@ -11,6 +11,7 @@ use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDe
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_animation::AnimationCurve;
 use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
@@ -540,6 +541,7 @@ tagged_value! {
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(ResourceId),
+	AnimationCurve(AnimationCurve),
 	// Legacy
 	#[serde(alias = "OptionalDAffine2")]
 	LegacyOptionalDAffine2(Option<DAffine2>),
