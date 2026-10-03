@@ -28,4 +28,5 @@ interpreted-executor = { workspace = true }
 core-types = { workspace = true }
 dyn-any = { workspace = true }
 futures = { workspace = true }
+glam = { workspace = true }
 node-macro = { workspace = true }
