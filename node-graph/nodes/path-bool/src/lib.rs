@@ -58,8 +58,7 @@ async fn boolean_operation(
 		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
 
 		// Clean up the boolean operation result by merging duplicated points
-		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
+		result_vector_list.element_mut(0).unwrap().merge_by_distance_topological(0.0001);
 	}
 
 	result_vector_list.into_iter().next().unwrap_or_default()
