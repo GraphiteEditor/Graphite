@@ -16,13 +16,13 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
+use std::sync::{Arc, OnceLock};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub node_graph: &'a mut NodeGraphMessageHandler,
-	pub fonts: &'a FontsMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -503,26 +503,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let mut options = usvg::Options::default();
-				options.font_family = graphene_std::consts::DEFAULT_FONT_FAMILY.to_string();
-				let mut fontdb = usvg::fontdb::Database::new();
-				fontdb.load_system_fonts();
-				fontdb.load_font_data(graphene_std::text::FALLBACK_FONT_RESOURCE.to_vec());
-				for data in context.fonts.font_data().values() {
-					fontdb.load_font_data(data.to_vec());
-				}
-				let fallback_family = fontdb
-					.faces()
-					.next()
-					.and_then(|face| face.families.first().map(|(name, _)| name.clone()))
-					.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
-				fontdb.set_sans_serif_family(&fallback_family);
-				fontdb.set_serif_family(&fallback_family);
-				fontdb.set_monospace_family(&fallback_family);
-				fontdb.set_cursive_family(&fallback_family);
-				fontdb.set_fantasy_family(&fallback_family);
-				options.fontdb = std::sync::Arc::new(fontdb);
-
+				let options = usvg_options();
 				let tree = match usvg::Tree::from_str(&svg, &options) {
 					Ok(t) => t,
 					Err(e) => {
@@ -586,6 +567,42 @@ fn usvg_color(c: usvg::Color, a: f32) -> Color {
 
 fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 	DAffine2::from_cols_array(&[c.sx as f64, c.ky as f64, c.kx as f64, c.sy as f64, c.tx as f64, c.ty as f64])
+}
+
+/// The usvg options used when parsing an SVG.
+///
+/// usvg drops a `<text>` element outright when it can find no font to shape it with, so the database needs at least one
+/// face. Graphite reshapes imported text with its own shaper, so the fallback font alone is enough, and holding the database
+/// in a `OnceLock` keeps every paste from rescanning the system's fonts and the editor's cached ones.
+fn usvg_options() -> usvg::Options<'static> {
+	static DATABASE: OnceLock<(String, Arc<usvg::fontdb::Database>)> = OnceLock::new();
+
+	let (fallback_family, database) = DATABASE.get_or_init(|| {
+		let mut fontdb = usvg::fontdb::Database::new();
+		fontdb.load_font_data(graphene_std::text::FALLBACK_FONT_RESOURCE.to_vec());
+
+		let fallback_family = fontdb
+			.faces()
+			.next()
+			.and_then(|face| face.families.first().map(|(name, _)| name.clone()))
+			.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
+
+		// A document's own `font-family` is usually a font usvg doesn't have, so aim the generic families at the fallback
+		// too. That resolves to text being imported rather than dropped.
+		fontdb.set_sans_serif_family(&fallback_family);
+		fontdb.set_serif_family(&fallback_family);
+		fontdb.set_monospace_family(&fallback_family);
+		fontdb.set_cursive_family(&fallback_family);
+		fontdb.set_fantasy_family(&fallback_family);
+
+		(fallback_family, Arc::new(fontdb))
+	});
+
+	usvg::Options {
+		font_family: fallback_family.clone(),
+		fontdb: database.clone(),
+		..Default::default()
+	}
 }
 
 const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
