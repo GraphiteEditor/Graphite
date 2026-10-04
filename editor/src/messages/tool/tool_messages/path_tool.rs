@@ -3,7 +3,7 @@ use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
 	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
-	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	SELECTION_THRESHOLD,
 };
 use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardVectorEntry};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -640,16 +640,10 @@ impl PathToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
+	/// The viewport-space rectangle spanned by the drag so far, which has zero size until the pointer moves.
 	pub fn selection_box(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
-		// Convert previous mouse position to viewport space first
-		let document_to_viewport = metadata.document_to_viewport;
-		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
-		if previous_mouse == self.drag_start_pos {
-			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start_pos - tolerance, self.drag_start_pos + tolerance]
-		} else {
-			[self.drag_start_pos, previous_mouse]
-		}
+		let previous_mouse = metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
+		[self.drag_start_pos, previous_mouse]
 	}
 
 	fn update_selection_status(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
