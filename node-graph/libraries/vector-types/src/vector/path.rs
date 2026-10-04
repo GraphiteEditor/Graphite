@@ -50,7 +50,7 @@ pub struct Path(pub List<i64>);
 impl Path {
 	/// Builds a path from pool indices, with no per-reference attributes.
 	pub fn from_references(references: impl IntoIterator<Item = u32>) -> Self {
-		Self(references.into_iter().map(|reference| Item::new_from_element(i64::from(reference))).collect())
+		Self(List::new_from_elements(references.into_iter().map(i64::from).collect()))
 	}
 
 	/// The pool index named by the reference at `index`, or `None` if out of bounds.
@@ -67,11 +67,6 @@ impl Path {
 	pub fn is_closed(&self) -> bool {
 		let len = self.0.len();
 		len > 1 && self.0.element(0) == self.0.element(len - 1)
-	}
-
-	/// Whether the reference at the given index is an anchor (rather than a handle) under the given curve type.
-	pub fn is_anchor_reference(&self, index: usize, curve_type: CurveType) -> bool {
-		index.is_multiple_of(curve_type.stride())
 	}
 
 	/// The number of segments this path draws, one fewer than its anchor count when open and equal to it when closed.
@@ -138,9 +133,14 @@ impl Path {
 pub fn push_path(paths: &mut List<Path>, curve_type: CurveType, references: impl IntoIterator<Item = u32>, ids: impl IntoIterator<Item = SegmentId>) {
 	let mut path = Path::from_references(references);
 
-	let span_count = path.segment_count(curve_type);
-	for (span, id) in ids.into_iter().enumerate().take(span_count) {
-		path.0.set_attribute(ATTR_ID, span * curve_type.stride(), id);
+	let stride = curve_type.stride();
+	let mut ids = ids.into_iter().take(path.segment_count(curve_type)).peekable();
+	if ids.peek().is_some() {
+		let mut span_ids = vec![SegmentId::default(); path.0.len()];
+		for (span, id) in ids.enumerate() {
+			span_ids[span * stride] = id;
+		}
+		path.0.set_attribute_values(ATTR_ID, span_ids);
 	}
 
 	paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
@@ -180,6 +180,7 @@ pub fn curve_type_at(paths: &List<Path>, index: usize) -> CurveType {
 /// path keeps one stride. The runs of a split subpath share the anchor they meet at, welding them.
 struct PathWeaver {
 	positions: Vec<DVec2>,
+	anchors: Vec<bool>,
 	offset: u32,
 	woven: Vec<(CurveType, Vec<u32>)>,
 	references: Vec<u32>,
@@ -191,6 +192,7 @@ impl PathWeaver {
 	fn new(offset: u32) -> Self {
 		Self {
 			positions: Vec::new(),
+			anchors: Vec::new(),
 			offset,
 			woven: Vec::new(),
 			references: Vec::new(),
@@ -199,9 +201,10 @@ impl PathWeaver {
 		}
 	}
 
-	/// Adds a point to the pool being built and returns the reference naming it.
-	fn push_point(&mut self, point: Point) -> u32 {
+	/// Adds an anchor or handle point to the pool being built and returns the reference naming it.
+	fn push_point(&mut self, point: Point, anchor: bool) -> u32 {
 		self.positions.push(point_to_dvec2(point));
+		self.anchors.push(anchor);
 		self.offset + self.positions.len() as u32 - 1
 	}
 
@@ -248,7 +251,7 @@ impl PathWeaver {
 		match element {
 			PathEl::MoveTo(point) => {
 				self.flush();
-				let reference = self.push_point(point);
+				let reference = self.push_point(point, true);
 				self.subpath_start = Some(reference);
 				self.references.push(reference);
 			}
@@ -264,8 +267,9 @@ impl PathWeaver {
 			return;
 		}
 
-		for &point in points {
-			let reference = self.push_point(point);
+		// Every point but the last is a handle leading to the anchor that ends the segment
+		for (index, &point) in points.iter().enumerate() {
+			let reference = self.push_point(point, index + 1 == points.len());
 			self.references.push(reference);
 		}
 	}
@@ -286,6 +290,7 @@ impl PathWeaver {
 			self.references.push(start);
 			if last as usize + 1 == self.offset as usize + self.positions.len() {
 				self.positions.pop();
+				self.anchors.pop();
 			}
 		} else if self.begin_segment(CurveType::Linear) {
 			self.references.push(start);
@@ -294,29 +299,35 @@ impl PathWeaver {
 		self.flush();
 	}
 
-	fn finish(mut self, pool: &mut List<DVec2>, paths: &mut List<Path>) {
+	/// Appends the woven points and paths, returning whether each appended point is an anchor rather than a handle.
+	fn finish(mut self, pool: &mut List<DVec2>, paths: &mut List<Path>) -> Vec<bool> {
 		self.flush();
 
-		for position in self.positions {
-			pool.push(Item::new_from_element(position));
-		}
+		pool.extend(List::new_from_elements(self.positions));
 
 		for (curve_type, references) in self.woven {
 			let path = Path::from_references(references);
 			paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
 		}
+
+		self.anchors
 	}
 }
 
 /// Appends a bezpath's contours to a point pool and its paths.
 pub fn append_bezpath(pool: &mut List<DVec2>, paths: &mut List<Path>, bezpath: &BezPath) {
+	weave_bezpath(pool, paths, bezpath);
+}
+
+/// Appends a bezpath's contours to a point pool and its paths, returning whether each appended point is an anchor.
+pub(crate) fn weave_bezpath(pool: &mut List<DVec2>, paths: &mut List<Path>, bezpath: &BezPath) -> Vec<bool> {
 	let mut weaver = PathWeaver::new(pool.len() as u32);
 
 	for &element in bezpath.elements() {
 		weaver.push_element(element);
 	}
 
-	weaver.finish(pool, paths);
+	weaver.finish(pool, paths)
 }
 
 /// Builds a fresh point pool and its paths from a bezpath.
@@ -363,19 +374,6 @@ mod tests {
 			path.segment(&pool, CurveType::Cubic, 1),
 			Some(PathSeg::Cubic(CubicBez::new((10., 10.), (10., 15.), (5., 20.), (0., 0.))))
 		);
-	}
-
-	// Anchor occurrences fall on stride multiples, and the references between them are handles
-	#[test]
-	fn anchor_references_by_stride() {
-		let path = path(&[0, 1, 2, 3]);
-
-		assert!(path.is_anchor_reference(0, CurveType::Cubic));
-		assert!(!path.is_anchor_reference(1, CurveType::Cubic));
-		assert!(!path.is_anchor_reference(2, CurveType::Cubic));
-		assert!(path.is_anchor_reference(3, CurveType::Cubic));
-		assert!(path.is_anchor_reference(2, CurveType::Quadratic));
-		assert!(path.is_anchor_reference(2, CurveType::Linear));
 	}
 
 	// A reference naming a point the pool does not have drops its segment instead of panicking

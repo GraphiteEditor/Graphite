@@ -590,7 +590,7 @@ impl Vector {
 	/// Whether any point has more than two segment ends meeting at it, making the vector a mesh.
 	pub fn is_branching(&self, paths: &List<Path>) -> bool {
 		let connectivity = self.connectivity(paths);
-		(0..self.point_count() as u32).any(|point| connectivity.spokes(point, paths) > 2)
+		(0..self.point_count() as u32).any(|point| connectivity.spokes(point) > 2)
 	}
 
 	/// Determines if face-by-face fill rendering should be used. Branching vectors are meshes, whose
