@@ -822,18 +822,22 @@ fn string_capitalization(
 			StringCapitalization::LowerCase => input.to_lowercase(),
 			StringCapitalization::UpperCase => input.to_uppercase(),
 
-			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
-			StringCapitalization::CapitalCase => Converter::new().set_pattern(Pattern::Capital).set_delimiter(joiner).convert(&input),
+			// Word-aware capitalizations: split into nonempty words, then rejoin with the joiner
+			StringCapitalization::CapitalCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Capital]).set_delimiter(joiner).convert(&input),
 			StringCapitalization::HeadlineCase => {
 				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
 				// then apply the titlecase crate for smart capitalization (lowercasing short words like "of", "the", etc.),
 				// then rejoin with the custom joiner without mangling the capitalization
-				let spaced = Converter::new().set_pattern(Pattern::Capital).set_delimiter(" ").convert(input);
+				let spaced = Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Capital]).set_delimiter(" ").convert(input);
 				let headline = titlecase::titlecase(&spaced);
-				Converter::new().set_boundaries(&[Boundary::Space]).set_delimiter(joiner).convert(headline)
+				Converter::new()
+					.set_boundaries(&[Boundary::Space])
+					.set_pattern(Pattern::RemoveEmpty)
+					.set_delimiter(joiner)
+					.convert(headline)
 			}
-			StringCapitalization::SentenceCase => Converter::new().set_pattern(Pattern::Sentence).set_delimiter(joiner).convert(input),
-			StringCapitalization::CamelCase => Converter::new().set_pattern(Pattern::Camel).set_delimiter(joiner).convert(input),
+			StringCapitalization::SentenceCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Sentence]).set_delimiter(joiner).convert(input),
+			StringCapitalization::CamelCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Camel]).set_delimiter(joiner).convert(input),
 		}
 	}
 	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
@@ -1030,5 +1034,12 @@ mod tests {
 		assert_eq!(run(sample_str, HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
 		assert_eq!(run(sample_str, SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
 		assert_eq!(run(sample_str, CamelCase, Some(":")), "alice:W:As:Be:Ginning:To:Get:Very:Tired");
+
+		// Repeated, leading, and trailing separators must not add extra joiners or shift which word is cased as the first
+		assert_eq!(run("  Chapter I - Down the Rabbit-Hole ", CapitalCase, Some("_")), "Chapter_I_Down_The_Rabbit_Hole");
+		assert_eq!(run("  Chapter I - Down the Rabbit-Hole ", HeadlineCase, Some("-")), "Chapter-I-Down-the-Rabbit-Hole");
+		assert_eq!(run("  leading words", SentenceCase, Some(" ")), "Leading words");
+		assert_eq!(run("__init__", CamelCase, Some("")), "init");
+		assert_eq!(run(" ", CapitalCase, Some("_")), "");
 	}
 }
