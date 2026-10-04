@@ -495,10 +495,10 @@ impl App {
 			}
 			AppEvent::CursorChange(cursor) => {
 				// The software cursor owns the pointer while it's drawn, so the cursor changes that keep arriving (tool hover icons, and the ones CEF reports for the web page's CSS) must not reveal the OS cursor mid-transform
-				if matches!(&cursor, Cursor::None) || !self.input_state.software_cursor_active() {
-					if let Some(window) = &mut self.window {
-						window.set_cursor(event_loop, cursor);
-					}
+				if (matches!(&cursor, Cursor::None) || !self.input_state.software_cursor_active())
+					&& let Some(window) = &mut self.window
+				{
+					window.set_cursor(event_loop, cursor);
 				}
 			}
 			AppEvent::Exit => {

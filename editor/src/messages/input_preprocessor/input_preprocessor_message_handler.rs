@@ -26,7 +26,8 @@ pub struct InputPreprocessorMessageHandler {
 struct SoftwareCursor {
 	position: ViewportPosition,
 	last_absolute: ViewportPosition,
-	tracking_deltas: bool,
+	// Set by a locked delta and cleared by the first absolute report after it, which is the jump back to the OS cursor instead of movement to apply
+	locked_delta_seen: bool,
 }
 
 #[message_handler_data]
@@ -109,7 +110,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				let Some(cursor) = &mut self.software_cursor else { return };
 
 				cursor.position += delta;
-				cursor.tracking_deltas = true;
+				cursor.locked_delta_seen = true;
 				self.mouse.position = cursor.position;
 				self.send_software_cursor(viewport, responses);
 
@@ -123,7 +124,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.software_cursor = Some(SoftwareCursor {
 					position,
 					last_absolute: position,
-					tracking_deltas: false,
+					locked_delta_seen: false,
 				});
 				self.mouse.position = position;
 
@@ -174,8 +175,8 @@ impl InputPreprocessorMessageHandler {
 
 		if motion != ViewportPosition::ZERO {
 			// The OS cursor only reappears once the lock is lost, and that jump is not movement to apply
-			if cursor.tracking_deltas {
-				cursor.tracking_deltas = false;
+			if cursor.locked_delta_seen {
+				cursor.locked_delta_seen = false;
 			} else {
 				cursor.position += motion;
 			}

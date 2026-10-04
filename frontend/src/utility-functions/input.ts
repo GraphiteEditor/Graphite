@@ -248,6 +248,9 @@ export function onPointerLockChange(editor: EditorWrapper) {
 	const wasLocked = inPointerLock;
 	inPointerLock = Boolean(window.document.pointerLockElement);
 
+	// An Escape from before this lock can't be the one that releases it
+	if (inPointerLock) escapeConsumed = false;
+
 	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it
 	if (wasLocked && !inPointerLock) {
 		// The Escape that released the lock already cancelled the transform, so only a lock loss from elsewhere needs the synthetic one

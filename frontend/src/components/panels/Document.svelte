@@ -527,21 +527,26 @@
 		});
 
 		// Software cursor that wraps the pointer around the viewport during G/R/S transforms
+		// The lock is requested once per transform, so a refused request isn't retried on every pointer move the transform reports
+		let pointerLockRequested = false;
 		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
 			// The browser only grants a lock during a user activation, so request it before the `await`
 			if (isWeb && viewport) {
 				if (data.visible) {
-					// The lock is only requested while the viewport doesn't already own it, so the grant isn't re-requested on every locked movement
-					if (window.document.pointerLockElement !== viewport) {
+					if (!pointerLockRequested) {
+						pointerLockRequested = true;
 						try {
 							Promise.resolve(viewport.requestPointerLock?.()).catch(() => undefined);
 						} catch {
 							// The absolute pointer position drives the transform if the lock is refused
 						}
 					}
-				} else if (window.document.pointerLockElement === viewport) {
-					// Unlike the desktop, browsers return the pointer to where the lock began, so the wrapped position can't be kept
-					window.document.exitPointerLock();
+				} else {
+					pointerLockRequested = false;
+					if (window.document.pointerLockElement === viewport) {
+						// Unlike the desktop, browsers return the pointer to where the lock began, so the wrapped position can't be kept
+						window.document.exitPointerLock();
+					}
 				}
 			}
 
