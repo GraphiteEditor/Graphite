@@ -1,9 +1,9 @@
 use crate::vector::addressing::{self, Span};
 use crate::vector::contour::subpaths;
 use crate::vector::misc::{ManipulatorGroup, Tangent, point_to_dvec2, segment_to_handles};
-use crate::vector::path::{Path, append_segment, curve_type_at};
+use crate::vector::path::{CurveType, Path, append_segment, curve_type_at};
 use crate::vector::vector_types::Vector;
-use core_types::list::{Item, List};
+use core_types::list::{ATTR_ID, Item, List};
 use dyn_any::DynAny;
 use fixedbitset::FixedBitSet;
 use glam::DVec2;
@@ -589,8 +589,23 @@ impl SegmentGraph {
 impl Vector {
 	/// Whether any point has more than two segment ends meeting at it, making the vector a mesh.
 	pub fn is_branching(&self, paths: &List<Path>) -> bool {
-		let connectivity = self.connectivity(paths);
-		(0..self.point_count() as u32).any(|point| connectivity.spokes(point) > 2)
+		// Tally the segment ends at each anchor in one pass over the references, stopping at the first junction
+		let mut spokes = vec![0_u8; self.point_count()];
+		for (path_index, path) in paths.iter_element_values().enumerate() {
+			let stride = curve_type_at(paths, path_index).stride();
+			let references = path.0.iter_element_values().as_slice();
+			let last = references.len().saturating_sub(1);
+
+			for (index, &point) in references.iter().enumerate().step_by(stride) {
+				let Some(count) = spokes.get_mut(point as usize) else { continue };
+				*count = count.saturating_add(u8::from(index > 0) + u8::from(index < last));
+				if *count > 2 {
+					return true;
+				}
+			}
+		}
+
+		false
 	}
 
 	/// Determines if face-by-face fill rendering should be used. Branching vectors are meshes, whose
@@ -735,17 +750,23 @@ impl Vector {
 	pub fn stroke_manipulator_groups(&self, paths: &List<Path>) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
 		let mut groups = Vec::new();
 
+		let curve_types: Vec<CurveType> = (0..paths.len()).map(|index| curve_type_at(paths, index)).collect();
+		let ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+		let id_at = |point: u32| ids.get(point as usize).copied().unwrap_or_default();
+
 		for subpath in subpaths(self.point_count(), paths) {
 			let mut manipulators_list: Vec<ManipulatorGroup> = Vec::new();
 			let mut in_handle: Option<DVec2> = None;
 
 			for step in &subpath.steps {
-				let span = Span { path: step.path, index: step.span };
 				let Some(path) = paths.element(step.path as usize) else { continue };
-				let Some(segment) = path.segment(&self.0, curve_type_at(paths, step.path as usize), step.span as usize) else {
+				let Some(&curve_type) = curve_types.get(step.path as usize) else { continue };
+				let Some(segment) = path.segment(&self.0, curve_type, step.span as usize) else { continue };
+
+				let first = step.span as usize * curve_type.stride();
+				let (Some(start), Some(end)) = (path.reference(first), path.reference(first + curve_type.stride())) else {
 					continue;
 				};
-				let Some((start, end)) = addressing::span_endpoints(paths, span) else { continue };
 
 				// A quadratic's one handle leaves its anchor whichever way the span is crossed
 				let handles = segment_to_handles(&segment);
@@ -756,7 +777,7 @@ impl Vector {
 					anchor: point_to_dvec2(if step.reversed { segment.end() } else { segment.start() }),
 					in_handle,
 					out_handle: handles.start(),
-					id: self.point_id_at(anchor).unwrap_or_default(),
+					id: id_at(anchor),
 				});
 
 				in_handle = handles.end();
@@ -771,7 +792,7 @@ impl Vector {
 					anchor: position,
 					in_handle,
 					out_handle: None,
-					id: self.point_id_at(subpath.exit).unwrap_or_default(),
+					id: id_at(subpath.exit),
 				});
 			}
 

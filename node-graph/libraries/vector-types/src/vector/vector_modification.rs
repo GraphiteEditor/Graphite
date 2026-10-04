@@ -6,6 +6,7 @@ use core_types::list::{ATTR_ID, List};
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
 use glam::DVec2;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -53,31 +54,37 @@ impl PointModification {
 		working.point_ids.retain(|id| !self.remove.contains(id));
 
 		// Gathering the moves first keeps the segment pass below off the common path where nothing moves
-		let mut moved: HashMap<usize, DVec2> = HashMap::new();
-		for (index, id) in working.point_ids.iter().enumerate() {
-			let Some(&delta) = self.delta.get(id) else { continue };
-			if !delta.is_finite() {
-				warn!("Invalid delta when applying a point modification");
-				continue;
-			}
+		let mut moved = Vec::new();
+		let mut any_moved = false;
+		if !self.delta.is_empty() {
+			moved.resize(working.point_ids.len(), None);
+			for (index, id) in working.point_ids.iter().enumerate() {
+				let Some(&delta) = self.delta.get(id) else { continue };
+				if !delta.is_finite() {
+					warn!("Invalid delta when applying a point modification");
+					continue;
+				}
 
-			working.point_positions[index] += delta;
-			moved.insert(index, delta);
+				working.point_positions[index] += delta;
+				moved[index] = Some(delta);
+				any_moved = true;
+			}
 		}
 
 		// Handles travel with their anchor, carried in one pass over the segment ends
-		if !moved.is_empty() {
+		if any_moved {
+			let moved_by = |index: usize| moved.get(index).copied().flatten();
 			for index in 0..working.segment_ids.len() {
-				if let Some(&delta) = moved.get(&working.segment_start[index]) {
+				if let Some(delta) = moved_by(working.segment_start[index]) {
 					working.segment_handles[index].move_start(delta);
 				}
-				if let Some(&delta) = moved.get(&working.segment_end[index]) {
+				if let Some(delta) = moved_by(working.segment_end[index]) {
 					working.segment_handles[index].move_end(delta);
 				}
 			}
 		}
 
-		let mut named: HashSet<PointId> = if self.add.is_empty() { HashSet::new() } else { working.point_ids.iter().copied().collect() };
+		let mut named: FxHashSet<PointId> = if self.add.is_empty() { FxHashSet::default() } else { working.point_ids.iter().copied().collect() };
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
 			if !position.is_finite() {
@@ -213,7 +220,7 @@ impl SegmentModification {
 
 		// The points no longer change here, so one index serves every endpoint lookup below.
 		// Nothing looks an endpoint up in the common pure-handle case, so it skips the build.
-		let mut point_index: HashMap<PointId, usize> = HashMap::new();
+		let mut point_index: FxHashMap<PointId, usize> = FxHashMap::default();
 		if !self.start_point.is_empty() || !self.end_point.is_empty() || !self.add.is_empty() {
 			point_index.reserve(working.point_ids.len());
 			for (index, &id) in working.point_ids.iter().enumerate() {
@@ -280,7 +287,11 @@ impl SegmentModification {
 			};
 		}
 
-		let mut named: HashSet<SegmentId> = if self.add.is_empty() { HashSet::new() } else { working.segment_ids.iter().copied().collect() };
+		let mut named: FxHashSet<SegmentId> = if self.add.is_empty() {
+			FxHashSet::default()
+		} else {
+			working.segment_ids.iter().copied().collect()
+		};
 		for &add_id in &self.add {
 			let Some(&start) = self.start_point.get(&add_id) else { continue };
 			let Some(&end) = self.end_point.get(&add_id) else { continue };
@@ -701,14 +712,14 @@ impl VectorModification {
 		self.points.apply(&mut working);
 		self.segments.apply(&mut working);
 
-		let surviving_segments: HashSet<SegmentId> = working.segment_ids.iter().copied().collect();
+		let surviving_segments: FxHashSet<SegmentId> = working.segment_ids.iter().copied().collect();
 		let valid = |val: &[HandleId; 2]| surviving_segments.contains(&val[0].segment) && surviving_segments.contains(&val[1].segment);
 		working
 			.colinear
 			.retain(|val| !self.remove_g1_continuous.contains(val) && !self.remove_g1_continuous.contains(&[val[1], val[0]]) && valid(val));
 
 		// Both orientations go in, since a pair and its reverse name the same tangent
-		let mut present: HashSet<[HandleId; 2]> = working.colinear.iter().flat_map(|&[first, second]| [[first, second], [second, first]]).collect();
+		let mut present: FxHashSet<[HandleId; 2]> = working.colinear.iter().flat_map(|&[first, second]| [[first, second], [second, first]]).collect();
 		for handles in &self.add_g1_continuous {
 			if !present.contains(handles) && valid(handles) {
 				working.colinear.push(*handles);
