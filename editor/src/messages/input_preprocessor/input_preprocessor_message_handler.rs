@@ -25,7 +25,7 @@ pub struct InputPreprocessorMessageHandler {
 #[derive(Debug, Clone, Copy)]
 struct SoftwareCursor {
 	position: ViewportPosition,
-	last_absolute: ViewportPosition,
+	last_reported: ViewportPosition,
 	// Set by a locked delta; the next absolute report is the OS cursor coming back, not movement
 	locked_delta_seen: bool,
 }
@@ -126,7 +126,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				self.software_cursor = Some(SoftwareCursor {
 					position,
-					last_absolute: position,
+					last_reported: position,
 					locked_delta_seen: false,
 				});
 				self.mouse.position = position;
@@ -170,33 +170,30 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
-	// The pointer position an event reports, which the software cursor maps through while it's active
+	// Applies a position reported by an event, which the software cursor overrides while G/R/S has it wrapped
 	fn apply_pointer_position(&mut self, reported: ViewportPosition) -> ViewportPosition {
-		let position = self.update_pointer_position(reported);
+		let position = if let Some(cursor) = self.software_cursor.as_mut() {
+			let motion = reported - cursor.last_reported;
+			cursor.last_reported = reported;
+
+			if motion != ViewportPosition::ZERO {
+				// The OS cursor reappears when the lock is lost, and that jump is not movement
+				if cursor.locked_delta_seen {
+					cursor.locked_delta_seen = false;
+				} else {
+					cursor.position += motion;
+				}
+			}
+
+			cursor.position
+		} else {
+			reported
+		};
+
 		self.mouse.position = position;
 		position
 	}
 
-	// Advances the tracked pointer by the reported motion, or by the locked deltas while G/R/S has it wrapped
-	fn update_pointer_position(&mut self, reported: ViewportPosition) -> ViewportPosition {
-		let Some(cursor) = &mut self.software_cursor else { return reported };
-
-		let motion = reported - cursor.last_absolute;
-		cursor.last_absolute = reported;
-
-		if motion != ViewportPosition::ZERO {
-			// The OS cursor reappears when the lock is lost, and that jump is not movement
-			if cursor.locked_delta_seen {
-				cursor.locked_delta_seen = false;
-			} else {
-				cursor.position += motion;
-			}
-		}
-
-		cursor.position
-	}
-
-	// Tells the frontend where to draw the software cursor
 	fn send_software_cursor(&self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(cursor) = self.software_cursor else { return };
 

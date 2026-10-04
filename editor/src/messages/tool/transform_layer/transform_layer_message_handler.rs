@@ -135,7 +135,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 		);
 
 		let document_to_viewport = document.metadata().document_to_viewport;
-		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, cursor_position: &mut DVec2, start_mouse: &mut DVec2, transform: &mut DAffine2| {
+		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, start_mouse: &mut DVec2, transform: &mut DAffine2| {
 			if operation != TransformOperation::None {
 				selected.revert_operation();
 				typing.clear();
@@ -193,9 +193,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			}
 
 			// Already includes any locked deltas that landed before this operation started
-			*start_mouse = *cursor_position;
+			*start_mouse = self.previous_pointer_position;
 			*transform = document_to_viewport;
-			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(*cursor_position);
+			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(self.previous_pointer_position);
 			selected.original_transforms.clear();
 
 			selected.responses.add(DocumentMessage::StartTransaction);
@@ -344,13 +344,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
-				begin_operation(
-					self.transform_operation,
-					&mut self.typing,
-					&mut self.previous_pointer_position,
-					&mut self.start_mouse,
-					&mut self.initial_transform,
-				);
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.start_mouse, &mut self.initial_transform);
 				self.transform_operation = match operation {
 					TransformType::Grab => TransformOperation::Grabbing(Default::default()),
 					TransformType::Rotate => TransformOperation::Rotating(Default::default()),
@@ -532,15 +526,14 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
-				// Tracked by the input preprocessor, which wraps it while G/R/S holds the lock
-				let cursor_position = input.mouse.position;
+				let pointer_position = input.mouse.position;
 
 				self.slow = input.keyboard.get(slow_key as usize);
 				let old_ptz = self.ptz;
 				self.ptz = document.document_ptz;
 				if old_ptz != self.ptz {
 					// A viewport change invalidates this frame's delta
-					self.previous_pointer_position = cursor_position;
+					self.previous_pointer_position = pointer_position;
 					return;
 				}
 
@@ -554,7 +547,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
-							let delta_pos = cursor_position - self.previous_pointer_position;
+							let delta_pos = pointer_position - self.previous_pointer_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
 							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
@@ -563,7 +556,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = self.state.pivot_viewport(document) - self.previous_pointer_position;
-							let end_offset = self.state.pivot_viewport(document) - cursor_position;
+							let end_offset = self.state.pivot_viewport(document) - pointer_position;
 							if let Some(angle) = start_offset.try_angle_to(end_offset) {
 								let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
@@ -574,7 +567,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
 							let to_mouse_previous = self.previous_pointer_position - self.state.pivot_viewport(document);
-							let to_mouse_current = cursor_position - self.state.pivot_viewport(document);
+							let to_mouse_current = pointer_position - self.state.pivot_viewport(document);
 							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
 							let to_mouse_previous = self.state.project_onto_constrained(to_mouse_previous, axis_constraint);
@@ -597,7 +590,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					};
 				}
 
-				self.previous_pointer_position = cursor_position;
+				self.previous_pointer_position = pointer_position;
 			}
 			TransformLayerMessage::SelectionChanged => {
 				let target_layers = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();

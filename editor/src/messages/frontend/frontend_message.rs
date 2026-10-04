@@ -286,6 +286,11 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
+	UpdateSoftwareCursor {
+		visible: bool,
+		x: f64,
+		y: f64,
+	},
 	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
 	},
@@ -356,11 +361,6 @@ pub enum FrontendMessage {
 	},
 	#[cfg(not(target_family = "wasm"))]
 	WindowPointerUnlock {
-		x: f64,
-		y: f64,
-	},
-	UpdateSoftwareCursor {
-		visible: bool,
 		x: f64,
 		y: f64,
 	},

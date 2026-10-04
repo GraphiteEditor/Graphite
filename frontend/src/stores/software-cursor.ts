@@ -24,7 +24,6 @@ export function setSoftwareCursor(cursor: SoftwareCursorState): void {
 	store.set(cursor);
 }
 
-// Window position of the software cursor, or `undefined` while it isn't shown
 export function softwareCursorClientPosition(): { x: number; y: number } | undefined {
 	const cursor = get(store);
 	if (!cursor.visible) return undefined;

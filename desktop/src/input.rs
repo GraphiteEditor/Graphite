@@ -26,8 +26,8 @@ pub(crate) struct InputState {
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
-	software_cursor: Option<glam::DVec2>,
-	locked_deltas: bool,
+	software_cursor_position: Option<glam::DVec2>,
+	delivers_locked_deltas: bool,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
 }
@@ -41,8 +41,8 @@ impl InputState {
 			modifiers: ModifiersState::default(),
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
-			software_cursor: None,
-			locked_deltas: false,
+			software_cursor_position: None,
+			delivers_locked_deltas: false,
 			click_tracker: ClickTracker::default(),
 			shake_tracker: ShakeTracker::default(),
 		}
@@ -56,23 +56,22 @@ impl InputState {
 		self.direct_input = enabled;
 	}
 
-	pub(crate) fn set_software_cursor(&mut self, cursor: Option<glam::DVec2>) {
-		self.software_cursor = cursor;
+	pub(crate) fn set_software_cursor_position(&mut self, position: Option<glam::DVec2>) {
+		self.software_cursor_position = position;
 	}
 
-	/// Whether we're drawing the software cursor for the current transform.
 	pub(crate) fn software_cursor_active(&self) -> bool {
-		self.software_cursor.is_some()
+		self.software_cursor_position.is_some()
 	}
 
 	/// Records that the locked pointer moved, which is the only proof the platform delivers locked deltas.
 	pub(crate) fn record_locked_delta(&mut self) {
-		self.locked_deltas = true;
+		self.delivers_locked_deltas = true;
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
 		// Until a locked delta shows up, the reported position is still what drives the pointer
-		self.locked_deltas = false;
+		self.delivers_locked_deltas = false;
 		self.pointer_state = match self.pointer_state {
 			PointerState::Hover { route } => PointerState::Locked {
 				route,
@@ -114,7 +113,7 @@ impl InputState {
 	}
 
 	/// Converts a viewport position into window coordinates, clamped to the viewport bounds.
-	pub(crate) fn window_position(&self, position: glam::DVec2) -> Option<PhysicalPosition<f64>> {
+	pub(crate) fn viewport_to_window_position(&self, position: glam::DVec2) -> Option<PhysicalPosition<f64>> {
 		let viewport = self.viewport_info.as_ref()?;
 		if !position.is_finite() {
 			return None;
@@ -130,8 +129,8 @@ impl InputState {
 		))
 	}
 
-	fn locked_position(&self) -> Option<PhysicalPosition<f64>> {
-		self.window_position(self.software_cursor?)
+	fn software_cursor_window_position(&self) -> Option<PhysicalPosition<f64>> {
+		self.viewport_to_window_position(self.software_cursor_position?)
 	}
 
 	pub(crate) fn modifiers(&self) -> ModifiersState {
@@ -145,7 +144,7 @@ impl InputState {
 
 				// A locked pointer freezes the OS cursor at the lock origin, so its reported position isn't movement
 				// Not every platform delivers locked deltas after accepting the lock, so the position keeps driving the pointer until one arrives
-				if self.pointer_locked() && self.locked_deltas {
+				if self.pointer_locked() && self.delivers_locked_deltas {
 					return;
 				}
 
@@ -156,11 +155,10 @@ impl InputState {
 						next
 					}
 					PointerState::Stroke { route, .. } => route,
-					PointerState::Locked { keys, route: resume, .. } => match (self.locked_deltas, keys.is_empty()) {
-						// A lock that never delivered movement isn't locking anything, so the pointer routes like an unlocked one
-						(_, false) => resume,
-						(false, true) => self.route(*position),
-						(true, true) => Route::Ui,
+					// A lock that never delivered movement isn't locking anything, so the pointer routes like an unlocked one
+					PointerState::Locked { keys, route: resume, .. } => match keys.is_empty() {
+						false => resume,
+						true => self.route(*position),
 					},
 				};
 				match route {
@@ -191,7 +189,11 @@ impl InputState {
 			WindowEvent::PointerButton { state, button, position, .. } => {
 				self.pointer_position = *position;
 
-				let hit_position = if self.pointer_locked() { self.locked_position().unwrap_or(*position) } else { *position };
+				let hit_position = if self.pointer_locked() {
+					self.software_cursor_window_position().unwrap_or(*position)
+				} else {
+					*position
+				};
 
 				let mouse_button = button.clone().mouse_button();
 				let keys = match mouse_button {

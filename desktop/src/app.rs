@@ -347,11 +347,11 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::PointerUnlock { x, y } => {
-				let destination = self.input_state.window_position(glam::DVec2::new(x, y));
-				self.unlock_pointer(destination);
+				let destination = self.input_state.viewport_to_window_position(glam::DVec2::new(x, y));
+				self.release_pointer_lock(destination);
 			}
 			DesktopFrontendMessage::UpdateSoftwareCursor { visible, x, y } => {
-				self.input_state.set_software_cursor(visible.then_some(glam::DVec2::new(x, y)));
+				self.input_state.set_software_cursor_position(visible.then_some(glam::DVec2::new(x, y)));
 			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::Exit);
@@ -544,7 +544,7 @@ impl App {
 		}
 	}
 
-	fn unlock_pointer(&mut self, destination: Option<PhysicalPosition<f64>>) {
+	fn release_pointer_lock(&mut self, destination: Option<PhysicalPosition<f64>>) {
 		let Some(position) = self.input_state.unlock_pointer(destination) else {
 			return;
 		};
@@ -561,7 +561,6 @@ impl App {
 			.send(UiCommand::Input(InputEvent::pointer().position(position).moved().modifiers(self.input_state.modifiers()).build()));
 	}
 
-	// Sends Escape into the page, where it hits the key mapping that cancels a transform
 	fn send_escape_key(&self) {
 		let escape = |state| KeyEvent {
 			physical_key: PhysicalKey::Code(KeyCode::Escape),
@@ -616,7 +615,7 @@ impl ApplicationHandler for App {
 		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
 			&& self.input_state.pointer_locked()
 		{
-			self.unlock_pointer(None);
+			self.release_pointer_lock(None);
 		}
 
 		// Focus loss drops the pointer lock underneath us, and this is the only notice we get
