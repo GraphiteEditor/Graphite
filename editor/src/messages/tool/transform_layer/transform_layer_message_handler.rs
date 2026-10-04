@@ -76,7 +76,7 @@ pub struct TransformLayerMessageHandler {
 	slow: bool,
 	layer_bounding_box: Quad,
 	typing: Typing,
-	// The tracked pointer from the previous transform frame, which the lock may have wrapped away from the mouse
+	// The tracked pointer from the previous frame, which the lock wraps away from the mouse
 	previous_pointer_position: ViewportPosition,
 	start_mouse: ViewportPosition,
 	original_transforms: OriginalTransforms,
@@ -192,7 +192,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 			}
 
-			// The tracked position already includes any locked deltas accumulated so far
+			// The tracked position already includes the locked deltas so far
 			*start_mouse = *cursor_position;
 			*transform = document_to_viewport;
 			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(*cursor_position);
@@ -532,7 +532,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
-				// The input preprocessor tracks the pointer, wrapping it around the viewport while G/R/S holds the pointer lock
+				// The input preprocessor tracks the pointer, wrapping it while G/R/S holds the lock
 				let cursor_position = input.mouse.position;
 
 				self.slow = input.keyboard.get(slow_key as usize);

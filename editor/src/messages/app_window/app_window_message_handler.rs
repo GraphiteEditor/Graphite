@@ -22,7 +22,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			}
 			AppWindowMessage::PointerLockMove { x, y } => {
 				responses.add(FrontendMessage::WindowPointerLockMove { position: (x, y) });
-				// Routed to the input preprocessor, which only applies locked deltas while the software cursor is active, so number-input drags don't move the editor pointer
+				// Locked deltas only move the editor pointer while the software cursor is active, so number-input drags are unaffected
 				responses.add(InputPreprocessorMessage::PointerLockMove { delta: glam::DVec2::new(x, y) });
 			}
 			AppWindowMessage::DirectInput { enabled } => {

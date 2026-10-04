@@ -494,7 +494,7 @@ impl App {
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
-				// The software cursor owns the pointer while it's drawn, so the cursor changes that keep arriving (tool hover icons, and the ones CEF reports for the web page's CSS) must not reveal the OS cursor mid-transform
+				// Hover icons and page CSS keep sending cursors mid-transform, and applying one would reveal the real cursor
 				if (matches!(&cursor, Cursor::None) || !self.input_state.software_cursor_active())
 					&& let Some(window) = &mut self.window
 				{
@@ -549,7 +549,7 @@ impl App {
 		};
 
 		if let Some(window) = &self.window {
-			// Wayland only honors this while the pointer is locked, so place the cursor before releasing the grab
+			// Wayland only moves the cursor while the grab is held, so place it before releasing
 			if destination.is_some() && window.has_focus() {
 				window.set_cursor_position(position);
 			}
@@ -723,7 +723,7 @@ impl ApplicationHandler for App {
 	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
 		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
-			// A zero delta is no movement, and it would otherwise pass for the proof that the platform delivers locked deltas
+			// Zero movement, and it would otherwise pass as proof the platform delivers locked deltas
 			&& (x != 0. || y != 0.)
 		{
 			self.input_state.record_locked_delta();

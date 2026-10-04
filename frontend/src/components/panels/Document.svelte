@@ -314,7 +314,7 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
-		// The software cursor owns the pointer while it's drawn, so hover changes must not reveal the real one
+		// Hover changes must not reveal the real cursor while the software one is drawn
 		if (get(softwareCursor).visible && cursor !== "None") return;
 
 		const mouseCursorIconCSSNames: Record<MouseCursorIcon, string> = {
@@ -526,11 +526,11 @@
 			updateMouseCursor(data.cursor);
 		});
 
-		// Software cursor that wraps the pointer around the viewport during G/R/S transforms
-		// The lock is requested once per transform, so a refused request isn't retried on every pointer move the transform reports
+		// Software cursor drawn during G/R/S transforms
+		// Requested once per transform, so a refused lock isn't retried on every pointer move
 		let pointerLockRequested = false;
 		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
-			// The browser only grants a lock during a user activation, so request it before the `await`
+			// Browsers only grant a lock during a user activation, so this has to happen before the `await`
 			if (isWeb && viewport) {
 				if (data.visible) {
 					if (!pointerLockRequested) {
@@ -544,7 +544,7 @@
 				} else {
 					pointerLockRequested = false;
 					if (window.document.pointerLockElement === viewport) {
-						// Unlike the desktop, browsers return the pointer to where the lock began, so the wrapped position can't be kept
+						// Browsers return the pointer to where the lock began, so the wrapped position can't be kept
 						window.document.exitPointerLock();
 					}
 				}
@@ -554,7 +554,7 @@
 
 			// Hit-testing reports events where this cursor is drawn
 			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
-			// The software cursor owns the pointer, so the viewport cursor stays hidden for the whole transform and the tool's cursor comes back once it ends
+			// Keep the viewport cursor hidden for the whole transform; the tool's cursor returns when it ends
 			updateMouseCursor(data.visible ? "None" : "Default");
 		});
 

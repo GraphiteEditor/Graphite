@@ -19,7 +19,7 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 
 export const softwareCursor = store;
 
-// The cursor drawn while G/R/S wraps the pointer around the viewport, positioned in viewport coordinates
+// Drawn while G/R/S wraps the pointer, positioned in viewport coordinates
 export function setSoftwareCursor(cursor: SoftwareCursorState): void {
 	store.set(cursor);
 }

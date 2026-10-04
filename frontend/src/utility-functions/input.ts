@@ -81,7 +81,7 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
-	// The browser consumes Escape to release the pointer lock, and that same key already cancels the transform, so it must not be synthesized a second time
+	// The browser uses this Escape to release the lock, and it already cancels the transform
 	if (e.code === "Escape" && inPointerLock) escapeConsumed = true;
 
 	const key = await getLocalizedScanCode(e);
@@ -124,7 +124,7 @@ function pointerEventPosition(e: MouseEvent): { x: number; y: number } {
 	return cursorPosition ?? { x: e.clientX, y: e.clientY };
 }
 
-// A locked pointer only reports a frozen position, so its movement deltas are what go to the backend
+// A locked pointer only reports a frozen position, so send only its movement deltas
 function forwardLockedPointerDeltas(e: PointerEvent, editor: EditorWrapper): void {
 	if (get(softwareCursor).visible && (e.movementX !== 0 || e.movementY !== 0)) editor.appWindowPointerLockMove(e.movementX, e.movementY);
 }
@@ -253,7 +253,7 @@ export function onPointerLockChange(editor: EditorWrapper) {
 
 	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it
 	if (wasLocked && !inPointerLock) {
-		// The Escape that released the lock already cancelled the transform, so only a lock loss from elsewhere needs the synthetic one
+		// Only a lock loss from elsewhere needs the synthetic Escape
 		if (escapeConsumed) escapeConsumed = false;
 		else if (get(softwareCursor).visible) {
 			editor.onKeyDown("Escape", 0, false);

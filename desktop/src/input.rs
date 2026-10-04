@@ -60,18 +60,18 @@ impl InputState {
 		self.software_cursor = cursor;
 	}
 
-	/// Whether the editor is currently drawing the software cursor that owns the pointer during a transform.
+	/// Whether the software cursor is being drawn for the current transform.
 	pub(crate) fn software_cursor_active(&self) -> bool {
 		self.software_cursor.is_some()
 	}
 
-	/// Records that the locked pointer reported actual movement, which is the only proof that the platform honors the lock.
+	/// Notes that the locked pointer moved, so the lock is doing something.
 	pub(crate) fn record_locked_delta(&mut self) {
 		self.locked_deltas = true;
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
-		// Until the platform proves it delivers locked movement, the reported OS position remains the pointer's source
+		// Until a locked delta shows up, the reported position is still the pointer's source
 		self.locked_deltas = false;
 		self.pointer_state = match self.pointer_state {
 			PointerState::Hover { route } => PointerState::Locked {
@@ -87,7 +87,7 @@ impl InputState {
 		};
 	}
 
-	/// Releases the pointer lock, returning where to place the pointer: `destination` if given, otherwise where the lock began.
+	/// Releases the lock, returning where to place the pointer: the destination if given, otherwise the lock origin.
 	pub(crate) fn unlock_pointer(&mut self, destination: Option<PhysicalPosition<f64>>) -> Option<PhysicalPosition<f64>> {
 		let PointerState::Locked {
 			route: resume,
@@ -113,7 +113,7 @@ impl InputState {
 		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
-	/// Converts a position in viewport coordinates into the equivalent window coordinates, clamped to the viewport bounds.
+	/// Converts a viewport position into window coordinates, clamped to the viewport bounds.
 	pub(crate) fn window_position(&self, position: glam::DVec2) -> Option<PhysicalPosition<f64>> {
 		let viewport = self.viewport_info.as_ref()?;
 		if !position.is_finite() {
@@ -143,8 +143,8 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
-				// A locked pointer reports the OS cursor frozen at the lock origin (or warped back to it), which is not movement, so the editor follows the relative deltas instead.
-				// Not every platform honors the lock it accepted (a compositor can take the grab and then never deliver locked movement), so the reported position keeps driving the pointer until a locked delta proves those deltas exist.
+				// While locked, the OS cursor sits frozen at the lock origin, so the editor follows the relative deltas instead
+				// Some platforms take the lock and then never deliver movement, so the reported position keeps driving the pointer until a delta arrives
 				if self.pointer_locked() && self.locked_deltas {
 					return;
 				}

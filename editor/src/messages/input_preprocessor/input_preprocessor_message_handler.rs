@@ -21,12 +21,12 @@ pub struct InputPreprocessorMessageHandler {
 	software_cursor: Option<SoftwareCursor>,
 }
 
-// The cursor the editor tracks while G/R/S wraps it around the viewport, since the OS cursor is locked in place
+// The cursor G/R/S draws while the OS cursor is locked in place
 #[derive(Debug, Clone, Copy)]
 struct SoftwareCursor {
 	position: ViewportPosition,
 	last_absolute: ViewportPosition,
-	// Set by a locked delta and cleared by the first absolute report after it, which is the jump back to the OS cursor instead of movement to apply
+	// Set by a locked delta; the next absolute report is the OS cursor coming back, not movement
 	locked_delta_seen: bool,
 }
 
@@ -166,7 +166,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
-	// Advances the tracked pointer by the motion reported since the last absolute position, or by the locked pointer deltas while G/R/S wraps the cursor around the viewport
+	// Advances the tracked pointer by the reported motion, or by the locked deltas while G/R/S has it wrapped
 	fn update_pointer_position(&mut self, reported: ViewportPosition) -> ViewportPosition {
 		let Some(cursor) = &mut self.software_cursor else { return reported };
 
@@ -174,7 +174,7 @@ impl InputPreprocessorMessageHandler {
 		cursor.last_absolute = reported;
 
 		if motion != ViewportPosition::ZERO {
-			// The OS cursor only reappears once the lock is lost, and that jump is not movement to apply
+			// The OS cursor reappears when the lock is lost, and that jump is not movement
 			if cursor.locked_delta_seen {
 				cursor.locked_delta_seen = false;
 			} else {
@@ -185,7 +185,7 @@ impl InputPreprocessorMessageHandler {
 		cursor.position
 	}
 
-	// Tells the frontend where to draw the software cursor, which wraps around the viewport while the OS cursor is locked
+	// Tells the frontend where to draw the software cursor
 	fn send_software_cursor(&self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
 		let Some(cursor) = self.software_cursor else { return };
 
@@ -271,7 +271,7 @@ impl InputPreprocessorMessageHandler {
 	}
 }
 
-/// Wraps a software cursor position into the viewport bounds
+/// Wraps a software cursor position into the viewport bounds.
 fn wrap_software_cursor(position: ViewportPosition, size: ViewportPosition) -> ViewportPosition {
 	if size.x > 0. && size.y > 0. { position.rem_euclid(size) } else { position }
 }
