@@ -217,6 +217,10 @@ pub enum DocumentMessage {
 	ToggleNodePropertiesSectionExpanded {
 		node_id: NodeId,
 	},
+	/// Records a node's Properties panel section as collapsed without toggling it, for sections that start collapsed.
+	CollapseNodePropertiesSection {
+		node_id: NodeId,
+	},
 	/// Sets every section currently shown in the Properties panel to expanded or collapsed.
 	SetAllNodePropertiesSectionsExpanded {
 		expanded: bool,

@@ -101,8 +101,7 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
-	/// The node IDs whose Properties panel section the user has explicitly opened, overriding the collapsed default that a layer's
-	/// Merge node section otherwise starts with.
+	/// The node IDs whose section is collapsed in the Properties panel.
 	#[serde(default)]
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
@@ -1437,13 +1436,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
-				// The list records sections the user has explicitly opened, overriding the Merge node's collapsed default.
 				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
 					self.properties_panel_collapsed_sections.remove(index);
 				} else {
 					self.properties_panel_collapsed_sections.push(node_id);
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::CollapseNodePropertiesSection { node_id } => {
+				// A section that starts collapsed is recorded once, when its node is created, so this only fills a gap
+				if !self.properties_panel_collapsed_sections.contains(&node_id) {
+					self.properties_panel_collapsed_sections.push(node_id);
+				}
 			}
 			DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded } => {
 				// Only the sections currently shown change; sections for other selections keep their state.
@@ -4481,5 +4485,31 @@ mod document_message_handler_tests {
 		let mut recorded = editor.active_document().properties_panel_collapsed_sections.clone();
 		recorded.sort();
 		assert_eq!(recorded, expected, "collapsing all should add the newly shown section and keep the hidden one");
+	}
+
+	#[tokio::test]
+	async fn a_new_layers_merge_section_starts_collapsed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let merge_node_id = editor.get_selected_layer().await.unwrap().to_node();
+
+		assert!(
+			editor.active_document().properties_panel_collapsed_sections.contains(&merge_node_id),
+			"a layer's Merge node has no parameters of its own, so its section should start collapsed"
+		);
+
+		// Opening it clears the record, and closing it again restores it
+		editor.handle_message(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: merge_node_id }).await;
+		assert!(
+			!editor.active_document().properties_panel_collapsed_sections.contains(&merge_node_id),
+			"opening the section should clear its collapsed record"
+		);
+
+		editor.handle_message(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: merge_node_id }).await;
+		assert!(
+			editor.active_document().properties_panel_collapsed_sections.contains(&merge_node_id),
+			"closing the section again should record it as collapsed"
+		);
 	}
 }

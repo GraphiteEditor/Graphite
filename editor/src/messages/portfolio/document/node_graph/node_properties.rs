@@ -5,7 +5,6 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::math_expression::{MathExpressionTokens, math_expression_error, math_expression_error_ranges, math_expression_tokens};
 use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
@@ -3160,14 +3159,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-	// A layer's Merge node has no parameters of its own, so it starts collapsed. Any entry in the collapsed list means the
-	// user has explicitly opened it, which wins over the default.
-	let is_merge_node = context
-		.network_interface
-		.reference(&node_id, context.selection_network_path)
-		.is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()));
-	let was_collapsed = context.properties_panel_collapsed_sections.contains(&node_id);
-	let expanded = if was_collapsed { true } else { !is_merge_node };
+	let expanded = !context.properties_panel_collapsed_sections.contains(&node_id);
 
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
 }
