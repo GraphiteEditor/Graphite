@@ -402,7 +402,6 @@ struct PenToolData {
 	angle: f64,
 	auto_panning: AutoPanning,
 	modifiers: ModifierState,
-
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
 	toggle_colinear_debounce: bool,
@@ -2468,7 +2467,21 @@ mod test_pen_tool {
 		editor.left_mousedown(A.x, A.y, ModifierKeys::empty()).await;
 		editor.move_mouse(move_dir.x, move_dir.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
 		editor.left_mouseup(move_dir.x, move_dir.y, ModifierKeys::empty()).await;
-		assert_anchors(&editor, &[A]);
+
+		// Ensure that the changes have taken place, this may not be necessary.
+		editor.runtime.run().await;
+
+		let all_layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+		// TODO: remove the print statements before merging.
+		println!("ALL LAYERS: {all_layers:?}");
+		for l in &all_layers {
+			let trans = editor.active_document().metadata().transform_to_viewport(*l);
+			println!("LAYER {l:?} trans: {:?}", trans.translation);
+		}
+
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		assert_eq!(layer_to_viewport.translation, A);
 	}
 
 	#[tokio::test]
