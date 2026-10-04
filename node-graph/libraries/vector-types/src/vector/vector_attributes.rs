@@ -1,5 +1,5 @@
 use crate::vector::addressing::{self, Span};
-use crate::vector::contour::subpaths;
+use crate::vector::contour::contours;
 use crate::vector::misc::{ManipulatorGroup, Tangent, point_to_dvec2, segment_to_handles};
 use crate::vector::path::{CurveType, Path, append_segment, curve_type_at};
 use crate::vector::vector_types::Vector;
@@ -746,7 +746,7 @@ impl Vector {
 
 	/// Construct and return an iterator of `(Vec<ManipulatorGroup>, bool)` for each stroke.
 	/// The boolean in the tuple indicates if the path is closed.
-	/// The groups pair index-for-index with the contours emission, both walking the same subpaths.
+	/// The groups pair index-for-index with the contours emission, both stitching the same contours.
 	pub fn stroke_manipulator_groups(&self, paths: &List<Path>) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
 		let mut groups = Vec::new();
 
@@ -754,50 +754,53 @@ impl Vector {
 		let ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 		let id_at = |point: u32| ids.get(point as usize).copied().unwrap_or_default();
 
-		for subpath in subpaths(self.point_count(), paths) {
+		for contour in contours(self.point_count(), paths) {
 			let mut manipulators_list: Vec<ManipulatorGroup> = Vec::new();
 			let mut in_handle: Option<DVec2> = None;
 
-			for step in &subpath.steps {
-				let Some(path) = paths.element(step.path as usize) else { continue };
-				let Some(&curve_type) = curve_types.get(step.path as usize) else { continue };
-				let Some(segment) = path.segment(&self.0, curve_type, step.span as usize) else { continue };
+			for part in &contour.parts {
+				let Some(path) = paths.element(part.path as usize) else { continue };
+				let Some(&curve_type) = curve_types.get(part.path as usize) else { continue };
+				let (stride, count) = (curve_type.stride(), path.segment_count(curve_type));
 
-				let first = step.span as usize * curve_type.stride();
-				let (Some(start), Some(end)) = (path.reference(first), path.reference(first + curve_type.stride())) else {
-					continue;
-				};
+				for step in 0..count {
+					let span = if part.reversed { count - 1 - step } else { step };
+					let Some(segment) = path.segment(&self.0, curve_type, span) else { continue };
+					let (Some(start), Some(end)) = (path.reference(span * stride), path.reference(span * stride + stride)) else {
+						continue;
+					};
 
-				// A quadratic's one handle leaves its anchor whichever way the span is crossed
-				let handles = segment_to_handles(&segment);
-				let handles = if step.reversed { handles.reversed() } else { handles };
-				let anchor = if step.reversed { end } else { start };
+					// A quadratic's one handle leaves its anchor whichever way the span is crossed
+					let handles = segment_to_handles(&segment);
+					let handles = if part.reversed { handles.reversed() } else { handles };
+					let anchor = if part.reversed { end } else { start };
 
-				manipulators_list.push(ManipulatorGroup {
-					anchor: point_to_dvec2(if step.reversed { segment.end() } else { segment.start() }),
-					in_handle,
-					out_handle: handles.start(),
-					id: id_at(anchor),
-				});
+					manipulators_list.push(ManipulatorGroup {
+						anchor: point_to_dvec2(if part.reversed { segment.end() } else { segment.start() }),
+						in_handle,
+						out_handle: handles.start(),
+						id: id_at(anchor),
+					});
 
-				in_handle = handles.end();
+					in_handle = handles.end();
+				}
 			}
 
-			if subpath.closed {
+			if contour.closed {
 				if let Some(first) = manipulators_list.first_mut() {
 					first.in_handle = in_handle;
 				}
-			} else if let Some(position) = self.position(subpath.exit as usize) {
+			} else if let Some(position) = self.position(contour.exit as usize) {
 				manipulators_list.push(ManipulatorGroup {
 					anchor: position,
 					in_handle,
 					out_handle: None,
-					id: id_at(subpath.exit),
+					id: id_at(contour.exit),
 				});
 			}
 
 			if !manipulators_list.is_empty() {
-				groups.push((manipulators_list, subpath.closed));
+				groups.push((manipulators_list, contour.closed));
 			}
 		}
 
@@ -916,41 +919,69 @@ impl Vector {
 	}
 }
 
-/// Reweaves the paths with the given `(path, span)` pairs reversed. Each reversed span keeps its place in span
-/// order, which decides how subpaths are walked, so it becomes a path of its own among the pieces left around it.
+/// Reweaves the paths with the given `(path, span)` pairs reversed. Reversed spans that run on from one into the next, within
+/// a path or across consecutive paths, reverse together as one stretch, so a flipped loop with its pieces stored together is
+/// still read from the same anchor.
 fn reverse_spans_in_place(paths: &List<Path>, reversed: &HashSet<(u32, u32)>) -> List<Path> {
 	let mut rewoven = List::new();
 
-	for path_index in 0..paths.len() {
-		let Some(template) = paths.clone_item(path_index) else { continue };
-		let curve_type = curve_type_at(paths, path_index);
-		let span_count = template.element().segment_count(curve_type);
-		let is_reversed = |span: usize| reversed.contains(&(path_index as u32, span as u32));
+	// Reversed pieces of the stretch being gathered, output in the opposite order once it ends
+	let mut stretch: Vec<Item<Path>> = Vec::new();
+	let mut stretch_end = None;
 
-		if !(0..span_count).any(is_reversed) {
+	for path_index in 0..paths.len() {
+		let Some(mut template) = paths.clone_item(path_index) else { continue };
+		let curve_type = curve_type_at(paths, path_index);
+		let stride = curve_type.stride();
+		let span_count = template.element().segment_count(curve_type);
+		let mut flips: Vec<bool> = (0..span_count).map(|span| reversed.contains(&(path_index as u32, span as u32))).collect();
+		let run_end = |flips: &[bool], start: usize| (start + 1..span_count).find(|&span| flips[span] != flips[start]).unwrap_or(span_count);
+
+		// A reversed run arriving back at the anchor it leaves from turns around where it sits, which keeps the path whole
+		let mut start = 0;
+		while start < span_count {
+			let end = run_end(&flips, start);
+			let references = &template.element().0;
+			if flips[start] && references.element(start * stride) == references.element(end * stride) {
+				template.element_mut().reverse_spans(curve_type, start..end);
+				flips[start..end].fill(false);
+			}
+			start = end;
+		}
+
+		if !flips.contains(&true) {
+			rewoven.extend(stretch.drain(..).rev().collect());
 			rewoven.push(template);
 			continue;
 		}
 
+		// Cut the path into pieces wherever it changes between kept and reversed spans
 		let path = template.element();
-		let mut push_piece = |piece: Path| rewoven.push(Item::from_parts(piece, template.attributes().clone()));
+		let mut start = 0;
+		while start < span_count {
+			let end = run_end(&flips, start);
 
-		let mut kept_from = 0;
-		for span in (0..span_count).filter(|&span| is_reversed(span)) {
-			if kept_from < span {
-				push_piece(path.clone_span_range(curve_type, kept_from, span));
+			let mut piece = Item::from_parts(path.clone_span_range(curve_type, start, end), template.attributes().clone());
+			let references = &piece.element().0;
+			let (first, last) = (references.element(0).copied(), references.element(references.len().saturating_sub(1)).copied());
+
+			// A reversed piece joins the stretch only by setting out from where the stretch has reached
+			if !flips[start] || stretch_end != first {
+				rewoven.extend(stretch.drain(..).rev().collect());
 			}
 
-			let mut flipped = path.clone_span_range(curve_type, span, span + 1);
-			flipped.reverse(curve_type);
-			push_piece(flipped);
+			if flips[start] {
+				piece.element_mut().reverse_spans(curve_type, 0..end - start);
+				stretch.push(piece);
+				stretch_end = last;
+			} else {
+				rewoven.push(piece);
+			}
 
-			kept_from = span + 1;
-		}
-		if kept_from < span_count {
-			push_piece(path.clone_span_range(curve_type, kept_from, span_count));
+			start = end;
 		}
 	}
+	rewoven.extend(stretch.drain(..).rev().collect());
 
 	rewoven
 }
@@ -959,7 +990,7 @@ fn reverse_spans_in_place(paths: &List<Path>, reversed: &HashSet<(u32, u32)>) ->
 mod tests {
 	use super::*;
 	use crate::vector::path::CurveType;
-	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, Item};
+	use core_types::list::ATTR_CURVE_TYPE;
 	use kurbo::Shape;
 
 	fn build_vector(points: &[DVec2], segments: &[(usize, usize)]) -> (Vector, List<Path>) {
@@ -981,12 +1012,11 @@ mod tests {
 		(vector, paths)
 	}
 
-	// A morph pairs manipulators by position, so a loop's walk is fixed: from its lowest anchor, along the earliest span there
+	// A morph pairs manipulators by position, so a loop is read from the anchor it is stored from, in its stored direction
 	#[test]
-	fn a_closed_loop_walks_from_its_lowest_anchor_along_its_earliest_span() {
+	fn a_closed_loop_keeps_its_stored_start_and_direction() {
 		let (vector, mut paths) = build_vector(&[DVec2::new(0., 10.), DVec2::new(0., 0.), DVec2::new(10., 0.)], &[]);
 
-		// The loop weaves 1 to 2 to 0 and back, so the earliest span at anchor 0 arrives there and is crossed backwards
 		let mut path = Path::from_references([1, 2, 0, 1]);
 		let mut segment_id = SegmentId::ZERO;
 		for span in 0..3 {
@@ -994,20 +1024,20 @@ mod tests {
 		}
 		paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, CurveType::Linear));
 
-		let (manipulators, closed) = vector.stroke_manipulator_groups(&paths).next().expect("the loop is one subpath");
+		let (manipulators, closed) = vector.stroke_manipulator_groups(&paths).next().expect("the loop is one contour");
 		assert!(closed);
 		let anchors: Vec<DVec2> = manipulators.iter().map(|manipulator| manipulator.anchor).collect();
-		assert_eq!(anchors, vec![DVec2::new(0., 10.), DVec2::new(10., 0.), DVec2::new(0., 0.)]);
+		assert_eq!(anchors, vec![DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(0., 10.)]);
 	}
 
-	/// Manipulator groups and contours are two views of the same walk, so they must agree on order and
+	/// Manipulator groups and contours are two views of the same stitching, so they must agree on order and
 	/// geometry. Click targets, the snapper's point recovery, and outline stitching all rely on it.
 	#[test]
 	fn manipulator_groups_and_contours_agree() {
 		use crate::vector::misc::bezpath_from_manipulator_groups;
 		use crate::vector::path::pool_and_paths_from_bezpath;
 
-		// A closed contour woven before an open one, so path order alone would emit them the other way around
+		// A closed contour woven before an open one, which is the order both views keep
 		let mut source = kurbo::BezPath::new();
 		source.move_to((0., 0.));
 		source.line_to((10., 0.));
@@ -1025,19 +1055,19 @@ mod tests {
 		assert_eq!(groups.len(), 2);
 		assert_eq!(contours.len(), 2);
 
-		// Open runs lead, and each group re-emits its own contour
-		assert!(!groups[0].1, "the open run should be emitted first");
-		assert!(groups[1].1, "the closed loop should follow");
+		// Each group re-emits its own contour, in stored order
+		assert!(groups[0].1, "the closed loop should be emitted first");
+		assert!(!groups[1].1, "the open run should follow");
 		for (index, (manipulators, closed)) in groups.iter().enumerate() {
 			let rebuilt = bezpath_from_manipulator_groups(manipulators, *closed);
 			assert_eq!(rebuilt.elements(), contours[index].elements(), "group {index} should describe contour {index}");
 		}
 	}
 
-	/// Two paths welded head to head, so the subpath must walk the second one backward and still
+	/// Two paths welded head to head, so the contour must cross the second one backward and still
 	/// emit anchors and geometry in travel order.
 	#[test]
-	fn subpath_walks_a_welded_path_backward() {
+	fn contour_crosses_a_welded_path_backward() {
 		use crate::vector::misc::bezpath_from_manipulator_groups;
 
 		let points = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(20., 0.)];
@@ -1275,8 +1305,7 @@ mod tests {
 		assert!(faces.is_empty(), "a reverse-wound loop with an interior spur should produce no filled faces");
 	}
 
-	/// Shoelace sum over the drawn direction of a range of line segments, so tests can read the
-	/// stored winding directly rather than through a path walker that may pick its own direction.
+	/// Shoelace sum over the stored direction of a range of line segments, so tests read each segment's winding as stored.
 	fn drawn_signed_area(vector: &Vector, paths: &List<Path>, segment_range: std::ops::Range<usize>) -> f64 {
 		let graph = SegmentGraph::new(vector, paths);
 		segment_range
@@ -1297,6 +1326,54 @@ mod tests {
 		vector.normalize_winding_directions(&mut paths);
 
 		assert!(drawn_signed_area(&vector, &paths, 0..4) > 0., "a lone loop should wind positively after normalization");
+	}
+
+	fn references(paths: &List<Path>) -> Vec<Vec<u32>> {
+		paths.iter_element_values().map(|path| path.references().collect()).collect()
+	}
+
+	fn span_ids(paths: &List<Path>, path_index: usize, span_count: usize) -> Vec<SegmentId> {
+		let path = paths.element(path_index).unwrap();
+		(0..span_count).map(|span| path.0.attribute_cloned_or_default(ATTR_ID, span)).collect()
+	}
+
+	// A morph or a dash pattern reads a loop from where it is stored, so flipping it must not move that anchor
+	#[test]
+	fn normalization_flips_a_closed_path_from_the_same_start() {
+		let points = [DVec2::new(0., 0.), DVec2::new(0., 10.), DVec2::new(10., 10.), DVec2::new(10., 0.)];
+		let (mut vector, mut paths) = build_vector(&points, &[]);
+
+		let mut path = Path::from_references([0, 1, 2, 3, 0]);
+		let mut segment_id = SegmentId::ZERO;
+		let ids: Vec<SegmentId> = (0..4).map(|_| segment_id.next_id()).collect();
+		for (span, &id) in ids.iter().enumerate() {
+			path.0.set_attribute(ATTR_ID, span, id);
+		}
+		paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, CurveType::Linear));
+
+		vector.normalize_winding_directions(&mut paths);
+
+		assert_eq!(references(&paths), vec![vec![0, 3, 2, 1, 0]]);
+		assert_eq!(span_ids(&paths, 0, 4), ids.iter().rev().copied().collect::<Vec<_>>(), "each span keeps its ID");
+	}
+
+	#[test]
+	fn normalization_flips_a_loop_of_several_paths_from_the_same_start() {
+		let points = [DVec2::new(0., 0.), DVec2::new(0., 10.), DVec2::new(10., 10.), DVec2::new(10., 0.)];
+		let (mut vector, mut paths) = build_vector(&points, &[]);
+
+		for references in [[0, 1, 2], [2, 3, 0]] {
+			let path = Path::from_references(references);
+			paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, CurveType::Linear));
+		}
+
+		vector.normalize_winding_directions(&mut paths);
+
+		assert_eq!(references(&paths), vec![vec![0, 3, 2], vec![2, 1, 0]]);
+		let contours = contours(vector.0.len(), &paths);
+		assert_eq!(contours.len(), 1);
+		assert!(contours[0].closed);
+		assert_eq!(contours[0].entry, 0);
 	}
 
 	#[test]
@@ -1351,9 +1428,9 @@ mod tests {
 		assert_eq!((graph.start_point[spur], graph.end_point[spur]), (0, 4), "the spur should keep its drawn direction");
 	}
 
-	/// A loop covering only the middle spans of one longer path splits that path so just the loop reverses.
+	/// A loop covering only the middle spans of one longer path reverses where it sits, leaving the path whole.
 	#[test]
-	fn normalization_splits_a_path_to_flip_its_inner_loop() {
+	fn normalization_flips_a_loop_inside_a_longer_path() {
 		let points = [
 			DVec2::new(-5., 0.),
 			DVec2::new(0., 0.),
@@ -1391,5 +1468,6 @@ mod tests {
 			.sum::<f64>()
 			/ 2.;
 		assert!(loop_area > 0., "the inner loop should wind positively after normalization");
+		assert_eq!(references(&paths), vec![vec![0, 1, 4, 3, 2, 1, 5]], "the path stays whole around its flipped loop");
 	}
 }

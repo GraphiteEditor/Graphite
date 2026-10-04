@@ -15,9 +15,11 @@ async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Bo
 	edit_item_geometry(&mut vector, |element, paths| {
 		modification.apply(element, paths);
 
-		// Users draw subpaths in arbitrary winding directions, so normalize them here rather than
-		// letting the drawn direction decide fill insideness downstream
-		element.normalize_winding_directions(paths);
+		// Faces tell negative space apart by a loop's winding, which users draw in arbitrary directions.
+		// Every other fill follows the contours, which keep the direction each path was drawn in.
+		if element.use_face_fill(paths) {
+			element.normalize_winding_directions(paths);
+		}
 	});
 
 	// Drop the stale click-target override so hit testing uses the geometry the user is now editing
@@ -46,4 +48,26 @@ async fn bake_transform<T: BakeTransform + 'n + Send + 'static>(_ctx: impl Ctx, 
 	}
 
 	content
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use vector_types::vector::paths_from_item_attributes;
+
+	// A lone loop fills by its contour alone, so it keeps the direction it was drawn in even when that winds backwards
+	#[tokio::test]
+	async fn a_drawn_loop_keeps_its_direction() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((0., 10.));
+		bezpath.line_to((10., 10.));
+		bezpath.line_to((10., 0.));
+		bezpath.close_path();
+		let drawn = Vector::item_from_bezpath(&bezpath);
+
+		let modified = path_modify((), drawn.clone(), Item::default(), Item::default()).await;
+
+		assert_eq!(paths_from_item_attributes(&modified), paths_from_item_attributes(&drawn));
+	}
 }

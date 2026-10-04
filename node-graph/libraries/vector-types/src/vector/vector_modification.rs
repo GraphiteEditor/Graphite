@@ -926,7 +926,7 @@ mod tests {
 		vector.position(vector.index_of_point_id(id).unwrap() as usize).unwrap()
 	}
 
-	/// What the tests compare of a modification's result: anchors by ID, segments by ID, the stroke walk, and G1 pairs.
+	/// What the tests compare of a modification's result: anchors by ID, segments by ID, the stroke contours, and G1 pairs.
 	fn describe(vector: &Vector, paths: &List<Path>) -> String {
 		let mut anchors: Vec<String> = vector
 			.anchor_points(paths)
