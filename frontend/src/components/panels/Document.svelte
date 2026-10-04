@@ -544,7 +544,7 @@
 				} else {
 					pointerLockRequested = false;
 					if (window.document.pointerLockElement === viewport) {
-						// Browsers return the pointer to where the lock began, so the wrapped position can't be kept
+						// The browser puts the pointer back where the lock began, so the wrapped position can't be kept
 						window.document.exitPointerLock();
 					}
 				}
@@ -552,9 +552,9 @@
 
 			await tick();
 
-			// Hit-testing reports events where this cursor is drawn
+			// Pointer events get reported at this position while the cursor is shown
 			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
-			// Keep the viewport cursor hidden for the whole transform; the tool's cursor returns when it ends
+			// Keep the viewport cursor hidden for the whole transform. The tool's cursor comes back when it ends
 			updateMouseCursor(data.visible ? "None" : "Default");
 		});
 

@@ -76,7 +76,7 @@ pub struct TransformLayerMessageHandler {
 	slow: bool,
 	layer_bounding_box: Quad,
 	typing: Typing,
-	// The tracked pointer from the previous frame, which the lock wraps away from the mouse
+	// Where the pointer was on the last frame, which the lock can wrap away from the OS cursor
 	previous_pointer_position: ViewportPosition,
 	start_mouse: ViewportPosition,
 	original_transforms: OriginalTransforms,
@@ -192,7 +192,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 			}
 
-			// The tracked position already includes the locked deltas so far
+			// Already includes any locked deltas that landed before this operation started
 			*start_mouse = *cursor_position;
 			*transform = document_to_viewport;
 			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(*cursor_position);
@@ -532,7 +532,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
-				// The input preprocessor tracks the pointer, wrapping it while G/R/S holds the lock
+				// Tracked by the input preprocessor, which wraps it while G/R/S holds the lock
 				let cursor_position = input.mouse.position;
 
 				self.slow = input.keyboard.get(slow_key as usize);
@@ -573,17 +573,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
-							let to_mouse_final = self.previous_pointer_position - self.state.pivot_viewport(document);
-							let to_mouse_final_old = cursor_position - self.state.pivot_viewport(document);
+							let to_mouse_previous = self.previous_pointer_position - self.state.pivot_viewport(document);
+							let to_mouse_current = cursor_position - self.state.pivot_viewport(document);
 							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
-							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
-							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
+							let to_mouse_previous = self.state.project_onto_constrained(to_mouse_previous, axis_constraint);
+							let to_mouse_current = self.state.project_onto_constrained(to_mouse_current, axis_constraint);
 							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint);
 
 							let change = {
-								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
-								let current_frame_dist = to_mouse_final_old.dot(to_mouse_start);
+								let previous_frame_dist = to_mouse_previous.dot(to_mouse_start);
+								let current_frame_dist = to_mouse_current.dot(to_mouse_start);
 								let start_transform_dist = to_mouse_start.length_squared();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
@@ -1324,10 +1324,10 @@ mod test_transform_layer {
 		let pointer_before = pointer_position(&editor);
 		let messages = editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(25., -5.) }).await;
 
-		assert_eq!(pointer_before, pointer_position(&editor), "Locked deltas must not move the pointer when no transform is active");
+		assert_eq!(pointer_before, pointer_position(&editor), "locked deltas shouldn't move the pointer with no transform running");
 		assert!(
 			!messages.iter().any(|message| matches!(message, FrontendMessage::UpdateSoftwareCursor { .. })),
-			"Locked deltas must not drive the software cursor when no transform is active"
+			"no transform means no software cursor"
 		);
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
@@ -1336,7 +1336,7 @@ mod test_transform_layer {
 		let delta = DVec2::new(25., -5.);
 		let messages = editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta }).await;
 
-		assert_eq!(pointer_position(&editor), pointer_at_begin + delta, "A locked delta should move the pointer during a transform");
+		assert_eq!(pointer_position(&editor), pointer_at_begin + delta, "locked delta should move the pointer");
 
 		let software_cursor_message = messages.iter().find_map(|message| match message {
 			FrontendMessage::UpdateSoftwareCursor { visible, x, y } => Some((*visible, *x, *y)),
@@ -1345,7 +1345,7 @@ mod test_transform_layer {
 		assert_eq!(
 			software_cursor_message,
 			Some((true, pointer_at_begin.x + delta.x, pointer_at_begin.y + delta.y)),
-			"A locked delta during a transform should update the software cursor"
+			"locked delta should update the software cursor"
 		);
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
@@ -1370,13 +1370,9 @@ mod test_transform_layer {
 		let dropped = DVec2::new(75., 40.);
 		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: dropped }).await;
 
-		assert_eq!(
-			pointer_position(&editor),
-			pointer_before + dropped,
-			"The pointer follows the locked delta even on the frame whose movement the transform drops"
-		);
+		assert_eq!(pointer_position(&editor), pointer_before + dropped, "pointer should still follow the delta the transform drops");
 		let transform_after = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(transform_after.abs_diff_eq(transform_before, 1e-5), "The dropped delta must not move the layer either");
+		assert!(transform_after.abs_diff_eq(transform_before, 1e-5), "dropped delta shouldn't move the layer");
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
 	}
@@ -1394,14 +1390,14 @@ mod test_transform_layer {
 		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta }).await;
 
 		let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
-		assert_eq!(handler.previous_pointer_position, start_position + delta, "Locked delta should accumulate into the tracking position");
+		assert_eq!(handler.previous_pointer_position, start_position + delta, "locked delta should accumulate");
 
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 		let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
 		assert_eq!(
 			handler.start_mouse,
 			start_position + delta,
-			"A chained operation should start from the accumulated locked position instead of resetting to the frozen input position"
+			"chained operation should start from the accumulated position, not the frozen one"
 		);
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
@@ -1428,15 +1424,18 @@ mod test_transform_layer {
 			})
 			.await;
 
-		assert_eq!(pointer_position(&editor), pointer_after_drag, "A stale absolute report must not move the pointer");
+		assert_eq!(pointer_position(&editor), pointer_after_drag, "stale absolute report shouldn't move the pointer");
 		assert!(
 			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_drag, 1e-5),
-			"A stale absolute report must not move the layer"
+			"stale absolute report shouldn't move the layer"
 		);
 
 		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(10., 0.) }).await;
 		let transform_after_more_dragging = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(!transform_after_more_dragging.abs_diff_eq(transform_after_drag, 1e-5), "Locked deltas must keep driving the transform");
+		assert!(
+			!transform_after_more_dragging.abs_diff_eq(transform_after_drag, 1e-5),
+			"locked deltas should keep driving the transform"
+		);
 
 		editor.move_mouse(origin.x, origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
@@ -1447,7 +1446,7 @@ mod test_transform_layer {
 			.await;
 		assert!(
 			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_more_dragging, 1e-5),
-			"The restored cursor position must not move the layer"
+			"restored cursor position shouldn't move the layer"
 		);
 
 		editor.move_mouse(origin.x + 10., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
@@ -1460,7 +1459,7 @@ mod test_transform_layer {
 		let transform_after_resuming = get_layer_transform(&mut editor, layer).await.unwrap();
 		assert!(
 			transform_after_resuming.abs_diff_eq(transform_after_more_dragging, 1e-5),
-			"Resuming absolute tracking must not move the layer by the wrapped distance"
+			"resuming absolute tracking shouldn't apply the wrapped distance"
 		);
 
 		editor.move_mouse(origin.x + 40., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
@@ -1473,7 +1472,7 @@ mod test_transform_layer {
 		let transform_after_moving = get_layer_transform(&mut editor, layer).await.unwrap();
 		assert!(
 			transform_after_moving.translation.x > transform_after_resuming.translation.x + 1.,
-			"Absolute movement must drive the transform again once tracking resumes"
+			"absolute movement should drive the transform again"
 		);
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
@@ -1498,7 +1497,7 @@ mod test_transform_layer {
 			})
 			.await;
 		let transform_after_moving = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(!transform_after_moving.abs_diff_eq(transform_before, 1e-5), "Moving the absolute pointer must drive the transform");
+		assert!(!transform_after_moving.abs_diff_eq(transform_before, 1e-5), "moving the pointer should drive the transform");
 
 		editor.move_mouse(origin.x, origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
 		editor
@@ -1508,10 +1507,7 @@ mod test_transform_layer {
 			})
 			.await;
 		let transform_after_returning = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			transform_after_returning.abs_diff_eq(transform_before, 1e-3),
-			"Returning the absolute pointer to where the grab began must drive the transform back, not be swallowed"
-		);
+		assert!(transform_after_returning.abs_diff_eq(transform_before, 1e-3), "returning the pointer should move the layer back");
 
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
 	}

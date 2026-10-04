@@ -188,7 +188,7 @@ impl Window {
 
 	pub(crate) fn start_pointer_lock(&self) -> bool {
 		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
-		// Only hide the cursor if the grab took, or refusing platforms leave the app with no usable cursor
+		// Only hide the cursor if the grab actually took, otherwise a platform that refuses the lock leaves the app with no visible cursor
 		if locked {
 			self.winit_window.set_cursor_visible(false);
 		}
@@ -197,6 +197,8 @@ impl Window {
 
 	pub(crate) fn end_pointer_lock(&self) {
 		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
+		// Show a plain cursor rather than whatever shape was applied last, so a stale hover cursor doesn't flash before the tool sets its own
+		self.winit_window.set_cursor(winit::cursor::Cursor::Icon(winit::cursor::CursorIcon::Default));
 		self.winit_window.set_cursor_visible(true);
 	}
 

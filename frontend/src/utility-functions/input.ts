@@ -81,7 +81,7 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
-	// The browser uses this Escape to release the lock, and it already cancels the transform
+	// If this Escape reaches us it has already cancelled the transform, so remember not to send a second one
 	if (e.code === "Escape" && inPointerLock) escapeConsumed = true;
 
 	const key = await getLocalizedScanCode(e);
@@ -118,13 +118,13 @@ function isObserveOnly(e: MouseEvent): boolean {
 	return import.meta.env.MODE === "native" && e.getModifierState("NumLock");
 }
 
-// A locked pointer stays frozen where the lock began, so report events at the software cursor
+// Events are reported at the software cursor, since a locked pointer is frozen
 function pointerEventPosition(e: MouseEvent): { x: number; y: number } {
 	const cursorPosition = inPointerLock ? softwareCursorClientPosition() : undefined;
 	return cursorPosition ?? { x: e.clientX, y: e.clientY };
 }
 
-// A locked pointer only reports a frozen position, so send only its movement deltas
+// The frozen position is useless while locked, so forward the movement deltas instead
 function forwardLockedPointerDeltas(e: PointerEvent, editor: EditorWrapper): void {
 	if (get(softwareCursor).visible && (e.movementX !== 0 || e.movementY !== 0)) editor.appWindowPointerLockMove(e.movementX, e.movementY);
 }
@@ -251,9 +251,8 @@ export function onPointerLockChange(editor: EditorWrapper) {
 	// An Escape from before this lock can't be the one that releases it
 	if (inPointerLock) escapeConsumed = false;
 
-	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it
+	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it, unless the Escape that released it already did
 	if (wasLocked && !inPointerLock) {
-		// Only a lock loss from elsewhere needs the synthetic Escape
 		if (escapeConsumed) escapeConsumed = false;
 		else if (get(softwareCursor).visible) {
 			editor.onKeyDown("Escape", 0, false);

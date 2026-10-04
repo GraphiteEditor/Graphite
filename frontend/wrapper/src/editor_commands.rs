@@ -88,7 +88,7 @@ mod editor_commands {
 		AppWindowMessage::PointerLock.into()
 	}
 
-	/// Reports pointer movement while the pointer is locked.
+	/// Reports pointer movement while the pointer is locked
 	fn app_window_pointer_lock_move(x: f64, y: f64) -> Message {
 		AppWindowMessage::PointerLockMove { x, y }.into()
 	}

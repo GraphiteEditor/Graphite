@@ -40,7 +40,8 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
-				self.mouse.position = pointer_state.position;
+				self.apply_pointer_position(pointer_state.position);
+				self.send_software_cursor(viewport, responses);
 
 				for key in pointer_state.mouse_keys {
 					responses.add(InputMapperMessage::DoubleClick(match key {
@@ -72,8 +73,9 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
-				self.mouse.position = pointer_state.position;
+				let mut pointer_state = editor_mouse_state.to_pointer_state(viewport);
+				pointer_state.position = self.apply_pointer_position(pointer_state.position);
+				self.send_software_cursor(viewport, responses);
 
 				self.translate_mouse_event(pointer_state, true, responses);
 			}
@@ -81,8 +83,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let mut pointer_state = editor_mouse_state.to_pointer_state(viewport);
-				pointer_state.position = self.update_pointer_position(pointer_state.position);
-				self.mouse.position = pointer_state.position;
+				pointer_state.position = self.apply_pointer_position(pointer_state.position);
 				self.send_software_cursor(viewport, responses);
 
 				responses.add(InputMapperMessage::PointerMove);
@@ -93,8 +94,9 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
-				self.mouse.position = pointer_state.position;
+				let mut pointer_state = editor_mouse_state.to_pointer_state(viewport);
+				pointer_state.position = self.apply_pointer_position(pointer_state.position);
+				self.send_software_cursor(viewport, responses);
 
 				self.translate_mouse_event(pointer_state, false, responses);
 			}
@@ -102,7 +104,8 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
-				self.mouse.position = pointer_state.position;
+				self.apply_pointer_position(pointer_state.position);
+				self.send_software_cursor(viewport, responses);
 
 				responses.add(InputMapperMessage::PointerShake);
 			}
@@ -138,7 +141,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				responses.add(FrontendMessage::UpdateSoftwareCursor { visible: false, x: 0., y: 0. });
 				// Let the active tool re-emit its cursor
 				responses.add(ToolMessage::UpdateCursor);
-				// Leave the pointer where the software cursor ended, not where the lock began
+				// Put the pointer where the software cursor ended, not where the lock began
 				let position = wrap_software_cursor(cursor.position, viewport.size().into_dvec2());
 				responses.add(AppWindowMessage::PointerUnlock { x: position.x, y: position.y });
 			}
@@ -151,7 +154,8 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
-				self.mouse.position = pointer_state.position;
+				self.apply_pointer_position(pointer_state.position);
+				self.send_software_cursor(viewport, responses);
 				self.mouse.scroll_delta = pointer_state.scroll_delta;
 
 				responses.add(InputMapperMessage::WheelScroll);
@@ -166,6 +170,13 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
+	// The pointer position an event reports, which the software cursor maps through while it's active
+	fn apply_pointer_position(&mut self, reported: ViewportPosition) -> ViewportPosition {
+		let position = self.update_pointer_position(reported);
+		self.mouse.position = position;
+		position
+	}
+
 	// Advances the tracked pointer by the reported motion, or by the locked deltas while G/R/S has it wrapped
 	fn update_pointer_position(&mut self, reported: ViewportPosition) -> ViewportPosition {
 		let Some(cursor) = &mut self.software_cursor else { return reported };
@@ -306,42 +317,84 @@ mod test {
 		input_preprocessor.process_message(begin, &mut responses, context());
 
 		input_preprocessor.process_message(moved(10., 10.), &mut responses, context());
-		assert_eq!(
-			input_preprocessor.mouse.position,
-			ViewportPosition::new(10., 10.),
-			"The frozen OS position reported by a locked pointer is not movement"
-		);
+		assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(10., 10.), "a frozen locked pointer shouldn't move the pointer");
 
 		let delta = InputPreprocessorMessage::PointerLockMove {
 			delta: ViewportPosition::new(25., -5.),
 		};
 		input_preprocessor.process_message(delta, &mut responses, context());
-		assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(35., 5.), "A locked delta moves the tracked pointer");
+		assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(35., 5.), "a locked delta should move the pointer");
 		assert!(
 			responses.contains(&FrontendMessage::UpdateSoftwareCursor { visible: true, x: 35., y: 5. }.into()),
-			"A locked delta moves the drawn software cursor"
+			"a locked delta should move the drawn cursor"
 		);
 
 		input_preprocessor.process_message(moved(10., 10.), &mut responses, context());
 		assert_eq!(
 			input_preprocessor.mouse.position,
 			ViewportPosition::new(35., 5.),
-			"The frozen position is still not movement after a locked delta"
+			"the frozen position is still frozen after a locked delta"
 		);
 
 		input_preprocessor.process_message(moved(0., 0.), &mut responses, context());
 		assert_eq!(
 			input_preprocessor.mouse.position,
 			ViewportPosition::new(35., 5.),
-			"The restored OS position is adopted without moving the pointer"
+			"the OS cursor coming back shouldn't move the pointer"
 		);
 
 		input_preprocessor.process_message(moved(0., 4.), &mut responses, context());
-		assert_eq!(
-			input_preprocessor.mouse.position,
-			ViewportPosition::new(35., 9.),
-			"Movement is tracked relative to the restored position once the lock is lost"
+		assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(35., 9.), "movement should track from the restored position");
+	}
+
+	#[test]
+	fn pointer_buttons_keep_the_wrapped_position_while_the_software_cursor_is_active() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let viewport = ViewportMessageHandler::default();
+		let mut responses = VecDeque::new();
+		let context = || InputPreprocessorMessageContext { viewport: &viewport };
+
+		let begin = InputPreprocessorMessage::BeginSoftwareCursor {
+			position: ViewportPosition::new(10., 10.),
+		};
+		input_preprocessor.process_message(begin, &mut responses, context());
+		input_preprocessor.process_message(
+			InputPreprocessorMessage::PointerLockMove {
+				delta: ViewportPosition::new(25., -5.),
+			},
+			&mut responses,
+			context(),
 		);
+		assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(35., 5.));
+
+		// The OS cursor is still pinned to the lock origin, which is no longer where the tracked pointer is
+		let frozen = || pointer_state(10., 10.);
+		let keys = ModifierKeys::empty();
+		for message in [
+			InputPreprocessorMessage::PointerDown {
+				editor_mouse_state: frozen(),
+				modifier_keys: keys,
+			},
+			InputPreprocessorMessage::PointerUp {
+				editor_mouse_state: frozen(),
+				modifier_keys: keys,
+			},
+			InputPreprocessorMessage::PointerShake {
+				editor_mouse_state: frozen(),
+				modifier_keys: keys,
+			},
+			InputPreprocessorMessage::WheelScroll {
+				editor_mouse_state: frozen(),
+				modifier_keys: keys,
+			},
+			InputPreprocessorMessage::DoubleClick {
+				editor_mouse_state: frozen(),
+				modifier_keys: keys,
+			},
+		] {
+			input_preprocessor.process_message(message, &mut responses, context());
+			assert_eq!(input_preprocessor.mouse.position, ViewportPosition::new(35., 5.));
+		}
 	}
 
 	#[test]
@@ -352,7 +405,7 @@ mod test {
 		assert_eq!(
 			super::wrap_software_cursor(ViewportPosition::new(10., 20.), ViewportPosition::ZERO),
 			ViewportPosition::new(10., 20.),
-			"A zero-sized viewport leaves the position untouched"
+			"a zero-sized viewport shouldn't move anything"
 		);
 	}
 

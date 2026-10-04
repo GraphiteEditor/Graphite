@@ -60,18 +60,18 @@ impl InputState {
 		self.software_cursor = cursor;
 	}
 
-	/// Whether the software cursor is being drawn for the current transform.
+	/// Whether we're drawing the software cursor for the current transform.
 	pub(crate) fn software_cursor_active(&self) -> bool {
 		self.software_cursor.is_some()
 	}
 
-	/// Notes that the locked pointer moved, so the lock is doing something.
+	/// Records that the locked pointer moved, which is the only proof the platform delivers locked deltas.
 	pub(crate) fn record_locked_delta(&mut self) {
 		self.locked_deltas = true;
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
-		// Until a locked delta shows up, the reported position is still the pointer's source
+		// Until a locked delta shows up, the reported position is still what drives the pointer
 		self.locked_deltas = false;
 		self.pointer_state = match self.pointer_state {
 			PointerState::Hover { route } => PointerState::Locked {
@@ -87,7 +87,7 @@ impl InputState {
 		};
 	}
 
-	/// Releases the lock, returning where to place the pointer: the destination if given, otherwise the lock origin.
+	/// Releases the lock and returns where the pointer should end up: the destination if one is given, otherwise where the lock began.
 	pub(crate) fn unlock_pointer(&mut self, destination: Option<PhysicalPosition<f64>>) -> Option<PhysicalPosition<f64>> {
 		let PointerState::Locked {
 			route: resume,
@@ -143,8 +143,8 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
-				// While locked, the OS cursor sits frozen at the lock origin, so the editor follows the relative deltas instead
-				// Some platforms take the lock and then never deliver movement, so the reported position keeps driving the pointer until a delta arrives
+				// A locked pointer freezes the OS cursor at the lock origin, so its reported position isn't movement
+				// Not every platform delivers locked deltas after accepting the lock, so the position keeps driving the pointer until one arrives
 				if self.pointer_locked() && self.locked_deltas {
 					return;
 				}

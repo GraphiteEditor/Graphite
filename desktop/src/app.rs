@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::data_transfer::{DataTransferSendBuilder, TypeHint};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
+use winit::event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
+use winit::keyboard::{Key, KeyCode, KeyLocation, NamedKey, PhysicalKey};
 use winit::window::WindowId;
 
 use crate::dirs;
@@ -494,7 +495,7 @@ impl App {
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
-				// Hover icons and page CSS keep sending cursors mid-transform, and applying one would reveal the real cursor
+				// These keep arriving mid-transform (tool hover icons, page CSS) and applying one brings the real cursor back
 				if (matches!(&cursor, Cursor::None) || !self.input_state.software_cursor_active())
 					&& let Some(window) = &mut self.window
 				{
@@ -549,7 +550,7 @@ impl App {
 		};
 
 		if let Some(window) = &self.window {
-			// Wayland only moves the cursor while the grab is held, so place it before releasing
+			// Wayland only moves the cursor while the grab is held, so do this before releasing it
 			if destination.is_some() && window.has_focus() {
 				window.set_cursor_position(position);
 			}
@@ -558,6 +559,24 @@ impl App {
 
 		self.ui
 			.send(UiCommand::Input(InputEvent::pointer().position(position).moved().modifiers(self.input_state.modifiers()).build()));
+	}
+
+	// Sends Escape into the page, where it hits the key mapping that cancels a transform
+	fn send_escape_key(&self) {
+		let escape = |state| KeyEvent {
+			physical_key: PhysicalKey::Code(KeyCode::Escape),
+			logical_key: Key::Named(NamedKey::Escape),
+			text: None,
+			text_with_all_modifiers: None,
+			key_without_modifiers: Key::Named(NamedKey::Escape),
+			location: KeyLocation::Standard,
+			state,
+			repeat: false,
+		};
+
+		for state in [ElementState::Pressed, ElementState::Released] {
+			self.ui.send(UiCommand::Input(InputEvent::key(&escape(state)).build()));
+		}
 	}
 }
 impl ApplicationHandler for App {
@@ -598,6 +617,11 @@ impl ApplicationHandler for App {
 			&& self.input_state.pointer_locked()
 		{
 			self.unlock_pointer(None);
+		}
+
+		// Focus loss drops the pointer lock underneath us, and this is the only notice we get
+		if matches!(event, WindowEvent::Focused(false)) && self.input_state.pointer_locked() {
+			self.send_escape_key();
 		}
 
 		self.input_state.process(
@@ -723,11 +747,11 @@ impl ApplicationHandler for App {
 	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
 		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
-			// Zero movement, and it would otherwise pass as proof the platform delivers locked deltas
+			// A zero delta would otherwise count as proof the platform delivers locked deltas
 			&& (x != 0. || y != 0.)
 		{
 			self.input_state.record_locked_delta();
-			// Device deltas are physical pixels; the transform layer works in logical units
+			// Device deltas are in physical pixels, the transform layer works in logical units
 			let scale = self.input_state.viewport_scale();
 			let (x, y) = if scale != 0. { (x / scale, y / scale) } else { (x, y) };
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
