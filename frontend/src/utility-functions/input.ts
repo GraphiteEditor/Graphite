@@ -81,8 +81,8 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
-	// If this Escape reaches us it has already cancelled the transform, so remember not to send a second one
-	if (e.code === "Escape" && inPointerLock) escapeConsumed = true;
+	// The browser uses this Escape to drop the pointer lock, but it only cancels the transform if the key reaches the editor below
+	const escapeReleasesLock = e.code === "Escape" && inPointerLock;
 
 	const key = await getLocalizedScanCode(e);
 
@@ -92,6 +92,7 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
 		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
+		if (escapeReleasesLock) escapeConsumed = true;
 		editor.onKeyDown(key, modifiers, e.repeat);
 		return;
 	}
