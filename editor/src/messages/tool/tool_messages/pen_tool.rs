@@ -403,7 +403,6 @@ struct PenToolData {
 	auto_panning: AutoPanning,
 	modifiers: ModifierState,
 
-	// buffering_merged_vector: bool,
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
 	toggle_colinear_debounce: bool,

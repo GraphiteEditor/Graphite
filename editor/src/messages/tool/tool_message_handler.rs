@@ -68,7 +68,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::ActivateToolGradient => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Gradient }),
 
 			ToolMessage::ActivateToolPath => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Path }),
-
 			ToolMessage::ActivateToolPen => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Pen }),
 			ToolMessage::ActivateToolFreehand => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Freehand }),
 			ToolMessage::ActivateToolSpline => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Spline }),
@@ -147,7 +146,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					// If a G/R/S transform is active while using Path, Select, Pen, or Shape,
 					// and the user switches to a different tool, cancel the current transform
 					// operation to avoid leaving it in an inconsistent state
-
 					if matches!(old_tool, ToolType::Path | ToolType::Select | ToolType::Pen | ToolType::Shape) {
 						responses.add(TransformLayerMessage::CancelTransformOperation);
 					}
