@@ -364,10 +364,41 @@ impl Vector {
 }
 
 impl Vector {
+	/// Marks each pool point that paths name only at handle slots, in O(points + references).
+	pub(crate) fn handle_mask(&self, paths: &List<Path>) -> Vec<bool> {
+		self.point_roles(paths).0
+	}
+
+	/// The handle mask, along with whether every handle is one segment's alone: no point fills two handle slots, and none
+	/// is an anchor in one place and a handle in another.
+	pub(crate) fn point_roles(&self, paths: &List<Path>) -> (Vec<bool>, bool) {
+		// Each point is referenced by no path, only at a handle slot, or at an anchor slot somewhere
+		const UNREFERENCED: u8 = 0;
+		const HANDLE: u8 = 1;
+		const ANCHOR: u8 = 2;
+
+		let mut roles = vec![UNREFERENCED; self.0.len()];
+		let mut handles_unshared = true;
+		for (path_index, path) in paths.iter_element_values().enumerate() {
+			let stride = curve_type_at(paths, path_index).stride();
+			for (reference_index, point) in path.references().enumerate() {
+				let Some(role) = roles.get_mut(point as usize) else { continue };
+				if reference_index.is_multiple_of(stride) {
+					handles_unshared &= *role != HANDLE;
+					*role = ANCHOR;
+				} else {
+					handles_unshared &= *role == UNREFERENCED;
+					*role = (*role).max(HANDLE);
+				}
+			}
+		}
+
+		(roles.into_iter().map(|role| role == HANDLE).collect(), handles_unshared)
+	}
+
 	/// The pool indices of all anchor points and free points in pool order, skipping handles.
 	pub fn anchor_indices(&self, paths: &List<Path>) -> Vec<usize> {
-		let connectivity = self.connectivity(paths);
-		(0..self.0.len() as u32).filter(|&index| !connectivity.is_handle(index)).map(|index| index as usize).collect()
+		self.handle_mask(paths).into_iter().enumerate().filter(|&(_, handle)| !handle).map(|(index, _)| index).collect()
 	}
 
 	/// Drops the paths and every point used only as a handle, leaving the anchors and free points as a bare cloud.
@@ -387,11 +418,8 @@ impl Vector {
 
 	/// Iterator over the IDs of all anchor points and free points, skipping handles.
 	pub fn anchor_points(&self, paths: &List<Path>) -> impl Iterator<Item = PointId> {
-		let connectivity = self.connectivity(paths);
-		let anchors: Vec<_> = (0..self.0.len() as u32)
-			.filter(|&index| !connectivity.is_handle(index))
-			.filter_map(|index| self.point_id_at(index))
-			.collect();
+		let ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+		let anchors: Vec<_> = self.handle_mask(paths).into_iter().zip(ids).filter(|&(handle, _)| !handle).map(|(_, &id)| id).collect();
 
 		anchors.into_iter()
 	}
