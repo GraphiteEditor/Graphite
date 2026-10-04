@@ -22,7 +22,7 @@ use crate::input::InputState;
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
-use crate::ui::{InputEvent, UiCommand, UiInstance};
+use crate::ui::{Cursor, InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
 use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
@@ -494,8 +494,11 @@ impl App {
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
-				if let Some(window) = &mut self.window {
-					window.set_cursor(event_loop, cursor);
+				// The software cursor owns the pointer while it's drawn, so the cursor changes that keep arriving (tool hover icons, and the ones CEF reports for the web page's CSS) must not reveal the OS cursor mid-transform
+				if matches!(&cursor, Cursor::None) || !self.input_state.software_cursor_active() {
+					if let Some(window) = &mut self.window {
+						window.set_cursor(event_loop, cursor);
+					}
 				}
 			}
 			AppEvent::Exit => {
@@ -720,7 +723,10 @@ impl ApplicationHandler for App {
 	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
 		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
+			// A zero delta is no movement, and it would otherwise pass for the proof that the platform delivers locked deltas
+			&& (x != 0. || y != 0.)
 		{
+			self.input_state.record_locked_delta();
 			// Device deltas are physical pixels; the transform layer works in logical units
 			let scale = self.input_state.viewport_scale();
 			let (x, y) = if scale != 0. { (x / scale, y / scale) } else { (x, y) };

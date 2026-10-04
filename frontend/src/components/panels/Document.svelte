@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
+	import { get } from "svelte/store";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
@@ -313,6 +314,9 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
+		// The software cursor owns the pointer while it's drawn, so hover changes must not reveal the real one
+		if (get(softwareCursor).visible && cursor !== "None") return;
+
 		const mouseCursorIconCSSNames: Record<MouseCursorIcon, string> = {
 			Default: "default",
 			None: "none",
@@ -527,10 +531,13 @@
 			// The browser only grants a lock during a user activation, so request it before the `await`
 			if (isWeb && viewport) {
 				if (data.visible) {
-					try {
-						Promise.resolve(viewport.requestPointerLock?.()).catch(() => undefined);
-					} catch {
-						// The absolute pointer position drives the transform if the lock is refused
+					// The lock is only requested while the viewport doesn't already own it, so the grant isn't re-requested on every locked movement
+					if (window.document.pointerLockElement !== viewport) {
+						try {
+							Promise.resolve(viewport.requestPointerLock?.()).catch(() => undefined);
+						} catch {
+							// The absolute pointer position drives the transform if the lock is refused
+						}
 					}
 				} else if (window.document.pointerLockElement === viewport) {
 					// Unlike the desktop, browsers return the pointer to where the lock began, so the wrapped position can't be kept
@@ -542,6 +549,8 @@
 
 			// Hit-testing reports events where this cursor is drawn
 			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
+			// The software cursor owns the pointer, so the viewport cursor stays hidden for the whole transform and the tool's cursor comes back once it ends
+			updateMouseCursor(data.visible ? "None" : "Default");
 		});
 
 		// Text entry

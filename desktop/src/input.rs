@@ -27,6 +27,7 @@ pub(crate) struct InputState {
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
 	software_cursor: Option<glam::DVec2>,
+	locked_deltas: bool,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
 }
@@ -41,6 +42,7 @@ impl InputState {
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
 			software_cursor: None,
+			locked_deltas: false,
 			click_tracker: ClickTracker::default(),
 			shake_tracker: ShakeTracker::default(),
 		}
@@ -58,7 +60,19 @@ impl InputState {
 		self.software_cursor = cursor;
 	}
 
+	/// Whether the editor is currently drawing the software cursor that owns the pointer during a transform.
+	pub(crate) fn software_cursor_active(&self) -> bool {
+		self.software_cursor.is_some()
+	}
+
+	/// Records that the locked pointer reported actual movement, which is the only proof that the platform honors the lock.
+	pub(crate) fn record_locked_delta(&mut self) {
+		self.locked_deltas = true;
+	}
+
 	pub(crate) fn lock_pointer(&mut self) {
+		// Until the platform proves it delivers locked movement, the reported OS position remains the pointer's source
+		self.locked_deltas = false;
 		self.pointer_state = match self.pointer_state {
 			PointerState::Hover { route } => PointerState::Locked {
 				route,
@@ -129,8 +143,9 @@ impl InputState {
 			WindowEvent::PointerMoved { position, source, .. } => {
 				self.pointer_position = *position;
 
-				// A locked pointer reports the OS cursor frozen at the lock origin (or warped back to it), which is not movement, so the editor follows the relative deltas instead
-				if self.pointer_locked() {
+				// A locked pointer reports the OS cursor frozen at the lock origin (or warped back to it), which is not movement, so the editor follows the relative deltas instead.
+				// Not every platform honors the lock it accepted (a compositor can take the grab and then never deliver locked movement), so the reported position keeps driving the pointer until a locked delta proves those deltas exist.
+				if self.pointer_locked() && self.locked_deltas {
 					return;
 				}
 
@@ -141,9 +156,11 @@ impl InputState {
 						next
 					}
 					PointerState::Stroke { route, .. } => route,
-					PointerState::Locked { keys, route: resume, .. } => match keys.is_empty() {
-						true => Route::Ui,
-						false => resume,
+					PointerState::Locked { keys, route: resume, .. } => match (self.locked_deltas, keys.is_empty()) {
+						// A lock that never delivered movement isn't locking anything, so the pointer routes like an unlocked one
+						(_, false) => resume,
+						(false, true) => self.route(*position),
+						(true, true) => Route::Ui,
 					},
 				};
 				match route {

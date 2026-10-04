@@ -19,6 +19,7 @@ let viewportPointerInteractionOngoing = false;
 let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
 let canvasFocused = true;
 let inPointerLock = false;
+let escapeConsumed = false;
 let lastShakeTime = 0;
 const shakeSamples: { x: number; y: number; time: number }[] = [];
 const openFloatingMenus = new Set<string>();
@@ -80,6 +81,9 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
+	// The browser consumes Escape to release the pointer lock, and that same key already cancels the transform, so it must not be synthesized a second time
+	if (e.code === "Escape" && inPointerLock) escapeConsumed = true;
+
 	const key = await getLocalizedScanCode(e);
 
 	const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -245,9 +249,13 @@ export function onPointerLockChange(editor: EditorWrapper) {
 	inPointerLock = Boolean(window.document.pointerLockElement);
 
 	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it
-	if (wasLocked && !inPointerLock && get(softwareCursor).visible) {
-		editor.onKeyDown("Escape", 0, false);
-		editor.onKeyUp("Escape", 0, false);
+	if (wasLocked && !inPointerLock) {
+		// The Escape that released the lock already cancelled the transform, so only a lock loss from elsewhere needs the synthetic one
+		if (escapeConsumed) escapeConsumed = false;
+		else if (get(softwareCursor).visible) {
+			editor.onKeyDown("Escape", 0, false);
+			editor.onKeyUp("Escape", 0, false);
+		}
 	}
 }
 
