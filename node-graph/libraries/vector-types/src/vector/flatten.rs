@@ -161,11 +161,163 @@ impl WorkingVector {
 
 		vector.set_smooth_at_indices(paths, smooth_anchors, true);
 	}
+
+	/// Reorders and reorients the segments so each continues the one it meets head to tail, taking the straightest
+	/// route through every junction, and marks where each chain begins. This bakes path structure into a segment soup once.
+	pub fn chain_by_straightest_route(&mut self) {
+		let segment_count = [self.segment_ids.len(), self.segment_start.len(), self.segment_end.len(), self.segment_handles.len()]
+			.into_iter()
+			.min()
+			.unwrap_or(0);
+		let point_count = self.point_positions.len();
+
+		// Every segment end at each point, named by twice the segment's index plus one for its arriving end
+		let mut ends_at: Vec<Vec<usize>> = vec![Vec::new(); point_count];
+		for index in 0..segment_count {
+			let (start, end) = (self.segment_start[index], self.segment_end[index]);
+			if start < point_count && end < point_count {
+				ends_at[start].push(index * 2);
+				ends_at[end].push(index * 2 + 1);
+			}
+		}
+
+		// The direction a segment leaves its anchor in from the given end, toward the nearest control point not sitting on the anchor
+		let direction = |end: usize| {
+			let (index, arriving) = (end / 2, end % 2 == 1);
+			let (start, finish) = (self.point_positions[self.segment_start[index]], self.point_positions[self.segment_end[index]]);
+			let handles = self.segment_handles[index];
+			let (anchor, toward) = if arriving {
+				(finish, [handles.end(), handles.start(), Some(start)])
+			} else {
+				(start, [handles.start(), handles.end(), Some(finish)])
+			};
+
+			let along = toward.into_iter().flatten().map(|point| point - anchor).find(|along| along.length_squared() > 1e-12);
+			along.unwrap_or_default().normalize_or_zero()
+		};
+
+		// Pair off the ends meeting at each point, the straightest pair through a junction first, in O(k² log k) for k ends there
+		let mut partner = vec![usize::MAX; segment_count * 2];
+		for ends in ends_at.iter().filter(|ends| ends.len() >= 2) {
+			let directions: Vec<DVec2> = ends.iter().map(|&end| direction(end)).collect();
+
+			// Straightness is rounded so pairs differing only by float error are equally straight, leaving the earlier stored ends first
+			let mut pairs: Vec<(i64, usize, usize)> = (0..ends.len())
+				.flat_map(|i| (i + 1..ends.len()).map(move |j| (i, j)))
+				.map(|(i, j)| ((-directions[i].dot(directions[j]) * 1e9).round() as i64, i, j))
+				.collect();
+			pairs.sort_by(|a, b| b.0.cmp(&a.0).then((a.1, a.2).cmp(&(b.1, b.2))));
+
+			let mut paired = vec![false; ends.len()];
+			for (_, i, j) in pairs {
+				if paired[i] || paired[j] {
+					continue;
+				}
+				paired[i] = true;
+				paired[j] = true;
+				partner[ends[i]] = ends[j];
+				partner[ends[j]] = ends[i];
+			}
+		}
+
+		// Follow the pairings into chains, each seeded by the earliest unvisited segment and keeping its direction
+		let mut visited = vec![false; segment_count];
+		let mut order: Vec<(usize, bool)> = Vec::with_capacity(segment_count);
+		let mut begins_path = Vec::with_capacity(segment_count);
+		for seed in 0..segment_count {
+			if std::mem::replace(&mut visited[seed], true) {
+				continue;
+			}
+
+			let mut chain = vec![(seed, false)];
+			let mut closed = false;
+			let mut end = seed * 2 + 1;
+			loop {
+				let next = partner[end];
+				if next == usize::MAX {
+					break;
+				}
+				let segment = next / 2;
+				if segment == seed {
+					closed = true;
+					break;
+				}
+				if std::mem::replace(&mut visited[segment], true) {
+					break;
+				}
+
+				// Entering at the segment's arriving end crosses it backwards
+				let reversed = next % 2 == 1;
+				chain.push((segment, reversed));
+				end = if reversed { segment * 2 } else { segment * 2 + 1 };
+			}
+
+			// An open chain also grows backwards from the seed's start, which is then where it begins
+			let mut before = Vec::new();
+			let mut end = seed * 2;
+			if !closed {
+				loop {
+					let next = partner[end];
+					if next == usize::MAX {
+						break;
+					}
+					let segment = next / 2;
+					if std::mem::replace(&mut visited[segment], true) {
+						break;
+					}
+
+					// Joining at the segment's arriving end means it runs forward into the chain
+					let reversed = next % 2 == 0;
+					before.push((segment, reversed));
+					end = if reversed { segment * 2 + 1 } else { segment * 2 };
+				}
+			}
+			before.reverse();
+
+			begins_path.extend((0..before.len() + chain.len()).map(|position| position == 0));
+			order.append(&mut before);
+			order.append(&mut chain);
+		}
+
+		// Rebuild the segment arrays in chain order, turning around the segments that run against their chain
+		let mut reversed_ids = FxHashSet::default();
+		let (mut ids, mut starts, mut ends, mut handles) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+		for &(segment, reversed) in &order {
+			ids.push(self.segment_ids[segment]);
+			let (start, end) = (self.segment_start[segment], self.segment_end[segment]);
+			if reversed {
+				reversed_ids.insert(self.segment_ids[segment]);
+				starts.push(end);
+				ends.push(start);
+				handles.push(self.segment_handles[segment].reversed());
+			} else {
+				starts.push(start);
+				ends.push(end);
+				handles.push(self.segment_handles[segment]);
+			}
+		}
+		self.segment_ids = ids;
+		self.segment_start = starts;
+		self.segment_end = ends;
+		self.segment_handles = handles;
+		self.segment_begins_path = begins_path;
+
+		// A turned segment's handles swap sides, so the G1 pairs naming them follow
+		for handle in self.colinear.iter_mut().flatten() {
+			if reversed_ids.contains(&handle.segment) {
+				handle.ty = match handle.ty {
+					HandleType::Primary => HandleType::End,
+					HandleType::End => HandleType::Primary,
+				};
+			}
+		}
+	}
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Builds storage from the legacy flat arrays: anchors with IDs and positions, segments with IDs,
-/// endpoint indices, and absolute handles, plus G1 pairs. Used by document migration.
+/// Builds storage from the legacy flat arrays: anchors with IDs and positions, segments with IDs, endpoint indices,
+/// and absolute handles, plus G1 pairs. Legacy segments carry no path structure, so they are chained by the straightest
+/// route through each junction before weaving. Used by document migration.
 pub fn vector_from_legacy_parts(
 	point_ids: Vec<PointId>,
 	point_positions: Vec<DVec2>,
@@ -175,7 +327,7 @@ pub fn vector_from_legacy_parts(
 	segment_handles: Vec<BezierHandles>,
 	colinear: Vec<[HandleId; 2]>,
 ) -> (Vector, List<Path>) {
-	let working = WorkingVector {
+	let mut working = WorkingVector {
 		point_ids,
 		point_positions,
 		segment_ids,
@@ -185,6 +337,7 @@ pub fn vector_from_legacy_parts(
 		segment_begins_path: Vec::new(),
 		colinear,
 	};
+	working.chain_by_straightest_route();
 
 	let (mut vector, mut paths) = (Vector::default(), List::new());
 	working.reweave(&mut vector, &mut paths);
@@ -195,7 +348,7 @@ pub fn vector_from_legacy_parts(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, Item};
+	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_SMOOTH, Item};
 
 	fn working(points: usize, segments: &[(usize, usize, BezierHandles)]) -> WorkingVector {
 		WorkingVector {
@@ -208,6 +361,13 @@ mod tests {
 			segment_begins_path: Vec::new(),
 			colinear: Vec::new(),
 		}
+	}
+
+	fn working_at(positions: &[DVec2], segments: &[(usize, usize, BezierHandles)]) -> WorkingVector {
+		let mut working = working(positions.len(), segments);
+		working.point_positions = positions.to_vec();
+
+		working
 	}
 
 	fn woven(working: WorkingVector) -> (Vector, List<Path>) {
@@ -383,6 +543,97 @@ mod tests {
 		assert_eq!(rewoven_paths.len(), 2);
 		assert_eq!(references(&rewoven_paths, 0), [0, 1, 2]);
 		assert_eq!(references(&rewoven_paths, 1), [2, 3]);
+	}
+
+	// The bar of a T keeps going through the junction, being the straightest route, and the stem starts its own path
+	#[test]
+	fn straightest_route_continues_through_a_junction() {
+		let positions = [DVec2::new(0., 0.), DVec2::new(1., 0.), DVec2::new(2., 0.), DVec2::new(1., 1.)];
+		let soup = [(1, 3, BezierHandles::Linear), (0, 1, BezierHandles::Linear), (1, 2, BezierHandles::Linear)];
+		let mut working = working_at(&positions, &soup);
+
+		working.chain_by_straightest_route();
+		assert_eq!(working.segment_begins_path, vec![true, true, false]);
+
+		let (_, paths) = woven(working);
+		assert_eq!(paths.len(), 2);
+		assert_eq!(references(&paths, 0), [1, 3]);
+		assert_eq!(references(&paths, 1), [0, 1, 2]);
+	}
+
+	// A curve whose end handle is retracted onto the junction arrives along its other handle, so it carries on downward rather than along its chord
+	#[test]
+	fn straightest_route_reads_a_retracted_handle_from_the_other_one() {
+		let positions = [DVec2::new(-10., 0.), DVec2::ZERO, DVec2::new(0., -10.), DVec2::new(10., 0.)];
+		let curve = BezierHandles::Cubic {
+			handle_start: DVec2::new(0., 10.),
+			handle_end: DVec2::ZERO,
+		};
+		let soup = [(0, 1, curve), (1, 3, BezierHandles::Linear), (1, 2, BezierHandles::Linear)];
+		let mut working = working_at(&positions, &soup);
+		let ids = working.segment_ids.clone();
+
+		working.chain_by_straightest_route();
+		assert_eq!(working.segment_ids, vec![ids[0], ids[2], ids[1]]);
+		assert_eq!(working.segment_begins_path, vec![true, false, true]);
+	}
+
+	// Four segments all drawn into one crossing pair off into two straight lines, turning around the ones drawn the other way
+	#[test]
+	fn crossing_lines_each_stay_whole() {
+		let positions = [DVec2::new(-1., 0.), DVec2::new(1., 0.), DVec2::new(0., -1.), DVec2::new(0., 1.), DVec2::ZERO];
+		let soup = [
+			(0, 4, BezierHandles::Linear),
+			(2, 4, BezierHandles::Linear),
+			(1, 4, BezierHandles::Linear),
+			(3, 4, BezierHandles::Linear),
+		];
+		let mut working = working_at(&positions, &soup);
+		let ids = working.segment_ids.clone();
+
+		working.chain_by_straightest_route();
+		assert_eq!(working.segment_ids, vec![ids[0], ids[2], ids[1], ids[3]]);
+		assert_eq!(working.segment_start, vec![0, 4, 2, 4]);
+		assert_eq!(working.segment_end, vec![4, 1, 4, 3]);
+
+		let (_, paths) = woven(working);
+		assert_eq!(paths.len(), 2);
+		assert_eq!(references(&paths, 0), [0, 4, 1]);
+		assert_eq!(references(&paths, 1), [2, 4, 3]);
+	}
+
+	// A G1 pair follows its segment when that segment is turned around, so the shared anchor still comes out smooth
+	#[test]
+	fn a_turned_segment_keeps_its_smooth_pair() {
+		let cubic = |from: DVec2, to: DVec2| BezierHandles::Cubic {
+			handle_start: from + DVec2::new(1., 0.),
+			handle_end: to - DVec2::new(1., 0.),
+		};
+		let positions = [DVec2::new(0., 0.), DVec2::new(3., 0.), DVec2::new(6., 0.)];
+		let ids = [SegmentId::generate(), SegmentId::generate()];
+
+		// The second segment runs back toward the shared anchor, so both handles facing it, one on each side, are stored as end handles
+		let (_, paths) = vector_from_legacy_parts(
+			(0..3).map(|_| PointId::generate()).collect(),
+			positions.to_vec(),
+			ids.to_vec(),
+			vec![0, 2],
+			vec![1, 1],
+			vec![
+				cubic(positions[0], positions[1]),
+				BezierHandles::Cubic {
+					handle_start: positions[2] - DVec2::X,
+					handle_end: positions[1] + DVec2::X,
+				},
+			],
+			vec![[HandleId::end(ids[0]), HandleId::end(ids[1])]],
+		);
+
+		assert_eq!(paths.len(), 1);
+		assert_eq!(curve_type_at(&paths, 0), CurveType::Cubic);
+		assert_eq!(references(&paths, 0), [0, 3, 4, 1, 5, 6, 2]);
+		let path = paths.element(0).expect("the chain became one path");
+		assert_eq!(path.0.attribute::<bool>(ATTR_SMOOTH, 3), Some(&true));
 	}
 
 	// Gathering runs stays invisible to the bridge: the same segments come back in the same order
