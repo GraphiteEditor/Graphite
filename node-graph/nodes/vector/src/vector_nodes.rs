@@ -871,6 +871,10 @@ pub mod extrude_algorithms {
 
 			push_working_segment(working, next_segment.next_id(), start, end, handles);
 		}
+
+		// The copies begin paths where the originals do
+		working.segment_begins_path.resize(segment_count, false);
+		working.segment_begins_path.extend_from_within(..segment_count);
 	}
 
 	/// Join points from the original to the copied that are on opposite sides of the direction.

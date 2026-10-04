@@ -20,6 +20,8 @@ pub struct WorkingVector {
 	pub segment_start: Vec<usize>,
 	pub segment_end: Vec<usize>,
 	pub segment_handles: Vec<BezierHandles>,
+	/// Which segments open a path of their own, kept as path boundaries when rewoven. Missing entries count as false.
+	pub segment_begins_path: Vec<bool>,
 	pub colinear: Vec<[HandleId; 2]>,
 }
 
@@ -46,6 +48,7 @@ impl WorkingVector {
 			let stride = curve_type.stride();
 			let span_ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 
+			let mut begins_path = true;
 			for span in 0..path.segment_count(curve_type) {
 				let Some(segment) = path.segment(&vector.0, curve_type, span) else { continue };
 				let (Some(start), Some(end)) = (path.reference(span * stride), path.reference(span * stride + stride)) else {
@@ -57,6 +60,8 @@ impl WorkingVector {
 				working.segment_handles.push(segment_to_handles(&segment));
 				working.segment_start.push(start);
 				working.segment_end.push(end);
+				working.segment_begins_path.push(begins_path);
+				begins_path = false;
 			}
 		}
 
@@ -65,7 +70,21 @@ impl WorkingVector {
 		working
 	}
 
-	/// Weaves the working form back into a pool and paths, gathering consecutive segments that meet head to tail into one path.
+	/// Hands each removed segment's mark as the beginning of a path to the next kept segment, which begins what is left of that path.
+	pub(crate) fn carry_path_beginnings(&mut self, keep: &[bool]) {
+		let mut carried = false;
+		for (begins, &kept) in self.segment_begins_path.iter_mut().zip(keep) {
+			if !kept {
+				carried |= *begins;
+			} else if carried {
+				*begins = true;
+				carried = false;
+			}
+		}
+	}
+
+	/// Weaves the working form back into a pool and paths, gathering consecutive segments that meet head to tail into one path
+	/// until it closes or a segment begins a path of its own.
 	pub fn reweave(self, vector: &mut Vector, paths: &mut List<Path>) {
 		*paths = List::new();
 
@@ -83,7 +102,7 @@ impl WorkingVector {
 		let mut segment_anchors = FxHashMap::default();
 
 		let ends = self.segment_start.iter().zip(&self.segment_end);
-		for ((&id, (&start, &end)), handles) in self.segment_ids.iter().zip(ends).zip(&self.segment_handles) {
+		for (index, ((&id, (&start, &end)), handles)) in self.segment_ids.iter().zip(ends).zip(&self.segment_handles).enumerate() {
 			if start >= anchor_count || end >= anchor_count {
 				continue;
 			}
@@ -94,11 +113,13 @@ impl WorkingVector {
 				BezierHandles::Cubic { handle_start, handle_end } => (CurveType::Cubic, vec![handle_start, handle_end]),
 			};
 
-			// Runs stay in segment order, since the order spans are woven in decides how subpaths are walked.
-			// A run carries on through a junction and gives way only once it has closed.
-			let continues_run = runs
-				.last()
-				.is_some_and(|(run_curve_type, references, _)| *run_curve_type == curve_type && references.last() == Some(&(start as u32)) && references.first() != references.last());
+			// Runs stay in segment order, which is the order the paths come out in. A run carries on through a
+			// junction and gives way once it has closed, or when the next segment opens a path of its own.
+			let begins_path = self.segment_begins_path.get(index).copied().unwrap_or(false);
+			let continues_run = !begins_path
+				&& runs
+					.last()
+					.is_some_and(|(run_curve_type, references, _)| *run_curve_type == curve_type && references.last() == Some(&(start as u32)) && references.first() != references.last());
 			if !continues_run {
 				runs.push((curve_type, vec![start as u32], Vec::new()));
 			}
@@ -161,6 +182,7 @@ pub fn vector_from_legacy_parts(
 		segment_start,
 		segment_end,
 		segment_handles,
+		segment_begins_path: Vec::new(),
 		colinear,
 	};
 
@@ -183,6 +205,7 @@ mod tests {
 			segment_start: segments.iter().map(|&(start, ..)| start).collect(),
 			segment_end: segments.iter().map(|&(_, end, _)| end).collect(),
 			segment_handles: segments.iter().map(|(.., handles)| *handles).collect(),
+			segment_begins_path: Vec::new(),
 			colinear: Vec::new(),
 		}
 	}
@@ -339,6 +362,27 @@ mod tests {
 		let (_, paths) = woven(working);
 		assert_eq!(paths.len(), 1);
 		assert_eq!(references(&paths, 0), [0, 1, 2]);
+	}
+
+	// Flattened paths welded head to tail stay apart when rewoven, since a path boundary is data of its own
+	#[test]
+	fn reweave_keeps_flattened_paths_apart() {
+		let mut vector = Vector::default();
+		for index in 0..4 {
+			vector.0.push(Item::new_from_element(DVec2::new(index as f64, 0.)).with_attribute(ATTR_ID, PointId::generate()));
+		}
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], [SegmentId::generate(), SegmentId::generate()]);
+		push_path(&mut paths, CurveType::Linear, [2, 3], [SegmentId::generate()]);
+
+		let working = WorkingVector::flatten(&vector, &paths);
+		assert_eq!(working.segment_begins_path, vec![true, false, true]);
+
+		let (mut rewoven, mut rewoven_paths) = (Vector::default(), List::new());
+		working.reweave(&mut rewoven, &mut rewoven_paths);
+		assert_eq!(rewoven_paths.len(), 2);
+		assert_eq!(references(&rewoven_paths, 0), [0, 1, 2]);
+		assert_eq!(references(&rewoven_paths, 1), [2, 3]);
 	}
 
 	// Gathering runs stays invisible to the bridge: the same segments come back in the same order
