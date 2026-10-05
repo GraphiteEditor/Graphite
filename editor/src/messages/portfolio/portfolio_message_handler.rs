@@ -269,6 +269,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					HintData::clear_layout(responses);
 				}
 
+				// A transform belongs to the document being closed, so cancel it while that document is still loaded or its software cursor and pointer lock outlive it
+				if self.active_document_id == Some(document_id) && self.active_document().is_some() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+				}
+
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
 				responses.add(remove_stored_document(self.document_store.clone(), document_id));

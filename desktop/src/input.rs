@@ -317,7 +317,7 @@ impl InputState {
 		}
 	}
 
-	pub(crate) fn viewport_scale(&self) -> f64 {
+	fn viewport_scale(&self) -> f64 {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
 

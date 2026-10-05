@@ -789,6 +789,10 @@ mod test_transform_layer {
 		document_layer_transform(editor, document_id, layer)
 	}
 
+	fn is_transforming(editor: &EditorTestUtils) -> bool {
+		editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.is_transforming()
+	}
+
 	#[tokio::test]
 	async fn test_grab_apply() {
 		let mut editor = EditorTestUtils::create();
@@ -896,6 +900,31 @@ mod test_transform_layer {
 			(aborted_translation - original_translation).length() < 5.,
 			"The transform should be aborted in the document it started in. Original: {original_translation:?}, Aborted: {aborted_translation:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn test_close_active_document_cancels_the_transform() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.new_document().await;
+		let closing_document = editor.active_document_id();
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		assert!(is_transforming(&editor), "The transform should be running before the document closes");
+
+		editor.handle_message(PortfolioMessage::CloseDocument { document_id: closing_document }).await;
+
+		assert_ne!(editor.active_document_id(), closing_document, "The closed document should no longer be active");
+		assert!(!is_transforming(&editor), "Closing the active document should cancel the transform");
 	}
 
 	#[tokio::test]
