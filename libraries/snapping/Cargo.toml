@@ -17,3 +17,10 @@ workspace = true
 [dependencies]
 glam = { workspace = true }
 kurbo = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "scale"
+harness = false
