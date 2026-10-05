@@ -1,4 +1,4 @@
-use crate::{AttributeDelta, CrdtError, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, RegistryDelta, Session, UserId, Value};
+use crate::{AttributeDelta, CrdtError, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, RegistryDelta, Session, UserId, Value};
 
 fn set_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
@@ -24,10 +24,12 @@ fn retirement_takes_the_ops_under_the_cutoff_in_any_applied_order() {
 	let hot = |op, counter, peer| crate::HotOp {
 		op,
 		timestamp: crate::TimeStamp { counter, peer: PeerId(peer) },
+		sequence: crate::HotSequence(1),
 	};
 	let (late, own) = (hot(add_network(9), 50, 2), hot(set_attribute("x", 1), 20, 3));
 	host.replay_hot_op(late.clone()).expect("the late-stamped op lands first");
 	host.replay_hot_op(own.clone()).expect("the earlier-stamped op lands second");
+	assert_eq!(host.hot_ops_up_to(own.timestamp).len(), 1, "only the op under the cutoff retires");
 
 	host.retire(own.timestamp).expect("retire");
 	assert_eq!(host.hot_log().len(), 1, "the later-stamped op stays hot");
@@ -45,7 +47,8 @@ fn newest_peer_registration_wins_in_any_order() {
 	// Registration rides the staging path, so the steps go through the hot log and retire.
 	fn stage_and_retire(session: &mut Session, op: RegistryDelta) {
 		let hot = session.stage_ops([op]).expect("stage");
-		session.retire(hot.last().expect("staged").timestamp).expect("retire");
+		let ids: Vec<crate::HotOpId> = hot.iter().map(crate::HotOp::id).collect();
+		session.retire_hot_ops(&ids).expect("retire");
 	}
 	let mut device = Session::with_identity(PeerId(1), UserId(10));
 	stage_and_retire(&mut device, set_attribute("first", 1));
@@ -64,6 +67,33 @@ fn newest_peer_registration_wins_in_any_order() {
 	}
 	assert_eq!(other.user_of(PeerId(1)), Some(UserId(20)), "the newest registration wins in any order");
 	assert_eq!(other.user_of(PeerId(3)), None, "a peer never registered has no user");
+}
+
+#[test]
+fn a_batch_past_the_last_sequence_is_refused_whole() {
+	let mut session = Session::with_peer(PeerId(1));
+	session.restore_hot_sequence(crate::HotSequence(u64::MAX - 1));
+	assert!(matches!(session.stage_ops([set_attribute("k", 1)]), Err(crate::CrdtError::SequencesExhausted)));
+	assert!(session.hot_log().is_empty());
+}
+
+#[test]
+fn a_reopened_session_drops_a_late_copy_of_a_retired_op() {
+	let op = crate::HotOp {
+		op: set_attribute("k", 1),
+		timestamp: crate::TimeStamp { counter: 3, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+	};
+	let mut host = Session::with_peer(PeerId(1));
+	host.replay_hot_op(op.clone()).unwrap();
+	host.retire(op.timestamp).unwrap();
+
+	let mut reopened = Session::load(PeerId(1), UserId(1), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	reopened.absorb_settled_marks(host.settled_marks());
+	reopened.replay_hot_op(op.clone()).unwrap();
+	assert!(reopened.hot_log().is_empty());
+	assert!(reopened.retire(op.timestamp).unwrap().is_empty());
+	assert_eq!(reopened.history_len(), host.history_len());
 }
 
 #[test]
@@ -87,4 +117,62 @@ fn a_refused_local_op_leaves_the_working_registry_unchanged() {
 	}]);
 	assert!(matches!(refused, Err(CrdtError::TargetNodeDoesNotExist(_))));
 	assert_eq!(s.registry(), &before, "the refused op's write to node 1 stayed in the working registry");
+}
+
+/// The caller only gets the error, so ops left staged would never be persisted or sent.
+#[test]
+fn a_refused_batch_stages_nothing() {
+	let mut s = Session::with_peer(PeerId(1));
+	s.stage_ops([RegistryDelta::AddNetwork {
+		id: NetworkId(1),
+		network: Network::default(),
+	}])
+	.unwrap();
+	let hot_before = s.hot_log().len();
+	let refused = s.stage_ops([
+		set_attribute("lands", 1),
+		RegistryDelta::ChangeNodeInput {
+			id: NodeId(404),
+			index: 0,
+			new_input: NodeInput::Value {
+				value: Value::from(serde_json::json!(1)),
+				exposed: false,
+			},
+		},
+	]);
+	assert!(refused.is_err());
+	assert_eq!(s.hot_log().len(), hot_before, "a refused batch stages nothing");
+}
+
+#[test]
+fn settled_marks_round_trip_through_json() {
+	let mut marks = crate::SettledMarks::default();
+	let id = |peer: u64, sequence: u64| HotOpId {
+		peer: PeerId(peer),
+		sequence: crate::HotSequence(sequence),
+	};
+	marks.extend([id(1, 1), id(1, 2), id(1, 5), id(u64::MAX, 3)]);
+	let json = serde_json::to_string(&marks).unwrap();
+	assert_eq!(serde_json::from_str::<crate::SettledMarks>(&json).unwrap(), marks);
+}
+
+/// A late copy of one of this peer's own ops that is already settled still raises the sequence and the clock, so the
+/// next op this peer stages takes a fresh sequence and a later stamp.
+#[test]
+fn a_settled_late_copy_still_advances_the_sequence_and_the_clock() {
+	let mut session = Session::with_peer(PeerId(1));
+	let own = crate::HotOp {
+		op: set_attribute("k", 1),
+		timestamp: crate::TimeStamp { counter: 50, peer: PeerId(1) },
+		sequence: crate::HotSequence(7),
+	};
+	let mut marks = crate::SettledMarks::default();
+	marks.extend([own.id()]);
+	session.absorb_settled_marks(&marks);
+	session.replay_hot_op(own.clone()).expect("a settled copy is dropped");
+
+	let staged = session.stage_ops([set_attribute("k", 2)]).expect("stage");
+	let next = staged.last().expect("staged");
+	assert!(next.sequence > own.sequence, "a fresh sequence");
+	assert!(next.timestamp > own.timestamp, "a later stamp");
 }
