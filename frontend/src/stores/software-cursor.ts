@@ -29,5 +29,6 @@ export function softwareCursorClientPosition(): { x: number; y: number } | undef
 	if (!cursor.visible) return undefined;
 
 	const bounds = window.document.querySelector("[data-viewport-container]")?.getBoundingClientRect();
-	return { x: (bounds?.left || 0) + cursor.x, y: (bounds?.top || 0) + cursor.y };
+	if (!bounds) return undefined;
+	return { x: bounds.left + cursor.x, y: bounds.top + cursor.y };
 }

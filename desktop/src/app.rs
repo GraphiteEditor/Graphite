@@ -750,9 +750,7 @@ impl ApplicationHandler for App {
 			&& (x != 0. || y != 0.)
 		{
 			self.input_state.record_locked_delta();
-			// Device deltas are in physical pixels, the transform layer works in logical units
-			let scale = self.input_state.viewport_scale();
-			let (x, y) = if scale != 0. { (x / scale, y / scale) } else { (x, y) };
+			// The device delta units are platform-defined, so they go through as they come
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
 			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 		}

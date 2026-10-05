@@ -188,6 +188,9 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
+				// The tools going away takes any transform with them, and its pointer lock and drawn cursor would otherwise outlive it
+				responses.add(TransformLayerMessage::CancelTransformOperation);
+
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
 				HintData::clear_layout(responses);

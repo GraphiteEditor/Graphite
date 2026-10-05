@@ -818,6 +818,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(EventMessage::ToolAbort);
+				// A transform belongs to the document it started in, and its pointer lock and drawn cursor would otherwise outlive it
+				responses.add(TransformLayerMessage::CancelTransformOperation);
 				responses.add(EventMessage::SelectionChanged);
 				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);

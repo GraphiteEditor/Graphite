@@ -29,6 +29,15 @@
 	let viewport: HTMLDivElement | undefined;
 	let gradientStopPicker: ColorPicker | undefined;
 
+	// A granted pointer lock arrives as its own task, so a request whose transform already ended has to be handed back once it shows up
+	let pointerLockUnwanted = false;
+	const releaseUnwantedPointerLock = () => {
+		if (pointerLockUnwanted && window.document.pointerLockElement === viewport) {
+			pointerLockUnwanted = false;
+			window.document.exitPointerLock();
+		}
+	};
+
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorWrapper>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
@@ -529,12 +538,15 @@
 		// Software cursor drawn during G/R/S transforms
 		// Requested once per transform, so a refused lock isn't retried on every pointer move
 		let pointerLockRequested = false;
+		window.document.addEventListener("pointerlockchange", releaseUnwantedPointerLock);
+
 		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
 			// Browsers only grant a lock during a user activation, so this has to happen before the `await`
 			if (isWeb && viewport) {
 				if (data.visible) {
 					if (!pointerLockRequested) {
 						pointerLockRequested = true;
+						pointerLockUnwanted = false;
 						try {
 							Promise.resolve(viewport.requestPointerLock?.()).catch(() => undefined);
 						} catch {
@@ -546,6 +558,9 @@
 					if (window.document.pointerLockElement === viewport) {
 						// The browser puts the pointer back where the lock began, so the wrapped position can't be kept
 						window.document.exitPointerLock();
+					} else {
+						// Nothing holds it yet, so the request still in flight would arrive with no transform left to drive
+						pointerLockUnwanted = true;
 					}
 				}
 			}
@@ -614,6 +629,7 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
 		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
 		subscriptions.unsubscribeFrontendMessage("UpdateSoftwareCursor");
+		window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
 		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");

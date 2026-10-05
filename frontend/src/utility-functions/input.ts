@@ -127,12 +127,13 @@ function pointerEventPosition(e: MouseEvent): { x: number; y: number } {
 
 // The frozen position is useless while locked, so forward the movement deltas instead
 function forwardLockedPointerDeltas(e: PointerEvent, editor: EditorWrapper): void {
-	if (get(softwareCursor).visible && (e.movementX !== 0 || e.movementY !== 0)) editor.appWindowPointerLockMove(e.movementX, e.movementY);
+	if (e.movementX !== 0 || e.movementY !== 0) editor.appWindowPointerLockMove(e.movementX, e.movementY);
 }
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
-	if (inPointerLock) {
+	// Number inputs lock the pointer too, so only swallow moves while the software cursor is the thing driving it
+	if (inPointerLock && get(softwareCursor).visible) {
 		forwardLockedPointerDeltas(e, editor);
 		return;
 	}
