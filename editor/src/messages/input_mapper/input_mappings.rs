@@ -233,7 +233,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
+		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt, KeyQ, KeyW], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAll),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllSelected),

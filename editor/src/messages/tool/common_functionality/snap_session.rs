@@ -63,7 +63,7 @@ pub struct PointOptions {
 	pub previous: Option<DVec2>,
 	/// The length of the segment before that one.
 	pub previous_length: Option<f64>,
-	/// A track it must stay on.
+	/// A track the result must stay on, in the result's own terms: a position for a point, or the parameters for features.
 	pub required: Option<Locus>,
 }
 

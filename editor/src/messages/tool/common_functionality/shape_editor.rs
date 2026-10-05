@@ -1,14 +1,11 @@
 use super::graph_modification_utils::merge_layers;
-use super::snapping::{SnapCache, SnapCandidatePoint, SnapData, SnapManager, SnappedPoint};
 use super::utility_functions::{adjust_handle_colinearity, calculate_segment_angle, restore_g1_continuity, restore_previous_handle_position};
 use crate::consts::HANDLE_LENGTH_FACTOR;
 use crate::messages::portfolio::document::overlays::utility_functions::selected_segments_for_layer;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{PathSnapSource, SnapSource};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use crate::messages::tool::common_functionality::utility_functions::is_visible_point;
 use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSelectState};
 use glam::{DAffine2, DVec2};
@@ -559,63 +556,6 @@ impl ShapeState {
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 		}
-	}
-
-	// Snap, returning a viewport delta
-	pub fn snap(
-		&self,
-		snap_manager: &mut SnapManager,
-		snap_cache: &SnapCache,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		previous_mouse: DVec2,
-	) -> DVec2 {
-		let snap_data = SnapData::new_snap_cache(document, input, viewport, snap_cache);
-
-		let mouse_delta = document
-			.network_interface
-			.document_metadata()
-			.document_to_viewport
-			.inverse()
-			.transform_vector2(input.mouse.position - previous_mouse);
-		let mut offset = mouse_delta;
-		let mut best_snapped = SnappedPoint::infinite_snap(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-		for (layer, state) in &self.selected_shape_state {
-			let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { continue };
-
-			let to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
-
-			for &selected in &state.selected_points {
-				let source = match selected {
-					ManipulatorPointId::Anchor(_) if vector.colinear(selected) => SnapSource::Path(PathSnapSource::AnchorPointWithColinearHandles),
-					ManipulatorPointId::Anchor(_) => SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles),
-					// TODO: This doesn't actually work for handles, instead handles enter the arm above for free handles
-					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => SnapSource::Path(PathSnapSource::HandlePoint),
-				};
-
-				let Some(position) = selected.get_position(&vector) else { continue };
-				let mut point = SnapCandidatePoint::new_source(to_document.transform_point2(position) + mouse_delta, source);
-
-				if let Some(id) = selected.as_anchor() {
-					for neighbor in vector.connected_points(id) {
-						if state.is_point_selected(ManipulatorPointId::Anchor(neighbor)) {
-							continue;
-						}
-						let Some(position) = vector.point_domain.position_from_id(neighbor) else { continue };
-						point.neighbors.push(to_document.transform_point2(position));
-					}
-				}
-
-				let snapped = snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
-				if best_snapped.other_snap_better(&snapped) {
-					offset = snapped.snapped_point_document - point.document_point + mouse_delta;
-					best_snapped = snapped;
-				}
-			}
-		}
-		snap_manager.update_indicator(best_snapped);
-		document.metadata().document_to_viewport.transform_vector2(offset)
 	}
 
 	/// Select/deselect the first point within the selection threshold.
