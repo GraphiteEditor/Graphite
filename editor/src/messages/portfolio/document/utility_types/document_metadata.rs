@@ -15,6 +15,7 @@ use kurbo::{Affine, BezPath};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 // ================
 // DocumentMetadata
@@ -44,6 +45,11 @@ pub struct DocumentMetadata {
 	pub layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
+	/// The transform from document space to viewport space that the latest render was made with, which is the one `upstream_footprints` include.
+	pub rendered_document_to_viewport: DAffine2,
+	/// A number that is replaced whenever the layer structure, or the geometry and transforms a render reported, change.
+	/// Anything derived from them is up to date for as long as this is the number it was derived at.
+	pub generation: u64,
 }
 
 // =================================
@@ -122,6 +128,24 @@ impl DocumentMetadata {
 
 	pub fn transform_to_document_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
 		self.document_to_viewport.inverse() * self.transform_to_viewport_if_feeds(layer, network_interface)
+	}
+
+	/// The transformation to document space from layer space as the latest render had it.
+	/// Unlike [`Self::transform_to_document`], this stays correct after the view changes and before the next render reports back.
+	pub fn transform_to_document_as_rendered(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		self.rendered_document_to_viewport.inverse() * self.transform_to_viewport(layer)
+	}
+
+	/// The counterpart of [`Self::transform_to_document_as_rendered`] for [`Self::transform_to_document_if_feeds`].
+	pub fn transform_to_document_as_rendered_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
+		self.rendered_document_to_viewport.inverse() * self.transform_to_viewport_if_feeds(layer, network_interface)
+	}
+
+	/// Notes that the layer structure, or something a render reported, has changed.
+	pub fn mark_changed(&mut self) {
+		// Drawing from one counter for every document keeps a number from ever standing for two states, including across the swaps that undo and redo make
+		static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+		self.generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
 	}
 
 	pub fn transform_to_viewport_with_first_transform_node_if_group(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
@@ -595,6 +619,46 @@ pub struct NodeRelations {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn the_transform_as_rendered_stays_put_while_the_view_moves_on() {
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId(3));
+		let rendered_view = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.3, DVec2::new(40., -10.));
+		let layer_to_document = DAffine2::from_translation(DVec2::new(100., 50.)) * DAffine2::from_angle(0.5);
+
+		// A render made at one view reports where it drew the layer
+		let mut metadata = DocumentMetadata {
+			document_to_viewport: rendered_view,
+			rendered_document_to_viewport: rendered_view,
+			..Default::default()
+		};
+		let footprint = Footprint {
+			transform: rendered_view * layer_to_document,
+			..Default::default()
+		};
+		metadata.upstream_footprints.insert(layer.to_node(), footprint);
+		assert!(metadata.transform_to_document_as_rendered(layer).abs_diff_eq(layer_to_document, 1e-9));
+
+		// Panning and zooming before the next render reports back leaves the layer where it was in the document
+		metadata.document_to_viewport = DAffine2::from_scale_angle_translation(DVec2::splat(5.), -0.2, DVec2::new(-300., 80.));
+		assert!(metadata.transform_to_document_as_rendered(layer).abs_diff_eq(layer_to_document, 1e-9));
+	}
+
+	#[test]
+	fn no_two_states_share_a_generation() {
+		let mut first = DocumentMetadata::default();
+		let mut second = DocumentMetadata::default();
+
+		first.mark_changed();
+		let earlier = first.clone();
+		second.mark_changed();
+		first.mark_changed();
+
+		// A copy kept from before, as undo keeps one, still has the number that stood for its own state alone
+		let generations = [earlier.generation, first.generation, second.generation, DocumentMetadata::default().generation];
+		assert!(generations.iter().enumerate().all(|(index, generation)| !generations[..index].contains(generation)));
+	}
+
 	#[test]
 	fn test_tree() {
 		let mut metadata = DocumentMetadata::default();
