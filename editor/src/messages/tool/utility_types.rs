@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::common_functionality::shape_editor::ShapeState;
+use super::common_functionality::snap_session::SnapSession;
 use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::broadcast::event::EventMessage;
@@ -27,6 +28,7 @@ pub struct ToolActionMessageContext<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
 	pub shape_editor: &'a mut ShapeState,
+	pub snap_session: &'a mut SnapSession,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,

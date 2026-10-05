@@ -1,5 +1,6 @@
 use super::common_functionality::shape_editor::ShapeState;
 use super::common_functionality::shapes::shape_utility::ShapeType::{Ellipse, Line, Rectangle};
+use super::common_functionality::snap_session::SnapSession;
 use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -13,6 +14,7 @@ use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays { context }.into();
+const SNAPPING_OVERLAY_PROVIDER: OverlayProvider = |context| ToolMessage::DrawSnappingOverlays { context }.into();
 
 #[derive(ExtractField)]
 pub struct ToolMessageContext<'a> {
@@ -30,6 +32,7 @@ pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
 	pub shape_editor: ShapeState,
+	pub snap_session: SnapSession,
 	pub tool_is_active: bool,
 	/// What the active tool would edit in the selected layers, as last shown in the Layers panel.
 	pub edit_target: EditTarget,
@@ -125,6 +128,7 @@ impl ToolMessageHandler {
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
 							shape_editor: &mut self.shape_editor,
+							snap_session: &mut self.snap_session,
 							node_graph,
 							preferences,
 							viewport,
@@ -156,6 +160,9 @@ impl ToolMessageHandler {
 				send_abort_to_tool(old_tool, tool_type, true);
 				send_abort_to_tool(old_tool, old_tool, false);
 
+				// Nothing a tool was snapping carries over to the next tool
+				self.snap_session.end_gesture();
+
 				// Unsubscribe old tool from the broadcaster
 				tool_data.tools.get(&old_tool).unwrap().deactivate(responses);
 
@@ -167,6 +174,7 @@ impl ToolMessageHandler {
 
 				// Re-add the artboard overlay provider when tools are reactivated
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+				responses.add(OverlaysMessage::AddProvider { provider: SNAPPING_OVERLAY_PROVIDER });
 
 				// Re-subscribe the transform layer to selection change events, which `DeactivateTools` also unsubscribes
 				responses.add(BroadcastMessage::SubscribeEvent {
@@ -194,6 +202,7 @@ impl ToolMessageHandler {
 				});
 
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+				responses.add(OverlaysMessage::RemoveProvider { provider: SNAPPING_OVERLAY_PROVIDER });
 
 				HintData::clear_layout(responses);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: Default::default() });
@@ -236,6 +245,7 @@ impl ToolMessageHandler {
 					global_tool_data: &self.tool_state.document_tool_data,
 					input,
 					shape_editor: &mut self.shape_editor,
+					snap_session: &mut self.snap_session,
 					node_graph,
 					preferences,
 					viewport,
@@ -247,7 +257,9 @@ impl ToolMessageHandler {
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+				responses.add(OverlaysMessage::AddProvider { provider: SNAPPING_OVERLAY_PROVIDER });
 			}
+			ToolMessage::DrawSnappingOverlays { mut context } => self.snap_session.draw_overlays(document, &mut context),
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 
@@ -330,6 +342,7 @@ impl ToolMessageHandler {
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
 							shape_editor: &mut self.shape_editor,
+							snap_session: &mut self.snap_session,
 							node_graph,
 							preferences,
 							viewport,
