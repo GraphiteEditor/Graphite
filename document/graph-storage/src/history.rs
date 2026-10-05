@@ -10,7 +10,7 @@
 
 use std::collections::HashMap;
 
-use crate::{AttributesWrite, CrdtError, Delta, Rev, TimeStamp, Value};
+use crate::{CrdtError, Delta, Rev, TimeStamp, Value};
 
 #[derive(Clone, Debug, Default)]
 pub struct History {

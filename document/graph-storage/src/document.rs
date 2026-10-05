@@ -1,6 +1,6 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp, Value,
-	apply_attribute_delta, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue,
+	TimeStamp, UserId, Value, reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -28,6 +28,7 @@ pub struct Document {
 	pub(crate) redo_stack: Vec<Rev>,
 	pub(crate) clock: LamportClock,
 	pub(crate) peer: PeerId,
+	pub(crate) user: UserId,
 	/// Latest retired commit on the local chain that has been broadcast to at least one peer.
 	/// Commits after this can be rewritten silently; commits at or before this are published
 	/// and require forward reverse-delta ops to undo. `None` means nothing broadcast yet.
@@ -224,12 +225,12 @@ impl Document {
 			}
 			RegistryDelta::ChangeNodeAttribute { id, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
-				apply_attribute_delta(delta, timestamp, force, &mut node.attributes);
+				node.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
-				apply_attribute_delta(delta, timestamp, force, &mut input.attributes);
+				input.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::SetNetworkExport { id, index, export } => {
 				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
@@ -268,7 +269,7 @@ impl Document {
 			}
 			RegistryDelta::ChangeNetworkAttribute { id, delta } => {
 				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
-				apply_attribute_delta(delta, timestamp, force, &mut net.attributes);
+				net.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::SetResourceHash { id, hash } => {
 				let entry = registry.resources.entry(id).or_default();
@@ -297,15 +298,14 @@ impl Document {
 			RegistryDelta::RemoveResource { id, .. } => {
 				registry.resources.remove(&id);
 			}
-			RegistryDelta::RegisterPeer { peer, user } => match registry.peer_users.get(&peer) {
-				Some(existing) if *existing != user => return Err(CrdtError::PeerRegistrationConflict(peer)),
-				Some(_) => {}
-				None => {
-					registry.peer_users.insert(peer, user);
+			RegistryDelta::RegisterPeer { peer, user } => {
+				// The newest registration of a device wins, whatever order they land in.
+				if registry.peer_users.get(&peer).is_none_or(|existing| timestamp > existing.timestamp) {
+					registry.peer_users.insert(peer, PeerRegistration { user, timestamp });
 				}
-			},
+			}
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
-				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes);
+				registry.attributes.apply_delta(delta, timestamp, force);
 			}
 			// Merge is a structural sync point only; it mutates no registry state.
 			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}

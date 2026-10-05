@@ -11,8 +11,8 @@ use serde::Serialize;
 use crate::attr::*;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
 use crate::{
-	AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value,
-	ValueError, from_value, to_value,
+	ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value, ValueError, from_value,
+	to_value,
 };
 
 fn map_serialization_error(key: &str) -> impl FnOnce(ValueError) -> ConversionError + '_ {
