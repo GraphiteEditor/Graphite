@@ -10,6 +10,8 @@ use crate::messages::prelude::*;
 use glam::DVec2;
 use graphene_std::vector::PointId;
 use scene_mirror::layer_id;
+
+pub use scene_mirror::anchor_positions;
 use snapping::{
 	AnchorId, Awake, Bounds, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, LayerKind, Outcome, Request, Scene, Settings, Side, SpacedBox, Tunables, ViewMapping,
 	find_constructions, find_constructions_from, find_equal_sizes, find_spacing,
