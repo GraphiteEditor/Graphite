@@ -2631,11 +2631,12 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
 		edit_item_geometry(&mut content, |vector, paths| {
+			let tangents = if along_normals { vector.anchor_tangents(paths) } else { Vec::new() };
 			let anchors = vector.anchor_indices(paths);
 			let deltas: Vec<_> = anchors
 				.iter()
 				.map(|&point_index| {
-					let normal = if along_normals { vector.point_tangent(paths, point_index).map(|t| -t.perp()) } else { None };
+					let normal = tangents.get(point_index).copied().flatten().map(|tangent| -tangent.perp());
 
 					let offset = if let Some(normal) = normal {
 						normal * (rng.random::<f64>() * 2. - 1.)
@@ -2674,11 +2675,12 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
 		edit_item_geometry(&mut content, |vector, paths| {
+			let tangents = vector.anchor_tangents(paths);
 			let anchors = vector.anchor_indices(paths);
 			let deltas: Vec<_> = anchors
 				.iter()
 				.map(|&point_index| {
-					let Some(normal) = vector.point_tangent(paths, point_index).map(|t| -t.perp()) else {
+					let Some(normal) = tangents.get(point_index).copied().flatten().map(|tangent| -tangent.perp()) else {
 						return DVec2::ZERO;
 					};
 
