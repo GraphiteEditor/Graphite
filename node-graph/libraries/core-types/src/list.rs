@@ -342,7 +342,7 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 
 	/// Hashes this value into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
-		self.cache_hash(&mut DynHasher(state));
+		self.cache_hash(&mut DynHasher::new(state));
 	}
 
 	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
@@ -443,14 +443,59 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 }
 
 /// Adapts a `&mut dyn Hasher` so generic `CacheHash::cache_hash<H>` calls (which require `H: Sized + Hasher`) can
-/// drive a trait-object hasher. Forwards both `Hasher` methods to the inner `dyn Hasher`.
-struct DynHasher<'a>(&'a mut dyn core::hash::Hasher);
-impl core::hash::Hasher for DynHasher<'_> {
-	fn finish(&self) -> u64 {
-		self.0.finish()
+/// drive a trait-object hasher. Writes gather in a buffer that reaches the inner hasher whole, when the next write
+/// would not fit and when this is dropped, which spares a virtual call for every value hashed.
+struct DynHasher<'a> {
+	inner: &'a mut dyn core::hash::Hasher,
+	buffer: [u8; DynHasher::CAPACITY],
+	used: usize,
+}
+
+impl<'a> DynHasher<'a> {
+	const CAPACITY: usize = 128;
+
+	fn new(inner: &'a mut dyn core::hash::Hasher) -> Self {
+		Self {
+			inner,
+			buffer: [0; Self::CAPACITY],
+			used: 0,
+		}
 	}
+
+	fn flush(&mut self) {
+		if let Some(gathered) = self.buffer.get(..self.used).filter(|gathered| !gathered.is_empty()) {
+			self.inner.write(gathered);
+		}
+		self.used = 0;
+	}
+}
+
+impl core::hash::Hasher for DynHasher<'_> {
+	/// Reads the inner hasher's state without the bytes still buffered, which only reach it once this hasher is dropped.
+	fn finish(&self) -> u64 {
+		debug_assert_eq!(self.used, 0, "The buffered bytes reach the inner hasher only once this hasher is dropped");
+		self.inner.finish()
+	}
+
 	fn write(&mut self, bytes: &[u8]) {
-		self.0.write(bytes)
+		if bytes.len() > Self::CAPACITY - self.used {
+			self.flush();
+		}
+
+		// Anything too long for the buffer passes straight through, in order since the buffer was just emptied
+		match self.buffer.get_mut(self.used..self.used + bytes.len()) {
+			Some(space) => {
+				space.copy_from_slice(bytes);
+				self.used += bytes.len();
+			}
+			None => self.inner.write(bytes),
+		}
+	}
+}
+
+impl Drop for DynHasher<'_> {
+	fn drop(&mut self) {
+		self.flush();
 	}
 }
 
@@ -572,7 +617,7 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 
 	/// Hashes every value in this attribute into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
-		self.0.cache_hash(&mut DynHasher(state));
+		self.0.cache_hash(&mut DynHasher::new(state));
 	}
 
 	/// Compares this attribute to another for value-by-value equality (object-safe wrapper around `PartialEq`).
@@ -1800,6 +1845,65 @@ mod tests {
 		let mut hasher = std::collections::hash_map::DefaultHasher::new();
 		value.cache_hash(&mut hasher);
 		core::hash::Hasher::finish(&hasher)
+	}
+
+	// Attribute values are hashed through a buffer, which must not let a change slip by wherever it falls
+	#[test]
+	fn attribute_values_all_reach_the_hash() {
+		let build = |changed: Option<usize>| {
+			let mut list = List::new_from_elements(vec![0_u8; 300]);
+			let mut values: Vec<u64> = (0..300).collect();
+			if let Some(index) = changed {
+				values[index] += 1;
+			}
+			list.set_attribute_values(ATTR_START, values);
+			list.set_attribute_values(ATTR_NAME, vec![String::from("a string long enough to pass straight through the buffer when repeated").repeat(3); 300]);
+			list
+		};
+
+		let hash = hash_of(&build(None));
+		assert_eq!(hash, hash_of(&build(None)));
+		for index in [0, 15, 16, 17, 127, 128, 299] {
+			assert_ne!(hash, hash_of(&build(Some(index))), "a change at {index} went unnoticed");
+		}
+	}
+
+	/// Keeps every byte it is given, in order, so a buffered stream can be checked against what went into it.
+	#[derive(Default)]
+	struct RecordingHasher(Vec<u8>);
+
+	impl core::hash::Hasher for RecordingHasher {
+		fn finish(&self) -> u64 {
+			0
+		}
+
+		fn write(&mut self, bytes: &[u8]) {
+			self.0.extend_from_slice(bytes);
+		}
+	}
+
+	// Writes of every length pass through the buffer whole and in order, also from a value hashing through a buffer of its own
+	#[test]
+	fn buffered_writes_reach_the_inner_hasher_in_order() {
+		use core::hash::Hasher;
+
+		let lengths = [3, 125, 1, 200, 0, 128, 64, 65, 300, 127, 2];
+		let pieces: Vec<Vec<u8>> = lengths.iter().enumerate().map(|(index, &length)| (0..length).map(|byte| (byte + index * 31) as u8).collect()).collect();
+
+		let mut recorder = RecordingHasher::default();
+		{
+			let mut outer = DynHasher::new(&mut recorder);
+			for (index, piece) in pieces.iter().enumerate() {
+				// Every third piece comes from a nested value, the way a list stored as an attribute value is hashed
+				if index % 3 == 2 {
+					DynHasher::new(&mut outer).write(piece);
+				} else {
+					outer.write(piece);
+				}
+			}
+		}
+
+		assert_eq!(recorder.0, pieces.concat());
 	}
 
 	// A cloned list shares each attribute with its source until one of the two writes to it
