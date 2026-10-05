@@ -161,6 +161,10 @@ impl<L: Layout> Gdd<L> {
 			session.publish_up_to(rev);
 		}
 
+		session.restore_hot_sequence(session_state.last_hot_sequence);
+		session.restore_clock_counter(session_state.clock_counter);
+		// Before the hot log replays, so a settled op in it is dropped rather than staged again.
+		session.absorb_settled_marks(&session_state.settled_marks);
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 
 		Ok(Self {
