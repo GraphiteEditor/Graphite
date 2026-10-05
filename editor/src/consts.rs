@@ -42,12 +42,6 @@ pub const WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS: u64 = 250;
 
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
-/// These are layers whose bounding boxes are used for alignment.
-pub const MAX_ALIGNMENT_CANDIDATES: usize = 100;
-/// These are layers that are used for the layer snapper.
-pub const MAX_SNAP_CANDIDATES: usize = 10;
-/// These are points (anchors and bounding box corners etc.) in the layer snapper.
-pub const MAX_LAYER_SNAP_POINTS: usize = 100;
 
 pub const DRAG_THRESHOLD: f64 = 1.;
 

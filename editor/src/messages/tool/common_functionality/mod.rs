@@ -11,7 +11,6 @@ pub mod resize;
 pub mod shape_editor;
 pub mod shapes;
 pub mod snap_session;
-pub mod snapping;
 pub mod stroke_options;
 pub mod transformation_cage;
 pub mod utility_functions;
