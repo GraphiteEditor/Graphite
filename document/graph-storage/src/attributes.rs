@@ -102,10 +102,10 @@ impl Attributes {
 
 	/// Lands a single-key write if it is newer than the key's value, or than the floor for a key the map lacks. A
 	/// deletion leaves a tombstone.
-	pub(crate) fn apply_delta(&mut self, delta: AttributeDelta, timestamp: TimeStamp, force: bool) {
+	pub(crate) fn apply_delta(&mut self, delta: AttributeDelta, timestamp: TimeStamp) {
 		let AttributeDelta { key, value } = delta;
 		let decided = self.get(&key).map_or(self.floor, |existing| existing.timestamp);
-		if !force && timestamp <= decided {
+		if timestamp <= decided {
 			return;
 		}
 		let entry = match value {
