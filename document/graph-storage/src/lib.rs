@@ -5,6 +5,7 @@ pub mod crdt;
 pub mod delta;
 pub mod document;
 pub mod history;
+mod history_metadata;
 pub mod ids;
 pub mod model;
 mod prior;
@@ -25,6 +26,7 @@ pub use attributes::*;
 pub use crdt::*;
 pub use document::*;
 pub use history::History;
+pub use history_metadata::{Fact, HistoryMetadata, MetadataFact, RevRecord, Subject, UserRecord, WallStamp, rev_attr, user_attr};
 pub use ids::*;
 pub use model::*;
 pub use prior::{NetworkField, NodeField, Prior};
@@ -50,4 +52,5 @@ mod tests {
 	mod crdt;
 	mod projection;
 	mod round_trip;
+	mod sessions;
 }
