@@ -32,10 +32,14 @@
 
 	// A granted pointer lock arrives as its own task, so a request whose transform already ended has to be handed back once it shows up
 	let pointerLockUnwanted = false;
+	// Requested once per transform, so a refused lock isn't retried on every pointer move
+	let pointerLockRequested = false;
 	const releaseUnwantedPointerLock = () => {
 		if (pointerLockUnwanted && window.document.pointerLockElement === viewport) {
 			pointerLockUnwanted = false;
 			window.document.exitPointerLock();
+			// After teardown this listener only exists to hand back a late grant, so it is done once that grant is released
+			if (destroyed) window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
 		}
 	};
 
@@ -537,8 +541,6 @@
 		});
 
 		// Software cursor drawn during G/R/S transforms
-		// Requested once per transform, so a refused lock isn't retried on every pointer move
-		let pointerLockRequested = false;
 		window.document.addEventListener("pointerlockchange", releaseUnwantedPointerLock);
 
 		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
@@ -635,8 +637,13 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateSoftwareCursor");
 		// The transform's end update would be dropped now that this component is unsubscribed, so clear the shared cursor instead of leaving it visible
 		resetSoftwareCursor();
+		// A lock requested just before teardown can still grant after it, so keep the listener around to hand that late grant back
 		if (window.document.pointerLockElement === viewport) window.document.exitPointerLock();
-		window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
+		if (pointerLockRequested && window.document.pointerLockElement !== viewport) {
+			pointerLockUnwanted = true;
+		} else {
+			window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
+		}
 		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
