@@ -290,7 +290,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
 		//
 		// SplineToolMessage
-		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
+		entry!(PointerMove; refresh_keys=[KeyQ, KeyW], action_dispatch=SplineToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=SplineToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SplineToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=SplineToolMessage::Confirm),
