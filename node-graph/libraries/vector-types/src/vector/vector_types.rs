@@ -2,7 +2,9 @@ use super::addressing;
 use super::connectivity::Connectivity;
 use super::contour::{contour_bezpaths, contours};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use super::path::{CurveType, Path, append_named_bezpaths, curve_type_at, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes};
+use super::path::{
+	CurveType, Path, append_named_bezpaths, curve_type_at, curve_types_of, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes,
+};
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -360,8 +362,8 @@ impl Vector {
 
 		let mut roles = vec![UNREFERENCED; self.0.len()];
 		let mut handles_unshared = true;
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let stride = curve_type_at(paths, path_index).stride();
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
+			let stride = curve_type.stride();
 			for (reference_index, point) in path.references().enumerate() {
 				let Some(role) = roles.get_mut(point as usize) else { continue };
 				if reference_index.is_multiple_of(stride) {
@@ -861,7 +863,7 @@ impl RenderComplexity for Vector {
 fn segment_count(paths: Option<&List<Path>>) -> usize {
 	let Some(paths) = paths else { return 0 };
 
-	paths.iter_element_values().enumerate().map(|(index, path)| path.segment_count(curve_type_at(paths, index))).sum()
+	paths.iter_element_values().zip(curve_types_of(paths)).map(|(path, curve_type)| path.segment_count(curve_type)).sum()
 }
 
 // Note: BoundingBox for List<Vector> is handled by blanket impl in core-types

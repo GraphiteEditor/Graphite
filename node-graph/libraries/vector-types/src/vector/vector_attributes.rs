@@ -1,7 +1,7 @@
 use crate::vector::addressing::{self, Span};
 use crate::vector::contour::contours;
 use crate::vector::misc::{ManipulatorGroup, Tangent, point_to_dvec2, segment_to_handles};
-use crate::vector::path::{CurveType, Path, append_segment, continues_previous_path, curve_type_at};
+use crate::vector::path::{CurveType, Path, append_segment, continues_previous_path, curve_type_at, curve_types_of};
 use crate::vector::vector_types::Vector;
 use core_types::list::{ATTR_ID, Item, List};
 use dyn_any::DynAny;
@@ -527,8 +527,8 @@ impl Vector {
 	pub fn is_branching(&self, paths: &List<Path>) -> bool {
 		// Tally the segment ends at each anchor in one pass over the references, stopping at the first junction
 		let mut spokes = vec![0_u8; self.point_count()];
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let stride = curve_type_at(paths, path_index).stride();
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
+			let stride = curve_type.stride();
 			let references = path.0.iter_element_values().as_slice();
 			let last = references.len().saturating_sub(1);
 
@@ -559,7 +559,7 @@ impl Vector {
 	/// it and averaging the segments on either side. A point has none when no contour passes it, when three or more
 	/// segments meet at it, or when a segment at it is degenerate.
 	pub fn anchor_tangents(&self, paths: &List<Path>) -> Vec<Option<DVec2>> {
-		let curve_types: Vec<CurveType> = (0..paths.len()).map(|index| curve_type_at(paths, index)).collect();
+		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
 
 		// What each point gathers: how many segment ends meet it, their tangents summed, the first of them, and whether any was degenerate
 		let mut gathered = vec![(0_u8, DVec2::ZERO, DVec2::ZERO, false); self.point_count()];
@@ -739,7 +739,7 @@ impl Vector {
 	pub fn stroke_manipulator_groups(&self, paths: &List<Path>) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
 		let mut groups = Vec::new();
 
-		let curve_types: Vec<CurveType> = (0..paths.len()).map(|index| curve_type_at(paths, index)).collect();
+		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
 		let ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 		let id_at = |point: u32| ids.get(point as usize).copied().unwrap_or_default();
 

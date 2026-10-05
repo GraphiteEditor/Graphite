@@ -1,8 +1,8 @@
 use super::connectivity::Connectivity;
 use super::misc::HandleId;
-use super::path::{CurveType, Path, curve_type_at};
+use super::path::{CurveType, Path, curve_type_at, curve_types_of};
 use super::vector_attributes::{PointId, SegmentId};
-use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, List};
+use core_types::list::{ATTR_ID, List};
 use glam::DVec2;
 
 /// A segment's place in the weave: the span of one path between two consecutive anchors.
@@ -27,10 +27,9 @@ impl Span {
 
 /// Every span of every path, in path order.
 pub fn spans(paths: &List<Path>) -> impl Iterator<Item = Span> + '_ {
-	paths.iter_element_values().enumerate().flat_map(|(path_index, path)| {
-		let curve_type = curve_type_at(paths, path_index);
-		(0..path.segment_count(curve_type) as u32).map(move |index| Span { path: path_index as u32, index })
-	})
+	let paths_with_curve_types = paths.iter_element_values().zip(curve_types_of(paths)).enumerate();
+
+	paths_with_curve_types.flat_map(|(path_index, (path, curve_type))| (0..path.segment_count(curve_type) as u32).map(move |index| Span { path: path_index as u32, index }))
 }
 
 /// A span together with what its path holds for it.
@@ -46,10 +45,7 @@ pub(crate) struct ResolvedSpan<'a> {
 
 /// Every span of every path in path order, resolved in O(references) by reading each path's curve type, references, and IDs once.
 pub(crate) fn resolved_spans(paths: &List<Path>) -> impl Iterator<Item = ResolvedSpan<'_>> + '_ {
-	let curve_types = paths.iter_attribute_values::<CurveType>(ATTR_CURVE_TYPE).map(|curve_types| curve_types.as_slice()).unwrap_or_default();
-
-	paths.iter_element_values().enumerate().flat_map(move |(path_index, path)| {
-		let curve_type = curve_types.get(path_index).copied().unwrap_or_default();
+	paths.iter_element_values().zip(curve_types_of(paths)).enumerate().flat_map(move |(path_index, (path, curve_type))| {
 		let stride = curve_type.stride();
 		let references = path.0.iter_element_values().as_slice();
 		let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice());
@@ -193,7 +189,7 @@ pub fn all_connected(pool_index: u32, paths: &List<Path>, connectivity: &Connect
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::Item;
+	use core_types::list::{ATTR_CURVE_TYPE, Item};
 
 	fn pool(count: u32) -> List<DVec2> {
 		(0..count)

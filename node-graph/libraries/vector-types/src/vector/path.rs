@@ -215,6 +215,13 @@ pub fn curve_type_at(paths: &List<Path>, index: usize) -> CurveType {
 	paths.attribute_cloned_or_default(ATTR_CURVE_TYPE, index)
 }
 
+/// The curve type every path weaves in, in path order, found with one lookup for all of them.
+pub(crate) fn curve_types_of(paths: &List<Path>) -> impl ExactSizeIterator<Item = CurveType> + '_ {
+	let stored = paths.iter_attribute_values::<CurveType>(ATTR_CURVE_TYPE).map(|curve_types| curve_types.as_slice()).unwrap_or_default();
+
+	(0..paths.len()).map(move |index| stored.get(index).copied().unwrap_or_default())
+}
+
 /// Whether the path at `index` only carries on the one stored before it in another curve type, setting out from
 /// that path's last anchor. Such a path begins nothing of its own.
 pub fn continues_previous_path(paths: &List<Path>, index: usize) -> bool {

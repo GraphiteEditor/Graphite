@@ -1,7 +1,7 @@
 use super::*;
 use crate::vector::flatten::WorkingVector;
 use crate::vector::misc::{BezierHandles, HandleId, HandleType};
-use crate::vector::path::{CurveType, Path, curve_type_at};
+use crate::vector::path::{CurveType, Path, curve_types_of};
 use core_types::list::{ATTR_ID, List};
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
@@ -136,8 +136,7 @@ impl PointModification {
 		}
 
 		// A segment's first handle follows its start anchor, and a cubic's second handle follows its end anchor
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let curve_type = curve_type_at(paths, path_index);
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
 			if curve_type == CurveType::Linear {
 				continue;
 			}
@@ -389,8 +388,7 @@ impl SegmentModification {
 
 	/// Calls the visitor with each span a handle edit names, along with its curve type, references, starting reference, and edits.
 	fn for_each_edited_span(&self, paths: &List<Path>, mut visit: impl FnMut(CurveType, &Path, usize, Option<Option<DVec2>>, Option<Option<DVec2>>)) {
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let curve_type = curve_type_at(paths, path_index);
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
 			let stride = curve_type.stride();
 			let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 
