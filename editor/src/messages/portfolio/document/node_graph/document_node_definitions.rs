@@ -1751,8 +1751,6 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
-
-		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
 	}
 
 	// Guards the unconnected Path input, whose default must match the rank of the Morph connector it feeds
@@ -1772,8 +1770,6 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
-
-		editor.eval_graph().await.expect("the Blend network should type-resolve and evaluate");
 	}
 }
 

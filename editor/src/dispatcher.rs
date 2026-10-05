@@ -490,7 +490,7 @@ mod test {
 			});
 
 			// Check if the graph renders
-			if let Err(e) = editor.eval_graph().await {
+			if let Err(e) = editor.eval_graph_until_finished().await {
 				print_problem_to_terminal_on_failure(&format!("Failed to evaluate the graph for document '{document_name}':\n{e}"));
 			}
 

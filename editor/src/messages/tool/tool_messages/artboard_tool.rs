@@ -575,7 +575,7 @@ mod test_artboard {
 	use graphene_std::list::List;
 
 	async fn get_artboards(editor: &mut EditorTestUtils) -> List<Artboard> {
-		let instrumented = match editor.eval_graph().await {
+		let instrumented = match editor.eval_graph_until_finished().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
