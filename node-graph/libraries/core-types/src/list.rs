@@ -945,18 +945,88 @@ impl ItemAttributeValues {
 // Attributes
 // ==========
 
-/// A list's attributes with their keys, in insertion order.
-type AttributeEntries = Vec<(AttributeKey, Arc<dyn AnyAttribute>)>;
+/// One of a list's attributes with its key.
+type AttributeEntry = (AttributeKey, Arc<dyn AnyAttribute>);
+
+/// A list's attributes with their keys, in insertion order. A lone attribute is held inline, so the many small lists
+/// carrying just one need no collection of their own.
+#[derive(Clone, Default)]
+enum AttributeEntries {
+	#[default]
+	None,
+	One(AttributeEntry),
+	Many(Arc<Vec<AttributeEntry>>),
+}
+
+impl AttributeEntries {
+	fn as_slice(&self) -> &[AttributeEntry] {
+		match self {
+			Self::None => &[],
+			Self::One(entry) => std::slice::from_ref(entry),
+			Self::Many(entries) => entries,
+		}
+	}
+
+	/// The entries for writing in place, which copies the collection first if clones of the list still share it.
+	fn as_mut_slice(&mut self) -> &mut [AttributeEntry] {
+		match self {
+			Self::None => &mut [],
+			Self::One(entry) => std::slice::from_mut(entry),
+			Self::Many(entries) => Arc::make_mut(entries).as_mut_slice(),
+		}
+	}
+
+	fn is_empty(&self) -> bool {
+		self.as_slice().is_empty()
+	}
+
+	fn push(&mut self, entry: AttributeEntry) {
+		*self = match std::mem::take(self) {
+			Self::None => Self::One(entry),
+			Self::One(first) => {
+				let mut entries = Vec::with_capacity(4);
+				entries.extend([first, entry]);
+				Self::Many(Arc::new(entries))
+			}
+			Self::Many(mut entries) => {
+				Arc::make_mut(&mut entries).push(entry);
+				Self::Many(entries)
+			}
+		};
+	}
+
+	/// Takes out the entry at `position`, doing nothing when there is none there.
+	fn remove(&mut self, position: usize) {
+		*self = match std::mem::take(self) {
+			// What is left of one or two entries is nothing or a lone entry again, neither of which needs the collection
+			Self::Many(entries) if position < entries.len() && entries.len() <= 2 => entries.get(1 - position).cloned().map_or(Self::None, Self::One),
+			Self::Many(mut entries) if position < entries.len() => {
+				Arc::make_mut(&mut entries).remove(position);
+				Self::Many(entries)
+			}
+			Self::One(_) if position == 0 => Self::None,
+			unchanged => unchanged,
+		};
+	}
+
+	fn into_vec(self) -> Vec<AttributeEntry> {
+		match self {
+			Self::None => Vec::new(),
+			Self::One(entry) => vec![entry],
+			Self::Many(entries) => Arc::unwrap_or_clone(entries),
+		}
+	}
+}
 
 /// The storage data structure for attributes.
 ///
 /// A collection of type-erased parallel attributes, keyed by string name.
 /// All access goes through [`List`] and [`Item`] since internals are private.
-/// Clones share the collection and every attribute in it until one of them is written to.
+/// Clones share every attribute until one of them is written to.
 /// Invariant: every attribute in `attributes` has exactly `len` elements.
 #[derive(Clone, Default)]
 struct Attributes {
-	attributes: Option<Arc<AttributeEntries>>,
+	attributes: AttributeEntries,
 	len: usize,
 }
 
@@ -975,16 +1045,14 @@ impl Attributes {
 
 	/// Creates an empty attribute store with no attributes but a pre-set item count.
 	fn with_len(len: usize) -> Self {
-		Self { attributes: None, len }
+		Self {
+			attributes: AttributeEntries::None,
+			len,
+		}
 	}
 
-	fn entries(&self) -> &[(AttributeKey, Arc<dyn AnyAttribute>)] {
-		self.attributes.as_deref().map_or(&[], Vec::as_slice)
-	}
-
-	/// The entries for writing, which copies the collection first if clones of the list still share it.
-	fn entries_mut(&mut self) -> &mut AttributeEntries {
-		Arc::make_mut(self.attributes.get_or_insert_default())
+	fn entries(&self) -> &[AttributeEntry] {
+		self.attributes.as_slice()
 	}
 
 	fn position(&self, key: &str) -> Option<usize> {
@@ -1000,7 +1068,7 @@ impl Attributes {
 
 	/// The values of the attribute at `position` for writing, if it holds values of type `T`.
 	fn values_mut<T: 'static>(&mut self, position: usize) -> Option<&mut Vec<T>> {
-		let (_, attribute) = self.entries_mut().get_mut(position)?;
+		let (_, attribute) = self.attributes.as_mut_slice().get_mut(position)?;
 
 		unshared(attribute).as_any_mut().downcast_mut::<Attribute<T>>().map(|attribute| &mut attribute.0)
 	}
@@ -1012,15 +1080,14 @@ impl Attributes {
 		let len = self.len;
 		self.len += 1;
 
-		if self.attributes.is_none() && item.0.is_none() {
+		if self.attributes.is_empty() && item.0.is_none() {
 			return;
 		}
 
 		let mut item_entries = item.into_entries();
-		let entries = self.entries_mut();
 
 		// Push values into existing attributes, or the implicit default if the item lacks that attribute
-		for (attribute_key, attribute) in entries.iter_mut() {
+		for (attribute_key, attribute) in self.attributes.as_mut_slice() {
 			let attribute = unshared(attribute);
 
 			match item_entries.iter().position(|(key, _)| key == attribute_key) {
@@ -1032,7 +1099,7 @@ impl Attributes {
 		// Create new attributes for any remaining item values, padded with implicit defaults for prior items
 		for (key, value) in item_entries {
 			let attribute = value.into_attribute(key.as_str(), len);
-			entries.push((key, attribute));
+			self.attributes.push((key, attribute));
 		}
 	}
 
@@ -1048,15 +1115,14 @@ impl Attributes {
 			return;
 		}
 		// Nothing to add or pad, so self's attributes can stay shared
-		if other.attributes.is_none() && (other_len == 0 || self.attributes.is_none()) {
+		if other.attributes.is_empty() && (other_len == 0 || self.attributes.is_empty()) {
 			return;
 		}
 
-		let mut other_entries = other.attributes.map(Arc::unwrap_or_clone).unwrap_or_default();
-		let entries = self.entries_mut();
+		let mut other_entries = other.attributes.into_vec();
 
 		// Extend matching attributes, or pad self's attributes with implicit defaults for the other's item count
-		for (key, self_attribute) in entries.iter_mut() {
+		for (key, self_attribute) in self.attributes.as_mut_slice() {
 			let self_attribute = unshared(self_attribute);
 
 			match other_entries.iter().position(|(other_key, _)| other_key == key) {
@@ -1072,7 +1138,7 @@ impl Attributes {
 			pad_with_implicit_default(key.as_str(), writable, len);
 			writable.extend(other_attribute);
 
-			entries.push((key, combined));
+			self.attributes.push((key, combined));
 		}
 	}
 
@@ -1086,7 +1152,7 @@ impl Attributes {
 	/// Removes the entire attribute for the given key, if present.
 	fn remove_attribute(&mut self, key: &str) {
 		if let Some(position) = self.position(key) {
-			self.entries_mut().remove(position);
+			self.attributes.remove(position);
 		}
 	}
 
@@ -1109,13 +1175,12 @@ impl Attributes {
 		let mistyped = self.position(key);
 		let attribute = self.new_attribute_padded::<T>(key);
 
-		let entries = self.entries_mut();
 		if let Some(position) = mistyped {
-			entries.remove(position);
+			self.attributes.remove(position);
 		}
-		entries.push((AttributeKey::new(key), attribute));
+		self.attributes.push((AttributeKey::new(key), attribute));
 
-		entries.len() - 1
+		self.entries().len() - 1
 	}
 
 	/// Gets a mutable reference to the value at the given index, creating the attribute if it doesn't exist or has the wrong type.
@@ -1139,15 +1204,29 @@ impl Attributes {
 		let (existing, same_type) = (self.position(key), self.typed_position::<T>(key).is_some());
 
 		let attribute: Arc<dyn AnyAttribute> = Arc::new(Attribute(values));
-		let entries = self.entries_mut();
-		match existing.and_then(|position| entries.get_mut(position)) {
-			Some((_, existing_attribute)) if same_type => *existing_attribute = attribute,
-			_ => {
-				if let Some(position) = existing {
-					entries.remove(position);
-				}
-				entries.push((AttributeKey::new(key), attribute));
-			}
+		if same_type && let Some((_, existing_attribute)) = existing.and_then(|position| self.attributes.as_mut_slice().get_mut(position)) {
+			*existing_attribute = attribute;
+			return;
+		}
+
+		if let Some(position) = existing {
+			self.attributes.remove(position);
+		}
+		self.attributes.push((AttributeKey::new(key), attribute));
+	}
+
+	/// Sets a single type-erased value at the given index of a list of `item_count` items, creating the attribute from the
+	/// value's type if the key holds none.
+	fn set_value_dyn(&mut self, key: &str, index: usize, value: Box<dyn AnyAttributeValue>, item_count: usize) {
+		let position = self.position(key);
+
+		if let Some((_, attribute)) = position.and_then(|position| self.attributes.as_mut_slice().get_mut(position)) {
+			unshared(attribute).set_at(index, value);
+		} else {
+			let mut new_attribute = Arc::<dyn AnyAttributeValue>::from(value).into_attribute(key, index);
+			let trailing_defaults = item_count.saturating_sub(new_attribute.len());
+			pad_with_implicit_default(key, unshared(&mut new_attribute), trailing_defaults);
+			self.attributes.push((AttributeKey::new(key), new_attribute));
 		}
 	}
 
@@ -1211,7 +1290,7 @@ impl Attributes {
 
 	/// Drains all attribute data into a Vec of per-item scalar Attributes.
 	fn into_item_vec(self) -> Vec<ItemAttributeValues> {
-		let attributes = self.attributes.map(Arc::unwrap_or_clone).unwrap_or_default();
+		let attributes = self.attributes.into_vec();
 		let mut items: Vec<Vec<_>> = (0..self.len).map(|_| Vec::with_capacity(attributes.len())).collect();
 
 		for (key, attribute) in attributes {
@@ -1346,7 +1425,7 @@ impl<T> List<T> {
 		self.attributes.get_attribute_slice::<U>(key).map(|s| s.iter())
 	}
 
-	/// Returns an iterator over mutable references to the values of a typed attribute attribute, or `None` if the attribute doesn't exist or has the wrong type.
+	/// Returns an iterator over mutable references to the values of a typed attribute, or `None` if the attribute doesn't exist or has the wrong type.
 	pub fn iter_attribute_values_mut<U: 'static>(&mut self, key: &str) -> Option<std::slice::IterMut<'_, U>> {
 		self.attributes.get_attribute_slice_mut::<U>(key).map(|s| s.iter_mut())
 	}
@@ -1416,18 +1495,7 @@ impl<T> List<T> {
 	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).
 	/// Falls back to default if the value's type doesn't match an existing attribute.
 	pub fn set_attribute_value_dyn(&mut self, key: impl AsRef<str>, index: usize, value: AttributeValueDyn) {
-		let key = key.as_ref();
-		let position = self.attributes.position(key);
-		let entries = self.attributes.entries_mut();
-
-		if let Some((_, attribute)) = position.and_then(|position| entries.get_mut(position)) {
-			unshared(attribute).set_at(index, value.0);
-		} else {
-			let mut new_attribute = Arc::<dyn AnyAttributeValue>::from(value.0).into_attribute(key, index);
-			let trailing_defaults = self.element.len().saturating_sub(new_attribute.len());
-			pad_with_implicit_default(key, unshared(&mut new_attribute), trailing_defaults);
-			entries.push((AttributeKey::new(key), new_attribute));
-		}
+		self.attributes.set_value_dyn(key.as_ref(), index, value.0, self.element.len());
 	}
 
 	/// Removes the entire attribute for the given key, if present.
@@ -1556,7 +1624,7 @@ impl<T: CacheHash> CacheHash for List<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.element.cache_hash(state);
 
-		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
+		// Hash every attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
 		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
 		self.attributes.cache_hash_entries(state);
 	}
@@ -1959,6 +2027,41 @@ mod tests {
 		// Only the attribute written to stops being shared
 		assert_ne!(values(&original, ATTR_START), values(&copy, ATTR_START));
 		assert_eq!(values(&original, ATTR_END), values(&copy, ATTR_END));
+	}
+
+	// A list reads the same however many attributes it has held, and a lone attribute is shared with clones like any other
+	#[test]
+	fn a_lone_attribute_reads_like_one_among_several() {
+		let mut lone = List::new_from_elements(vec![1_u32, 2, 3]);
+		lone.set_attribute_values(ATTR_START, vec![10_u64, 20, 30]);
+		let values = |list: &List<u32>, key: &str| list.iter_attribute_values::<u64>(key).map(|values| values.as_slice().as_ptr());
+
+		let mut copy = lone.clone();
+		assert_eq!(values(&lone, ATTR_START), values(&copy, ATTR_START));
+		copy.set_attribute(ATTR_START, 1, 99_u64);
+		assert_eq!((lone.attribute::<u64>(ATTR_START, 1), copy.attribute::<u64>(ATTR_START, 1)), (Some(&20), Some(&99)));
+		assert_ne!(values(&lone, ATTR_START), values(&copy, ATTR_START));
+
+		// A clone giving the lone attribute up or another type leaves the source as it was
+		let mut emptied = lone.clone();
+		emptied.remove_attribute(ATTR_START);
+		assert_eq!(emptied, List::new_from_elements(vec![1_u32, 2, 3]));
+		let mut retyped = lone.clone();
+		retyped.set_attribute_values(ATTR_START, vec![0.5_f64, 1.5, 2.5]);
+		assert_eq!(retyped.attribute::<f64>(ATTR_START, 2), Some(&2.5));
+		assert_eq!(lone.attribute::<u64>(ATTR_START, 2), Some(&30));
+
+		// Gaining a second attribute and losing it again leaves a list equal to one that never had it
+		let mut regrown = lone.clone();
+		regrown.set_attribute_values(ATTR_END, vec![1_u64, 2, 3]);
+		assert_eq!(regrown.attribute_keys().collect::<Vec<_>>(), [ATTR_START, ATTR_END]);
+		assert_eq!(values(&lone, ATTR_START), values(&regrown, ATTR_START));
+		regrown.remove_attribute(ATTR_END);
+		assert_eq!((&regrown, hash_of(&regrown)), (&lone, hash_of(&lone)));
+
+		regrown.remove_attribute(ATTR_START);
+		assert_eq!(regrown, List::new_from_elements(vec![1_u32, 2, 3]));
+		assert_eq!(lone.attribute::<u64>(ATTR_START, 2), Some(&30));
 	}
 
 	// A cloned item shares each attribute value with its source until one of the two writes to it or takes it out
