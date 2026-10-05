@@ -5,6 +5,7 @@
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import RemoteCursor from "/src/components/views/RemoteCursor.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -861,6 +862,11 @@
 		{/each}
 	</div>
 </div>
+
+<!-- Other peers' pointers over the graph, in viewport pixels like the box selection -->
+{#each $nodeGraph.remoteCursors as cursor}
+	<RemoteCursor {cursor} />
+{/each}
 
 <!-- Box selection widget -->
 {#if $nodeGraph.box}

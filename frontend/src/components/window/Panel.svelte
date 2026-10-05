@@ -4,21 +4,25 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Data from "/src/components/panels/Data.svelte";
 	import Document from "/src/components/panels/Document.svelte";
+	import History from "/src/components/panels/History.svelte";
 	import Layers from "/src/components/panels/Layers.svelte";
 	import Properties from "/src/components/panels/Properties.svelte";
+	import Session from "/src/components/panels/Session.svelte";
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { panelDrag, startCrossPanelDrag, endCrossPanelDrag, updateCrossPanelHover, updateDockingHover } from "/src/stores/panel-drag";
 	import type { DockingEdge } from "/src/stores/panel-drag";
-	import type { DockingSplitDirection, EditorWrapper, PanelType } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { DockingSplitDirection, EditorWrapper, PanelType, SessionStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const PANEL_COMPONENTS = {
 		Welcome,
 		Document,
 		Layers,
+		History,
 		Properties,
 		Data,
+		Session,
 	};
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
@@ -29,7 +33,7 @@
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; unsaved?: boolean; tooltipLabel?: string; tooltipDescription?: string; tooltipShortcut?: string }[];
+	export let tabLabels: { name: string; unsaved?: boolean; session?: SessionStatus; tooltipLabel?: string; tooltipDescription?: string; tooltipShortcut?: string }[];
 	export let tabActiveIndex: number;
 	export let panelTypes: PanelType[];
 	export let panelId: string;
@@ -37,6 +41,8 @@
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
 	export let renameAction: ((index: number, newName: string) => void) | undefined = undefined;
+	// Clicking the session circle of a shared document's tab
+	export let sessionAction: ((index: number) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
 	export let groupDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
@@ -451,6 +457,17 @@
 							<TextLabel classes={{ hidden: editingNameTabIndex === tabIndex }}>*</TextLabel>
 						{/if}
 					</LayoutRow>
+					{#if tabLabel.session}
+						<button
+							class="session"
+							class:disconnected={tabLabel.session === "Disconnected"}
+							data-tooltip-label={tabLabel.session === "Connected" ? "Live session" : "Disconnected from the session"}
+							data-tooltip-description={tabLabel.session === "Connected" ? "Click to open the Session panel." : "Reconnecting. Click to open the Session panel."}
+							data-session-button
+							on:pointerdown|stopPropagation
+							on:click|stopPropagation={() => sessionAction?.(tabIndex)}
+						></button>
+					{/if}
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -596,6 +613,32 @@
 
 					.icon-button {
 						margin-left: 8px;
+					}
+
+					// The live-session circle sits between the name and the close button, tight against both.
+					.session {
+						flex: 0 0 auto;
+						align-self: center;
+						width: 6px;
+						height: 6px;
+						margin-left: 4px;
+						padding: 0;
+						border: none;
+						border-radius: 50%;
+						background: var(--color-session-green);
+						cursor: pointer;
+
+						&.disconnected {
+							background: var(--color-error-red);
+						}
+
+						&:hover {
+							box-shadow: 0 0 0 2px var(--color-5-dullgray);
+						}
+
+						& + .icon-button {
+							margin-left: 4px;
+						}
 					}
 
 					& + .tab {

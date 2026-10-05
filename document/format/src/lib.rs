@@ -10,16 +10,17 @@
 // gated off wasm to avoid unused-import warnings.
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOp, MetadataFact, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
-use graphene_resource::ResourceHash;
+use graphene_resource::{ResourceHash, ResourceStorage};
 
 pub mod codec;
 pub mod error;
@@ -27,6 +28,8 @@ pub mod export;
 pub mod io;
 pub mod layout;
 pub mod manifest;
+#[cfg(feature = "network")]
+pub mod network;
 pub mod persist;
 pub mod resource;
 pub mod session_state;
@@ -52,6 +55,8 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
 /// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
+/// Facts are appended one per line and folded on read, so the file is never rewritten.
+pub const METADATA_CODEC: Codec = Codec::JsonLines;
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
@@ -65,8 +70,8 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 /// read.
 /// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
-/// `Session` is cloned (a snapshot copy); the container is shared.
-#[derive(Clone)]
+/// `Session` is cloned (a snapshot copy); the container is shared. A live collaboration session is
+/// not carried over.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: AnyContainer,
@@ -75,12 +80,74 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
 	/// and synchronous.
 	pub(crate) manifest: Manifest,
+	/// What people state about the history, such as user names. Kept in its own file, merged last-writer-wins
+	/// with every copy met, never folded or undone.
+	pub(crate) metadata: HistoryMetadata,
+	/// Wall clock in Unix-epoch milliseconds as the editor last reported it, so retirements can record when
+	/// they happened. `None` when nothing ticks, as in the CLI or tests.
+	pub(crate) wall_clock_ms: Option<f64>,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
 	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
+	/// Where resource bytes live. `None` means the working copy's own content-addressed store; the editor
+	/// points this at its application-wide cache.
+	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	#[cfg(feature = "network")]
+	pub(crate) network: Option<peer_transport::Replica>,
+	#[cfg(feature = "network")]
+	pub(crate) pending_persist: PendingPersist,
+	/// What peers changed since the editor last took it, so it can reconcile its runtime mirror without a rebuild.
+	#[cfg(feature = "network")]
+	pub(crate) remote_changes: network::RemoteChanges,
+	/// When each closed transaction was first seen, by marker, so the retirement policy can age it. Not
+	/// persisted: after a reopen everything pending is old enough.
+	pub(crate) transactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
+	/// When this peer last staged an op, so a transaction the editor left open can be closed once quiet.
+	pub(crate) own_last_staged_ms: Option<f64>,
+	/// Whether an op of this peer's own was staged since the last policy tick.
+	pub(crate) own_staged_since_tick: bool,
+	/// Whether the document should be in its room: set by sharing, cleared by disconnecting, persisted so
+	/// a reopen reconnects.
+	pub(crate) shared: bool,
+}
+
+/// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per
+/// file, not one per packet.
+#[cfg(feature = "network")]
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PendingPersist {
+	pub(crate) history: bool,
+	pub(crate) hot_log: bool,
+	pub(crate) snapshot: bool,
+}
+
+impl<L: Layout + Clone> Clone for Gdd<L> {
+	fn clone(&self) -> Self {
+		Self {
+			session: self.session.clone(),
+			working: self.working.clone(),
+			layout: self.layout.clone(),
+			manifest: self.manifest.clone(),
+			view_settings: self.view_settings.clone(),
+			metadata: self.metadata.clone(),
+			wall_clock_ms: self.wall_clock_ms,
+			network_view_settings: self.network_view_settings.clone(),
+			byte_store: self.byte_store.clone(),
+			shared: self.shared,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
+			transactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
+		}
+	}
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -98,10 +165,10 @@ impl<L: Layout + Default> Gdd<L> {
 
 	/// Create a fresh, empty working copy at `path` bound to `peer`. Writes a default manifest
 	/// and session state; the caller fills in editor metadata via [`Gdd::update_manifest`].
-	pub fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create(path: &Path, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::create(path)?);
 		let layout = L::default();
-		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version)
+		Self::create_in(working, layout, peer, user, document_uuid, editor_version, stdlib_version)
 	}
 }
 
@@ -136,6 +203,10 @@ impl<L: Layout> Gdd<L> {
 			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
 			false => SessionState::default(),
 		};
+		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
+			true => HistoryMetadata::fold(io::iter::<MetadataFact>(&working, layout.metadata_basename(), METADATA_CODEC).await?),
+			false => HistoryMetadata::default(),
+		};
 
 		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
@@ -160,11 +231,12 @@ impl<L: Layout> Gdd<L> {
 		if let Some(rev) = session_state.last_broadcast_rev {
 			session.publish_up_to(rev);
 		}
-
+		// Every arm must continue this peer's authored-op count too.
 		session.restore_hot_sequence(session_state.last_hot_sequence);
 		session.restore_clock_counter(session_state.clock_counter);
 		// Before the hot log replays, so a settled op in it is dropped rather than staged again.
 		session.absorb_settled_marks(&session_state.settled_marks);
+
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 
 		Ok(Self {
@@ -174,23 +246,36 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
+			shared: session_state.shared,
+			metadata,
+			wall_clock_ms: None,
+			byte_store: None,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
+			transactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
 		})
 	}
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
-	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
 		let session_state = SessionState {
 			peer_id: peer,
-			user_id: UserId(peer.0),
+			user_id: user,
 			..Default::default()
 		};
 		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
 
-		let session = Session::with_peer(peer);
+		let session = Session::with_identity(peer, user);
 		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
 
 		Ok(Self {
@@ -200,6 +285,19 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
 			network_view_settings: std::collections::BTreeMap::new(),
+			metadata: HistoryMetadata::default(),
+			wall_clock_ms: None,
+			byte_store: None,
+			shared: false,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
+			transactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
 		})
 	}
 }

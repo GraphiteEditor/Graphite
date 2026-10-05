@@ -6,8 +6,10 @@ pub mod document_migration;
 pub mod document_storage_io;
 pub mod failed_documents;
 pub mod fonts;
+pub mod history;
 pub mod ingest;
 pub mod persistent_state;
+pub mod sync;
 pub mod utility_types;
 pub mod workspace;
 

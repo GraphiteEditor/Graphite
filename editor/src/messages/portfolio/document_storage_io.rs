@@ -16,7 +16,7 @@ use crate::messages::resource_storage::ResourcesHandle;
 use document_container::store::{DocumentKey, DocumentStore, MemoryStore};
 use document_container::{AnyContainer, AsyncContainer};
 use document_format::{Error as DocumentFormatError, GddV1, GddV1Layout, Layout, ReadError};
-use document_graph_storage::{Declarations, PeerId};
+use document_graph_storage::{Declarations, PeerId, UserId};
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceStorage};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -138,12 +138,14 @@ pub(super) async fn remove_stored_document(store: DocumentStoreHandle, document_
 }
 
 /// Materializes a `.gdd` archive into a fresh store container and loads it like a stored document.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn open_document_file(
 	store: DocumentStoreHandle,
 	document_id: DocumentId,
 	document_name: Option<String>,
 	document_path: Option<PathBuf>,
 	content: Vec<u8>,
+	fresh_identity: bool,
 	resources: ResourcesHandle,
 	reset_nodes: bool,
 	legacy_only: bool,
@@ -154,13 +156,25 @@ pub(super) async fn open_document_file(
 		Ok::<_, String>(container)
 	}
 	.await;
-	let (document, gdd) = match materialized {
+	let (mut document, mut gdd) = match materialized {
 		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes, legacy_only).await,
 		Err(error) => {
 			log::error!("Opening the document archive for {document_id:?} failed: {error}");
 			(None, None)
 		}
 	};
+	// The session room derives from the manifest's id, so a copy of a distributed file such as a demo artwork gets its own.
+	if fresh_identity {
+		let storage = match gdd.as_mut() {
+			Some(gdd) => Some(gdd),
+			None => document.as_mut().and_then(|document| document.storage_mut()),
+		};
+		if let Some(storage) = storage
+			&& let Err(error) = storage.update_manifest(|manifest| manifest.document_id = generate_uuid())
+		{
+			log::error!("Giving the copy of {document_id:?} its own id failed: {error}");
+		}
+	}
 	let declarations = load_declarations(gdd.as_ref(), &resources).await;
 	PortfolioMessage::DocumentFileLoaded {
 		document_id,
@@ -227,7 +241,11 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 				container.remove(&path).await?;
 			}
 		}
-		GddV1::create_in(container, GddV1Layout, PeerId(generate_uuid()), document_id.0, version.clone(), version)
+		{
+			// The person at this device is set when the storage is attached; until then the peer stands for itself.
+			let peer = PeerId(generate_uuid());
+			GddV1::create_in(container, GddV1Layout, peer, UserId(peer.0), document_id.0, version.clone(), version)
+		}
 	}
 	.await;
 	match created {
@@ -281,7 +299,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 	};
 	apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
 
-	let mut document = DocumentMessageHandler::from_storage(interface, gdd, declarations, String::new(), None);
+	let mut document = DocumentMessageHandler::from_storage(interface, gdd, declarations, byte_store.storage(), String::new(), None);
 	document.finalize_storage_load();
 	Some(document)
 }

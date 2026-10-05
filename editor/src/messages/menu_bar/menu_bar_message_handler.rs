@@ -20,6 +20,8 @@ pub struct MenuBarMessageHandler {
 	pub show_storage_preferences: bool,
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
+	pub session_panel_open: bool,
+	pub history_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
 	pub focus_document: bool,
@@ -678,6 +680,16 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleDataPanelOpen))
 							.on_commit(|_| WorkspaceMessage::ToggleDataPanelOpen.into())
+							.disabled(self.focus_document),
+						MenuListEntry::new("Session")
+							.label("Session")
+							.icon(if self.session_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| WorkspaceMessage::ToggleSessionPanelOpen.into())
+							.disabled(self.focus_document),
+						MenuListEntry::new("History")
+							.label("History")
+							.icon(if self.history_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| WorkspaceMessage::ToggleHistoryPanelOpen.into())
 							.disabled(self.focus_document),
 					],
 				])

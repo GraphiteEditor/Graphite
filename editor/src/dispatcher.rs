@@ -258,6 +258,7 @@ impl Dispatcher {
 							ipp: &self.message_handlers.input_preprocessor_message_handler,
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+							current_tool_icon: self.message_handlers.tool_message_handler.active_tool_icon(),
 							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
@@ -272,6 +273,8 @@ impl Dispatcher {
 					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.workspace.panel_layout.focus_document;
 					let layout = &self.message_handlers.portfolio_message_handler.workspace.panel_layout;
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
+					menu_bar_message_handler.session_panel_open = layout.is_panel_present(PanelType::Session);
+					menu_bar_message_handler.history_panel_open = layout.is_panel_present(PanelType::History);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;

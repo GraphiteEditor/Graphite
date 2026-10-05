@@ -5,6 +5,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
+	import RemoteCursor from "/src/components/views/RemoteCursor.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -695,6 +696,10 @@
 						bind:this={viewport}
 						data-viewport
 					>
+						<!-- Other peers' pointers over the document, in viewport pixels -->
+						{#each $document.remoteCursors as cursor}
+							<RemoteCursor {cursor} />
+						{/each}
 						{#if !$appWindow.viewportHolePunch}
 							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
 								{@html artworkSvg}

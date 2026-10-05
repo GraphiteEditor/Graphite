@@ -34,9 +34,6 @@ pub struct SessionState {
 	/// collide on minted IDs.
 	#[serde(default)]
 	pub next_node_counter: u64,
-	/// The last hot op sequence this peer authored, so a reopen never reuses one.
-	#[serde(default)]
-	pub last_hot_sequence: HotSequence,
 	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
 	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
 	#[serde(default)]
@@ -45,6 +42,12 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
+	/// The last hot op sequence this peer authored, so a reopen never reuses one.
+	#[serde(default)]
+	pub last_hot_sequence: HotSequence,
+	/// Whether the document was in its room when last persisted, so a reopen reconnects.
+	#[serde(default)]
+	pub shared: bool,
 	/// The settled hot op marks, so a late copy re-sent after a reopen is dropped rather than retired again.
 	#[serde(default)]
 	pub settled_marks: SettledMarks,

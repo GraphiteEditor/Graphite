@@ -17,6 +17,13 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 		navigator.clipboard?.writeText?.(data.content);
 	});
 
+	subscriptions.subscribeFrontendMessage("TriggerSessionLinkCopy", (data) => {
+		const url = new URL(window.location.href);
+		url.hash = "";
+		url.search = `?session=${data.token}`;
+		navigator.clipboard?.writeText?.(url.toString());
+	});
+
 	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		const content = readAtCaret(data.cut);
 		// A text field with nothing selected has nothing to copy, rather than leaving the shortcut to act on the selected layers
@@ -35,6 +42,7 @@ export function destroyClipboardManager() {
 	if (!subscriptions) return;
 
 	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
+	subscriptions.unsubscribeFrontendMessage("TriggerSessionLinkCopy");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionWrite");
 }

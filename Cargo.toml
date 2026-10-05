@@ -11,6 +11,8 @@ members = [
 	"document/format",
 	"document/graph-storage",
 	"document/container",
+	"document/peer-transport",
+	"document/live",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -99,6 +101,8 @@ graph-craft = { path = "node-graph/graph-craft" }
 document-format = { path = "document/format" }
 document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
+peer-transport = { path = "document/peer-transport" }
+document-live = { path = "document/live" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
@@ -116,6 +120,7 @@ bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+rmp-serde = "1.3"
 serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
