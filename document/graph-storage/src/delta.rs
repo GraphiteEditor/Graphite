@@ -298,7 +298,7 @@ mod tests {
 
 	#[test]
 	fn test_compute_deltas_change_network_attribute() {
-		use crate::{AttributesWrite, TimeStamp};
+		use crate::TimeStamp;
 
 		let mut from = Registry::default();
 		from.networks.insert(NetworkId(0), Network::default());

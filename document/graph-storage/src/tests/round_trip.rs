@@ -650,7 +650,6 @@ fn node_input_f64_round_trips_bit_exact() {
 /// Conversion must reject this rather than silently collapse them and drop a node.
 #[test]
 fn duplicate_runtime_node_id_is_rejected() {
-	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
@@ -717,7 +716,6 @@ fn scope_injections_round_trip() {
 /// network) must error rather than emit an injection pointing at a nonexistent runtime node.
 #[test]
 fn dangling_scope_injection_is_rejected() {
-	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 

@@ -1,6 +1,6 @@
 use crate::{
 	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp, Value,
-	apply_attribute_delta, reverse_attribute_delta,
+	reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -224,12 +224,12 @@ impl Document {
 			}
 			RegistryDelta::ChangeNodeAttribute { id, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
-				apply_attribute_delta(delta, timestamp, force, &mut node.attributes);
+				node.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
-				apply_attribute_delta(delta, timestamp, force, &mut input.attributes);
+				input.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::SetNetworkExport { id, index, export } => {
 				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
@@ -268,7 +268,7 @@ impl Document {
 			}
 			RegistryDelta::ChangeNetworkAttribute { id, delta } => {
 				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
-				apply_attribute_delta(delta, timestamp, force, &mut net.attributes);
+				net.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::SetResourceHash { id, hash } => {
 				let entry = registry.resources.entry(id).or_default();
@@ -305,7 +305,7 @@ impl Document {
 				}
 			},
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
-				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes);
+				registry.attributes.apply_delta(delta, timestamp, force);
 			}
 			// Merge is a structural sync point only; it mutates no registry state.
 			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}

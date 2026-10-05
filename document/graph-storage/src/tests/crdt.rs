@@ -811,7 +811,7 @@ fn embed_resource_sources_preserves_unretired_hot_ops() {
 /// ordered (`BTreeMap`): a hash-randomized map would give the same logical delta different `Rev`s.
 #[test]
 fn add_node_rev_is_independent_of_attribute_insertion_order() {
-	use crate::{AttributeValue, AttributesWrite, Implementation};
+	use crate::{AttributeValue, Implementation};
 
 	let keys = ["ui::position", "ui::display_name", "ui::locked", "ui::pinned", "call_argument", "context_features"];
 

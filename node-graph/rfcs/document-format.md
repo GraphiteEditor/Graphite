@@ -77,7 +77,9 @@ pub struct AttributeValue {
     pub timestamp: TimeStamp,
 }
 
-pub type Attributes = BTreeMap<String, AttributeValue>;
+pub struct Attributes {
+    entries: BTreeMap<String, AttributeValue>,
+}
 ```
 
 Keys carry a namespace where one applies, mostly the `ui::*` editor-metadata keys (`ui::position`, `ui::display_name`, and so on). Compute fields use bare keys (`call_argument`, `context_features`, `original_node_id`). Values are JSON, and the per-value `TimeStamp` drives LWW on concurrent edits.

@@ -10,7 +10,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
-use crate::{AttributesRead, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
+use crate::{Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
