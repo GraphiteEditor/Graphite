@@ -619,7 +619,8 @@ impl ApplicationHandler for App {
 		}
 
 		// Focus loss drops the pointer lock underneath us, and this is the only notice we get
-		if matches!(event, WindowEvent::Focused(false)) && self.input_state.pointer_locked() {
+		// Only a transform holds a software cursor, so a lock held elsewhere (a number input) isn't cancelled
+		if matches!(event, WindowEvent::Focused(false)) && self.input_state.software_cursor_active() {
 			self.send_escape_key();
 		}
 
