@@ -3,7 +3,7 @@ use std::hash::Hash;
 
 use crate::{
 	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput,
-	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, UserId,
+	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, Touched, UserId,
 };
 
 #[derive(Clone, Debug)]
@@ -112,8 +112,8 @@ impl Document {
 		Ok(())
 	}
 
-	/// Take on a peer's marks as well as this peer's. Returns whether a hot op was dropped.
-	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> bool {
+	/// Take on a peer's marks as well as this peer's. Returns what the dropped ops named.
+	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Touched {
 		self.retired.absorb(remote);
 		self.drop_retired_hot_ops()
 	}
@@ -134,16 +134,19 @@ impl Document {
 	}
 
 	/// Drop retired hot ops and re-derive working without them: their effect returns with their deltas.
-	fn drop_retired_hot_ops(&mut self) -> bool {
-		let before = self.hot_log.len();
+	fn drop_retired_hot_ops(&mut self) -> Touched {
 		let retired = &self.retired;
-		self.hot_log.retain(|hot_op| !retired.covers(hot_op.id()));
-		let dropped = self.hot_log.len() != before;
+		let mut touched = Touched::default();
+		let mut dropped = false;
+		for hot_op in self.hot_log.extract_if(.., |hot_op| retired.covers(hot_op.id())) {
+			touched.record(&hot_op.op);
+			dropped = true;
+		}
 		if dropped {
 			self.resync_hot_timestamps();
 			self.rebuild_working();
 		}
-		dropped
+		touched
 	}
 
 	/// Apply a retired commit and record it in history.
