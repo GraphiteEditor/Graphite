@@ -22,7 +22,8 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeTo
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
-use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapView};
+use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
@@ -821,6 +822,16 @@ impl ShapeToolData {
 		[Key::Alt, Key::Shift, Key::Control]
 	}
 
+	/// Whether the pointer is over an end of a selected line or arrow, going by where the latest overlay pass found them.
+	fn hovering_over_line_endpoint(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> bool {
+		self.line_data.selected_layers_with_position.iter().any(|(layer, endpoints)| {
+			let transform = document.metadata().transform_to_viewport(*layer);
+			endpoints
+				.iter()
+				.any(|&local_pos| (transform.transform_point2(local_pos) - input.mouse.position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2))
+		})
+	}
+
 	fn decrease_or_increase_sides(&self, document: &DocumentMessageHandler, shape_type: ShapeType, responses: &mut VecDeque<Message>, decrease: bool) {
 		if let Some(layer) = self.data.layer {
 			match shape_type {
@@ -844,8 +855,10 @@ impl Fsm for ShapeToolFsmState {
 		tool_data: &mut Self::ToolData,
 		ToolActionMessageContext {
 			document,
+			document_id,
 			input,
 			shape_editor,
+			snap_session,
 			viewport,
 			..
 		}: &mut ToolActionMessageContext,
@@ -866,6 +879,7 @@ impl Fsm for ShapeToolFsmState {
 					.data
 					.snap_manager
 					.indicator_pos()
+					.or(snap_session.shown_position())
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
 					.unwrap_or(input.mouse.position);
 
@@ -884,13 +898,7 @@ impl Fsm for ShapeToolFsmState {
 				let modifying_transform_cage = matches!(self, ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::RotatingBounds | ShapeToolFsmState::SkewingBounds { .. });
 				let hovering_over_gizmo = tool_data.gizmo_manager.hovering_over_gizmo();
 
-				// Check if hovering over a line/arrow endpoint (using data from previous overlay pass)
-				let hovering_over_endpoint = tool_data.line_data.selected_layers_with_position.iter().any(|(layer, endpoints)| {
-					let transform = document.metadata().transform_to_viewport(*layer);
-					endpoints
-						.iter()
-						.any(|&local_pos| (transform.transform_point2(local_pos) - input.mouse.position).length_squared() < BOUNDS_SELECT_THRESHOLD.powi(2))
-				});
+				let hovering_over_endpoint = tool_data.hovering_over_line_endpoint(document, input);
 
 				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo && !hovering_over_endpoint {
 					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
@@ -1039,6 +1047,7 @@ impl Fsm for ShapeToolFsmState {
 					.data
 					.snap_manager
 					.indicator_pos()
+					.or(snap_session.shown_position())
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
 					.unwrap_or(input.mouse.position);
 
@@ -1072,6 +1081,13 @@ impl Fsm for ShapeToolFsmState {
 					&& !input.keyboard.key(Key::Control)
 				{
 					responses.add(DocumentMessage::StartTransaction);
+
+					let moving = Moving {
+						layers: vec![layer],
+						..Default::default()
+					};
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
+
 					return ShapeToolFsmState::DraggingLineEndpoints;
 				}
 
@@ -1116,12 +1132,11 @@ impl Fsm for ShapeToolFsmState {
 						tool_data.data.start(document, input, viewport);
 					}
 					ShapeType::Arrow | ShapeType::Line => {
-						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-						let snapped = tool_data
-							.data
-							.snap_manager
-							.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-						tool_data.data.drag_start = snapped.snapped_point_document;
+						// The line starts on whatever the pointer was shown snapping to before the press
+						let view = SnapView::new(document, *document_id, input);
+						let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+						tool_data.data.drag_start = snap_session.shown_position().unwrap_or_else(|| snap_session.snap_point(view, pointer, PointOptions::default()));
+						snap_session.begin_gesture(view, Moving::default());
 					}
 				}
 
@@ -1209,8 +1224,8 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
-					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Line => Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Arrow => Arrow::update_shape(SnapView::new(document, *document_id, input), snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(SnapView::new(document, *document_id, input), snap_session, layer, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 				}
@@ -1227,9 +1242,9 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				if graph_modification_utils::get_arrow_id(layer, &document.network_interface).is_some() {
-					Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses);
+					Arrow::update_shape(SnapView::new(document, *document_id, input), snap_session, layer, tool_data, modifier, responses);
 				} else {
-					Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses);
+					Line::update_shape(SnapView::new(document, *document_id, input), snap_session, layer, tool_data, modifier, responses);
 				}
 
 				// Auto-panning
@@ -1316,7 +1331,22 @@ impl Fsm for ShapeToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				// A line or an arrow shows where a press would start it, unless the press would do something else instead
+				if matches!(tool_data.current_shape, ShapeType::Line | ShapeType::Arrow) {
+					tool_data.data.snap_manager.clear_indicator();
+
+					let rotating_bounds = !input.keyboard.key(Key::Control) && tool_data.bounding_box_manager.as_ref().is_some_and(|bounds| bounds.check_rotate(input.mouse.position));
+					let press_does_something_else = dragging_bounds || rotating_bounds || tool_data.gizmo_manager.hovering_over_gizmo() || tool_data.hovering_over_line_endpoint(document, input);
+					if press_does_something_else {
+						snap_session.forget();
+					} else {
+						let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+						snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
+					}
+				} else {
+					snap_session.forget();
+					tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				}
 
 				responses.add(OverlaysMessage::Draw);
 				self
@@ -1349,6 +1379,7 @@ impl Fsm for ShapeToolFsmState {
 			) => {
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup(responses);
+				snap_session.end_gesture();
 
 				tool_data.gizmo_manager.handle_cleanup();
 
@@ -1374,6 +1405,7 @@ impl Fsm for ShapeToolFsmState {
 			) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
+				snap_session.end_gesture();
 				tool_data.line_data.dragging_endpoint = None;
 				tool_data.line_data.editing_layer = None;
 
@@ -1397,6 +1429,7 @@ impl Fsm for ShapeToolFsmState {
 			(_, ShapeToolMessage::SetShape { shape }) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
+				snap_session.end_gesture();
 				tool_data.current_shape = shape;
 				// Update hints for the new shape (without updating options.shape_type)
 				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
