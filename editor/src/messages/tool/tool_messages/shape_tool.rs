@@ -539,6 +539,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 		// Guarded on `Ready(_)` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
 		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::Abort)) && matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+
+			// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
+			context.snap_session.sleep_all();
+			responses.add(OverlaysMessage::Draw);
 		}
 
 		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::SelectionChanged)) {

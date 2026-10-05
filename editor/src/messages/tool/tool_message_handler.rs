@@ -33,6 +33,8 @@ pub struct ToolMessageHandler {
 	pub transform_layer_handler: TransformLayerMessageHandler,
 	pub shape_editor: ShapeState,
 	pub snap_session: SnapSession,
+	/// Whether the snapping session is being sent a tick on every animation frame, which it only asks for while the pointer rests on something it could wake.
+	snapping_ticks: bool,
 	pub tool_is_active: bool,
 	/// What the active tool would edit in the selected layers, as last shown in the Layers panel.
 	pub edit_target: EditTarget,
@@ -160,8 +162,9 @@ impl ToolMessageHandler {
 				send_abort_to_tool(old_tool, tool_type, true);
 				send_abort_to_tool(old_tool, old_tool, false);
 
-				// Nothing a tool was snapping carries over to the next tool
+				// Nothing a tool was snapping, or had woken, carries over to the next tool
 				self.snap_session.end_gesture();
+				self.snap_session.sleep_all();
 
 				// Unsubscribe old tool from the broadcaster
 				tool_data.tools.get(&old_tool).unwrap().deactivate(responses);
@@ -260,6 +263,12 @@ impl ToolMessageHandler {
 				responses.add(OverlaysMessage::AddProvider { provider: SNAPPING_OVERLAY_PROVIDER });
 			}
 			ToolMessage::DrawSnappingOverlays { mut context } => self.snap_session.draw_overlays(document, &mut context),
+			ToolMessage::SnappingTick => {
+				if self.snap_session.tick(input.time) {
+					responses.add(OverlaysMessage::Draw);
+				}
+				self.keep_snapping_ticks_as_wanted(responses);
+			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 
@@ -362,6 +371,8 @@ impl ToolMessageHandler {
 						}
 					}
 				}
+
+				self.keep_snapping_ticks_as_wanted(responses);
 			}
 		}
 	}
@@ -423,6 +434,22 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
+	/// Starts or stops the ticks sent to the snapping session on each animation frame, to match whether it has any use for them.
+	fn keep_snapping_ticks_as_wanted(&mut self, responses: &mut VecDeque<Message>) {
+		let wanted = self.snap_session.wants_ticks();
+		if wanted == self.snapping_ticks {
+			return;
+		}
+		self.snapping_ticks = wanted;
+
+		let (on, send) = (EventMessage::AnimationFrame, Box::new(ToolMessage::SnappingTick.into()));
+		if wanted {
+			responses.add(BroadcastMessage::SubscribeEvent { on, send });
+		} else {
+			responses.add(BroadcastMessage::UnsubscribeEvent { on, send });
+		}
+	}
+
 	pub fn actions_with_preferences(&self, preferences: &PreferencesMessageHandler) -> ActionList {
 		let mut list = self.actions();
 

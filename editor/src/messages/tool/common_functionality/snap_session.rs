@@ -11,10 +11,25 @@ use glam::DVec2;
 use graphene_std::vector::PointId;
 use scene_mirror::layer_id;
 use snapping::{
-	AnchorId, Awake, Candidate, Context, CrossingCache, Exclusions, Frame, Incumbent, Outcome, Request, Scene, Settings, Tunables, ViewMapping, find_constructions, find_constructions_from,
+	AnchorId, Awake, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, Outcome, Request, Scene, Settings, Tunables, ViewMapping, find_constructions,
+	find_constructions_from,
 };
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 pub use snapping::{FeatureMap, Locus};
+
+/// How long the pointer must rest on a target to wake it while a gesture is under way, in milliseconds.
+const WAKE_DWELL_IN_GESTURE: u64 = 250;
+
+/// How long the pointer must rest on a target to wake it before any gesture, in milliseconds, which is longer so that passing over things wakes nothing.
+pub(crate) const WAKE_DWELL_ON_APPROACH: u64 = 500;
+
+/// How far the pointer may drift and still count as resting, in viewport pixels.
+const REST_DRIFT: f64 = 4.;
+
+/// How many woken targets are kept, past which the one woken longest ago goes back to sleep.
+const AWAKE_LIMIT: usize = 5;
 
 /// What a tool hands over each time it asks to snap: the document being worked on and the state of the keyboard and pointer.
 #[derive(Clone, Copy)]
@@ -70,6 +85,17 @@ struct FoundFor {
 	settings: Settings,
 }
 
+/// Where the pointer has stayed put, and since when, for telling when it has rested on something long enough to wake it.
+#[derive(Clone, Copy, Debug)]
+struct Rest {
+	/// In the viewport.
+	position: DVec2,
+	/// In milliseconds.
+	since: u64,
+	/// Whether this rest has already woken what the pointer is on.
+	spent: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct SnapSession {
 	/// The document the scene mirrors, and the generation of its metadata that the scene was mirrored at.
@@ -77,7 +103,11 @@ pub struct SnapSession {
 	scene: Scene,
 	/// What is moving while a gesture is under way, during which the scene is left as it was when the gesture began.
 	gesture: Option<Exclusions>,
+	/// The targets woken by resting the pointer on them, from the one woken longest ago to the latest.
 	awake: Vec<Awake>,
+	/// The layers each woken point of its own was found on, by its ID, which it goes back to sleep with.
+	position_sources: HashMap<u64, Vec<LayerId>>,
+	rest: Option<Rest>,
 	incumbent: Option<Incumbent>,
 	crossings: CrossingCache,
 	/// What the awake targets offer, kept from one pointer move to the next.
@@ -116,12 +146,36 @@ impl SnapSession {
 			self.crossings.clear();
 		}
 
+		// The pointer starts a new rest whenever it has drifted from where the last one began
+		let pointer = input.mouse.position;
+		if self.rest.is_none_or(|rest| rest.position.distance(pointer) > REST_DRIFT) {
+			self.rest = Some(Rest {
+				position: pointer,
+				since: input.time,
+				spent: false,
+			});
+		}
+
 		let Some(view_mapping) = ViewMapping::from_affine(document.metadata().document_to_viewport) else {
 			return free;
 		};
 		let settings = settings::settings(&document.snapping_state);
 		let grid = settings::grid(document);
 		let (frame, tunables, nothing_moving) = (Frame::default(), Tunables::default(), Exclusions::default());
+
+		// A woken point found on what the gesture moves or edits goes along with it, so it is no target
+		let awake: Vec<Awake> = match &self.gesture {
+			Some(exclusions) => {
+				let moving = |layer: &LayerId| exclusions.skips_layer(*layer) || exclusions.edited.contains(layer) || exclusions.anchors.contains_key(layer);
+				let still = |target: &Awake| match target {
+					Awake::Position { id, .. } => self.position_sources.get(id).is_none_or(|sources| !sources.iter().any(moving)),
+					_ => true,
+				};
+				self.awake.iter().copied().filter(still).collect()
+			}
+			None => self.awake.clone(),
+		};
+
 		let context = Context {
 			scene: &self.scene,
 			view: &view_mapping,
@@ -129,7 +183,7 @@ impl SnapSession {
 			tunables: &tunables,
 			settings: &settings,
 			exclusions: self.gesture.as_ref().unwrap_or(&nothing_moving),
-			awake: &self.awake,
+			awake: &awake,
 		};
 
 		// What the awake targets offer is only found again when something it was found for has changed
@@ -193,12 +247,14 @@ impl SnapSession {
 
 		self.gesture = Some(exclusions);
 		self.constructions = None;
+		self.rest = None;
 	}
 
 	/// Ends a gesture, however it ended, and forgets what the pointer was snapped to.
 	pub fn end_gesture(&mut self) {
 		self.gesture = None;
 		self.constructions = None;
+		self.rest = None;
 		self.crossings.clear();
 		self.forget();
 	}
@@ -220,6 +276,108 @@ impl SnapSession {
 		shown.features.get(shown.lead).copied()
 	}
 
+	/// Wakes what the pointer has rested on for long enough, given the present time in milliseconds. Returns whether anything woke.
+	pub fn tick(&mut self, now: u64) -> bool {
+		let dwell = if self.gesture.is_some() { WAKE_DWELL_IN_GESTURE } else { WAKE_DWELL_ON_APPROACH };
+		let resting_on = self.resting_on();
+		let Some(rest) = self.rest.as_mut().filter(|rest| !rest.spent && now.saturating_sub(rest.since) >= dwell) else {
+			return false;
+		};
+		if resting_on.is_empty() {
+			return false;
+		}
+
+		rest.spent = true;
+		let sources = self.engaged_layers();
+		for target in resting_on {
+			if let Awake::Position { id, .. } = target {
+				self.position_sources.insert(id, sources.clone());
+			}
+			self.awake.push(target);
+		}
+		let over_the_limit = self.awake.len().saturating_sub(AWAKE_LIMIT);
+		self.awake.drain(..over_the_limit);
+		self.forget_sources_of_sleeping_positions();
+		self.constructions = None;
+
+		true
+	}
+
+	/// Whether the pointer is resting on something that staying there longer would wake, which calls for `tick` to be kept up.
+	pub fn wants_ticks(&self) -> bool {
+		self.rest.is_some_and(|rest| !rest.spent) && !self.resting_on().is_empty()
+	}
+
+	/// Puts every woken target back to sleep, and keeps the pointer from waking them again until it moves.
+	pub fn sleep_all(&mut self) {
+		self.awake.clear();
+		self.position_sources.clear();
+		self.constructions = None;
+
+		if let Some(rest) = &mut self.rest {
+			rest.spent = true;
+		}
+	}
+
+	/// The layers that the snap the pointer holds was found on.
+	fn engaged_layers(&self) -> Vec<LayerId> {
+		let Some(shown) = &self.shown else { return Vec::new() };
+
+		let highlights = shown.outcome.engaged_candidates().filter_map(|candidate| candidate.highlight);
+		highlights
+			.map(|highlight| match highlight {
+				Highlight::Anchor { layer, .. } | Highlight::Curve { layer, .. } | Highlight::Box { layer } => layer,
+			})
+			.collect()
+	}
+
+	fn forget_sources_of_sleeping_positions(&mut self) {
+		let awake = &self.awake;
+		self.position_sources
+			.retain(|id, _| awake.iter().any(|target| matches!(target, Awake::Position { id: awake_id, .. } if awake_id == id)));
+	}
+
+	/// The sleeping targets that the pointer is snapped to.
+	fn resting_on(&self) -> Vec<Awake> {
+		let Some(shown) = &self.shown else { return Vec::new() };
+
+		let found_on = shown.outcome.engaged_candidates().filter_map(|candidate| candidate.highlight).map(|highlight| match highlight {
+			Highlight::Anchor { layer, index } => Awake::Anchor { layer, index },
+			Highlight::Curve { layer, index } => Awake::Curve { layer, index },
+			Highlight::Box { layer } => Awake::Box { layer },
+		});
+
+		// A midpoint, or a place where paths cross, is a point of its own rather than the curves it was found on
+		let engaged: Vec<&Candidate> = shown.outcome.engaged_candidates().collect();
+		let on_a_path = |candidate: &&Candidate| matches!(candidate.key.kind, snapping::Kind::OnCurve | snapping::Kind::OnBoxEdge | snapping::Kind::OnArtboardEdge);
+		let point_of_its_own = match engaged.as_slice() {
+			[midpoint] => midpoint.key.kind == snapping::Kind::Midpoint,
+			[first, second] => on_a_path(first) && on_a_path(second),
+			_ => false,
+		};
+		let found_on: Vec<Awake> = match (point_of_its_own, engaged.first()) {
+			(true, Some(candidate)) => {
+				// The same point is known as one whichever feature found it
+				let mut relationships: Vec<_> = engaged.iter().map(|candidate| (candidate.key.kind, candidate.key.identity)).collect();
+				relationships.sort();
+				let mut hasher = DefaultHasher::new();
+				relationships.hash(&mut hasher);
+
+				let position = shown.features.get(candidate.key.feature as usize).copied();
+				position.map(|position| Awake::Position { id: hasher.finish(), position }).into_iter().collect()
+			}
+			_ => found_on.collect(),
+		};
+
+		let mut resting_on: Vec<Awake> = Vec::new();
+		for target in found_on {
+			if !self.awake.contains(&target) && !resting_on.contains(&target) {
+				resting_on.push(target);
+			}
+		}
+		resting_on
+	}
+
 	/// Starts afresh on a document other than the one the scene mirrors.
 	fn follow_document(&mut self, document_id: DocumentId) {
 		let same_document = self.mirrored.is_some_and(|(mirrored_id, _)| mirrored_id == document_id);
@@ -237,18 +395,28 @@ impl SnapSession {
 			return;
 		}
 
-		scene_mirror::mirror(&mut self.scene, document);
+		let changed = scene_mirror::mirror(&mut self.scene, document);
 		self.mirrored = Some(now);
 		self.constructions = None;
 		self.crossings.clear();
+
+		// A woken target goes back to sleep when its layer changes, which may have given its place to something else
+		let position_sources = &self.position_sources;
+		self.awake.retain(|target| match target {
+			Awake::Anchor { layer, .. } | Awake::Curve { layer, .. } | Awake::Box { layer } => !changed.contains(layer),
+			Awake::Position { id, .. } => position_sources.get(id).is_none_or(|sources| !sources.iter().any(|layer| changed.contains(layer))),
+		});
+		self.forget_sources_of_sleeping_positions();
 	}
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
 	use snapping::{GeometryRole, Kind, LayerKind, Snap};
 
 	const DOCUMENT: DocumentId = DocumentId(1);
@@ -259,12 +427,28 @@ mod tests {
 	}
 
 	fn snap(session: &mut SnapSession, editor: &EditorTestUtils, viewport_position: DVec2) -> DVec2 {
-		let view = SnapView {
-			document: editor.active_document(),
-			document_id: DOCUMENT,
-			input: &InputPreprocessorMessageHandler::default(),
-		};
+		snap_at_time(session, editor, viewport_position, 0)
+	}
+
+	/// Snaps with the pointer at a position in the viewport, at a time in milliseconds.
+	fn snap_at_time(session: &mut SnapSession, editor: &EditorTestUtils, viewport_position: DVec2, time: u64) -> DVec2 {
+		let mut input = InputPreprocessorMessageHandler::default();
+		input.mouse.position = viewport_position;
+		input.time = time;
+
+		let view = SnapView::new(editor.active_document(), DOCUMENT, &input);
 		session.snap_point(view, in_document(editor, viewport_position), PointOptions::default())
+	}
+
+	/// Brings the pointer to a position at a time in milliseconds, and leaves it there for as long as waking takes before any gesture.
+	fn rest(session: &mut SnapSession, editor: &EditorTestUtils, viewport_position: DVec2, time: u64) -> bool {
+		snap_at_time(session, editor, viewport_position, time);
+		session.tick(time + WAKE_DWELL_ON_APPROACH)
+	}
+
+	/// A position on the rim of an ellipse drawn with its bounding box from `corner` to `corner + size`, at an angle around its center.
+	fn on_rim(corner: DVec2, size: DVec2, degrees: f64) -> DVec2 {
+		corner + size / 2. + DVec2::from_angle(degrees.to_radians()) * size / 2.
 	}
 
 	fn engaged_kinds(session: &SnapSession) -> Vec<Kind> {
@@ -446,6 +630,201 @@ mod tests {
 		session.forget();
 		assert!(snap(&mut session, &editor, beside_the_corner).abs_diff_eq(in_document(&editor, DVec2::new(300., 400.)), 1e-6));
 		assert_eq!(engaged_kinds(&session), vec![Kind::BoxCorner]);
+	}
+
+	#[tokio::test]
+	async fn resting_the_pointer_on_a_curve_wakes_it_once_it_has_stayed_long_enough() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (corner, size) = (DVec2::new(300., 200.), DVec2::new(200., 120.));
+		editor.draw_ellipse(corner.x, corner.y, corner.x + size.x, corner.y + size.y).await;
+		let mut session = SnapSession::default();
+
+		// The pointer arrives on the rim, away from the anchors at its four sides, and nothing wakes until it has stayed
+		let on_the_rim = on_rim(corner, size, -50.);
+		snap_at_time(&mut session, &editor, on_the_rim, 1000);
+		assert_eq!(engaged_kinds(&session), vec![Kind::OnCurve]);
+		assert!(session.wants_ticks());
+		assert!(!session.tick(1000 + WAKE_DWELL_ON_APPROACH - 1) && session.awake.is_empty());
+
+		// Drifting a pixel or two is still resting, and moving further starts the wait again
+		snap_at_time(&mut session, &editor, on_the_rim + DVec2::new(2., 1.), 1400);
+		let moved_along = on_rim(corner, size, -40.);
+		snap_at_time(&mut session, &editor, moved_along, 1500);
+		assert!(!session.tick(1000 + WAKE_DWELL_ON_APPROACH));
+
+		assert!(session.tick(1500 + WAKE_DWELL_ON_APPROACH));
+		assert!(matches!(session.awake.as_slice(), [Awake::Curve { .. }]));
+
+		// Staying on has nothing more to wake
+		assert!(!session.wants_ticks() && !session.tick(9000));
+	}
+
+	#[tokio::test]
+	async fn a_gesture_wakes_what_the_pointer_rests_on_sooner() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (corner, size) = (DVec2::new(300., 200.), DVec2::new(200., 120.));
+		editor.draw_ellipse(corner.x, corner.y, corner.x + size.x, corner.y + size.y).await;
+
+		let mut session = SnapSession::default();
+		let input = InputPreprocessorMessageHandler::default();
+		session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), Moving::default());
+
+		snap_at_time(&mut session, &editor, on_rim(corner, size, -50.), 1000);
+		assert!(!session.tick(1000 + WAKE_DWELL_IN_GESTURE - 1));
+		assert!(session.tick(1000 + WAKE_DWELL_IN_GESTURE));
+	}
+
+	#[tokio::test]
+	async fn only_the_latest_few_woken_targets_stay_awake() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		editor.draw_rect(500., 100., 700., 240.).await;
+		let mut session = SnapSession::default();
+
+		// Six edges of the two rectangles are rested on in turn, each away from its ends and its middle
+		let along_edges = [(150., 100.), (300., 140.), (250., 240.), (100., 200.), (550., 100.), (700., 140.)];
+		for (index, position) in along_edges.into_iter().enumerate() {
+			assert!(rest(&mut session, &editor, position.into(), index as u64 * 2000), "nothing woke at {position:?}");
+		}
+		assert_eq!(session.awake.len(), AWAKE_LIMIT);
+
+		// The first to wake was the first to go back to sleep, which resting on it again shows
+		assert!(rest(&mut session, &editor, DVec2::new(150., 100.), 20_000));
+		assert!(!rest(&mut session, &editor, DVec2::new(700., 140.), 22_000));
+	}
+
+	#[tokio::test]
+	async fn woken_targets_go_back_to_sleep_when_told_to_or_when_their_layer_changes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		let rectangle = editor.get_selected_layer().await.expect("the rectangle should be selected");
+		let mut session = SnapSession::default();
+		let on_an_edge = DVec2::new(150., 100.);
+
+		assert!(rest(&mut session, &editor, on_an_edge, 0));
+		session.sleep_all();
+		assert!(session.awake.is_empty());
+
+		// A pointer that simply stays where it was does not wake the same thing again
+		assert!(!rest(&mut session, &editor, on_an_edge, 5000));
+
+		// Once the rectangle has moved, the place that was woken in it may hold something else
+		assert!(rest(&mut session, &editor, on_an_edge + DVec2::new(60., 0.), 7000));
+		let nudge = GraphOperationMessage::TransformChange {
+			layer: rectangle,
+			transform: DAffine2::from_translation(DVec2::new(40., 0.)),
+			transform_in: TransformIn::Local,
+			skip_rerender: false,
+		};
+		editor.handle_message(nudge).await;
+		snap_at_time(&mut session, &editor, DVec2::new(900., 600.), 9000);
+		assert!(session.awake.is_empty());
+	}
+
+	#[tokio::test]
+	async fn a_target_put_back_to_sleep_while_the_pointer_lines_up_with_it_stays_asleep() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		let mut session = SnapSession::default();
+		assert!(rest(&mut session, &editor, DVec2::new(300., 100.), 0));
+
+		// Level with the woken corner from afar, the pointer starts a rest of its own
+		snap_at_time(&mut session, &editor, DVec2::new(600., 101.), 5000);
+		assert_eq!(engaged_kinds(&session), vec![Kind::Alignment]);
+
+		session.sleep_all();
+		assert!(!session.wants_ticks());
+		assert!(!session.tick(5000 + WAKE_DWELL_ON_APPROACH) && session.awake.is_empty());
+	}
+
+	#[tokio::test]
+	async fn a_woken_midpoint_goes_with_its_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		let rectangle = editor.get_selected_layer().await.expect("the rectangle should be selected");
+		let mut session = SnapSession::default();
+
+		assert!(rest(&mut session, &editor, DVec2::new(201., 101.), 0));
+		assert!(matches!(session.awake.as_slice(), [Awake::Position { .. }]));
+
+		// A gesture moving the rectangle can't line up with where its middle was
+		let input = InputPreprocessorMessageHandler::default();
+		let moving = Moving {
+			layers: vec![rectangle],
+			..Default::default()
+		};
+		session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), moving);
+		snap_at_time(&mut session, &editor, DVec2::new(201., 500.), 5000);
+		assert!(!engaged_kinds(&session).contains(&Kind::Alignment));
+		session.end_gesture();
+
+		// Once the rectangle has moved, the point goes back to sleep
+		let nudge = GraphOperationMessage::TransformChange {
+			layer: rectangle,
+			transform: DAffine2::from_translation(DVec2::new(40., 0.)),
+			transform_in: TransformIn::Local,
+			skip_rerender: false,
+		};
+		editor.handle_message(nudge).await;
+		snap_at_time(&mut session, &editor, DVec2::new(900., 600.), 9000);
+		assert!(session.awake.is_empty());
+	}
+
+	#[tokio::test]
+	async fn woken_targets_stay_awake_through_a_change_of_view() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		let mut session = SnapSession::default();
+		assert!(rest(&mut session, &editor, DVec2::new(150., 100.), 0));
+
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 1.37 }).await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 0.3 }).await;
+		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(10.3, -7.7) }).await;
+		snap_at_time(&mut session, &editor, DVec2::new(900., 600.), 5000);
+
+		assert!(matches!(session.awake.as_slice(), [Awake::Curve { .. }]));
+	}
+
+	#[tokio::test]
+	async fn a_point_can_be_laid_on_the_line_that_rests_across_two_woken_ellipses() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let ellipses = [(DVec2::new(120., 240.), DVec2::new(160., 120.)), (DVec2::new(460., 300.), DVec2::new(80., 60.))];
+		for (corner, size) in ellipses {
+			editor.draw_ellipse(corner.x, corner.y, corner.x + size.x, corner.y + size.y).await;
+		}
+		let mut session = SnapSession::default();
+
+		// Before either is woken, the open space between them offers nothing
+		let between = DVec2::new(380., 270.);
+		snap_at_time(&mut session, &editor, between, 0);
+		assert!(engaged_kinds(&session).is_empty());
+
+		// Each is woken on the stretch of its rim that a line laid across the tops of both would touch
+		for (index, (corner, size)) in ellipses.into_iter().enumerate() {
+			assert!(rest(&mut session, &editor, on_rim(corner, size, -60.), 1000 + index as u64 * 2000));
+		}
+
+		// One of the lines the two now offer touches both, and a point brought near it far from either lands on it
+		snap_at_time(&mut session, &editor, between, 8000);
+		let offered = session.constructions.as_ref().map(|(_, constructions)| constructions.clone()).unwrap_or_default();
+		let across_both = offered.iter().find_map(|candidate| match candidate.shape {
+			snapping::Shape::Track(line @ Locus::Line { .. }) if candidate.key.kind == Kind::CommonTangent => Some(line),
+			_ => None,
+		});
+		let across_both = across_both.expect("two woken curves should offer the line touching both");
+
+		let on_the_line = across_both.nearest(between);
+		let landed = snap_at_time(&mut session, &editor, on_the_line + DVec2::new(1., 3.), 9000);
+		assert_eq!(engaged_kinds(&session), vec![Kind::CommonTangent]);
+		assert!(across_both.nearest(landed).abs_diff_eq(landed, 1e-6));
 	}
 
 	#[tokio::test]

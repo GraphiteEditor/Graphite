@@ -90,6 +90,7 @@ pub enum ToolMessage {
 	SelectRandomWorkingColor {
 		primary: bool,
 	},
+	SnappingTick,
 	ToggleSelectVsPath,
 	SwapColors,
 	UpdateCursor,

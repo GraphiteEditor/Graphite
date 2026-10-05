@@ -11,9 +11,11 @@ pub fn layer_id(layer: LayerNodeIdentifier) -> LayerId {
 	LayerId(layer.to_node().0)
 }
 
-/// Brings a scene up to date with the document's layers as its latest render reported them. O(n) in all the geometry of the document.
-pub fn mirror(scene: &mut Scene, document: &DocumentMessageHandler) {
+/// Brings a scene up to date with the document's layers as its latest render reported them, and returns the layers that changed or went.
+/// O(n) in all the geometry of the document.
+pub fn mirror(scene: &mut Scene, document: &DocumentMessageHandler) -> HashSet<LayerId> {
 	let mut present = HashSet::new();
+	let mut changed = HashSet::new();
 
 	for layer in document.metadata().all_layers() {
 		let Some(mirrored) = mirror_layer(document, layer) else { continue };
@@ -23,13 +25,18 @@ pub fn mirror(scene: &mut Scene, document: &DocumentMessageHandler) {
 		// Most layers are the same from one render to the next, and telling so costs far less than indexing a layer afresh
 		if scene.layer(id).is_none_or(|stored| !unchanged(stored, &mirrored)) {
 			scene.set_layer(id, mirrored);
+			changed.insert(id);
 		}
 	}
 
 	let gone: Vec<LayerId> = scene.layers().map(|(id, _)| id).filter(|id| !present.contains(id)).collect();
-	gone.into_iter().for_each(|id| scene.remove_layer(id));
+	for id in gone {
+		scene.remove_layer(id);
+		changed.insert(id);
+	}
 
 	scene.prepare();
+	changed
 }
 
 /// Whether a layer is as it was, allowing for the rounding that bringing its positions into document space through a different view leaves in them.
