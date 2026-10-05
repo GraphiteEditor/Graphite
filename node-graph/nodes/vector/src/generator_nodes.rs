@@ -250,15 +250,13 @@ fn qr_code(
 		true => {
 			let (mut vector, mut paths) = (Vector::default(), List::new());
 
-			let dimension = qr_code.size() as usize;
-			for y in 0..dimension {
-				for x in 0..dimension {
-					if qr_code.get_module(x as i32, y as i32) {
-						let corner1 = DVec2::new(x as f64, y as f64);
-						vector.append_bezpath(&mut paths, &shapes::rectangle_bezpath(corner1, corner1 + DVec2::splat(1.)));
-					}
-				}
-			}
+			let dimension = qr_code.size();
+			let cells = (0..dimension).flat_map(|y| (0..dimension).map(move |x| (x, y)));
+			let squares = cells.filter(|&(x, y)| qr_code.get_module(x, y)).map(|(x, y)| {
+				let corner1 = DVec2::new(x as f64, y as f64);
+				shapes::rectangle_bezpath(corner1, corner1 + DVec2::splat(1.))
+			});
+			vector.append_bezpaths(&mut paths, squares);
 
 			(vector, paths)
 		}

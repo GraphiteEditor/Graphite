@@ -646,7 +646,7 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 		// Convert 0-100 to 0-0.5
 		let edge_length_limit = edge_length_limit * 0.005;
 
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		let mut rounded_subpaths = Vec::new();
 
 		for bezpath in source.stroke_bezpath_iter(&source_paths) {
 			// The radius is measured after the transform, so scaling the layer doesn't scale its rounding
@@ -655,13 +655,16 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 
 			// A subpath without corners to round passes through as it was
 			let Some(mut rounded_subpath) = round_subpath_corners(&document_bezpath, radius, roundness, edge_length_limit, min_angle_threshold.to_radians()) else {
-				result.append_bezpath(&mut result_paths, &bezpath);
+				rounded_subpaths.push(bezpath);
 				continue;
 			};
 
 			rounded_subpath.apply_affine(Affine::new(source_transform_inverse.to_cols_array()));
-			result.append_bezpath(&mut result_paths, &rounded_subpath);
+			rounded_subpaths.push(rounded_subpath);
 		}
+
+		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		result.append_bezpaths(&mut result_paths, &rounded_subpaths);
 
 		attributes.insert(ATTR_PATHS, result_paths);
 		Item::from_parts(result, attributes)
@@ -1243,16 +1246,9 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 		let source_paths = shared_paths_from_item_attributes(&source);
 		let (source, mut attributes) = source.into_parts();
 
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
-
-		// Each auto-tangented anchor is found as the end of its incoming segment, counted across all subpaths
-		let mut segment_offset = 0;
-		let mut smooth_segment_ends = Vec::new();
-		let segments_after = |paths: &List<Path>, first_path: usize| -> usize {
-			(first_path..paths.len())
-				.filter_map(|index| Some(paths.element(index)?.segment_count(curve_type_at(paths, index))))
-				.sum()
-		};
+		// Each subpath's softened bezpath, beside which of its manipulators were given auto-tangents
+		let mut softened_bezpaths = Vec::new();
+		let mut auto_tangented_manipulators = Vec::new();
 
 		for (mut manipulators_list, is_closed) in source.stroke_manipulator_groups(&source_paths) {
 			for manipulator in &mut manipulators_list {
@@ -1266,9 +1262,8 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 				let mut unchanged = bezpath_from_manipulator_groups(&manipulators_list, is_closed);
 				unchanged.apply_affine(Affine::new(transform.inverse().to_cols_array()));
 
-				let first_path = result_paths.len();
-				result.append_bezpath(&mut result_paths, &unchanged);
-				segment_offset += segments_after(&result_paths, first_path);
+				softened_bezpaths.push(unchanged);
+				auto_tangented_manipulators.push(Vec::new());
 				continue;
 			}
 
@@ -1363,12 +1358,20 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 			let mut softened_bezpath = bezpath_from_manipulator_groups(&new_manipulators_list, is_closed);
 			softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
 
-			let first_path = result_paths.len();
-			result.append_bezpath(&mut result_paths, &softened_bezpath);
-			let appended_segments = segments_after(&result_paths, first_path);
+			softened_bezpaths.push(softened_bezpath);
+			auto_tangented_manipulators.push(auto_tangented);
+		}
 
+		// Weaving every subpath at once costs O(points) rather than a pass over everything woven so far per subpath
+		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		let span_counts = result.append_bezpaths_counting_spans(&mut result_paths, &softened_bezpaths);
+
+		// Each auto-tangented anchor is found as the end of its incoming segment, counted across all subpaths
+		let mut segment_offset = 0;
+		let mut smooth_segment_ends = Vec::new();
+		for (auto_tangented, appended_segments) in auto_tangented_manipulators.iter().zip(span_counts) {
 			// Mark auto-tangented points as having colinear handles
-			let num_manipulators = new_manipulators_list.len();
+			let num_manipulators = auto_tangented.len();
 			for (i, _) in auto_tangented.iter().enumerate().filter(|&(_, &tangented)| tangented) {
 				// For interior point i, the incoming segment is (i - 1) and the outgoing one is i, counted within this subpath.
 				// For closed paths, point 0's incoming segment is the last one. For open paths, endpoints are never
@@ -1662,7 +1665,7 @@ async fn offset_path<V: MapVectorItems + 'n + Send>(
 		let vector = std::mem::take(content.element_mut());
 
 		let bezpaths = vector.stroke_bezpath_iter(&source_paths).collect::<Vec<_>>();
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		let mut offset_bezpaths = Vec::with_capacity(bezpaths.len());
 
 		// Perform operation on all subpaths in this shape.
 		for mut bezpath in bezpaths {
@@ -1683,8 +1686,11 @@ async fn offset_path<V: MapVectorItems + 'n + Send>(
 			bezpath_out.apply_affine(transform.inverse());
 
 			// One closed subpath, open path.
-			result.append_bezpath(&mut result_paths, &bezpath_out);
+			offset_bezpaths.push(bezpath_out);
 		}
+
+		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		result.append_bezpaths(&mut result_paths, &offset_bezpaths);
 
 		*content.element_mut() = result;
 		content.set_attribute(ATTR_PATHS, result_paths);
@@ -1806,7 +1812,7 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 			// 0.25 is balanced between performance and accuracy of the curve.
 			const STROKE_TOLERANCE: f64 = 0.25;
 
-			for mut path in bezpaths {
+			let solidified_bezpaths = bezpaths.into_iter().map(|mut path| {
 				path.apply_affine(Affine::new(stroke.transform.to_cols_array()));
 
 				let is_closed = matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath));
@@ -1817,8 +1823,9 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 					solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
 				}
 
-				solidified_stroke.append_bezpath(&mut solidified_stroke_paths, &solidified);
-			}
+				solidified
+			});
+			solidified_stroke.append_bezpaths(&mut solidified_stroke_paths, solidified_bezpaths);
 
 			// If the original vector has a fill, preserve it as a separate item with the stroke coverages dropped
 			let fill_row = has_fill.then(|| {
@@ -2004,7 +2011,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 			}
 		};
 
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		let mut sample_bezpaths = Vec::new();
 
 		let content_paths = shared_paths_from_item_attributes(&content);
 		for local_bezpath in content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>() {
@@ -2042,8 +2049,11 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 			if was_closed {
 				sample_bezpath.close_path();
 			}
-			result.append_bezpath(&mut result_paths, &sample_bezpath);
+			sample_bezpaths.push(sample_bezpath);
 		}
+
+		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		result.append_bezpaths(&mut result_paths, &sample_bezpaths);
 
 		*content.element_mut() = result;
 		content.set_attribute(ATTR_PATHS, result_paths);
@@ -2077,17 +2087,18 @@ async fn simplify<V: MapVectorItems + 'n + Send>(
 		let transform = Affine::new(transform_attribute.to_cols_array());
 		let inverse_transform = transform.inverse();
 
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
-
 		let item_paths = shared_paths_from_item_attributes(&item);
-		for mut bezpath in item.element().stroke_bezpath_iter(&item_paths).collect::<Vec<_>>() {
+		let simplified_bezpaths = item.element().stroke_bezpath_iter(&item_paths).map(|mut bezpath| {
 			bezpath.apply_affine(transform);
 
 			let mut simplified = simplify_bezpath(bezpath, tolerance, &options);
 
 			simplified.apply_affine(inverse_transform);
-			result.append_bezpath(&mut result_paths, &simplified);
-		}
+			simplified
+		});
+
+		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		result.append_bezpaths(&mut result_paths, simplified_bezpaths);
 
 		*item.element_mut() = result;
 		item.set_attribute(ATTR_PATHS, result_paths);
@@ -2174,7 +2185,7 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 		let transform = Affine::new(transform_attribute.to_cols_array());
 		let inverse_transform = transform.inverse();
 
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		let mut decimated_bezpaths = Vec::new();
 
 		let content_paths = shared_paths_from_item_attributes(&content);
 		for mut bezpath in content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>() {
@@ -2213,8 +2224,11 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 			}
 
 			new_bezpath.apply_affine(inverse_transform);
-			result.append_bezpath(&mut result_paths, &new_bezpath);
+			decimated_bezpaths.push(new_bezpath);
 		}
+
+		let (mut result, mut result_paths) = (Vector::default(), List::new());
+		result.append_bezpaths(&mut result_paths, &decimated_bezpaths);
 
 		*content.element_mut() = result;
 		content.set_attribute(ATTR_PATHS, result_paths);
@@ -2254,20 +2268,19 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 		let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
 		if let Some(bezpath) = bezpaths.get(index).cloned() {
-			let (mut result_vector, mut result_paths) = (Vector::default(), List::new());
-
-			for (_, bezpath) in bezpaths.iter().enumerate().filter(|&(i, _)| i != index) {
-				result_vector.append_bezpath(&mut result_paths, bezpath);
-			}
 			let t = if t_value == bezpath_count { 1. } else { t_value.fract() };
 			let t = if euclidean { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
-			if let Some((first, second)) = split_bezpath(&bezpath, t) {
-				result_vector.append_bezpath(&mut result_paths, &first);
-				result_vector.append_bezpath(&mut result_paths, &second);
-			} else {
-				result_vector.append_bezpath(&mut result_paths, &bezpath);
-			}
+			// Every other bezpath comes first, then the two halves of the one being split, or all of it where it cannot be
+			let halves = split_bezpath(&bezpath, t);
+			let split = match &halves {
+				Some((first, second)) => vec![first, second],
+				None => vec![&bezpath],
+			};
+			let others = bezpaths.iter().enumerate().filter(|&(i, _)| i != index).map(|(_, bezpath)| bezpath);
+
+			let (mut result_vector, mut result_paths) = (Vector::default(), List::new());
+			result_vector.append_bezpaths(&mut result_paths, others.chain(split));
 
 			*content.element_mut() = result_vector;
 			content.set_attribute(ATTR_PATHS, result_paths);

@@ -1,6 +1,6 @@
 use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use super::misc::{dvec2_to_point, point_to_dvec2};
-use super::vector_attributes::SegmentId;
+use super::vector_attributes::{PointId, SegmentId};
 use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_PATHS, Item, List, Shared};
 use glam::DVec2;
 use graphene_hash::CacheHash;
@@ -227,28 +227,48 @@ pub fn continues_previous_path(paths: &List<Path>, index: usize) -> bool {
 	previous_last > 0 && path.0.element(0) == previous.0.element(previous_last) && curve_type_at(paths, index) != curve_type_at(paths, previous_index)
 }
 
+/// The IDs a weave gives the anchors and spans it adds, each bezpath's continuing on from the latest taken before it.
+#[derive(Default)]
+struct WovenNames {
+	last_point: Option<PointId>,
+	last_segment: Option<SegmentId>,
+	/// The ID of every woven point so far, with `PointId::UNNAMED` for a handle.
+	point_ids: Vec<PointId>,
+	/// The ID of every span of every finished path so far, in order.
+	segment_ids: Vec<SegmentId>,
+	/// How many finished paths have had their spans named.
+	named_paths: usize,
+}
+
 /// Weaves bezpath contours into pool points and paths, starting a new path at each verb change so every
 /// path keeps one stride. The runs of a split subpath share the anchor they meet at, welding them.
 struct PathWeaver {
 	positions: Vec<DVec2>,
 	anchors: Vec<bool>,
 	offset: u32,
-	woven: Vec<(CurveType, Vec<u32>)>,
+	/// The references of every woven path end to end, the last of them belonging to the path being woven.
 	references: Vec<u32>,
+	/// Each finished path's curve type and where its references end.
+	woven: Vec<(CurveType, usize)>,
+	/// Where the references of the path being woven begin.
+	path_start: usize,
 	curve_type: Option<CurveType>,
 	subpath_start: Option<u32>,
+	names: Option<WovenNames>,
 }
 
 impl PathWeaver {
-	fn new(offset: u32) -> Self {
+	fn new(offset: u32, names: Option<WovenNames>) -> Self {
 		Self {
 			positions: Vec::new(),
 			anchors: Vec::new(),
 			offset,
-			woven: Vec::new(),
 			references: Vec::new(),
+			woven: Vec::new(),
+			path_start: 0,
 			curve_type: None,
 			subpath_start: None,
+			names,
 		}
 	}
 
@@ -263,14 +283,20 @@ impl PathWeaver {
 		self.positions.get(reference.checked_sub(self.offset)? as usize).copied()
 	}
 
+	/// The latest reference of the path being woven.
+	fn last_reference(&self) -> Option<u32> {
+		self.references.get(self.path_start..)?.last().copied()
+	}
+
 	/// Banks the references woven so far as a finished path, dropping a lone anchor that drew nothing.
 	fn flush(&mut self) {
-		if self.references.len() >= 2 {
-			let curve_type = self.curve_type.unwrap_or_default();
-			self.woven.push((curve_type, std::mem::take(&mut self.references)));
+		if self.references.len() - self.path_start >= 2 {
+			self.woven.push((self.curve_type.unwrap_or_default(), self.references.len()));
+		} else {
+			self.references.truncate(self.path_start);
 		}
 
-		self.references.clear();
+		self.path_start = self.references.len();
 		self.curve_type = None;
 	}
 
@@ -278,8 +304,8 @@ impl PathWeaver {
 	/// Returns whether an anchor exists to draw from.
 	fn begin_segment(&mut self, verb: CurveType) -> bool {
 		// After a close the pen rests on the subpath's first point, so a segment drawn with no new MoveTo departs from there
-		let weld = match self.references.last() {
-			Some(&weld) => weld,
+		let weld = match self.last_reference() {
+			Some(weld) => weld,
 			None => {
 				let Some(start) = self.subpath_start else { return false };
 				self.references.push(start);
@@ -327,7 +353,7 @@ impl PathWeaver {
 
 	/// Closes the subpath by naming its first point again, drawing a straight line home when the pen sits elsewhere.
 	fn close(&mut self) {
-		let (Some(start), Some(&last)) = (self.subpath_start, self.references.last()) else { return };
+		let (Some(start), Some(last)) = (self.subpath_start, self.last_reference()) else { return };
 
 		if last == start {
 			self.flush();
@@ -350,34 +376,123 @@ impl PathWeaver {
 		self.flush();
 	}
 
-	/// Appends the woven points and paths, returning whether each appended point is an anchor rather than a handle.
-	fn finish(mut self, pool: &mut List<DVec2>, paths: &mut List<Path>) -> Vec<bool> {
+	/// Weaves a whole bezpath, which leaves nothing open for the next one to carry on from.
+	fn push_bezpath(&mut self, bezpath: &BezPath) {
+		let elements = bezpath.elements();
+		let point_count = |element: &PathEl| match element {
+			PathEl::MoveTo(_) | PathEl::LineTo(_) => 1,
+			PathEl::QuadTo(..) => 2,
+			PathEl::CurveTo(..) => 3,
+			PathEl::ClosePath => 0,
+		};
+		let points: usize = elements.iter().map(point_count).sum();
+
+		// Every point is referenced once, and closes and verb changes add a few more
+		self.positions.reserve(points);
+		self.anchors.reserve(points);
+		self.references.reserve(points + elements.len());
+
+		for &element in elements {
+			self.push_element(element);
+		}
 		self.flush();
+		self.subpath_start = None;
 
-		pool.extend(List::new_from_elements(self.positions));
+		self.name_latest();
+	}
 
-		let woven = self.woven.into_iter().map(|(curve_type, references)| (curve_type, Path::from_references(references)));
+	/// Names the anchors and spans woven since the last naming, when this weave names what it adds.
+	fn name_latest(&mut self) {
+		let Some(names) = &mut self.names else { return };
+
+		// Pool order is traversal order, so anchors and free points take IDs in the order they were drawn
+		let new_anchors = self.anchors.get(names.point_ids.len()..).unwrap_or_default();
+		if !new_anchors.is_empty() {
+			let mut point_id = names.last_point.map_or(PointId::ZERO, |mut latest| latest.next_id());
+			let ids = new_anchors.iter().map(|&anchor| if anchor { point_id.next_id() } else { PointId::UNNAMED });
+			names.point_ids.extend(ids);
+			names.last_point = Some(point_id);
+		}
+
+		let new_paths = self.woven.get(names.named_paths..).unwrap_or_default();
+		let mut path_start = names.named_paths.checked_sub(1).and_then(|previous| self.woven.get(previous)).map_or(0, |&(_, end)| end);
+		let mut segment_id = names.last_segment.map_or(SegmentId::ZERO, |mut latest| latest.next_id());
+		for &(curve_type, path_end) in new_paths {
+			let span_count = (path_end - path_start).saturating_sub(1) / curve_type.stride();
+			if span_count > 0 {
+				names.segment_ids.extend((0..span_count).map(|_| segment_id.next_id()));
+				names.last_segment = Some(segment_id);
+			}
+
+			path_start = path_end;
+		}
+		names.named_paths = self.woven.len();
+	}
+
+	/// Appends the woven points and paths.
+	fn finish(self, pool: &mut List<DVec2>, paths: &mut List<Path>) {
+		let (point_ids, segment_ids) = self.names.map(|names| (names.point_ids, names.segment_ids)).unzip();
+
+		if !self.positions.is_empty() {
+			let mut points = List::new_from_elements(self.positions);
+			if let Some(point_ids) = point_ids {
+				// An attribute of another type under the key would keep the IDs out, so it makes way for them
+				if pool.iter_attribute_values::<PointId>(ATTR_ID).is_none() {
+					pool.remove_attribute(ATTR_ID);
+				}
+				points.set_attribute_values(ATTR_ID, point_ids);
+			}
+			pool.extend(points);
+		}
+
+		let mut segment_ids = segment_ids.unwrap_or_default().into_iter();
+		let mut path_start = 0;
+		let woven = self.woven.into_iter().map(|(curve_type, path_end)| {
+			let references = self.references.get(path_start..path_end).unwrap_or_default();
+			path_start = path_end;
+
+			(curve_type, woven_path(curve_type, references.iter().copied(), segment_ids.by_ref()))
+		});
 		let (curve_types, woven) = woven.unzip();
 		extend_with_paths(paths, curve_types, woven);
-
-		self.anchors
 	}
 }
 
 /// Appends a bezpath's contours to a point pool and its paths.
 pub fn append_bezpath(pool: &mut List<DVec2>, paths: &mut List<Path>, bezpath: &BezPath) {
-	weave_bezpath(pool, paths, bezpath);
+	let mut weaver = PathWeaver::new(pool.len() as u32, None);
+	weaver.push_bezpath(bezpath);
+	weaver.finish(pool, paths);
 }
 
-/// Appends a bezpath's contours to a point pool and its paths, returning whether each appended point is an anchor.
-pub(crate) fn weave_bezpath(pool: &mut List<DVec2>, paths: &mut List<Path>, bezpath: &BezPath) -> Vec<bool> {
-	let mut weaver = PathWeaver::new(pool.len() as u32);
+/// Appends the contours of each bezpath in turn to a point pool and its paths, naming the anchors and spans they add,
+/// and returns how many spans each bezpath added. Each bezpath's IDs skip one after the largest taken before it, as
+/// they do when bezpaths are appended one at a time.
+pub(crate) fn append_named_bezpaths(
+	pool: &mut List<DVec2>,
+	paths: &mut List<Path>,
+	bezpaths: impl IntoIterator<Item = impl std::borrow::Borrow<BezPath>>,
+	last_point: Option<PointId>,
+	last_segment: Option<SegmentId>,
+) -> Vec<usize> {
+	let names = WovenNames {
+		last_point,
+		last_segment,
+		..Default::default()
+	};
+	let mut weaver = PathWeaver::new(pool.len() as u32, Some(names));
 
-	for &element in bezpath.elements() {
-		weaver.push_element(element);
+	// Every span woven is named, so the names taken so far count the spans each bezpath adds
+	let named_spans = |weaver: &PathWeaver| weaver.names.as_ref().map_or(0, |names| names.segment_ids.len());
+	let mut span_counts = Vec::new();
+	for bezpath in bezpaths {
+		let spans_before = named_spans(&weaver);
+		weaver.push_bezpath(bezpath.borrow());
+		span_counts.push(named_spans(&weaver) - spans_before);
 	}
 
-	weaver.finish(pool, paths)
+	weaver.finish(pool, paths);
+	span_counts
 }
 
 /// Builds a fresh point pool and its paths from a bezpath.
