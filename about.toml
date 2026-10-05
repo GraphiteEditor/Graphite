@@ -18,6 +18,7 @@ accepted = [
 	"NCSA", # Keep this list in sync with those in `/deny.toml`
 	"bzip2-1.0.6", # Keep this list in sync with those in `/deny.toml`
 	"OFL-1.1", # Keep this list in sync with those in `/deny.toml`
+	"Unlicense", # Keep this list in sync with those in `/deny.toml`
 ]
 workarounds = ["ring"]
 ignore-build-dependencies = true

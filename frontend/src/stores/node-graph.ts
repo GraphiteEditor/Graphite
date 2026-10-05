@@ -3,7 +3,16 @@ import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type {
+	NodeGraphErrorDiagnostic,
+	BoxSelection,
+	FrontendClickTargets,
+	ContextMenuInformation,
+	FrontendNode,
+	FrontendNodeType,
+	FrontendRemoteCursor,
+	WirePath,
+} from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 
@@ -13,6 +22,7 @@ export type ThumbnailCanvases = { layersPanelCanvasId: number; nodeGraphCanvasId
 
 type NodeGraphStoreState = {
 	box: BoxSelection | undefined;
+	remoteCursors: FrontendRemoteCursor[];
 	clickTargets: FrontendClickTargets | undefined;
 	contextMenuInformation: ContextMenuInformation | undefined;
 	errors: NodeGraphErrorDiagnostic[];
@@ -35,6 +45,7 @@ type NodeGraphStoreState = {
 };
 const initialState: NodeGraphStoreState = {
 	box: undefined,
+	remoteCursors: [],
 	clickTargets: undefined,
 	contextMenuInformation: undefined,
 	errors: [],
@@ -130,6 +141,13 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	subscriptions.subscribeFrontendMessage("UpdateBox", (data) => {
 		update((state) => {
 			state.box = data.box;
+			return state;
+		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateNodeGraphCursors", (data) => {
+		update((state) => {
+			state.remoteCursors = data.cursors;
 			return state;
 		});
 	});
@@ -321,6 +339,7 @@ export function destroyNodeGraphStore() {
 
 	subscriptions.unsubscribeFrontendMessage("SendUIMetadata");
 	subscriptions.unsubscribeFrontendMessage("UpdateBox");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphCursors");
 	subscriptions.unsubscribeFrontendMessage("UpdateClickTargets");
 	subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");

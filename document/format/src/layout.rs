@@ -12,6 +12,7 @@ pub trait Layout {
 	fn registry_basename(&self) -> &str;
 	fn history_basename(&self) -> &str;
 	fn hot_log_basename(&self) -> &str;
+	/// What people state about the history beside it: users and their names, later labels and tags.
 	fn metadata_basename(&self) -> &str;
 	fn resources_dir(&self) -> &str;
 	fn resource_path(&self, hash: &ResourceHash) -> String;

@@ -151,6 +151,8 @@ impl<L: Layout> Gdd<L> {
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
+			// An export is a copy taken out of the room; it does not reconnect on its own.
+			shared: false,
 			last_hot_sequence: self.session.last_hot_sequence(),
 			retired_marks: self.session.retired_marks().clone(),
 			clock_counter: self.session.clock_counter(),
@@ -158,13 +160,12 @@ impl<L: Layout> Gdd<L> {
 			network_view_settings: self.network_view_settings.clone(),
 		};
 		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
-		// The facts name revs, so a copy without the history carries none.
-		if options.include_history && !self.metadata.is_empty() {
-			let mut lines = Vec::new();
+		if !self.metadata.is_empty() {
+			let mut facts = Vec::new();
 			for fact in self.metadata.facts() {
-				METADATA_CODEC.append(&mut lines, fact)?;
+				METADATA_CODEC.append(&mut facts, &fact)?;
 			}
-			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &lines)?;
+			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &facts)?;
 		}
 
 		let working_copy_hashes: std::collections::HashSet<ResourceHash> = self.resource_hashes().await?.into_iter().collect();

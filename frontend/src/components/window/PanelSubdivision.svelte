@@ -38,7 +38,7 @@
 	}
 	// Reactive array of resolved sizes (merging backend defaults with local overrides)
 	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
-	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => ({ name: doc.name, unsaved: !doc.is_saved }));
+	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => ({ name: doc.name, unsaved: !doc.is_saved, session: doc.session ?? undefined }));
 
 	onDestroy(() => {
 		activeResizeCleanup?.();
@@ -205,6 +205,11 @@
 				// Ensure the target document is the active one before renaming, since `RenameDocument` operates on the active document
 				editor.selectDocument($portfolio.documents[tabIndex].id);
 				editor.renameDocument(newName);
+			}}
+			sessionAction={(tabIndex) => {
+				// The panel shows the active document's session, so select the document first
+				editor.selectDocument($portfolio.documents[tabIndex].id);
+				editor.focusPanel("Session");
 			}}
 			tabActiveIndex={$portfolio.activeDocumentIndex}
 			groupDropAction={groupDrop}

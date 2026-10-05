@@ -4,7 +4,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use document_graph_storage::{NoMetadata, PeerId, Registry};
+use document_graph_storage::{NoMetadata, PeerId, Registry, UserId};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork};
 use graph_craft::{ProtoNodeIdentifier, concrete};
@@ -25,7 +25,7 @@ fn network_with_one_node() -> NodeNetwork {
 /// A whole-document stage after a recorded batch stages nothing new: restating the batch would fail on the node it added.
 #[test]
 fn restaging_the_whole_document_after_a_batch_stages_nothing() {
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(21), 1, "ed".into(), "std".into()).unwrap();
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(21), UserId(21), 1, "ed".into(), "std".into()).unwrap();
 	let store = HashMapResourceStorage::new();
 	let resources = ResourceRegistry::new();
 	gdd.stage_runtime_snapshot(&NodeNetwork::default(), &NoMetadata, &resources, &store)
@@ -57,7 +57,7 @@ fn a_reopen_keeps_unretired_hot_ops_out_of_the_retired_snapshot() {
 		attributes: Default::default(),
 	};
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(22), 1, "ed".into(), "std".into()).unwrap();
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(22), UserId(22), 1, "ed".into(), "std".into()).unwrap();
 		gdd.apply_hot_op(set(1, 1)).unwrap();
 		gdd.apply_hot_op(set(2, 2)).unwrap();
 		gdd.retire(TimeStamp { counter: 1, peer: PeerId(22) }).unwrap();
@@ -80,28 +80,24 @@ fn a_reopen_continues_the_hot_op_sequence() {
 			value: Some(Value::from(serde_json::json!(value))),
 		},
 	};
-	fn stage(gdd: &mut GddV1, op: RegistryDelta) -> u64 {
-		gdd.stage_constructed_ops(vec![op], &Default::default(), &HashMapResourceStorage::new()).unwrap();
-		gdd.session().hot_log().last().unwrap().sequence.0
-	}
 	futures::executor::block_on(async {
-		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(23), 1, "ed".into(), "std".into()).unwrap();
-		stage(&mut gdd, set(1));
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(23), UserId(23), 1, "ed".into(), "std".into()).unwrap();
+		gdd.stage_ops([set(1)]).unwrap();
 		let up_to = gdd.session().hot_log().last().unwrap().timestamp;
 		gdd.retire(up_to).unwrap();
-		let last = stage(&mut gdd, set(2));
+		let last = gdd.stage_ops([set(2)]).unwrap().last().unwrap().sequence;
 
 		let (working, layout) = gdd.into_storage();
 		let mut reopened = GddV1::open_in(working, layout).await.unwrap();
-		assert_eq!(stage(&mut reopened, set(3)), last + 1);
+		assert_eq!(reopened.stage_ops([set(3)]).unwrap()[0].sequence.0, last.0 + 1);
 
 		let up_to = reopened.session().hot_log().last().unwrap().timestamp;
 		reopened.retire(up_to).unwrap();
-		let last = reopened.session().last_hot_sequence().0;
+		let last = reopened.session().last_hot_sequence();
 		let clock = reopened.session().clock_counter();
 		let (working, layout) = reopened.into_storage();
 		let mut reopened = GddV1::open_in(working, layout).await.unwrap();
 		assert_eq!(reopened.session().clock_counter(), clock, "the clock carries over");
-		assert_eq!(stage(&mut reopened, set(4)), last + 1);
+		assert_eq!(reopened.stage_ops([set(4)]).unwrap()[0].sequence.0, last.0 + 1);
 	});
 }
