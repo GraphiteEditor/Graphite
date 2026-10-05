@@ -187,9 +187,7 @@ pub enum RegistryDelta {
 		id: ResourceId,
 		key: SourceKey,
 	},
-	/// Append-only registration of a device's `PeerId` against its owning `UserId`.
-	/// First write wins; conflicting re-registration errors. Duplicate identical registration
-	/// is a no-op. Not LWW — the mapping is forever.
+	/// Registers a device's `PeerId` to the `UserId` behind it; the newest registration wins.
 	RegisterPeer {
 		peer: PeerId,
 		user: UserId,

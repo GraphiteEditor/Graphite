@@ -1,6 +1,6 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp, Value,
-	reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue,
+	TimeStamp, UserId, Value, reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -28,6 +28,7 @@ pub struct Document {
 	pub(crate) redo_stack: Vec<Rev>,
 	pub(crate) clock: LamportClock,
 	pub(crate) peer: PeerId,
+	pub(crate) user: UserId,
 	/// Latest retired commit on the local chain that has been broadcast to at least one peer.
 	/// Commits after this can be rewritten silently; commits at or before this are published
 	/// and require forward reverse-delta ops to undo. `None` means nothing broadcast yet.
@@ -297,13 +298,12 @@ impl Document {
 			RegistryDelta::RemoveResource { id, .. } => {
 				registry.resources.remove(&id);
 			}
-			RegistryDelta::RegisterPeer { peer, user } => match registry.peer_users.get(&peer) {
-				Some(existing) if *existing != user => return Err(CrdtError::PeerRegistrationConflict(peer)),
-				Some(_) => {}
-				None => {
-					registry.peer_users.insert(peer, user);
+			RegistryDelta::RegisterPeer { peer, user } => {
+				// The newest registration of a device wins, whatever order they land in.
+				if registry.peer_users.get(&peer).is_none_or(|existing| timestamp > existing.timestamp) {
+					registry.peer_users.insert(peer, PeerRegistration { user, timestamp });
 				}
-			},
+			}
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
 				registry.attributes.apply_delta(delta, timestamp, force);
 			}
