@@ -246,119 +246,26 @@ impl WorkingVector {
 	pub fn chain_by_straightest_route(&mut self) {
 		let segment_count = self.segment_count();
 		let point_count = self.point_positions.len();
+		let endpoints: Vec<(usize, usize)> = (0..segment_count).map(|index| (self.segment_start[index], self.segment_end[index])).collect();
 
-		// Every segment end at each point, named by twice the segment's index plus one for its arriving end
-		let mut ends_at: Vec<Vec<usize>> = vec![Vec::new(); point_count];
-		for index in 0..segment_count {
-			let (start, end) = (self.segment_start[index], self.segment_end[index]);
-			if start < point_count && end < point_count {
-				ends_at[start].push(index * 2);
-				ends_at[end].push(index * 2 + 1);
-			}
-		}
-
-		// The direction a segment leaves its anchor in from the given end, toward the nearest control point not sitting on the anchor
-		let direction = |end: usize| {
-			let (index, arriving) = (end / 2, end % 2 == 1);
-			let (start, finish) = (self.point_positions[self.segment_start[index]], self.point_positions[self.segment_end[index]]);
-			let handles = self.segment_handles[index];
+		// The direction a segment leaves its anchor in from either end, toward the nearest control point not sitting on the anchor
+		let direction = |segment: usize, arriving: bool| {
+			let (start, finish) = (self.point_positions[self.segment_start[segment]], self.point_positions[self.segment_end[segment]]);
+			let handles = self.segment_handles[segment];
 			let (anchor, toward) = if arriving {
 				(finish, [handles.end(), handles.start(), Some(start)])
 			} else {
 				(start, [handles.start(), handles.end(), Some(finish)])
 			};
 
-			let along = toward.into_iter().flatten().map(|point| point - anchor).find(|along| along.length_squared() > 1e-12);
-			along.unwrap_or_default().normalize_or_zero()
+			toward.into_iter().flatten().map(|point| point - anchor).find(|along| along.length_squared() > 1e-12)
 		};
-
-		// Pair off the ends meeting at each point, the straightest pair through a junction first, in O(k² log k) for k ends there
-		let mut partner = vec![usize::MAX; segment_count * 2];
-		for ends in ends_at.iter().filter(|ends| ends.len() >= 2) {
-			let directions: Vec<DVec2> = ends.iter().map(|&end| direction(end)).collect();
-
-			// Straightness is rounded so pairs differing only by float error are equally straight, leaving the earlier stored ends first
-			let mut pairs: Vec<(i64, usize, usize)> = (0..ends.len())
-				.flat_map(|i| (i + 1..ends.len()).map(move |j| (i, j)))
-				.map(|(i, j)| ((-directions[i].dot(directions[j]) * 1e9).round() as i64, i, j))
-				.collect();
-			pairs.sort_by(|a, b| b.0.cmp(&a.0).then((a.1, a.2).cmp(&(b.1, b.2))));
-
-			let mut paired = vec![false; ends.len()];
-			for (_, i, j) in pairs {
-				if paired[i] || paired[j] {
-					continue;
-				}
-				paired[i] = true;
-				paired[j] = true;
-				partner[ends[i]] = ends[j];
-				partner[ends[j]] = ends[i];
-			}
-		}
-
-		// Follow the pairings into chains, each seeded by the earliest unvisited segment and keeping its direction
-		let mut visited = vec![false; segment_count];
-		let mut order: Vec<(usize, bool)> = Vec::with_capacity(segment_count);
-		let mut begins_path = Vec::with_capacity(segment_count);
-		for seed in 0..segment_count {
-			if std::mem::replace(&mut visited[seed], true) {
-				continue;
-			}
-
-			let mut chain = vec![(seed, false)];
-			let mut closed = false;
-			let mut end = seed * 2 + 1;
-			loop {
-				let next = partner[end];
-				if next == usize::MAX {
-					break;
-				}
-				let segment = next / 2;
-				if segment == seed {
-					closed = true;
-					break;
-				}
-				if std::mem::replace(&mut visited[segment], true) {
-					break;
-				}
-
-				// Entering at the segment's arriving end crosses it backwards
-				let reversed = next % 2 == 1;
-				chain.push((segment, reversed));
-				end = if reversed { segment * 2 } else { segment * 2 + 1 };
-			}
-
-			// An open chain also grows backwards from the seed's start, which is then where it begins
-			let mut before = Vec::new();
-			let mut end = seed * 2;
-			if !closed {
-				loop {
-					let next = partner[end];
-					if next == usize::MAX {
-						break;
-					}
-					let segment = next / 2;
-					if std::mem::replace(&mut visited[segment], true) {
-						break;
-					}
-
-					// Joining at the segment's arriving end means it runs forward into the chain
-					let reversed = next % 2 == 0;
-					before.push((segment, reversed));
-					end = if reversed { segment * 2 + 1 } else { segment * 2 };
-				}
-			}
-			before.reverse();
-
-			begins_path.extend((0..before.len() + chain.len()).map(|position| position == 0));
-			order.append(&mut before);
-			order.append(&mut chain);
-		}
+		let chained = chain_order(point_count, &endpoints, direction, |_| true);
 
 		// Rebuild the segment arrays in chain order, turning around the segments that run against their chain
 		let mut reversed_ids = FxHashSet::default();
 		let (mut ids, mut starts, mut ends, mut handles) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-		for &(segment, reversed) in &order {
+		for &(segment, reversed) in &chained.order {
 			ids.push(self.segment_ids[segment]);
 			let (start, end) = (self.segment_start[segment], self.segment_end[segment]);
 			if reversed {
@@ -376,18 +283,190 @@ impl WorkingVector {
 		self.segment_start = starts;
 		self.segment_end = ends;
 		self.segment_handles = handles;
-		self.segment_begins_path = begins_path;
+		self.segment_begins_path = chained.begins_path;
 
 		// A turned segment's handles swap sides, so the G1 pairs naming them follow
 		for handle in self.colinear.iter_mut().flatten() {
 			if reversed_ids.contains(&handle.segment) {
-				handle.ty = match handle.ty {
-					HandleType::Primary => HandleType::End,
-					HandleType::End => HandleType::Primary,
-				};
+				*handle = handle.opposite();
 			}
 		}
 	}
+}
+
+/// A segment soup put in the order and orientation that chains it into paths.
+pub(crate) struct ChainOrder {
+	/// Each segment's index in the order it should be stored, with whether it is turned around.
+	pub order: Vec<(usize, bool)>,
+	/// Whether the segment at the same place in `order` begins a chain.
+	pub begins_path: Vec<bool>,
+}
+
+/// Chains a legacy segment soup into paths the way it used to be drawn: each segment continues the one it meets end to end,
+/// the straightest pair going through each junction first, and the chains come out open ones first from a free end (the
+/// lower one when both are), then loops from their lowest points along their earlier stored segment there.
+///
+/// `direction` gives the way a segment leaves the anchor at its start or its end, or `None` when unknown, which pairs last.
+/// A chain stays as it was found where turning it around would cross a segment that is not `reversible`.
+pub(crate) fn chain_order(point_count: usize, endpoints: &[(usize, usize)], direction: impl Fn(usize, bool) -> Option<DVec2>, reversible: impl Fn(usize) -> bool) -> ChainOrder {
+	let segment_count = endpoints.len();
+
+	// Every segment end at each point, named by twice the segment's index plus one for its arriving end
+	let mut ends_at: Vec<Vec<usize>> = vec![Vec::new(); point_count];
+	for (index, &(start, end)) in endpoints.iter().enumerate() {
+		if start < point_count && end < point_count {
+			ends_at[start].push(index * 2);
+			ends_at[end].push(index * 2 + 1);
+		}
+	}
+
+	// Pair off the ends meeting at each point, the straightest pair through a junction first, in O(k² log k) for k ends there.
+	// Beyond a few dozen ends that grows too costly for any route to stand out, so a crowded point pairs them in stored order.
+	const MOST_ENDS_PAIRED_BY_STRAIGHTNESS: usize = 64;
+	let mut partner = vec![usize::MAX; segment_count * 2];
+	for ends in ends_at.iter().filter(|ends| ends.len() >= 2) {
+		if ends.len() > MOST_ENDS_PAIRED_BY_STRAIGHTNESS {
+			for pair in ends.chunks_exact(2) {
+				partner[pair[0]] = pair[1];
+				partner[pair[1]] = pair[0];
+			}
+			continue;
+		}
+
+		let directions: Vec<Option<DVec2>> = ends.iter().map(|&end| direction(end / 2, end % 2 == 1).map(DVec2::normalize_or_zero)).collect();
+
+		// A pair with an unknown direction ranks below every known one. Straightness is rounded so pairs differing only by
+		// float error are equally straight, leaving the earlier stored ends first.
+		let straightness = |i: usize, j: usize| directions[i].zip(directions[j]).map_or(-2., |(first, second): (DVec2, DVec2)| -first.dot(second));
+		let mut pairs: Vec<(i64, usize, usize)> = (0..ends.len())
+			.flat_map(|i| (i + 1..ends.len()).map(move |j| (i, j)))
+			.map(|(i, j)| ((straightness(i, j) * 1e9).round() as i64, i, j))
+			.collect();
+		pairs.sort_by(|a, b| b.0.cmp(&a.0).then((a.1, a.2).cmp(&(b.1, b.2))));
+
+		let mut paired = vec![false; ends.len()];
+		for (_, i, j) in pairs {
+			if paired[i] || paired[j] {
+				continue;
+			}
+			paired[i] = true;
+			paired[j] = true;
+			partner[ends[i]] = ends[j];
+			partner[ends[j]] = ends[i];
+		}
+	}
+
+	// Follow the pairings into chains, each seeded by the earliest unvisited segment
+	let mut visited = vec![false; segment_count];
+	let mut chains: Vec<(Vec<(usize, bool)>, bool)> = Vec::new();
+	for seed in 0..segment_count {
+		if std::mem::replace(&mut visited[seed], true) {
+			continue;
+		}
+
+		let mut chain = vec![(seed, false)];
+		let mut closed = false;
+		let mut end = seed * 2 + 1;
+		loop {
+			let next = partner[end];
+			if next == usize::MAX {
+				break;
+			}
+			let segment = next / 2;
+			if segment == seed {
+				closed = true;
+				break;
+			}
+
+			// Entering at the segment's arriving end crosses it against its stored direction
+			let reversed = next % 2 == 1;
+			if visited[segment] || (reversed && !reversible(segment)) {
+				break;
+			}
+			visited[segment] = true;
+			chain.push((segment, reversed));
+			end = if reversed { segment * 2 } else { segment * 2 + 1 };
+		}
+
+		// An open chain also grows from the seed's start, which is then where it begins
+		let mut before = Vec::new();
+		let mut end = seed * 2;
+		if !closed {
+			loop {
+				let next = partner[end];
+				if next == usize::MAX {
+					break;
+				}
+				let segment = next / 2;
+
+				// Joining at the segment's arriving end means it runs with its stored direction into the chain
+				let reversed = next % 2 == 0;
+				if visited[segment] || (reversed && !reversible(segment)) {
+					break;
+				}
+				visited[segment] = true;
+				before.push((segment, reversed));
+				end = if reversed { segment * 2 + 1 } else { segment * 2 };
+			}
+		}
+		before.reverse();
+		before.append(&mut chain);
+
+		chains.push((before, closed));
+	}
+
+	// The point a chain member is crossed from, and the chain crossed the other way when every member allows it
+	let from = |&(segment, reversed): &(usize, bool)| if reversed { endpoints[segment].1 } else { endpoints[segment].0 };
+	let to = |&(segment, reversed): &(usize, bool)| if reversed { endpoints[segment].0 } else { endpoints[segment].1 };
+	let turned = |chain: &[(usize, bool)]| -> Option<Vec<(usize, bool)>> {
+		chain
+			.iter()
+			.rev()
+			.map(|&(segment, reversed)| (reversed || reversible(segment)).then_some((segment, !reversed)))
+			.collect()
+	};
+	let spokes = |point: usize| ends_at.get(point).map_or(0, Vec::len);
+
+	// Start each chain where it used to be drawn from, and note what it is ordered by
+	let mut keyed = Vec::with_capacity(chains.len());
+	for (mut chain, closed) in chains {
+		if closed {
+			// A loop sets out from its lowest point along whichever of its two segments there is stored first
+			let Some(lowest) = (0..chain.len()).min_by_key(|&place| from(&chain[place])) else { continue };
+			chain.rotate_left(lowest);
+			let (leaving, arriving) = (chain[0].0, chain[chain.len() - 1].0);
+			if arriving < leaving
+				&& let Some(turned) = turned(&chain)
+			{
+				chain = turned;
+			}
+		} else {
+			// An open chain sets out from its free end, or from its lower point when both ends or neither are free
+			let (Some(first), Some(last)) = (chain.first(), chain.last()) else { continue };
+			let (start, end) = (from(first), to(last));
+			let from_the_far_end = match (spokes(start) == 1, spokes(end) == 1) {
+				(true, false) => false,
+				(false, true) => true,
+				_ => end < start,
+			};
+			if from_the_far_end && let Some(turned) = turned(&chain) {
+				chain = turned;
+			}
+		}
+
+		let Some(first) = chain.first() else { continue };
+		keyed.push(((closed, from(first)), chain));
+	}
+	keyed.sort_by_key(|&(key, _)| key);
+
+	let mut order = Vec::with_capacity(segment_count);
+	let mut begins_path = Vec::with_capacity(segment_count);
+	for (_, mut chain) in keyed {
+		begins_path.extend((0..chain.len()).map(|place| place == 0));
+		order.append(&mut chain);
+	}
+
+	ChainOrder { order, begins_path }
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -737,12 +816,35 @@ mod tests {
 		let mut working = working_at(&positions, &soup);
 
 		working.chain_by_straightest_route();
-		assert_eq!(working.segment_begins_path, vec![true, true, false]);
+		assert_eq!(working.segment_begins_path, vec![true, false, true]);
 
 		let (_, paths) = woven(working);
 		assert_eq!(paths.len(), 2);
-		assert_eq!(references(&paths, 0), [1, 3]);
-		assert_eq!(references(&paths, 1), [0, 1, 2]);
+		assert_eq!(references(&paths, 0), [0, 1, 2]);
+		assert_eq!(references(&paths, 1), [3, 1]);
+	}
+
+	// An open chain comes out from its lower end and a loop from its lowest point along its earlier stored segment, as both used to be drawn
+	#[test]
+	fn chains_come_out_in_the_order_they_used_to_be_drawn() {
+		let positions = [
+			DVec2::new(0., 0.),
+			DVec2::new(1., 0.),
+			DVec2::new(2., 0.),
+			DVec2::new(3., 0.),
+			DVec2::new(5., 0.),
+			DVec2::new(6., 0.),
+			DVec2::new(5., 1.),
+		];
+		let soup = [(5, 6), (6, 4), (4, 5), (2, 1), (3, 2), (1, 0)].map(|(start, end)| (start, end, BezierHandles::Linear));
+		let mut working = working_at(&positions, &soup);
+
+		working.chain_by_straightest_route();
+		let (_, paths) = woven(working);
+
+		assert_eq!(paths.len(), 2);
+		assert_eq!(references(&paths, 0), [0, 1, 2, 3]);
+		assert_eq!(references(&paths, 1), [4, 6, 5, 4]);
 	}
 
 	// A curve whose end handle is retracted onto the junction arrives along its other handle, so it carries on downward rather than along its chord
