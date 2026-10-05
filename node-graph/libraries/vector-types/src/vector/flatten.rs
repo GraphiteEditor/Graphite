@@ -5,6 +5,7 @@ use super::vector_types::Vector;
 use core_types::list::{ATTR_ID, List};
 use glam::DVec2;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::HashSet;
 
 /// One path under construction: its curve type, the pool references it weaves, and the IDs of the spans between them.
 type Run = (CurveType, Vec<u32>, Vec<SegmentId>);
@@ -242,8 +243,9 @@ impl WorkingVector {
 	}
 
 	/// Reorders and reorients the segments so each continues the one it meets head to tail, taking the straightest
-	/// route through every junction, and marks where each chain begins. This bakes path structure into a segment soup once.
-	pub fn chain_by_straightest_route(&mut self) {
+	/// route through every junction, and marks where each chain begins. This bakes path structure into a segment soup once,
+	/// returning the IDs of the segments it turns around.
+	pub fn chain_by_straightest_route(&mut self) -> HashSet<SegmentId> {
 		let segment_count = self.segment_count();
 		let point_count = self.point_positions.len();
 		let endpoints: Vec<(usize, usize)> = (0..segment_count).map(|index| (self.segment_start[index], self.segment_end[index])).collect();
@@ -260,7 +262,8 @@ impl WorkingVector {
 
 			toward.into_iter().flatten().map(|point| point - anchor).find(|along| along.length_squared() > 1e-12)
 		};
-		let chained = chain_order(point_count, &endpoints, direction, |_| true);
+		// A quadratic keeps its direction, since an edit elsewhere to its lone handle could not be re-based onto its other end
+		let chained = chain_order(point_count, &endpoints, direction, |segment| !matches!(self.segment_handles[segment], BezierHandles::Quadratic { .. }));
 
 		// Rebuild the segment arrays in chain order, turning around the segments that run against their chain
 		let mut reversed_ids = FxHashSet::default();
@@ -291,6 +294,8 @@ impl WorkingVector {
 				*handle = handle.opposite();
 			}
 		}
+
+		reversed_ids.into_iter().collect()
 	}
 }
 
@@ -472,7 +477,8 @@ pub(crate) fn chain_order(point_count: usize, endpoints: &[(usize, usize)], dire
 // TODO: Eventually remove this document upgrade code
 /// Builds storage from the legacy flat arrays: anchors with IDs and positions, segments with IDs, endpoint indices,
 /// and absolute handles, plus G1 pairs. Legacy segments carry no path structure, so they are chained by the straightest
-/// route through each junction before weaving. Used by document migration.
+/// route through each junction before weaving, and the IDs of any segments turned around come back alongside.
+/// Used by document migration.
 pub fn vector_from_legacy_parts(
 	point_ids: Vec<PointId>,
 	point_positions: Vec<DVec2>,
@@ -481,7 +487,7 @@ pub fn vector_from_legacy_parts(
 	segment_end: Vec<usize>,
 	segment_handles: Vec<BezierHandles>,
 	colinear: Vec<[HandleId; 2]>,
-) -> (Vector, List<Path>) {
+) -> (Vector, List<Path>, HashSet<SegmentId>) {
 	let mut working = WorkingVector {
 		point_ids,
 		point_positions,
@@ -492,12 +498,12 @@ pub fn vector_from_legacy_parts(
 		segment_begins_path: Vec::new(),
 		colinear,
 	};
-	working.chain_by_straightest_route();
+	let turned = working.chain_by_straightest_route();
 
 	let (mut vector, mut paths) = (Vector::default(), List::new());
 	working.reweave(&mut vector, &mut paths);
 
-	(vector, paths)
+	(vector, paths, turned)
 }
 
 #[cfg(test)]
@@ -899,7 +905,7 @@ mod tests {
 		let ids = [SegmentId::generate(), SegmentId::generate()];
 
 		// The second segment runs back toward the shared anchor, so both handles facing it, one on each side, are stored as end handles
-		let (_, paths) = vector_from_legacy_parts(
+		let (_, paths, _) = vector_from_legacy_parts(
 			(0..3).map(|_| PointId::generate()).collect(),
 			positions.to_vec(),
 			ids.to_vec(),

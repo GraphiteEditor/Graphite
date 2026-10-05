@@ -11,7 +11,9 @@ use crate::messages::tool::tool_messages::path_tool::{PathOverlayMode, PointSele
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::algorithms::shapes::polyline_bezpath;
-use graphene_std::vector::misc::{BezierHandles, HandleId, ManipulatorPointId, PathSegPoints, bezpath_from_manipulator_groups, dvec2_to_point, pathseg_points, point_to_dvec2, segment_to_handles};
+use graphene_std::vector::misc::{
+	BezierHandles, HandleId, HandleType, ManipulatorPointId, PathSegPoints, bezpath_from_manipulator_groups, dvec2_to_point, pathseg_points, point_to_dvec2, segment_to_handles,
+};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModificationType};
 use kurbo::{Affine, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveNearest, PathSeg, Rect, Shape};
 use std::f64::consts::TAU;
@@ -187,6 +189,7 @@ pub struct ClosestSegment {
 	bezier: PathSeg,
 	points: [PointId; 2],
 	colinear: [Option<HandleId>; 2],
+	begins_path: bool,
 	t: f64,
 	bezier_point_to_viewport: DVec2,
 }
@@ -276,6 +279,15 @@ impl ClosestSegment {
 			handles: [first.p1.map(|handle| handle - first.p0), first.p2.map(|handle| handle - first.p3)],
 		};
 		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		// The first half takes over as the beginning of the path that the split segment began
+		if self.begins_path {
+			let modification_type = VectorModificationType::SetPathBreak {
+				segment: segment_ids[0],
+				breaks: true,
+			};
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 
 		// Last segment
 		let modification_type = VectorModificationType::InsertSegment {
@@ -1360,9 +1372,11 @@ impl ShapeState {
 			}
 		}
 
-		// Add in new segment if possible
+		// Add in new segment if possible, running on from the segment that arrives at the anchor into the one that leaves it
 		let mut handles = vector.handle_pair_of(ManipulatorPointId::Anchor(anchor))?;
-		handles.reverse();
+		if handles[0].ty != HandleType::End || handles[1].ty != HandleType::Primary {
+			handles.reverse();
+		}
 		let opposites = handles.map(|handle| handle.opposite());
 
 		let [Some(start), Some(end)] = opposites.map(|opposite| vector.anchor_of(opposite.to_manipulator_point())) else {
@@ -1380,6 +1394,7 @@ impl ShapeState {
 			let mut deleted_anchors = HashSet::new();
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 			let colinear_pairs = vector.colinear_pairs();
+			let path_beginnings = vector.path_beginnings();
 
 			let selected_segments = &state.selected_segments;
 
@@ -1459,6 +1474,12 @@ impl ShapeState {
 				};
 
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				// Removing the segment dropped its mark as the beginning of a path, which the reconnection takes over
+				if path_beginnings.contains(&segment) {
+					let modification_type = VectorModificationType::SetPathBreak { segment, breaks: true };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
 
 				for &handles in &colinear_pairs {
 					if !handles.iter().any(|&handle| handle == start.0.opposite() || handle == end.0.opposite()) {
@@ -1784,11 +1805,16 @@ impl ShapeState {
 					bezier: segment,
 					points: [start, end],
 					colinear: [primary_handle, end_handle],
+					begins_path: false,
 					t,
 					bezier_point_to_viewport: screenspace,
 					layer,
 				});
 			}
+		}
+
+		if let Some(closest) = &mut closest {
+			closest.begins_path = vector.path_beginnings().contains(&closest.segment);
 		}
 
 		closest

@@ -21,7 +21,7 @@ use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
 use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use std::ops::Range;
 
@@ -1634,6 +1634,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
 	create_layer_stacks(document);
+	follow_segments_turned_on_load(document);
 
 	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> converter pair, which reuses the same proto
 	// identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current 12-input
@@ -3347,6 +3348,104 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	Some(())
 }
 
+// TODO: Eventually remove this document upgrade code
+/// Older stored edits are turned around where they chain into paths on load. Edits naming those segments by side (a handle,
+/// an endpoint, or a G1 pair) in the Path nodes downstream of the one that turned them are turned with them, so each stays on
+/// the side it was made on. Segment IDs are only unique within one shape, so nodes not downstream are left alone.
+fn follow_segments_turned_on_load(document: &mut DocumentMessageHandler) {
+	for (network_path, node_id, index, input) in modifications_following_turned_segments(document.network_interface.document_network()) {
+		document.network_interface.set_input(&InputConnector::node_at_index(node_id, index), input, &network_path);
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+/// The stored edits to rewrite after loading, each with its network path, node, and input index: those that turned segments,
+/// with their record taken, and those downstream of them, turned to follow. Costs O(nodes + wires) per node that turned any.
+fn modifications_following_turned_segments(network: &graph_craft::document::NodeNetwork) -> Vec<(Vec<NodeId>, NodeId, usize, NodeInput)> {
+	type Location = (Vec<NodeId>, NodeId);
+
+	// The nodes reading each node's output, through the imports and exports of nested networks too
+	let mut downstream: HashMap<Location, Vec<Location>> = HashMap::new();
+	let mut turned_by: Vec<(Location, HashSet<graphene_std::vector::SegmentId>)> = Vec::new();
+	for (node_id, node, network_path) in network.recursive_nodes() {
+		let here = (network_path.clone(), *node_id);
+
+		for input in &node.inputs {
+			match input {
+				NodeInput::Node { node_id: upstream, .. } => downstream.entry((network_path.clone(), *upstream)).or_default().push(here.clone()),
+				NodeInput::Import { .. } => {
+					if let Some((&parent, parent_path)) = network_path.split_last() {
+						downstream.entry((parent_path.to_vec(), parent)).or_default().push(here.clone());
+					}
+				}
+				NodeInput::Value { tagged_value, .. } => {
+					if let TaggedValue::VectorModification(modification) = &**tagged_value
+						&& !modification.segments_turned_on_load().is_empty()
+					{
+						turned_by.push((here.clone(), modification.segments_turned_on_load().clone()));
+					}
+				}
+				_ => {}
+			}
+		}
+
+		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+			let nested_path = [network_path.as_slice(), &[*node_id]].concat();
+			for export in &nested.exports {
+				if let NodeInput::Node { node_id: inner, .. } = export {
+					downstream.entry((nested_path.clone(), *inner)).or_default().push(here.clone());
+				}
+			}
+		}
+	}
+	if turned_by.is_empty() {
+		return Vec::new();
+	}
+
+	// Each node's turned segments reach only the nodes its output flows into
+	let mut following: HashMap<Location, HashSet<graphene_std::vector::SegmentId>> = HashMap::new();
+	for (origin, turned) in &turned_by {
+		let mut reached = HashSet::new();
+		let mut pending = downstream.get(origin).cloned().unwrap_or_default();
+		while let Some(location) = pending.pop() {
+			if location == *origin || !reached.insert(location.clone()) {
+				continue;
+			}
+			pending.extend(downstream.get(&location).into_iter().flatten().cloned());
+		}
+
+		for location in reached {
+			following.entry(location).or_default().extend(turned.iter().copied());
+		}
+	}
+
+	let mut rewritten = Vec::new();
+	for (node_id, node, network_path) in network.recursive_nodes() {
+		let location = (network_path.clone(), *node_id);
+		let follows = following.get(&location);
+
+		for (index, input) in node.inputs.iter().enumerate() {
+			let NodeInput::Value { tagged_value, exposed } = input else { continue };
+			let TaggedValue::VectorModification(modification) = &**tagged_value else { continue };
+			let had_record = !modification.segments_turned_on_load().is_empty();
+			if !had_record && follows.is_none() {
+				continue;
+			}
+
+			let mut modification = modification.clone();
+			modification.take_segments_turned_on_load();
+			let changed = follows.is_some_and(|turned| modification.follow_segments_turned_elsewhere(turned));
+
+			if had_record || changed {
+				let input = NodeInput::value(TaggedValue::VectorModification(modification), *exposed);
+				rewritten.push((network_path.clone(), *node_id, index, input));
+			}
+		}
+	}
+
+	rewritten
+}
+
 /// Ensure layers are positioned as stacks if they are upstream siblings of another layer
 fn create_layer_stacks(document: &mut DocumentMessageHandler) {
 	document.network_interface.load_structure();
@@ -4079,6 +4178,64 @@ mod tests {
 		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| node.as_str()).collect::<Vec<_>>();
 		if !duplicates.is_empty() {
 			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {duplicates:?}");
+		}
+	}
+
+	// Segment IDs repeat across shapes, so a segment turned on load is followed only by the stored edits downstream of the node that turned it
+	#[test]
+	fn turned_segments_are_followed_only_downstream() {
+		use graph_craft::document::NodeNetwork;
+		use graphene_std::vector::misc::HandleId;
+		use graphene_std::vector::{SegmentId, VectorModification, VectorModificationType};
+
+		let segment = SegmentId::generate();
+		let turned = VectorModification::default().with_segments_turned_on_load(HashSet::from([segment]));
+		let edited_on = |handle: HandleId| {
+			let mut modification = VectorModification::default();
+			modification.modify(&VectorModificationType::SetHandlePosition { handle, relative_position: DVec2::X });
+			modification
+		};
+		let value = |modification: VectorModification| NodeInput::value(TaggedValue::VectorModification(Box::new(modification)), false);
+		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
+
+		// One turned Path node feeds another directly, and a second sits inside a nested network whose export feeds a third
+		let [turning, following, unrelated, group, following_group] = [1, 2, 3, 4, 5].map(NodeId);
+		let nested = NodeNetwork {
+			exports: vec![NodeInput::node(turning, 0)],
+			nodes: [(turning, node(vec![value(turned.clone())]))].into_iter().collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			nodes: [
+				(turning, node(vec![value(turned)])),
+				(following, node(vec![NodeInput::node(turning, 0), value(edited_on(HandleId::primary(segment)))])),
+				(unrelated, node(vec![value(edited_on(HandleId::primary(segment)))])),
+				(
+					group,
+					DocumentNode {
+						implementation: DocumentNodeImplementation::Network(nested),
+						..Default::default()
+					},
+				),
+				(following_group, node(vec![NodeInput::node(group, 0), value(edited_on(HandleId::primary(segment)))])),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		let rewritten = modifications_following_turned_segments(&network);
+		let rewritten_at = |location: (&[NodeId], NodeId)| rewritten.iter().find(|(path, node_id, ..)| (path.as_slice(), *node_id) == location);
+
+		assert!(rewritten_at((&[], turning)).is_some(), "the record of what turned is taken");
+		assert!(rewritten_at((&[group], turning)).is_some(), "the nested record of what turned is taken");
+		assert!(rewritten_at((&[], unrelated)).is_none(), "an edit not downstream stays as it was");
+
+		let expected = value(edited_on(HandleId::end(segment)));
+		for downstream in [following, following_group] {
+			let (.., index, input) = rewritten_at((&[], downstream)).expect("an edit downstream follows the turn");
+			assert_eq!(*index, 1);
+			assert_eq!(*input, expected);
 		}
 	}
 }
