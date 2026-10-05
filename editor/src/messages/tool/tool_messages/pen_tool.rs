@@ -69,6 +69,10 @@ pub enum PenToolMessage {
 		append_to_selected: Key,
 	},
 	DragStop,
+	/// Sent by a press to place its anchor, after the graph has re-evaluated if the press merged two layers.
+	PlacePressedAnchor {
+		merged: bool,
+	},
 	PointerMove {
 		snap_angle: Key,
 		break_handle: Key,
@@ -403,7 +407,10 @@ struct PenToolData {
 	auto_panning: AutoPanning,
 	modifiers: ModifierState,
 
-	buffering_merged_vector: bool,
+	/// The layer's transform to document space as it was when a press joined the layer to another, kept while that press waits for the merged path to place its anchor in.
+	merging_from: Option<DAffine2>,
+	/// The release and confirmation that arrive during that wait.
+	held_input: Vec<PenToolMessage>,
 
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
@@ -462,6 +469,8 @@ impl PenToolData {
 		self.point_index = 0;
 		self.suppress_lock_angle = false;
 		self.suppress_snap_angle = false;
+		self.merging_from = None;
+		self.held_input.clear();
 		self.snap_manager.cleanup(responses);
 	}
 
@@ -610,16 +619,18 @@ impl PenToolData {
 		self.point_index == 0 && self.latest_point().is_some_and(|point| point.pos == self.next_point)
 	}
 
-	// When the vector transform changes, the positions of the points must be recalculated.
-	fn recalculate_latest_points_position(&mut self, document: &DocumentMessageHandler) {
+	// When the layer's space changes, its points are found again and their handles follow
+	fn recalculate_latest_points_position(&mut self, document: &DocumentMessageHandler, layer_to_document: DAffine2) {
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		if let (Some(layer), None) = (selected_layers.next(), selected_layers.next()) {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+			let into_merged = self.merging_from.map_or(DAffine2::IDENTITY, |previous| layer_to_document.inverse() * previous);
+
 			for point in &mut self.latest_points {
 				let Some(pos) = vector.point_domain.position_from_id(point.id) else { continue };
+				point.handle_start = pos + into_merged.transform_vector2(point.handle_start - point.pos);
 				point.pos = pos;
-				point.handle_start = point.pos;
 			}
 		}
 	}
@@ -1564,6 +1575,19 @@ impl Fsm for PenToolFsmState {
 		}
 
 		let ToolMessage::Pen(event) = event else { return self };
+
+		// A press waiting for its layers to merge keeps the release and confirmation for once its anchor is placed, and takes no other input
+		if tool_data.merging_from.is_some() {
+			match event {
+				PenToolMessage::DragStop | PenToolMessage::Confirm => {
+					tool_data.held_input.push(event);
+					return self;
+				}
+				PenToolMessage::DragStart { .. } | PenToolMessage::PointerMove { .. } | PenToolMessage::PointerOutsideViewport { .. } | PenToolMessage::GRS { .. } => return self,
+				_ => {}
+			}
+		}
+
 		match (self, event) {
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
 				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
@@ -1913,52 +1937,72 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(state, PenToolMessage::RecalculateLatestPointsPosition) => {
-				tool_data.recalculate_latest_points_position(document);
+				tool_data.recalculate_latest_points_position(document, transform);
 				state
 			}
-			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { .. }) => {
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
-				// Early return if the buffer was started and this message is being run again after the buffer (so that place_anchor updates the state with the newly merged vector)
-				if tool_data.buffering_merged_vector {
-					if let Some(layer) = layer {
-						tool_data.buffering_merged_vector = false;
-						tool_data.handle_mode = HandleMode::ColinearLocked;
-						tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
-						tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+				// The anchor goes where its preview is shown for where the pointer is pressed
+				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+
+				// Each segment placement is its own history step, spanning from this click through the release that finalizes it
+				responses.add(DocumentMessage::StartTransaction);
+
+				// Merge two layers if the point is connected to the end point of another path
+
+				// This might not be the correct solution to artboards being included as the other layer,
+				// which occurs due to the `compute_modified_vector` call in `should_extend` using the click targets for a layer instead of vector.
+				let layers = LayerNodeIdentifier::ROOT_PARENT
+					.descendants(document.metadata())
+					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+				if let Some((other_layer, _, _)) = should_extend(document, viewport_vec, crate::consts::SNAP_POINT_TOLERANCE, layers) {
+					let selected_nodes = document.network_interface.selected_nodes();
+					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
+					if let Some(current_layer) = selected_layers
+						.next()
+						.filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer)
+						.or(tool_data.current_layer.filter(|layer| *layer != other_layer))
+					{
+						merge_layers(document, current_layer, other_layer, responses);
+						tool_data.merging_from = Some(transform);
 					}
-					tool_data.buffering_merged_vector = false;
-					PenToolFsmState::DraggingHandle(tool_data.handle_mode)
-				} else {
-					// Each segment placement is its own history step, spanning from this click through the release that finalizes it
-					responses.add(DocumentMessage::StartTransaction);
-
-					// Merge two layers if the point is connected to the end point of another path
-
-					// This might not be the correct solution to artboards being included as the other layer,
-					// which occurs due to the `compute_modified_vector` call in `should_extend` using the click targets for a layer instead of vector.
-					let layers = LayerNodeIdentifier::ROOT_PARENT
-						.descendants(document.metadata())
-						.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
-					if let Some((other_layer, _, _)) = should_extend(document, viewport_vec, crate::consts::SNAP_POINT_TOLERANCE, layers) {
-						let selected_nodes = document.network_interface.selected_nodes();
-						let mut selected_layers = selected_nodes.selected_layers(document.metadata());
-						if let Some(current_layer) = selected_layers
-							.next()
-							.filter(|current_layer| selected_layers.next().is_none() && *current_layer != other_layer)
-							.or(tool_data.current_layer.filter(|layer| *layer != other_layer))
-						{
-							merge_layers(document, current_layer, other_layer, responses);
-						}
-					}
-
-					// Even if no buffer was started, the message still has to be run again in order to call bend_from_previous_point
-					tool_data.buffering_merged_vector = true;
-					responses.add(PenToolMessage::DragStart { append_to_selected });
-					PenToolFsmState::PlacingAnchor
 				}
+
+				// Merging changes the space the layer's points are in, so the anchor is placed once the merged path has been evaluated
+				let merged = tool_data.merging_from.is_some();
+				let place = PenToolMessage::PlacePressedAnchor { merged }.into();
+				if merged {
+					responses.add(DeferMessage::AfterGraphRun { messages: vec![place] });
+				} else {
+					responses.add(place);
+				}
+
+				PenToolFsmState::PlacingAnchor
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::PlacePressedAnchor { merged }) => {
+				// The preview is carried into the merged layer's space, unless the wait for that layer was called off
+				if merged {
+					let Some(previous) = tool_data.merging_from.take() else { return self };
+					tool_data.next_point = (transform.inverse() * previous).transform_point2(tool_data.next_point);
+				}
+
+				if let Some(layer) = layer {
+					tool_data.handle_mode = HandleMode::ColinearLocked;
+					tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
+
+					let pressed = (document.metadata().document_to_viewport * transform).transform_point2(tool_data.next_point);
+					tool_data.place_anchor(SnapData::new(document, input, viewport), transform, pressed, responses);
+				}
+
+				// The input held back during the wait follows the press
+				for held in tool_data.held_input.drain(..) {
+					responses.add(held);
+				}
+
+				PenToolFsmState::DraggingHandle(tool_data.handle_mode)
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::RemovePreviousHandle) => {
 				if let Some(last_point) = tool_data.latest_point_mut() {
@@ -2378,8 +2422,12 @@ impl Fsm for PenToolFsmState {
 
 #[cfg(test)]
 mod test_pen_tool {
+	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::test_utils::test_prelude::*;
-	use graphene_std::vector::Vector;
+	use glam::DAffine2;
+	use graphene_std::vector::misc::ManipulatorPointId;
+	use graphene_std::vector::{SegmentId, Vector};
 
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
 	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, Vector)> {
@@ -2613,5 +2661,165 @@ mod test_pen_tool {
 		editor.left_mousedown(off_the_line.x, off_the_line.y, ModifierKeys::CONTROL).await;
 		editor.left_mouseup(off_the_line.x, off_the_line.y, ModifierKeys::CONTROL).await;
 		assert_anchors(&editor, &[A, B, off_the_line]);
+	}
+
+	/// The path's anchors in viewport space, in placement order.
+	fn anchor_positions(editor: &EditorTestUtils) -> Vec<DVec2> {
+		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		vector.point_domain.positions().iter().map(|&position| layer_to_viewport.transform_point2(position)).collect()
+	}
+
+	/// Draws a path from A to B, begins another at D, and brings the pointer to where a click would end it on the first one's last anchor.
+	async fn bring_a_second_path_to_the_end_of_the_first(editor: &mut EditorTestUtils) -> DVec2 {
+		click_pen(editor, A).await;
+		click_pen(editor, B).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		click_pen(editor, D).await;
+
+		let join = B + DVec2::new(3., 2.);
+		editor.move_mouse(join.x, join.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		join
+	}
+
+	fn assert_the_two_paths_are_joined(editor: &EditorTestUtils) {
+		assert_path_shape(editor, 3, 2);
+
+		let anchors = anchor_positions(editor);
+		for expected in [A, B, D] {
+			assert!(anchors.iter().any(|anchor| anchor.distance(expected) < 1e-6), "no anchor is at {expected} among {anchors:?}");
+		}
+	}
+
+	#[tokio::test]
+	async fn ending_a_path_on_the_end_of_another_joins_the_two() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let join = bring_a_second_path_to_the_end_of_the_first(&mut editor).await;
+
+		editor.left_mousedown(join.x, join.y, ModifierKeys::empty()).await;
+		editor.left_mouseup(join.x, join.y, ModifierKeys::empty()).await;
+		assert_the_two_paths_are_joined(&editor);
+	}
+
+	/// Presses at a position without the graph being evaluated afterward, as when more input arrives before the graph has caught up.
+	fn press_without_evaluating(editor: &mut EditorTestUtils, position: DVec2) {
+		let editor_mouse_state = pointer_state(position, MouseKeys::LEFT);
+		let modifier_keys = ModifierKeys::empty();
+		editor.editor.handle_message(InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys });
+	}
+
+	fn pointer_state(editor_position: DVec2, mouse_keys: MouseKeys) -> EditorPointerState {
+		EditorPointerState {
+			editor_position,
+			mouse_keys,
+			..Default::default()
+		}
+	}
+
+	#[tokio::test]
+	async fn a_release_that_comes_before_the_paths_have_merged_still_joins_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let join = bring_a_second_path_to_the_end_of_the_first(&mut editor).await;
+
+		press_without_evaluating(&mut editor, join);
+		let editor_mouse_state = pointer_state(join, MouseKeys::empty());
+		let modifier_keys = ModifierKeys::empty();
+		editor.editor.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys });
+
+		editor.eval_graph_until_finished().await.expect("The graph should evaluate");
+		assert_the_two_paths_are_joined(&editor);
+	}
+
+	#[tokio::test]
+	async fn a_pointer_that_moves_before_the_paths_have_merged_leaves_the_join_where_it_was_pressed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let join = bring_a_second_path_to_the_end_of_the_first(&mut editor).await;
+
+		press_without_evaluating(&mut editor, join);
+		let away = join + DVec2::new(40., 60.);
+		let editor_mouse_state = pointer_state(away, MouseKeys::LEFT);
+		let modifier_keys = ModifierKeys::empty();
+		editor.editor.handle_message(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
+
+		editor.eval_graph_until_finished().await.expect("The graph should evaluate");
+		editor.left_mouseup(away.x, away.y, ModifierKeys::empty()).await;
+		assert_the_two_paths_are_joined(&editor);
+	}
+
+	#[tokio::test]
+	async fn escape_before_the_paths_have_merged_leaves_only_the_first_path() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let join = bring_a_second_path_to_the_end_of_the_first(&mut editor).await;
+
+		press_without_evaluating(&mut editor, join);
+		let (key, modifier_keys, key_repeat) = (Key::Escape, ModifierKeys::empty(), false);
+		editor.editor.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat });
+
+		editor.eval_graph_until_finished().await.expect("The graph should evaluate");
+		editor.left_mouseup(join.x, join.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[A, B]);
+	}
+
+	#[tokio::test]
+	async fn a_join_from_a_turned_layer_keeps_the_handle_dragged_out_of_the_previous_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		// The second path's layer is turned and stretched once its first anchor is down
+		click_pen(&mut editor, D).await;
+		let layer = editor.get_selected_layer().await.expect("The second path should be selected");
+		let transform = DAffine2::from_scale_angle_translation(DVec2::new(1.5, 0.8), 0.6, DVec2::ZERO);
+		let (transform_in, skip_rerender) = (TransformIn::Local, false);
+		let turn = GraphOperationMessage::TransformChange {
+			layer,
+			transform,
+			transform_in,
+			skip_rerender,
+		};
+		editor.handle_message(turn).await;
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("The second path should have a vector");
+		let first = document.metadata().transform_to_viewport(layer).transform_point2(vector.point_domain.positions()[0]);
+
+		// Its next anchor has a handle dragged out of it
+		let (anchor, handle) = (DVec2::new(260., 240.), DVec2::new(300., 270.));
+		editor.move_mouse(anchor.x, anchor.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(anchor.x, anchor.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+
+		click_pen(&mut editor, B + DVec2::new(3., 2.)).await;
+		assert_path_shape(&editor, 4, 3);
+
+		let anchors = anchor_positions(&editor);
+		for expected in [A, B, first, anchor] {
+			assert!(anchors.iter().any(|anchor| anchor.distance(expected) < 1e-6), "no anchor is at {expected} among {anchors:?}");
+		}
+
+		// The joining segment leaves that anchor toward where its handle was dragged
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		let leaves_the_anchor = |&segment: &SegmentId| {
+			let start = vector.segment_start_from_id(segment).and_then(|point| vector.point_domain.position_from_id(point));
+			start.is_some_and(|start| layer_to_viewport.transform_point2(start).distance(anchor) < 1e-6)
+		};
+		let joining = vector
+			.segment_domain
+			.ids()
+			.iter()
+			.copied()
+			.find(|segment| leaves_the_anchor(segment))
+			.expect("A segment should leave the anchor");
+		let leaving = ManipulatorPointId::PrimaryHandle(joining).get_position(&vector).expect("The joining segment should have a handle");
+		let leaving = layer_to_viewport.transform_point2(leaving);
+		assert!(leaving.distance(handle) < 1e-6, "the joining segment's handle is at {leaving}");
 	}
 }
