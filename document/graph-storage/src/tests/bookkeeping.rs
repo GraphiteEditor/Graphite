@@ -1,6 +1,6 @@
 use crate::{AttributeDelta, CrdtError, HotOpId, Implementation, Network, NetworkId, Node, NodeId, NodeInput, PeerId, RegistryDelta, ResourceId, Session, UserId, Value};
 
-fn set_attribute(key: &str, value: u32) -> RegistryDelta {
+pub(super) fn set_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
 		delta: AttributeDelta {
 			key: key.to_string(),
@@ -9,7 +9,7 @@ fn set_attribute(key: &str, value: u32) -> RegistryDelta {
 	}
 }
 
-fn add_network(id: u64) -> RegistryDelta {
+pub(super) fn add_network(id: u64) -> RegistryDelta {
 	RegistryDelta::AddNetwork {
 		id: NetworkId(id),
 		network: Network::default(),

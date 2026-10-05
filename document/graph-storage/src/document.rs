@@ -112,6 +112,12 @@ impl Document {
 		Ok(())
 	}
 
+	/// Record newly retired hot ops, dropping any the hot log still holds. Returns what the dropped ops named.
+	pub(crate) fn mark_retired(&mut self, retired: impl IntoIterator<Item = HotOpId>) -> crate::Touched {
+		self.retired.extend(retired);
+		self.drop_retired_hot_ops()
+	}
+
 	/// Take on a peer's marks as well as this peer's. Returns what the dropped ops named.
 	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> crate::Touched {
 		self.retired.absorb(remote);
