@@ -5620,6 +5620,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "snapping"
+version = "0.0.0"
+dependencies = [
+ "glam 0.33.10",
+ "kurbo",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
