@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::{
-	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput,
-	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, Touched, UserId,
+	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId,
+	NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, UserId,
 };
 
 #[derive(Clone, Debug)]
@@ -16,7 +16,7 @@ pub struct Document {
 	pub(crate) hot_log: Vec<HotOp>,
 	/// The stamps of the hot log's ops, so a re-announced op is recognised without a scan.
 	pub(crate) hot_timestamps: HashSet<TimeStamp>,
-	/// Which hot ops are retired into history, so a late copy is dropped.
+	/// Which hot ops are done with (retired, or taken back by their author), so a late copy is dropped.
 	pub(crate) retired: RetiredMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
@@ -113,9 +113,27 @@ impl Document {
 	}
 
 	/// Take on a peer's marks as well as this peer's. Returns what the dropped ops named.
-	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Touched {
+	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> crate::Touched {
 		self.retired.absorb(remote);
 		self.drop_retired_hot_ops()
+	}
+
+	/// Take back hot ops for good, re-deriving the working registry without them, since a commuting op
+	/// cannot be undone in place. Returns what the ops named and the ops themselves.
+	pub(crate) fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> (crate::Touched, Vec<HotOp>) {
+		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
+		let taken: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| wanted.contains(&hot_op.id())).collect();
+		taken.iter().for_each(|hot_op| _ = self.hot_timestamps.remove(&hot_op.timestamp));
+		self.retired.extend(ids.iter().copied());
+
+		let mut touched = crate::Touched::default();
+		for hot_op in &taken {
+			touched.record(&hot_op.op);
+		}
+		if !taken.is_empty() {
+			self.rebuild_working();
+		}
+		(touched, taken)
 	}
 
 	/// Bring the stamp index back in line after the hot log was filtered as a whole.
@@ -133,16 +151,13 @@ impl Document {
 		}
 	}
 
-	/// Drop retired hot ops and re-derive working without them: their effect returns with their deltas.
-	fn drop_retired_hot_ops(&mut self) -> Touched {
+	/// Drop retired hot ops and re-derive working without them: a retired op's effect returns with its delta.
+	fn drop_retired_hot_ops(&mut self) -> crate::Touched {
 		let retired = &self.retired;
-		let mut touched = Touched::default();
-		let mut dropped = false;
-		for hot_op in self.hot_log.extract_if(.., |hot_op| retired.covers(hot_op.id())) {
-			touched.record(&hot_op.op);
-			dropped = true;
-		}
-		if dropped {
+		let dropped: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| retired.covers(hot_op.id())).collect();
+		let mut touched = crate::Touched::default();
+		if !dropped.is_empty() {
+			dropped.iter().for_each(|hot_op| touched.record(&hot_op.op));
 			self.resync_hot_timestamps();
 			self.rebuild_working();
 		}
