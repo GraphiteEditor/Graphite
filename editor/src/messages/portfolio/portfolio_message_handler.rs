@@ -781,6 +781,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
+				// Cancel the outgoing transform while the document it started in is still active, so its abort can't land in the incoming one
+				// Only a loaded active document can be transforming, and a tool message is dropped without one, so the first selection skips this
+				if self.active_document().is_some() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+				}
+				responses.add(PortfolioMessage::ActivateDocument { document_id });
+			}
+			PortfolioMessage::ActivateDocument { document_id } => {
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {
@@ -818,8 +826,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(NodeGraphMessage::Init);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(EventMessage::ToolAbort);
-				// A transform belongs to the document it started in, and its pointer lock and drawn cursor would otherwise outlive it
-				responses.add(TransformLayerMessage::CancelTransformOperation);
 				responses.add(EventMessage::SelectionChanged);
 				responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				responses.add(NodeGraphMessage::RunDocumentGraph);

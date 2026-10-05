@@ -173,6 +173,10 @@ impl EditorTestUtils {
 		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
 	}
 
+	pub fn active_document_id(&self) -> DocumentId {
+		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_id().unwrap()
+	}
+
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
 		let editor_mouse_state = EditorPointerState {
 			editor_position: ViewportPosition::new(x, y),

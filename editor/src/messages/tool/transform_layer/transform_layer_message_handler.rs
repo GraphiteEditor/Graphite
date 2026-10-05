@@ -771,20 +771,22 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-	use crate::messages::prelude::Message;
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use std::collections::VecDeque;
 
-	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
-		let document = editor.active_document();
+	fn document_layer_transform(editor: &EditorTestUtils, document_id: DocumentId, layer: LayerNodeIdentifier) -> Option<DAffine2> {
+		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.document(document_id)?;
 		let network_interface = &document.network_interface;
-		let _responses: VecDeque<Message> = VecDeque::new();
 		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface)?;
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))
+	}
+
+	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
+		let document_id = editor.active_document_id();
+		document_layer_transform(editor, document_id, layer)
 	}
 
 	#[tokio::test]
@@ -852,6 +854,47 @@ mod test_transform_layer {
 		assert!(
 			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
 			"Transform neither restored to original nor reset to identity. Original: {original_translation:?}, Final: {final_translation:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_select_document_cancels_the_transform_in_the_document_it_started_in() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let first_document = editor.active_document_id();
+
+		editor.new_document().await;
+		let second_document = editor.active_document_id();
+		assert_ne!(first_document, second_document, "The second document should be the active one");
+
+		editor.handle_message(PortfolioMessage::SelectDocument { document_id: first_document }).await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let original_transform = document_layer_transform(&editor, first_document, layer).unwrap();
+
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+
+		assert!(
+			document_layer_transform(&editor, first_document, layer).unwrap() != original_transform,
+			"The transform should apply while it runs"
+		);
+
+		editor.handle_message(PortfolioMessage::SelectDocument { document_id: second_document }).await;
+
+		assert_eq!(editor.active_document_id(), second_document, "The switch should still happen");
+		let aborted_translation = document_layer_transform(&editor, first_document, layer).unwrap().translation;
+		let original_translation = original_transform.translation;
+		assert!(
+			(aborted_translation - original_translation).length() < 5.,
+			"The transform should be aborted in the document it started in. Original: {original_translation:?}, Aborted: {aborted_translation:?}"
 		);
 	}
 

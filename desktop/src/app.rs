@@ -750,7 +750,7 @@ impl ApplicationHandler for App {
 			&& (x != 0. || y != 0.)
 		{
 			self.input_state.record_locked_delta();
-			// The device delta units are platform-defined, so they go through as they come
+			// Raw device deltas are in the backends' own units rather than the physical pixels the window position is in, so they go through unscaled
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
 			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 		}

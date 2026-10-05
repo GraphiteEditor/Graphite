@@ -188,8 +188,11 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
-				// The tools going away takes any transform with them, and its pointer lock and drawn cursor would otherwise outlive it
-				responses.add(TransformLayerMessage::CancelTransformOperation);
+				// Cancel a running transform before the tools go away, so its pointer lock and drawn cursor can't outlive them
+				// Cancelling also aborts the pen tool's path, so only do it when a transform is actually running
+				if self.transform_layer_handler.is_transforming() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+				}
 
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
