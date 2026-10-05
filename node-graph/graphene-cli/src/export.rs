@@ -1,6 +1,6 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
-use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
+use graphene_std::application_io::{ExportFormat, RenderConfig, Texture, TimingInformation};
 use graphene_std::core_types::ops::Convert;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -113,6 +113,17 @@ async fn render_frame(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor:
 			RenderOutputType::Buffer { data, width, height } => Ok(RenderedFrame::Raster { data, width, height }),
 			#[cfg(target_family = "wasm")]
 			other => Err(format!("Unexpected render output type: {other:?}. Expected Texture, Buffer for raster export or Svg for SVG export.").into()),
+		},
+		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
+	}
+}
+
+/// Execute the graph for one frame, keeping the result on the GPU.
+pub async fn render_texture(executor: &DynamicExecutor, render_config: RenderConfig) -> Result<Texture, Box<dyn Error>> {
+	match executor.execute(render_config.into_context()).await? {
+		TaggedValue::RenderOutput(output) => match output.data {
+			RenderOutputType::Texture(texture) => Ok(texture),
+			other => Err(format!("Expected a GPU render output, got: {other:?}").into()),
 		},
 		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
 	}

@@ -26,6 +26,15 @@ pub struct PreferencesMessageHandler {
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
 	pub show_storage_preferences: bool,
+	/// Who this person is across documents and devices, drawn once and kept; `0` until then.
+	/// Kept as a decimal string in the preferences file: a 64-bit number does not survive the browser's JSON store.
+	#[serde(with = "u64_as_string")]
+	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
+	pub user_id: u64,
+	/// The display name peers see in a live session; empty means unnamed.
+	pub user_name: String,
+	/// Draw the other peers' pointers over a shared document.
+	pub show_remote_cursors: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
 }
@@ -72,6 +81,9 @@ impl Default for PreferencesMessageHandler {
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
 			show_storage_preferences: false,
+			user_id: 0,
+			user_name: String::new(),
+			show_remote_cursors: true,
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
@@ -87,6 +99,9 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
 				*self = preferences;
+				if self.user_id == 0 {
+					self.user_id = crate::application::generate_uuid();
+				}
 
 				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PreferencesMessage::ModifyLayout {
@@ -151,6 +166,15 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.show_storage_preferences = !self.show_storage_preferences;
 				responses.add(MenuBarMessage::SendLayout);
 			}
+			PreferencesMessage::UserName { name } => {
+				self.user_name = name.trim().to_string();
+				responses.add(SyncMessage::RefreshPanel);
+			}
+			PreferencesMessage::ShowRemoteCursors { enabled } => {
+				self.show_remote_cursors = enabled;
+				responses.add(SyncMessage::RefreshPanel);
+				responses.add(OverlaysMessage::Draw);
+			}
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {
 				self.vsync = vsync;
@@ -162,4 +186,27 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 
 	advertise_actions!(PreferencesMessageDiscriminant;
 	);
+}
+
+/// A `u64` written as a decimal string, since the browser's JSON loses precision on a number this wide and cannot write a
+/// BigInt. Reads a number too.
+mod u64_as_string {
+	use serde::{Deserialize, Deserializer, Serializer};
+
+	pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.serialize_str(&value.to_string())
+	}
+
+	pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+		#[derive(Deserialize)]
+		#[serde(untagged)]
+		enum Stored {
+			Text(String),
+			Number(u64),
+		}
+		match Stored::deserialize(deserializer)? {
+			Stored::Text(text) => text.parse().map_err(serde::de::Error::custom),
+			Stored::Number(number) => Ok(number),
+		}
+	}
 }

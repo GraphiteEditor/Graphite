@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
 use document_graph_storage::{Declarations, Registry, Value};
-use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
+use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::editor_delta::{EditorDelta, construct_batch};
@@ -35,6 +35,20 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
+	/// For each step on the legacy redo stack, how storage undid it, so redo takes the matching way back rather than
+	/// diffing a snapshot that predates what peers wrote since.
+	retracted_undos: Vec<UndoNote>,
+}
+
+/// How storage undid a step, paired with the legacy redo entry pushed for it.
+#[derive(Clone, Debug)]
+pub enum UndoNote {
+	/// The step was still hot and its ops were taken back; redo stages them again.
+	Retracted(Vec<document_graph_storage::RegistryDelta>),
+	/// The step had retired in a session and was dropped out of the shared line; redo puts it back on top.
+	Dropped(document_graph_storage::Rev),
+	/// The storage cursor moved back over it; redo moves it forward.
+	Cursor,
 }
 
 /// Why [`DocumentHistory::move_cursor`] produced no interface.
@@ -77,6 +91,7 @@ impl DocumentHistory {
 	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
 	pub fn clear_redo(&mut self) {
 		self.legacy_redo_stack.clear();
+		self.retracted_undos.clear();
 	}
 
 	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
@@ -99,6 +114,11 @@ impl DocumentHistory {
 		self.storage.as_mut()
 	}
 
+	/// The decoded proto-node declarations the working copy's registry states reference.
+	pub fn declarations(&self) -> &Declarations {
+		&self.declarations
+	}
+
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
 	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
 		self.needs_whole_document_stage |= storage.registry().node_instances.is_empty();
@@ -118,9 +138,123 @@ impl DocumentHistory {
 		self.declarations.clear();
 	}
 
-	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
-	/// boundary (a new `StartTransaction`) and before undo/redo, so the per-`CommitTransaction` staging
-	/// coalesces into one interaction aligned with the legacy step. No-op while unmounted.
+	/// Close the open storage transaction at an undo-step boundary, so the staging since the last boundary is one unit
+	/// for retirement and undo, aligned with the legacy step. No-op while unmounted.
+	pub fn end_storage_transaction(&mut self) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.end_transaction() {
+			log::error!("Closing the storage transaction failed: {error}");
+		}
+	}
+
+	/// Undo the latest storage transaction while it is still hot by taking it back, so it never becomes a history step.
+	/// `None` when the step already retired or nothing is mounted.
+	pub fn retract_storage_transaction(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
+		let storage = self.storage.as_mut()?;
+		match storage.retract_transaction() {
+			Ok(retracted) => retracted,
+			Err(error) => {
+				log::error!("Taking the storage transaction back failed: {error}");
+				None
+			}
+		}
+	}
+
+	/// Redo a step taken back by staging its ops as a fresh transaction. What they name lands in the remote changes.
+	pub fn restage_ops(&mut self, ops: Vec<document_graph_storage::RegistryDelta>) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.restage_ops(ops) {
+			log::error!("Staging the redone step failed: {error}");
+		}
+	}
+
+	/// Whether there is a legacy undo step to pop, and so a step storage may take back.
+	pub fn has_undo_step(&self) -> bool {
+		!self.legacy_undo_stack.is_empty()
+	}
+
+	/// Whether there is a legacy redo step to pop.
+	pub fn has_redo_step(&self) -> bool {
+		!self.legacy_redo_stack.is_empty()
+	}
+
+	/// The resource bytes the steps taken back still name. Nothing in the registry or history refers to them,
+	/// so garbage collection must keep them for a redo.
+	pub fn retracted_resource_hashes(&self) -> impl Iterator<Item = graph_craft::application_io::resource::ResourceHash> + '_ {
+		self.retracted_undos
+			.iter()
+			.filter_map(|note| match note {
+				UndoNote::Retracted(ops) => Some(ops),
+				_ => None,
+			})
+			.flatten()
+			.filter_map(|op| match op {
+				document_graph_storage::RegistryDelta::AddResource { entry, .. } => entry.hash,
+				document_graph_storage::RegistryDelta::SetResourceHash { hash, .. } => *hash,
+				_ => None,
+			})
+	}
+
+	/// Whether the next redo step was taken back or dropped rather than cursor-undone, checked before the legacy stacks move.
+	pub fn next_redo_is_storage_driven(&self) -> bool {
+		!matches!(self.retracted_undos.last(), None | Some(UndoNote::Cursor))
+	}
+
+	/// Record how the step just undone reached storage, paired with the legacy redo entry pushed for it.
+	pub fn note_undo(&mut self, note: UndoNote) {
+		self.retracted_undos.push(note);
+	}
+
+	/// How the step about to be redone was undone, cursor-undone when nothing was noted.
+	pub fn take_undo_note(&mut self) -> UndoNote {
+		self.retracted_undos.pop().unwrap_or(UndoNote::Cursor)
+	}
+
+	/// Undo this peer's latest retired step in a session; see [`document_format::Gdd::undo_retired_step`].
+	pub fn undo_retired_step(&mut self) -> Option<document_graph_storage::Rev> {
+		let storage = self.storage.as_mut()?;
+		match storage.undo_retired_step() {
+			Ok(rev) => rev,
+			Err(error) => {
+				log::error!("Undoing the retired step failed: {error}");
+				None
+			}
+		}
+	}
+
+	/// Redo a step dropped out of a session's line.
+	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.redo_retired_step(rev) {
+			log::error!("Redoing the dropped step failed: {error}");
+		}
+	}
+
+	/// Drop any retired interaction out of the line; see [`document_format::Gdd::drop_step`].
+	pub fn drop_step(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.drop_step(rev) {
+			log::error!("Removing the step failed: {error}");
+		}
+	}
+
+	/// Move the shared head to an ancestor; see [`document_format::Gdd::move_head`].
+	pub fn move_head_to(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.move_head(rev) {
+			log::error!("Moving the head failed: {error}");
+		}
+	}
+
+	/// Forget the legacy snapshots: after a move made from the History panel they describe states off the line the
+	/// head is on, so Ctrl+Z resumes from the next edit and the panel is the way back meanwhile.
+	pub fn clear_legacy(&mut self) {
+		self.legacy_undo_stack.clear();
+		self.legacy_redo_stack.clear();
+		self.retracted_undos.clear();
+	}
+
+	/// Close this peer's open transaction and retire every closed one into durable Gdd history. No-op while unmounted.
 	pub fn retire_storage_interaction(&mut self) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.retire_pending_interaction() {
@@ -130,11 +264,21 @@ impl DocumentHistory {
 
 	/// Stage a `CommitTransaction` into the `Gdd` working copy: the first commit writes the whole document,
 	/// every later one stages the `deltas` the store recorded. No-op while unmounted. Proto-node declaration
-	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
-	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
+	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are closed into one
+	/// transaction by [`end_storage_transaction`](Self::end_storage_transaction) at undo-step boundaries.
 	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
+		if !self.stage_graph(deltas, interface, registry, byte_store) {
+			return;
+		}
+
+		self.persist_view_state(interface, view_settings);
+	}
+
+	/// The graph half of [`stage_snapshot`](Self::stage_snapshot), without the view state. A session stages every frame,
+	/// so peers see each movement of a drag; retirement coarsens them later. Returns whether the working copy took the batch.
+	pub fn stage_graph(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> bool {
 		let needs_whole_document_stage = self.needs_whole_document_stage;
-		let Some(storage) = self.storage.as_mut() else { return };
+		let Some(storage) = self.storage.as_mut() else { return false };
 
 		let staged = match needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
@@ -152,14 +296,13 @@ impl DocumentHistory {
 			Ok(declarations) => {
 				self.declarations.extend(declarations);
 				self.needs_whole_document_stage = false;
+				true
 			}
 			Err(error) => {
 				log::error!("Storage snapshot staging failed: {error}");
-				return;
+				false
 			}
 		}
-
-		self.persist_view_state(interface, view_settings);
 	}
 
 	/// Converts the whole document and stages the difference from what the working copy holds.
@@ -239,15 +382,64 @@ impl DocumentHistory {
 			return Err(CursorMoveError::NotMoved);
 		}
 
-		storage
+		self.rebuild_interface().ok_or(CursorMoveError::RebuildFailed)
+	}
+
+	/// Build a fresh interface from the working registry, using the declaration cache so no resource load
+	/// is needed. `None` when the registry does not convert.
+	pub fn rebuild_interface(&self) -> Option<NodeNetworkInterface> {
+		let storage = self.storage.as_ref()?;
+
+		let rebuilt = storage
 			.registry()
 			.to_runtime_with_full_metadata(&self.declarations)
 			.map_err(|error| error.to_string())
-			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
-			.map_err(|error| {
-				log::error!("Storage undo/redo rebuild failed: {error}");
-				CursorMoveError::RebuildFailed
-			})
+			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()));
+
+		match rebuilt {
+			Ok(interface) => Some(interface),
+			Err(error) => {
+				log::error!("Storage interface rebuild failed: {error}");
+				None
+			}
+		}
+	}
+
+	/// The hashes of declaration resources the working copy names but holds no decoded declaration for.
+	/// A remote change can name a declaration whose bytes the byte store already holds, so no peer is asked for them.
+	pub fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
+		let Some(storage) = self.storage.as_ref() else { return Vec::new() };
+
+		let mut hashes: Vec<ResourceHash> = storage
+			.session()
+			.all_declaration_resources()
+			.into_iter()
+			.filter_map(|(id, hash)| (!self.declarations.contains_key(&id)).then_some(hash?))
+			.collect();
+		hashes.sort_unstable();
+		hashes.dedup();
+		hashes
+	}
+
+	/// Cache a resource that arrived from a peer as a proto-node declaration, under every declaration
+	/// resource referencing its hash. Ignores resources no declaration refers to, such as images and fonts.
+	pub fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) {
+		let Some(storage) = self.storage.as_ref() else { return };
+
+		let referencing: Vec<ResourceId> = storage
+			.session()
+			.all_declaration_resources()
+			.into_iter()
+			.filter_map(|(id, declaration_hash)| (declaration_hash == Some(hash)).then_some(id))
+			.collect();
+		if referencing.is_empty() {
+			return;
+		}
+
+		match document_graph_storage::decode_declaration(bytes) {
+			Ok(declaration) => self.declarations.extend(referencing.into_iter().map(|id| (id, declaration.clone()))),
+			Err(error) => log::error!("Failed to deserialize a received ProtoNode declaration: {error}"),
+		}
 	}
 
 	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`
