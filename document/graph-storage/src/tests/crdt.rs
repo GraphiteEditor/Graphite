@@ -161,7 +161,7 @@ fn history_is_causal_and_deterministic() {
 	}
 }
 
-fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
+pub(super) fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
 		delta: crate::AttributeDelta {
 			key: key.to_string(),
