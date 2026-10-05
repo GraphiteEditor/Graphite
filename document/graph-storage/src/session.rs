@@ -3,7 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value, to_value,
+	ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, Touched, UserId, Value,
+	to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -287,9 +288,9 @@ impl Session {
 		&self.document.retired
 	}
 
-	/// Take on a peer's marks, or this peer's persisted ones, dropping the hot ops they cover.
-	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) {
-		self.document.absorb_retired_marks(remote);
+	/// Take on a peer's marks, or this peer's persisted ones, dropping the hot ops they cover. Returns what those named.
+	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Touched {
+		self.document.absorb_retired_marks(remote)
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery

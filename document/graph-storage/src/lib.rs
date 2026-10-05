@@ -11,6 +11,7 @@ mod prior;
 pub mod registry;
 pub mod resources;
 pub mod session;
+pub mod touched;
 pub mod value;
 
 #[cfg(any(feature = "conversion", test))]
@@ -30,6 +31,7 @@ pub use prior::{NetworkField, NodeField, Prior};
 pub use registry::*;
 pub use resources::*;
 pub use session::*;
+pub use touched::Touched;
 pub use value::{Value, ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
@@ -40,11 +42,12 @@ pub use from_runtime::{
 #[cfg(any(feature = "conversion", test))]
 pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};
 #[cfg(any(feature = "conversion", test))]
-pub use to_runtime::Declarations;
+pub use to_runtime::{Declarations, ProjectedNetwork, ProjectedNode, RuntimeProjection};
 
 #[cfg(test)]
 mod tests {
 	mod bookkeeping;
 	mod crdt;
+	mod projection;
 	mod round_trip;
 }
