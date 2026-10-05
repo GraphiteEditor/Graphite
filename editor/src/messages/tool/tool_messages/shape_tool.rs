@@ -23,14 +23,13 @@ use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
 use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapView};
-use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
+use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
 use crate::messages::tool::utility_types::DocumentToolData;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
-use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
 use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, ParameterRef};
@@ -784,7 +783,6 @@ pub struct ShapeToolData {
 	// Used for by transform cage
 	pub bounding_box_manager: Option<BoundingBoxManager>,
 	layers_dragging: Vec<LayerNodeIdentifier>,
-	snap_candidates: Vec<SnapCandidatePoint>,
 	skew_edge: EdgeBool,
 	cursor: MouseCursorIcon,
 
@@ -796,19 +794,6 @@ pub struct ShapeToolData {
 }
 
 impl ShapeToolData {
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) {
-		self.snap_candidates.clear();
-		for &layer in &self.layers_dragging {
-			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
-				snapping::get_layer_snap_points(layer, &SnapData::new(document, input, viewport), &mut self.snap_candidates);
-			}
-			if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
-				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
-				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
-			}
-		}
-	}
-
 	fn transform_cage_mouse_icon(&mut self, input: &InputPreprocessorMessageHandler) -> MouseCursorIcon {
 		let dragging_bounds = self
 			.bounding_box_manager
@@ -1110,7 +1095,11 @@ impl Fsm for ShapeToolFsmState {
 
 					match (resize, rotate, skew) {
 						(true, false, false) => {
-							tool_data.get_snap_candidates(document, input, viewport);
+							let moving = Moving {
+								layers: tool_data.layers_dragging.clone(),
+								..Default::default()
+							};
+							snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::ResizingBounds;
@@ -1122,7 +1111,6 @@ impl Fsm for ShapeToolFsmState {
 							return ShapeToolFsmState::RotatingBounds;
 						}
 						(false, false, true) => {
-							tool_data.get_snap_candidates(document, input, viewport);
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::SkewingBounds { skew: Key::Control };
@@ -1268,14 +1256,11 @@ impl Fsm for ShapeToolFsmState {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 					resize_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
-						&mut tool_data.data.snap_manager,
-						&mut tool_data.snap_candidates,
-						input,
-						viewport,
 						input.keyboard.key(modifier[0]),
 						input.keyboard.key(modifier[1]),
 						ToolType::Shape,
@@ -1583,4 +1568,34 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 		ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	hint_data.send_layout(responses);
+}
+
+#[cfg(test)]
+mod test_shape_tool {
+	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn a_rectangle_resized_by_the_corner_of_its_cage_to_near_a_corner_of_another_meets_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 200., 180.).await;
+		editor.draw_rect(300., 300., 360., 350.).await;
+		let layer = editor.get_selected_layer().await.expect("the rectangle drawn last should be selected");
+
+		// Drawing the overlays lays the cage around the rectangle, and its top left corner is brought a few pixels from the other's bottom right corner
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+		let (corner, pointer) = (DVec2::new(300., 300.), DVec2::new(203., 178.));
+		editor.move_mouse(corner.x, corner.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(corner.x, corner.y, ModifierKeys::empty()).await;
+		editor.move_mouse(pointer.x, pointer.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		let [min, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the rectangle should have a bounding box");
+		let expected = [DVec2::new(200., 180.), DVec2::new(360., 350.)];
+		assert!(
+			min.distance(expected[0]) < 1e-6 && max.distance(expected[1]) < 1e-6,
+			"the rectangle spans {min} to {max} rather than {expected:?}"
+		);
+	}
 }

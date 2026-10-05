@@ -5,6 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
+use crate::messages::tool::common_functionality::snap_session::{Moving, SnapSession, SnapView};
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
@@ -59,7 +60,14 @@ impl ToolEditTarget for ArtboardTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		let was_resizing = self.fsm_state == ArtboardToolFsmState::ResizingBounds;
 		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
+
+		// However a resize ends, its snapping gesture ends with it
+		if was_resizing && self.fsm_state != ArtboardToolFsmState::ResizingBounds {
+			context.snap_session.end_gesture();
+			responses.add(OverlaysMessage::Draw);
+		}
 	}
 
 	fn actions(&self) -> ActionList {
@@ -177,15 +185,8 @@ impl ArtboardToolData {
 		}
 	}
 
-	fn resize_artboard(
-		&mut self,
-		responses: &mut VecDeque<Message>,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		from_center: bool,
-		constrain_square: bool,
-	) {
+	fn resize_artboard(&mut self, responses: &mut VecDeque<Message>, view: SnapView, snap_session: &mut SnapSession, from_center: bool, constrain_square: bool) {
+		let document = view.document;
 		let Some(bounds) = &self.bounding_box_manager else {
 			return;
 		};
@@ -203,13 +204,8 @@ impl ArtboardToolData {
 		}
 
 		let center = from_center.then_some(bounds.center_of_transformation);
-		let ignore = vec![selected_artboard];
-		let snap = Some(SizeSnapData {
-			manager: &mut self.draw.snap_manager,
-			points: &mut self.snap_candidates,
-			snap_data: SnapData::ignore(document, input, viewport, &ignore),
-		});
-		let (min, size) = movement.new_size(input.mouse.position, bounds.transform, center, constrain_square, snap);
+		let snap = Some(SizeSnapData { session: snap_session, view });
+		let (min, size) = movement.new_size(view.input.mouse.position, bounds.transform, center, constrain_square, snap);
 		let max = min + size;
 		let position = min.min(max);
 		let size = (max - min).abs();
@@ -239,7 +235,14 @@ impl Fsm for ArtboardToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			document,
+			document_id,
+			input,
+			viewport,
+			snap_session,
+			..
+		} = tool_action_data;
 
 		let hovered = ArtboardToolData::hovered_artboard(document, input, viewport).is_some();
 
@@ -315,7 +318,14 @@ impl Fsm for ArtboardToolFsmState {
 
 				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					tool_data.start_resizing(selected_edges, document, input);
-					tool_data.get_snap_candidates(document, input);
+
+					// The artboard's own box follows the resize, while what is inside it stays put and can be snapped to
+					let moving = Moving {
+						edited: tool_data.selected_artboard.into_iter().collect(),
+						..Default::default()
+					};
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
+
 					ArtboardToolFsmState::ResizingBounds
 				} else if tool_data.select_artboard(document, input, viewport, responses) {
 					tool_data.get_snap_candidates(document, input);
@@ -331,7 +341,7 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let from_center = input.keyboard.get(center as usize);
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
-				tool_data.resize_artboard(responses, document, input, viewport, from_center, constrain_square);
+				tool_data.resize_artboard(responses, SnapView::new(document, *document_id, input), snap_session, from_center, constrain_square);
 
 				// Auto-panning
 				let messages = [
@@ -585,6 +595,7 @@ impl Fsm for ArtboardToolFsmState {
 
 #[cfg(test)]
 mod test_artboard {
+	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	pub use crate::test_utils::test_prelude::*;
 	use graphene_std::Artboard;
 	use graphene_std::list::List;
@@ -741,6 +752,24 @@ mod test_artboard {
 		has_artboards(
 			&mut editor,
 			vec![ArtboardLayoutDocument::new((60., 10.), (10., 12.)), ArtboardLayoutDocument::new((70., 0.), (10., 100.))],
+		)
+		.await;
+	}
+
+	#[tokio::test]
+	async fn an_artboard_edge_resized_to_near_the_edge_of_another_artboard_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 100., 100., 200., 200., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Artboard, 300., 100., 400., 200., ModifierKeys::empty()).await;
+
+		// Drawing the overlays lays the cage around the second artboard, and its left edge is brought a few pixels from the first artboard's right edge
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+		editor.drag_path(&[DVec2::new(300., 150.), DVec2::new(203., 156.)], ModifierKeys::empty()).await;
+
+		has_artboards(
+			&mut editor,
+			vec![ArtboardLayoutDocument::new((100., 100.), (100., 100.)), ArtboardLayoutDocument::new((200., 100.), (200., 100.))],
 		)
 		.await;
 	}

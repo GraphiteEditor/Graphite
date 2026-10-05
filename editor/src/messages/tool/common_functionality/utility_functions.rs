@@ -1,4 +1,4 @@
-use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
+use super::snap_session::{SnapSession, SnapView, anchor_positions};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -214,28 +214,68 @@ pub fn is_visible_point(
 	}
 }
 
+/// The most anchors of the dragged layers that snap along with the box around them, which are those nearest where the pointer took hold.
+const MAX_SNAPPING_ANCHORS: usize = 8;
+
+/// The most layers, counting those inside dragged groups, for which a drag snaps their anchors as well as the box around them.
+const MAX_LAYERS_WITH_SNAPPING_ANCHORS: usize = 8;
+
+/// Adds the anchors of the dragged layers nearest the grip to where a gesture's features start, in document space, skipping any already there.
+pub fn push_nearest_anchors(starts: &mut Vec<DVec2>, document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier], grip: DVec2) {
+	// Anchors far from the grip seldom decide where a drag lands, so only the nearest snap. O(n log n) in the anchors.
+	let mut anchors = dragged_anchors(document, layers);
+	anchors.sort_by(|a, b| a.distance_squared(grip).total_cmp(&b.distance_squared(grip)));
+
+	let mut pushed = 0;
+	for anchor in anchors {
+		if pushed >= MAX_SNAPPING_ANCHORS {
+			break;
+		}
+		if !starts.iter().any(|start| start.abs_diff_eq(anchor, 1e-6)) {
+			starts.push(anchor);
+			pushed += 1;
+		}
+	}
+}
+
+/// The anchors the dragged layers draw, in document space, when few enough layers are dragged for them to be worth snapping.
+fn dragged_anchors(document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier]) -> Vec<DVec2> {
+	let metadata = document.metadata();
+	let with_everything_inside = layers.iter().flat_map(|&layer| std::iter::once(layer).chain(layer.descendants(metadata)));
+	let layers: Vec<_> = with_everything_inside
+		.filter(|layer| !layer.has_children(metadata))
+		.take(MAX_LAYERS_WITH_SNAPPING_ANCHORS + 1)
+		.collect();
+	if layers.len() > MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+		return Vec::new();
+	}
+
+	let mut anchors = Vec::new();
+	for layer in layers {
+		let to_document = metadata.transform_to_document_as_rendered(layer);
+		let drawn = metadata.layer_outline(layer).flat_map(anchor_positions).map(|position| to_document.transform_point2(position));
+		anchors.extend(drawn.filter(|position| position.is_finite()));
+	}
+	anchors
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn resize_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
-	snap_manager: &mut SnapManager,
-	snap_candidates: &mut Vec<SnapCandidatePoint>,
-	input: &InputPreprocessorMessageHandler,
-	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
 ) {
+	let document = view.document;
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let center = center.then_some(bounds.center_of_transformation);
-		let snap = Some(SizeSnapData {
-			manager: snap_manager,
-			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
-		});
-		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
+		let snap = Some(SizeSnapData { session: snap_session, view });
+		let (position, size) = movement.new_size(view.input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 		let pivot_transform = DAffine2::from_translation(pivot);
@@ -367,6 +407,17 @@ pub fn transforming_transform_cage(
 
 		if let Some(bounds) = &mut bounding_box_manager {
 			bounds.original_bound_transform = bounds.transform;
+
+			// The resized layers' anchors nearest the grab snap along with the box, taken from where they are before the resize
+			if let Some(edges) = &mut bounds.selected_edges {
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let grab = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let mut anchors = Vec::new();
+				push_nearest_anchors(&mut anchors, document, layers_dragging, grab);
+
+				let document_to_cage = bounds.transform.inverse() * document_to_viewport;
+				edges.anchors = anchors.into_iter().map(|anchor| document_to_cage.transform_point2(anchor)).collect();
+			}
 
 			layers_dragging.retain(|layer| {
 				if *layer != LayerNodeIdentifier::ROOT_PARENT {

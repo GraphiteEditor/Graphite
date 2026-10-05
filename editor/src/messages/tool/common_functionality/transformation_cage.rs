@@ -1,4 +1,5 @@
-use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
+use super::snap_session::{BoxFeatures, FeatureMap, Locus, PointOptions, SnapSession, SnapView};
+use super::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
 	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
@@ -17,9 +18,8 @@ use graphene_std::renderer::Rect;
 pub type EdgeBool = (bool, bool, bool, bool);
 
 pub struct SizeSnapData<'a> {
-	pub manager: &'a mut SnapManager,
-	pub points: &'a mut Vec<SnapCandidatePoint>,
-	pub snap_data: SnapData<'a>,
+	pub session: &'a mut SnapSession,
+	pub view: SnapView<'a>,
 }
 
 /// Contains the edges that are being dragged along with the original bounds.
@@ -30,6 +30,8 @@ pub struct SelectedEdges {
 	pub bottom: bool,
 	pub left: bool,
 	pub right: bool,
+	/// Anchors of the resized layers, in the same space as the bounds before the resize, which snap along with the box.
+	pub anchors: Vec<DVec2>,
 	// Aspect ratio in the form of width/height, so x:1 = width:height
 	aspect_ratio: f64,
 }
@@ -65,6 +67,7 @@ impl SelectedEdges {
 			left,
 			right,
 			bounds,
+			anchors: Vec::new(),
 			aspect_ratio,
 		}
 	}
@@ -113,6 +116,7 @@ impl SelectedEdges {
 		}
 
 		let mut pivot = self.pivot_from_bounds(min, max);
+		let mut from_center = false;
 
 		// Alt: Scaling around the pivot
 		if let Some(center_around) = center_around {
@@ -146,6 +150,7 @@ impl SelectedEdges {
 				&& calculate_distance(&mut min.x, center_around.x, max.x, self.bounds[1].x, self.right)
 			{
 				pivot = center_around;
+				from_center = true;
 			}
 		}
 
@@ -164,87 +169,115 @@ impl SelectedEdges {
 			max = min + new_size;
 		}
 
-		if let Some(SizeSnapData { manager, points, snap_data }) = snap {
-			let view_to_doc = snap_data.document.metadata().document_to_viewport.inverse();
-			let bounds_to_doc = view_to_doc * transform;
-			let mut best_snap = SnappedPoint::infinite_snap(pivot);
-			let mut best_scale_factor = DVec2::ONE;
-			let tolerance = snapping::snap_tolerance(snap_data.document);
-
-			let bbox = Some(Rect::from_box((bounds_to_doc * Quad::from_box([min, max])).bounding_box()));
-			for (index, point) in points.iter_mut().enumerate() {
-				let config = SnapTypeConfiguration {
-					bbox,
-					use_existing_candidates: index != 0,
-					..Default::default()
-				};
-
-				let old_position = point.document_point;
-				let bounds_space = bounds_to_doc.inverse().transform_point2(point.document_point);
-				let normalized = (bounds_space - self.bounds[0]) / (self.bounds[1] - self.bounds[0]);
-				let updated = normalized * (max - min) + min;
-				point.document_point = bounds_to_doc.transform_point2(updated);
-				let mut snapped = if constrain {
-					let constraint = SnapConstraint::Line {
-						origin: point.document_point,
-						direction: (point.document_point - bounds_to_doc.transform_point2(pivot)).normalize_or_zero(),
-					};
-					manager.constrained_snap(&snap_data, point, constraint, config)
-				} else if !(self.top || self.bottom) || !(self.left || self.right) {
-					let axis = if !(self.top || self.bottom) { DVec2::X } else { DVec2::Y };
-					let constraint = SnapConstraint::Line {
-						origin: point.document_point,
-						direction: bounds_to_doc.transform_vector2(axis),
-					};
-					manager.constrained_snap(&snap_data, point, constraint, config)
-				} else {
-					manager.free_snap(&snap_data, point, config)
-				};
-				point.document_point = old_position;
-
-				if !snapped.is_snapped() {
-					continue;
-				}
-				let snapped_bounds = bounds_to_doc.inverse().transform_point2(snapped.snapped_point_document);
-
-				let new_from_pivot = snapped_bounds - pivot; // The new vector from the snapped point to the pivot
-				let original_from_pivot = updated - pivot; // The original vector from the point to the pivot
-				let mut scale_factor = new_from_pivot / original_from_pivot;
-
-				// Constrain should always scale by the same factor in x and y.
-				// When one axis of `original_from_pivot` is near zero (e.g. for a line's degenerate bounding box),
-				// the scale factor for that axis is numerically unstable, so we copy from the more stable axis.
-				if constrain {
-					if original_from_pivot.x.abs() < original_from_pivot.y.abs() {
-						scale_factor.x = scale_factor.y;
-					} else {
-						scale_factor.y = scale_factor.x;
-					}
-				}
-
-				if !(self.left || self.right || constrain) {
-					scale_factor.x = 1.
-				}
-				if !(self.top || self.bottom || constrain) {
-					scale_factor.y = 1.
-				}
-
-				snapped.distance = bounds_to_doc.transform_vector2((max - min) * (scale_factor - DVec2::ONE)).length();
-				if snapped.distance > tolerance || !snapped.distance.is_finite() {
-					continue;
-				}
-				if best_snap.other_snap_better(&snapped) {
-					best_snap = snapped;
-					best_scale_factor = scale_factor;
-				}
-			}
-			manager.update_indicator(best_snap);
-
-			min = pivot - (pivot - min) * best_scale_factor;
-			max = pivot - (pivot - max) * best_scale_factor;
+		if let Some(snap) = snap {
+			[min, max] = self.snap_stretch(snap, transform, [min, max], pivot, constrain, from_center);
 		}
 
 		(min, max - min)
+	}
+
+	/// Snaps the original bounds, stretched about a pivot to the unsnapped corners, and returns the snapped corners, all in the cage's space.
+	fn snap_stretch(&self, snap: SizeSnapData, transform: DAffine2, unsnapped: [DVec2; 2], pivot: DVec2, constrain: bool, from_center: bool) -> [DVec2; 2] {
+		let SizeSnapData { session, view } = snap;
+		let [first, second] = self.bounds;
+		let [min, max] = unsnapped;
+
+		// A scale is held at 1 along an axis the drag leaves alone (unless Shift carries it along) or where the box has no extent
+		let dragged = [self.left || self.right, self.top || self.bottom];
+		let has_extent = [0, 1].map(|axis| (second[axis] - first[axis]).abs() > MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT);
+		let held = [0, 1].map(|axis| !has_extent[axis] || !(dragged[axis] || constrain));
+		if held == [true, true] {
+			return unsnapped;
+		}
+
+		// Each scale is read at the original side further from the pivot, since the other side may lie on it
+		let scale = |axis: usize| {
+			let from_pivot = [first[axis] - pivot[axis], second[axis] - pivot[axis]];
+			let side = usize::from(from_pivot[1].abs() > from_pivot[0].abs());
+			([min[axis], max[axis]][side] - pivot[axis]) / from_pivot[side]
+		};
+		let free = DVec2::from([0, 1].map(|axis| if held[axis] { 1. } else { scale(axis) }));
+		if !free.is_finite() {
+			return unsnapped;
+		}
+
+		let to_document = view.document.metadata().document_to_viewport.inverse() * transform;
+		let axes = [DVec2::X, DVec2::Y].map(|axis| to_document.transform_vector2(axis).try_normalize());
+		let [Some(x_axis), Some(y_axis)] = axes else { return unsnapped };
+		let axes = [x_axis, y_axis];
+		let pivot_in_document = to_document.transform_point2(pivot);
+
+		// Built from the original box alone, so the features stay the same from move to move and an engaged snap holds
+		let corners = [first, DVec2::new(second.x, first.y), second, DVec2::new(first.x, second.y)];
+		let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+		let stretched = |start: DVec2| {
+			let mut feature = FeatureMap::stretching(to_document.transform_point2(start), pivot_in_document, axes);
+
+			// A held scale gets a direction of its own, so features level with the pivot along that axis can still snap
+			for axis in (0..2).filter(|&axis| held[axis]) {
+				let column = feature.matrix.col_mut(axis);
+				feature.offset += *column - axes[axis];
+				*column = axes[axis];
+			}
+			feature
+		};
+		let box_points = corners.into_iter().chain(middles).chain([(first + second) / 2.]);
+		let features: Vec<FeatureMap> = box_points.chain(self.anchors.iter().copied()).map(stretched).collect();
+
+		// The pointer carries the dragged corner, or for an edge, its end further from the pivot so the two are never level
+		let dragged_second_side = [self.right, self.bottom];
+		let on_second_side = [0, 1].map(|axis| {
+			if dragged[axis] {
+				dragged_second_side[axis]
+			} else {
+				(second[axis] - pivot[axis]).abs() > (first[axis] - pivot[axis]).abs()
+			}
+		});
+		let lead = match on_second_side {
+			[false, false] => 0,
+			[true, false] => 1,
+			[true, true] => 2,
+			[false, true] => 3,
+		};
+
+		// An edge drag keeps the scale along the edge at 1, and Shift keeps the scales in proportion
+		let required = match held {
+			[true, false] => Locus::line(DVec2::new(1., 0.), DVec2::Y),
+			[false, true] => Locus::line(DVec2::new(0., 1.), DVec2::X),
+			_ if constrain => Locus::line(DVec2::ZERO, free.signum()),
+			_ => None,
+		};
+
+		// Gaps and sizes are matched only for a cage upright in the document, and only along an axis where just the lead's side moves
+		let upright = axes.iter().all(|axis| axis.x.abs() < 1e-9 || axis.y.abs() < 1e-9);
+		let lead_position = features[lead].position(free);
+		let box_features = upright.then(|| {
+			let sides = [0, 1].map(|document_axis| {
+				let along = usize::from(y_axis[document_axis].abs() > x_axis[document_axis].abs());
+				let mut sides = [None, None];
+				if !held[along] && !constrain && !from_center {
+					sides[usize::from(lead_position[document_axis] >= pivot_in_document[document_axis])] = Some(lead);
+				}
+				sides
+			});
+			BoxFeatures { corners: [0, 1, 2, 3], sides }
+		});
+
+		let options = PointOptions {
+			required,
+			box_features,
+			..Default::default()
+		};
+		let snapped = session.snap_features(view, &features, lead, free, options);
+
+		// The snapped scales stretch the original box about the pivot, while a held axis keeps what it got unsnapped
+		let stretch = |bound: DVec2| pivot + (bound - pivot) * snapped;
+		let [mut snapped_min, mut snapped_max] = [stretch(first), stretch(second)];
+		for axis in (0..2).filter(|&axis| held[axis]) {
+			snapped_min[axis] = min[axis];
+			snapped_max[axis] = max[axis];
+		}
+		[snapped_min, snapped_max]
 	}
 
 	/// Calculates the required scaling to resize the bounding box
@@ -510,14 +543,12 @@ impl BoundingBoxManager {
 			return false;
 		}
 
-		let angle;
-		let is_compact;
-		if hover_edge.0 || hover_edge.1 {
-			angle = (quad.top_left() - quad.top_right()).to_angle();
-			is_compact = (quad.top_left() - quad.bottom_left()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2);
+		let (angle, is_compact) = if hover_edge.0 || hover_edge.1 {
+			let angle = (quad.top_left() - quad.top_right()).to_angle();
+			(angle, (quad.top_left() - quad.bottom_left()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2))
 		} else if hover_edge.2 || hover_edge.3 {
-			angle = (quad.top_left() - quad.bottom_left()).to_angle();
-			is_compact = (quad.top_left() - quad.top_right()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2);
+			let angle = (quad.top_left() - quad.bottom_left()).to_angle();
+			(angle, (quad.top_left() - quad.top_right()).length_squared() < MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR.powi(2))
 		} else {
 			return false;
 		};
