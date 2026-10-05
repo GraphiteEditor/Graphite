@@ -96,13 +96,21 @@ struct Rest {
 	spent: bool,
 }
 
+/// A gesture under way.
+#[derive(Debug)]
+struct Gesture {
+	/// What the gesture is moving.
+	exclusions: Exclusions,
+	/// Whether the scene goes on taking in changes to the document, rather than staying as it was when the gesture began.
+	follows_edits: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct SnapSession {
 	/// The document the scene mirrors, and the generation of its metadata that the scene was mirrored at.
 	mirrored: Option<(DocumentId, u64)>,
 	scene: Scene,
-	/// What is moving while a gesture is under way, during which the scene is left as it was when the gesture began.
-	gesture: Option<Exclusions>,
+	gesture: Option<Gesture>,
 	/// The targets woken by resting the pointer on them, from the one woken longest ago to the latest.
 	awake: Vec<Awake>,
 	/// The layers each woken point of its own was found on, by its ID, which it goes back to sleep with.
@@ -165,7 +173,7 @@ impl SnapSession {
 
 		// A woken point found on what the gesture moves or edits goes along with it, so it is no target
 		let awake: Vec<Awake> = match &self.gesture {
-			Some(exclusions) => {
+			Some(Gesture { exclusions, .. }) => {
 				let moving = |layer: &LayerId| exclusions.skips_layer(*layer) || exclusions.edited.contains(layer) || exclusions.anchors.contains_key(layer);
 				let still = |target: &Awake| match target {
 					Awake::Position { id, .. } => self.position_sources.get(id).is_none_or(|sources| !sources.iter().any(moving)),
@@ -182,7 +190,7 @@ impl SnapSession {
 			frame: &frame,
 			tunables: &tunables,
 			settings: &settings,
-			exclusions: self.gesture.as_ref().unwrap_or(&nothing_moving),
+			exclusions: self.gesture.as_ref().map_or(&nothing_moving, |gesture| &gesture.exclusions),
 			awake: &awake,
 		};
 
@@ -230,6 +238,18 @@ impl SnapSession {
 	///
 	/// What the pointer was snapped to on the approach is let go, so a press should take what was shown before starting the gesture.
 	pub fn begin_gesture(&mut self, view: SnapView, moving: Moving) {
+		self.start_gesture(view, moving, false);
+	}
+
+	/// Starts a gesture that goes on taking in changes to the document, for a tool that adds to the document as the gesture goes.
+	/// The Pen is one, where each anchor placed becomes something the next can snap to.
+	///
+	/// Whatever follows the pointer must be named as moving, or it would be snapped to as it moves.
+	pub fn begin_gesture_following_edits(&mut self, view: SnapView, moving: Moving) {
+		self.start_gesture(view, moving, true);
+	}
+
+	fn start_gesture(&mut self, view: SnapView, moving: Moving, follows_edits: bool) {
 		self.gesture = None;
 		self.forget();
 		self.bring_up_to_date(view.document, view.document_id);
@@ -245,7 +265,7 @@ impl SnapSession {
 			exclusions.anchors.entry(layer_id(layer)).or_default().insert(AnchorId(anchor.inner()));
 		}
 
-		self.gesture = Some(exclusions);
+		self.gesture = Some(Gesture { exclusions, follows_edits });
 		self.constructions = None;
 		self.rest = None;
 	}
@@ -393,7 +413,8 @@ impl SnapSession {
 		self.follow_document(document_id);
 
 		let now = (document_id, document.metadata().generation);
-		if self.gesture.is_some() || self.mirrored == Some(now) {
+		let scene_is_held = self.gesture.as_ref().is_some_and(|gesture| !gesture.follows_edits);
+		if scene_is_held || self.mirrored == Some(now) {
 			return;
 		}
 
@@ -569,6 +590,30 @@ mod tests {
 
 		session.end_gesture();
 		assert!(snap(&mut session, &editor, beside_the_new_corner).abs_diff_eq(in_document(&editor, DVec2::new(500., 100.)), 1e-6));
+	}
+
+	#[tokio::test]
+	async fn a_gesture_that_follows_edits_snaps_to_what_is_added_while_it_goes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 200., 300., 400.).await;
+		let moving_layer = editor.get_selected_layer().await.expect("the rectangle should be selected");
+
+		let mut session = SnapSession::default();
+		let input = InputPreprocessorMessageHandler::default();
+		let moving = Moving {
+			layers: vec![moving_layer],
+			..Default::default()
+		};
+		session.begin_gesture_following_edits(SnapView::new(editor.active_document(), DOCUMENT, &input), moving);
+
+		// A rectangle that appears while the gesture is under way can be snapped to at once
+		editor.draw_rect(500., 100., 560., 160.).await;
+		assert!(snap(&mut session, &editor, DVec2::new(503., 102.)).abs_diff_eq(in_document(&editor, DVec2::new(500., 100.)), 1e-6));
+
+		// What the gesture moves is still left alone
+		let beside_the_moving_corner = DVec2::new(304., 397.);
+		assert_eq!(snap(&mut session, &editor, beside_the_moving_corner), in_document(&editor, beside_the_moving_corner));
 	}
 
 	#[tokio::test]
