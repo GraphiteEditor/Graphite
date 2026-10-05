@@ -2712,9 +2712,11 @@ mod test_select_tool {
 	async fn a_rectangle_stretched_toward_one_beside_it_lands_where_its_gaps_on_either_side_are_equal() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+		// The rectangle to stretch is drawn first, since drawing it beside the others would already even out its gaps
+		let layer = draw_rectangle(&mut editor, DVec2::new(200., 110.), DVec2::new(242., 160.)).await;
 		draw_rectangle(&mut editor, DVec2::new(80., 100.), DVec2::new(150., 170.)).await;
 		draw_rectangle(&mut editor, DVec2::new(300., 100.), DVec2::new(360., 170.)).await;
-		let layer = draw_rectangle(&mut editor, DVec2::new(200., 110.), DVec2::new(242., 160.)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 
 		// The gap on the left is fifty, which the gap on the right comes to with the right edge at 250, short of where either width would put it
 		resize(&mut editor, DVec2::new(242., 135.), DVec2::new(247., 135.), ModifierKeys::empty()).await;

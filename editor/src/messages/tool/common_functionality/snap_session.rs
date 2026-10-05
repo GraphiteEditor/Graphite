@@ -13,8 +13,8 @@ use scene_mirror::layer_id;
 
 pub use scene_mirror::anchor_positions;
 use snapping::{
-	AnchorId, Awake, Bounds, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, LayerKind, Outcome, Request, Scene, Settings, Side, SpacedBox, Tunables, ViewMapping,
-	find_constructions, find_constructions_from, find_equal_sizes, find_spacing,
+	AnchorId, Awake, Bounds, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, LayerKind, Outcome, Request, Scene, Settings, Side, Snap, SpacedBox, Tunables,
+	ViewMapping, find_constructions, find_constructions_from, find_equal_sizes, find_spacing,
 };
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -61,6 +61,17 @@ pub struct Moving {
 	pub edited: Vec<LayerNodeIdentifier>,
 	/// The anchors being moved within those paths.
 	pub anchors: Vec<(LayerNodeIdentifier, PointId)>,
+	/// A layer being drawn, which is not yet in the document for the gesture to look up.
+	pub drawn: Option<Drawn>,
+}
+
+/// A layer that a gesture is drawing.
+#[derive(Clone, Copy, Debug)]
+pub struct Drawn {
+	/// The layer it goes inside, which may be the root.
+	pub parent: LayerNodeIdentifier,
+	/// Whether it is an artboard rather than artwork.
+	pub artboard: bool,
 }
 
 /// What a snap is told beyond its features and where the pointer asks them to be.
@@ -337,19 +348,28 @@ impl SnapSession {
 
 		// A box lines up with the boxes of its kind sharing its parent and with its artboard. O(n) in the scene's layers, once per gesture.
 		let (mut kind, mut siblings, mut artboard) = (LayerKind::Artwork, Vec::new(), None);
-		if let Some(&first) = moving.copied.first().or(moving.layers.first()).or(first_edited.as_ref()) {
+		let first = moving.copied.first().or(moving.layers.first()).or(first_edited.as_ref());
+		let inside = match (moving.drawn, first) {
+			(Some(drawn), _) => Some((drawn.parent, if drawn.artboard { LayerKind::Artboard } else { LayerKind::Artwork })),
+			(None, Some(&first)) => {
+				let first_kind = self.scene.layer(layer_id(first)).map_or(kind, |layer| layer.kind);
+				Some((first.parent(metadata).unwrap_or(LayerNodeIdentifier::ROOT_PARENT), first_kind))
+			}
+			(None, None) => None,
+		};
+		if let Some((parent, kind_inside)) = inside {
+			kind = kind_inside;
 			let is_layer = |layer: &LayerNodeIdentifier| *layer != LayerNodeIdentifier::ROOT_PARENT;
-			let parent = first.parent(metadata).filter(is_layer).map(layer_id);
-			kind = self.scene.layer(layer_id(first)).map_or(kind, |layer| layer.kind);
+			let parent_id = Some(parent).filter(is_layer).map(layer_id);
 
 			let beside = |(id, layer): (LayerId, &snapping::SceneLayer)| {
-				let is_beside = layer.parent == parent && layer.kind == kind && !exclusions.skips_box(id);
+				let is_beside = layer.parent == parent_id && layer.kind == kind && !exclusions.skips_box(id);
 				Some((id, Bounds::from_points(layer.quad.filter(|_| is_beside)?)))
 			};
 			siblings = self.scene.layers().filter_map(beside).collect();
 
 			let is_artboard = |id: &LayerId| self.scene.layer(*id).is_some_and(|layer| layer.kind == LayerKind::Artboard);
-			artboard = first.ancestors(metadata).skip(1).filter(is_layer).map(layer_id).find(is_artboard);
+			artboard = parent.ancestors(metadata).filter(is_layer).map(layer_id).find(is_artboard);
 		}
 
 		self.gesture = Some(Gesture {
@@ -382,6 +402,11 @@ impl SnapSession {
 	/// What the latest attempt to snap came to, if the pointer is still placing what it snapped.
 	pub fn shown(&self) -> Option<&Shown> {
 		self.shown.as_ref()
+	}
+
+	/// Whether the latest attempt to snap caught anything, rather than leaving things where the pointer asked for them.
+	pub fn caught(&self) -> bool {
+		self.shown.as_ref().is_some_and(|shown| shown.outcome.snap != Snap::Free)
 	}
 
 	/// Where the latest attempt to snap left the feature the pointer carries, in document space.
@@ -1304,6 +1329,37 @@ mod tests {
 		};
 		let slid = slide(&mut session, &editor, &features, asked, options);
 		assert!(slid.abs_diff_eq(asked - unit.perp() * 4., 1e-6), "the box slid by {slid}");
+		assert!(engaged_kinds(&session).contains(&Kind::Alignment));
+	}
+
+	#[tokio::test]
+	async fn a_box_being_drawn_lines_up_with_the_boxes_it_will_be_beside() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 160., 160.).await;
+
+		let mut session = SnapSession::default();
+		let input = InputPreprocessorMessageHandler::default();
+		let drawn = Drawn {
+			parent: LayerNodeIdentifier::ROOT_PARENT,
+			artboard: false,
+		};
+		let moving = Moving {
+			drawn: Some(drawn),
+			..Default::default()
+		};
+		session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), moving);
+
+		// Its top comes level with the top of the box already there, four pixels up
+		let (features, box_features) = sliding_box(box_corners(&editor, DVec2::new(300., 104.), DVec2::new(340., 144.)));
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		let slid = slide(&mut session, &editor, &features, unit * 5., options);
+
+		assert!(slid.abs_diff_eq(unit * 5. - unit.perp() * 4., 1e-6), "the box slid by {slid}");
 		assert!(engaged_kinds(&session).contains(&Kind::Alignment));
 	}
 

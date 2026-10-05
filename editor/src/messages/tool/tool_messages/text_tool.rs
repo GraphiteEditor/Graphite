@@ -13,8 +13,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::{Resize, viewport_zoom, window_aligned_transform};
-use crate::messages::tool::common_functionality::snap_session::{Moving, SnapView};
-use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::utility_types::ToolRefreshOptions;
@@ -325,11 +324,12 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				return;
 			}
 			_ => {
-				let was_resizing = self.fsm_state == TextToolFsmState::ResizingBounds;
+				let previous_state = self.fsm_state;
 				self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 
-				// However a resize ends, its snapping gesture ends with it
-				if was_resizing && self.fsm_state != TextToolFsmState::ResizingBounds {
+				// However a placement or a resize ends, its snapping gesture ends with it
+				let in_gesture = matches!(previous_state, TextToolFsmState::Placing | TextToolFsmState::ResizingBounds);
+				if in_gesture && self.fsm_state != previous_state {
 					context.snap_session.end_gesture();
 					responses.add(OverlaysMessage::Draw);
 				}
@@ -730,20 +730,20 @@ impl Fsm for TextToolFsmState {
 					tool_data.bounding_box_manager.take();
 				}
 
-				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
-
 				self
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
 					tool_data.start_editing_layer(layer, state, document, fonts, responses);
+					snap_session.forget();
 					return TextToolFsmState::Editing;
 				}
 
 				state
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				tool_data.resize.start(document, input, viewport);
+				let view = SnapView::new(document, *document_id, input);
+				tool_data.resize.snap_drag_start(snap_session, view);
 				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
@@ -797,8 +797,17 @@ impl Fsm for TextToolFsmState {
 						id: clicked_layer,
 						original_transform,
 					});
+					snap_session.forget();
+
 					return TextToolFsmState::Dragging;
 				}
+
+				let drawn = Drawn {
+					parent: document.new_layer_parent(true),
+					artboard: false,
+				};
+				Resize::begin_drawing(snap_session, view, drawn);
+
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
@@ -815,13 +824,31 @@ impl Fsm for TextToolFsmState {
 					cursor = MouseCursorIcon::Text;
 				}
 
+				// Shows where a press would start a text box, unless it would resize, drag, or edit text instead. O(t) in the text layers.
+				let over_cage = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.is_some_and(|bounds| bounds.check_selected_edges(input.mouse.position).is_some());
+				let metadata = document.metadata();
+				let over_text = metadata
+					.text_frames
+					.iter()
+					.any(|(&layer, &frame)| (metadata.transform_to_viewport(layer) * frame * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(input.mouse.position));
+				if over_cage || over_text {
+					snap_session.forget();
+				} else {
+					let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+					snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
+				}
+
 				responses.add(OverlaysMessage::Draw);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Placing, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, viewport, center, lock_ratio, false);
+				let view = SnapView::new(document, *document_id, input);
+				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(snap_session, view, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -927,7 +954,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::ResizingBounds
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
-				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				snap_session.forget();
 				responses.add(OverlaysMessage::Draw);
 
 				self
@@ -1004,8 +1031,6 @@ impl Fsm for TextToolFsmState {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
-
-				tool_data.resize.snap_manager.cleanup(responses);
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -1085,7 +1110,8 @@ impl Fsm for TextToolFsmState {
 				} else {
 					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				}
-				tool_data.resize.cleanup(responses);
+				tool_data.resize.cleanup();
+				responses.add(OverlaysMessage::Draw);
 
 				TextToolFsmState::Ready
 			}
@@ -1217,6 +1243,29 @@ mod test_text_tool {
 		let [min, max] = text_box(&editor, layer);
 		assert!(
 			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(500., 350.), 1e-6),
+			"the text box spans {min} to {max}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_text_box_dragged_out_with_its_far_corner_near_a_corner_of_a_rectangle_ends_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		provide_fonts(&mut editor).await;
+		editor.draw_rect(500., 400., 560., 460.).await;
+
+		// The far corner of the text box is brought a few pixels from the rectangle's top left corner
+		editor.drag_tool(ToolType::Text, 300., 300., 497., 397., ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the new text should be selected");
+		let commit = TextToolMessage::TextChange {
+			new_text: "Text".into(),
+			is_left_or_right_click: false,
+		};
+		editor.handle_message(commit).await;
+
+		let [min, max] = text_box(&editor, layer);
+		assert!(
+			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(500., 400.), 1e-6),
 			"the text box spans {min} to {max}"
 		);
 	}

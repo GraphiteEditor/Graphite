@@ -22,8 +22,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeTo
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
-use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapView};
-use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
@@ -573,7 +572,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 		let shape_before = self.tool_data.current_shape;
 
 		let ToolMessage::Shape(ShapeToolMessage::UpdateOptions { options }) = message else {
+			let previous_state = self.fsm_state;
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
+
+			// However a drawing, a resize, or an endpoint drag ends, its snapping gesture ends with it
+			let in_gesture = matches!(
+				previous_state,
+				ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::DraggingLineEndpoints
+			);
+			if in_gesture && self.fsm_state != previous_state {
+				context.snap_session.end_gesture();
+				responses.add(OverlaysMessage::Draw);
+			}
+
 			if is_set_shape {
 				handle_shape_mode_change(&mut self.options, self.tool_data.current_shape, shape_before, context.global_tool_data, context.document);
 				self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -864,11 +875,8 @@ impl Fsm for ShapeToolFsmState {
 
 		match (self, event) {
 			(_, ShapeToolMessage::Overlays { context: mut overlay_context }) => {
-				let mouse_position = tool_data
-					.data
-					.snap_manager
-					.indicator_pos()
-					.or(snap_session.shown_position())
+				let mouse_position = snap_session
+					.shown_position()
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
 					.unwrap_or(input.mouse.position);
 
@@ -888,10 +896,6 @@ impl Fsm for ShapeToolFsmState {
 				let hovering_over_gizmo = tool_data.gizmo_manager.hovering_over_gizmo();
 
 				let hovering_over_endpoint = tool_data.hovering_over_line_endpoint(document, input);
-
-				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo && !hovering_over_endpoint {
-					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
-				}
 
 				if modifying_transform_cage && !matches!(self, ShapeToolFsmState::ModifyingGizmo) {
 					transform_cage_overlays(document, tool_data, &mut overlay_context);
@@ -1032,11 +1036,8 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.line_data.drag_start = input.mouse.position;
 
 				// Snapped position in viewport space
-				let mouse_pos = tool_data
-					.data
-					.snap_manager
-					.indicator_pos()
-					.or(snap_session.shown_position())
+				let mouse_pos = snap_session
+					.shown_position()
 					.map(|pos| document.metadata().document_to_viewport.transform_point2(pos))
 					.unwrap_or(input.mouse.position);
 
@@ -1119,18 +1120,10 @@ impl Fsm for ShapeToolFsmState {
 					}
 				};
 
-				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
-						tool_data.data.start(document, input, viewport);
-					}
-					ShapeType::Arrow | ShapeType::Line => {
-						// The line starts on whatever the pointer was shown snapping to before the press
-						let view = SnapView::new(document, *document_id, input);
-						let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-						tool_data.data.drag_start = snap_session.shown_position().unwrap_or_else(|| snap_session.snap_point(view, pointer, PointOptions::default()));
-						snap_session.begin_gesture(view, Moving::default());
-					}
-				}
+				// The shape starts on whatever the pointer was shown snapping to before the press
+				let parent = document.new_layer_bounding_artboard(input, viewport);
+				let drawn = Drawn { parent, artboard: false };
+				tool_data.data.start(snap_session, SnapView::new(document, *document_id, input), drawn);
 
 				responses.add(DocumentMessage::StartTransaction);
 
@@ -1148,7 +1141,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				let nodes = vec![(NodeId(0), node)];
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input, viewport), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
 				let defered_responses = &mut VecDeque::new();
 
@@ -1209,17 +1202,18 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::Ready(shape);
 				};
 
+				let view = SnapView::new(document, *document_id, input);
 				match tool_data.current_shape {
-					ShapeType::Polygon => Polygon::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Star => Star::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Circle => Circle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
-					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
-					ShapeType::Arrow => Arrow::update_shape(SnapView::new(document, *document_id, input), snap_session, layer, tool_data, modifier, responses),
-					ShapeType::Line => Line::update_shape(SnapView::new(document, *document_id, input), snap_session, layer, tool_data, modifier, responses),
-					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Polygon => Polygon::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Star => Star::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Circle => Circle::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Arc => Arc::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Spiral => Spiral::update_shape(view, snap_session, layer, tool_data, responses),
+					ShapeType::Grid => Grid::update_shape(view, snap_session, layer, tool_options.grid_type, tool_data, modifier, responses),
+					ShapeType::Arrow => Arrow::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Rectangle => Rectangle::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(view, snap_session, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -1320,23 +1314,16 @@ impl Fsm for ShapeToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				// A line or an arrow shows where a press would start it, unless the press would do something else instead
-				if matches!(tool_data.current_shape, ShapeType::Line | ShapeType::Arrow) {
-					tool_data.data.snap_manager.clear_indicator();
-
-					// Accel makes a press pass over a gizmo, and Control over the transform cage and a selected line's ends, as in `DragStart`
-					let press_drags_gizmo = !input.keyboard.key(Key::Accel) && tool_data.gizmo_manager.hovering_over_gizmo();
-					let rotating_bounds = tool_data.bounding_box_manager.as_ref().is_some_and(|bounds| bounds.check_rotate(input.mouse.position));
-					let press_edits_selection = !input.keyboard.key(Key::Control) && (dragging_bounds || rotating_bounds || tool_data.hovering_over_line_endpoint(document, input));
-					if press_drags_gizmo || press_edits_selection {
-						snap_session.forget();
-					} else {
-						let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
-						snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
-					}
-				} else {
+				// Shows where a press would start a shape, unless the press would do something else instead.
+				// Accel makes a press pass over a gizmo, and Control over the transform cage and a selected line's ends, as in `DragStart`.
+				let press_drags_gizmo = !input.keyboard.key(Key::Accel) && tool_data.gizmo_manager.hovering_over_gizmo();
+				let rotating_bounds = tool_data.bounding_box_manager.as_ref().is_some_and(|bounds| bounds.check_rotate(input.mouse.position));
+				let press_edits_selection = !input.keyboard.key(Key::Control) && (dragging_bounds || rotating_bounds || tool_data.hovering_over_line_endpoint(document, input));
+				if press_drags_gizmo || press_edits_selection {
 					snap_session.forget();
-					tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				} else {
+					let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+					snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -1374,8 +1361,9 @@ impl Fsm for ShapeToolFsmState {
 				ShapeToolMessage::DragStop,
 			) => {
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
-				tool_data.data.cleanup(responses);
+				tool_data.data.cleanup();
 				snap_session.end_gesture();
+				responses.add(OverlaysMessage::Draw);
 
 				tool_data.gizmo_manager.handle_cleanup();
 
@@ -1400,8 +1388,9 @@ impl Fsm for ShapeToolFsmState {
 				ShapeToolMessage::Abort,
 			) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.data.cleanup(responses);
+				tool_data.data.cleanup();
 				snap_session.end_gesture();
+				responses.add(OverlaysMessage::Draw);
 				tool_data.line_data.dragging_endpoint = None;
 				tool_data.line_data.editing_layer = None;
 
@@ -1424,8 +1413,9 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(_, ShapeToolMessage::SetShape { shape }) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.data.cleanup(responses);
+				tool_data.data.cleanup();
 				snap_session.end_gesture();
+				responses.add(OverlaysMessage::Draw);
 				tool_data.current_shape = shape;
 				// Update hints for the new shape (without updating options.shape_type)
 				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
@@ -1572,8 +1562,70 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 
 #[cfg(test)]
 mod test_shape_tool {
+	use super::ShapeOptionsUpdate;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
+	use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeType, regular_polygon_points};
 	use crate::test_utils::test_prelude::*;
+	use kurbo::PathEl;
+
+	/// The anchors a layer draws, in document space, counting the one a closed path returns to only once.
+	fn drawn_anchors(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Vec<DVec2> {
+		let metadata = editor.active_document().metadata();
+		let to_document = metadata.transform_to_document_as_rendered(layer);
+		let anchor = |element: &PathEl| match *element {
+			PathEl::MoveTo(point) | PathEl::LineTo(point) => Some(to_document.transform_point2(DVec2::new(point.x, point.y))),
+			_ => None,
+		};
+
+		let mut anchors: Vec<DVec2> = Vec::new();
+		for position in metadata.layer_outline(layer).flat_map(|path| path.elements().iter().filter_map(anchor).collect::<Vec<_>>()) {
+			if !anchors.iter().any(|anchor| anchor.distance(position) < 1e-9) {
+				anchors.push(position);
+			}
+		}
+		anchors
+	}
+
+	fn assert_has_anchor_at(anchors: &[DVec2], expected: DVec2) {
+		let nearest = anchors.iter().map(|anchor| anchor.distance(expected)).reduce(f64::min);
+		assert!(
+			nearest.is_some_and(|nearest| nearest < 1e-6),
+			"no anchor at {expected}, the nearest being {nearest:?} away among {anchors:?}"
+		);
+	}
+
+	/// Presses the Shape tool at a viewport position, set to draw a shape.
+	async fn press_drawing(editor: &mut EditorTestUtils, shape: ShapeType, position: DVec2, modifier_keys: ModifierKeys) {
+		editor.select_tool(ToolType::Shape).await;
+		editor
+			.handle_message(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(shape),
+			})
+			.await;
+		editor.move_mouse(position.x, position.y, modifier_keys, MouseKeys::empty()).await;
+		editor.left_mousedown(position.x, position.y, modifier_keys).await;
+	}
+
+	/// Draws a shape, and checks before letting go that the points it snapped by are where its anchors are drawn. Returns the shape's layer.
+	async fn draw_checking_shape_points(editor: &mut EditorTestUtils, shape: ShapeType, from: DVec2, to: DVec2, modifier_keys: ModifierKeys, point_count: usize) -> LayerNodeIdentifier {
+		press_drawing(editor, shape, from, modifier_keys).await;
+		editor.move_mouse(to.x, to.y, modifier_keys, MouseKeys::LEFT).await;
+
+		let session = &editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session;
+		let shown = session.shown().expect("drawing should have tried to snap");
+		let predicted = shown.features[..point_count].to_vec();
+		let layer = editor.get_selected_layer().await.expect("the shape being drawn should be selected");
+
+		let anchors = drawn_anchors(editor, layer);
+		assert_eq!(anchors.len(), point_count, "the shape draws {anchors:?}");
+		for point in predicted {
+			assert_has_anchor_at(&anchors, point);
+		}
+
+		editor.left_mouseup(to.x, to.y, modifier_keys).await;
+		layer
+	}
 
 	#[tokio::test]
 	async fn a_rectangle_resized_by_the_corner_of_its_cage_to_near_a_corner_of_another_meets_it() {
@@ -1597,5 +1649,101 @@ mod test_shape_tool {
 			min.distance(expected[0]) < 1e-6 && max.distance(expected[1]) < 1e-6,
 			"the rectangle spans {min} to {max} rather than {expected:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn the_points_a_polygon_snaps_by_are_where_its_vertices_are_drawn_however_it_is_dragged() {
+		for (from, to, modifier_keys) in [
+			(DVec2::new(300., 300.), DVec2::new(380., 340.), ModifierKeys::empty()),
+			(DVec2::new(380., 340.), DVec2::new(300., 300.), ModifierKeys::empty()),
+			(DVec2::new(340., 320.), DVec2::new(380., 345.), ModifierKeys::ALT),
+		] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			draw_checking_shape_points(&mut editor, ShapeType::Polygon, from, to, modifier_keys, 5).await;
+		}
+	}
+
+	#[tokio::test]
+	async fn the_points_a_star_snaps_by_are_where_its_points_are_drawn_however_it_is_dragged() {
+		for (from, to, modifier_keys) in [
+			(DVec2::new(300., 300.), DVec2::new(380., 340.), ModifierKeys::empty()),
+			(DVec2::new(380., 340.), DVec2::new(300., 300.), ModifierKeys::empty()),
+			(DVec2::new(340., 320.), DVec2::new(380., 345.), ModifierKeys::ALT),
+		] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			draw_checking_shape_points(&mut editor, ShapeType::Star, from, to, modifier_keys, 10).await;
+		}
+	}
+
+	/// Where the second vertex of a pentagon dragged out from `start` lands for a pointer at `pointer`, in the viewport.
+	fn second_vertex(start: DVec2, pointer: DVec2) -> DVec2 {
+		let vertex = regular_polygon_points(5)[1];
+		start + (pointer - start) * (DVec2::ONE + vertex) / 2.
+	}
+
+	#[tokio::test]
+	async fn a_polygon_drawn_with_a_vertex_near_a_corner_of_a_rectangle_puts_that_vertex_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(500., 200., 560., 260.).await;
+
+		// The pointer is put where the pentagon's second vertex comes a few pixels from the rectangle's top left corner
+		let (start, corner) = (DVec2::new(300., 100.), DVec2::new(500., 200.));
+		let vertex = regular_polygon_points(5)[1];
+		let pointer = start + (corner + DVec2::new(3., -2.) - start) * 2. / (DVec2::ONE + vertex);
+		assert!(second_vertex(start, pointer).distance(corner + DVec2::new(3., -2.)) < 1e-9);
+
+		let layer = draw_checking_shape_points(&mut editor, ShapeType::Polygon, start, pointer, ModifierKeys::empty(), 5).await;
+
+		assert_has_anchor_at(&drawn_anchors(&editor, layer), corner);
+	}
+
+	#[tokio::test]
+	async fn a_polygon_drawn_with_only_the_corner_of_its_box_near_a_corner_of_a_rectangle_does_not_snap() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(500., 200., 560., 260.).await;
+
+		// The box around the pentagon is not drawn, so its corner a few pixels from the rectangle's top left corner catches nothing
+		let (start, pointer) = (DVec2::new(400., 110.), DVec2::new(503., 198.));
+		let layer = draw_checking_shape_points(&mut editor, ShapeType::Polygon, start, pointer, ModifierKeys::empty(), 5).await;
+
+		let anchors = drawn_anchors(&editor, layer);
+		let (center, half_size) = ((start + pointer) / 2., (pointer - start) / 2.);
+		for vertex in regular_polygon_points(5) {
+			assert_has_anchor_at(&anchors, center + vertex * half_size);
+		}
+	}
+
+	#[tokio::test]
+	async fn on_the_grid_the_box_a_polygon_is_drawn_in_has_its_corners_on_grid_points() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.grid_snapping = true;
+
+		press_drawing(&mut editor, ShapeType::Polygon, DVec2::new(300.3, 300.7), ModifierKeys::empty()).await;
+		editor.move_mouse(357.3, 343.7, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		let session = &editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session;
+		let far_corner = session.shown_position().expect("drawing should have tried to snap");
+		let layer = editor.get_selected_layer().await.expect("the polygon being drawn should be selected");
+		editor.left_mouseup(357.3, 343.7, ModifierKeys::empty()).await;
+
+		// The vertices of a regular polygon average out to its center, which is halfway between the corners of its box
+		let anchors = drawn_anchors(&editor, layer);
+		let center = anchors.iter().sum::<DVec2>() / anchors.len() as f64;
+		let near_corner = center * 2. - far_corner;
+
+		let document = editor.active_document();
+		let state = &document.snapping_state;
+		let GridType::Rectangular { spacing } = state.grid.grid_type else {
+			panic!("the default grid should be rectangular")
+		};
+		let spacing = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz).expect("the default grid should be usable");
+		for corner in [near_corner, far_corner] {
+			let steps = (corner - state.grid.origin) / spacing;
+			assert!((steps - steps.round()).abs().max_element() < 1e-6, "the corner at {corner} is {steps} grid steps");
+		}
 	}
 }

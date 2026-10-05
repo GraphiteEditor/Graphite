@@ -23,7 +23,10 @@ use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
+
+/// The most points of a shape being drawn that snap, counted from its first.
+const MAX_SNAPPING_SHAPE_POINTS: usize = 16;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default, serde::Serialize, serde::Deserialize)]
@@ -423,6 +426,27 @@ pub fn polygon_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, ra
 		x: radius * angle.sin(),
 		y: -radius * angle.cos(),
 	})
+}
+
+/// The vertices of a regular polygon as offsets from its center in units of its radius, placed as [`regular_polygon_bezpath`] places them, up to the most that snap.
+pub fn regular_polygon_points(sides: u32) -> Vec<DVec2> {
+	let sides = sides.max(3);
+	let angle_increment = TAU / (sides as f64);
+	(0..sides)
+		.take(MAX_SNAPPING_SHAPE_POINTS)
+		.map(|i| DVec2::from_angle((i as f64) * angle_increment - FRAC_PI_2))
+		.collect()
+}
+
+/// The points of a star as offsets from its center in units of its outer radius, placed as [`star_polygon_bezpath`] places them, up to the most that snap.
+pub fn star_points(sides: u32, inner_radius: f64) -> Vec<DVec2> {
+	let sides = sides.max(2);
+	let angle_increment = 0.5 * TAU / (sides as f64);
+	let point = |i: u32| {
+		let radius = if i.is_multiple_of(2) { 1. } else { inner_radius };
+		radius * DVec2::from_angle((i as f64) * angle_increment - FRAC_PI_2)
+	};
+	(0..sides * 2).take(MAX_SNAPPING_SHAPE_POINTS).map(point).collect()
 }
 
 /// Outlines the geometric shape made by star-node
