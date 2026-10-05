@@ -5,8 +5,8 @@
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
-	import SoftwareCursor from "/src/components/panels/SoftwareCursor.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
+	import SoftwareCursor from "/src/components/views/SoftwareCursor.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";

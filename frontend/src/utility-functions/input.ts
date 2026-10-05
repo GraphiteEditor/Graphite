@@ -3,7 +3,7 @@ import type { DialogStore } from "/src/stores/dialog";
 import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
-import { softwareCursor, softwareCursorClientPosition } from "/src/stores/software-cursor";
+import { softwareCursor } from "/src/stores/software-cursor";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
@@ -117,6 +117,16 @@ export async function onKeyUp(e: KeyboardEvent, editor: EditorWrapper, dialogSto
 // On desktop, num lock marks events as observe-only, do not redirect them to the editor.
 function isObserveOnly(e: MouseEvent): boolean {
 	return import.meta.env.MODE === "native" && e.getModifierState("NumLock");
+}
+
+// The software cursor's position in client coordinates, used while the frozen OS pointer reports elsewhere
+function softwareCursorClientPosition(): { x: number; y: number } | undefined {
+	const cursor = get(softwareCursor);
+	if (!cursor.visible) return undefined;
+
+	const bounds = window.document.querySelector("[data-viewport-container]")?.getBoundingClientRect();
+	if (!bounds) return undefined;
+	return { x: bounds.left + cursor.x, y: bounds.top + cursor.y };
 }
 
 // Events are reported at the software cursor, since a locked pointer is frozen

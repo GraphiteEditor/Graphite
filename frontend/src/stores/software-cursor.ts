@@ -1,4 +1,4 @@
-import { get, writable } from "svelte/store";
+import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 
 export type SoftwareCursorState = {
@@ -27,13 +27,4 @@ export function setSoftwareCursor(cursor: SoftwareCursorState): void {
 // Clears the cursor when the component drawing it unmounts mid-transform, so a stale one can't reappear on remount
 export function resetSoftwareCursor(): void {
 	store.set(initialState);
-}
-
-export function softwareCursorClientPosition(): { x: number; y: number } | undefined {
-	const cursor = get(store);
-	if (!cursor.visible) return undefined;
-
-	const bounds = window.document.querySelector("[data-viewport-container]")?.getBoundingClientRect();
-	if (!bounds) return undefined;
-	return { x: bounds.left + cursor.x, y: bounds.top + cursor.y };
 }

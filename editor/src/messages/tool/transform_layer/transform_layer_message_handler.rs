@@ -1376,32 +1376,28 @@ mod test_transform_layer {
 		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
 	}
 
-	fn pointer_position(editor: &EditorTestUtils) -> DVec2 {
-		editor.editor.dispatcher.message_handlers.input_preprocessor_message_handler.mouse.position
-	}
-
 	#[tokio::test]
 	async fn test_pointer_lock_deltas_only_apply_during_a_transform() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
 
-		let pointer_before = pointer_position(&editor);
+		let pointer_before = editor.mouse_position();
 		let messages = editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(25., -5.) }).await;
 
-		assert_eq!(pointer_before, pointer_position(&editor), "locked deltas shouldn't move the pointer with no transform running");
+		assert_eq!(pointer_before, editor.mouse_position(), "locked deltas shouldn't move the pointer with no transform running");
 		assert!(
 			!messages.iter().any(|message| matches!(message, FrontendMessage::UpdateSoftwareCursor { .. })),
 			"no transform means no software cursor"
 		);
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let pointer_at_begin = pointer_position(&editor);
+		let pointer_at_begin = editor.mouse_position();
 
 		let delta = DVec2::new(25., -5.);
 		let messages = editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta }).await;
 
-		assert_eq!(pointer_position(&editor), pointer_at_begin + delta, "locked delta should move the pointer");
+		assert_eq!(editor.mouse_position(), pointer_at_begin + delta, "locked delta should move the pointer");
 
 		let software_cursor_message = messages.iter().find_map(|message| match message {
 			FrontendMessage::UpdateSoftwareCursor { visible, x, y } => Some((*visible, *x, *y)),
@@ -1430,12 +1426,12 @@ mod test_transform_layer {
 		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
 
 		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
-		let pointer_before = pointer_position(&editor);
+		let pointer_before = editor.mouse_position();
 
 		let dropped = DVec2::new(75., 40.);
 		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: dropped }).await;
 
-		assert_eq!(pointer_position(&editor), pointer_before + dropped, "pointer should still follow the delta the transform drops");
+		assert_eq!(editor.mouse_position(), pointer_before + dropped, "pointer should still follow the delta the transform drops");
 		let transform_after = get_layer_transform(&mut editor, layer).await.unwrap();
 		assert!(transform_after.abs_diff_eq(transform_before, 1e-5), "dropped delta shouldn't move the layer");
 
@@ -1450,7 +1446,7 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
 
-		let start_position = pointer_position(&editor);
+		let start_position = editor.mouse_position();
 		let delta = DVec2::new(30., 10.);
 		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta }).await;
 
@@ -1476,11 +1472,11 @@ mod test_transform_layer {
 		let layer = editor.active_document().metadata().all_layers().next().unwrap();
 
 		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let origin = pointer_position(&editor);
+		let origin = editor.mouse_position();
 		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(100., 0.) }).await;
 
 		let transform_after_drag = get_layer_transform(&mut editor, layer).await.unwrap();
-		let pointer_after_drag = pointer_position(&editor);
+		let pointer_after_drag = editor.mouse_position();
 
 		editor
 			.handle_message(TransformLayerMessage::PointerMove {
@@ -1489,7 +1485,7 @@ mod test_transform_layer {
 			})
 			.await;
 
-		assert_eq!(pointer_position(&editor), pointer_after_drag, "stale absolute report shouldn't move the pointer");
+		assert_eq!(editor.mouse_position(), pointer_after_drag, "stale absolute report shouldn't move the pointer");
 		assert!(
 			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_drag, 1e-5),
 			"stale absolute report shouldn't move the layer"
