@@ -157,6 +157,8 @@ One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`.
 
 `Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `interaction_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
 
+`HotOp.attributes` is the same bucket on a hot op, but shared: it travels with the op to every peer and is left behind at retirement. `transaction_end` marks the last op of its author's transaction, so the retirer takes the author's ops through it as one unit. When the boundary comes after the last write was sent, a data-less `RegistryDelta::Meta` op carries the flag; retirement drops `Meta` ops.
+
 ## History as a tree
 
 History is a multi-parent DAG. Branching is implicit: every concurrent or out-of-sync edit creates a branch by virtue of sharing a parent with another delta. Divergent tips are rejoined by an explicit `Merge` delta listing the joined tips, which is a registry no-op (it only collapses the tips so `head` stays a single `Rev`).
