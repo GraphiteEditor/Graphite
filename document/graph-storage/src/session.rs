@@ -206,7 +206,7 @@ impl Session {
 	}
 
 	/// [`commit_ops`](Self::commit_ops) for ops paired with their authored stamp (`None` to mint one), which retirement keeps
-	/// so LWW resolves as it did live.
+	/// so LWW resolves as it did live; a coarsened delta passes the newest it fuses.
 	fn commit_ops_authored_at(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Option<TimeStamp>)>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
 		let target = RegistryTarget::Retired;
 		let ops = ops.into_iter();
@@ -286,6 +286,37 @@ impl Session {
 		// Pure retired-delta replay: no hot ops, so the working registry is fully retired.
 		session.document.retired_snapshot = session.document.working_registry.clone();
 		Ok(session)
+	}
+
+	/// Take back this peer's latest interaction (its ops since the previous marker) while it is still hot, so an
+	/// accidental gesture and its undo leave no step in history. `None` when nothing is hot or the interaction
+	/// already retired somewhere this peer knows of, which makes it an undo of a retired step.
+	pub fn retract_interaction(&mut self) -> Result<Option<Retraction>, CrdtError> {
+		let peer = self.document.peer;
+		let mut own: Vec<&HotOp> = self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp.peer == peer).collect();
+		own.sort_by_key(|hot_op| hot_op.sequence);
+		// The latest interaction: everything after the previous marker, through a trailing marker if any.
+		let closed_before = match own.last() {
+			Some(last) if last.ends_interaction() => own.len() - 1,
+			Some(_) => own.len(),
+			None => return Ok(None),
+		};
+		let start = own[..closed_before].iter().rposition(|hot_op| hot_op.ends_interaction()).map_or(0, |position| position + 1);
+		if own[start..].iter().all(|hot_op| matches!(hot_op.op, RegistryDelta::Meta)) {
+			return Ok(None);
+		}
+		let ids: Vec<HotOpId> = own[start..].iter().map(|hot_op| hot_op.id()).collect();
+		if ids.iter().any(|&id| self.document.retired.covers(id)) {
+			return Ok(None);
+		}
+		let (touched, taken) = self.document.retract_hot_ops(&ids);
+		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
+		Ok(Some(Retraction { ids, touched, ops }))
+	}
+
+	/// Take back hot ops another peer retracted. See [`retract_interaction`](Self::retract_interaction).
+	pub fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> Touched {
+		self.document.retract_hot_ops(ids).0
 	}
 
 	/// Which hot ops are done with, for a peer catching up and for persisting. See [`RetiredMarks`].
@@ -404,6 +435,16 @@ impl Session {
 		closed
 	}
 
+	/// Retire one closed interaction coarsened, marking its last delta as the interaction's end. Every op is
+	/// retired, the ones coarsening drops included. Returns the new revs.
+	pub fn retire_interaction(&mut self, interaction: &ClosedInteraction) -> Result<Vec<Rev>, CrdtError> {
+		let revs = self.retire_hot_ops_with(&interaction.ops, true)?;
+		if let Some(&last) = revs.last() {
+			self.mark_interaction_end(last);
+		}
+		Ok(revs)
+	}
+
 	/// The hot ops stamped at or before `up_to`, which [`retire`](Self::retire) drains.
 	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
 		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
@@ -411,14 +452,20 @@ impl Session {
 
 	/// Promote the given hot ops into retired deltas in hot-log order, each keeping its authored stamp.
 	///
-	/// One retired delta per hot op, except a `Meta` op, which commits nothing.
+	/// One retired delta per hot op, except a `Meta` op, which commits nothing. [`retire_interaction`](Self::retire_interaction)
+	/// coarsens a closed interaction instead.
 	pub fn retire_hot_ops(&mut self, ids: &[HotOpId]) -> Result<Vec<Rev>, CrdtError> {
+		self.retire_hot_ops_with(ids, false)
+	}
+
+	fn retire_hot_ops_with(&mut self, ids: &[HotOpId], coarsened: bool) -> Result<Vec<Rev>, CrdtError> {
 		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
 		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
 		self.document.hot_log = kept;
 		self.document.resync_hot_timestamps();
 		self.document.retired.extend(drained.iter().map(HotOp::id));
 
+		let drained = if coarsened { coarsen(drained) } else { drained };
 		let ops = drained
 			.into_iter()
 			.filter(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta))
@@ -426,7 +473,9 @@ impl Session {
 		self.commit_ops_authored_at(ops, true)
 	}
 
-	/// Promote every hot op stamped at or before `up_to`, whatever its author.
+	/// Promote every hot op stamped at or before `up_to`, whatever its author and whether or not its
+	/// interaction is closed. For callers that own the whole log, tests mostly; a session retires by
+	/// [`retire_interaction`](Self::retire_interaction).
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
 		let ids = self.hot_ops_up_to(up_to);
 		self.retire_hot_ops(&ids)
@@ -696,6 +745,7 @@ pub struct HotOp {
 }
 
 impl HotOp {
+	/// Whether the op closes its author's interaction.
 	pub fn ends_interaction(&self) -> bool {
 		self.attributes.get_or(crate::attr::delta::INTERACTION_END, false)
 	}
@@ -743,8 +793,8 @@ pub struct HotOpId {
 	pub sequence: HotSequence,
 }
 
-/// Which hot ops are retired: each author's gap-free prefix, plus runs past it while ops are in flight. Persisted, so
-/// a late copy of a retired op is dropped.
+/// Which hot ops are done with, retired or taken back by their author: each author's gap-free prefix, plus runs past it
+/// while ops are in flight. Replicated and persisted, so a late copy of a retired op is dropped wherever it lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetiredMarks {
 	pub retired_up_to: HashMap<PeerId, HotSequence>,
@@ -765,7 +815,7 @@ fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
 }
 
 impl RetiredMarks {
-	/// Whether history already holds this hot op.
+	/// Whether this hot op is done with.
 	pub fn covers(&self, id: HotOpId) -> bool {
 		self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)
 			|| self
@@ -840,4 +890,98 @@ pub enum CrdtError {
 	NetworkAlreadyExists(NetworkId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
+}
+
+/// Which field of the registry a write lands on, for coarsening.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum FieldKey {
+	NodeInput(NodeId, u32),
+	NodeInputAttribute(NodeId, u32, String),
+	NodeAttribute(NodeId, String),
+	NodeImplementation(NodeId),
+	NodeInputs(NodeId),
+	NetworkExport(NetworkId, u32),
+	NetworkAttribute(NetworkId, String),
+	ResourceHash(ResourceId),
+	Source(ResourceId, crate::SourceKey),
+	DocumentAttribute(String),
+}
+
+/// The field a write lands on, `None` for an op that is not a plain field write.
+fn field_of(op: &RegistryDelta) -> Option<FieldKey> {
+	Some(match op {
+		RegistryDelta::ChangeNodeInput { id, index, .. } => FieldKey::NodeInput(*id, *index),
+		RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => FieldKey::NodeInputAttribute(*id, *index, delta.key.clone()),
+		RegistryDelta::ChangeNodeAttribute { id, delta } => FieldKey::NodeAttribute(*id, delta.key.clone()),
+		RegistryDelta::SetNodeImplementation { id, .. } => FieldKey::NodeImplementation(*id),
+		RegistryDelta::SetNodeInputs { id, .. } => FieldKey::NodeInputs(*id),
+		RegistryDelta::SetNetworkExport { id, index, .. } => FieldKey::NetworkExport(*id, *index),
+		RegistryDelta::ChangeNetworkAttribute { id, delta } => FieldKey::NetworkAttribute(*id, delta.key.clone()),
+		RegistryDelta::SetResourceHash { id, .. } => FieldKey::ResourceHash(*id),
+		RegistryDelta::AddSource { id, key, .. } | RegistryDelta::RemoveSource { id, key } => FieldKey::Source(*id, *key),
+		RegistryDelta::ChangeDocumentAttribute { delta } => FieldKey::DocumentAttribute(delta.key.clone()),
+		_ => return None,
+	})
+}
+
+/// What a write refers to beyond its own field: a node an input is wired to, or a network an
+/// implementation points at. A reference is evidence the target exists at the write's stamp, so a write
+/// that carries one only drops when the write superseding it carries the same.
+fn references_of(op: &RegistryDelta) -> Vec<u64> {
+	let of_input = |input: &crate::NodeInput| match input {
+		crate::NodeInput::Node { id, .. } => Some(id.0),
+		_ => None,
+	};
+	match op {
+		RegistryDelta::ChangeNodeInput { new_input, .. } => of_input(new_input).into_iter().collect(),
+		RegistryDelta::SetNodeInputs { inputs, .. } => inputs.iter().filter_map(|slot| of_input(&slot.input)).collect(),
+		RegistryDelta::SetNetworkExport { export, .. } => export.as_ref().and_then(of_input).into_iter().collect(),
+		RegistryDelta::SetNodeImplementation {
+			implementation: Implementation::Network(network),
+			..
+		} => vec![network.0],
+		_ => Vec::new(),
+	}
+}
+
+/// Coarsens one interaction's ops: a field write that a later write in it supersedes has no effect on the fold
+/// and is dropped, unless it refers to something the later write does not. A whole-list input write
+/// supersedes every earlier input write on its node. Structural ops stay.
+fn coarsen(mut ops: Vec<HotOp>) -> Vec<HotOp> {
+	// Newest by stamp, which is the author's order. The hot log holds arrival order, and a re-announcement
+	// after a lapsed link delivers later ops first, so log order would retire a value the registry never showed.
+	ops.sort_by_key(|hot_op| hot_op.timestamp);
+	let mut keep = vec![true; ops.len()];
+	let mut latest: HashMap<FieldKey, usize> = HashMap::new();
+	for (index, hot_op) in ops.iter().enumerate() {
+		let Some(field) = field_of(&hot_op.op) else { continue };
+		let references = references_of(&hot_op.op);
+		let supersedes = |earlier: &HotOp| references_of(&earlier.op).iter().all(|reference| references.contains(reference));
+
+		if let FieldKey::NodeInputs(id) = field {
+			latest.retain(|key, &mut earlier| {
+				let same_node = matches!(key, FieldKey::NodeInput(node, _) | FieldKey::NodeInputAttribute(node, _, _) | FieldKey::NodeInputs(node) if *node == id);
+				let superseded = same_node && supersedes(&ops[earlier]);
+				keep[earlier] &= !superseded;
+				!superseded
+			});
+		} else if let Some(&earlier) = latest.get(&field)
+			&& supersedes(&ops[earlier])
+		{
+			keep[earlier] = false;
+		}
+		latest.insert(field, index);
+	}
+	ops.into_iter().zip(keep).filter_map(|(hot_op, keep)| keep.then_some(hot_op)).collect()
+}
+
+/// What [`Session::retract_interaction`] took back.
+#[derive(Clone, Debug)]
+pub struct Retraction {
+	/// The ids to send, so every peer drops the same ops.
+	pub ids: Vec<HotOpId>,
+	/// What the ops named, for a mirror to bring back into line.
+	pub touched: Touched,
+	/// The ops themselves, marker aside, for a redo to stage afresh.
+	pub ops: Vec<RegistryDelta>,
 }
