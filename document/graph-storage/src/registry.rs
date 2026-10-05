@@ -1,4 +1,4 @@
-use crate::{Attributes, Network, NetworkId, Node, NodeId, PeerId, ResourceEntry, ResourceId, ResourceStore, SourceKey, TimeStamp, UserId};
+use crate::{Attributes, Implementation, Network, NetworkId, Node, NodeId, PeerId, ResourceEntry, ResourceId, ResourceStore, SourceKey, TimeStamp, UserId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -64,6 +64,31 @@ impl Registry {
 			removed_resources: HashMap::new(),
 			..self.clone()
 		}
+	}
+
+	/// The registry as `to_runtime` renders it: a removed network that a live node still runs counts as present, so a
+	/// diff against the runtime does not take it for an addition.
+	pub(crate) fn as_rendered(&self) -> Registry {
+		let mut rendered = self.clone();
+		for node in self.node_instances.values() {
+			if let Implementation::Network(id) = node.implementation
+				&& let Some(mark) = rendered.removed_networks.remove(&id)
+			{
+				rendered.networks.insert(id, mark.content);
+			}
+		}
+		rendered
+	}
+
+	/// Whether both registries removed the same entities at the same times. The marks decide how future
+	/// ops land, so registries agreeing on values but not on marks will diverge.
+	pub fn removal_marks_equal(&self, other: &Self) -> bool {
+		fn same<K: std::hash::Hash + Eq, T>(a: &HashMap<K, Tombstone<T>>, b: &HashMap<K, Tombstone<T>>) -> bool {
+			a.len() == b.len()
+				&& a.iter()
+					.all(|(id, mark)| b.get(id).is_some_and(|other| other.timestamp == mark.timestamp && other.placeholder == mark.placeholder))
+		}
+		same(&self.removed_nodes, &other.removed_nodes) && same(&self.removed_networks, &other.removed_networks) && same(&self.removed_resources, &other.removed_resources)
 	}
 
 	/// True if both registries agree on every value-bearing field, ignoring per-slot and

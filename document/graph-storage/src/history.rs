@@ -37,6 +37,11 @@ impl History {
 		history
 	}
 
+	/// Where `rev` sits in the file order, if it is here.
+	pub(crate) fn position(&self, rev: Rev) -> Option<usize> {
+		self.index.get(&rev).copied()
+	}
+
 	pub fn get(&self, rev: Rev) -> Option<&Delta> {
 		self.index.get(&rev).map(|&position| &self.deltas[position])
 	}
@@ -48,6 +53,15 @@ impl History {
 	/// The content hashes named by any resource addition or removal in history.
 	pub fn resource_hashes(&self) -> &HashSet<ResourceHash> {
 		&self.resource_hashes
+	}
+
+	/// Whether the deltas from `from` on already sit in canonical order, as a single-parent chain off the delta
+	/// before them, as a retirement appends: each link is the sort's only candidate at its step.
+	pub(crate) fn extends_canonically(&self, from: usize) -> bool {
+		(from..self.deltas.len()).all(|position| {
+			let delta = &self.deltas[position];
+			delta.parent == position.checked_sub(1).map(|previous| self.deltas[previous].id) && !matches!(delta.kind, RegistryDelta::Merge { .. })
+		})
 	}
 
 	pub fn len(&self) -> usize {
@@ -90,22 +104,17 @@ impl History {
 		self.deltas.iter()
 	}
 
-	/// Absorb `incoming` (dedup by `Rev`) and canonically re-sort the whole combined history.
-	///
-	/// The sort is deterministic (topological, ties broken by `Rev`), so two peers that absorb the same
-	/// delta set produce byte-identical history, not merely two different valid orderings. This is the
-	/// history-convergence mechanism: arrival order is erased. Callers update the registry separately
-	/// (LWW apply is commutative, so the registry converges regardless of order).
-	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) {
-		for delta in incoming {
-			self.push(delta);
-		}
-		self.canonical_sort();
+	/// The delta at `position` in topological order.
+	pub(crate) fn at(&self, position: usize) -> Option<&Delta> {
+		self.deltas.get(position)
 	}
 
 	/// Re-order `deltas` into the canonical topological order and rebuild the index: parents precede
 	/// children, and among deltas whose parents are all emitted the lowest `Rev` goes first. O(V + E).
-	fn canonical_sort(&mut self) {
+	///
+	/// Deterministic: peers that absorb the same delta set end up with byte-identical history, whatever the
+	/// arrival order.
+	pub(crate) fn canonical_sort(&mut self) {
 		// Unsatisfied in-history parent count per delta, plus reverse edges to decrement as parents emit.
 		let mut pending_parents: HashMap<Rev, usize> = HashMap::with_capacity(self.deltas.len());
 		let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
@@ -159,6 +168,37 @@ impl History {
 		seen
 	}
 
+	pub(crate) fn is_ancestor(&self, ancestor: Rev, descendant: Rev) -> bool {
+		self.ancestors([descendant]).contains(&ancestor)
+	}
+
+	/// `tip` plus the revs at first-parent distance 1, 2, 4, 8, ... behind it. Sent to a remote peer
+	/// so it can locate the divergence point within a factor of two of the true distance.
+	pub(crate) fn sample_chain(&self, tip: Rev) -> Vec<Rev> {
+		let mut samples = vec![tip];
+		let mut current = tip;
+		let mut distance = 0_usize;
+		while let Some(parent) = self.get(current).and_then(|delta| delta.parent) {
+			current = parent;
+			distance += 1;
+			if distance.is_power_of_two() {
+				samples.push(current);
+			}
+		}
+		// Always the root: copies of one document share it however far they diverged, so the answering peer
+		// can tell a divergent copy from a stranger and merge rather than replace.
+		if samples.last() != Some(&current) {
+			samples.push(current);
+		}
+		samples
+	}
+
+	/// Every delta not reachable from the `known` revs the remote peer reported, in topological order.
+	pub fn deltas_unknown_to(&self, known: impl IntoIterator<Item = Rev>) -> Vec<&Delta> {
+		let known = self.ancestors(known);
+		self.deltas.iter().filter(|delta| !known.contains(&delta.id)).collect()
+	}
+
 	/// The current tips: revs that no other delta lists as a parent (the divergent heads). A linear
 	/// history has exactly one tip; concurrent branches have several. Sorted ascending for determinism.
 	pub fn tips(&self) -> Vec<Rev> {
@@ -177,6 +217,13 @@ impl History {
 			}
 			None => false,
 		}
+	}
+
+	/// Record when a retired delta entered history (outside its `Rev`). Returns whether the delta was found.
+	pub(crate) fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
+		let Some(&position) = self.index.get(&rev) else { return false };
+		self.deltas[position].retired_at_ms = wall_ms;
+		true
 	}
 
 	/// Set a local annotation attribute (e.g. a commit message) on a retired delta in place. Excluded

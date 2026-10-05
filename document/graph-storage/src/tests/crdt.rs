@@ -161,80 +161,13 @@ fn history_is_causal_and_deterministic() {
 	}
 }
 
-fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
+pub(super) fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
 		delta: crate::AttributeDelta {
 			key: key.to_string(),
 			value: Some(Value::Int(value.into())),
 		},
 	}
-}
-
-/// Two peers that each integrate the other's concurrent branch converge to byte-identical history:
-/// the merge commit is parent-set-addressed (same `Rev` on both) and the canonical sort erases the
-/// arrival-order difference. Exercises `Session::merge`, the `Merge` variant, and `canonical_sort`.
-#[test]
-fn merge_converges_to_identical_history() {
-	// Shared base commit, then a concurrent edit on each peer's own clone of that base.
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b.commit_op_for_test(set_document_attribute("compute::b", 2)).expect("B edit");
-
-	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
-	let deltas_a = session_a.cloned_deltas();
-	let deltas_b = session_b.cloned_deltas();
-	let merge_a = session_a.merge(deltas_b).expect("merge into A failed").expect("A produced a merge");
-	let merge_b = session_b.merge(deltas_a).expect("merge into B failed").expect("B produced a merge");
-
-	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
-
-	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
-	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
-	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
-	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
-}
-
-/// Resurrection must reach into a merged-in branch: a network added then removed on the other peer's
-/// branch lives only under the merge's secondary parent, so a `SetNetworkExport` targeting it after
-/// the merge can only restore it by traversing all ancestors (not the primary-parent chain).
-#[test]
-fn resurrection_reaches_across_a_merge() {
-	let network_id = NetworkId(7);
-
-	// Shared base, then peer B adds and removes network 7 on its own branch.
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b
-		.commit_op_for_test(RegistryDelta::AddNetwork {
-			id: network_id,
-			network: Network::default(),
-		})
-		.expect("B AddNetwork");
-	session_b
-		.commit_op_for_test(RegistryDelta::RemoveNetwork {
-			id: network_id,
-			snapshot: Network::default(),
-		})
-		.expect("B RemoveNetwork");
-
-	// A merges B's branch: 7's AddNetwork now lives only under the merge's secondary parent.
-	session_a.merge(session_b.cloned_deltas()).expect("merge failed");
-
-	// A SetNetworkExport on 7 must resurrect it by walking into the merged-in branch. Before the
-	// all-ancestors fix this failed with NetworkNotInHistory (the primary-parent walk missed B's branch).
-	session_a
-		.commit_op_for_test(RegistryDelta::SetNetworkExport {
-			id: network_id,
-			index: 0,
-			export: None,
-		})
-		.expect("resurrection must find the AddNetwork on the merged-in branch");
 }
 
 /// Committing the same NodeNetwork twice must produce zero history entries on the second commit.
@@ -951,7 +884,7 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 }
 
 /// Commit a retired delta and mirror it onto the working registry, which `commit_op_for_test` leaves alone.
-fn commit_retired(session: &mut Session, op: RegistryDelta) {
+pub(super) fn commit_retired(session: &mut Session, op: RegistryDelta) {
 	let before = session.history().count();
 	session.commit_op_for_test(op).expect("commit failed");
 
@@ -965,7 +898,7 @@ fn add_network(id: u64) -> RegistryDelta {
 	RegistryDelta::AddNetwork { id: NetworkId(id), network }
 }
 
-fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
+pub(super) fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
 	let delta = crate::AttributeDelta {
 		key: key.into(),
 		value: Some(Value::from(value)),

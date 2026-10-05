@@ -112,6 +112,12 @@ impl Document {
 		Ok(())
 	}
 
+	/// Record newly settled hot ops, dropping any the hot log still holds. Returns what the dropped ops named.
+	pub(crate) fn mark_settled(&mut self, settled: impl IntoIterator<Item = HotOpId>) -> crate::Touched {
+		self.settled.extend(settled);
+		self.drop_settled_hot_ops()
+	}
+
 	/// Take on a peer's marks as well as this peer's. Returns what the dropped ops named.
 	pub(crate) fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> crate::Touched {
 		self.settled.absorb(remote);
