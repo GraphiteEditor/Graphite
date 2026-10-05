@@ -54,6 +54,7 @@ fn a_reopen_keeps_unretired_hot_ops_out_of_the_retired_snapshot() {
 		},
 		timestamp: TimeStamp { counter, peer: PeerId(22) },
 		sequence: HotSequence(counter),
+		attributes: Default::default(),
 	};
 	futures::executor::block_on(async {
 		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(22), 1, "ed".into(), "std".into()).unwrap();

@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::{
-	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput,
-	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, Rev, SettledMarks, SourceValue, TimeStamp, Tombstone, UserId,
+	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotOpId, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId,
+	NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, Rev, SettledMarks, SourceValue, TimeStamp, Tombstone, UserId,
 };
 
 #[derive(Clone, Debug)]
@@ -16,7 +16,7 @@ pub struct Document {
 	pub(crate) hot_log: Vec<HotOp>,
 	/// The stamps of the hot log's ops, so a re-announced op is recognised without a scan.
 	pub(crate) hot_timestamps: HashSet<TimeStamp>,
-	/// Which hot ops are retired into history, so a late copy is dropped.
+	/// Which hot ops are done with (retired, or taken back by their author), so a late copy is dropped.
 	pub(crate) settled: SettledMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
@@ -118,6 +118,24 @@ impl Document {
 		self.drop_settled_hot_ops()
 	}
 
+	/// Take back hot ops for good, re-deriving the working registry without them, since a commuting op
+	/// cannot be undone in place. Returns what the ops named and the ops themselves.
+	pub(crate) fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> (crate::Touched, Vec<HotOp>) {
+		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
+		let taken: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| wanted.contains(&hot_op.id())).collect();
+		taken.iter().for_each(|hot_op| _ = self.hot_timestamps.remove(&hot_op.timestamp));
+		self.settled.extend(ids.iter().copied());
+
+		let mut touched = crate::Touched::default();
+		for hot_op in &taken {
+			touched.record(&hot_op.op);
+		}
+		if !taken.is_empty() {
+			self.rebuild_working();
+		}
+		(touched, taken)
+	}
+
 	/// Bring the stamp index back in line after the hot log was filtered as a whole.
 	pub(crate) fn resync_hot_timestamps(&mut self) {
 		self.hot_timestamps = self.hot_log.iter().map(|hot_op| hot_op.timestamp).collect();
@@ -133,7 +151,7 @@ impl Document {
 		}
 	}
 
-	/// Drop settled hot ops and re-derive working without them: their effect returns with their deltas.
+	/// Drop settled hot ops and re-derive working without them: a retired op's effect returns with its delta.
 	fn drop_settled_hot_ops(&mut self) -> crate::Touched {
 		let settled = &self.settled;
 		let dropped: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| settled.covers(hot_op.id())).collect();
@@ -350,7 +368,7 @@ impl Document {
 				registry.attributes.apply_delta(delta, timestamp);
 			}
 			// Merge is a structural sync point only; it mutates no registry state.
-			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
+			RegistryDelta::Merge { .. } | RegistryDelta::Meta | RegistryDelta::Other(_) => {}
 		}
 		Ok(())
 	}

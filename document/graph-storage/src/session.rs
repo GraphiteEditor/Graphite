@@ -3,8 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, Touched, UserId, Value,
-	to_value,
+	ApplyMode, Attributes, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, Touched, UserId,
+	Value, to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -147,15 +147,20 @@ impl Session {
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
 	/// before any of its edits. A no-op batch doesn't register, since registration rides a real edit.
 	pub(crate) fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+		self.stage_ops_carrying(ops.into_iter().map(|op| (op, Attributes::new())))
+	}
+
+	/// [`stage_ops`](Self::stage_ops), each op carrying its hot op's attributes.
+	fn stage_ops_carrying(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Attributes)>) -> Result<Vec<HotOp>, CrdtError> {
 		// A batch is staged whole or not at all.
-		let mut pending: Vec<RegistryDelta> = ops.into_iter().collect();
+		let mut pending: Vec<(RegistryDelta, Attributes)> = ops.into_iter().collect();
 		if pending.is_empty() {
 			return Ok(Vec::new());
 		}
 
 		let (peer, user) = (self.document.peer, self.document.user);
 		if self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
-			pending.insert(0, RegistryDelta::RegisterPeer { peer, user });
+			pending.insert(0, (RegistryDelta::RegisterPeer { peer, user }, Attributes::new()));
 		}
 
 		// A reused sequence would fall under the settled marks, so a batch running past the end is refused.
@@ -165,12 +170,13 @@ impl Session {
 
 		let sequence_before = self.document.last_hot_sequence;
 		let mut staged = Vec::with_capacity(pending.len());
-		for op in pending {
+		for (op, attributes) in pending {
 			let sequence = HotSequence(self.document.last_hot_sequence.0 + 1);
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
 				sequence,
+				attributes,
 			};
 			if let Err(error) = self.document.stage_hot_op(hot_op.clone(), ApplyMode::Strict) {
 				// The run continues where it was, so no sequence goes unused.
@@ -201,7 +207,7 @@ impl Session {
 	}
 
 	/// [`commit_ops`](Self::commit_ops) for ops paired with their authored stamp (`None` to mint one), which retirement keeps
-	/// so LWW resolves as it did live.
+	/// so LWW resolves as it did live; a coarsened delta passes the newest it fuses.
 	fn commit_ops_authored_at(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Option<TimeStamp>)>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
 		let target = RegistryTarget::Retired;
 		let ops = ops.into_iter();
@@ -283,6 +289,37 @@ impl Session {
 		Ok(session)
 	}
 
+	/// Take back this peer's latest transaction (its ops since the previous marker) while it is still hot, so an
+	/// accidental gesture and its undo leave no step in history. `None` when nothing is hot or the transaction
+	/// already retired somewhere this peer knows of, which makes it an undo of a retired step.
+	pub fn retract_transaction(&mut self) -> Result<Option<Retraction>, CrdtError> {
+		let peer = self.document.peer;
+		let mut own: Vec<&HotOp> = self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp.peer == peer).collect();
+		own.sort_by_key(|hot_op| hot_op.sequence);
+		// The latest transaction: everything after the previous marker, through a trailing marker if any.
+		let closed_before = match own.last() {
+			Some(last) if last.ends_transaction() => own.len() - 1,
+			Some(_) => own.len(),
+			None => return Ok(None),
+		};
+		let start = own[..closed_before].iter().rposition(|hot_op| hot_op.ends_transaction()).map_or(0, |position| position + 1);
+		if own[start..].iter().all(|hot_op| matches!(hot_op.op, RegistryDelta::Meta)) {
+			return Ok(None);
+		}
+		let ids: Vec<HotOpId> = own[start..].iter().map(|hot_op| hot_op.id()).collect();
+		if ids.iter().any(|&id| self.document.settled.covers(id)) {
+			return Ok(None);
+		}
+		let (touched, taken) = self.document.retract_hot_ops(&ids);
+		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
+		Ok(Some(Retraction { ids, touched, ops }))
+	}
+
+	/// Take back hot ops another peer retracted. See [`retract_transaction`](Self::retract_transaction).
+	pub fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> Touched {
+		self.document.retract_hot_ops(ids).0
+	}
+
 	/// Which hot ops are done with, for a peer catching up and for persisting. See [`SettledMarks`].
 	pub fn settled_marks(&self) -> &SettledMarks {
 		&self.document.settled
@@ -345,6 +382,73 @@ impl Session {
 		self.document.history.len()
 	}
 
+	/// Closes this peer's open transaction with a [`RegistryDelta::Meta`] op flagged as its end, so the retirer can
+	/// take the ops before it as one unit. Returns everything staged, the marker last, since a re-registration
+	/// may precede it and must reach the other peers too. Empty when this peer has no op past its last marker.
+	pub fn end_transaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
+		let peer = self.document.peer;
+		let open = self
+			.document
+			.hot_log
+			.iter()
+			.rev()
+			.find(|hot_op| hot_op.timestamp.peer == peer)
+			.is_some_and(|hot_op| !hot_op.ends_transaction());
+		if !open {
+			return Ok(Vec::new());
+		}
+		let mut closing = Attributes::new();
+		closing.set(crate::attr::hot_op::TRANSACTION_END, Value::Bool(true), TimeStamp::ORIGIN);
+		self.stage_ops_carrying([(RegistryDelta::Meta, closing)])
+	}
+
+	/// Every author's closed transactions in the hot log, the earliest closed first. Ops past an author's last
+	/// marker are still open and never appear; every op commutes, so retirement order does not bear on the registry.
+	pub fn closed_transactions(&self) -> Vec<ClosedTransaction> {
+		let mut by_author: HashMap<PeerId, Vec<&HotOp>> = HashMap::new();
+		for hot_op in &self.document.hot_log {
+			by_author.entry(hot_op.timestamp.peer).or_default().push(hot_op);
+		}
+
+		let mut closed = Vec::new();
+		for (author, mut ops) in by_author {
+			ops.sort_by_key(|hot_op| hot_op.sequence);
+			let mut expected = self.document.settled.settled_up_to.get(&author).copied().unwrap_or(HotSequence::NONE).next();
+			let mut current = Vec::new();
+			let mut contiguous = true;
+			for hot_op in ops {
+				// An op settled past a gap is not in the log and not missing either.
+				while expected < hot_op.sequence && self.document.settled.covers(HotOpId { peer: author, sequence: expected }) {
+					expected = expected.next();
+				}
+				contiguous &= hot_op.sequence == expected;
+				expected = hot_op.sequence.next();
+				current.push(hot_op.id());
+				if hot_op.ends_transaction() {
+					closed.push(ClosedTransaction {
+						author,
+						ops: std::mem::take(&mut current),
+						closed_at: hot_op.timestamp,
+						contiguous,
+					});
+					contiguous = true;
+				}
+			}
+		}
+		closed.sort_by_key(|transaction| transaction.closed_at);
+		closed
+	}
+
+	/// Retire one closed transaction as one interaction, coarsened, marking its last delta as the
+	/// interaction's end. Every op is settled, the ones coarsening drops included. Returns the new revs.
+	pub fn retire_transaction(&mut self, transaction: &ClosedTransaction) -> Result<Vec<Rev>, CrdtError> {
+		let revs = self.retire_hot_ops_with(&transaction.ops, true)?;
+		if let Some(&last) = revs.last() {
+			self.mark_interaction_end(last);
+		}
+		Ok(revs)
+	}
+
 	/// The hot ops stamped at or before `up_to`, which [`retire`](Self::retire) drains.
 	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
 		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
@@ -352,19 +456,29 @@ impl Session {
 
 	/// Promote the given hot ops into retired deltas in hot-log order, each keeping its authored stamp.
 	///
-	/// One retired delta per hot op.
+	/// One retired delta per hot op; [`retire_transaction`](Self::retire_transaction) coarsens a closed transaction instead.
 	pub fn retire_hot_ops(&mut self, ids: &[HotOpId]) -> Result<Vec<Rev>, CrdtError> {
+		self.retire_hot_ops_with(ids, false)
+	}
+
+	fn retire_hot_ops_with(&mut self, ids: &[HotOpId], coarsened: bool) -> Result<Vec<Rev>, CrdtError> {
 		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
 		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
 		self.document.hot_log = kept;
 		self.document.resync_hot_timestamps();
 		self.document.settled.extend(drained.iter().map(HotOp::id));
 
-		let ops = drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
+		let drained = if coarsened { coarsen(drained) } else { drained };
+		let ops = drained
+			.into_iter()
+			.filter(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta))
+			.map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
 		self.commit_ops_authored_at(ops, true)
 	}
 
-	/// Promote every hot op stamped at or before `up_to`, whatever its author.
+	/// Promote every hot op stamped at or before `up_to`, whatever its author and whether or not its
+	/// transaction is closed. For callers that own the whole log, tests mostly; a session retires by
+	/// [`retire_transaction`](Self::retire_transaction).
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
 		let ids = self.hot_ops_up_to(up_to);
 		self.retire_hot_ops(&ids)
@@ -628,9 +742,17 @@ pub struct HotOp {
 	pub timestamp: TimeStamp,
 	/// Position in its author's run. See [`HotSequence`].
 	pub sequence: HotSequence,
+	/// What the op says beyond its write, such as the end of its author's transaction. Retirement leaves it behind.
+	#[serde(default)]
+	pub attributes: Attributes,
 }
 
 impl HotOp {
+	/// Whether the op closes its author's transaction.
+	pub fn ends_transaction(&self) -> bool {
+		self.attributes.get_or(crate::attr::hot_op::TRANSACTION_END, false)
+	}
+
 	/// Identifies the op in the settled marks, which track a contiguous prefix per author.
 	pub fn id(&self) -> HotOpId {
 		HotOpId {
@@ -663,8 +785,8 @@ pub struct HotOpId {
 	pub sequence: HotSequence,
 }
 
-/// Which hot ops are retired: each author's gap-free prefix, plus runs past it while ops are in flight. Persisted, so
-/// a late copy of a retired op is dropped.
+/// Which hot ops are done with, retired or taken back by their author: each author's gap-free prefix, plus runs past it
+/// while ops are in flight. Replicated and persisted, so a late copy of a settled op is dropped wherever it lands.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettledMarks {
 	pub settled_up_to: HashMap<PeerId, HotSequence>,
@@ -685,7 +807,7 @@ fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
 }
 
 impl SettledMarks {
-	/// Whether history already holds this hot op.
+	/// Whether this hot op is done with.
 	pub fn covers(&self, id: HotOpId) -> bool {
 		self.settled_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)
 			|| self
@@ -760,4 +882,111 @@ pub enum CrdtError {
 	NetworkAlreadyExists(NetworkId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
+}
+
+/// Which field of the registry a write lands on, for coarsening.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum FieldKey {
+	NodeInput(NodeId, u32),
+	NodeInputAttribute(NodeId, u32, String),
+	NodeAttribute(NodeId, String),
+	NodeImplementation(NodeId),
+	NodeInputs(NodeId),
+	NetworkExport(NetworkId, u32),
+	NetworkAttribute(NetworkId, String),
+	ResourceHash(ResourceId),
+	Source(ResourceId, crate::SourceKey),
+	DocumentAttribute(String),
+}
+
+/// The field a write lands on, `None` for an op that is not a plain field write.
+fn field_of(op: &RegistryDelta) -> Option<FieldKey> {
+	Some(match op {
+		RegistryDelta::ChangeNodeInput { id, index, .. } => FieldKey::NodeInput(*id, *index),
+		RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => FieldKey::NodeInputAttribute(*id, *index, delta.key.clone()),
+		RegistryDelta::ChangeNodeAttribute { id, delta } => FieldKey::NodeAttribute(*id, delta.key.clone()),
+		RegistryDelta::SetNodeImplementation { id, .. } => FieldKey::NodeImplementation(*id),
+		RegistryDelta::SetNodeInputs { id, .. } => FieldKey::NodeInputs(*id),
+		RegistryDelta::SetNetworkExport { id, index, .. } => FieldKey::NetworkExport(*id, *index),
+		RegistryDelta::ChangeNetworkAttribute { id, delta } => FieldKey::NetworkAttribute(*id, delta.key.clone()),
+		RegistryDelta::SetResourceHash { id, .. } => FieldKey::ResourceHash(*id),
+		RegistryDelta::AddSource { id, key, .. } | RegistryDelta::RemoveSource { id, key } => FieldKey::Source(*id, *key),
+		RegistryDelta::ChangeDocumentAttribute { delta } => FieldKey::DocumentAttribute(delta.key.clone()),
+		_ => return None,
+	})
+}
+
+/// What a write refers to beyond its own field: a node an input is wired to, or a network an
+/// implementation points at. A reference is evidence the target exists at the write's stamp, so a write
+/// that carries one only drops when the write superseding it carries the same.
+fn references_of(op: &RegistryDelta) -> Vec<u64> {
+	let of_input = |input: &crate::NodeInput| match input {
+		crate::NodeInput::Node { id, .. } => Some(id.0),
+		_ => None,
+	};
+	match op {
+		RegistryDelta::ChangeNodeInput { new_input, .. } => of_input(new_input).into_iter().collect(),
+		RegistryDelta::SetNodeInputs { inputs, .. } => inputs.iter().filter_map(|slot| of_input(&slot.input)).collect(),
+		RegistryDelta::SetNetworkExport { export, .. } => export.as_ref().and_then(of_input).into_iter().collect(),
+		RegistryDelta::SetNodeImplementation {
+			implementation: Implementation::Network(network),
+			..
+		} => vec![network.0],
+		_ => Vec::new(),
+	}
+}
+
+/// Coarsens one transaction's ops: a field write that a later write in it supersedes has no effect on the fold
+/// and is dropped, unless it refers to something the later write does not. A whole-list input write
+/// supersedes every earlier input write on its node. Structural ops stay.
+fn coarsen(mut ops: Vec<HotOp>) -> Vec<HotOp> {
+	// Newest by stamp, which is the author's order. The hot log holds arrival order, and a re-announcement
+	// after a lapsed link delivers later ops first, so log order would retire a value the registry never showed.
+	ops.sort_by_key(|hot_op| hot_op.timestamp);
+	let mut keep = vec![true; ops.len()];
+	let mut latest: HashMap<FieldKey, usize> = HashMap::new();
+	for (index, hot_op) in ops.iter().enumerate() {
+		let Some(field) = field_of(&hot_op.op) else { continue };
+		let references = references_of(&hot_op.op);
+		let supersedes = |earlier: &HotOp| references_of(&earlier.op).iter().all(|reference| references.contains(reference));
+
+		if let FieldKey::NodeInputs(id) = field {
+			latest.retain(|key, &mut earlier| {
+				let same_node = matches!(key, FieldKey::NodeInput(node, _) | FieldKey::NodeInputAttribute(node, _, _) | FieldKey::NodeInputs(node) if *node == id);
+				let superseded = same_node && supersedes(&ops[earlier]);
+				keep[earlier] &= !superseded;
+				!superseded
+			});
+		} else if let Some(&earlier) = latest.get(&field)
+			&& supersedes(&ops[earlier])
+		{
+			keep[earlier] = false;
+		}
+		latest.insert(field, index);
+	}
+	ops.into_iter().zip(keep).filter_map(|(hot_op, keep)| keep.then_some(hot_op)).collect()
+}
+
+/// An author's closed transaction sitting in the hot log, as [`Session::closed_transactions`] lists them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClosedTransaction {
+	pub author: PeerId,
+	/// Every op of the transaction in the author's order, the closing marker last.
+	pub ops: Vec<HotOpId>,
+	/// When the author closed it: the marker's stamp.
+	pub closed_at: TimeStamp,
+	/// Whether every op from the author's settled frontier through the marker is here. One with a gap is
+	/// waiting on a re-announcement; retiring it anyway commits what arrived.
+	pub contiguous: bool,
+}
+
+/// What [`Session::retract_transaction`] took back.
+#[derive(Clone, Debug)]
+pub struct Retraction {
+	/// The ids to send, so every peer drops the same ops.
+	pub ids: Vec<HotOpId>,
+	/// What the ops named, for a mirror to bring back into line.
+	pub touched: Touched,
+	/// The ops themselves, marker aside, for a redo to stage afresh.
+	pub ops: Vec<RegistryDelta>,
 }

@@ -170,7 +170,7 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 			key: delta.key.clone(),
 			previous: registry.attributes.get(&delta.key).cloned(),
 		}),
-		RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
+		RegistryDelta::Merge { .. } | RegistryDelta::Meta | RegistryDelta::Other(_) => {}
 	}
 	priors
 }

@@ -70,3 +70,9 @@ pub mod delta {
 	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta.
 	pub const INTERACTION_END: &str = "interaction_end";
 }
+
+/// Keys of a hot op's attributes, which travel with it to every peer.
+pub mod hot_op {
+	/// Marks the last op of its author's transaction, so the retirer takes the author's ops through it as one unit.
+	pub const TRANSACTION_END: &str = "transaction_end";
+}

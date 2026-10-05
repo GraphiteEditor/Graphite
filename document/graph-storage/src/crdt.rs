@@ -211,6 +211,9 @@ pub enum RegistryDelta {
 	Merge {
 		extra_parents: Vec<Rev>,
 	},
+	/// Changes nothing and only carries its hot op's attributes, such as the end of a transaction staged after its last
+	/// write. Retirement drops it.
+	Meta,
 	// Allow for future delta types without a model change
 	Other(Value),
 }
