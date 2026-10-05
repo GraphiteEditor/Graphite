@@ -220,6 +220,8 @@ impl SnapSession {
 			constructions: self.constructions.as_ref().map_or(&[], |(_, constructions)| constructions.as_slice()),
 			lead_constructions: &self.constructions_from_previous,
 			crossings: Some(&self.crossings),
+			particular: &[],
+			probed: None,
 		};
 		let outcome = snapping::snap_features(&context, &request, features, lead, free, options.previous);
 

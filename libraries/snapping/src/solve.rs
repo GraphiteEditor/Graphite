@@ -37,6 +37,51 @@ impl FeatureMap {
 		}
 	}
 
+	/// A feature of a box stretched about a pivot along two axes of any length and slant, where the parameters are the scale along each axis.
+	pub fn stretching(start: DVec2, pivot: DVec2, axes: [DVec2; 2]) -> Self {
+		let from_pivot = start - pivot;
+
+		// How far along each axis the start lies from the pivot, which for axes at right angles is its dot product with each
+		let along_each_axis = DVec2::new(from_pivot.perp_dot(axes[1]), axes[0].perp_dot(from_pivot)) / axes[0].perp_dot(axes[1]);
+		let along_each_axis = if along_each_axis.is_finite() {
+			along_each_axis
+		} else {
+			DVec2::new(from_pivot.dot(axes[0]), from_pivot.dot(axes[1]))
+		};
+
+		Self {
+			matrix: DMat2::from_cols(axes[0] * along_each_axis.x, axes[1] * along_each_axis.y),
+			offset: pivot,
+		}
+	}
+
+	/// A feature of something turned and scaled about a pivot, where the parameters are where the lead feature is carried to.
+	/// Returns `None` if the lead starts on the pivot.
+	pub fn turning_about(start: DVec2, lead_start: DVec2, pivot: DVec2) -> Option<Self> {
+		let lead_from_pivot = lead_start - pivot;
+		let from_pivot = start - pivot;
+
+		// The turn and scale carrying the lead's offset from the pivot to this feature's, as one complex number divided by another
+		let turn = DVec2::new(from_pivot.dot(lead_from_pivot), lead_from_pivot.perp_dot(from_pivot)) / lead_from_pivot.length_squared();
+		if !turn.is_finite() {
+			return None;
+		}
+
+		let matrix = DMat2::from_cols(turn, turn.perp());
+		Some(Self {
+			matrix,
+			offset: pivot - matrix * pivot,
+		})
+	}
+
+	/// A feature that moves by a fraction of however far the lead moves, as the points of a box being skewed do, where the parameters are where the lead is carried to.
+	pub fn following(start: DVec2, lead_start: DVec2, fraction: f64) -> Self {
+		Self {
+			matrix: DMat2::IDENTITY * fraction,
+			offset: start - fraction * lead_start,
+		}
+	}
+
 	pub fn position(&self, parameters: DVec2) -> DVec2 {
 		self.matrix * parameters + self.offset
 	}
@@ -1509,5 +1554,67 @@ mod tests {
 				assert_eq!(found, wanted);
 			}
 		}
+	}
+
+	#[test]
+	fn a_stretched_feature_is_where_it_began_at_a_scale_of_one_along_axes_of_any_slant() {
+		let pivot = DVec2::new(10., -20.);
+		let turned = [DVec2::from_angle(0.5), DVec2::from_angle(0.5).perp()];
+		let slanted = [DVec2::X, DVec2::new(0.6, 0.8)];
+
+		for axes in [[DVec2::X, DVec2::Y], turned, slanted] {
+			for start in [pivot, DVec2::new(110., -20.), DVec2::new(110., 40.), DVec2::new(60., 10.)] {
+				assert!(FeatureMap::stretching(start, pivot, axes).position(DVec2::ONE).abs_diff_eq(start, 1e-9));
+			}
+		}
+	}
+
+	#[test]
+	fn a_corner_scaled_to_twice_the_size_about_the_opposite_corner_goes_twice_as_far_from_it() {
+		let axes = [DVec2::X, DVec2::Y];
+		let corner = FeatureMap::stretching(DVec2::new(100., 60.), DVec2::ZERO, axes);
+		assert!(corner.position(DVec2::splat(2.)).abs_diff_eq(DVec2::new(200., 120.), 1e-12));
+
+		// Scaling along one axis alone leaves the corner's height as it was
+		assert!(corner.position(DVec2::new(2., 1.)).abs_diff_eq(DVec2::new(200., 60.), 1e-12));
+
+		// Along slanted axes, a feature keeps its place in the axes' own terms
+		let slanted = [DVec2::X, DVec2::new(0.6, 0.8)];
+		let feature = FeatureMap::stretching(DVec2::new(56., 8.), DVec2::ZERO, slanted);
+		assert!(feature.position(DVec2::new(1., 2.)).abs_diff_eq(DVec2::new(62., 16.), 1e-12));
+	}
+
+	#[test]
+	fn a_feature_turned_with_the_lead_keeps_its_angle_and_distance_from_the_pivot_relative_to_the_lead() {
+		let pivot = DVec2::new(10., 10.);
+		let lead_start = DVec2::new(20., 10.);
+
+		for start in [lead_start, pivot, DVec2::new(10., 30.), DVec2::new(-7., 3.)] {
+			let map = FeatureMap::turning_about(start, lead_start, pivot).unwrap();
+			assert!(map.position(lead_start).abs_diff_eq(start, 1e-12));
+		}
+
+		// A quarter turn of the lead turns a feature twice as far out by a quarter turn too
+		let feature = FeatureMap::turning_about(DVec2::new(10., 30.), lead_start, pivot).unwrap();
+		assert!(feature.position(DVec2::new(10., 20.)).abs_diff_eq(DVec2::new(-10., 10.), 1e-12));
+
+		// Drawing the lead out to twice its distance does the same to the feature
+		assert!(feature.position(DVec2::new(30., 10.)).abs_diff_eq(DVec2::new(10., 50.), 1e-12));
+	}
+
+	#[test]
+	fn nothing_is_turned_by_a_lead_that_starts_on_the_pivot() {
+		assert!(FeatureMap::turning_about(DVec2::new(5., 5.), DVec2::ONE, DVec2::ONE).is_none());
+		assert!(FeatureMap::turning_about(DVec2::ONE, DVec2::ONE, DVec2::ONE).is_none());
+	}
+
+	#[test]
+	fn a_point_halfway_up_a_skewed_box_moves_half_as_far_as_the_top() {
+		// The box's top edge is carried along by its middle while the bottom, 100 units below, stays put
+		let lead_start = DVec2::new(50., 0.);
+		let halfway = FeatureMap::following(DVec2::new(0., 50.), lead_start, 0.5);
+
+		assert!(halfway.position(lead_start).abs_diff_eq(DVec2::new(0., 50.), 1e-12));
+		assert!(halfway.position(lead_start + DVec2::new(30., 0.)).abs_diff_eq(DVec2::new(15., 50.), 1e-12));
 	}
 }

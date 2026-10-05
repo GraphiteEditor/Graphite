@@ -1,7 +1,7 @@
 //! Whole gestures played through the engine, each checking a behavior someone using the editor would notice.
 
 use glam::{DAffine2, DMat3, DVec2, DVec3};
-use snapping::{AnchorId, CrossingCache, FeatureMap};
+use snapping::{AnchorId, CandidateKey, CrossingCache, FeatureMap, Side, SpacedBox, find_equal_sizes, find_spacing};
 use snapping::{
 	Awake, Candidate, Context, Curve, Exclusions, Frame, GeometryRole, Grid, Incumbent, Kind, LayerId, LayerKind, Locus, Outcome, Request, Scene, SceneAnchor, SceneCurve, SceneLayer, Settings, Snap,
 	Tunables, ViewMapping, find_constructions, find_constructions_from, snap_features, snap_point, snap_slide,
@@ -65,6 +65,8 @@ impl Stage {
 			quiet: false,
 			constructions,
 			lead_constructions: &[],
+			particular: &[],
+			probed: None,
 			crossings: Some(&self.crossings),
 		}
 	}
@@ -100,6 +102,60 @@ impl Stage {
 		self.incumbent = outcome.incumbent();
 		outcome
 	}
+
+	/// Moves the pointer through a gesture in which each feature follows the parameters in its own way, remembering what engaged for the next move.
+	fn gesture(&mut self, features: &[FeatureMap], lead: usize, free: DVec2, particular: &[Candidate], probed: Option<&[u32]>, required: Option<Locus>) -> Outcome {
+		let outcome = self.with_context(|context| {
+			let constructions = find_constructions(context);
+			let request = Request {
+				particular,
+				probed,
+				..self.request(&constructions, required)
+			};
+			snap_features(context, &request, features, lead, free, None)
+		});
+
+		self.incumbent = outcome.incumbent();
+		outcome
+	}
+
+	/// Moves the pointer while moving or stretching a box by its corners, offering the spacing and sizes its moving sides could match.
+	/// `sides` names the corner carrying each side along each axis, which is `None` for a side that stays put.
+	fn box_gesture(&mut self, corners: &[FeatureMap; 4], sides: [[Option<u32>; 2]; 2], lead: usize, free: DVec2, required: Option<Locus>) -> Outcome {
+		let carried = |feature: u32| Side {
+			feature,
+			position: corners[feature as usize].position(free),
+		};
+		let spaced = SpacedBox {
+			kind: LayerKind::Artwork,
+			corners: corners.map(|corner| corner.position(free)),
+			sides: sides.map(|axis| axis.map(|side| side.map(carried))),
+		};
+
+		let particular = self.with_context(|context| {
+			let mut particular = Vec::new();
+			find_spacing(context, &spaced, &mut particular);
+			find_equal_sizes(context, &spaced, &mut particular);
+			particular
+		});
+		self.gesture(corners, lead, free, &particular, None, required)
+	}
+}
+
+/// The corners carrying each side of a box moving whole: the first carries both low sides, the second the high side along X, and the fourth the high side along Y.
+const MOVING_WHOLE: [[Option<u32>; 2]; 2] = [[Some(0), Some(1)], [Some(0), Some(3)]];
+
+/// The second corner carrying the high side along X, while every other side stays put.
+const RIGHT_SIDE_STRETCHED: [[Option<u32>; 2]; 2] = [[None, Some(1)], [None, None]];
+
+/// The corners of a box in order around it from its minimum.
+fn box_corners(min: DVec2, max: DVec2) -> [DVec2; 4] {
+	[min, DVec2::new(max.x, min.y), max, DVec2::new(min.x, max.y)]
+}
+
+/// Stretches only along X, keeping the scale along Y at one.
+fn level_stretch() -> Option<Locus> {
+	Locus::line(DVec2::new(0., 1.), DVec2::X)
 }
 
 fn engaged_kinds(outcome: &Outcome) -> Vec<Kind> {
@@ -134,7 +190,7 @@ fn path(points: &[DVec2], closed: bool) -> SceneLayer {
 }
 
 fn rectangle(min: DVec2, max: DVec2) -> SceneLayer {
-	let corners = [min, DVec2::new(max.x, min.y), max, DVec2::new(min.x, max.y)];
+	let corners = box_corners(min, max);
 	SceneLayer {
 		quad: Some(corners),
 		..path(&corners, true)
@@ -665,4 +721,155 @@ fn only_the_lead_feature_is_offered_lines_from_the_point_it_joins_back_to() {
 	let other_feature = outcome.candidates.iter().filter(|candidate| candidate.key.feature == 1);
 	assert!(other_feature.clone().count() > 0);
 	assert!(other_feature.clone().all(|candidate| candidate.reference != Some(previous)));
+}
+
+/// Two boxes 200 units apart along X, between which another box can be centered.
+fn two_boxes_apart() -> Stage {
+	Stage::new([rectangle(DVec2::ZERO, DVec2::new(100., 60.)), rectangle(DVec2::new(300., 0.), DVec2::new(400., 60.))])
+}
+
+#[test]
+fn a_box_slid_to_a_few_pixels_from_centered_between_two_others_lands_with_equal_gaps_on_both_sides() {
+	let mut stage = two_boxes_apart();
+
+	// The box is 50 wide and slides up from below to sit level with the others
+	let corners = box_corners(DVec2::new(0., 300.), DVec2::new(50., 360.)).map(FeatureMap::sliding_from);
+	let outcome = stage.box_gesture(&corners, MOVING_WHOLE, 0, DVec2::new(172., -290.), None);
+
+	assert!(outcome.parameters.abs_diff_eq(DVec2::new(175., -290.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Spacing]);
+	let [left, right] = [corners[0].position(outcome.parameters).x - 100., 300. - corners[1].position(outcome.parameters).x];
+	assert!((left - 75.).abs() < 1e-9 && (right - 75.).abs() < 1e-9);
+	assert!(outcome.engaged_candidates().all(|candidate| candidate.gaps.is_some_and(|gaps| (gaps.gap - 75.).abs() < 1e-9)));
+
+	// The same relationship is recognized and holds as the pointer moves on a little
+	let key = |outcome: &Outcome| outcome.engagement().map(|engagement| engagement.key);
+	let a_moment_later = stage.box_gesture(&corners, MOVING_WHOLE, 0, DVec2::new(178.5, -290.), None);
+	assert_eq!(key(&a_moment_later), key(&outcome));
+	assert!(a_moment_later.parameters.abs_diff_eq(DVec2::new(175., -290.), 1e-9));
+}
+
+#[test]
+fn a_box_slid_a_few_pixels_past_where_it_would_continue_the_spacing_of_two_others_lands_on_that_spacing() {
+	let mut stage = Stage::new([rectangle(DVec2::ZERO, DVec2::new(100., 60.)), rectangle(DVec2::new(150., 0.), DVec2::new(250., 60.))]);
+
+	let corners = box_corners(DVec2::new(0., 300.), DVec2::new(60., 360.)).map(FeatureMap::sliding_from);
+	let outcome = stage.box_gesture(&corners, MOVING_WHOLE, 0, DVec2::new(303., -290.), None);
+
+	// The gap of 50 between the two boxes repeats between the second and the one slid
+	assert!(outcome.parameters.abs_diff_eq(DVec2::new(300., -290.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Spacing]);
+}
+
+#[test]
+fn a_box_with_its_right_side_stretched_lands_where_the_gap_on_its_right_matches_the_gap_on_its_left() {
+	let mut stage = two_boxes_apart();
+
+	// Stretching about the middle of the left side, which stays 30 from the box on the left
+	let corners = box_corners(DVec2::new(130., 10.), DVec2::new(260., 50.)).map(|corner| FeatureMap::stretching(corner, DVec2::new(130., 30.), [DVec2::X, DVec2::Y]));
+	let outcome = stage.box_gesture(&corners, RIGHT_SIDE_STRETCHED, 1, DVec2::new(136. / 130., 1.), level_stretch());
+
+	assert!(corners[1].position(outcome.parameters).abs_diff_eq(DVec2::new(270., 10.), 1e-9));
+	assert!(corners[0].position(outcome.parameters).abs_diff_eq(DVec2::new(130., 10.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Spacing]);
+}
+
+#[test]
+fn a_stretched_box_lands_as_wide_as_its_neighbor() {
+	// The neighbor sits above, 150 wide and set in from the stretched box's left side
+	let mut stage = Stage::new([rectangle(DVec2::new(20., 0.), DVec2::new(170., 60.))]);
+
+	let corners = box_corners(DVec2::new(0., 100.), DVec2::new(140., 150.)).map(|corner| FeatureMap::stretching(corner, DVec2::new(0., 125.), [DVec2::X, DVec2::Y]));
+	let outcome = stage.box_gesture(&corners, RIGHT_SIDE_STRETCHED, 1, DVec2::new(146. / 140., 1.), level_stretch());
+
+	assert!(corners[1].position(outcome.parameters).abs_diff_eq(DVec2::new(150., 100.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::EqualSize]);
+}
+
+#[test]
+fn a_box_centered_between_two_others_can_at_once_line_up_with_an_awake_box_through_another_corner() {
+	let mut stage = two_boxes_apart();
+	stage.scene.set_layer(LayerId(3), rectangle(DVec2::new(600., 70.), DVec2::new(700., 170.)));
+	stage.scene.prepare();
+	stage.awake = vec![Awake::Box { layer: LayerId(3) }];
+
+	// The box's bottom comes 3 below the awake box's top as it nears the centered place
+	let corners = box_corners(DVec2::new(0., 300.), DVec2::new(50., 360.)).map(FeatureMap::sliding_from);
+	let outcome = stage.box_gesture(&corners, MOVING_WHOLE, 0, DVec2::new(172., -293.), None);
+
+	assert!(outcome.parameters.abs_diff_eq(DVec2::new(175., -290.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Alignment, Kind::Spacing]);
+
+	// The spacing is a track for the top left corner, and the alignment is a track for a bottom corner
+	let features: Vec<u32> = outcome.engaged_candidates().map(|candidate| candidate.key.feature).collect();
+	assert_eq!(features.len(), 2);
+	assert_ne!(features[0], features[1]);
+}
+
+#[test]
+fn a_feature_left_out_of_those_probed_does_not_land_on_an_anchor_under_it_while_another_feature_still_snaps() {
+	// An ellipse drawn from the origin by the far corner of its bounding box, which is not part of the ellipse and has an anchor right under it
+	let mut stage = Stage::new([path(&[DVec2::new(200., 150.)], false), path(&[DVec2::new(205., 78.)], false)]);
+	let features = [
+		FeatureMap::IDENTITY,
+		FeatureMap {
+			matrix: glam::DMat2::from_diagonal(DVec2::new(1., 0.5)),
+			offset: DVec2::ZERO,
+		},
+	];
+	let free = DVec2::new(202., 151.);
+
+	let probing_both = stage.gesture(&features, 0, free, &[], None, None);
+	assert_eq!(probing_both.parameters, DVec2::new(200., 150.));
+
+	// With only the ellipse's rightmost point probed, that point lands on the other anchor
+	stage.incumbent = None;
+	let probing_the_ellipse = stage.gesture(&features, 0, free, &[], Some(&[1]), None);
+	assert!(probing_the_ellipse.parameters.abs_diff_eq(DVec2::new(205., 156.), 1e-9));
+	assert!(probing_the_ellipse.engaged_candidates().all(|candidate| candidate.key.feature == 1));
+}
+
+#[test]
+fn a_particular_candidate_naming_a_feature_that_does_not_exist_is_ignored() {
+	let mut stage = Stage::new([]);
+	let corners = box_corners(DVec2::ZERO, DVec2::new(50., 60.)).map(FeatureMap::sliding_from);
+	let near_the_pointer = |feature: u32| {
+		let key = CandidateKey {
+			kind: Kind::Spacing,
+			feature,
+			identity: [1, 2, 3],
+		};
+		Candidate::spot(key, DVec2::new(3., 4.))
+	};
+	let free = DVec2::new(1., 1.);
+
+	let named_for_the_first_corner = stage.gesture(&corners, 0, free, &[near_the_pointer(0)], None, None);
+	assert_eq!(named_for_the_first_corner.parameters, DVec2::new(3., 4.));
+
+	stage.incumbent = None;
+	let named_for_no_corner = stage.gesture(&corners, 0, free, &[near_the_pointer(9)], None, None);
+	assert_eq!((named_for_no_corner.parameters, named_for_no_corner.snap.clone()), (free, Snap::Free));
+	assert!(named_for_no_corner.candidates.is_empty());
+}
+
+#[test]
+fn stepping_to_the_next_snap_passes_over_copies_from_corners_in_line_with_each_other() {
+	let mut stage = Stage::new([rectangle(DVec2::ZERO, DVec2::new(100., 60.))]);
+	stage.awake = vec![Awake::Box { layer: LayerId(1) }];
+	let corners = box_corners(DVec2::new(4., 200.), DVec2::new(52., 260.));
+
+	let landed = |cycle: usize| {
+		stage.with_context(|context| {
+			let constructions = find_constructions(context);
+			let request = Request {
+				cycle,
+				..stage.request(&constructions, None)
+			};
+			snap_slide(context, &request, &corners, 0, DVec2::ZERO).parameters
+		})
+	};
+
+	// Both right corners are nearest the line down the other box's middle, and both left ones are next nearest its left edge
+	assert_eq!(landed(0), DVec2::new(-2., 0.));
+	assert_eq!(landed(1), DVec2::new(-4., 0.));
 }
