@@ -34,8 +34,8 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
-	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path,
-	span_endpoints, spans,
+	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes,
+	push_path, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
 /// Appends one point to the working form, returning the index that names it.
@@ -129,7 +129,7 @@ trait VectorItemMut {
 
 impl VectorItemMut for Item<Vector> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, &List<Path>, DAffine2)) {
-		let paths = paths_from_item_attributes(self).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(self);
 		let transform = self.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 		f(self.element_mut(), &paths, transform);
 	}
@@ -139,7 +139,7 @@ impl VectorItemMut for Item<Graphic> {
 	fn for_each_vector_mut(&mut self, mut f: impl FnMut(&mut Vector, &List<Path>, DAffine2)) {
 		match self.element_mut() {
 			Graphic::Vector(item) => {
-				let paths = paths_from_item_attributes(item).cloned().unwrap_or_default();
+				let paths = shared_paths_from_item_attributes(item);
 				let transform = item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 				f(item.element_mut(), &paths, transform);
 			}
@@ -571,7 +571,7 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 		let do_rotation = random_rotation.abs() > 1e-6;
 
 		let points_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let row_paths = paths_from_item_attributes(&row).cloned().unwrap_or_default();
+		let row_paths = shared_paths_from_item_attributes(&row);
 		for point in row.element().anchor_positions(&row_paths) {
 			let translation = points_transform.transform_point2(point);
 
@@ -638,7 +638,7 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 		let (radius, roundness, edge_length_limit, min_angle_threshold) = (*radius.element(), *roundness.element(), *edge_length_limit.element(), *min_angle_threshold.element());
 		let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let source_transform_inverse = source_transform.inverse();
-		let source_paths = paths_from_item_attributes(&source).cloned().unwrap_or_default();
+		let source_paths = shared_paths_from_item_attributes(&source);
 		let (source, mut attributes) = source.into_parts();
 
 		// Flip the roundness to help with user intuition
@@ -1032,14 +1032,14 @@ async fn extrude<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(G
 #[node_macro::node(category("Vector: Modifier"), icon("NodeBoxWarp"), path(core_types::vector))]
 async fn box_warp<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let target_paths = paths_from_item_attributes(&rectangle).cloned().unwrap_or_default();
+	let target_paths = shared_paths_from_item_attributes(&rectangle);
 	let target = rectangle.into_element();
 
 	V::map_vector_items(content, |content| {
 		let mut row = content;
 		{
 			let transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let paths = paths_from_item_attributes(&row).cloned().unwrap_or_default();
+			let paths = shared_paths_from_item_attributes(&row);
 			let vector = std::mem::take(row.element_mut());
 
 			// Get the bounding box of the source vector geometry
@@ -1240,7 +1240,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 		let (spread, preserve_existing) = (*spread.element(), *preserve_existing.element());
 
 		let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let source_paths = paths_from_item_attributes(&source).cloned().unwrap_or_default();
+		let source_paths = shared_paths_from_item_attributes(&source);
 		let (source, mut attributes) = source.into_parts();
 
 		let (mut result, mut result_paths) = (Vector::default(), List::new());
@@ -1398,7 +1398,7 @@ async fn auto_tangents<V: MapVectorItems + 'n + Send>(
 async fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
-		let paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&content);
 		let (result, result_paths) = content
 			.element()
 			.bounding_box_rect(&paths)
@@ -1658,7 +1658,7 @@ async fn offset_path<V: MapVectorItems + 'n + Send>(
 
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let transform = Affine::new(transform_attribute.to_cols_array());
-		let source_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let source_paths = shared_paths_from_item_attributes(&content);
 		let vector = std::mem::take(content.element_mut());
 
 		let bezpaths = vector.stroke_bezpath_iter(&source_paths).collect::<Vec<_>>();
@@ -1774,8 +1774,8 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				.first_index_of(Cover::Stroke)
 				.zip(appearance.first_index_of(Cover::Fill))
 				.is_some_and(|(stroke_index, fill_index)| stroke_index < fill_index);
-			let paths = attributes.get::<List<Path>>(ATTR_PATHS).cloned().unwrap_or_default();
-			let bezpaths = vector.stroke_bezpath_iter(&paths).collect::<Vec<_>>();
+			let paths = attributes.get::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
+			let bezpaths = vector.stroke_bezpath_iter(paths).collect::<Vec<_>>();
 			let (mut solidified_stroke, mut solidified_stroke_paths) = (Vector::default(), List::new());
 
 			// Taking the existing stroke data and passing it to kurbo::stroke to generate new fill paths.
@@ -1859,7 +1859,7 @@ async fn solidify_stroke<V: SolidifyStroke + 'n + Send>(_: impl Ctx, #[implement
 #[node_macro::node(category("Vector: Modifier"), icon("NodeSeparateSubpaths"), path(core_types::vector))]
 async fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	V::expand_vector_items(content, |content| {
-		let content_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let content_paths = shared_paths_from_item_attributes(&content);
 		let bezpaths = content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>();
 
 		// Pass the original element through unchanged when it has no subpaths, so its attributes
@@ -2006,7 +2006,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 
 		let (mut result, mut result_paths) = (Vector::default(), List::new());
 
-		let content_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let content_paths = shared_paths_from_item_attributes(&content);
 		for local_bezpath in content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>() {
 			// Apply the transform to compute sample locations in world space (for correct distance-based spacing)
 			let mut world_bezpath = local_bezpath.clone();
@@ -2079,7 +2079,7 @@ async fn simplify<V: MapVectorItems + 'n + Send>(
 
 		let (mut result, mut result_paths) = (Vector::default(), List::new());
 
-		let item_paths = paths_from_item_attributes(&item).cloned().unwrap_or_default();
+		let item_paths = shared_paths_from_item_attributes(&item);
 		for mut bezpath in item.element().stroke_bezpath_iter(&item_paths).collect::<Vec<_>>() {
 			bezpath.apply_affine(transform);
 
@@ -2176,7 +2176,7 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 
 		let (mut result, mut result_paths) = (Vector::default(), List::new());
 
-		let content_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let content_paths = shared_paths_from_item_attributes(&content);
 		for mut bezpath in content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>() {
 			bezpath.apply_affine(transform);
 
@@ -2245,7 +2245,7 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 
 		let euclidean = !parameterized_distance;
 
-		let content_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let content_paths = shared_paths_from_item_attributes(&content);
 		let bezpaths = content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>();
 
 		let bezpath_count = bezpaths.len() as f64;
@@ -2437,7 +2437,7 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 
 		let mut cloud = List::new();
 
-		let content_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
+		let content_paths = shared_paths_from_item_attributes(&content);
 		let path_with_bounding_boxes: Vec<_> = content
 			.element()
 			.stroke_bezpath_iter(&content_paths)
@@ -2460,6 +2460,7 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 		}
 
 		// The scattered points replace the source shape entirely, leaving no paths
+		drop(content_paths);
 		edit_item_geometry(&mut content, |vector, paths| {
 			*vector = Vector(cloud);
 			*paths = List::new();
@@ -2630,7 +2631,7 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
-		edit_item_geometry(&mut content, |vector, paths| {
+		edit_item_points(&mut content, |vector, paths| {
 			let tangents = if along_normals { vector.anchor_tangents(paths) } else { Vec::new() };
 			let anchors = vector.anchor_indices(paths);
 			let deltas: Vec<_> = anchors
@@ -2674,7 +2675,7 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
-		edit_item_geometry(&mut content, |vector, paths| {
+		edit_item_points(&mut content, |vector, paths| {
 			let tangents = vector.anchor_tangents(paths);
 			let anchors = vector.anchor_indices(paths);
 			let deltas: Vec<_> = anchors
@@ -3870,7 +3871,7 @@ mod test {
 	#[test]
 	fn points_to_vector_keeps_positions_in_order_and_unconnected() {
 		let result = vector_item_from_points(&SQUARE_WITH_CENTER);
-		let paths = paths_from_item_attributes(&result).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&result);
 		assert_eq!(result.element().anchor_positions(&paths), SQUARE_WITH_CENTER);
 		assert_eq!(result.element().segment_iter(&paths).count(), 0);
 	}

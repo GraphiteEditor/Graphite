@@ -432,7 +432,7 @@ mod tests {
 	use super::*;
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
-	use vector_types::vector::paths_from_item_attributes;
+	use vector_types::vector::shared_paths_from_item_attributes;
 
 	fn item<T>(value: T) -> Item<T> {
 		Item::new_from_element(value)
@@ -446,7 +446,7 @@ mod tests {
 
 		// Works properly
 		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((30., 30.).into()), item(true));
-		let paths = paths_from_item_attributes(&grid).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
 		for (_, segment, _, _) in grid.element().segment_iter(&paths) {
@@ -459,7 +459,7 @@ mod tests {
 	#[test]
 	fn skew_isometric_grid_test() {
 		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((40., 30.).into()), item(true));
-		let paths = paths_from_item_attributes(&grid).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
 		for (_, segment, _, _) in grid.element().segment_iter(&paths) {
@@ -474,7 +474,7 @@ mod tests {
 	#[test]
 	fn grid_joins_segments_only_where_they_follow_each_other() {
 		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(true));
-		let paths = paths_from_item_attributes(&grid).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 
 		assert_eq!(vector.segment_ids(&paths).len(), 2 * 3 + 2 * 3);
@@ -486,7 +486,7 @@ mod tests {
 	fn grid_disconnected_cells_test() {
 		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
 		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(false));
-		let paths = paths_from_item_attributes(&grid).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 		assert_eq!(vector.stroke_manipulator_groups(&paths).filter(|(_, closed)| *closed).count(), 4);
 		assert_eq!(vector.anchor_points(&paths).count(), 4 * 4);
@@ -512,7 +512,7 @@ mod tests {
 			item(QRCodeErrorCorrectionLevel::Low),
 			item(true),
 		);
-		let paths = paths_from_item_attributes(&qr).cloned().unwrap_or_default();
+		let paths = shared_paths_from_item_attributes(&qr);
 		assert!(qr.element().anchor_points(&paths).count() > 0);
 		assert!(!qr.element().segment_ids(&paths).is_empty());
 	}

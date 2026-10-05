@@ -2,7 +2,7 @@ use super::addressing;
 use super::connectivity::Connectivity;
 use super::contour::{contour_bezpaths, contours};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use super::path::{CurveType, Path, curve_type_at, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, weave_bezpath};
+use super::path::{CurveType, Path, curve_type_at, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes, weave_bezpath};
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -796,13 +796,30 @@ impl Vector {
 	}
 }
 
-/// Edits a holder item's pool and paths together, taking the paths attribute out and restoring it.
+/// Edits a holder item's pool and paths together, taking the paths attribute out and putting it back where it was, or last if absent.
 pub fn edit_item_geometry<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vector, &mut List<Path>) -> R) -> R {
-	let mut paths = item.remove_attribute::<List<Path>>(ATTR_PATHS).unwrap_or_default();
+	let mut paths = item.attribute_mut::<List<Path>>(ATTR_PATHS).map(std::mem::take).unwrap_or_default();
 	let result = edit(item.element_mut(), &mut paths);
-	item.set_attribute(ATTR_PATHS, paths);
+	*item.attribute_mut_or_insert_default::<List<Path>>(ATTR_PATHS) = paths;
 
 	result
+}
+
+/// Edits an item's pool while only reading its paths, which stay shared with the item's clones instead of being copied.
+pub fn edit_item_points<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vector, &List<Path>) -> R) -> R {
+	let paths = shared_paths_from_item_attributes(item);
+	let result = edit(item.element_mut(), &paths);
+	ensure_paths_attribute(item);
+
+	result
+}
+
+/// Gives an item without paths an empty paths attribute, placed last, as [`edit_item_geometry`] gives a point cloud.
+pub fn ensure_paths_attribute(item: &mut Item<Vector>) {
+	if item.attribute::<List<Path>>(ATTR_PATHS).is_none() {
+		item.remove_attribute::<List<Path>>(ATTR_PATHS);
+		item.set_attribute(ATTR_PATHS, List::<Path>::new());
+	}
 }
 
 /// Edits one list row's pool and paths together, writing the paths attribute back afterwards.

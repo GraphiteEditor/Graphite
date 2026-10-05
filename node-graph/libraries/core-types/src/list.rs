@@ -727,6 +727,28 @@ unsafe impl StaticType for ListDyn {
 	type Static = Self;
 }
 
+// ======
+// Shared
+// ======
+
+/// A handle on an attribute value that an item also holds, for reading it without copying it. It is not an
+/// attribute value itself, so it cannot be stored back onto an item in place of the value it reads.
+pub struct Shared<T>(Arc<T>);
+
+impl<T> std::ops::Deref for Shared<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self.0
+	}
+}
+
+impl<T> From<Arc<T>> for Shared<T> {
+	fn from(value: Arc<T>) -> Self {
+		Self(value)
+	}
+}
+
 // ===================
 // ItemAttributeValues
 // ===================
@@ -804,12 +826,16 @@ impl ItemAttributeValues {
 
 	/// Gets a reference to the value of the attribute with the given key, if it exists and can be downcast to the requested type.
 	pub fn get<T: 'static>(&self, key: &str) -> Option<&T> {
-		// Explicit deref `(**value)` reaches `dyn AttributeValue` (which is !Sized and thus dispatches
-		// through the vtable to the concrete type) rather than resolving to the blanket
-		// `impl AttributeValue for Box<dyn AttributeValue>` which would return the wrong TypeId.
 		self.entries()
 			.iter()
 			.find_map(|(existing_key, value)| if existing_key.is(key) { (**value).as_any().downcast_ref::<T>() } else { None })
+	}
+
+	/// Gets a shared handle to the value of the attribute with the given key, if it exists and can be downcast to the requested type.
+	pub fn get_shared<T: Send + Sync + 'static>(&self, key: &str) -> Option<Shared<T>> {
+		let (_, value) = self.entries().iter().find(|(existing_key, _)| existing_key.is(key))?;
+
+		value.clone().into_any_arc().downcast::<T>().ok().map(Shared)
 	}
 
 	/// Gets a mutable reference to the value of the attribute with the given key, if it exists and can be downcast to the requested type.
@@ -1666,6 +1692,13 @@ impl<T> Item<T> {
 	/// Returns a reference to the attribute value for the given key, if it exists and is of the requested type.
 	pub fn attribute<U: 'static>(&self, key: &str) -> Option<&U> {
 		self.attributes.get(key)
+	}
+
+	/// Returns a shared handle to the attribute value for the given key, if it exists and is of the requested type.
+	/// The handle goes on reading the value without copying it, whatever then happens to the item. Writing or removing
+	/// the item's value while a handle is held copies the value first, so a handle is best dropped before then.
+	pub fn attribute_shared<U: Send + Sync + 'static>(&self, key: &str) -> Option<Shared<U>> {
+		self.attributes.get_shared(key)
 	}
 
 	/// Returns the attribute value for the given key, or the provided default if absent or of a different type.

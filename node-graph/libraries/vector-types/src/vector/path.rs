@@ -1,7 +1,7 @@
 use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use super::misc::{dvec2_to_point, point_to_dvec2};
 use super::vector_attributes::SegmentId;
-use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_PATHS, Item, List};
+use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_PATHS, Item, List, Shared};
 use glam::DVec2;
 use graphene_hash::CacheHash;
 use kurbo::{BezPath, CubicBez, Line, PathEl, PathSeg, Point, QuadBez};
@@ -189,6 +189,14 @@ pub fn append_segment(bezpath: &mut BezPath, segment: PathSeg) {
 /// The paths an item carries beside a vector element, absent when the pool is a bare point cloud.
 pub fn paths_from_item_attributes<T>(item: &Item<T>) -> Option<&List<Path>> {
 	item.attribute(ATTR_PATHS)
+}
+
+/// The paths an item carries beside a vector element, held without copying them and empty when it carries none.
+/// The handle goes on reading the paths whatever then happens to the item.
+pub fn shared_paths_from_item_attributes<T>(item: &Item<T>) -> Shared<List<Path>> {
+	static EMPTY: std::sync::LazyLock<std::sync::Arc<List<Path>>> = std::sync::LazyLock::new(Default::default);
+
+	item.attribute_shared(ATTR_PATHS).unwrap_or_else(|| EMPTY.clone().into())
 }
 
 /// The paths a list carries at `index` beside a vector element, absent when the pool is a bare point cloud.

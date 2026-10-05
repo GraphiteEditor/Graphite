@@ -771,9 +771,17 @@ impl VectorModification {
 
 	/// Apply this modification to the specified [`Vector`] and its paths.
 	pub fn apply(&self, vector: &mut Vector, paths: &mut List<Path>) {
+		if !self.apply_in_place(vector, paths) {
+			self.apply_through_working_form(vector, paths);
+		}
+	}
+
+	/// Applies this modification if it leaves the paths as they are, returning whether it did. Otherwise nothing
+	/// changes and [`Self::apply`] has to rewrite the paths.
+	pub fn apply_in_place(&self, vector: &mut Vector, paths: &List<Path>) -> bool {
 		// An untouched vector keeps its incoming path structure instead of being flattened and rewoven
 		if self.is_empty() {
-			return;
+			return true;
 		}
 
 		// Moving points and handles leaves the weave intact, so the pool is edited where it lies in O(points + references), keeping
@@ -783,11 +791,11 @@ impl VectorModification {
 			if handles_unshared {
 				self.points.move_in_place(vector, paths, &handles);
 				self.segments.set_handles_in_place(vector, paths);
-				return;
+				return true;
 			}
 		}
 
-		self.apply_through_working_form(vector, paths);
+		false
 	}
 
 	/// Applies this modification by flattening to the legacy working form, editing that, and weaving the result back.
