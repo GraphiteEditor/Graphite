@@ -112,8 +112,8 @@ impl Document {
 		Ok(())
 	}
 
-	/// Take on a peer's marks as well as this peer's. Returns whether a hot op was dropped.
-	pub(crate) fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> bool {
+	/// Take on a peer's marks as well as this peer's. Returns what the dropped ops named.
+	pub(crate) fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> crate::Touched {
 		self.settled.absorb(remote);
 		self.drop_settled_hot_ops()
 	}
@@ -134,16 +134,16 @@ impl Document {
 	}
 
 	/// Drop settled hot ops and re-derive working without them: their effect returns with their deltas.
-	fn drop_settled_hot_ops(&mut self) -> bool {
-		let before = self.hot_log.len();
+	fn drop_settled_hot_ops(&mut self) -> crate::Touched {
 		let settled = &self.settled;
-		self.hot_log.retain(|hot_op| !settled.covers(hot_op.id()));
-		let dropped = self.hot_log.len() != before;
-		if dropped {
+		let dropped: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| settled.covers(hot_op.id())).collect();
+		let mut touched = crate::Touched::default();
+		if !dropped.is_empty() {
+			dropped.iter().for_each(|hot_op| touched.record(&hot_op.op));
 			self.resync_hot_timestamps();
 			self.rebuild_working();
 		}
-		dropped
+		touched
 	}
 
 	/// Apply a retired commit and record it in history.
