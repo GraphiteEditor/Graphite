@@ -11,8 +11,8 @@ use glam::DVec2;
 use graphene_std::vector::PointId;
 use scene_mirror::layer_id;
 use snapping::{
-	AnchorId, Awake, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, Outcome, Request, Scene, Settings, Tunables, ViewMapping, find_constructions,
-	find_constructions_from,
+	AnchorId, Awake, Bounds, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, LayerKind, Outcome, Request, Scene, Settings, Side, SpacedBox, Tunables, ViewMapping,
+	find_constructions, find_constructions_from, find_equal_sizes, find_spacing,
 };
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -31,6 +31,9 @@ const REST_DRIFT: f64 = 4.;
 /// How many woken targets are kept, past which the one woken longest ago goes back to sleep.
 const AWAKE_LIMIT: usize = 5;
 
+/// How many of the boxes beside a moving box are awake without being rested on, which are the nearest ones.
+const NEAREST_SIBLINGS_AWAKE: usize = 3;
+
 /// What a tool hands over each time it asks to snap: the document being worked on and the state of the keyboard and pointer.
 #[derive(Clone, Copy)]
 pub struct SnapView<'a> {
@@ -45,18 +48,20 @@ impl<'a> SnapView<'a> {
 	}
 }
 
-/// What a gesture is moving, which it must not snap to.
+/// What a gesture moves, which it must not snap to, and the layers it copies, which stay put.
 #[derive(Clone, Debug, Default)]
 pub struct Moving {
 	/// Layers moving as a whole, along with everything inside them.
 	pub layers: Vec<LayerNodeIdentifier>,
+	/// Layers that stay put while copies of them move, which are snapped to like anything else.
+	pub copied: Vec<LayerNodeIdentifier>,
 	/// Layers with a path being edited, where what the layer draws follows the edit.
 	pub edited: Vec<LayerNodeIdentifier>,
 	/// The anchors being moved within those paths.
 	pub anchors: Vec<(LayerNodeIdentifier, PointId)>,
 }
 
-/// How a point being placed relates to what was placed before it.
+/// What a snap is told beyond its features and where the pointer asks them to be.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct PointOptions {
 	/// The point it joins back to with a straight segment.
@@ -65,6 +70,21 @@ pub struct PointOptions {
 	pub previous_length: Option<f64>,
 	/// A track the result must stay on, in the result's own terms: a position for a point, or the parameters for features.
 	pub required: Option<Locus>,
+	/// How many of the features, counted from the first, snap, which is all of them when `None`.
+	/// The rest only follow along, as a grip the pointer holds on by does, or the corners of the box around a round shape.
+	pub snapping: Option<usize>,
+	/// The features that make up a box being moved or stretched, which can then even out its gaps and match the sizes of the boxes beside it.
+	pub box_features: Option<BoxFeatures>,
+}
+
+/// Which features of a gesture make up a box.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BoxFeatures {
+	/// The features at the box's corners, in order around it.
+	pub corners: [usize; 4],
+	/// For each of the two axes, the feature carrying the box's low side and the one carrying its high side. A side that stays put is `None`.
+	/// With both sides carried, the box moves whole along that axis, so a stretch about its center names neither.
+	pub sides: [[Option<usize>; 2]; 2],
 }
 
 /// What the latest attempt to snap came to, kept for drawing.
@@ -78,11 +98,12 @@ pub struct Shown {
 }
 
 /// What a kept set of constructions was found for, which it stays good for.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 struct FoundFor {
 	previous: Option<DVec2>,
 	previous_length: Option<f64>,
 	settings: Settings,
+	awake: Vec<Awake>,
 }
 
 /// Where the pointer has stayed put, and since when, for telling when it has rested on something long enough to wake it.
@@ -103,6 +124,14 @@ struct Gesture {
 	exclusions: Exclusions,
 	/// Whether the scene goes on taking in changes to the document, rather than staying as it was when the gesture began.
 	follows_edits: bool,
+	/// The kind of the layers the gesture moves or stretches as a box.
+	kind: LayerKind,
+	/// The boxes of that kind sharing a parent with those layers, each with the bounds of its box.
+	siblings: Vec<(LayerId, Bounds)>,
+	/// The artboard those layers are in.
+	artboard: Option<LayerId>,
+	/// The targets awake for as long as a box is being moved near them, without having been rested on.
+	automatic: Vec<Awake>,
 }
 
 #[derive(Debug, Default)]
@@ -169,6 +198,13 @@ impl SnapSession {
 		};
 		let settings = settings::settings(&document.snapping_state);
 		let grid = settings::grid(document);
+
+		// A box is taken where the pointer asks for it, once any track it must stay on has had its say
+		let asked = options.required.map_or(free, |track| track.nearest(free));
+		let kind = self.gesture.as_ref().map_or(LayerKind::Artwork, |gesture| gesture.kind);
+		let spaced = options.box_features.filter(|_| !quiet).and_then(|box_features| spaced_box(kind, &box_features, features, asked));
+		let awake = self.awake_around(spaced.as_ref());
+
 		let (frame, tunables, nothing_moving) = (Frame::default(), Tunables::default(), Exclusions::default());
 
 		// A woken point found on what the gesture moves or edits goes along with it, so it is no target
@@ -179,9 +215,9 @@ impl SnapSession {
 					Awake::Position { id, .. } => self.position_sources.get(id).is_none_or(|sources| !sources.iter().any(moving)),
 					_ => true,
 				};
-				self.awake.iter().copied().filter(still).collect()
+				awake.into_iter().filter(still).collect()
 			}
-			None => self.awake.clone(),
+			None => awake,
 		};
 
 		let context = Context {
@@ -199,12 +235,24 @@ impl SnapSession {
 			previous: options.previous,
 			previous_length: options.previous_length,
 			settings,
+			awake: awake.clone(),
 		};
 		if !quiet && self.constructions.as_ref().is_none_or(|(kept_for, _)| *kept_for != found_for) {
 			let from_previous = options.previous.map(|previous| find_constructions_from(&context, previous, options.previous_length));
 			self.constructions_from_previous = from_previous.unwrap_or_default();
 			self.constructions = Some((found_for, find_constructions(&context)));
 		}
+
+		// Where a box would even out its gaps to the boxes beside it, or come to the size of one of them
+		let mut particular = Vec::new();
+		if let Some(spaced) = &spaced {
+			if document.snapping_state.bounding_box.distribute_evenly {
+				find_spacing(&context, spaced, &mut particular);
+			}
+			find_equal_sizes(&context, spaced, &mut particular);
+		}
+
+		let probed: Option<Vec<u32>> = options.snapping.map(|count| (0..count.min(features.len()) as u32).collect());
 
 		// A tap of the cycling key counts once, however long the key is held down
 		let cycle_key_held = input.keyboard.key(Key::KeyW);
@@ -220,8 +268,8 @@ impl SnapSession {
 			constructions: self.constructions.as_ref().map_or(&[], |(_, constructions)| constructions.as_slice()),
 			lead_constructions: &self.constructions_from_previous,
 			crossings: Some(&self.crossings),
-			particular: &[],
-			probed: None,
+			particular: &particular,
+			probed: probed.as_deref(),
 		};
 		let outcome = snapping::snap_features(&context, &request, features, lead, free, options.previous);
 
@@ -258,16 +306,41 @@ impl SnapSession {
 
 		let metadata = view.document.metadata();
 		let mut exclusions = Exclusions::default();
-		for layer in moving.layers {
+		for &layer in &moving.layers {
 			let with_everything_inside = std::iter::once(layer).chain(layer.descendants(metadata));
 			exclusions.layers.extend(with_everything_inside.map(layer_id));
 		}
+		let first_edited = moving.edited.first().copied();
 		exclusions.edited.extend(moving.edited.into_iter().map(layer_id));
 		for (layer, anchor) in moving.anchors {
 			exclusions.anchors.entry(layer_id(layer)).or_default().insert(AnchorId(anchor.inner()));
 		}
 
-		self.gesture = Some(Gesture { exclusions, follows_edits });
+		// A box lines up with the boxes of its kind sharing its parent and with its artboard. O(n) in the scene's layers, once per gesture.
+		let (mut kind, mut siblings, mut artboard) = (LayerKind::Artwork, Vec::new(), None);
+		if let Some(&first) = moving.copied.first().or(moving.layers.first()).or(first_edited.as_ref()) {
+			let is_layer = |layer: &LayerNodeIdentifier| *layer != LayerNodeIdentifier::ROOT_PARENT;
+			let parent = first.parent(metadata).filter(is_layer).map(layer_id);
+			kind = self.scene.layer(layer_id(first)).map_or(kind, |layer| layer.kind);
+
+			let beside = |(id, layer): (LayerId, &snapping::SceneLayer)| {
+				let is_beside = layer.parent == parent && layer.kind == kind && !exclusions.skips_box(id);
+				Some((id, Bounds::from_points(layer.quad.filter(|_| is_beside)?)))
+			};
+			siblings = self.scene.layers().filter_map(beside).collect();
+
+			let is_artboard = |id: &LayerId| self.scene.layer(*id).is_some_and(|layer| layer.kind == LayerKind::Artboard);
+			artboard = first.ancestors(metadata).skip(1).filter(is_layer).map(layer_id).find(is_artboard);
+		}
+
+		self.gesture = Some(Gesture {
+			exclusions,
+			follows_edits,
+			kind,
+			siblings,
+			artboard,
+			automatic: Vec::new(),
+		});
 		self.constructions = None;
 		self.rest = None;
 	}
@@ -359,9 +432,44 @@ impl SnapSession {
 			.retain(|id, _| awake.iter().any(|target| matches!(target, Awake::Position { id: awake_id, .. } if awake_id == id)));
 	}
 
-	/// The sleeping targets that the pointer is snapped to.
+	/// The woken targets, joined while a box is moved by the nearest of the boxes sharing its parent, by any such box the snap is relying on, and by its artboard.
+	fn awake_around(&mut self, spaced: Option<&SpacedBox>) -> Vec<Awake> {
+		let mut awake = self.awake.clone();
+		let relied_on = self.shown.as_ref().map(relied_on_boxes).unwrap_or_default();
+		let Some(gesture) = self.gesture.as_mut() else { return awake };
+		gesture.automatic.clear();
+		let Some(spaced) = spaced else { return awake };
+
+		// O(s) in the boxes sharing the moving one's parent
+		let moving = Bounds::from_points(spaced.corners);
+		let mut nearest: Vec<(f64, LayerId)> = gesture.siblings.iter().map(|(layer, bounds)| (distance_apart(&moving, bounds), *layer)).collect();
+		let nearer = |a: &(f64, LayerId), b: &(f64, LayerId)| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1));
+		if nearest.len() > NEAREST_SIBLINGS_AWAKE {
+			nearest.select_nth_unstable_by(NEAREST_SIBLINGS_AWAKE, nearer);
+			nearest.truncate(NEAREST_SIBLINGS_AWAKE);
+		}
+
+		let is_sibling = |layer: &LayerId| gesture.siblings.iter().any(|(sibling, _)| sibling == layer);
+		let mut layers: Vec<LayerId> = nearest
+			.into_iter()
+			.map(|(_, layer)| layer)
+			.chain(relied_on.into_iter().filter(is_sibling))
+			.chain(gesture.artboard)
+			.collect();
+		layers.sort();
+		layers.dedup();
+
+		let automatic = layers.into_iter().map(|layer| Awake::Box { layer }).filter(|target| !awake.contains(target));
+		gesture.automatic.extend(automatic);
+
+		awake.extend(&gesture.automatic);
+		awake
+	}
+
+	/// The targets the pointer is snapped to that are not awake already, whether woken or awake unasked.
 	fn resting_on(&self) -> Vec<Awake> {
 		let Some(shown) = &self.shown else { return Vec::new() };
+		let automatic = self.gesture.as_ref().map_or(&[][..], |gesture| gesture.automatic.as_slice());
 
 		let found_on = shown.outcome.engaged_candidates().filter_map(|candidate| candidate.highlight).map(|highlight| match highlight {
 			Highlight::Anchor { layer, index } => Awake::Anchor { layer, index },
@@ -395,7 +503,7 @@ impl SnapSession {
 
 		let mut resting_on: Vec<Awake> = Vec::new();
 		for target in found_on {
-			if !self.awake.contains(&target) && !resting_on.contains(&target) {
+			if !self.awake.contains(&target) && !automatic.contains(&target) && !resting_on.contains(&target) {
 				resting_on.push(target);
 			}
 		}
@@ -433,6 +541,41 @@ impl SnapSession {
 		});
 		self.forget_sources_of_sleeping_positions();
 	}
+}
+
+/// The box a gesture's features make up, with each feature where the parameters put it.
+fn spaced_box(kind: LayerKind, box_features: &BoxFeatures, features: &[FeatureMap], parameters: DVec2) -> Option<SpacedBox> {
+	let position = |index: usize| features.get(index).map(|feature| feature.position(parameters));
+	let side = |index: Option<usize>| {
+		let index = index?;
+		let (feature, position) = (index as u32, position(index)?);
+		Some(Side { feature, position })
+	};
+
+	let [first, second, third, fourth] = box_features.corners;
+	Some(SpacedBox {
+		kind,
+		corners: [position(first)?, position(second)?, position(third)?, position(fourth)?],
+		sides: box_features.sides.map(|sides| sides.map(side)),
+	})
+}
+
+/// How far apart two boxes are at their nearest, which is nothing where they overlap.
+fn distance_apart(first: &Bounds, second: &Bounds) -> f64 {
+	(first.min - second.max).max(second.min - first.max).max(DVec2::ZERO).length()
+}
+
+/// The layers with boxes that a shown snap relies on: those its engaged candidates were found on, and that of the track it is riding.
+fn relied_on_boxes(shown: &Shown) -> Vec<LayerId> {
+	let outcome = &shown.outcome;
+	let riding = outcome.engagement().and_then(|engagement| engagement.riding);
+	let ridden = riding.and_then(|key| outcome.candidates.iter().find(|candidate| candidate.key == key));
+
+	let on_a_box = |candidate: &Candidate| match candidate.highlight? {
+		Highlight::Box { layer } => Some(layer),
+		_ => None,
+	};
+	outcome.engaged_candidates().chain(ridden).filter_map(on_a_box).collect()
 }
 
 #[cfg(test)]
@@ -996,6 +1139,238 @@ mod tests {
 		let landed = snap_at_time(&mut session, &editor, on_the_line + DVec2::new(1., 3.), 9000);
 		assert_eq!(engaged_kinds(&session), vec![Kind::CommonTangent]);
 		assert!(across_both.nearest(landed).abs_diff_eq(landed, 1e-6));
+	}
+
+	/// The corners of a box between two viewport positions, in document space and in order around it from the first.
+	fn box_corners(editor: &EditorTestUtils, from: DVec2, to: DVec2) -> [DVec2; 4] {
+		[from, DVec2::new(to.x, from.y), to, DVec2::new(from.x, to.y)].map(|corner| in_document(editor, corner))
+	}
+
+	/// The four corners of a box sliding together, with the sides that the first, second, and third of them carry.
+	fn sliding_box(corners: [DVec2; 4]) -> (Vec<FeatureMap>, BoxFeatures) {
+		let box_features = BoxFeatures {
+			corners: [0, 1, 2, 3],
+			sides: [[Some(0), Some(1)], [Some(0), Some(2)]],
+		};
+		(corners.map(FeatureMap::sliding_from).to_vec(), box_features)
+	}
+
+	/// Begins a gesture moving the selected layer as a whole, and returns the session for it.
+	async fn moving_the_selected_layer(editor: &mut EditorTestUtils) -> SnapSession {
+		let layer = editor.get_selected_layer().await.expect("the layer drawn last should be selected");
+		let mut session = SnapSession::default();
+		let input = InputPreprocessorMessageHandler::default();
+		let moving = Moving {
+			layers: vec![layer],
+			..Default::default()
+		};
+		session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), moving);
+		session
+	}
+
+	fn slide(session: &mut SnapSession, editor: &EditorTestUtils, features: &[FeatureMap], free: DVec2, options: PointOptions) -> DVec2 {
+		let input = InputPreprocessorMessageHandler::default();
+		session.snap_features(SnapView::new(editor.active_document(), DOCUMENT, &input), features, 0, free, options)
+	}
+
+	#[tokio::test]
+	async fn a_box_slid_to_nearly_halfway_between_two_others_lands_with_the_same_gap_on_both_sides() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 160., 160.).await;
+		editor.draw_rect(300., 100., 360., 160.).await;
+		editor.draw_rect(200., 112., 240., 148.).await;
+		let mut session = moving_the_selected_layer(&mut editor).await;
+
+		// Halfway is ten further along, where the gap on either side comes to fifty
+		let (features, box_features) = sliding_box(box_corners(&editor, DVec2::new(200., 112.), DVec2::new(240., 148.)));
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		let slid = slide(&mut session, &editor, &features, unit * 7., options);
+
+		assert!(slid.abs_diff_eq(unit * 10., 1e-6), "the box slid by {slid}");
+		assert!(engaged_kinds(&session).contains(&Kind::Spacing));
+	}
+
+	#[tokio::test]
+	async fn an_artboard_slid_to_nearly_halfway_between_two_others_lands_with_the_same_gap_on_both_sides() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		for [left, top, right, bottom] in [[0., 0., 100., 100.], [300., 0., 400., 100.], [160., 10., 220., 90.]] {
+			editor.drag_tool(ToolType::Artboard, left, top, right, bottom, ModifierKeys::default()).await;
+		}
+
+		let corners = box_corners(&editor, DVec2::new(160., 10.), DVec2::new(220., 90.));
+		let metadata = editor.active_document().metadata();
+		let is_between = |layer: &LayerNodeIdentifier| metadata.bounding_box_document(*layer).is_some_and(|[min, _]| min.abs_diff_eq(corners[0], 1e-6));
+		let between = metadata.all_layers().find(is_between).expect("the artboard drawn last should be where it was drawn");
+
+		let mut session = SnapSession::default();
+		let input = InputPreprocessorMessageHandler::default();
+		let moving = Moving {
+			layers: vec![between],
+			..Default::default()
+		};
+		session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), moving);
+
+		let gesture = session.gesture.as_ref().expect("a gesture should be under way");
+		assert_eq!((gesture.kind, gesture.siblings.len(), gesture.artboard), (LayerKind::Artboard, 2, None));
+
+		// Halfway is ten further along, where the gap on either side comes to seventy
+		let (features, box_features) = sliding_box(corners);
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		let slid = slide(&mut session, &editor, &features, unit * 7., options);
+
+		assert!(slid.abs_diff_eq(unit * 10., 1e-6), "the artboard slid by {slid}");
+		assert!(engaged_kinds(&session).contains(&Kind::Spacing));
+	}
+
+	#[tokio::test]
+	async fn a_box_moved_nearly_level_with_the_one_beside_it_lines_up_with_it_unasked() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 160., 160.).await;
+		editor.draw_rect(300., 104., 340., 144.).await;
+		let mut session = moving_the_selected_layer(&mut editor).await;
+
+		let (features, box_features) = sliding_box(box_corners(&editor, DVec2::new(300., 104.), DVec2::new(340., 144.)));
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let asked = unit * 5.;
+
+		// As four points and no more, nothing far from them catches the box
+		assert_eq!(slide(&mut session, &editor, &features, asked, PointOptions::default()), asked);
+
+		// As a box, its top comes level with the top of the box beside it, four pixels up
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		let slid = slide(&mut session, &editor, &features, asked, options);
+		assert!(slid.abs_diff_eq(asked - unit.perp() * 4., 1e-6), "the box slid by {slid}");
+		assert!(engaged_kinds(&session).contains(&Kind::Alignment));
+	}
+
+	#[tokio::test]
+	async fn a_grip_that_a_box_is_held_by_snaps_to_nothing_itself() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 200., 300., 400.).await;
+		let mut session = SnapSession::default();
+
+		// The pointer has hold of something a few pixels from the rectangle's corner
+		let grip = [FeatureMap::sliding_from(in_document(&editor, DVec2::new(304., 397.)))];
+		let nothing_snaps = PointOptions {
+			snapping: Some(0),
+			..Default::default()
+		};
+		assert_eq!(slide(&mut session, &editor, &grip, DVec2::ZERO, nothing_snaps), DVec2::ZERO);
+
+		// Were that a point of the thing itself, it would land on the corner
+		let slid = slide(&mut session, &editor, &grip, DVec2::ZERO, PointOptions::default());
+		assert!(grip[0].position(slid).abs_diff_eq(in_document(&editor, DVec2::new(300., 400.)), 1e-6));
+
+		// A point of the thing that the grip carries along still lands on what it comes near, which here is another corner
+		session.forget();
+		let carried = FeatureMap::sliding_from(in_document(&editor, DVec2::new(97., 203.)));
+		let only_the_first_snaps = PointOptions {
+			snapping: Some(1),
+			..Default::default()
+		};
+		let input = InputPreprocessorMessageHandler::default();
+		let view = SnapView::new(editor.active_document(), DOCUMENT, &input);
+		let slid = session.snap_features(view, &[carried, grip[0]], 1, DVec2::ZERO, only_the_first_snaps);
+		assert!(carried.position(slid).abs_diff_eq(in_document(&editor, DVec2::new(100., 200.)), 1e-6));
+	}
+
+	#[tokio::test]
+	async fn a_box_awake_unasked_is_not_woken_for_good_by_resting_where_it_has_lined_the_moving_box_up() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 160., 160.).await;
+		editor.draw_rect(300., 104., 340., 144.).await;
+		let mut session = moving_the_selected_layer(&mut editor).await;
+
+		let (features, box_features) = sliding_box(box_corners(&editor, DVec2::new(300., 104.), DVec2::new(340., 144.)));
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		slide(&mut session, &editor, &features, DVec2::ZERO, options);
+		assert!(engaged_kinds(&session).contains(&Kind::Alignment));
+
+		// However long the pointer stays, the box it lined up with is awake only for as long as it is beside the moving one
+		assert!(!session.wants_ticks());
+		assert!(!session.tick(WAKE_DWELL_IN_GESTURE));
+		session.end_gesture();
+		assert!(session.awake.is_empty());
+	}
+
+	#[tokio::test]
+	async fn a_box_keeps_to_the_line_of_a_far_box_while_nearer_ones_come_up_and_loses_it_once_it_leaves() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 100., 40., 140.).await;
+		for left in [300., 400., 500.] {
+			editor.draw_rect(left, 300., left + 40., 340.).await;
+		}
+		editor.draw_rect(100., 104., 140., 144.).await;
+		let mut session = moving_the_selected_layer(&mut editor).await;
+
+		let (features, box_features) = sliding_box(box_corners(&editor, DVec2::new(100., 104.), DVec2::new(140., 144.)));
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		let risen = |slid: DVec2| -slid.dot(unit.perp()) / unit.length();
+
+		// Beside the first box, the moving one comes level with its top, four pixels up
+		let slid = slide(&mut session, &editor, &features, DVec2::ZERO, options);
+		assert!((risen(slid) - 4.).abs() < 1e-6, "the box rose by {}", risen(slid));
+
+		// Slid along that line to where the three boxes below are all nearer, it is still held level with the first
+		let slid = slide(&mut session, &editor, &features, unit * 320., options);
+		assert!((risen(slid) - 4.).abs() < 1e-6, "the box rose by {}", risen(slid));
+
+		// Once pulled clear of every line the first box offers, coming back beside this one finds that box no longer awake
+		slide(&mut session, &editor, &features, unit * 320. + unit.perp() * 70., options);
+		let slid = slide(&mut session, &editor, &features, unit * 320., options);
+		assert!(risen(slid).abs() < 1e-6, "the box rose by {}", risen(slid));
+	}
+
+	#[tokio::test]
+	async fn a_box_stretched_to_nearly_the_width_of_the_one_beside_it_lands_on_that_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 200., 160., 260.).await;
+		editor.draw_rect(300., 200., 340., 240.).await;
+		let mut session = moving_the_selected_layer(&mut editor).await;
+
+		// The right side slides along with its two corners, while the left side stays where it is
+		let [top_left, top_right, bottom_right, bottom_left] = box_corners(&editor, DVec2::new(300., 200.), DVec2::new(340., 240.));
+		let stays = |offset: DVec2| FeatureMap { matrix: glam::DMat2::ZERO, offset };
+		let features = [FeatureMap::sliding_from(top_right), FeatureMap::sliding_from(bottom_right), stays(top_left), stays(bottom_left)];
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let options = PointOptions {
+			required: Locus::line(DVec2::ZERO, unit),
+			box_features: Some(BoxFeatures {
+				corners: [2, 0, 1, 3],
+				sides: [[None, Some(0)], [None, None]],
+			}),
+			..Default::default()
+		};
+
+		// Sixty wide, as the other box is, takes sliding the side twenty, wherever the pointer is up or down
+		let slid = slide(&mut session, &editor, &features, unit * 17. + unit.perp() * 5., options);
+		assert!(slid.abs_diff_eq(unit * 20., 1e-6), "the side slid by {slid}");
+		assert!(engaged_kinds(&session).contains(&Kind::EqualSize));
 	}
 
 	#[tokio::test]
