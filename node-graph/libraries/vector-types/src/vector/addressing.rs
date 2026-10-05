@@ -2,7 +2,7 @@ use super::connectivity::Connectivity;
 use super::misc::HandleId;
 use super::path::{CurveType, Path, curve_type_at};
 use super::vector_attributes::{PointId, SegmentId};
-use core_types::list::{ATTR_ID, List};
+use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, List};
 use glam::DVec2;
 
 /// A segment's place in the weave: the span of one path between two consecutive anchors.
@@ -33,6 +33,47 @@ pub fn spans(paths: &List<Path>) -> impl Iterator<Item = Span> + '_ {
 	})
 }
 
+/// A span together with what its path holds for it.
+pub(crate) struct ResolvedSpan<'a> {
+	pub span: Span,
+	pub path: &'a Path,
+	pub curve_type: CurveType,
+	/// The span's stable ID, absent when its path names no spans.
+	pub id: Option<SegmentId>,
+	/// The pool points the span runs between.
+	pub endpoints: (u32, u32),
+}
+
+/// Every span of every path in path order, resolved in O(references) by reading each path's curve type, references, and IDs once.
+pub(crate) fn resolved_spans(paths: &List<Path>) -> impl Iterator<Item = ResolvedSpan<'_>> + '_ {
+	let curve_types = paths.iter_attribute_values::<CurveType>(ATTR_CURVE_TYPE).map(|curve_types| curve_types.as_slice()).unwrap_or_default();
+
+	paths.iter_element_values().enumerate().flat_map(move |(path_index, path)| {
+		let curve_type = curve_types.get(path_index).copied().unwrap_or_default();
+		let stride = curve_type.stride();
+		let references = path.0.iter_element_values().as_slice();
+		let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice());
+
+		(0..path.segment_count(curve_type)).filter_map(move |index| {
+			let reference = index * stride;
+			let endpoints = (*references.get(reference)? as u32, *references.get(reference + stride)? as u32);
+			let span = Span {
+				path: path_index as u32,
+				index: index as u32,
+			};
+			let id = ids.and_then(|ids| ids.get(reference).copied());
+
+			Some(ResolvedSpan {
+				span,
+				path,
+				curve_type,
+				id,
+				endpoints,
+			})
+		})
+	})
+}
+
 /// The stable ID naming a span, stored on the anchor reference the span departs from. A reference cell left unnamed
 /// holds `SegmentId::ZERO`, which sequential IDs never take.
 pub fn segment_id_of(paths: &List<Path>, span: Span) -> Option<SegmentId> {
@@ -44,7 +85,7 @@ pub fn segment_id_of(paths: &List<Path>, span: Span) -> Option<SegmentId> {
 
 /// The span a segment ID names, found by scanning every span in O(references).
 pub fn span_of_segment_id(paths: &List<Path>, segment: SegmentId) -> Option<Span> {
-	spans(paths).find(|&span| segment_id_of(paths, span) == Some(segment))
+	resolved_spans(paths).find(|resolved| resolved.id == Some(segment)).map(|resolved| resolved.span)
 }
 
 /// The pool points a span runs between.
@@ -152,7 +193,7 @@ pub fn all_connected(pool_index: u32, paths: &List<Path>, connectivity: &Connect
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::{ATTR_CURVE_TYPE, Item};
+	use core_types::list::Item;
 
 	fn pool(count: u32) -> List<DVec2> {
 		(0..count)

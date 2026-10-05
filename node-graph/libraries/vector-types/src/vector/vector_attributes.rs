@@ -109,17 +109,15 @@ impl SegmentGraph {
 			point_count: vector.point_count(),
 		};
 
-		for span in addressing::spans(paths) {
-			let Some(path) = paths.element(span.path as usize) else { continue };
-			let Some((start, end)) = addressing::span_endpoints(paths, span) else { continue };
-			let Some(segment) = path.segment(&vector.0, curve_type_at(paths, span.path as usize), span.index as usize) else {
+		for resolved in addressing::resolved_spans(paths) {
+			let Some(segment) = resolved.path.segment(&vector.0, resolved.curve_type, resolved.span.index as usize) else {
 				continue;
 			};
 
-			graph.spans.push(span);
-			graph.ids.push(addressing::segment_id_of(paths, span).unwrap_or_default());
-			graph.start_point.push(start as usize);
-			graph.end_point.push(end as usize);
+			graph.spans.push(resolved.span);
+			graph.ids.push(resolved.id.unwrap_or_default());
+			graph.start_point.push(resolved.endpoints.0 as usize);
+			graph.end_point.push(resolved.endpoints.1 as usize);
 			graph.segments.push(segment);
 		}
 
@@ -609,7 +607,7 @@ impl Vector {
 
 	/// Every segment's stable ID, in span order.
 	pub fn segment_ids(&self, paths: &List<Path>) -> Vec<SegmentId> {
-		addressing::spans(paths).map(|span| addressing::segment_id_of(paths, span).unwrap_or_default()).collect()
+		addressing::resolved_spans(paths).map(|resolved| resolved.id.unwrap_or_default()).collect()
 	}
 
 	/// The ID of the first segment of every path that begins one, leaving out the paths that only carry on the one before them in another curve type.

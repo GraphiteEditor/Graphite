@@ -157,13 +157,14 @@ impl Vector {
 impl Vector {
 	/// Every segment in span order as `(id, segment, start point ID, end point ID)`.
 	pub fn segment_iter<'a>(&'a self, paths: &'a List<Path>) -> impl Iterator<Item = (SegmentId, PathSeg, PointId, PointId)> + 'a {
-		addressing::spans(paths).filter_map(|span| {
-			let path = paths.element(span.path as usize)?;
-			let segment = path.segment(&self.0, curve_type_at(paths, span.path as usize), span.index as usize)?;
-			let id = addressing::segment_id_of(paths, span).unwrap_or_default();
-			let (start, end) = addressing::span_endpoints(paths, span)?;
+		let point_ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+		let point_id = move |point: u32| point_ids.get(point as usize).copied().unwrap_or_default();
 
-			Some((id, segment, self.point_id_at(start).unwrap_or_default(), self.point_id_at(end).unwrap_or_default()))
+		addressing::resolved_spans(paths).filter_map(move |resolved| {
+			let segment = resolved.path.segment(&self.0, resolved.curve_type, resolved.span.index as usize)?;
+			let (start, end) = resolved.endpoints;
+
+			Some((resolved.id.unwrap_or_default(), segment, point_id(start), point_id(end)))
 		})
 	}
 
