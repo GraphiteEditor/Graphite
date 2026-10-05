@@ -170,19 +170,23 @@ impl Session {
 
 	/// Wrap each op as a `Delta`, apply it, and chain it onto the local history. One tick per op.
 	///
-	/// Operates on the *retired snapshot*: reverses are computed against and forward ops applied to it,
-	/// so each `reverse` captures the true pre-op value rather than the hot-polluted working state. The
-	/// working registry already reflects these ops (they were staged as hot ops before retirement, or
-	/// equal the snapshot when there are none), so it is left untouched.
+	/// Operates on the retired snapshot, so each `reverse` holds the true pre-op state; the working registry already
+	/// reflects the ops, staged before retirement or equal to the snapshot when nothing is hot.
 	///
 	/// `idempotent`: pass `true` when the snapshot already reflects the op (retirement of an already-
 	/// applied hot op) so duplicate structural inserts no-op rather than error.
 	fn commit_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
+		self.commit_ops_authored_at(ops.into_iter().map(|op| (op, None)), idempotent)
+	}
+
+	/// [`commit_ops`](Self::commit_ops) for ops paired with their authored stamp (`None` to mint one), which retirement keeps
+	/// so LWW resolves as it did live.
+	fn commit_ops_authored_at(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Option<TimeStamp>)>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
 		let target = RegistryTarget::Retired;
 		let ops = ops.into_iter();
 		let mut produced = Vec::with_capacity(ops.size_hint().0);
 
-		for op in ops {
+		for (op, authored_at) in ops {
 			// A new edit abandons any undone-forward branch: those revs stay in the DAG but are no
 			// longer reachable via redo. (Mirrors the legacy editor clearing its redo history on
 			// commit.) Done on the first real op so a no-op commit doesn't silently disable redo.
@@ -191,9 +195,9 @@ impl Session {
 			}
 
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
-			let timestamp = self.document.clock.tick();
+			let timestamp = authored_at.unwrap_or_else(|| self.document.clock.tick());
 			let parent = self.document.head;
-			let author = self.document.peer;
+			let author = timestamp.peer;
 
 			let delta = Delta::new(parent, author, timestamp, op, reverse);
 			let rev = delta.id;
@@ -296,27 +300,27 @@ impl Session {
 		Ok(Some(merge_rev))
 	}
 
+	/// The retired snapshot as history alone gives it: the fold of `head`'s ancestry, leaving out undone deltas kept for redo.
+	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
+		let reachable = self.document.history.ancestors(self.document.head);
+		let mut scratch = Document::empty(self.document.peer, self.document.user);
+		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
+			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
+		}
+		Ok(scratch.working_registry)
+	}
+
 	pub fn history_len(&self) -> usize {
 		self.document.history.len()
 	}
 
-	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, re-applied with fresh
-	/// retirement timestamps so LWW arms bump field timestamps to `T_retire`.
-	///
-	/// Today: one retired delta per hot op. Coarsening is a future step.
+	/// Promote every hot op stamped at or before `up_to` into retired deltas in hot-log order, each keeping its authored
+	/// stamp.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
-		let mut drained = Vec::new();
-		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
-		for hot_op in self.document.hot_log.drain(..) {
-			if hot_op.timestamp <= up_to {
-				drained.push(hot_op);
-			} else {
-				remaining.push(hot_op);
-			}
-		}
-		self.document.hot_log = remaining;
-
-		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
+		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| hot_op.timestamp <= up_to);
+		self.document.hot_log = kept;
+		let ops = drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
+		self.commit_ops_authored_at(ops, true)
 	}
 	/// Mark a retired delta as the end of a user interaction, so the undo cursor treats it as a checkpoint.
 	/// Called once per interaction by the editor-facing commit path (not by resource/internal commits).
@@ -463,18 +467,10 @@ impl Session {
 	/// interaction's `AddResource` from the working registry, so a redoable (or re-undoable) interaction's
 	/// resources no longer appear in `registry().resources` even though redo still needs them. Resource GC
 	/// must keep this whole set alive, not just the current head's, or undo then redo loses declaration
-	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot.
+	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot and `SetResourceHash`.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
-
-		for delta in self.document.history.iter() {
-			match &delta.kind {
-				RegistryDelta::AddResource { entry, .. } => hashes.extend(entry.hash),
-				RegistryDelta::RemoveResource { snapshot, .. } => hashes.extend(snapshot.hash),
-				_ => {}
-			}
-		}
-
+		hashes.extend(self.document.history.resource_hashes());
 		hashes
 	}
 
