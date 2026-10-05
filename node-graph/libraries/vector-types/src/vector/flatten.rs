@@ -1,5 +1,5 @@
 use super::misc::{BezierHandles, HandleId, HandleType, segment_to_handles};
-use super::path::{CurveType, Path, continues_previous_path, curve_type_at, push_path};
+use super::path::{CurveType, Path, continues_previous_path, curve_type_at, push_paths};
 use super::vector_attributes::{PointId, SegmentId};
 use super::vector_types::Vector;
 use core_types::list::{ATTR_ID, List};
@@ -223,9 +223,7 @@ impl WorkingVector {
 			vector.0.set_attribute_values(ATTR_ID, point_ids);
 		}
 
-		for (curve_type, references, ids) in runs {
-			push_path(paths, curve_type, references, ids);
-		}
+		push_paths(paths, runs);
 
 		// G1 pairs narrow to the smooth flag on the anchor both handles face, and other pairings are dropped
 		let anchor = |handle: HandleId| {
@@ -509,6 +507,7 @@ pub fn vector_from_legacy_parts(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::vector::path::push_path;
 	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_SMOOTH, Item};
 
 	fn working(points: usize, segments: &[(usize, usize, BezierHandles)]) -> WorkingVector {

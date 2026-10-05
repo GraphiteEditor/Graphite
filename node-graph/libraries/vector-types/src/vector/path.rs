@@ -135,8 +135,8 @@ impl Path {
 	}
 }
 
-/// Appends one path weaving the given references in the curve type's stride, naming its spans with the given IDs in order.
-pub fn push_path(paths: &mut List<Path>, curve_type: CurveType, references: impl IntoIterator<Item = u32>, ids: impl IntoIterator<Item = SegmentId>) {
+/// Weaves the given references into a path in the curve type's stride, naming its spans with the given IDs in order.
+fn woven_path(curve_type: CurveType, references: impl IntoIterator<Item = u32>, ids: impl IntoIterator<Item = SegmentId>) -> Path {
 	let mut path = Path::from_references(references);
 
 	let stride = curve_type.stride();
@@ -149,7 +149,32 @@ pub fn push_path(paths: &mut List<Path>, curve_type: CurveType, references: impl
 		path.0.set_attribute_values(ATTR_ID, span_ids);
 	}
 
+	path
+}
+
+/// Appends one path weaving the given references in the curve type's stride, naming its spans with the given IDs in order.
+pub fn push_path(paths: &mut List<Path>, curve_type: CurveType, references: impl IntoIterator<Item = u32>, ids: impl IntoIterator<Item = SegmentId>) {
+	let path = woven_path(curve_type, references, ids);
 	paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
+}
+
+/// Appends a path for each run of references, as [`push_path`] would one at a time.
+pub(crate) fn push_paths(paths: &mut List<Path>, runs: impl IntoIterator<Item = (CurveType, Vec<u32>, Vec<SegmentId>)>) {
+	let woven = runs.into_iter().map(|(curve_type, references, ids)| (curve_type, woven_path(curve_type, references, ids)));
+	let (curve_types, woven) = woven.unzip();
+
+	extend_with_paths(paths, curve_types, woven);
+}
+
+/// Appends paths with their curve types as one piece, which spares each path a pass through an item of its own.
+fn extend_with_paths(paths: &mut List<Path>, curve_types: Vec<CurveType>, woven: Vec<Path>) {
+	if woven.is_empty() {
+		return;
+	}
+
+	let mut appended = List::new_from_elements(woven);
+	appended.set_attribute_values(ATTR_CURVE_TYPE, curve_types);
+	paths.extend(appended);
 }
 
 /// Appends a segment to a bezpath already positioned at that segment's start point.
@@ -323,10 +348,9 @@ impl PathWeaver {
 
 		pool.extend(List::new_from_elements(self.positions));
 
-		for (curve_type, references) in self.woven {
-			let path = Path::from_references(references);
-			paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
-		}
+		let woven = self.woven.into_iter().map(|(curve_type, references)| (curve_type, Path::from_references(references)));
+		let (curve_types, woven) = woven.unzip();
+		extend_with_paths(paths, curve_types, woven);
 
 		self.anchors
 	}
