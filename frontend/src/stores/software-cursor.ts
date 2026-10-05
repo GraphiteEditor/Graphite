@@ -24,6 +24,11 @@ export function setSoftwareCursor(cursor: SoftwareCursorState): void {
 	store.set(cursor);
 }
 
+// Clears the cursor when the component drawing it unmounts mid-transform, so a stale one can't reappear on remount
+export function resetSoftwareCursor(): void {
+	store.set(initialState);
+}
+
 export function softwareCursorClientPosition(): { x: number; y: number } | undefined {
 	const cursor = get(store);
 	if (!cursor.visible) return undefined;

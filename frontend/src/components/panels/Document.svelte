@@ -13,7 +13,7 @@
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
-	import { softwareCursor, setSoftwareCursor } from "/src/stores/software-cursor";
+	import { resetSoftwareCursor, softwareCursor, setSoftwareCursor } from "/src/stores/software-cursor";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
@@ -28,6 +28,7 @@
 	let rulerVertical: RulerInput | undefined;
 	let viewport: HTMLDivElement | undefined;
 	let gradientStopPicker: ColorPicker | undefined;
+	let destroyed = false;
 
 	// A granted pointer lock arrives as its own task, so a request whose transform already ended has to be handed back once it shows up
 	let pointerLockUnwanted = false;
@@ -566,6 +567,8 @@
 			}
 
 			await tick();
+			// The awaited tick can resume after teardown, which would re-show the cursor this component just cleared
+			if (destroyed) return;
 
 			// Pointer events get reported at this position while the cursor is shown
 			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
@@ -616,6 +619,7 @@
 	});
 
 	onDestroy(() => {
+		destroyed = true;
 		cleanupViewportResizeObserver?.();
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
@@ -629,6 +633,9 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
 		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
 		subscriptions.unsubscribeFrontendMessage("UpdateSoftwareCursor");
+		// The transform's end update would be dropped now that this component is unsubscribed, so clear the shared cursor instead of leaving it visible
+		resetSoftwareCursor();
+		if (window.document.pointerLockElement === viewport) window.document.exitPointerLock();
 		window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
 		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
