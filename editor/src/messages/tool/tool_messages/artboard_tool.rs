@@ -1,13 +1,12 @@
 use super::tool_prelude::*;
+use crate::consts::SELECTION_DRAG_ANGLE;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::common_functionality::snap_session::{Moving, SnapSession, SnapView};
-use crate::messages::tool::common_functionality::snapping;
-use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
 use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
@@ -60,11 +59,15 @@ impl ToolEditTarget for ArtboardTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		let was_dragging = self.fsm_state == ArtboardToolFsmState::Dragging;
 		let was_resizing = self.fsm_state == ArtboardToolFsmState::ResizingBounds;
 		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
 
-		// However a resize ends, its snapping gesture ends with it
-		if was_resizing && self.fsm_state != ArtboardToolFsmState::ResizingBounds {
+		// However a drag or a resize ends, its snapping gesture ends with it
+		let drag_ended = was_dragging && self.fsm_state != ArtboardToolFsmState::Dragging;
+		let resize_ended = was_resizing && self.fsm_state != ArtboardToolFsmState::ResizingBounds;
+		if drag_ended || resize_ended {
+			self.data.slide = None;
 			context.snap_session.end_gesture();
 			responses.add(OverlaysMessage::Draw);
 		}
@@ -117,27 +120,103 @@ impl Default for ArtboardToolFsmState {
 	}
 }
 
+/// The artboard being dragged, which slides by however far the pointer asks from where it took hold.
+#[derive(Clone, Debug)]
+struct Slide {
+	/// Where the pointer took hold, in document space.
+	grip: DVec2,
+	/// The corners, the middles of the edges, and the center of the artboard, each from where it began in document space.
+	features: Vec<FeatureMap>,
+	/// The corner nearest where the pointer took hold, which is the feature that lands on the grid.
+	lead: usize,
+	/// Which of the features make up the artboard's box.
+	box_features: BoxFeatures,
+	/// Where the artboard's top left corner began, in document space.
+	start_location: DVec2,
+	/// The artboard's width and height.
+	size: DVec2,
+}
+
 #[derive(Clone, Debug, Default)]
 struct ArtboardToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	selected_artboard: Option<LayerNodeIdentifier>,
 	cursor: MouseCursorIcon,
-	drag_start: DVec2,
-	drag_current: DVec2,
+	slide: Option<Slide>,
 	auto_panning: AutoPanning,
-	snap_candidates: Vec<SnapCandidatePoint>,
 	dragging_current_artboard_location: glam::DVec2,
 	draw: Resize,
 }
 
 impl ArtboardToolData {
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, _input: &InputPreprocessorMessageHandler) {
-		self.snap_candidates.clear();
+	/// Readies the selected artboard to slide from where the pointer took hold.
+	fn prepare_slide(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+		self.slide = None;
+		let Some(artboard) = self.selected_artboard else { return };
+		let Some(bounds) = document.metadata().bounding_box_document(artboard) else { return };
 
-		let Some(layer) = self.selected_artboard else { return };
+		let grip = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+		let corners = Quad::from_box(bounds).0;
+		let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+		let center = (bounds[0] + bounds[1]) / 2.;
+		let features = corners.into_iter().chain(middles).chain([center]).map(FeatureMap::sliding_from).collect();
 
-		if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) {
-			snapping::get_bbox_points(Quad::from_box(bounds), &mut self.snap_candidates, snapping::BBoxSnapValues::ARTBOARD, document);
+		let lead = (0..4)
+			.min_by(|&a, &b| corners[a].distance_squared(grip).total_cmp(&corners[b].distance_squared(grip)))
+			.unwrap_or_default();
+
+		// The artboard is upright, so its first corner carries both low sides and its third both high sides
+		let box_features = BoxFeatures {
+			corners: [0, 1, 2, 3],
+			sides: [[Some(0), Some(2)]; 2],
+		};
+
+		self.slide = Some(Slide {
+			grip,
+			features,
+			lead,
+			box_features,
+			start_location: bounds[0],
+			size: bounds[1] - bounds[0],
+		});
+	}
+
+	/// Slides the artboard by however far the pointer asks from where it took hold, keeping to an axis while the constrain key is held.
+	fn slide_artboard(&mut self, responses: &mut VecDeque<Message>, view: SnapView, snap_session: &mut SnapSession, artboard: LayerNodeIdentifier, constrain_axis: bool) {
+		let Some(slide) = &self.slide else { return };
+		let input = view.input;
+		let document_to_viewport = view.document.metadata().document_to_viewport;
+
+		let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+		let free = pointer - slide.grip;
+
+		// The constrain key holds the drag to the nearest angle step from where it began, as seen in the viewport
+		let axis_aligned = || {
+			let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+			let angle = DVec2::X.try_angle_to(input.mouse.position - document_to_viewport.transform_point2(slide.grip))?;
+			Some(DVec2::from_angle((angle / snap_resolution).round() * snap_resolution))
+		};
+		let held_direction = constrain_axis.then(axis_aligned).flatten();
+		let required = held_direction.and_then(|direction| Locus::line(DVec2::ZERO, document_to_viewport.inverse().transform_vector2(direction)));
+
+		let options = PointOptions {
+			required,
+			box_features: Some(slide.box_features),
+			..Default::default()
+		};
+		let slid = snap_session.snap_features(view, &slide.features, slide.lead, free, options);
+
+		let location = (slide.start_location + slid).round();
+		let dimensions = slide.size.round();
+		responses.add(GraphOperationMessage::ResizeArtboard {
+			layer: artboard,
+			location,
+			dimensions,
+		});
+
+		// Keeps the cage with the artboard until the move has rendered
+		if let Some(bounds) = &mut self.bounding_box_manager {
+			bounds.bounds = [location, location + dimensions];
 		}
 	}
 
@@ -311,11 +390,6 @@ impl Fsm for ArtboardToolFsmState {
 				self
 			}
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
-				let to_viewport = document.metadata().document_to_viewport;
-				let to_document = to_viewport.inverse();
-				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
-				tool_data.drag_current = to_document.transform_point2(input.mouse.position);
-
 				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					tool_data.start_resizing(selected_edges, document, input);
 
@@ -328,7 +402,14 @@ impl Fsm for ArtboardToolFsmState {
 
 					ArtboardToolFsmState::ResizingBounds
 				} else if tool_data.select_artboard(document, input, viewport, responses) {
-					tool_data.get_snap_candidates(document, input);
+					tool_data.prepare_slide(document, input);
+
+					let moving = Moving {
+						layers: tool_data.selected_artboard.into_iter().collect(),
+						..Default::default()
+					};
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
+
 					ArtboardToolFsmState::Dragging
 				} else {
 					tool_data.draw.start(document, input, viewport);
@@ -353,42 +434,22 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
-
-					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
-					let snap_data = SnapData::ignore(document, input, viewport, &ignore);
-					let document_to_viewport = document.metadata().document_to_viewport;
-					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
-					let mouse_delta = snap_drag(start, current, axis_align, DVec2::ZERO, snap_data, &mut tool_data.draw.snap_manager, &tool_data.snap_candidates);
-
-					let size = bounds.bounds[1] - bounds.bounds[0];
-					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);
-
-					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("Selected artboard cannot be ROOT_PARENT");
-						return ArtboardToolFsmState::Ready { hovered };
-					}
-					responses.add(GraphOperationMessage::ResizeArtboard {
-						layer: tool_data.selected_artboard.unwrap(),
-						location: position.round(),
-						dimensions: size.round(),
-					});
-
-					// The second term is added to prevent the slow change in position due to rounding errors.
-					tool_data.drag_current += (document_to_viewport.inverse() * bounds.transform).transform_vector2(position.round() - bounds.bounds[0]);
-
-					// Update bounds if another `PointerMove` message comes before `ResizeArtboard` is finished.
-					bounds.bounds[0] = position.round();
-					bounds.bounds[1] = position.round() + size.round();
-
-					// Auto-panning
-					let messages = [
-						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
-						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
-					];
-					tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
+				let Some(artboard) = tool_data.selected_artboard else { return ArtboardToolFsmState::Dragging };
+				if artboard == LayerNodeIdentifier::ROOT_PARENT {
+					log::error!("Selected artboard cannot be ROOT_PARENT");
+					return ArtboardToolFsmState::Ready { hovered };
 				}
+
+				let constrain_axis = input.keyboard.key(constrain_axis_or_aspect);
+				tool_data.slide_artboard(responses, SnapView::new(document, *document_id, input), snap_session, artboard, constrain_axis);
+
+				// Auto-panning
+				let messages = [
+					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
+					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
+
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
@@ -798,5 +859,145 @@ mod test_artboard {
 		// The document bounding boxes should remain the same (content shouldn't shift)
 		assert_eq!(document.metadata().bounding_box_document(rectangle1).unwrap(), [DVec2::new(10., 10.), DVec2::new(20., 16.)]);
 		assert_eq!(document.metadata().bounding_box_document(rectangle2).unwrap(), [DVec2::new(15., 15.), DVec2::new(25., 25.)]);
+	}
+
+	/// The least and greatest corners of a layer's bounding box in the document.
+	fn bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> [DVec2; 2] {
+		editor.active_document().metadata().bounding_box_document(layer).expect("the layer should have a bounding box")
+	}
+
+	fn assert_bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier, expected: [DVec2; 2]) {
+		let [min, max] = bounds(editor, layer);
+		let [expected_min, expected_max] = expected;
+		assert!(
+			min.distance(expected_min) < 1e-6 && max.distance(expected_max) < 1e-6,
+			"the layer spans {min} to {max} rather than {expected_min} to {expected_max}"
+		);
+	}
+
+	/// Draws an artboard between two positions, which are the same in the viewport and the document, and returns its layer.
+	async fn draw_artboard(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) -> LayerNodeIdentifier {
+		editor.drag_tool(ToolType::Artboard, from.x, from.y, to.x, to.y, ModifierKeys::empty()).await;
+
+		let metadata = editor.active_document().metadata();
+		let is_drawn = |layer: &LayerNodeIdentifier| metadata.bounding_box_document(*layer).is_some_and(|[min, max]| min.distance(from) < 1e-6 && max.distance(to) < 1e-6);
+		metadata.all_layers().find(is_drawn).expect("the artboard should be where it was drawn")
+	}
+
+	/// Presses the Artboard tool at a viewport position, which takes hold of the artboard there.
+	async fn press_at(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.select_tool(ToolType::Artboard).await;
+		editor.move_mouse(position.x, position.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(position.x, position.y, ModifierKeys::empty()).await;
+	}
+
+	async fn move_to(editor: &mut EditorTestUtils, position: DVec2, modifier_keys: ModifierKeys) {
+		editor.move_mouse(position.x, position.y, modifier_keys, MouseKeys::LEFT).await;
+	}
+
+	async fn drag(editor: &mut EditorTestUtils, from: DVec2, to: DVec2, modifier_keys: ModifierKeys) {
+		press_at(editor, from).await;
+		move_to(editor, to, modifier_keys).await;
+		editor.left_mouseup(to.x, to.y, modifier_keys).await;
+	}
+
+	#[tokio::test]
+	async fn an_artboard_dragged_nearly_level_with_one_far_beside_it_lines_up_with_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(400., 300.), DVec2::new(440., 380.)).await;
+
+		// Its top comes four pixels below the other's top, with hundreds of pixels between them
+		let grab = DVec2::new(420., 340.);
+		drag(&mut editor, grab, grab + DVec2::new(7., -196.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, artboard, [DVec2::new(407., 100.), DVec2::new(447., 180.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_dragged_nearly_halfway_between_two_others_lands_with_the_same_gap_on_both_sides() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		draw_artboard(&mut editor, DVec2::new(300., 100.), DVec2::new(360., 160.)).await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(200., 112.), DVec2::new(240., 148.)).await;
+
+		// Halfway is ten further along, where the gap on either side comes to fifty
+		let grab = DVec2::new(220., 130.);
+		drag(&mut editor, grab, grab + DVec2::new(7., 0.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, artboard, [DVec2::new(210., 112.), DVec2::new(250., 148.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_dragged_near_where_its_own_content_was_does_not_snap_to_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(300., 300.)).await;
+		editor.draw_rect(150., 150., 180., 170.).await;
+		let rectangle = editor.get_selected_layer().await.expect("the drawn rectangle should be selected");
+		assert_eq!(rectangle.parent(editor.active_document().metadata()), Some(artboard));
+		assert_bounds(&editor, rectangle, [DVec2::new(150., 150.), DVec2::new(180., 170.)]);
+
+		// Its top left corner is brought a few pixels from where the rectangle's top left corner was
+		let grab = DVec2::new(250., 250.);
+		drag(&mut editor, grab, grab + DVec2::new(53., 52.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, artboard, [DVec2::new(153., 152.), DVec2::new(353., 352.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_dragged_with_shift_moves_along_one_axis_only() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.)).await;
+
+		// Mostly rightward, it stays at the same height
+		let grab = DVec2::new(350., 340.);
+		drag(&mut editor, grab, grab + DVec2::new(70., 23.), ModifierKeys::SHIFT).await;
+		assert_bounds(&editor, artboard, [DVec2::new(370., 300.), DVec2::new(470., 380.)]);
+
+		// Mostly downward, it stays at the same left and right
+		let grab = DVec2::new(420., 340.);
+		drag(&mut editor, grab, grab + DVec2::new(-18., 60.), ModifierKeys::SHIFT).await;
+		assert_bounds(&editor, artboard, [DVec2::new(370., 360.), DVec2::new(470., 440.)]);
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_drag_puts_the_artboard_back_and_ends_the_snapping_gesture() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+		let shows_an_attempt = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_some();
+
+		let (grab, away) = (DVec2::new(330., 330.), DVec2::new(400., 420.));
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, away, ModifierKeys::empty()).await;
+		assert_bounds(&editor, artboard, [DVec2::new(370., 390.), DVec2::new(430., 450.)]);
+		assert!(shows_an_attempt(&editor));
+
+		// Ending the gesture lets go of the drag's latest attempt to snap
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(away.x, away.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, artboard, [DVec2::new(300., 300.), DVec2::new(360., 360.)]);
+		assert!(!shows_an_attempt(&editor));
+
+		// Its top left corner is brought a few pixels from the other's bottom right corner
+		drag(&mut editor, grab, grab + DVec2::new(-137., -142.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, artboard, [DVec2::new(160., 160.), DVec2::new(220., 220.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_dragged_far_from_anything_moves_as_far_as_the_pointer_rounded_to_whole_units() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.)).await;
+
+		let grab = DVec2::new(350.4, 340.2);
+		drag(&mut editor, grab, grab + DVec2::new(123.3, -47.6), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, artboard, [DVec2::new(423., 252.), DVec2::new(523., 332.)]);
 	}
 }

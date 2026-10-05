@@ -1,18 +1,14 @@
 use super::snap_session::{BoxFeatures, FeatureMap, Locus, PointOptions, SnapSession, SnapView};
-use super::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
-	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
-	SKEW_TRIANGLE_SIZE,
+	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::snapping::SnapTypeConfiguration;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_std::renderer::Quad;
-use graphene_std::renderer::Rect;
 
 /// (top, bottom, left, right)
 pub type EdgeBool = (bool, bool, bool, bool);
@@ -332,71 +328,6 @@ impl SelectedEdges {
 
 		DAffine2::from_translation(opposite) * skew * DAffine2::from_translation(-opposite)
 	}
-}
-
-/// Aligns the mouse position to the closest axis. The `axis_constraint`, if nonzero, is a unit vector along which dragging is constrained (e.g. the compass rose's local axis direction).
-pub fn axis_align_drag(axis_align: bool, axis_constraint: DVec2, position: DVec2, start: DVec2) -> DVec2 {
-	let mouse_position = position - start;
-	// An explicit axis constraint (the compass rose's local axis) takes priority over the screen-space angle snapping
-	if axis_constraint != DVec2::ZERO {
-		start + axis_constraint * mouse_position.dot(axis_constraint)
-	} else if axis_align {
-		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-		let Some(angle) = DVec2::X.try_angle_to(mouse_position) else { return position };
-		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
-		let axis_vector = DVec2::from_angle(snapped_angle);
-		if snapped_angle.is_finite() {
-			start + axis_vector * mouse_position.dot(axis_vector).abs()
-		} else {
-			start
-		}
-	} else {
-		position
-	}
-}
-
-/// Snaps a dragging event from the artboard or select tool. A nonzero `axis_constraint` is a unit vector constraining the drag to that direction.
-pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, axis_constraint: DVec2, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
-	let mouse_position = axis_align_drag(snap_to_axis, axis_constraint, snap_data.input.mouse.position, start);
-	let document = snap_data.document;
-	let total_mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - start);
-	let mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - current);
-	let mut offset = mouse_delta_document;
-	let mut best_snap = SnappedPoint::infinite_snap(document.metadata().document_to_viewport.inverse().transform_point2(mouse_position));
-
-	let bbox = Rect::point_iter(candidates.iter().map(|candidate| candidate.document_point + total_mouse_delta_document));
-
-	for (index, point) in candidates.iter().enumerate() {
-		let config = SnapTypeConfiguration {
-			bbox,
-			accept_distribution: true,
-			use_existing_candidates: index != 0,
-			..Default::default()
-		};
-
-		let mut point = point.clone();
-		point.document_point += total_mouse_delta_document;
-
-		let constrained_along_axis = snap_to_axis || axis_constraint != DVec2::ZERO;
-		let snapped = if constrained_along_axis {
-			let constraint = SnapConstraint::Line {
-				origin: point.document_point,
-				direction: total_mouse_delta_document.try_normalize().unwrap_or(DVec2::X),
-			};
-			snap_manager.constrained_snap(&snap_data, &point, constraint, config)
-		} else {
-			snap_manager.free_snap(&snap_data, &point, config)
-		};
-
-		if best_snap.other_snap_better(&snapped) {
-			offset = snapped.snapped_point_document - point.document_point + mouse_delta_document;
-			best_snap = snapped;
-		}
-	}
-
-	snap_manager.update_indicator(best_snap);
-
-	document.metadata().document_to_viewport.transform_vector2(offset)
 }
 
 /// Contains info on the overlays for the bounding box and transform handles
