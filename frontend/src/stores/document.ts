@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { Layout, RenderStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FrontendRemoteCursor, Layout, RenderStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
 
@@ -16,6 +16,7 @@ type DocumentStoreState = {
 	graphViewOverlayOpen: boolean;
 	fadeArtwork: number;
 	renderStatus: RenderStatus;
+	remoteCursors: FrontendRemoteCursor[];
 };
 const initialState: DocumentStoreState = {
 	toolOptionsLayout: [],
@@ -26,6 +27,7 @@ const initialState: DocumentStoreState = {
 	graphViewOverlayOpen: false,
 	fadeArtwork: 100,
 	renderStatus: "Rendering",
+	remoteCursors: [],
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -92,6 +94,12 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateDocumentCursors", (data) => {
+		update((state) => {
+			state.remoteCursors = data.cursors;
+			return state;
+		});
+	});
 	subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
@@ -116,6 +124,7 @@ export function destroyDocumentStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
 	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentCursors");
 	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
 	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
 	subscriptions.unsubscribeLayoutUpdate("ToolShelf");

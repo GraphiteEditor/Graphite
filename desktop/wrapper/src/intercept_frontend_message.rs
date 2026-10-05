@@ -103,6 +103,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardWrite { content } => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
 		}
+		// The desktop app has no web origin to build the link from, so it points at the hosted editor.
+		FrontendMessage::TriggerSessionLinkCopy { token } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite {
+				content: format!("https://editor.graphite.rs/?session={token}"),
+			});
+		}
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
 		}
