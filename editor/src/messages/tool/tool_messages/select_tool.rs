@@ -1323,8 +1323,7 @@ impl Fsm for SelectToolFsmState {
 				);
 
 				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				let layers = document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
-				for layer in document.network_interface.layers_with_unique_transform_node(layers) {
+				for layer in document.network_interface.layers_with_unique_transform_node(document.network_interface.shallowest_unique_layers(&[])) {
 					responses.add_front(GraphOperationMessage::TransformChange {
 						layer,
 						transform: DAffine2::from_translation(mouse_delta),

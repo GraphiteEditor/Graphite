@@ -327,7 +327,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 
 				let mut added_transaction = false;
-				for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
+				for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface)) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
@@ -627,7 +627,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					let mut added_transaction = false;
-					for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
+					for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface)) {
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -650,7 +650,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let bbox_trans = DAffine2::from_translation(-center);
 
 					let mut added_transaction = false;
-					for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
+					for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface)) {
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -2992,7 +2992,7 @@ impl DocumentMessageHandler {
 
 			responses.add(DocumentMessage::AddTransaction);
 
-			for layer in layers {
+			for layer in self.network_interface.layers_with_unique_transform_node(layers) {
 				responses.add(GraphOperationMessage::TransformChange {
 					layer,
 					transform,
@@ -3009,8 +3009,7 @@ impl DocumentMessageHandler {
 		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
 		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
-		let layers = self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)).collect::<Vec<_>>();
-		for layer in self.network_interface.layers_with_unique_transform_node(layers) {
+		for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer))) {
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
 				transform,
@@ -4274,10 +4273,9 @@ mod document_message_handler_tests {
 		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
 	}
 
-	// Layers that traverse to the same Transform node used to have the drag's translation applied once per layer.
-	// See https://github.com/GraphiteEditor/Graphite/issues/1529
-	#[tokio::test]
-	async fn drag_layers_sharing_a_transform_node_moves_them_once() {
+	/// Two rectangles selected together, rewired so both chains traverse to one Transform node, which is the arrangement
+	/// that used to apply a change once per layer. See https://github.com/GraphiteEditor/Graphite/issues/1529
+	async fn editor_with_layers_sharing_a_transform_node() -> (EditorTestUtils, LayerNodeIdentifier, LayerNodeIdentifier) {
 		use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 		use crate::messages::tool::common_functionality::graph_modification_utils;
 
@@ -4289,7 +4287,6 @@ mod document_message_handler_tests {
 		editor.drag_tool(ToolType::Rectangle, 200., 0., 300., 100., ModifierKeys::empty()).await;
 		let second = editor.get_selected_layer().await.unwrap();
 
-		// Rewire the second layer to consume the first layer's Transform node, so both chains traverse to it.
 		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 		let first_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, first, &editor.active_document().network_interface).unwrap();
 		let second_stroke = graph_modification_utils::get_stroke_id(second, &editor.active_document().network_interface).unwrap();
@@ -4300,7 +4297,6 @@ mod document_message_handler_tests {
 			})
 			.await;
 
-		// Confirm the premise: both layers resolve to the same Transform node.
 		let network_interface = &editor.active_document().network_interface;
 		let second_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, second, network_interface).unwrap();
 		assert_eq!(first_transform, second_transform, "The two layers should share one Transform node");
@@ -4310,6 +4306,14 @@ mod document_message_handler_tests {
 				nodes: vec![first.to_node(), second.to_node()],
 			})
 			.await;
+
+		(editor, first, second)
+	}
+
+	// Layers that share a Transform node must receive the drag's translation once, not once per layer.
+	#[tokio::test]
+	async fn drag_layers_sharing_a_transform_node_moves_them_once() {
+		let (mut editor, first, second) = editor_with_layers_sharing_a_transform_node().await;
 		let first_before = editor.active_document().metadata().transform_to_document(first).translation;
 		let second_before = editor.active_document().metadata().transform_to_document(second).translation;
 
@@ -4323,6 +4327,69 @@ mod document_message_handler_tests {
 				"Layer {layer:?} should have moved once by the drag delta, but moved by {delta}"
 			);
 		}
+	}
+
+	// A flip applied twice is the identity, so a shared node used to cancel the whole operation out
+	#[tokio::test]
+	async fn flipping_layers_sharing_a_transform_node_flips_them_once() {
+		use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+		use graphene_std::NodeParameter;
+
+		let (mut editor, first, _) = editor_with_layers_sharing_a_transform_node().await;
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let shared_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, first, &editor.active_document().network_interface).unwrap();
+
+		editor.handle_message(DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X }).await;
+
+		// The rewired layers sit on top of each other, so the flip is invisible in the rendered bounds. The shared node's
+		// own scale is what says whether it was mirrored once or twice.
+		let scale_index = graphene_std::transform_nodes::transform::ScaleInput::INDEX;
+		let Some(TaggedValue::DVec2(scale)) = editor.active_document().network_interface.document_network().nodes[&shared_transform].inputs[scale_index].as_value()
+		else {
+			panic!("The shared Transform node should still hold a scale");
+		};
+		assert!(
+			scale.x * scale.y < 0.,
+			"one flip should leave the shared node mirrored, but its scale is {scale:?}"
+		);
+	}
+
+	// A resize applied twice lands at twice the requested size.
+	#[tokio::test]
+	async fn nudge_resize_layers_sharing_a_transform_node_resizes_them_once() {
+		let (mut editor, first, _) = editor_with_layers_sharing_a_transform_node().await;
+		let width_before = editor.active_document().metadata().bounding_box_document(first).unwrap()[1].x - editor.active_document().metadata().bounding_box_document(first).unwrap()[0].x;
+
+		// The message only names which key to read, so Shift has to actually be held for the resize branch to run
+		editor
+			.handle_message(InputPreprocessorMessage::KeyDown {
+				key: Key::Shift,
+				modifier_keys: ModifierKeys::SHIFT,
+				key_repeat: false,
+			})
+			.await;
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: 10.,
+				delta_y: 0.,
+				resize: Key::Shift,
+				resize_opposite: Key::Control,
+			})
+			.await;
+		editor
+			.handle_message(InputPreprocessorMessage::KeyUp {
+				key: Key::Shift,
+				modifier_keys: ModifierKeys::empty(),
+				key_repeat: false,
+			})
+			.await;
+
+		let bounds = editor.active_document().metadata().bounding_box_document(first).unwrap();
+		let width_after = bounds[1].x - bounds[0].x;
+		assert!(
+			width_after > width_before && (width_after - width_before * 1.1).abs() < width_before * 0.02,
+			"one nudge should widen the shared node by about 10%, but it went from {width_before} to {width_after}"
+		);
 	}
 
 	// TODO: Fix https://github.com/GraphiteEditor/Graphite/issues/2688 and reenable this as part of that fix.
