@@ -373,8 +373,8 @@
 	}
 
 	function pointerMoveHandler(e: PointerEvent) {
-		// This element and the element being hovered over
-		const target = e.target instanceof HTMLElement ? e.target : undefined;
+		// The element being hovered over, which may be an icon's SVG
+		const target = e.target instanceof Element ? e.target : undefined;
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
