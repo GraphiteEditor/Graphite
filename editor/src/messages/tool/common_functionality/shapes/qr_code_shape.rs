@@ -69,7 +69,7 @@ mod test_qr_code {
 	}
 
 	async fn get_qr_codes(editor: &mut EditorTestUtils) -> Vec<ResolvedQrCode> {
-		let instrumented = match editor.eval_graph().await {
+		let instrumented = match editor.eval_graph_until_finished().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
@@ -145,11 +145,26 @@ mod test_qr_code {
 	}
 
 	#[tokio::test]
+	async fn probe_mode_survives_a_second_tool_selection() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Shape).await;
+		editor.handle_message(ShapeToolMessage::SetShape { shape: ShapeType::QrCode }).await;
+		// drag_tool_cancel_rmb selects the tool again internally; if that wiped the mode, the cancel test proves nothing
+		editor.select_tool(ToolType::Shape).await;
+		editor.drag_tool(ToolType::Shape, 10., 10., 60., 60., ModifierKeys::empty()).await;
+		assert_eq!(get_qr_codes(&mut editor).await.len(), 1, "PROBE: the mode did not survive a second select_tool");
+	}
+
+	#[tokio::test]
 	async fn qr_code_draw_cancel() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+		// The tool has to be active and in this mode before a cancelled drag means anything
+		editor.select_tool(ToolType::Shape).await;
+		editor.handle_message(ShapeToolMessage::SetShape { shape: ShapeType::QrCode }).await;
 		editor.drag_tool_cancel_rmb(ToolType::Shape).await;
 
-		assert!(get_qr_codes(&mut editor).await.is_empty());
+		assert!(get_qr_codes(&mut editor).await.is_empty(), "a cancelled drag should leave no QR code behind");
 	}
 }
