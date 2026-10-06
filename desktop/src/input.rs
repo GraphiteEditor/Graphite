@@ -119,8 +119,7 @@ impl InputState {
 
 		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(wrap.position, viewport));
 		if let Some(wrapped) = warp_to {
-			wrap.position = wrapped;
-			// The cursor is moved to the opposite edge, so the next report is relative to it
+			// The cursor is moved to the opposite edge, so the next report is relative to it, but the tracked position stays continuous
 			wrap.last_reported = wrapped;
 		}
 
@@ -551,6 +550,32 @@ mod test {
 			wrap_into_viewport(PhysicalPosition::new(150., 80.), ViewportInfo { width: 0., ..viewport() }),
 			None,
 			"a zero-sized viewport should not wrap"
+		);
+	}
+
+	#[test]
+	fn wrapped_position_stays_continuous_across_a_wrap() {
+		let mut input = InputState::new();
+		let viewport = viewport();
+		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
+		input.pointer_position = PhysicalPosition::new(299., 80.);
+		input.set_pointer_wrap(true);
+
+		assert_eq!(
+			input.wrapped_position(PhysicalPosition::new(299., 80.)),
+			PhysicalPosition::new(299., 80.),
+			"a move inside the viewport is reported as-is"
+		);
+
+		assert_eq!(
+			input.wrapped_position(PhysicalPosition::new(301., 80.)),
+			PhysicalPosition::new(301., 80.),
+			"crossing the right edge keeps the tracked position continuous so a transform doesn't jump"
+		);
+		assert_eq!(
+			input.take_pending_warp(),
+			Some(PhysicalPosition::new(101., 80.)),
+			"the OS cursor should still be moved to the opposite edge"
 		);
 	}
 }

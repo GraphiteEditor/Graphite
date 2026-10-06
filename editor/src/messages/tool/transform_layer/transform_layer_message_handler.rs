@@ -562,17 +562,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
-							let to_mouse_final = self.mouse_position - self.state.pivot_viewport(document);
-							let to_mouse_final_old = input.mouse.position - self.state.pivot_viewport(document);
+							let to_mouse_previous = self.mouse_position - self.state.pivot_viewport(document);
+							let to_mouse_current = input.mouse.position - self.state.pivot_viewport(document);
 							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
-							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
-							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
+							let to_mouse_previous = self.state.project_onto_constrained(to_mouse_previous, axis_constraint);
+							let to_mouse_current = self.state.project_onto_constrained(to_mouse_current, axis_constraint);
 							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint);
 
 							let change = {
-								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
-								let current_frame_dist = to_mouse_final_old.dot(to_mouse_start);
+								let previous_frame_dist = to_mouse_previous.dot(to_mouse_start);
+								let current_frame_dist = to_mouse_current.dot(to_mouse_start);
 								let start_transform_dist = to_mouse_start.length_squared();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
@@ -767,17 +767,14 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-	use crate::messages::prelude::Message;
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
-		let _responses: VecDeque<Message> = VecDeque::new();
 		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface)?;
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))
