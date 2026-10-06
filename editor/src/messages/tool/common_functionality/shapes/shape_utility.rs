@@ -10,6 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -135,7 +136,7 @@ pub trait ShapeGizmoHandler {
 	/// Called during a drag interaction to update the shape's parameters in real time.
 	///
 	/// For example, a handle might calculate the distance from the drag start to determine a new radius or update the number of points.
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>);
 
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///

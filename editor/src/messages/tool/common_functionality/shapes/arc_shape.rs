@@ -53,13 +53,13 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.sweep_angle_gizmo.is_dragging_or_snapped() {
-			self.sweep_angle_gizmo.update_arc(document, input, responses);
+			self.sweep_angle_gizmo.update_arc(view, snap_session, responses);
 		}
 
 		if self.arc_radius_handle.is_dragging() {
-			self.arc_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.arc_radius_handle.update_inner_radius(view, snap_session, responses, drag_start);
 		}
 	}
 

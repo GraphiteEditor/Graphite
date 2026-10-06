@@ -35,9 +35,9 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, _snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.row_column_gizmo.is_dragging() {
-			self.row_column_gizmo.update(document, input, responses, drag_start);
+			self.row_column_gizmo.update(view.document, view.input, responses, drag_start);
 		}
 	}
 
