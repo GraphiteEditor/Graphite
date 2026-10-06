@@ -114,6 +114,14 @@ impl EngagementKey {
 	fn crossing(a: CandidateKey, b: CandidateKey) -> Self {
 		Self::Crossing(a.min(b), a.max(b))
 	}
+
+	/// Whether the feature is one of those the engaged candidates are for.
+	fn involves(&self, feature: u32) -> bool {
+		match self {
+			Self::Single(key) => key.feature == feature,
+			Self::Crossing(a, b) => a.feature == feature || b.feature == feature,
+		}
+	}
 }
 
 /// The snap that was engaged a moment ago, which is favored so that snaps hold on rather than flicker.
@@ -275,24 +283,20 @@ impl<'a> Measured<'a> {
 		self.problem.features.get(feature as usize).copied().unwrap_or(FeatureMap::IDENTITY)
 	}
 
-	/// The further that either of two features travels on screen between two settings of the parameters.
-	fn distance(&self, features: [u32; 2], from: DVec2, to: DVec2) -> f64 {
-		let travel = |feature: u32| {
-			let map = self.feature(feature);
-			self.problem.view.screen_distance(map.position(from), map.position(to))
-		};
+	/// How far the lead feature travels on screen between two settings of the parameters, which is the correction the pointer would feel.
+	fn distance(&self, from: DVec2, to: DVec2) -> f64 {
+		self.travel(self.problem.lead, from, to)
+	}
 
-		if features[0] == features[1] {
-			travel(features[0])
-		} else {
-			travel(features[0]).max(travel(features[1]))
-		}
+	fn travel(&self, feature: u32, from: DVec2, to: DVec2) -> f64 {
+		let map = self.feature(feature);
+		self.problem.view.screen_distance(map.position(from), map.position(to))
 	}
 
 	/// Whether a setting of the parameters puts the lead feature at the place it is told to avoid.
 	fn avoided(&self, parameters: DVec2) -> bool {
 		let problem = self.problem;
-		problem.avoid.is_some_and(|avoid| self.distance([problem.lead; 2], avoid, parameters) <= problem.tunables.on_track)
+		problem.avoid.is_some_and(|avoid| self.distance(avoid, parameters) <= problem.tunables.on_track)
 	}
 
 	/// The position on a locus that appears nearest to a setting of the parameters, for the feature the locus applies to.
@@ -302,7 +306,7 @@ impl<'a> Measured<'a> {
 	}
 
 	fn lies_on(&self, feature: u32, locus: &Locus, parameters: DVec2) -> bool {
-		self.distance([feature; 2], parameters, self.nearest(feature, locus, parameters)) <= self.problem.tunables.on_track
+		self.travel(feature, parameters, self.nearest(feature, locus, parameters)) <= self.problem.tunables.on_track
 	}
 }
 
@@ -336,7 +340,7 @@ pub fn solve(problem: &Problem) -> Solution {
 
 	let mut within_reach: Vec<&Resolved> = resolved.iter().filter(|candidate| candidate.reach_distance <= reach).collect();
 	within_reach.sort_by(|a, b| a.listing_order(b));
-	let challenger = preferred(&within_reach, tie);
+	let challenger = preferred(&within_reach, tie, problem.lead);
 
 	// Unless pinned, the engaged snap is unseated by a better tier or by anything of its own tier that is nearer by a clear margin
 	let held = hold(problem, &resolved);
@@ -402,12 +406,14 @@ pub fn solve(problem: &Problem) -> Solution {
 	}
 }
 
-/// The pick from a list in listing order: the nearest of the best tier, unless a more specific kind lies within the tie distance of it.
-fn preferred<'r>(listed: &[&'r Resolved], tie: f64) -> Option<&'r Resolved> {
+/// The pick from a list in listing order: the nearest of the best tier, unless a more specific kind, or one of the same kind for the lead feature, lies within the tie distance of it.
+fn preferred<'r>(listed: &[&'r Resolved], tie: f64, lead: u32) -> Option<&'r Resolved> {
 	let nearest = *listed.first()?;
 	let tied = listed.iter().take_while(|candidate| candidate.tier == nearest.tier && candidate.distance <= nearest.distance + tie);
 
-	tied.min_by(|a, b| a.kind.cmp(&b.kind).then(a.listing_order(b))).copied()
+	let not_for_the_lead = |candidate: &Resolved| !candidate.key.involves(lead);
+	tied.min_by(|a, b| a.kind.cmp(&b.kind).then(not_for_the_lead(a).cmp(&not_for_the_lead(b))).then(a.listing_order(b)))
+		.copied()
 }
 
 /// What carries on from the engaged snap now that the pointer has moved, and whether it stays pinned.
@@ -439,8 +445,8 @@ struct NearbyTrack {
 
 impl NearbyTrack {
 	/// How far something on this track is from the point's place on it, which is what decides reach while the point is riding the track.
-	fn distance_along(&self, measured: &Measured, other_feature: u32, position: DVec2) -> f64 {
-		measured.distance([self.key.feature, other_feature], self.nearest, position)
+	fn distance_along(&self, measured: &Measured, position: DVec2) -> f64 {
+		measured.distance(self.nearest, position)
 	}
 }
 
@@ -458,7 +464,7 @@ fn resolve_freely(measured: &Measured) -> Vec<Resolved> {
 		let key = candidate.key;
 
 		let nearest = measured.nearest(key.feature, &locus, free);
-		let distance = measured.distance([key.feature; 2], free, nearest);
+		let distance = measured.distance(free, nearest);
 		if !distance.is_finite() {
 			continue;
 		}
@@ -489,13 +495,13 @@ fn resolve_freely(measured: &Measured) -> Vec<Resolved> {
 		let Shape::Spot(position) = candidate.shape else { continue };
 		let key = candidate.key;
 
-		let distance = measured.distance([key.feature; 2], free, position);
+		let distance = measured.distance(free, position);
 		if !distance.is_finite() {
 			continue;
 		}
 
 		let ridden_through = nearby_tracks.iter().filter(|track| track.ridden && measured.lies_on(track.key.feature, &track.locus, position));
-		let reach_distance = ridden_through.map(|track| track.distance_along(measured, key.feature, position)).fold(distance, f64::min);
+		let reach_distance = ridden_through.map(|track| track.distance_along(measured, position)).fold(distance, f64::min);
 
 		resolved.push(Resolved {
 			reach_distance,
@@ -535,18 +541,14 @@ fn resolve_freely(measured: &Measured) -> Vec<Resolved> {
 				continue;
 			}
 
-			let features = [first.key.feature, second.key.feature];
-
 			for crossing in CrossingCache::crossings(problem.crossings, first, second) {
-				let distance = measured.distance(features, free, crossing);
+				let distance = measured.distance(free, crossing);
 				if !distance.is_finite() || joins_end_to_end(&first.locus, &second.locus, crossing) {
 					continue;
 				}
 
-				let ridden_through = [(first, second), (second, first)].into_iter().filter(|(track, _)| track.ridden);
-				let reach_distance = ridden_through
-					.map(|(track, other)| track.distance_along(measured, other.key.feature, crossing))
-					.fold(distance, f64::min);
+				let ridden_through = [first, second].into_iter().filter(|track| track.ridden);
+				let reach_distance = ridden_through.map(|track| track.distance_along(measured, crossing)).fold(distance, f64::min);
 
 				resolved.push(Resolved {
 					tier: Tier::Spot,
@@ -586,19 +588,18 @@ fn resolve_along(measured: &Measured, required: Locus, base: DVec2) -> Vec<Resol
 
 	for (index, candidate) in problem.candidates.iter().enumerate() {
 		let key = candidate.key;
-		let features = [key.feature, problem.lead];
 
 		let positions = match candidate.shape {
 			Shape::Spot(position) => {
-				let on_required = measured.nearest(key.feature, &required, position);
-				let lies_on_it = measured.distance(features, position, on_required) <= problem.tunables.on_track;
+				let on_required = measured.nearest(problem.lead, &required, position);
+				let lies_on_it = measured.distance(position, on_required) <= problem.tunables.on_track;
 				if lies_on_it { vec![on_required] } else { Vec::new() }
 			}
 			Shape::Track(locus) => required.crossings(&locus),
 		};
 
 		for parameters in positions {
-			let distance = measured.distance(features, base, parameters);
+			let distance = measured.distance(base, parameters);
 			if distance.is_finite() {
 				resolved.push(Resolved::single(Tier::Spot, index, key, parameters, distance));
 			}
@@ -633,16 +634,15 @@ fn land_on_grid(problem: &Problem, parameters: DVec2) -> Option<DVec2> {
 /// Returns `None` for a track that bends, or one too short to reach a grid line on either side.
 fn land_on_grid_along(measured: &Measured, track: &Locus, near: DVec2) -> Option<DVec2> {
 	let problem = measured.problem;
-	let lead = [problem.lead; 2];
 	let map = problem.features.get(problem.lead as usize)?;
 	let (point, direction) = straight_line(track)?;
 
 	let crossings = problem.grid?.crossings_along(map.position(point), map.matrix * direction, map.position(near));
 	let landings = crossings.into_iter().filter_map(|crossing| map.parameters_for(crossing));
 
-	let on_the_track = |landed: &DVec2| landed.is_finite() && measured.distance(lead, track.nearest(*landed), *landed) <= problem.tunables.on_track;
+	let on_the_track = |landed: &DVec2| landed.is_finite() && measured.distance(track.nearest(*landed), *landed) <= problem.tunables.on_track;
 	let allowed = |landed: &DVec2| on_the_track(landed) && !measured.avoided(*landed);
-	let from_near = |landed: &DVec2| measured.distance(lead, near, *landed);
+	let from_near = |landed: &DVec2| measured.distance(near, *landed);
 	landings.filter(allowed).min_by(|a, b| from_near(a).total_cmp(&from_near(b)))
 }
 
@@ -883,10 +883,10 @@ mod tests {
 	}
 
 	#[test]
-	fn a_crossing_is_as_far_as_the_feature_that_must_travel_furthest_to_it() {
+	fn a_candidate_is_as_far_as_the_pointer_must_travel_to_it_however_far_other_features_move() {
 		let (view, tunables) = (ViewMapping::IDENTITY, Tunables::default());
 
-		// The second feature moves three times as far as the first for the same change of the parameters
+		// The second feature moves three times as far as the lead for the same change of the parameters
 		let features = [
 			FeatureMap::IDENTITY,
 			FeatureMap {
@@ -902,16 +902,24 @@ mod tests {
 			};
 			Candidate::track(key, locus)
 		};
-		let candidates = [for_feature(0, horizontal(4.)), for_feature(1, vertical(-2.))];
 
+		// Reaching the crossing moves the second feature over 13 pixels, but the pointer under 5, so it is within reach
+		let candidates = [for_feature(0, horizontal(4.)), for_feature(1, vertical(-2.))];
 		let solution = solve(&Problem {
 			features: &features,
 			..problem(&view, &tunables, &candidates, DVec2::ZERO)
 		});
+		assert_eq!(engaged(&solution).tier, Tier::Spot);
+		assert!(solution.parameters.abs_diff_eq(DVec2::new(-2., 4.), 1e-9));
 
-		// Reaching the crossing would move the first feature under 5 pixels, yet the second over 13, which is out of reach
+		// A track the second feature is 21 pixels from takes the pointer only 7 to reach, so it is within reach too
+		let candidates = [for_feature(1, vertical(-7.))];
+		let solution = solve(&Problem {
+			features: &features,
+			..problem(&view, &tunables, &candidates, DVec2::ZERO)
+		});
 		assert_eq!(engaged(&solution).tier, Tier::Track);
-		assert_eq!(engaged(&solution).candidates, vec![0]);
+		assert!(solution.parameters.abs_diff_eq(DVec2::new(-7., 0.), 1e-9));
 	}
 
 	#[test]

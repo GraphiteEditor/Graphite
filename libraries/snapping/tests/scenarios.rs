@@ -433,6 +433,28 @@ fn a_sliding_box_meets_another_corner_to_corner() {
 }
 
 #[test]
+fn a_box_drawn_to_anothers_corner_lands_on_the_anchor_there_rather_than_where_its_middles_line_up() {
+	let mut stage = Stage::new([rectangle(DVec2::new(200., 100.), DVec2::new(300., 160.))]);
+	stage.awake = vec![Awake::Box { layer: LayerId(1) }];
+
+	// The box is dragged out from the origin by its far corner, so its edge middles move half as far as the pointer
+	let corners = box_corners(DVec2::ZERO, DVec2::ONE);
+	let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+	let units: Vec<DVec2> = corners.into_iter().chain(middles).chain([DVec2::splat(0.5)]).collect();
+	let features: Vec<FeatureMap> = units.iter().map(|&unit| FeatureMap::stretching(unit, DVec2::ZERO, [DVec2::X, DVec2::Y])).collect();
+
+	// Its right side comes level with the other's left side first, well below the other's bottom left corner
+	let outcome = stage.gesture(&features, 2, DVec2::new(203., 400.), &[], None, None);
+	assert_eq!(outcome.parameters, DVec2::new(200., 400.));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Alignment]);
+
+	// Riding that line up to the corner, the anchor there is what the far corner lands on
+	let outcome = stage.gesture(&features, 2, DVec2::new(203., 163.), &[], None, None);
+	assert_eq!(outcome.parameters, DVec2::new(200., 160.));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Anchor]);
+}
+
+#[test]
 fn a_sliding_box_lines_up_with_two_awake_boxes_one_in_each_direction() {
 	let mut stage = Stage::new([rectangle(DVec2::new(500., 40.), DVec2::new(560., 90.)), rectangle(DVec2::new(130., 400.), DVec2::new(190., 460.))]);
 	stage.awake = vec![Awake::Box { layer: LayerId(1) }, Awake::Box { layer: LayerId(2) }];
@@ -784,6 +806,42 @@ fn a_stretched_box_lands_as_wide_as_its_neighbor() {
 
 	assert!(corners[1].position(outcome.parameters).abs_diff_eq(DVec2::new(150., 100.), 1e-9));
 	assert_eq!(engaged_kinds(&outcome), vec![Kind::EqualSize]);
+}
+
+#[test]
+fn where_two_alignments_agree_the_one_for_the_corner_the_pointer_carries_is_shown() {
+	// Drawn from the top of this box, a box's bottom comes level with its bottom just as its right middle comes level with its center
+	let mut stage = Stage::new([rectangle(DVec2::new(400., 0.), DVec2::new(700., 250.))]);
+	stage.awake = vec![Awake::Box { layer: LayerId(1) }];
+
+	// The middles are listed before the corners, so the corner the pointer carries is not the first of equals
+	let corners = box_corners(DVec2::ZERO, DVec2::ONE);
+	let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+	let units: Vec<DVec2> = middles.into_iter().chain(corners).collect();
+	let features: Vec<FeatureMap> = units.iter().map(|&unit| FeatureMap::stretching(unit, DVec2::ZERO, [DVec2::X, DVec2::Y])).collect();
+	let outcome = stage.gesture(&features, 6, DVec2::new(200., 246.), &[], None, None);
+
+	assert!(outcome.parameters.abs_diff_eq(DVec2::new(200., 250.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::Alignment]);
+	assert!(outcome.engaged_candidates().all(|candidate| candidate.key.feature == 6));
+}
+
+#[test]
+fn a_box_drawn_while_matching_one_neighbors_height_takes_anothers_width_as_it_comes_within_reach() {
+	// One neighbor is 160 wide, the other 90 tall, both well away from the box drawn out from the origin
+	let mut stage = Stage::new([rectangle(DVec2::new(300., 0.), DVec2::new(460., 50.)), rectangle(DVec2::new(0., 300.), DVec2::new(50., 390.))]);
+
+	// The far corner carries both high sides, and the parameters are the box's extents
+	let corners = box_corners(DVec2::ZERO, DVec2::ONE).map(|corner| FeatureMap::stretching(corner, DVec2::ZERO, [DVec2::X, DVec2::Y]));
+	let sides = [[None, Some(2)], [None, Some(2)]];
+	let outcome = stage.box_gesture(&corners, sides, 2, DVec2::new(120., 93.), None);
+	assert!(outcome.parameters.abs_diff_eq(DVec2::new(120., 90.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::EqualSize]);
+
+	// Still held at that height with the pointer 10 off it, the width comes within 4 of matching, which it then does too
+	let outcome = stage.box_gesture(&corners, sides, 2, DVec2::new(156., 100.), None);
+	assert!(outcome.parameters.abs_diff_eq(DVec2::new(160., 90.), 1e-9));
+	assert_eq!(engaged_kinds(&outcome), vec![Kind::EqualSize, Kind::EqualSize]);
 }
 
 #[test]
