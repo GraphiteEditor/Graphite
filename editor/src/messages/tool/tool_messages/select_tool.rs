@@ -19,7 +19,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
-use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{push_nearest_anchors, resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
@@ -2069,6 +2069,7 @@ impl Fsm for SelectToolFsmState {
 				if !(*using_compass && axis.is_constraint()) {
 					hint_data.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]));
 				};
+				hint_data.push(snapping_hints());
 				let hint_data = HintData(hint_data);
 				hint_data.send_layout(responses);
 			}
@@ -2087,6 +2088,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
@@ -2094,6 +2096,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
@@ -2101,11 +2104,15 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::DraggingPivot => {
-				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					snapping_hints(),
+				]);
 				hint_data.send_layout(responses);
 			}
 		}

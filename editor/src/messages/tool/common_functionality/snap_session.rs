@@ -8,6 +8,7 @@ use crate::consts::DRAG_THRESHOLD;
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use crate::messages::tool::utility_types::{HintGroup, HintInfo};
 use glam::DVec2;
 use graphene_std::vector::PointId;
 use scene_mirror::layer_id;
@@ -634,6 +635,11 @@ impl SnapSession {
 		});
 		self.forget_sources_of_sleeping_positions();
 	}
+}
+
+/// The hints for the keys that steer snapping, shown wherever a tool snaps.
+pub fn snapping_hints() -> HintGroup {
+	HintGroup(vec![HintInfo::keys([Key::KeyQ], "Quiet Snapping"), HintInfo::keys([Key::KeyW], "Cycle Snap")])
 }
 
 /// The box a gesture's features make up, with each feature where the parameters put it.

@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, Drawn, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, Drawn, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use graph_craft::document::NodeId;
@@ -627,18 +627,22 @@ impl Fsm for ArtboardToolFsmState {
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
+				snapping_hints(),
 			]),
 			ArtboardToolFsmState::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
+				snapping_hints(),
 			]),
 			ArtboardToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+				snapping_hints(),
 			]),
 			ArtboardToolFsmState::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Preserve Aspect Ratio"), HintInfo::keys([Key::Alt], "From Center")]),
+				snapping_hints(),
 			]),
 		};
 

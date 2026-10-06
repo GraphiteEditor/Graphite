@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, is_almost_colinear, should_extend};
 use glam::DMat2;
@@ -2317,11 +2317,14 @@ impl Fsm for PenToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
-				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
-				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
-			])]),
+			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
+					// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
+					HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+				]),
+				snapping_hints(),
+			]),
 			PenToolFsmState::PlacingAnchor => HintData(vec![
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
@@ -2335,6 +2338,7 @@ impl Fsm for PenToolFsmState {
 					HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash(),
 					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 				]),
+				snapping_hints(),
 			]),
 			PenToolFsmState::DraggingHandle(mode) => {
 				let mut dragging_hint_data = HintData(Vec::new());
@@ -2370,6 +2374,7 @@ impl Fsm for PenToolFsmState {
 
 				dragging_hint_data.0.push(HintGroup(toggle_group));
 				dragging_hint_data.0.push(HintGroup(hold_group));
+				dragging_hint_data.0.push(snapping_hints());
 				dragging_hint_data
 			}
 		};

@@ -366,7 +366,7 @@ impl TransformOperation {
 			transformation = normalized_transform * transformation * normalized_transform.inverse();
 
 			selected.update_transforms(transformation, Some(state.pivot_viewport(document)), Some(*self));
-			self.hints(selected.responses, state.is_transforming_in_local_space);
+			self.hints(selected.responses, state.is_transforming_in_local_space, state.is_snapping);
 		}
 	}
 
@@ -424,8 +424,9 @@ impl TransformOperation {
 		}
 	}
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
+	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool, snapping: bool) {
 		use crate::messages::input_mapper::utility_types::keyboard::{Key, MouseMotion};
+		use crate::messages::tool::common_functionality::snap_session::snapping_hints;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();
@@ -485,6 +486,9 @@ impl TransformOperation {
 			}
 		}
 		hint_groups.push(HintGroup(typing_hints));
+		if snapping && !self.is_typing() {
+			hint_groups.push(snapping_hints());
+		}
 
 		HintData(hint_groups).send_layout(responses);
 	}

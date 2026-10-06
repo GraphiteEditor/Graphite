@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
-use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use graph_craft::document::{NodeId, NodeInput};
@@ -586,14 +586,18 @@ impl Fsm for SplineToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
-				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
-			])]),
+			SplineToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
+					HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+				]),
+				snapping_hints(),
+			]),
 			SplineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
+				snapping_hints(),
 			]),
 			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};

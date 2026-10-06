@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{
 	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
 	replaceable_paint_chain, reverse_direction_tooltip_description,
 };
-use crate::messages::tool::common_functionality::snap_session::{Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
@@ -1717,6 +1717,11 @@ impl Fsm for GradientToolFsmState {
 					_ => {}
 				}
 
+				// The approach snap is shown only where a press would not take hold of a handle
+				if matches!(hovering, GradientHoverTarget::None | GradientHoverTarget::InsertionPoint) {
+					groups.push(snapping_hints());
+				}
+
 				HintData(groups)
 			}
 			GradientToolFsmState::Drawing { drag_hint } => {
@@ -1740,6 +1745,8 @@ impl Fsm for GradientToolFsmState {
 					}
 					_ => {}
 				}
+
+				groups.push(snapping_hints());
 
 				HintData(groups)
 			}

@@ -21,7 +21,7 @@ use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoT
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
-use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
@@ -3652,7 +3652,9 @@ fn update_dynamic_hints(
 				dragging_hint_data.0.push(HintGroup(hold_group));
 			}
 
-			if tool_data.molding_segment {
+			dragging_hint_data.0.push(snapping_hints());
+
+			if tool_data.molding_segment && tool_data.segment.is_some() {
 				let mut has_colinear_anchors = false;
 
 				if let Some(segment) = &tool_data.segment {

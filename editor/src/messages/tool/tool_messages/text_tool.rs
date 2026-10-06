@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::{Resize, viewport_zoom, window_aligned_transform};
-use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::utility_types::ToolRefreshOptions;
@@ -1128,6 +1128,7 @@ impl Fsm for TextToolFsmState {
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
+				snapping_hints(),
 			]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
 				HintInfo::keys([Key::Control, Key::Enter], "").add_mac_keys([Key::Command, Key::Enter]),
@@ -1136,11 +1137,13 @@ impl Fsm for TextToolFsmState {
 			TextToolFsmState::Placing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
+				snapping_hints(),
 			]),
 			TextToolFsmState::Dragging => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 			TextToolFsmState::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Lock Aspect Ratio"), HintInfo::keys([Key::Alt], "From Center")]),
+				snapping_hints(),
 			]),
 		};
 
