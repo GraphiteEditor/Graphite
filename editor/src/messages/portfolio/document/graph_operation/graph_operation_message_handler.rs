@@ -946,10 +946,39 @@ fn usvg_text_typesetting(text: &usvg::Text) -> TypesettingConfig {
 	typesetting
 }
 
+/// Lays imported SVG text out once so its SVG position, which marks the baseline, converts to the top-left origin a
+/// Graphite text layer uses. Returns the first line's baseline and the laid-out width that `middle` and `end` anchors
+/// measure against, or `None` when the text cannot be laid out, in which case the SVG position is used as-is.
+fn usvg_text_layout_metrics(text: &str, typesetting: &TypesettingConfig) -> Option<(f64, f64)> {
+	use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
+	use graphene_std::text::TextContext;
+
+	TextContext::with_thread_local(|context| {
+		let layout = context.layout_text(text, &FALLBACK_FONT_RESOURCE, typesetting.clone())?;
+		let baseline = layout.lines().next()?.items().find_map(|item| match item {
+			parley::layout::PositionedLayoutItem::GlyphRun(run) => Some(f64::from(run.baseline())),
+			_ => None,
+		})?;
+		Some((baseline, f64::from(layout.full_width())))
+	})
+}
+
 fn apply_usvg_text_transform(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text) {
 	let elem_transform = usvg_transform(text.abs_transform());
-	let chunk_offset = text.chunks().first().map(|c| DVec2::new(c.x().unwrap_or(0.) as f64, c.y().unwrap_or(0.) as f64)).unwrap_or_default();
-	let text_transform = elem_transform * DAffine2::from_translation(chunk_offset);
+	let first_chunk = text.chunks().first();
+	let chunk_offset = first_chunk.map(|c| DVec2::new(f64::from(c.x().unwrap_or(0.)), f64::from(c.y().unwrap_or(0.)))).unwrap_or_default();
+
+	// SVG positions text by its baseline while a Graphite layer starts at its layout's top-left, so the first baseline
+	// comes off, and `middle` and `end` anchors shift back by the laid-out width.
+	let text_string: String = text.chunks().iter().map(|chunk| chunk.text()).collect();
+	let typesetting = usvg_text_typesetting(text);
+	let (baseline, width) = usvg_text_layout_metrics(&text_string, &typesetting).unwrap_or_default();
+	let anchor_shift = match first_chunk.map(|chunk| chunk.anchor()).unwrap_or_default() {
+		usvg::TextAnchor::Start => 0.,
+		usvg::TextAnchor::Middle => width / 2.,
+		usvg::TextAnchor::End => width,
+	};
+	let text_transform = elem_transform * DAffine2::from_translation(chunk_offset - DVec2::new(anchor_shift, baseline));
 
 	if text_transform.abs_diff_eq(DAffine2::IDENTITY, 1e-6) {
 		return;
@@ -1141,6 +1170,19 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn imported_text_baseline_comes_off_before_placement() {
+		use graphene_std::text::TypesettingConfig;
+
+		let typesetting = TypesettingConfig { font_size: 24., ..Default::default() };
+		let Some((baseline, width)) = usvg_text_layout_metrics("Hello", &typesetting) else {
+			panic!("the fallback font should lay text out");
+		};
+		assert!(baseline > 0. && baseline < 24., "a 24px line's baseline should sit inside it, got {baseline}");
+		assert!(width > 0., "the laid-out line should have a width to anchor against, got {width}");
+	}
+
 
 	#[tokio::test]
 	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {

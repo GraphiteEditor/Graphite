@@ -23,8 +23,12 @@ pub struct PathBuilder {
 	merged_click_target_baselines: Vec<f64>,
 	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
 	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
-	/// The winding direction of the glyph contours in merged (single-item) mode, so decoration rectangles can match it.
-	glyphs_are_counter_clockwise: Option<bool>,
+	/// The signed area of everything drawn into the merged item so far, whose sign is the glyphs' winding direction.
+	glyph_signed_area: f64,
+	/// Decoration rectangles held back while drawing, so they can be wound to match the glyphs once those are all in.
+	buffered_decorations: Vec<(DVec2, DVec2)>,
+	/// Decoration items held back while drawing in per-glyph mode, so glyph *i* stays item *i*.
+	buffered_decoration_items: Vec<Item<Vector>>,
 	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
 	text_frame_size: DVec2,
 	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
@@ -41,7 +45,9 @@ impl PathBuilder {
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
-			glyphs_are_counter_clockwise: None,
+			glyph_signed_area: 0.,
+			buffered_decorations: Vec::new(),
+			buffered_decoration_items: Vec::new(),
 			text_frame_size,
 			first_glyph_offset,
 			scale,
@@ -91,7 +97,7 @@ impl PathBuilder {
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
-			self.record_glyph_winding();
+			self.glyph_signed_area += self.glyph_bezpath.area();
 
 			// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
 			self.vector_list.element_mut(0).unwrap().append_bezpath(core::mem::take(&mut self.glyph_bezpath));
@@ -163,56 +169,21 @@ impl PathBuilder {
 		}
 	}
 
-	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, typesetting: TypesettingConfig, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
-		for (min, max) in decoration_rects(glyph_run, x_offset, space_extra, typesetting) {
-			let rect = rectangle_bezpath(min * self.scale, max * self.scale);
-
+	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, typesetting: TypesettingConfig, per_glyph_items: bool, x_offset: f32, space_extra: f32, run_spaces: usize) {
+		for (min, max) in decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
 			if per_glyph_items {
+				let rect = rectangle_bezpath(min * self.scale, max * self.scale);
 				let translation = min;
 				let frame = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -translation);
-				let item = Item::new_from_element(Vector::from_bezpath(rect))
-					.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(translation))
-					.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame);
-				self.vector_list.push(item);
-				self.per_glyph_bboxes.push(None);
+				self.buffered_decoration_items.push(
+					Item::new_from_element(Vector::from_bezpath(rect))
+						.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(translation))
+						.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame),
+				);
 			} else {
-				// TrueType outlines wind one way and CFF/OTF the other. Merging a rectangle wound the opposite way into the
-				// compound path would cancel under the nonzero fill rule, cutting a gap through the glyphs, so match the
-				// direction the glyph contours already use.
-				let rect = match self.glyphs_are_counter_clockwise {
-					Some(true) => rectangle_bezpath(max * self.scale, min * self.scale),
-					_ => rect,
-				};
-				self.vector_list.element_mut(0).unwrap().append_bezpath(rect);
+				self.buffered_decorations.push((min * self.scale, max * self.scale));
 			}
 		}
-	}
-
-	/// Records the winding direction of the first glyph's contours, taken once from the glyph being merged into the compound path.
-	///
-	/// TrueType outlines wind one way and CFF/OTF the other, so a decoration rectangle has to match rather than assume.
-	fn record_glyph_winding(&mut self) {
-		if self.glyphs_are_counter_clockwise.is_some() {
-			return;
-		}
-
-		let points = self
-			.glyph_bezpath
-			.iter()
-			.filter_map(|element| match element {
-				vector_types::kurbo::PathEl::MoveTo(point) | vector_types::kurbo::PathEl::LineTo(point) => Some(DVec2::new(point.x, point.y)),
-				_ => None,
-			})
-			.collect::<Vec<_>>();
-		if points.len() < 3 {
-			return;
-		}
-
-		let area = points.iter().enumerate().fold(0., |sum, (index, &point)| {
-			let next = points[(index + 1) % points.len()];
-			sum + point.x * next.y - next.x * point.y
-		});
-		self.glyphs_are_counter_clockwise = (area != 0.).then_some(area < 0.);
 	}
 
 	pub fn finalize(mut self) -> List<Vector> {
@@ -263,6 +234,25 @@ impl PathBuilder {
 				widened_bezpath.extend(rectangle_bezpath(*min, *max));
 			}
 			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_bezpath(widened_bezpath));
+		}
+
+		// The buffered decorations join the compound wound to match it, so under the nonzero fill rule they paint over
+		// the glyphs instead of cancelling out through them. A text with no glyphs has no winding to match.
+		if !self.buffered_decorations.is_empty() {
+			let glyph_sign = self.glyph_signed_area.signum();
+			let compound = self.vector_list.element_mut(0).unwrap();
+			for (min, max) in core::mem::take(&mut self.buffered_decorations) {
+				let mut rect = rectangle_bezpath(min, max);
+				if glyph_sign != 0. && rect.area().signum() != glyph_sign {
+					rect = rect.reverse_subpaths();
+				}
+				compound.append_bezpath(rect);
+			}
+		}
+
+		for item in core::mem::take(&mut self.buffered_decoration_items) {
+			self.vector_list.push(item);
+			self.per_glyph_bboxes.push(None);
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
@@ -339,5 +329,89 @@ impl OutlinePen for PathBuilder {
 
 	fn close(&mut self) {
 		self.glyph_bezpath.close_path();
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The signed area of each closed subpath, so a test can tell whether two shapes wind the same way.
+	fn subpath_areas(path: &BezPath) -> Vec<f64> {
+		let mut areas = Vec::new();
+		let mut points = Vec::new();
+		for element in path.iter() {
+			match element {
+				vector_types::kurbo::PathEl::MoveTo(point) => {
+					if points.len() >= 3 {
+						areas.push(shoelace(&points));
+					}
+					points = vec![DVec2::new(point.x, point.y)];
+				}
+				vector_types::kurbo::PathEl::LineTo(point) => points.push(DVec2::new(point.x, point.y)),
+				vector_types::kurbo::PathEl::ClosePath => {
+					if points.len() >= 3 {
+						areas.push(shoelace(&points));
+					}
+					points.clear();
+				}
+				_ => {}
+			}
+		}
+		if points.len() >= 3 {
+			areas.push(shoelace(&points));
+		}
+		areas
+	}
+
+	fn shoelace(points: &[DVec2]) -> f64 {
+		points.iter().enumerate().fold(0., |sum, (index, &point)| {
+			let next = points[(index + 1) % points.len()];
+			sum + point.x * next.y - next.x * point.y
+		}) / 2.
+	}
+
+	/// A triangle wound counter-clockwise (positive area) or clockwise (negative area).
+	fn triangle(counter_clockwise: bool) -> BezPath {
+		let mut path = BezPath::new();
+		let (a, b, c) = (Point::new(0., 0.), Point::new(10., 0.), Point::new(0., 10.));
+		if counter_clockwise {
+			path.move_to(a);
+			path.line_to(b);
+			path.line_to(c);
+		} else {
+			path.move_to(a);
+			path.line_to(c);
+			path.line_to(b);
+		}
+		path.close_path();
+		path
+	}
+
+	fn finalized_with_glyph_and_decoration(glyph: BezPath) -> List<Vector> {
+		let mut builder = PathBuilder::new(false, 1., DVec2::ONE, DVec2::ZERO);
+		builder.glyph_signed_area += glyph.area();
+		builder.vector_list.element_mut(0).unwrap().append_bezpath(glyph);
+		builder.buffered_decorations.push((DVec2::new(2., 4.), DVec2::new(8., 5.)));
+		builder.finalize()
+	}
+
+	fn output_subpath_areas(output: &List<Vector>) -> Vec<f64> {
+		let vector = output.element(0).expect("a merged text always has its compound item");
+		vector.stroke_bezpath_iter().flat_map(|path| subpath_areas(&path)).collect()
+	}
+
+	#[test]
+	fn a_decoration_winds_with_counter_clockwise_glyphs() {
+		let areas = output_subpath_areas(&finalized_with_glyph_and_decoration(triangle(true)));
+		assert_eq!(areas.len(), 2, "the glyph and its decoration should both be present");
+		assert!(areas.iter().all(|&area| area > 0.), "a counter-clockwise glyph must gain a counter-clockwise decoration, got {areas:?}");
+	}
+
+	#[test]
+	fn a_decoration_winds_with_clockwise_glyphs() {
+		let areas = output_subpath_areas(&finalized_with_glyph_and_decoration(triangle(false)));
+		assert_eq!(areas.len(), 2, "the glyph and its decoration should both be present");
+		assert!(areas.iter().all(|&area| area < 0.), "a clockwise glyph must gain a clockwise decoration, got {areas:?}");
 	}
 }

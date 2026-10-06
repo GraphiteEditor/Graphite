@@ -2393,6 +2393,7 @@ dependencies = [
  "node-macro",
  "num_enum",
  "once_cell",
+ "parley",
  "preprocessor",
  "reqwest",
  "serde",

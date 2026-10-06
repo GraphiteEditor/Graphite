@@ -478,6 +478,15 @@ impl TextToolData {
 	fn set_editing(&self, editable: bool, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
 			let (align, align_last) = editing_text.typesetting.align.css();
+			let text_decoration = [
+				editing_text.typesetting.underline.then_some("underline"),
+				editing_text.typesetting.overline.then_some("overline"),
+				editing_text.typesetting.strikethrough.then_some("line-through"),
+			]
+			.into_iter()
+			.flatten()
+			.collect::<Vec<_>>()
+			.join(" ");
 			let font_data = fonts.get_resource_or_queue_load(&editing_text.font, responses).as_ref().to_vec().into();
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
@@ -490,6 +499,7 @@ impl TextToolData {
 				max_height: editing_text.typesetting.max_height,
 				align: align.to_string(),
 				align_last: align_last.to_string(),
+				text_decoration,
 			});
 		} else {
 			// Check if DisplayRemoveEditableTextbox is already in the responses queue

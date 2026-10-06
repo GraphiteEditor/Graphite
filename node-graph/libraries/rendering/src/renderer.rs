@@ -3180,14 +3180,14 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		let tilt_tan = letter_tilt.to_radians().tan();
 		let scale = layout.scale() as f64;
 
-		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra, run_spaces| {
 			draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
 				glyph_paths.push(bez_path.to_svg());
 			});
 
 			// Decorations are emitted here too, matching how the vector shaper draws them, so rendering or exporting a Text node
 			// directly shows the same lines as the Text to Vector chain.
-			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, typesetting) {
+			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
 				let mut rect = BezPath::new();
 				rect.move_to(to_point(min.min(max)));
 				rect.line_to(to_point(DVec2::new(max.x, min.y)));
@@ -3294,7 +3294,7 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 
 		let tilt_tan = letter_tilt.to_radians().tan();
 
-		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra, run_spaces| {
 			draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
 				if let RenderMode::Outline = render_params.render_mode {
 					let (outline_stroke, outline_color) = get_outline_styles(render_params);
@@ -3306,7 +3306,7 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 
 			// Decorations are drawn here too, matching how the vector shaper emits them, so a Text node rendered directly shows
 			// the same lines as the Text to Vector chain.
-			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, typesetting) {
+			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
 				let mut rect = kurbo::BezPath::new();
 				rect.move_to(to_point(min.min(max)));
 				rect.line_to(to_point(DVec2::new(max.x, min.y)));
