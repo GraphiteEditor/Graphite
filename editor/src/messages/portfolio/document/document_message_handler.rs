@@ -3449,6 +3449,55 @@ impl DocumentMessageHandler {
 		vec![LayoutGroup::table_of_cells(rows, true)]
 	}
 
+	/// The overlays options popover, with the Select tool's choices beside the general and Pen and Path tools' ones.
+	fn overlays_options(&self) -> Vec<LayoutGroup> {
+		let settings = &self.overlays_visibility_settings;
+
+		let checkbox = |name: &str, overlays_type: OverlaysType, checked: bool, disabled: bool| {
+			let checkbox_id = CheckboxId::new();
+			vec![
+				CheckboxInput::new(checked)
+					.disabled(disabled)
+					.on_update(move |optional_input: &CheckboxInput| {
+						DocumentMessage::SetOverlaysVisibility {
+							visible: optional_input.checked,
+							overlays_type: Some(overlays_type.clone()),
+						}
+						.into()
+					})
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new(name).disabled(disabled).for_checkbox(checkbox_id).widget_instance(),
+			]
+		};
+
+		let left = [
+			vec![TextLabel::new("General").widget_instance()],
+			checkbox("Artboard Name", OverlaysType::ArtboardName, settings.artboard_name, false),
+			checkbox("G/R/S Measurement", OverlaysType::TransformMeasurement, settings.transform_measurement, false),
+			vec![TextLabel::new("Pen & Path Tools").widget_instance()],
+			checkbox("Path", OverlaysType::Path, settings.path, false),
+			checkbox("Anchors", OverlaysType::Anchors, settings.anchors, false),
+			checkbox("Handles", OverlaysType::Handles, settings.handles, !settings.anchors),
+		];
+		let right = [
+			vec![TextLabel::new("Select Tool").widget_instance()],
+			checkbox("Quick Measurement", OverlaysType::QuickMeasurement, settings.quick_measurement, false),
+			checkbox("Transform Cage", OverlaysType::TransformCage, settings.transform_cage, false),
+			checkbox("Transform Dial", OverlaysType::CompassRose, settings.compass_rose, false),
+			checkbox("Transform Pivot", OverlaysType::Pivot, settings.pivot, false),
+			checkbox("Transform Origin", OverlaysType::Origin, settings.origin, false),
+			checkbox("Hover Outline", OverlaysType::HoverOutline, settings.hover_outline, false),
+			checkbox("Selection Outline", OverlaysType::SelectionOutline, settings.selection_outline, false),
+			checkbox("Layer Origin", OverlaysType::LayerOriginCross, settings.layer_origin_cross, false),
+		];
+
+		vec![
+			LayoutGroup::row(vec![TextLabel::new("Overlays").bold(true).widget_instance()]),
+			LayoutGroup::table_of_cells(side_by_side(&left, &right), true),
+		]
+	}
+
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
@@ -3475,226 +3524,7 @@ impl DocumentMessageHandler {
 					.into()
 				})
 				.widget_instance(),
-			PopoverButton::new()
-				.popover_layout(Layout(vec![
-					LayoutGroup::row(vec![TextLabel::new("Overlays").bold(true).widget_instance()]),
-					LayoutGroup::row(vec![TextLabel::new("General").widget_instance()]),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::ArtboardName),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::TransformMeasurement),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row(vec![TextLabel::new("Select Tool").widget_instance()]),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::QuickMeasurement),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::TransformCage),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::CompassRose),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.pivot)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Pivot),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.origin)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Origin),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::HoverOutline),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::SelectionOutline),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.layer_origin_cross)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::LayerOriginCross),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Layer Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row(vec![TextLabel::new("Pen & Path Tools").widget_instance()]),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.path)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Path),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.anchors)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Anchors),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_instance(),
-						]
-					}),
-					LayoutGroup::row({
-						let checkbox_id = CheckboxId::new();
-						vec![
-							CheckboxInput::new(self.overlays_visibility_settings.handles)
-								.disabled(!self.overlays_visibility_settings.anchors)
-								.on_update(|optional_input: &CheckboxInput| {
-									DocumentMessage::SetOverlaysVisibility {
-										visible: optional_input.checked,
-										overlays_type: Some(OverlaysType::Handles),
-									}
-									.into()
-								})
-								.for_label(checkbox_id)
-								.widget_instance(),
-							TextLabel::new("Handles".to_string())
-								.disabled(!self.overlays_visibility_settings.anchors)
-								.for_checkbox(checkbox_id)
-								.widget_instance(),
-						]
-					}),
-				]))
-				.widget_instance(),
+			PopoverButton::new().popover_layout(Layout(self.overlays_options())).widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(self.snapping_state.snapping_enabled)
 				.icon("Snapping")
