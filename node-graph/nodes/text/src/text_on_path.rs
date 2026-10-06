@@ -1,6 +1,5 @@
-use core_types::graphene_hash::CacheHash;
+use crate::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing};
 use core_types::list::List;
-use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
 use parley::PositionedLayoutItem;
@@ -8,47 +7,6 @@ use skrifa::MetadataProvider;
 use skrifa::raw::FontRef as ReadFontsRef;
 use vector_types::Vector;
 use vector_types::kurbo::{BezPath, ParamCurve, ParamCurveArclen, ParamCurveDeriv, PathEl, PathSeg, Point};
-
-/// Which side of the path's direction the glyphs are placed on.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
-pub enum TextPathSide {
-	#[default]
-	Left,
-	Right,
-}
-
-/// Where the text sits relative to the start of its path, matching SVG's `text-anchor`.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
-pub enum TextAnchor {
-	#[default]
-	Start,
-	Middle,
-	End,
-}
-
-/// Whether glyphs keep their size along the path or are stretched to follow its curvature.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
-pub enum TextPathMethod {
-	#[default]
-	Align,
-	Stretch,
-}
-
-/// How far a glyph is shifted along the path to account for the curve it spans.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
-pub enum TextPathSpacing {
-	#[default]
-	Exact,
-	Auto,
-}
-
-/// How `textLength` is reconciled with the path: by adjusting spacing, by scaling glyphs too, or not at all.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
-pub enum LengthAdjust {
-	#[default]
-	Spacing,
-	SpacingAndGlyphs,
-}
 
 /// A lookup from arc length along a path back to a position and tangent on it.
 ///
@@ -240,9 +198,9 @@ fn maybe_reverse_path(path: BezPath, side: TextPathSide) -> BezPath {
 }
 
 /// Whether a glyph falls off the end of an open path, where SVG hides it rather than drawing it in place.
+/// A closed path renders one circuit and hides the rest, so nothing is ever dropped from it.
 fn is_glyph_hidden(mid: f64, total_length: f64, is_closed: bool) -> bool {
-	// A closed path renders one circuit and hides the rest, so nothing is ever dropped from it.
-	is_closed || (-1e-3..=total_length + 1e-3).contains(&mid)
+	!is_closed && !(-1e-3..=total_length + 1e-3).contains(&mid)
 }
 
 fn resolve_startpoint(absolute_offset: f64, total_advance: f64, text_anchor: TextAnchor) -> f64 {
@@ -474,5 +432,27 @@ mod test_arc_length_lut {
 		path.elements_mut().last_mut().unwrap();
 		let lut = ArcLengthLut::build(&path);
 		assert!(lut.at(lut.total_length + 5.).is_some(), "a closed path should wrap a length past its end");
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn hidden_means_off_an_open_path() {
+		// A closed path hides nothing, however far along the glyph sits.
+		assert!(!is_glyph_hidden(-10., 100., true));
+		assert!(!is_glyph_hidden(0., 100., true));
+		assert!(!is_glyph_hidden(50., 100., true));
+		assert!(!is_glyph_hidden(100., 100., true));
+		assert!(!is_glyph_hidden(1000., 100., true));
+
+		// An open path hides only what falls off either end.
+		assert!(is_glyph_hidden(-10., 100., false));
+		assert!(is_glyph_hidden(1000., 100., false));
+		assert!(!is_glyph_hidden(0., 100., false));
+		assert!(!is_glyph_hidden(50., 100., false));
+		assert!(!is_glyph_hidden(100., 100., false));
 	}
 }

@@ -22,7 +22,7 @@ use graphene_std::raster::{
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
-use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
+use graphene_std::text_nodes::{LengthAdjust, StringCapitalization, TextAnchor, TextDenomination, TextPathMethod, TextPathSide, TextPathSpacing};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
@@ -236,6 +236,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<PointSpacingType>,
 		List<StringCapitalization>,
 		List<TextDenomination>,
+		List<TextPathSide>,
+		List<TextAnchor>,
+		List<TextPathMethod>,
+		List<TextPathSpacing>,
+		List<LengthAdjust>,
 		List<DesaturateMethod>,
 		List<RedGreenBlue>,
 		List<RedGreenBlueAlpha>,
@@ -292,6 +297,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<PointSpacingType>,
 		Item<StringCapitalization>,
 		Item<TextDenomination>,
+		Item<TextPathSide>,
+		Item<TextAnchor>,
+		Item<TextPathMethod>,
+		Item<TextPathSpacing>,
+		Item<LengthAdjust>,
 		Item<DesaturateMethod>,
 		Item<RedGreenBlue>,
 		Item<RedGreenBlueAlpha>,
@@ -1032,6 +1042,11 @@ impl_table_item_layout_for_choice_enum!(
 	PointSpacingType,
 	StringCapitalization,
 	TextDenomination,
+	TextPathSide,
+	TextAnchor,
+	TextPathMethod,
+	TextPathSpacing,
+	LengthAdjust,
 	DesaturateMethod,
 	RedGreenBlue,
 	RedGreenBlueAlpha,

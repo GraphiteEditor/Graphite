@@ -23,7 +23,64 @@ pub use core_types as gcore;
 pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
 pub use text_context::{TextContext, for_each_styled_glyph_run};
-pub use text_on_path::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing, place_text_on_path};
+/// Which side of the path's direction the glyphs are placed on.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
+#[widget(Dropdown)]
+pub enum TextPathSide {
+	/// Glyphs sit to the left of the path's direction of travel.
+	#[default]
+	Left,
+	/// Glyphs sit to the right of the path's direction of travel.
+	Right,
+}
+
+/// Where the text sits relative to the start of its path, matching SVG's `text-anchor`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
+#[widget(Dropdown)]
+pub enum TextAnchor {
+	/// Text starts at the path's beginning.
+	#[default]
+	Start,
+	/// Text is centered on the path's beginning.
+	Middle,
+	/// Text ends at the path's beginning.
+	End,
+}
+
+/// Whether glyphs keep their size along the path or are stretched to follow its curvature.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
+#[widget(Dropdown)]
+pub enum TextPathMethod {
+	/// Glyphs keep their size and rotate to follow the path.
+	#[default]
+	Align,
+	/// Glyphs stretch to follow the path's curvature.
+	Stretch,
+}
+
+/// How far a glyph is shifted along the path to account for the curve it spans.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
+#[widget(Dropdown)]
+pub enum TextPathSpacing {
+	/// Glyphs sit exactly where the path measures them.
+	#[default]
+	Exact,
+	/// Glyphs shift to smooth out the curve they span.
+	Auto,
+}
+
+/// How `textLength` is reconciled with the path: by adjusting spacing, by scaling glyphs too, or not at all.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
+#[widget(Dropdown)]
+pub enum LengthAdjust {
+	/// Only the spacing between glyphs changes.
+	#[default]
+	Spacing,
+	/// Spacing and glyphs both scale.
+	SpacingAndGlyphs,
+}
+
+pub use text_on_path::place_text_on_path;
 pub use to_path::*;
 pub use vector_types;
 

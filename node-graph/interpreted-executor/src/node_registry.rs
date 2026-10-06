@@ -19,7 +19,7 @@ use graphene_std::raster::*;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::render_node::RenderIntermediate;
 use graphene_std::text::{Font, TextAlign};
-use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
+use graphene_std::text_nodes::{LengthAdjust, StringCapitalization, TextAnchor, TextDenomination, TextPathMethod, TextPathSide, TextPathSpacing};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
@@ -342,6 +342,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				PointSpacingType,
 				StringCapitalization,
 				TextDenomination,
+				TextPathSide,
+				TextAnchor,
+				TextPathMethod,
+				TextPathSpacing,
+				LengthAdjust,
 				DesaturateMethod,
 				RedGreenBlue,
 				RedGreenBlueAlpha,
