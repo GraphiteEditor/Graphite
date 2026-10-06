@@ -581,8 +581,8 @@ impl ApplicationHandler for App {
 			));
 		}
 
-		if matches!(event, WindowEvent::Focused(false)) {
-			self.input_state.set_pointer_wrap(false);
+		if let WindowEvent::Focused(focused) = &event {
+			self.input_state.set_window_focused(*focused);
 		}
 
 		self.input_state.process(

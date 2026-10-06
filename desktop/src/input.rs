@@ -27,6 +27,8 @@ pub(crate) struct InputState {
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
 	pointer_wrap: Option<PointerWrap>,
+	pointer_wrap_requested: bool,
+	window_focused: bool,
 	pending_warp: Option<PhysicalPosition<f64>>,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
@@ -42,6 +44,8 @@ impl InputState {
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
 			pointer_wrap: None,
+			pointer_wrap_requested: false,
+			window_focused: true,
 			pending_warp: None,
 			click_tracker: ClickTracker::default(),
 			shake_tracker: ShakeTracker::default(),
@@ -57,7 +61,18 @@ impl InputState {
 	}
 
 	pub(crate) fn set_pointer_wrap(&mut self, enabled: bool) {
-		self.pointer_wrap = enabled.then_some(PointerWrap {
+		self.pointer_wrap_requested = enabled;
+		self.apply_pointer_wrap();
+	}
+
+	/// Suspends wrapping while the window is unfocused and resumes the editor's request when focus returns.
+	pub(crate) fn set_window_focused(&mut self, focused: bool) {
+		self.window_focused = focused;
+		self.apply_pointer_wrap();
+	}
+
+	fn apply_pointer_wrap(&mut self) {
+		self.pointer_wrap = (self.window_focused && self.pointer_wrap_requested).then_some(PointerWrap {
 			position: self.pointer_position,
 			last_reported: self.pointer_position,
 		});
@@ -602,5 +617,36 @@ mod test {
 
 		input.set_pointer_wrap(false);
 		assert!(matches!(input.route(position), Route::Ui), "without a wrap the UI captures an outside position again");
+	}
+
+	#[test]
+	fn pointer_wrap_resumes_when_focus_returns() {
+		let mut input = InputState::new();
+		let viewport = viewport();
+		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
+		input.set_direct_input(true);
+		input.pointer_position = PhysicalPosition::new(299., 80.);
+		input.set_pointer_wrap(true);
+
+		input.set_window_focused(false);
+		assert!(input.pointer_wrap.is_none(), "losing focus suspends the wrap");
+
+		input.set_window_focused(true);
+		assert!(input.pointer_wrap.is_some(), "regaining focus resumes the wrap the editor asked for");
+
+		let position = input.wrapped_position(PhysicalPosition::new(301., 80.));
+		assert!(matches!(input.route(position), Route::Editor), "the resumed wrap still keeps the editor routed");
+	}
+
+	#[test]
+	fn pointer_wrap_stays_off_after_the_transform_ends() {
+		let mut input = InputState::new();
+		input.set_pointer_wrap(true);
+
+		input.set_window_focused(false);
+		input.set_pointer_wrap(false);
+		input.set_window_focused(true);
+
+		assert!(input.pointer_wrap.is_none(), "regaining focus must not restart a wrap the editor has ended");
 	}
 }
