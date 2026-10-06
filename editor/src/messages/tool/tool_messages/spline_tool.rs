@@ -388,10 +388,9 @@ impl Fsm for SplineToolFsmState {
 				tool_data.weight = tool_options.drawing.effective_line_weight();
 
 				// The spline starts on whatever the pointer was shown snapping to before the press
-				let viewport_vec = match snap_session.shown_position() {
-					Some(shown) => document.metadata().document_to_viewport.transform_point2(shown),
-					None => tool_data.snapped_point(snap_session, view),
-				};
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let viewport_vec = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				let layers = LayerNodeIdentifier::ROOT_PARENT
 					.descendants(document.metadata())

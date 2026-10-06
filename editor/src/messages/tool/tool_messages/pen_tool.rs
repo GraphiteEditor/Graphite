@@ -1875,8 +1875,7 @@ impl Fsm for PenToolFsmState {
 				// The path starts on whatever the pointer was shown snapping to before the press
 				let document_to_viewport = document.metadata().document_to_viewport;
 				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
-				let landed = snap_session.shown_position().unwrap_or_else(|| snap_session.snap_point(view, pointer, PointOptions::default()));
-				let start = document_to_viewport.transform_point2(landed);
+				let start = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				tool_data.store_clicked_endpoint(document, start);
 				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor, start);
@@ -1900,6 +1899,7 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { .. }) => {
 				// The anchor goes where its preview is shown for where the pointer is pressed
 				tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses);
+				snap_session.land_press(view, transform.transform_point2(tool_data.next_point));
 				let next_anchor = (document.metadata().document_to_viewport * transform).transform_point2(tool_data.next_point);
 
 				// Each segment placement is its own history step, spanning from this click through the release that finalizes it

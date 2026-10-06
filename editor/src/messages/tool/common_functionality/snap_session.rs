@@ -4,6 +4,7 @@ mod presenter;
 mod scene_mirror;
 mod settings;
 
+use crate::consts::DRAG_THRESHOLD;
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
@@ -147,6 +148,12 @@ struct Gesture {
 	artboard: Option<LayerId>,
 	/// The targets awake for as long as a box is being moved near them, without having been rested on.
 	automatic: Vec<Awake>,
+	/// Where the pointer was in the viewport when the gesture began.
+	pressed: DVec2,
+	/// Whether the pointer has since moved past the drag threshold, before which nothing snaps.
+	dragged: bool,
+	/// Where the press put the feature the pointer carries, in document space, which it stays at until then.
+	held: Option<DVec2>,
 }
 
 #[derive(Debug, Default)]
@@ -169,6 +176,10 @@ pub struct SnapSession {
 	/// The features of the latest attempt, which are the only ones the engaged snap and the remembered crossings hold for.
 	features: Vec<FeatureMap>,
 	shown: Option<Shown>,
+	/// Where a press has just landed in document space, and where the pointer was pressed in the viewport, for the gesture begun next to start from.
+	landed_press: Option<(DVec2, DVec2)>,
+	/// Whether the latest attempt to snap held the feature the pointer carries where the press put it.
+	holding_press: bool,
 	cycle_key_was_held: bool,
 }
 
@@ -219,6 +230,12 @@ impl SnapSession {
 		let kind = self.gesture.as_ref().map_or(LayerKind::Artwork, |gesture| gesture.kind);
 		let spaced = options.box_features.filter(|_| !quiet).and_then(|box_features| spaced_box(kind, &box_features, features, asked));
 		let awake = self.awake_around(spaced.as_ref());
+
+		// Nothing snaps until the pointer has moved past the drag threshold from where the gesture began
+		let within_threshold = self.gesture.as_mut().is_some_and(|gesture| {
+			gesture.dragged |= input.mouse.position.distance(gesture.pressed) > DRAG_THRESHOLD;
+			!gesture.dragged
+		});
 
 		let (frame, tunables, nothing_moving) = (Frame::default(), Tunables::default(), Exclusions::default());
 
@@ -279,7 +296,7 @@ impl SnapSession {
 			required: options.required,
 			incumbent: self.incumbent,
 			cycle,
-			quiet,
+			quiet: quiet || within_threshold,
 			constructions: self.constructions.as_ref().map_or(&[], |(_, constructions)| constructions.as_slice()),
 			lead_constructions: &self.constructions_from_previous,
 			crossings: Some(&self.crossings),
@@ -288,8 +305,13 @@ impl SnapSession {
 		};
 		let outcome = snapping::snap_features(&context, &request, features, lead, free, options.previous);
 
+		// Until then, what a press landed somewhere stays there
+		let held = self.gesture.as_ref().and_then(|gesture| gesture.held).filter(|_| within_threshold);
+		let held_parameters = held.and_then(|held| features.get(lead)?.parameters_for(held)).filter(|parameters| parameters.is_finite());
+		self.holding_press = held_parameters.is_some();
+
 		self.incumbent = outcome.incumbent();
-		let parameters = outcome.parameters;
+		let parameters = held_parameters.unwrap_or(outcome.parameters);
 		self.shown = Some(Shown {
 			features: features.iter().map(|feature| feature.position(parameters)).collect(),
 			lead,
@@ -332,7 +354,13 @@ impl SnapSession {
 	}
 
 	fn start_gesture(&mut self, view: SnapView, moving: Moving, follows_edits: bool) {
-		self.gesture = None;
+		// A gesture begun again partway through keeps where it was pressed, unless a new press has landed
+		let landed = self.landed_press.take();
+		let (pressed, dragged, held) = match (self.gesture.take(), landed) {
+			(Some(gesture), None) => (gesture.pressed, gesture.dragged, gesture.held),
+			(_, Some((position, pointer))) => (pointer, false, Some(position)),
+			(None, None) => (view.input.mouse.position, false, None),
+		};
 		self.forget();
 		self.bring_up_to_date(view.document, view.document_id);
 
@@ -381,9 +409,26 @@ impl SnapSession {
 			siblings,
 			artboard,
 			automatic: Vec::new(),
+			pressed,
+			dragged,
+			held,
 		});
 		self.constructions = None;
 		self.rest = None;
+	}
+
+	/// Notes that the pointer, pressed where it is now, has landed a press at a position in document space, so the gesture begun next starts from it afresh.
+	/// Until the pointer has moved past the drag threshold, the feature that gesture carries stays at that position.
+	pub fn land_press(&mut self, view: SnapView, position: DVec2) {
+		self.landed_press = Some((position, view.input.mouse.position));
+	}
+
+	/// Where a press lands, in document space: on what the pointer was shown snapping to, or else on what it snaps to now.
+	/// The press is noted as landed there for the gesture begun next.
+	pub fn snap_press(&mut self, view: SnapView, pointer: DVec2) -> DVec2 {
+		let landed = self.shown_position().unwrap_or_else(|| self.snap_point(view, pointer, PointOptions::default()));
+		self.land_press(view, landed);
+		landed
 	}
 
 	/// Ends a gesture, however it ended, and forgets what the pointer was snapped to.
@@ -399,6 +444,8 @@ impl SnapSession {
 	pub fn forget(&mut self) {
 		self.incumbent = None;
 		self.shown = None;
+		self.landed_press = None;
+		self.holding_press = false;
 	}
 
 	/// What the latest attempt to snap came to, if the pointer is still placing what it snapped.
@@ -406,9 +453,9 @@ impl SnapSession {
 		self.shown.as_ref()
 	}
 
-	/// Whether the latest attempt to snap caught anything, rather than leaving things where the pointer asked for them.
+	/// Whether the latest attempt to snap caught anything, or held what a press caught, rather than leaving things where the pointer asked for them.
 	pub fn caught(&self) -> bool {
-		self.shown.as_ref().is_some_and(|shown| shown.outcome.snap != Snap::Free)
+		self.holding_press || self.shown.as_ref().is_some_and(|shown| shown.outcome.snap != Snap::Free)
 	}
 
 	/// Where the latest attempt to snap left the feature the pointer carries, in document space.
@@ -1214,8 +1261,10 @@ mod tests {
 		session
 	}
 
+	/// Snaps features slid by `free`, with the pointer well past the drag threshold from where the gesture began.
 	fn slide(session: &mut SnapSession, editor: &EditorTestUtils, features: &[FeatureMap], free: DVec2, options: PointOptions) -> DVec2 {
-		let input = InputPreprocessorMessageHandler::default();
+		let mut input = InputPreprocessorMessageHandler::default();
+		input.mouse.position = DVec2::splat(100.);
 		session.snap_features(SnapView::new(editor.active_document(), DOCUMENT, &input), features, 0, free, options)
 	}
 
@@ -1332,6 +1381,71 @@ mod tests {
 		let slid = slide(&mut session, &editor, &features, asked, options);
 		assert!(slid.abs_diff_eq(asked - unit.perp() * 4., 1e-6), "the box slid by {slid}");
 		assert!(engaged_kinds(&session).contains(&Kind::Alignment));
+	}
+
+	#[tokio::test]
+	async fn nothing_snaps_until_the_pointer_has_moved_past_the_drag_threshold_from_where_the_gesture_began() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 200., 200.).await;
+		let corner = in_document(&editor, DVec2::new(200., 200.));
+
+		let mut session = SnapSession::default();
+		let mut input = InputPreprocessorMessageHandler::default();
+		let mut snap_with_pointer_at = |session: &mut SnapSession, position: DVec2| {
+			input.mouse.position = position;
+			if session.gesture.is_none() {
+				session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), Moving::default());
+			}
+			session.snap_point(SnapView::new(editor.active_document(), DOCUMENT, &input), in_document(&editor, position), PointOptions::default())
+		};
+
+		// Pressed three pixels from the corner, the point stays put until the pointer has moved more than a pixel
+		let press = DVec2::new(203., 203.);
+		assert_eq!(snap_with_pointer_at(&mut session, press), in_document(&editor, press));
+		let barely_moved = press + DVec2::new(0.5, 0.);
+		assert_eq!(snap_with_pointer_at(&mut session, barely_moved), in_document(&editor, barely_moved));
+		assert!(snap_with_pointer_at(&mut session, press + DVec2::new(0., -2.)).abs_diff_eq(corner, 1e-6));
+	}
+
+	#[tokio::test]
+	async fn a_press_landed_on_a_corner_holds_there_until_the_pointer_has_moved_past_the_drag_threshold() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 200., 200.).await;
+		let corner = in_document(&editor, DVec2::new(200., 200.));
+		let press = DVec2::new(203., 203.);
+
+		let begin_with_pointer_at = |session: &mut SnapSession, position: DVec2| {
+			let mut input = InputPreprocessorMessageHandler::default();
+			input.mouse.position = position;
+			session.begin_gesture(SnapView::new(editor.active_document(), DOCUMENT, &input), Moving::default());
+		};
+
+		let mut session = SnapSession::default();
+		let mut input = InputPreprocessorMessageHandler::default();
+		input.mouse.position = press;
+		let landed = session.snap_press(SnapView::new(editor.active_document(), DOCUMENT, &input), in_document(&editor, press));
+		assert!(landed.abs_diff_eq(corner, 1e-6));
+		begin_with_pointer_at(&mut session, press);
+
+		let barely_moved = press + DVec2::new(0.5, 0.);
+		assert!(snap(&mut session, &editor, barely_moved).abs_diff_eq(corner, 1e-6));
+		assert!(session.caught());
+
+		// Begun again partway through, as when a key changes what the drag does, the gesture keeps its press
+		let moved_on = press + DVec2::new(0., -2.);
+		assert!(snap(&mut session, &editor, moved_on).abs_diff_eq(corner, 1e-6));
+		begin_with_pointer_at(&mut session, moved_on);
+		assert!(snap(&mut session, &editor, moved_on + DVec2::new(0.5, 0.)).abs_diff_eq(corner, 1e-6));
+
+		// A new press landing partway through starts the threshold afresh from it
+		let far_away = DVec2::new(400., 400.);
+		let mut input = InputPreprocessorMessageHandler::default();
+		input.mouse.position = far_away;
+		session.land_press(SnapView::new(editor.active_document(), DOCUMENT, &input), in_document(&editor, far_away));
+		begin_with_pointer_at(&mut session, far_away);
+		assert_eq!(snap(&mut session, &editor, far_away + DVec2::new(0.5, 0.)), in_document(&editor, far_away));
 	}
 
 	#[tokio::test]
