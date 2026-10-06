@@ -54,17 +54,20 @@ impl ToolMessageHandler {
 
 		match message {
 			// Messages
-			ToolMessage::TransformLayer(message) => self.transform_layer_handler.process_message(
-				message,
-				responses,
-				TransformLayerMessageContext {
+			ToolMessage::TransformLayer(message) => {
+				let context = TransformLayerMessageContext {
 					document,
+					document_id,
 					input,
 					tool_data: &self.tool_state.tool_data,
 					shape_editor: &mut self.shape_editor,
+					snap_session: &mut self.snap_session,
 					viewport,
-				},
-			),
+				};
+				self.transform_layer_handler.process_message(message, responses, context);
+
+				self.keep_snapping_ticks_as_wanted(responses);
+			}
 
 			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),
 			ToolMessage::ActivateToolArtboard => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }),

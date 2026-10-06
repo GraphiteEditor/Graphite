@@ -105,7 +105,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Minus); action_dispatch=TransformLayerMessage::TypeNegate),
 		entry!(KeyDown(Comma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
 		entry!(KeyDown(Period); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
+		entry!(PointerMove; refresh_keys=[Control, Shift, Alt, KeyQ, KeyW], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
 		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyQ, KeyW], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),

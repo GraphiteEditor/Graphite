@@ -334,7 +334,7 @@ impl SelectedEdges {
 
 /// How far a feature of a turn or skew must move per unit the lead moves to be snapped.
 /// Less is rounding error on a feature that stays put, which the solver would divide by.
-const MIN_FEATURE_TRAVEL: f64 = 1e-9;
+pub const MIN_FEATURE_TRAVEL: f64 = 1e-9;
 
 /// What a turn of the cage snaps by, built once as it begins so that an engaged snap holds from move to move.
 #[derive(Clone, Debug)]
