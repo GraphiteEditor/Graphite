@@ -271,7 +271,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
-	/// Inserts an Image node fed by an embedded resource, returning the id of the Transform node at the chain start.
+	/// Inserts an Image node fed by an embedded resource, returning the ID of the Transform node at the chain start.
 	pub fn insert_image_data(&mut self, data: Arc<[u8]>, layer: LayerNodeIdentifier) -> NodeId {
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
