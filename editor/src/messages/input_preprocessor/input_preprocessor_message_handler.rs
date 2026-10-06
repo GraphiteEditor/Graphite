@@ -55,11 +55,16 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				if !key_repeat {
 					let no_mouse_buttons_held = self.mouse.mouse_keys.is_empty();
 					let no_modifier_keys_held = modifier_keys.is_empty();
-					let same_key_within_threshold = self
-						.last_key_down
-						.is_some_and(|(last_key, last_time)| last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS);
 
-					if no_mouse_buttons_held && no_modifier_keys_held && same_key_within_threshold {
+					if !no_mouse_buttons_held || !no_modifier_keys_held {
+						// A press that arrives with a mouse button or modifier held can neither open nor close a double tap,
+						// and it breaks a first tap already waiting
+						self.last_key_down = None;
+						self.double_tap_key = None;
+					} else if self
+						.last_key_down
+						.is_some_and(|(last_key, last_time)| last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS)
+					{
 						self.double_tap_key = Some((key, self.time));
 						self.last_key_down = None;
 					} else {
@@ -338,30 +343,26 @@ mod test {
 	}
 
 	fn key_down(input_preprocessor: &mut InputPreprocessorMessageHandler, key: Key, responses: &mut VecDeque<Message>) {
-		input_preprocessor.process_message(
+		process_input(
+			input_preprocessor,
 			InputPreprocessorMessage::KeyDown {
 				key,
 				key_repeat: false,
 				modifier_keys: ModifierKeys::empty(),
 			},
 			responses,
-			InputPreprocessorMessageContext {
-				viewport: &ViewportMessageHandler::default(),
-			},
 		);
 	}
 
 	fn key_up(input_preprocessor: &mut InputPreprocessorMessageHandler, key: Key, responses: &mut VecDeque<Message>) {
-		input_preprocessor.process_message(
+		process_input(
+			input_preprocessor,
 			InputPreprocessorMessage::KeyUp {
 				key,
 				key_repeat: false,
 				modifier_keys: ModifierKeys::empty(),
 			},
 			responses,
-			InputPreprocessorMessageContext {
-				viewport: &ViewportMessageHandler::default(),
-			},
 		);
 	}
 
@@ -510,6 +511,33 @@ mod test {
 		assert!(input_preprocessor.double_tap_key.is_none());
 
 		responses.clear();
+		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+
+		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+	}
+
+	#[test]
+	fn process_double_tap_modified_first_press_never_arms() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let mut responses = VecDeque::new();
+
+		// Press Shift+Space first, as for live preview, then a plain Space within the threshold.
+		process_input(
+			&mut input_preprocessor,
+			InputPreprocessorMessage::KeyDown {
+				key: Key::Space,
+				key_repeat: false,
+				modifier_keys: ModifierKeys::SHIFT,
+			},
+			&mut responses,
+		);
+		assert!(
+			input_preprocessor.double_tap_key.is_none() && input_preprocessor.last_key_down.is_none(),
+			"a modified first press should leave no double-tap state at all"
+		);
+
+		input_preprocessor.time = 50;
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
