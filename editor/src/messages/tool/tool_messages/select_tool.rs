@@ -2340,7 +2340,6 @@ pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashS
 #[cfg(test)]
 mod test_select_tool {
 	use super::SelectOptionsUpdate;
-	use crate::consts::ROTATE_INCREMENT;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 	use crate::messages::tool::common_functionality::snap_session::{SnapSession, WAKE_DWELL_ON_APPROACH};
@@ -2875,7 +2874,7 @@ mod test_select_tool {
 	}
 
 	#[tokio::test]
-	async fn a_rectangle_turned_with_shift_steps_to_a_multiple_of_the_rotate_increment_and_snaps_to_nothing() {
+	async fn a_rectangle_turned_with_shift_steps_to_a_multiple_of_the_angle_step_and_snaps_to_nothing() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
@@ -2887,7 +2886,23 @@ mod test_select_tool {
 		assert!(editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_none());
 		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
 
-		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, (3. * ROTATE_INCREMENT).to_radians()));
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, 45_f64.to_radians()));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_with_shift_steps_by_the_angle_step_the_document_sets() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, TURNED[0], TURNED[1]).await;
+		editor.handle_message(DocumentMessage::SetSnappingAngleStep { degrees: 30. }).await;
+
+		// The turn of about 51 degrees steps up to 60 rather than down to 45
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor() - 2_f64.to_radians());
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::SHIFT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, 60_f64.to_radians()));
 	}
 
 	#[tokio::test]

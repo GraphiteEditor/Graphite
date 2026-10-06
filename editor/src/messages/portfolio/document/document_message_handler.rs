@@ -1,7 +1,7 @@
 use super::document_diff::diff_networks;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
-use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
+use super::utility_types::misc::{ANGLE_STEP_MAX, ANGLE_STEP_MIN, GroupFolderType, SNAPPING_OPTION_GROUPS, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use super::{CursorMoveError, DocumentHistory};
@@ -1551,6 +1551,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if let Some(closure) = closure {
 					*closure(&mut self.snapping_state) = snapping_state;
 				}
+
+				// Snap to Grid has a checkbox in both the snapping and grid popovers, which must agree
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::SetSnappingAngleStep { degrees } => {
+				if !degrees.is_nan() {
+					self.snapping_state.angle_step = degrees.clamp(ANGLE_STEP_MIN, ANGLE_STEP_MAX);
+				}
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -3382,10 +3391,65 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
+	/// The snapping options popover, in two columns: a heading for each group, then its checkboxes, and last the angle step.
+	fn snapping_options(&self) -> Vec<LayoutGroup> {
+		// The accessors for the checkboxes hand out mutable references, so they read from a copy
 		let mut snapping_state = self.snapping_state.clone();
-		let mut snapping_state2 = self.snapping_state.clone();
+		let mut sections: Vec<Vec<Vec<WidgetInstance>>> = Vec::new();
 
+		for (heading, options) in SNAPPING_OPTION_GROUPS {
+			let mut section = vec![vec![TextLabel::new(heading).bold(true).widget_instance()]];
+
+			for &(name, closure, description) in options {
+				let checkbox_id = CheckboxId::new();
+				section.push(vec![
+					CheckboxInput::new(*closure(&mut snapping_state))
+						.on_update(move |input: &CheckboxInput| {
+							DocumentMessage::SetSnapping {
+								closure: Some(closure),
+								snapping_state: input.checked,
+							}
+							.into()
+						})
+						.tooltip_label(name)
+						.tooltip_description(description)
+						.for_label(checkbox_id)
+						.widget_instance(),
+					TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
+				]);
+			}
+			sections.push(section);
+		}
+
+		let angle_step_description = "Constrained lines, handles, and turns keep to multiples of this angle.";
+		let angles_heading = vec![TextLabel::new("Angles").bold(true).widget_instance()];
+		sections.push(vec![
+			angles_heading,
+			vec![
+				TextLabel::new("Angle Step")
+					.table_align(true)
+					.tooltip_label("Angle Step")
+					.tooltip_description(angle_step_description)
+					.widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(self.snapping_state.angle_step))
+					.unit("°")
+					.min(ANGLE_STEP_MIN)
+					.max(ANGLE_STEP_MAX)
+					.tooltip_label("Angle Step")
+					.tooltip_description(angle_step_description)
+					.on_update(|input: &NumberInput| input.value.map_or(Message::NoOp, |degrees| DocumentMessage::SetSnappingAngleStep { degrees }.into()))
+					.widget_instance(),
+			],
+		]);
+
+		// Even sections go on the left and odd ones on the right, side by side in pairs
+		let rows = sections.chunks(2).flat_map(|pair| side_by_side(&pair[0], pair.get(1).map(Vec::as_slice).unwrap_or_default())).collect();
+
+		vec![LayoutGroup::table_of_cells(rows, true)]
+	}
+
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
 				.tooltip_label("Restart Animation")
@@ -3632,7 +3696,7 @@ impl DocumentMessageHandler {
 				]))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			CheckboxInput::new(snapping_state.snapping_enabled)
+			CheckboxInput::new(self.snapping_state.snapping_enabled)
 				.icon("Snapping")
 				.tooltip_label("Snapping")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSnapping))
@@ -3644,57 +3708,7 @@ impl DocumentMessageHandler {
 					.into()
 				})
 				.widget_instance(),
-			PopoverButton::new()
-				.popover_layout(Layout(
-					[
-						LayoutGroup::row(vec![TextLabel::new("Snapping").bold(true).widget_instance()]),
-						LayoutGroup::row(vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_instance()]),
-					]
-					.into_iter()
-					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, description)| {
-						LayoutGroup::row({
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(*closure(&mut snapping_state))
-									.on_update(move |input: &CheckboxInput| {
-										DocumentMessage::SetSnapping {
-											closure: Some(closure),
-											snapping_state: input.checked,
-										}
-										.into()
-									})
-									.tooltip_label(name)
-									.tooltip_description(description)
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
-							]
-						})
-					}))
-					.chain([LayoutGroup::row(vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_instance()])])
-					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, description)| {
-						LayoutGroup::row({
-							let checkbox_id = CheckboxId::new();
-							vec![
-								CheckboxInput::new(*closure(&mut snapping_state2))
-									.on_update(move |input: &CheckboxInput| {
-										DocumentMessage::SetSnapping {
-											closure: Some(closure),
-											snapping_state: input.checked,
-										}
-										.into()
-									})
-									.tooltip_label(name)
-									.tooltip_description(description)
-									.for_label(checkbox_id)
-									.widget_instance(),
-								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
-							]
-						})
-					}))
-					.collect(),
-				))
-				.widget_instance(),
+			PopoverButton::new().popover_layout(Layout(self.snapping_options())).widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(self.snapping_state.grid_visible)
 				.icon("Grid")
@@ -4163,6 +4177,19 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::TypeDefault(list!(graphene_std::Artboard)), -1, "", &[]);
 	network_interface
+}
+
+/// Pairs two columns of table cells into rows, padding the shorter column and leading each right cell with a gap.
+fn side_by_side(left: &[Vec<WidgetInstance>], right: &[Vec<WidgetInstance>]) -> Vec<Vec<Vec<WidgetInstance>>> {
+	(0..left.len().max(right.len()))
+		.map(|index| {
+			let left_cell = left.get(index).cloned().unwrap_or_default();
+			let mut right_cell = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
+			right_cell.extend(right.get(index).cloned().unwrap_or_default());
+
+			vec![left_cell, right_cell]
+		})
+		.collect()
 }
 
 /// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.

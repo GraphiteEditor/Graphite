@@ -187,7 +187,7 @@ impl ArtboardToolData {
 		let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
 		let free = pointer - slide.grip;
 
-		// The constrain key holds the drag to the nearest angle step from where it began, as seen in the viewport
+		// The constrain key holds the drag to the nearest axis from where it began, as seen in the viewport
 		let axis_aligned = || {
 			let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
 			let angle = DVec2::X.try_angle_to(input.mouse.position - document_to_viewport.transform_point2(slide.grip))?;

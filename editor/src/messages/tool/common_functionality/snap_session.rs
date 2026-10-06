@@ -282,7 +282,9 @@ impl SnapSession {
 			if document.snapping_state.bounding_box.distribute_evenly {
 				find_spacing(&context, spaced, &mut particular);
 			}
-			find_equal_sizes(&context, spaced, &mut particular);
+			if document.snapping_state.bounding_box.equal_sizes {
+				find_equal_sizes(&context, spaced, &mut particular);
+			}
 		}
 
 		let probed: Option<Vec<u32>> = options.snapping.map(|count| (0..count.min(features.len()) as u32).collect());
@@ -1617,19 +1619,18 @@ mod tests {
 		assert!(risen(slid).abs() < 1e-6, "the box rose by {}", risen(slid));
 	}
 
-	#[tokio::test]
-	async fn a_box_stretched_to_nearly_the_width_of_the_one_beside_it_lands_on_that_width() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
+	/// Stretches the right side of a box forty wide by seventeen pixels, beside a box sixty wide, and returns how far it slid, a pixel along, and the session.
+	async fn stretch_a_box_beside_one_sixty_wide(editor: &mut EditorTestUtils, equal_sizes: bool) -> (DVec2, DVec2, SnapSession) {
 		editor.draw_rect(100., 200., 160., 260.).await;
 		editor.draw_rect(300., 200., 340., 240.).await;
-		let mut session = moving_the_selected_layer(&mut editor).await;
+		editor.active_document_mut().snapping_state.bounding_box.equal_sizes = equal_sizes;
+		let mut session = moving_the_selected_layer(editor).await;
 
 		// The right side slides along with its two corners, while the left side stays where it is
-		let [top_left, top_right, bottom_right, bottom_left] = box_corners(&editor, DVec2::new(300., 200.), DVec2::new(340., 240.));
+		let [top_left, top_right, bottom_right, bottom_left] = box_corners(editor, DVec2::new(300., 200.), DVec2::new(340., 240.));
 		let stays = |offset: DVec2| FeatureMap { matrix: glam::DMat2::ZERO, offset };
 		let features = [FeatureMap::sliding_from(top_right), FeatureMap::sliding_from(bottom_right), stays(top_left), stays(bottom_left)];
-		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let unit = in_document(editor, DVec2::X) - in_document(editor, DVec2::ZERO);
 		let options = PointOptions {
 			required: Locus::line(DVec2::ZERO, unit),
 			box_features: Some(BoxFeatures {
@@ -1639,10 +1640,46 @@ mod tests {
 			..Default::default()
 		};
 
+		let slid = slide(&mut session, editor, &features, unit * 17. + unit.perp() * 5., options);
+		(slid, unit, session)
+	}
+
+	#[tokio::test]
+	async fn a_box_stretched_to_nearly_the_width_of_the_one_beside_it_lands_on_that_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
 		// Sixty wide, as the other box is, takes sliding the side twenty, wherever the pointer is up or down
-		let slid = slide(&mut session, &editor, &features, unit * 17. + unit.perp() * 5., options);
+		let (slid, unit, session) = stretch_a_box_beside_one_sixty_wide(&mut editor, true).await;
 		assert!(slid.abs_diff_eq(unit * 20., 1e-6), "the side slid by {slid}");
 		assert!(engaged_kinds(&session).contains(&Kind::EqualSize));
+	}
+
+	#[tokio::test]
+	async fn a_box_stretched_with_equal_sizes_turned_off_stays_at_the_width_the_pointer_asks_for() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let (slid, unit, session) = stretch_a_box_beside_one_sixty_wide(&mut editor, false).await;
+		assert!(slid.abs_diff_eq(unit * 17., 1e-6), "the side slid by {slid}");
+		assert!(!engaged_kinds(&session).contains(&Kind::EqualSize));
+	}
+
+	#[tokio::test]
+	async fn a_point_slides_along_the_edge_of_a_box_only_while_along_box_edges_is_on() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_ellipse(300., 200., 500., 320.).await;
+		let mut session = SnapSession::default();
+
+		// Three pixels below the top of the ellipse's box, far from its corners, its middle, and the ellipse itself
+		let below_the_top = DVec2::new(320., 203.);
+		assert_eq!(snap(&mut session, &editor, below_the_top), in_document(&editor, below_the_top));
+
+		editor.active_document_mut().snapping_state.bounding_box.edges = true;
+		session.forget();
+		assert!(snap(&mut session, &editor, below_the_top).abs_diff_eq(in_document(&editor, DVec2::new(320., 200.)), 1e-6));
+		assert_eq!(engaged_kinds(&session), vec![Kind::OnBoxEdge]);
 	}
 
 	#[tokio::test]

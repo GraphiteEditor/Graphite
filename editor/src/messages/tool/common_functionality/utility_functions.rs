@@ -1,6 +1,5 @@
 use super::snap_session::{SnapSession, SnapView, anchor_positions};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
-use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
@@ -316,7 +315,7 @@ pub fn rotate_bounds(
 	// A stepped angle comes from the pointer alone, with nothing snapped
 	let angle = if snap_angle {
 		snap_session.forget();
-		let snap_resolution = ROTATE_INCREMENT.to_radians();
+		let snap_resolution = document.snapping_state.angle_step_radians();
 		pointer_angle().map(|angle| (angle / snap_resolution).round() * snap_resolution)
 	} else {
 		bounds.snap_turn(view, snap_session).or_else(pointer_angle)

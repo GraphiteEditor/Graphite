@@ -2,8 +2,7 @@ use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
-	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
-	SELECTION_THRESHOLD,
+	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
 };
 use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardVectorEntry};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -1221,7 +1220,7 @@ impl PathToolData {
 		// Round the angle to the closest increment
 		let mut handle_angle = current_angle;
 		if snap_angle && !lock_angle {
-			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
+			let snap_resolution = document.snapping_state.angle_step_radians();
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 

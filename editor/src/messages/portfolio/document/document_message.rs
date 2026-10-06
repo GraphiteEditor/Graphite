@@ -225,6 +225,9 @@ pub enum DocumentMessage {
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},
+	SetSnappingAngleStep {
+		degrees: f64,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,

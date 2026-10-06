@@ -12,8 +12,7 @@ pub fn settings(state: &SnappingState) -> Settings {
 		box_corners: state.bounding_box.corner_point,
 		box_edge_midpoints: state.bounding_box.edge_midpoint,
 		box_centers: state.bounding_box.center_point,
-		// Sliding along the edges of a layer's bounding box has no option to turn it on
-		box_edges: false,
+		box_edges: state.bounding_box.edges,
 		artboards: state.artboards,
 		tangents: state.path.tangent_to_path,
 		perpendiculars: state.path.normal_to_path,
@@ -65,6 +64,90 @@ fn grid_at_level(document: &DocumentMessageHandler, level: impl Fn(&GridLevels) 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::portfolio::document::utility_types::misc::SNAPPING_OPTION_GROUPS;
+
+	/// The names of the engine's kinds of snap that some settings turn on.
+	fn kinds_on(settings: &Settings) -> Vec<&'static str> {
+		let Settings {
+			anchors,
+			midpoints,
+			curves,
+			box_corners,
+			box_edge_midpoints,
+			box_centers,
+			box_edges,
+			artboards,
+			tangents,
+			perpendiculars,
+			point_alignment,
+			box_alignment,
+			extensions,
+			constructions,
+			equal_lengths,
+		} = *settings;
+
+		let kinds = [
+			("anchors", anchors),
+			("midpoints", midpoints),
+			("curves", curves),
+			("box_corners", box_corners),
+			("box_edge_midpoints", box_edge_midpoints),
+			("box_centers", box_centers),
+			("box_edges", box_edges),
+			("artboards", artboards),
+			("tangents", tangents),
+			("perpendiculars", perpendiculars),
+			("point_alignment", point_alignment),
+			("box_alignment", box_alignment),
+			("extensions", extensions),
+			("constructions", constructions),
+			("equal_lengths", equal_lengths),
+		];
+		kinds.into_iter().filter(|&(_, on)| on).map(|(name, _)| name).collect()
+	}
+
+	#[test]
+	fn each_option_alone_turns_on_its_own_kind_of_snap_and_no_other() {
+		// Spacing and the grid are read by the session rather than told to the engine
+		let expected = [
+			("Anchors", Some("anchors")),
+			("Midpoints", Some("midpoints")),
+			("Box Corners", Some("box_corners")),
+			("Box Centers", Some("box_centers")),
+			("Box Edge Midpoints", Some("box_edge_midpoints")),
+			("Artboards", Some("artboards")),
+			("Along Paths", Some("curves")),
+			("Along Box Edges", Some("box_edges")),
+			("Tangent to Paths", Some("tangents")),
+			("Perpendicular to Paths", Some("perpendiculars")),
+			("With Anchors", Some("point_alignment")),
+			("With Box Edges", Some("box_alignment")),
+			("Even Spacing", None),
+			("Equal Sizes", None),
+			("Snap to Grid", None),
+		];
+		let options: Vec<_> = SNAPPING_OPTION_GROUPS.iter().flat_map(|(_, options)| options.iter().copied()).collect();
+		assert_eq!(options.len(), expected.len());
+
+		let mut all_off = SnappingState::default();
+		for &(_, option, _) in &options {
+			*option(&mut all_off) = false;
+		}
+
+		let always_on = kinds_on(&settings(&all_off));
+		assert_eq!(always_on, vec!["extensions", "constructions", "equal_lengths"]);
+
+		for (label, option, _) in options {
+			let Some(&(_, expected_kind)) = expected.iter().find(|(expected_label, _)| *expected_label == label) else {
+				panic!("the option {label} is missing from the expected kinds")
+			};
+
+			let mut state = all_off.clone();
+			*option(&mut state) = true;
+			let turned_on: Vec<_> = kinds_on(&settings(&state)).into_iter().filter(|kind| !always_on.contains(kind)).collect();
+			assert_eq!(turned_on, Vec::from_iter(expected_kind), "the option {label} turned on the wrong kinds of snap");
+		}
+	}
 
 	/// A document snapping to a rectangular grid, seen at a zoom level.
 	fn document_with_grid(spacing: DVec2, subdivisions: u32, angle: f64, zoom: f64) -> DocumentMessageHandler {

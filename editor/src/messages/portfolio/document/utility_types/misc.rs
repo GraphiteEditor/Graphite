@@ -3,10 +3,16 @@ use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use glam::DVec2;
 use graphene_std::vector::misc::BooleanOperation;
-use std::fmt;
 
 /// How far apart on screen, in pixels, major grid lines must be to be drawn. Minor lines may come half as close.
 const GRID_MIN_SPACING_IN_VIEWPORT: f64 = 10.;
+
+/// The angle that constrained angles step by unless a document says otherwise, in degrees.
+const ANGLE_STEP_DEFAULT: f64 = 15.;
+/// The smallest angle step the snapping options allow, in degrees.
+pub const ANGLE_STEP_MIN: f64 = 1.;
+/// The largest angle step the snapping options allow, in degrees.
+pub const ANGLE_STEP_MAX: f64 = 90.;
 
 #[repr(transparent)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
@@ -73,6 +79,8 @@ pub struct SnappingState {
 	pub bounding_box: BoundingBoxSnapping,
 	pub path: PathSnapping,
 	pub grid: GridSnapping,
+	/// The angle that constrained angles step by, in degrees.
+	pub angle_step: f64,
 }
 
 impl Default for SnappingState {
@@ -85,7 +93,20 @@ impl Default for SnappingState {
 			bounding_box: BoundingBoxSnapping::default(),
 			path: PathSnapping::default(),
 			grid: GridSnapping::default(),
+			angle_step: ANGLE_STEP_DEFAULT,
 		}
+	}
+}
+
+impl SnappingState {
+	/// The angle that constrained angles step by, in radians, kept within the range the options allow.
+	pub fn angle_step_radians(&self) -> f64 {
+		let degrees = if self.angle_step.is_nan() {
+			ANGLE_STEP_DEFAULT
+		} else {
+			self.angle_step.clamp(ANGLE_STEP_MIN, ANGLE_STEP_MAX)
+		};
+		degrees.to_radians()
 	}
 }
 
@@ -97,6 +118,10 @@ pub struct BoundingBoxSnapping {
 	pub edge_midpoint: bool,
 	pub align_with_edges: bool,
 	pub distribute_evenly: bool,
+	/// Snapping to anywhere along the edges of bounding boxes.
+	pub edges: bool,
+	/// Snapping a box being stretched to the width or height of a box beside it.
+	pub equal_sizes: bool,
 }
 
 impl Default for BoundingBoxSnapping {
@@ -107,6 +132,8 @@ impl Default for BoundingBoxSnapping {
 			edge_midpoint: true,
 			align_with_edges: true,
 			distribute_evenly: true,
+			edges: false,
+			equal_sizes: true,
 		}
 	}
 }
@@ -320,81 +347,77 @@ impl GridSnapping {
 }
 
 type GetSnapState = for<'a> fn(&'a mut SnappingState) -> &'a mut bool;
-pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
-	(
-		"Align with Edges",
-		(|snapping_state| &mut snapping_state.bounding_box.align_with_edges) as GetSnapState,
-		"Snaps to horizontal/vertical alignment with the edges of any layer's bounding box.",
-	),
-	(
-		"Corner Points",
-		(|snapping_state| &mut snapping_state.bounding_box.corner_point) as GetSnapState,
-		"Snaps to the four corners of any layer's bounding box.",
-	),
-	(
-		"Center Points",
-		(|snapping_state| &mut snapping_state.bounding_box.center_point) as GetSnapState,
-		"Snaps to the center point of any layer's bounding box.",
-	),
-	(
-		"Edge Midpoints",
-		(|snapping_state| &mut snapping_state.bounding_box.edge_midpoint) as GetSnapState,
-		"Snaps to any of the four points at the middle of the edges of any layer's bounding box.",
-	),
-	(
-		"Distribute Evenly",
-		(|snapping_state| &mut snapping_state.bounding_box.distribute_evenly) as GetSnapState,
-		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers.",
-	),
-];
-pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 6] = [
-	(
-		"Align with Anchor Points",
-		(|snapping_state: &mut SnappingState| &mut snapping_state.path.align_with_anchor_point) as GetSnapState,
-		"Snaps to horizontal/vertical alignment with the anchor points of any vector path.",
-	),
-	(
-		"Anchor Points",
-		(|snapping_state: &mut SnappingState| &mut snapping_state.path.anchor_point) as GetSnapState,
-		"Snaps to the anchor point of any vector path.",
-	),
-	(
-		// TODO: Extend to the midpoints of curved segments and rename to "Segment Midpoint"
-		"Line Midpoints",
-		(|snapping_state: &mut SnappingState| &mut snapping_state.path.line_midpoint) as GetSnapState,
-		"Snaps to the point at the middle of any straight line segment of a vector path.",
-	),
-	(
-		"Along Paths",
-		(|snapping_state: &mut SnappingState| &mut snapping_state.path.along_path) as GetSnapState,
-		"Snaps along the length of any vector path.",
-	),
-	(
-		"Normal to Paths",
-		(|snapping_state: &mut SnappingState| &mut snapping_state.path.normal_to_path) as GetSnapState,
-		"Snaps a line to a point perpendicular to a vector path.",
-	),
-	(
-		"Tangent to Paths",
-		(|snapping_state: &mut SnappingState| &mut snapping_state.path.tangent_to_path) as GetSnapState,
-		"Snaps a line to a point tangent to a vector path.",
-	),
-];
 
-// TODO: implement icons for SnappingOptions eventually
-pub enum SnappingOptions {
-	BoundingBoxes,
-	Paths,
-}
+/// A checkbox of the snapping options popover: its label, the option it turns on and off, and its tooltip.
+type SnappingOptionRow = (&'static str, GetSnapState, &'static str);
 
-impl fmt::Display for SnappingOptions {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
-			SnappingOptions::Paths => write!(f, "Paths"),
-		}
-	}
-}
+/// The checkbox groups of the snapping options popover, each under its heading.
+pub const SNAPPING_OPTION_GROUPS: [(&str, &[SnappingOptionRow]); 5] = [
+	(
+		"Points",
+		&[
+			("Anchors", |state| &mut state.path.anchor_point, "Snaps to the anchor points of paths."),
+			// TODO: Extend to the midpoints of curved segments
+			("Midpoints", |state| &mut state.path.line_midpoint, "Snaps to the middle of straight path segments."),
+			("Box Corners", |state| &mut state.bounding_box.corner_point, "Snaps to the corners of layers' bounding boxes."),
+			("Box Centers", |state| &mut state.bounding_box.center_point, "Snaps to the centers of layers' bounding boxes."),
+			(
+				"Box Edge Midpoints",
+				|state| &mut state.bounding_box.edge_midpoint,
+				"Snaps to the middle of each edge of layers' bounding boxes.",
+			),
+			("Artboards", |state| &mut state.artboards, "Snaps to the corners, centers, and edges of artboards."),
+		],
+	),
+	(
+		"Curves",
+		&[
+			("Along Paths", |state| &mut state.path.along_path, "Snaps to anywhere along paths."),
+			("Along Box Edges", |state| &mut state.bounding_box.edges, "Snaps to anywhere along the edges of layers' bounding boxes."),
+			(
+				"Tangent to Paths",
+				|state| &mut state.path.tangent_to_path,
+				"Snaps a line to where it touches a path without crossing it.",
+			),
+			(
+				"Perpendicular to Paths",
+				|state| &mut state.path.normal_to_path,
+				"Snaps a line to where it meets a path at a right angle.",
+			),
+		],
+	),
+	(
+		"Alignment",
+		&[
+			(
+				"With Anchors",
+				|state| &mut state.path.align_with_anchor_point,
+				"Snaps to the horizontal and vertical lines through anchor points.",
+			),
+			(
+				"With Box Edges",
+				|state| &mut state.bounding_box.align_with_edges,
+				"Snaps to the horizontal and vertical lines through the edges and centers of layers' bounding boxes.",
+			),
+		],
+	),
+	(
+		"Spacing",
+		&[
+			(
+				"Even Spacing",
+				|state| &mut state.bounding_box.distribute_evenly,
+				"Snaps a box to where its gaps to the boxes beside it are equal.",
+			),
+			(
+				"Equal Sizes",
+				|state| &mut state.bounding_box.equal_sizes,
+				"Snaps a box being stretched to the width or height of a box beside it.",
+			),
+		],
+	),
+	("Grid", &[("Snap to Grid", |state| &mut state.grid_snapping, "Snaps to the points where the drawn grid lines cross.")]),
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]

@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -1221,7 +1221,7 @@ impl PenToolData {
 		let required = relative
 			.filter(|&relative| (snap_angle || lock_angle) && (relative - pointer).length_squared() > f64::EPSILON * 100.)
 			.and_then(|relative| {
-				let step = LINE_ROTATE_SNAP_ANGLE.to_radians();
+				let step = view.document.snapping_state.angle_step_radians();
 				let angle = match DVec2::X.try_angle_to(relative - pointer) {
 					Some(angle) if !lock_angle => (angle / step).round() * step,
 					_ => self.angle,
