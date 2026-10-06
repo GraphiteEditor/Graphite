@@ -29,7 +29,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::algorithms::util::pathseg_tangent;
+use vector_types::vector::algorithms::util::pathseg_endpoint_tangent;
 use vector_types::vector::misc::{
 	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
 	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
@@ -584,24 +584,10 @@ struct MarkerVertex {
 
 impl MarkerVertex {
 	/// The tangent bisecting the incoming and outgoing segments, falling back to whichever exists.
-	///
-	/// A handle sitting on its anchor gives a zero-length tangent, which carries no direction, so the direction toward a
-	/// point further along the segment is used instead.
 	fn tangent(&self) -> DVec2 {
-		let is_usable = |tangent: DVec2| !tangent.is_finite() || tangent.length_squared() > f64::EPSILON;
 		match (self.incoming, self.outgoing) {
-			(Some(incoming), Some(outgoing)) if is_usable(incoming) && is_usable(outgoing) => averaged_tangent(incoming, outgoing),
-			(Some(incoming), _) if is_usable(incoming) => incoming.normalize_or(self.fallback_tangent()),
-			(_, Some(outgoing)) if is_usable(outgoing) => outgoing.normalize_or(self.fallback_tangent()),
-			_ => self.fallback_tangent(),
-		}
-	}
-
-	/// A direction for vertices whose handles are all degenerate, pointing along the surviving segment.
-	fn fallback_tangent(&self) -> DVec2 {
-		match self.incoming.or(self.outgoing) {
-			Some(tangent) if tangent.is_finite() && tangent.length_squared() > f64::EPSILON => tangent.normalize_or_zero(),
-			// Nothing to derive a direction from, so fall back to the horizontal axis.
+			(Some(incoming), Some(outgoing)) => averaged_tangent(incoming, outgoing),
+			(Some(tangent), _) | (_, Some(tangent)) => tangent.normalize_or(DVec2::X),
 			_ => DVec2::X,
 		}
 	}
@@ -612,7 +598,7 @@ impl MarkerVertex {
 /// For an open subpath the first and last vertices are the ends and any others are middle vertices. For a closed subpath
 /// every vertex is a middle vertex, and the point where the path closes is emitted once with the tangent bisecting the
 /// last and first segments. Without this, a closed path would place two overlapping markers on its seam vertex.
-fn marker_vertices(bezpath: &BezPath, path_transform: DAffine2) -> Vec<(MarkerVertex, bool, bool)> {
+fn marker_vertices(bezpath: &BezPath, path_transform: DAffine2) -> Vec<(MarkerVertex, MarkerVertexKind)> {
 	let mut bezpath = bezpath.clone();
 	bezpath.apply_affine(Affine::new(path_transform.to_cols_array()));
 
@@ -628,11 +614,9 @@ fn marker_vertices(bezpath: &BezPath, path_transform: DAffine2) -> Vec<(MarkerVe
 			MarkerVertex {
 				position: point_to_dvec2(first.start()),
 				incoming: None,
-				// A degenerate handle leaves no direction here, so keep the raw tangent and let `tangent` resolve it.
-				outgoing: Some(pathseg_tangent(*first, 0.)),
+				outgoing: Some(pathseg_endpoint_tangent(*first, true)),
 			},
-			true,
-			false,
+			MarkerVertexKind::Start,
 		));
 	}
 
@@ -640,11 +624,10 @@ fn marker_vertices(bezpath: &BezPath, path_transform: DAffine2) -> Vec<(MarkerVe
 		vertices.push((
 			MarkerVertex {
 				position: point_to_dvec2(pair[0].end()),
-				incoming: Some(pathseg_tangent(pair[0], 1.)),
-				outgoing: Some(pathseg_tangent(pair[1], 0.)),
+				incoming: Some(pathseg_endpoint_tangent(pair[0], false)),
+				outgoing: Some(pathseg_endpoint_tangent(pair[1], true)),
 			},
-			false,
-			false,
+			MarkerVertexKind::Middle,
 		));
 	}
 
@@ -653,25 +636,31 @@ fn marker_vertices(bezpath: &BezPath, path_transform: DAffine2) -> Vec<(MarkerVe
 		vertices.push((
 			MarkerVertex {
 				position: point_to_dvec2(last.end()),
-				incoming: Some(pathseg_tangent(*last, 1.)),
-				outgoing: Some(pathseg_tangent(*first, 0.)),
+				incoming: Some(pathseg_endpoint_tangent(*last, false)),
+				outgoing: Some(pathseg_endpoint_tangent(*first, true)),
 			},
-			false,
-			false,
+			MarkerVertexKind::Middle,
 		));
 	} else {
 		vertices.push((
 			MarkerVertex {
 				position: point_to_dvec2(last.end()),
-				incoming: Some(pathseg_tangent(*last, 1.)),
+				incoming: Some(pathseg_endpoint_tangent(*last, false)),
 				outgoing: None,
 			},
-			false,
-			true,
+			MarkerVertexKind::End,
 		));
 	}
 
 	vertices
+}
+
+/// Where on its subpath a marker vertex sits, which decides whether the start, middle, or end toggle covers it.
+#[derive(Clone, Copy, PartialEq)]
+enum MarkerVertexKind {
+	Start,
+	Middle,
+	End,
 }
 
 struct MarkerPlacement {
@@ -684,8 +673,12 @@ struct MarkerPlacement {
 }
 
 impl MarkerPlacement {
-	fn includes(&self, is_start: bool, is_end: bool) -> bool {
-		(is_start && self.start) || (is_end && self.end) || (!is_start && !is_end && self.middle)
+	fn includes(&self, kind: MarkerVertexKind) -> bool {
+		match kind {
+			MarkerVertexKind::Start => self.start,
+			MarkerVertexKind::Middle => self.middle,
+			MarkerVertexKind::End => self.end,
+		}
 	}
 
 	fn transform(&self, vertex: &MarkerVertex) -> DAffine2 {
@@ -697,9 +690,11 @@ impl MarkerPlacement {
 }
 
 /// Places copies of marker artwork at the start, middle, and end points of each path, optionally rotated to follow the path direction.
-#[node_macro::node(name("Attach Markers"), category("Repeat"), path(core_types::vector))]
+/// Closed paths have no ends, so only their middle vertices take a marker unless those are enabled too.
+#[node_macro::node(category("Repeat"), path(core_types::vector))]
 async fn attach_markers<I: 'n + Send + Clone>(
 	_: impl Ctx,
+	/// The paths whose vertices take copies of the marker.
 	path: List<Vector>,
 	/// Artwork to be copied and placed at the path's vertices.
 	#[expose]
@@ -744,8 +739,8 @@ async fn attach_markers<I: 'n + Send + Clone>(
 
 			let mut row_markers = Vec::new();
 			for bezpath in row.element().stroke_bezpath_iter() {
-				for (vertex, is_start, is_end) in marker_vertices(&bezpath, path_transform) {
-					if !placement.includes(is_start, is_end) {
+				for (vertex, kind) in marker_vertices(&bezpath, path_transform) {
+					if !placement.includes(kind) {
 						continue;
 					}
 					row_markers.extend(placed_copies(&marker, placement.transform(&vertex)));
@@ -4040,13 +4035,11 @@ mod test {
 		}
 	}
 
-	/// Runs the marker node over a path and returns each placed copy's translation, in document space.
-	async fn marker_positions(path: BezPath, start: bool, middle: bool, end: bool) -> Vec<DVec2> {
-		let mut bezpath = path;
-		bezpath.apply_affine(kurbo::Affine::IDENTITY);
+	/// Runs the marker node over a path and returns each placed copy's translation and facing angle, in document space.
+	async fn marker_placements(path: BezPath, start: bool, middle: bool, end: bool) -> Vec<(DVec2, f64)> {
 		let markers = super::attach_markers(
 			Footprint::default(),
-			vector_node_from_bezpath(bezpath.clone()),
+			vector_node_from_bezpath(path),
 			vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)),
 			Item::new_from_element(start),
 			Item::new_from_element(middle),
@@ -4057,14 +4050,21 @@ mod test {
 		)
 		.await;
 
-		let mut positions = Vec::new();
+		let mut placements = Vec::new();
 		for index in 0..markers.len() {
 			let Some(marker) = markers.clone_item(index) else { continue };
 			let transform: DAffine2 = marker.attribute_cloned_or_default(ATTR_TRANSFORM);
-			positions.push(transform.translation);
+			placements.push((transform.translation, transform.matrix2.x_axis.y.atan2(transform.matrix2.x_axis.x)));
 		}
-		positions.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
-		positions
+		placements.sort_by(|a, b| a.0.x.total_cmp(&b.0.x).then(a.0.y.total_cmp(&b.0.y)));
+		placements
+	}
+
+	/// Checks one placed marker against the position and facing it should have.
+	fn assert_placement(placements: &[(DVec2, f64)], index: usize, position: DVec2, angle: f64, what: &str) {
+		let (actual_position, actual_angle) = placements[index];
+		assert!((actual_position - position).length() < 1e-6, "{what} should sit at {position}, but sits at {actual_position}");
+		assert!((actual_angle - angle).abs() < 1e-6, "{what} should face {angle} radians, but faces {actual_angle}");
 	}
 
 	#[tokio::test]
@@ -4072,13 +4072,13 @@ mod test {
 		// An L-shaped path with a corner, to check that interior markers face the angle bisector.
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::LineTo(Point::new(10., 0.)), PathEl::LineTo(Point::new(10., 10.))]);
 
-		let positions = marker_positions(path, true, true, true).await;
-		assert_eq!(positions.len(), 3, "an L-shaped path has three vertices");
+		let placements = marker_placements(path, true, true, true).await;
+		assert_eq!(placements.len(), 3, "an L-shaped path has three vertices");
 
-		// Sorted by (x, y): the origin, the corner, then the far end.
-		assert!((positions[0] - DVec2::ZERO).length() < 1e-6, "expected the path origin, got {}", positions[0]);
-		assert!((positions[1] - DVec2::new(10., 0.)).length() < 1e-6, "expected the corner, got {}", positions[1]);
-		assert!((positions[2] - DVec2::new(10., 10.)).length() < 1e-6, "expected the far end, got {}", positions[2]);
+		// Sorted by (x, y): the origin facing along +X, the corner on the bisector, then the far end facing +Y.
+		assert_placement(&placements, 0, DVec2::ZERO, 0., "the path origin");
+		assert_placement(&placements, 1, DVec2::new(10., 0.), std::f64::consts::FRAC_PI_4, "the corner");
+		assert_placement(&placements, 2, DVec2::new(10., 10.), std::f64::consts::FRAC_PI_2, "the far end");
 	}
 
 	#[tokio::test]
@@ -4089,11 +4089,11 @@ mod test {
 		assert!(is_closed, "the test path should be closed");
 
 		// Middle markers only: all four corners are interior vertices, and the seam is emitted exactly once.
-		let positions = marker_positions(square.clone(), false, true, false).await;
+		let positions = marker_placements(square.clone(), false, true, false).await;
 		assert_eq!(positions.len(), 4, "a closed square should get four middle markers, not five");
 
 		// Start and end markers on a closed path both resolve to the seam, which is placed once as a middle vertex.
-		let positions = marker_positions(square, true, true, true).await;
+		let positions = marker_placements(square, true, true, true).await;
 		assert_eq!(positions.len(), 4, "a closed square's every vertex is a middle vertex");
 	}
 
@@ -4102,10 +4102,31 @@ mod test {
 		// A Pen-style segment whose first handle sits on its anchor, so the outgoing tangent is zero.
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(0., 10.), Point::new(0., 20.))]);
 
-		let positions = marker_positions(path, true, false, true).await;
-		assert_eq!(positions.len(), 2);
-		assert!((positions[0] - DVec2::ZERO).length() < 1e-6);
-		assert!((positions[1] - DVec2::new(0., 20.)).length() < 1e-6);
+		let placements = marker_placements(path, true, false, true).await;
+		assert_eq!(placements.len(), 2);
+
+		// The curve leaves its anchor straight up, so both markers face +Y even though the first handle has no direction.
+		assert_placement(&placements, 0, DVec2::ZERO, std::f64::consts::FRAC_PI_2, "a zero-handle start");
+		assert_placement(&placements, 1, DVec2::new(0., 20.), std::f64::consts::FRAC_PI_2, "a zero-handle end");
+	}
+
+	#[tokio::test]
+	async fn attach_markers_handles_several_subpaths_independently() {
+		let path = BezPath::from_vec(vec![
+			PathEl::MoveTo(Point::ZERO),
+			PathEl::LineTo(Point::new(10., 0.)),
+			PathEl::MoveTo(Point::new(0., 20.)),
+			PathEl::LineTo(Point::new(0., 30.)),
+		]);
+
+		let placements = marker_placements(path, true, false, true).await;
+		assert_eq!(placements.len(), 4, "each of the two subpaths contributes its start and its end");
+
+		// Sorted by (x, y), so the vertical subpath's pair slots between the horizontal one's ends.
+		assert_placement(&placements, 0, DVec2::ZERO, 0., "the first subpath's start");
+		assert_placement(&placements, 1, DVec2::new(0., 20.), std::f64::consts::FRAC_PI_2, "the second subpath's start");
+		assert_placement(&placements, 2, DVec2::new(0., 30.), std::f64::consts::FRAC_PI_2, "the second subpath's end");
+		assert_placement(&placements, 3, DVec2::new(10., 0.), 0., "the first subpath's end");
 	}
 
 	#[tokio::test]
