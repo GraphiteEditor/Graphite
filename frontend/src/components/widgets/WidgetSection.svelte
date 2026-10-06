@@ -20,6 +20,8 @@
 	$: reorderable = layoutTarget === "PropertiesPanel" && widgetData.draggable;
 
 	// Alt+click toggles every section at once instead of just this one
+	const editor = getContext<EditorWrapper>("editor");
+
 	function handleHeaderClick(event: MouseEvent) {
 		if (event.altKey) {
 			editor.setAllNodePropertiesSectionsExpanded(!expanded);
@@ -27,8 +29,6 @@
 			editor.toggleNodePropertiesSectionExpanded(widgetData.id);
 		}
 	}
-
-	const editor = getContext<EditorWrapper>("editor");
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->

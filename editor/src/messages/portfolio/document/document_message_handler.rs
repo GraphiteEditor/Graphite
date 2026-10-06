@@ -16,7 +16,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodePropertiesContext};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
@@ -1450,27 +1450,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded } => {
-				// Only the sections currently shown change; sections for other selections keep their state.
-				let shown_node_ids = Self::properties_panel_node_ids(
-					PropertiesPanelMessageContext {
-						executor,
-						document_id,
-						network_interface: &mut self.network_interface,
-						resources: &self.resources,
-						selection_network_path: &self.selection_network_path,
-						document_name: self.name.as_str(),
-						fonts,
-						properties_panel_open,
-						properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
-					},
-					responses,
-				);
+				// Only the sections currently shown change; sections for other selections keep their state
+				let shown_node_ids = self.properties_panel_message_handler.shown_section_node_ids.clone();
 				if expanded {
 					self.properties_panel_collapsed_sections.retain(|id| !shown_node_ids.contains(id));
 				} else {
-					self.properties_panel_collapsed_sections.extend(shown_node_ids);
-					self.properties_panel_collapsed_sections.sort();
-					self.properties_panel_collapsed_sections.dedup();
+					for id in shown_node_ids {
+						if !self.properties_panel_collapsed_sections.contains(&id) {
+							self.properties_panel_collapsed_sections.push(id);
+						}
+					}
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
@@ -3050,36 +3039,6 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// The node IDs whose sections the Properties panel is currently showing, read from the layout it would render.
-	pub fn properties_panel_node_ids(context: PropertiesPanelMessageContext, responses: &mut VecDeque<Message>) -> Vec<NodeId> {
-		let mut node_ids = Vec::new();
-		Self::collect_section_node_ids(
-			&NodeGraphMessageHandler::collate_properties(&mut NodePropertiesContext {
-				responses,
-				executor: context.executor,
-				document_id: context.document_id,
-				network_interface: context.network_interface,
-				resources: context.resources,
-				selection_network_path: context.selection_network_path,
-				document_name: context.document_name,
-				fonts: context.fonts,
-				properties_panel_collapsed_sections: context.properties_panel_collapsed_sections,
-			}),
-			&mut node_ids,
-		);
-		node_ids
-	}
-
-	/// Gathers the node IDs of every section in a Properties panel layout, recursing into nested sections.
-	fn collect_section_node_ids(groups: &[LayoutGroup], node_ids: &mut Vec<NodeId>) {
-		for group in groups {
-			if let LayoutGroup::Section(section) = group {
-				node_ids.push(NodeId(section.id));
-				Self::collect_section_node_ids(&section.layout.0, node_ids);
-			}
-		}
-	}
-
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		let mut snapping_state = self.snapping_state.clone();
 		let mut snapping_state2 = self.snapping_state.clone();
@@ -4461,8 +4420,9 @@ mod document_message_handler_tests {
 		let rectangle_id = graph_modification_utils::get_rectangle_id(layer, &editor.active_document().network_interface).unwrap();
 		let fill_id = graph_modification_utils::get_fill_id(layer, &editor.active_document().network_interface).unwrap();
 
-		// Selecting the layer shows its chain's sections.
+		// Selecting the layer shows its chain's sections, and rendering the panel records which they are
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.handle_message(PropertiesPanelMessage::Refresh).await;
 
 		editor.handle_message(DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded: false }).await;
 		let collapsed = editor.active_document().properties_panel_collapsed_sections.clone();
@@ -4474,8 +4434,9 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded: true }).await;
 		assert!(editor.active_document().properties_panel_collapsed_sections.is_empty(), "expanding all should clear the shown sections");
 
-		// A node that isn't currently shown keeps its recorded state.
+		// A node that isn't currently shown keeps its recorded state
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![fill_id] }).await;
+		editor.handle_message(PropertiesPanelMessage::Refresh).await;
 		editor.handle_message(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: rectangle_id }).await;
 		assert_eq!(editor.active_document().properties_panel_collapsed_sections, vec![rectangle_id]);
 

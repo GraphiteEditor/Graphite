@@ -20,7 +20,10 @@ pub struct PropertiesPanelMessageContext<'a> {
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct PropertiesPanelMessageHandler {}
+pub struct PropertiesPanelMessageHandler {
+	/// The node IDs whose sections the last render showed, so bulk toggles know what is currently visible.
+	pub shown_section_node_ids: Vec<NodeId>,
+}
 
 #[message_handler_data]
 impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> for PropertiesPanelMessageHandler {
@@ -62,6 +65,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					properties_panel_collapsed_sections,
 				};
 				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
+				self.shown_section_node_ids = collect_section_node_ids(&layout.0);
 
 				node_properties_context.responses.add(LayoutMessage::SendLayout {
 					layout,
@@ -74,4 +78,16 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 	fn actions(&self) -> ActionList {
 		actions!(PropertiesMessageDiscriminant;)
 	}
+}
+
+/// Gathers the node IDs of every section in a Properties panel layout, recursing into nested sections.
+fn collect_section_node_ids(groups: &[LayoutGroup]) -> Vec<NodeId> {
+	let mut node_ids = Vec::new();
+	for group in groups {
+		if let LayoutGroup::Section(section) = group {
+			node_ids.push(NodeId(section.id));
+			node_ids.extend(collect_section_node_ids(&section.layout.0));
+		}
+	}
+	node_ids
 }
