@@ -25,10 +25,10 @@ impl Arrow {
 		let node_type = resolve_document_node_type(&identifier).expect("Arrow node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)), // arrow_to
-			Some(NodeInput::value(TaggedValue::F64(shaft_width), false)),   // shaft_width
-			Some(NodeInput::value(TaggedValue::F64(head_width), false)),    // head_width
-			Some(NodeInput::value(TaggedValue::F64(head_length), false)),   // head_length
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),  // arrow_to
+			Some(NodeInput::value(TaggedValue::Number(shaft_width), false)), // shaft_width
+			Some(NodeInput::value(TaggedValue::Number(head_width), false)),  // head_width
+			Some(NodeInput::value(TaggedValue::Number(head_length), false)), // head_length
 		])
 	}
 

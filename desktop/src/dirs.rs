@@ -20,10 +20,10 @@ pub(crate) fn clear_dir(path: &PathBuf) {
 			if let Err(e) = fs::remove_dir_all(&entry_path) {
 				tracing::error!("Failed to remove directory at {:?}: {}", entry_path, e);
 			}
-		} else if entry_path.is_file() {
-			if let Err(e) = fs::remove_file(&entry_path) {
-				tracing::error!("Failed to remove file at {:?}: {}", entry_path, e);
-			}
+		} else if entry_path.is_file()
+			&& let Err(e) = fs::remove_file(&entry_path)
+		{
+			tracing::error!("Failed to remove file at {:?}: {}", entry_path, e);
 		}
 	}
 }

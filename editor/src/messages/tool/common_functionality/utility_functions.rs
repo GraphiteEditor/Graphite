@@ -117,7 +117,7 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vec
 			.or(start_point)
 	};
 
-	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
+	required_handle.map(|handle| handle - anchor_position).and_then(|vector| DVec2::X.try_angle_to(vector))
 }
 
 pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
@@ -266,10 +266,11 @@ pub fn rotate_bounds(
 	snap_angle: bool,
 	tool: ToolType,
 ) {
-	let angle = {
-		let start_offset = drag_start - bounds.center_of_transformation;
-		let end_offset = mouse_position - bounds.center_of_transformation;
-		start_offset.angle_to(end_offset)
+	let start_offset = drag_start - bounds.center_of_transformation;
+	let end_offset = mouse_position - bounds.center_of_transformation;
+	let Some(angle) = start_offset.try_angle_to(end_offset) else {
+		warn!("Unable to rotate bounds due to zero offset");
+		return;
 	};
 
 	let snapped_angle = if snap_angle {
@@ -609,5 +610,30 @@ pub fn nudge_resize_bounds(min: DVec2, max: DVec2, delta: DVec2, tilt: f64, resi
 		min: new_min,
 		max: new_max,
 		transform,
+	}
+}
+
+pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool {
+	let to_handle1 = handle1 - point;
+	let to_handle2 = handle2 - point;
+	// Take the angle to the negated other handle in the range `[-π, +π]`.
+	let Some(angle) = to_handle1.try_angle_to(-to_handle2) else {
+		// If it is impossible to take an angle (one of the handles is zero length) return true since that counts also as colinear.
+		return true;
+	};
+	// An angle of zero means they are perfectly opposite.
+	angle.abs().abs() < 1e-6
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	#[test]
+	fn is_almost_colinear_test() {
+		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::X, DVec2::X));
+		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::Y, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::NEG_X, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::ZERO, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO));
 	}
 }

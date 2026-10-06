@@ -1,6 +1,6 @@
 use crate::{
-	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue, TimeStamp,
-	apply_attribute_delta, reverse_attribute_delta,
+	CrdtError, Delta, ExportSlot, History, HotOp, LamportClock, MAX_EXPORT_SLOTS, NetworkId, NodeId, NodeInput, PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, Rev, SourceValue,
+	TimeStamp, UserId, Value, reverse_attribute_delta,
 };
 
 #[derive(Clone, Debug)]
@@ -28,6 +28,7 @@ pub struct Document {
 	pub(crate) redo_stack: Vec<Rev>,
 	pub(crate) clock: LamportClock,
 	pub(crate) peer: PeerId,
+	pub(crate) user: UserId,
 	/// Latest retired commit on the local chain that has been broadcast to at least one peer.
 	/// Commits after this can be rewritten silently; commits at or before this are published
 	/// and require forward reverse-delta ops to undo. `None` means nothing broadcast yet.
@@ -43,8 +44,9 @@ impl Document {
 	/// truncated; the counter is shared across peers and persisted with the document.
 	pub fn next_node_id(&mut self) -> NodeId {
 		self.next_node_counter += 1;
-		let bytes = rmp_serde::to_vec(&(self.peer, self.next_node_counter)).expect("(PeerId, counter) must serialize");
-		let digest = blake3::hash(&bytes);
+		let mut hasher = blake3::Hasher::new();
+		postcard::to_io(&(self.peer, self.next_node_counter), &mut hasher).expect("(PeerId, counter) must serialize");
+		let digest = hasher.finalize();
 		let mut truncated = [0u8; 8];
 		truncated.copy_from_slice(&digest.as_bytes()[..8]);
 		NodeId(u64::from_le_bytes(truncated))
@@ -194,6 +196,18 @@ impl Document {
 			RegistryDelta::RemoveNode { id, .. } => {
 				registry.node_instances.remove(&id);
 			}
+			RegistryDelta::SetNodeInputs { id, inputs } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				// The list is one value rather than independently mergeable slots, so the newest slot stands in
+				// for a timestamp the list itself does not carry, and an older write is dropped whole.
+				let newest = node.inputs.iter().map(|slot| slot.timestamp).max().unwrap_or(TimeStamp::ORIGIN);
+				if force || timestamp > newest {
+					// The slots arrive carrying the placeholder timestamp they were built with, so they take this
+					// op's instead. Leaving the placeholder would reset every slot to the origin and make each
+					// later per-slot gate vacuously true, letting a stale write win.
+					node.inputs = inputs.into_iter().map(|slot| crate::InputSlot { timestamp, ..slot }).collect();
+				}
+			}
 			RegistryDelta::ChangeNodeInput { id, index, new_input } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
@@ -202,14 +216,21 @@ impl Document {
 					input.timestamp = timestamp;
 				}
 			}
+			RegistryDelta::SetNodeImplementation { id, implementation } => {
+				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				if force || timestamp > node.implementation_timestamp {
+					node.implementation = implementation;
+					node.implementation_timestamp = timestamp;
+				}
+			}
 			RegistryDelta::ChangeNodeAttribute { id, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
-				apply_attribute_delta(delta, timestamp, force, &mut node.attributes);
+				node.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::ChangeNodeInputAttribute { id, index, delta } => {
 				let node = registry.node_instances.get_mut(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let input = node.inputs.get_mut(index as usize).ok_or(CrdtError::InputIndexOutOfBounds(index as usize))?;
-				apply_attribute_delta(delta, timestamp, force, &mut input.attributes);
+				input.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::SetNetworkExport { id, index, export } => {
 				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
@@ -248,7 +269,7 @@ impl Document {
 			}
 			RegistryDelta::ChangeNetworkAttribute { id, delta } => {
 				let net = registry.networks.get_mut(&id).ok_or(CrdtError::NetworkDoesNotExist(id))?;
-				apply_attribute_delta(delta, timestamp, force, &mut net.attributes);
+				net.attributes.apply_delta(delta, timestamp, force);
 			}
 			RegistryDelta::SetResourceHash { id, hash } => {
 				let entry = registry.resources.entry(id).or_default();
@@ -277,15 +298,14 @@ impl Document {
 			RegistryDelta::RemoveResource { id, .. } => {
 				registry.resources.remove(&id);
 			}
-			RegistryDelta::RegisterPeer { peer, user } => match registry.peer_users.get(&peer) {
-				Some(existing) if *existing != user => return Err(CrdtError::PeerRegistrationConflict(peer)),
-				Some(_) => {}
-				None => {
-					registry.peer_users.insert(peer, user);
+			RegistryDelta::RegisterPeer { peer, user } => {
+				// The newest registration of a device wins, whatever order they land in.
+				if registry.peer_users.get(&peer).is_none_or(|existing| timestamp > existing.timestamp) {
+					registry.peer_users.insert(peer, PeerRegistration { user, timestamp });
 				}
-			},
+			}
 			RegistryDelta::ChangeDocumentAttribute { delta } => {
-				apply_attribute_delta(delta, timestamp, force, &mut registry.attributes);
+				registry.attributes.apply_delta(delta, timestamp, force);
 			}
 			// Merge is a structural sync point only; it mutates no registry state.
 			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
@@ -302,6 +322,20 @@ impl Document {
 			RegistryDelta::ChangeNodeInput { id, new_input, .. } => {
 				if let NodeInput::Node { id: referenced, .. } = new_input {
 					self.ensure_node_exists(target, *referenced)?;
+				}
+				self.ensure_node_exists(target, *id)?;
+			}
+			RegistryDelta::SetNodeInputs { id, inputs } => {
+				for slot in inputs {
+					if let NodeInput::Node { id: referenced, .. } = slot.input {
+						self.ensure_node_exists(target, referenced)?;
+					}
+				}
+				self.ensure_node_exists(target, *id)?;
+			}
+			RegistryDelta::SetNodeImplementation { id, implementation } => {
+				if let crate::Implementation::Network(network) = implementation {
+					self.ensure_network_exists(target, *network)?;
 				}
 				self.ensure_node_exists(target, *id)?;
 			}
@@ -342,6 +376,17 @@ impl Document {
 		Ok(match delta {
 			RegistryDelta::AddNode { id, node } => RegistryDelta::RemoveNode { id: *id, snapshot: node.clone() },
 			RegistryDelta::RemoveNode { id, snapshot } => RegistryDelta::AddNode { id: *id, node: snapshot.clone() },
+			&RegistryDelta::SetNodeInputs { id, .. } => {
+				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				RegistryDelta::SetNodeInputs { id, inputs: node.inputs.clone() }
+			}
+			&RegistryDelta::SetNodeImplementation { id, .. } => {
+				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
+				RegistryDelta::SetNodeImplementation {
+					id,
+					implementation: node.implementation.clone(),
+				}
+			}
 			&RegistryDelta::ChangeNodeInput { id, index: input_idx, .. } => {
 				let node = registry.node_instances.get(&id).ok_or(CrdtError::TargetNodeDoesNotExist(id))?;
 				let slot = node.inputs().get(input_idx as usize).ok_or(CrdtError::InputIndexOutOfBounds(input_idx as usize))?;
@@ -425,7 +470,7 @@ impl Document {
 				RegistryDelta::AddResource { id, entry: snapshot }
 			}
 			RegistryDelta::Merge { extra_parents } => RegistryDelta::Merge { extra_parents: extra_parents.clone() },
-			&RegistryDelta::Other(_) => RegistryDelta::Other(serde_json::Value::Null),
+			&RegistryDelta::Other(_) => RegistryDelta::Other(Value::None),
 		})
 	}
 }

@@ -269,13 +269,13 @@ impl BrushTool {
 			return;
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
-		if let Some(TaggedValue::F64(diameter)) = value(brush_strokes::DiameterInput::INDEX) {
+		if let Some(TaggedValue::Number(diameter)) = value(brush_strokes::DiameterInput::INDEX) {
 			self.options.diameter = if self.options.scale_with_viewport { *diameter * viewport_zoom(document) } else { *diameter };
 		}
-		if let Some(TaggedValue::F64(hardness)) = value(brush_strokes::HardnessInput::INDEX) {
+		if let Some(TaggedValue::Number(hardness)) = value(brush_strokes::HardnessInput::INDEX) {
 			self.options.hardness = *hardness;
 		}
-		if let Some(TaggedValue::F64(flow)) = value(brush_strokes::FlowInput::INDEX) {
+		if let Some(TaggedValue::Number(flow)) = value(brush_strokes::FlowInput::INDEX) {
 			self.options.flow = *flow;
 		}
 		if let Some(TaggedValue::Color(color)) = value(brush_strokes::ColorInput::INDEX)
@@ -387,11 +387,11 @@ impl BrushToolData {
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
 		matches!(value(brush_strokes::ColorInput::INDEX), Some(TaggedValue::Color(color)) if *color == options.active_color())
-			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::F64(diameter)) if {
+			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::Number(diameter)) if {
 				let target = options.stroke_diameter(document);
 				(*diameter - target).abs() <= diameter.abs().max(target.abs()) * (f64::EPSILON * 8.)
-			}) && matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::F64(hardness)) if *hardness == options.hardness)
-			&& matches!(value(brush_strokes::FlowInput::INDEX), Some(TaggedValue::F64(flow)) if *flow == options.flow)
+			}) && matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::Number(hardness)) if *hardness == options.hardness)
+			&& matches!(value(brush_strokes::FlowInput::INDEX), Some(TaggedValue::Number(flow)) if *flow == options.flow)
 	}
 
 	fn push_sample(&mut self, position: DVec2, pressure: Option<f64>, elapsed_milliseconds: f64) {

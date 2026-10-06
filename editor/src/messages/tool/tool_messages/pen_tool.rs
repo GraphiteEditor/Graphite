@@ -15,7 +15,7 @@ use crate::messages::tool::common_functionality::resize::translation_transform_s
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
-use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, should_extend};
+use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, is_almost_colinear, should_extend};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::vector::misc::pathseg_points;
@@ -806,9 +806,7 @@ impl PenToolData {
 				}
 				_ => None,
 			} {
-			let angle = (handle_end - next_point).angle_to(handle1_pos - next_point);
-			let pi = std::f64::consts::PI;
-			let colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
+			let colinear = is_almost_colinear(next_point, handle1_pos, handle_end);
 			responses.add(GraphOperationMessage::Vector {
 				layer,
 				modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
@@ -832,9 +830,7 @@ impl PenToolData {
 			};
 
 			if let Some(h1) = handles[0].to_manipulator_point().get_position(&vector) {
-				let angle = (h1 - last_point.pos).angle_to(last_point.handle_start - last_point.pos);
-				let pi = std::f64::consts::PI;
-				let colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
+				let colinear = is_almost_colinear(last_point.pos, h1, last_point.handle_start);
 				responses.add(GraphOperationMessage::Vector {
 					layer,
 					modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
@@ -1234,12 +1230,14 @@ impl PenToolData {
 
 			let angle = if lock_angle {
 				self.angle
-			} else if (relative - document_pos) != DVec2::ZERO && !lock_angle {
-				(-(relative - document_pos).angle_to(DVec2::X) / resolution).round() * resolution
+			} else if let Some(angle) = DVec2::X.try_angle_to(relative - document_pos)
+				&& !lock_angle
+			{
+				(angle / resolution).round() * resolution
 			} else {
 				self.angle
 			};
-			document_pos = relative - (relative - document_pos).project_onto(DVec2::new(angle.cos(), angle.sin()));
+			document_pos = relative - (relative - document_pos).project_onto_normalized(DVec2::from_angle(angle));
 
 			let constraint = SnapConstraint::Line {
 				origin: relative,
@@ -1277,10 +1275,10 @@ impl PenToolData {
 		}
 
 		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer))
-			&& (relative - document_pos) != DVec2::ZERO
+			&& let Some(angle) = DVec2::X.try_angle_to(relative - document_pos)
 			&& (relative - document_pos).length_squared() > f64::EPSILON * 100.
 		{
-			self.angle = -(relative - document_pos).angle_to(DVec2::X)
+			self.angle = angle;
 		}
 
 		transform.inverse().transform_point2(document_pos)
@@ -1396,7 +1394,7 @@ impl PenToolData {
 
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
-		let vector = document.network_interface.compute_modified_vector(layer);
+		let vector: Option<Vector> = document.network_interface.compute_modified_vector(layer);
 		let (handle_start, in_segment) = if let Some(vector) = &vector {
 			vector
 				.segment_iter()
@@ -1498,12 +1496,16 @@ impl PenToolData {
 				}
 			}
 			(TargetHandle::PriorInHandle(..) | TargetHandle::PriorOutHandle(..), true) => {
-				self.angle = -(self.handle_end.unwrap() - anchor_position).angle_to(DVec2::X);
-				self.handle_mode = HandleMode::ColinearEquidistant;
+				if let Some(angle) = self.handle_end.and_then(|handle_end| DVec2::X.try_angle_to(handle_end - anchor_position)) {
+					self.angle = angle;
+					self.handle_mode = HandleMode::ColinearEquidistant;
+				}
 			}
 			_ => {
-				self.angle = -(self.next_handle_start - anchor_position).angle_to(DVec2::X);
-				self.handle_mode = HandleMode::ColinearEquidistant;
+				if let Some(angle) = DVec2::X.try_angle_to(self.next_handle_start - anchor_position) {
+					self.angle = angle;
+					self.handle_mode = HandleMode::ColinearEquidistant;
+				}
 			}
 		}
 	}
@@ -1590,14 +1592,10 @@ impl Fsm for PenToolFsmState {
 				tool_data.previous_handle_start_pos = latest.handle_start;
 				let opposite_handle = tool_data.check_grs_end_handle(&vector);
 				tool_data.previous_handle_end_pos = tool_data.target_handle_position(opposite_handle, &vector);
-				let handle1 = latest_handle_start - latest_pos;
 				let Some(opposite_handle_pos) = tool_data.target_handle_position(opposite_handle, &vector) else {
 					return PenToolFsmState::GRSHandle;
 				};
-				let handle2 = opposite_handle_pos - latest_pos;
-				let pi = std::f64::consts::PI;
-				let angle = handle1.angle_to(handle2);
-				tool_data.colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
+				tool_data.colinear = is_almost_colinear(latest_pos, latest_handle_start, opposite_handle_pos);
 				PenToolFsmState::GRSHandle
 			}
 			(PenToolFsmState::GRSHandle, PenToolMessage::FinalPosition { final_position }) => {

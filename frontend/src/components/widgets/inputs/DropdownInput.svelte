@@ -10,6 +10,7 @@
 		value: "",
 		label: "-",
 		icon: undefined,
+		annotation: "",
 		disabled: false,
 		children: [],
 		childrenHash: 0n,
@@ -17,6 +18,7 @@
 		tooltipLabel: "",
 		tooltipDescription: "",
 		tooltipShortcut: undefined,
+		tooltipCode: "",
 	};
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number; fileDrop: File }>();

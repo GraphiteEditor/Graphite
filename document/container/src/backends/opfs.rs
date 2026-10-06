@@ -3,6 +3,7 @@
 use crate::{AsyncContainer, ByteHolder, ContainerError, Result, validate_path, validate_prefix, with_trailing_slash};
 use futures::channel::oneshot;
 use js_sys::Uint8Array;
+use std::cell::Cell;
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use wasm_bindgen::JsCast;
@@ -40,6 +41,33 @@ struct Inner {
 	worker_active: bool,
 }
 
+thread_local! {
+	static LAST_WRITE_FAILURE_ALERT: Cell<Option<f64>> = const { Cell::new(None) };
+}
+
+fn report_write_error(operation: &str, path: &str, error: &JsValue) {
+	if is_not_found(error) {
+		log::warn!("OPFS {operation} on {path} dropped: the container no longer exists");
+		return;
+	}
+	log::error!("OPFS {operation} failure on {path}:\n{error:?}");
+	let now = js_sys::Date::now();
+	// Debounce alerts to avoid spamming the user
+	if LAST_WRITE_FAILURE_ALERT.get().is_some_and(|last| now - last < 60. * 1000.) {
+		return;
+	}
+	LAST_WRITE_FAILURE_ALERT.set(Some(now));
+	if let Some(window) = web_sys::window() {
+		let message = format!(
+			"Autosave is not working. Save your documents manually to avoid losing changes.\n\n\
+			Please report it at https://github.com/GraphiteEditor/Graphite/issues/new and include this error:\n\n\
+			{operation} {path}: {error:?}"
+		);
+		let _ = window.alert_with_message(&message);
+	}
+}
+
+#[derive(Clone)]
 pub struct OpfsBackend {
 	inner: Arc<Mutex<Inner>>,
 }
@@ -77,8 +105,6 @@ impl OpfsBackend {
 			guard.queue.push_back(Mutation::Barrier(sender));
 			kick_worker(&self.inner, &mut guard);
 		}
-		// The sender is only dropped without sending if the worker is torn down mid-drain; either way
-		// there is nothing left to wait for, so a receive error is treated as "already flushed".
 		let _ = receiver.await;
 	}
 }
@@ -239,12 +265,12 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 		match mutation {
 			Mutation::Write { path, bytes } => {
 				if let Err(error) = write_file(&directory, &path, &bytes).await {
-					log::error!("OPFS background write for {path} failed: {error:?}");
+					report_write_error("write", &path, &error);
 				}
 			}
 			Mutation::Append { path, bytes } => {
 				if let Err(error) = append_file(&directory, &path, &bytes).await {
-					log::error!("OPFS background append for {path} failed: {error:?}");
+					report_write_error("append", &path, &error);
 				}
 			}
 			Mutation::Delete { path } => {
@@ -252,7 +278,7 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 				if let Err(error) = remove_file(&directory, &path).await
 					&& !is_not_found(&error)
 				{
-					log::error!("OPFS background delete for {path} failed: {error:?}");
+					report_write_error("delete", &path, &error);
 				}
 			}
 			// A receive error on the waiter side just means the reader gave up; nothing to apply.
@@ -263,16 +289,11 @@ async fn drain_queue(inner: Arc<Mutex<Inner>>) {
 	}
 }
 
-fn js_err(error: JsValue) -> ContainerError {
-	ContainerError::Backend(format!("{error:?}"))
-}
-
 /// Resolve `directory_path` (a `/`-separated relative path) under the OPFS root, creating each
 /// segment. OPFS rejects directory names containing `/`, so a multi-segment path like
 /// `documents/<id>` must be descended one segment at a time rather than passed whole.
 async fn open_directory(directory_path: &str) -> std::result::Result<FileSystemDirectoryHandle, JsValue> {
-	let storage = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?.navigator().storage();
-	let mut current: FileSystemDirectoryHandle = JsFuture::from(storage.get_directory()).await?.dyn_into()?;
+	let mut current = opfs_root().await?;
 
 	for segment in directory_path.split('/').filter(|segment| !segment.is_empty()) {
 		let options = FileSystemGetDirectoryOptions::new();
@@ -281,6 +302,37 @@ async fn open_directory(directory_path: &str) -> std::result::Result<FileSystemD
 	}
 
 	Ok(current)
+}
+
+/// List the subdirectories directly under `directory_path`.
+pub async fn list_directories(directory_path: &str) -> Result<Vec<String>> {
+	crate::validate_prefix(directory_path)?;
+	let root = opfs_root().await.map_err(js_err)?;
+	list_entries(&root, directory_path, EntryKind::Directory).await.map_err(|error| list_error(directory_path, error))
+}
+
+/// Remove `directory_path` recursively.
+pub async fn remove_directory(directory_path: &str) -> Result<()> {
+	validate_path(directory_path)?;
+	let root = opfs_root().await.map_err(js_err)?;
+	let removed = async {
+		let (parent, name) = descend(&root, directory_path, false).await?;
+		let options = web_sys::FileSystemRemoveOptions::new();
+		options.set_recursive(true);
+		JsFuture::from(parent.remove_entry_with_options(name, &options)).await
+	}
+	.await;
+
+	match removed {
+		Ok(_) => Ok(()),
+		Err(error) if is_not_found(&error) => Ok(()),
+		Err(error) => Err(js_err(error)),
+	}
+}
+
+async fn opfs_root() -> std::result::Result<FileSystemDirectoryHandle, JsValue> {
+	let storage = web_sys::window().ok_or_else(|| JsValue::from_str("no window"))?.navigator().storage();
+	JsFuture::from(storage.get_directory()).await?.dyn_into()
 }
 
 /// Descend the `/`-separated path against `root` and return the directory handle plus the final segment.
@@ -472,4 +524,8 @@ fn list_error(prefix: &str, error: JsValue) -> ContainerError {
 	} else {
 		js_err(error)
 	}
+}
+
+fn js_err(error: JsValue) -> ContainerError {
+	ContainerError::Backend(format!("{error:?}"))
 }

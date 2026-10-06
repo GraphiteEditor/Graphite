@@ -1,10 +1,10 @@
 use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
+use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
-use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
@@ -234,13 +234,14 @@ async fn assign_colors<T>(
 	reverse: Item<bool>,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: Item<bool>,
-	/// The seed used for randomization.
 	/// Seed to determine unique variations on the randomized color selection.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
-	repeat_every: Item<u32>,
+	#[hard(0..)]
+	repeat_every: Item<i64>,
 ) -> T
 where
 	T: VectorListIterMut + 'n + Send,
@@ -259,7 +260,7 @@ where
 	let gradient = if reverse { element.reversed(settings.cyclic) } else { element };
 	let evaluator = gradient.evaluator(settings);
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
 	let mut i: usize = 0;
 	content.for_each_vector_list_mut(|vector_list| {
@@ -403,6 +404,7 @@ async fn stroke<V>(
 	paint: Item<Graphic>,
 	/// The stroke thickness.
 	#[unit(" px")]
+	#[hard(0..)]
 	#[default(2.)]
 	weight: Item<f64>,
 	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
@@ -412,6 +414,7 @@ async fn stroke<V>(
 	/// The curvature of the bent stroke at sharp corners.
 	join: Item<StrokeJoin>,
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
+	#[hard(0..)]
 	#[default(4.)]
 	miter_limit: Item<f64>,
 	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
@@ -482,25 +485,28 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	#[range]
 	#[soft(0..2)]
 	#[unit("x")]
-	random_scale_min: Item<Multiplier>,
+	random_scale_min: Item<f64>,
 	/// Maximum range of randomized sizes given to each placed copy.
 	#[default(1)]
 	#[range]
 	#[soft(0..2)]
 	#[unit("x")]
-	random_scale_max: Item<Multiplier>,
+	random_scale_max: Item<f64>,
 	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
 	#[range]
 	#[soft(-50..50)]
 	random_scale_bias: Item<f64>,
 	/// Seed to determine unique variations on all the randomized copy sizes.
-	random_scale_seed: Item<SeedValue>,
+	#[hard(0..)]
+	random_scale_seed: Item<i64>,
 	/// Range of randomized angles given to each placed copy, in degrees ranging from furthest clockwise to counterclockwise.
+	#[unit("°")]
 	#[range]
 	#[soft(0..360)]
-	random_rotation: Item<Angle>,
+	random_rotation: Item<f64>,
 	/// Seed to determine unique variations on all the randomized copy angles.
-	random_rotation_seed: Item<SeedValue>,
+	#[hard(0..)]
+	random_rotation_seed: Item<i64>,
 ) -> List<I> {
 	let (random_scale_min, random_scale_max, random_scale_bias) = (random_scale_min.into_element(), random_scale_max.into_element(), random_scale_bias.into_element());
 	let (random_scale_seed, random_rotation, random_rotation_seed) = (random_scale_seed.into_element(), random_rotation.into_element(), random_rotation_seed.into_element());
@@ -510,8 +516,8 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	let random_scale_difference = random_scale_max - random_scale_min;
 
 	for row in points.into_iter() {
-		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
+		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed as u64);
+		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed as u64);
 
 		let do_scale = random_scale_difference.abs() > 1e-6;
 		let do_rotation = random_rotation.abs() > 1e-6;
@@ -560,18 +566,24 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 async fn round_corners<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
+	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10.)]
-	radius: Item<PixelLength>,
+	radius: Item<f64>,
 	#[range]
 	#[hard(0..1)]
 	#[default(0.5)]
 	roundness: Item<f64>,
-	#[default(100.)] edge_length_limit: Item<Percentage>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	edge_length_limit: Item<f64>,
+	#[unit("°")]
 	#[range]
 	#[hard(0..180)]
 	#[default(5.)]
-	min_angle_threshold: Item<Angle>,
+	min_angle_threshold: Item<f64>,
 ) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let (radius, roundness, edge_length_limit, min_angle_threshold) = (*radius.element(), *roundness.element(), *edge_length_limit.element(), *min_angle_threshold.element());
@@ -667,9 +679,10 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
+	#[unit(" px")]
 	#[default(0.1)]
 	#[hard(0.0001..)]
-	distance: Item<PixelLength>,
+	distance: Item<f64>,
 	algorithm: Item<MergeByDistanceAlgorithm>,
 ) -> Item<V> {
 	let (distance, algorithm) = (*distance.element(), *algorithm.element());
@@ -1488,7 +1501,9 @@ async fn offset_path<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	distance: Item<f64>,
 	join: Item<StrokeJoin>,
-	#[default(4.)] miter_limit: Item<f64>,
+	#[hard(0..)]
+	#[default(4.)]
+	miter_limit: Item<f64>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -1722,10 +1737,11 @@ async fn path_is_closed(
 	/// The vector content whose subpaths are inspected.
 	content: Item<Vector>,
 	/// The index of the subpath to check, counting across the element's subpaths.
-	index: Item<f64>,
+	#[hard(0..)]
+	index: Item<i64>,
 ) -> Item<bool> {
-	let index = index.into_element();
-	let closed = content.element().build_stroke_path_iter().map(|(_, closed)| closed).nth(index.max(0.) as usize).unwrap_or(false);
+	let index = usize::try_from(index.into_element()).unwrap_or(usize::MAX);
+	let closed = content.element().build_stroke_path_iter().map(|(_, closed)| closed).nth(index).unwrap_or(false);
 
 	Item::new_from_element(closed)
 }
@@ -1810,7 +1826,7 @@ async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 	separation: Item<f64>,
 	#[default(100)]
 	#[hard(2..)]
-	quantity: Item<u32>,
+	quantity: Item<i64>,
 	#[hard(0..)]
 	#[unit(" px")]
 	start_offset: Item<f64>,
@@ -1885,9 +1901,10 @@ async fn simplify<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum distance the simplified path may deviate from the original.
-	#[default(5.)]
 	#[unit(" px")]
-	tolerance: Item<Length>,
+	#[hard(0..)]
+	#[default(5.)]
+	tolerance: Item<f64>,
 ) -> Item<V> {
 	let tolerance = *tolerance.element();
 
@@ -1926,9 +1943,10 @@ async fn decimate<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
-	#[default(5.)]
 	#[unit(" px")]
-	tolerance: Item<Length>,
+	#[hard(0..)]
+	#[default(5.)]
+	tolerance: Item<f64>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -2052,7 +2070,8 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the path.
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -2163,7 +2182,8 @@ async fn position_on_path(
 	/// The path to traverse.
 	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the path.
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -2200,7 +2220,8 @@ async fn tangent_on_path(
 	/// The path to traverse.
 	content: Item<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the path.
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -2229,11 +2250,7 @@ async fn tangent_on_path(
 			let t = t + if t > 0.5 { -0.001 } else { 0.001 };
 			tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
 		}
-		if tangent == DVec2::ZERO {
-			return 0.;
-		}
-
-		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
+		if reverse { -DVec2::X } else { DVec2::X }.try_angle_to(tangent).unwrap_or(0.)
 	});
 
 	Item::new_from_element(if radians { angle } else { angle.to_degrees() })
@@ -2249,13 +2266,13 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 	#[hard(0.01..)]
 	#[soft(1..100)]
 	separation: Item<f64>,
-	seed: Item<SeedValue>,
+	#[hard(0..)] seed: Item<i64>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		let (separation, seed) = (*separation.element(), *seed.element());
 
-		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
 		let mut result = Vector::default();
 
@@ -2388,11 +2405,12 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum extent of the random distance each point can be offset.
-	#[default(5.)]
 	#[unit(" px")]
+	#[default(5.)]
 	max_distance: Item<f64>,
 	/// Seed used to determine unique variations on all randomized offsets.
-	seed: Item<SeedValue>,
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// Whether to offset anchor points along their normal direction (perpendicular to the path) or in a random direction. Free-floating and branching points have no normal direction, so they receive a random-angled offset regardless of this setting.
 	#[default(true)]
 	along_normals: Item<bool>,
@@ -2401,7 +2419,7 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 		let mut content = content;
 		let (max_distance, seed, along_normals) = (*max_distance.element(), *seed.element(), *along_normals.element());
 
-		let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
+		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
@@ -2484,7 +2502,8 @@ async fn morph(
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	content: List<Graphic>,
 	/// The fractional part `[0, 1)` traverses the morph uniformly along the path. If the control path has multiple subpaths, each added integer selects the next subpath.
-	progression: Item<Progression>,
+	#[progression]
+	progression: Item<f64>,
 	/// Swap the direction of the progression between objects or along the control path.
 	reverse: Item<bool>,
 	/// The parameter of change that influences the interpolation speed between each object. Equal slices in this parameter correspond to the rate of progression through the morph. This must be set to a parameter that changes.
@@ -3419,7 +3438,14 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn bevel<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, #[default(10.)] distance: Item<Length>) -> Item<V> {
+fn bevel<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	#[implementations(Graphic, Vector)] source: Item<V>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(10.)]
+	distance: Item<f64>,
+) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let distance = *distance.element();
 
@@ -3447,7 +3473,7 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 	Item::new_from_element(inside)
 }
 
-// TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
+// TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
 async fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
@@ -3469,7 +3495,7 @@ async fn index_points(
 	/// The vector element containing the anchor points to be retrieved.
 	content: Item<Vector>,
 	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last point.
-	index: Item<f64>,
+	index: Item<i64>,
 ) -> Item<DVec2> {
 	let index = index.into_element();
 	let positions = content.element().point_domain.positions();
@@ -3479,11 +3505,10 @@ async fn index_points(
 	};
 
 	// Clamp and allow negative indexing from the end
-	let index = index as isize;
 	let index = if index < 0 {
-		(positions.len() as isize + index).max(0) as usize
+		(positions.len() as i64 + index).max(0) as usize
 	} else {
-		(index as usize).min(last_index)
+		index.min(last_index as i64) as usize
 	};
 
 	Item::new_from_element(positions[index])
@@ -3708,7 +3733,7 @@ mod test {
 		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true)).await;
 		let vector = result.element();
 		assert!(vector.use_face_fill());
-		assert!(vector.segment_domain.ids().len() > 0);
+		assert!(!vector.segment_domain.ids().is_empty());
 	}
 
 	#[tokio::test]
@@ -3738,9 +3763,11 @@ mod test {
 		// Relaxation preserves the point count but repositions the interior anchors within the hull.
 		assert_eq!(vector.point_domain.ids().len(), points.len());
 		assert_ne!(vector.point_domain.positions(), &points[..]);
-		// The convex-hull corners are pinned.
-		for i in 0..4 {
-			assert_eq!(vector.point_domain.positions()[i], points[i], "hull corner {i} should be pinned");
+		// The convex-hull corners are pinned. Asserted on the count first, since zipping a short result
+		// would skip the checks rather than fail them.
+		assert!(vector.point_domain.positions().len() >= 4, "the relaxed hull should still have its four corners");
+		for (corner, (&position, &point)) in vector.point_domain.positions().iter().zip(&points).take(4).enumerate() {
+			assert_eq!(position, point, "hull corner {corner} should be pinned");
 		}
 		for &point in vector.point_domain.positions() {
 			assert!(point.x >= -1e-6 && point.x <= 10. + 1e-6);
@@ -4163,8 +4190,8 @@ mod test {
 			Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])),
 			Item::new_from_element(false),
 			Item::new_from_element(false),
-			Item::new_from_element(SeedValue::default()),
-			Item::new_from_element(0_u32),
+			Item::new_from_element(0),
+			Item::new_from_element(0_i64),
 		)
 		.await;
 

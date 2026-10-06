@@ -8,11 +8,17 @@ use std::collections::HashMap;
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 
-/// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`.
+use crate::Value;
+
+/// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`. One entry per
+/// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeMetadataEntry {
 	pub network_path: Vec<RuntimeNodeId>,
 	pub local_id: RuntimeNodeId,
+	/// The node's storage identity. Restoring it pins the node to this identity, so a later conversion
+	/// keeps it instead of re-deriving one from the node's location.
+	pub storage_id: crate::NodeId,
 	pub position: Option<Position>,
 	pub is_layer: bool,
 	pub display_name: Option<String>,
@@ -24,19 +30,7 @@ pub struct NodeMetadataEntry {
 	pub output_names: Vec<String>,
 }
 
-impl NodeMetadataEntry {
-	pub fn is_empty(&self) -> bool {
-		self.position.is_none()
-			&& !self.is_layer
-			&& self.display_name.is_none()
-			&& !self.locked
-			&& !self.pinned
-			&& self.output_names.is_empty()
-			&& self.input_metadata.iter().all(InputMetadataEntry::is_empty)
-	}
-}
-
-/// Per-network metadata (navigation, previewing). Separate from `NodeMetadataEntry` since these are
+/// Per-network metadata. Separate from `NodeMetadataEntry` since these are
 /// properties of a network, not of any node.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NetworkMetadataEntry {
@@ -44,16 +38,12 @@ pub struct NetworkMetadataEntry {
 	/// Empty = root network.
 	pub network_path: Vec<RuntimeNodeId>,
 	/// Stable storage id of this network. Lets the editor associate per-network, per-peer view state
-	/// (node-graph nav + previewing, in `session.json`) with a network across reparenting.
+	/// (the node-graph nav, in `session.json`) with a network across reparenting.
 	pub network_id: crate::NetworkId,
-	/// Matches the runtime's `NodeNetworkPersistentMetadata::reference` — definition lineage tag.
+	/// Matches the runtime's `NodeNetworkPersistentMetadata::reference`: the definition lineage tag.
 	pub reference: Option<String>,
-}
-
-impl NetworkMetadataEntry {
-	pub fn is_empty(&self) -> bool {
-		self.reference.is_none()
-	}
+	/// The display order of the network's pinned nodes.
+	pub pinned_order: Vec<RuntimeNodeId>,
 }
 
 /// Per-input editor metadata. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
@@ -64,17 +54,11 @@ pub struct InputMetadataEntry {
 	pub input_description: Option<String>,
 	pub widget_override: Option<String>,
 	/// Reassembled from `ui::input_data::<sub_key>` attributes.
-	pub input_data: HashMap<String, serde_json::Value>,
-}
-
-impl InputMetadataEntry {
-	pub fn is_empty(&self) -> bool {
-		self.input_name.is_none() && self.input_description.is_none() && self.widget_override.is_none() && self.input_data.is_empty()
-	}
+	pub input_data: HashMap<String, Value>,
 }
 
 /// Editor-side metadata source. Methods default to "no data" so implementors only override what
-/// they carry. Returns are JSON-shaped where the underlying types live editor-side (PTZ, etc.).
+/// they carry. Returns are type-erased as [`Value`] where the underlying types live editor-side (PTZ, etc.).
 pub trait NodeMetadataSource {
 	fn position(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<Position> {
 		None
@@ -106,12 +90,24 @@ pub trait NodeMetadataSource {
 		None
 	}
 	/// Returns owned to stay object-safe. Each entry is stored as `ui::input_data::<key>` for per-key LWW.
-	fn input_data(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, serde_json::Value> {
+	fn input_data(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, Value> {
 		HashMap::new()
 	}
 
+	/// The storage identity this node is pinned to, if it has one. A node the source does not name
+	/// falls back to a hash of its location.
+	fn storage_node_id(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<crate::NodeId> {
+		None
+	}
+
+	/// The definition the network was instantiated from, if it still names one.
 	fn reference(&self, _network_path: &[RuntimeNodeId]) -> Option<&str> {
 		None
+	}
+
+	/// The display order of the network's pinned nodes.
+	fn pinned_order(&self, _network_path: &[RuntimeNodeId]) -> Vec<RuntimeNodeId> {
+		Vec::new()
 	}
 }
 

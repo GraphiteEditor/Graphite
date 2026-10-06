@@ -5,6 +5,9 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
@@ -29,6 +32,7 @@ std = [
 	"dep:rand_chacha",
 	"dep:fastnoise-lite",
 	"dep:kurbo",
+	"dep:color",
 ]
 wasm = [
 	"core-types/wasm",
@@ -68,6 +72,7 @@ rand_chacha = { workspace = true, optional = true }
 fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+color = { workspace = true, optional = true }
 
 # Workspace Wasm dependencies
 tsify = { workspace = true, optional = true }

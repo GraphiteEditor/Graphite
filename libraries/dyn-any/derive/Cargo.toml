@@ -10,6 +10,9 @@ documentation = "https://docs.rs/dyn-any-derive"
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/dyn-any/derive"
 readme = "../README.md"
 
+[lints]
+workspace = true
+
 [lib]
 proc-macro = true
 

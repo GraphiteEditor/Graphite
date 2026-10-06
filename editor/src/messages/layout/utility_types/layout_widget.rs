@@ -147,6 +147,23 @@ pub trait Diffable: Clone + PartialEq {
 	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>);
 }
 
+/// Hashes menu list entry sections, with each entry's children, for the frontend to cache a menu list by.
+pub fn hash_menu_list_entry_sections(entry_sections: &MenuListEntrySections) -> u64 {
+	fn hash_into(hasher: &mut DefaultHasher, entry_sections: &MenuListEntrySections) {
+		for (index, entries) in entry_sections.iter().enumerate() {
+			index.hash(hasher);
+			for entry in entries {
+				entry.hash(hasher);
+				hash_into(hasher, &entry.children);
+			}
+		}
+	}
+
+	let mut hasher = DefaultHasher::new();
+	hash_into(&mut hasher, entry_sections);
+	hasher.finish()
+}
+
 /// Computes a deterministic WidgetId based on layout target, path, and widget type.
 fn compute_widget_id(layout_target: LayoutTarget, widget_path: &[usize], widget: &Widget) -> WidgetId {
 	let mut hasher = DefaultHasher::new();
@@ -454,6 +471,7 @@ impl LayoutGroup {
 				Widget::IconLabel(x) => &mut x.tooltip_description,
 				Widget::ImageButton(x) => &mut x.tooltip_description,
 				Widget::ImageLabel(x) => &mut x.tooltip_description,
+				Widget::MathExpressionInput(x) => &mut x.tooltip_description,
 				Widget::NumberInput(x) => &mut x.tooltip_description,
 				Widget::PopoverButton(x) => &mut x.tooltip_description,
 				Widget::TextAreaInput(x) => &mut x.tooltip_description,
@@ -815,6 +833,7 @@ pub enum Widget {
 	IconLabel(IconLabel),
 	ImageButton(ImageButton),
 	ImageLabel(ImageLabel),
+	MathExpressionInput(MathExpressionInput),
 	ShortcutLabel(ShortcutLabel),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
@@ -878,6 +897,7 @@ impl DiffUpdate {
 				Widget::ShortcutLabel(widget) => widget.shortcut.as_mut(),
 				Widget::IconLabel(_)
 				| Widget::ImageLabel(_)
+				| Widget::MathExpressionInput(_)
 				| Widget::NodeCatalog(_)
 				| Widget::ReferencePointInput(_)
 				| Widget::RadioInput(_)
@@ -923,28 +943,6 @@ impl DiffUpdate {
 				}
 			}
 		}
-
-		// Hash the menu list entry sections for caching purposes
-		let hash_menu_list_entry_sections = |entry_sections: &MenuListEntrySections| {
-			struct RecursiveHasher<'a> {
-				hasher: DefaultHasher,
-				hash_fn: &'a dyn Fn(&mut RecursiveHasher, &MenuListEntrySections),
-			}
-			let mut recursive_hasher = RecursiveHasher {
-				hasher: DefaultHasher::new(),
-				hash_fn: &|recursive_hasher, entry_sections| {
-					for (index, entries) in entry_sections.iter().enumerate() {
-						index.hash(&mut recursive_hasher.hasher);
-						for entry in entries {
-							entry.hash(&mut recursive_hasher.hasher);
-							(recursive_hasher.hash_fn)(recursive_hasher, &entry.children);
-						}
-					}
-				},
-			};
-			(recursive_hasher.hash_fn)(&mut recursive_hasher, entry_sections);
-			recursive_hasher.hasher.finish()
-		};
 
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut *widget_instance.widget {

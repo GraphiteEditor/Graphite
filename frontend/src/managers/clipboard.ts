@@ -1,5 +1,6 @@
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { insertAtCaret, readAtCaret } from "/src/utility-functions/clipboard";
+import { targetIsTextField } from "/src/utility-functions/input";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -12,7 +13,11 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	editorWrapper = editor;
 
 	subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
-		editor.readSelection(readAtCaret(data.cut), data.cut);
+		const content = readAtCaret(data.cut);
+		// A text field with nothing selected has nothing to copy, rather than leaving the shortcut to act on the selected layers
+		if (content === undefined && targetIsTextField(window.document.activeElement || undefined)) return;
+
+		editor.readSelection(content, data.cut);
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {

@@ -89,16 +89,19 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>, working_copy_root: Option<std::path::PathBuf>) -> Self {
+	pub fn new(resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
 		let mut s = Self::default();
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
-		s.message_handlers.portfolio_message_handler.set_working_copy_root(working_copy_root);
+		s.message_handlers.portfolio_message_handler.set_document_store(document_store);
 		s
 	}
 
 	#[cfg(test)]
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		let mut s = Self::new(Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()), None);
+		let mut s = Self::new(
+			Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()),
+			Arc::new(document_container::store::MemoryStore::default()),
+		);
 		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
 		s
 	}
@@ -487,7 +490,7 @@ mod test {
 			});
 
 			// Check if the graph renders
-			if let Err(e) = editor.eval_graph().await {
+			if let Err(e) = editor.eval_graph_until_finished().await {
 				print_problem_to_terminal_on_failure(&format!("Failed to evaluate the graph for document '{document_name}':\n{e}"));
 			}
 
@@ -496,15 +499,11 @@ mod test {
 				if let FrontendMessage::UpdateLayout {
 					layout_target: LayoutTarget::DialogColumn1,
 					diff,
-				} = response
+				} = response && let DiffUpdate::Layout(sub_layout) = &diff[0].new_value
+					&& let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0]
+					&& let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget
 				{
-					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
-						if let LayoutGroup::Row(WidgetRow { widgets }) = &sub_layout.0[0] {
-							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
-								print_problem_to_terminal_on_failure(value);
-							}
-						}
-					}
+					print_problem_to_terminal_on_failure(value);
 				}
 			}
 		}

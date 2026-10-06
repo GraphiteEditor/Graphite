@@ -19,7 +19,7 @@ pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &
 	);
 	network_interface.set_input(
 		&InputConnector::node(*node_id, graphene_std::transform_nodes::transform::RotationInput),
-		NodeInput::value(TaggedValue::F64(rotation), false),
+		NodeInput::value(TaggedValue::Number(rotation), false),
 		&[],
 	);
 	network_interface.set_input(
@@ -70,7 +70,7 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		DVec2::ZERO
 	};
-	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[2].as_value() { rotation } else { 0. };
+	let rotation = if let Some(&TaggedValue::Number(rotation)) = inputs[2].as_value() { rotation } else { 0. };
 	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[3].as_value() { scale } else { DVec2::ONE };
 	let skew = if let Some(&TaggedValue::DVec2(skew)) = inputs[4].as_value() { skew } else { DVec2::ZERO };
 

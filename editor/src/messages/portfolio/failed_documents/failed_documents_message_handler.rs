@@ -2,29 +2,26 @@ use crate::consts::FILE_EXTENSION;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, FileFilter};
 use crate::messages::layout::utility_types::layout_widget::DialogLayoutHolder;
-use crate::messages::portfolio::persistent_state::PersistentStateMessage;
+use crate::messages::portfolio::document_storage_io::{DocumentStoreHandle, document_key, legacy_path, remove_stored_document};
 use crate::messages::prelude::*;
+use document_container::AsyncContainer;
 
 #[derive(ExtractField)]
 pub struct FailedDocumentsMessageContext<'a> {
-	pub document_ids: &'a mut VecDeque<DocumentId>,
+	pub document_store: &'a DocumentStoreHandle,
 }
 
 #[derive(Debug, Default, ExtractField)]
 pub struct FailedDocumentsMessageHandler {
-	/// Pairs of `(info, raw serialized content)` for autosaved documents that failed to deserialize.
-	/// The info entries are folded back into `persisted_state_snapshot` so their on-disk autosave files survive garbage collection.
+	/// Stored documents that failed to load. Their store entries stay until explicitly discarded.
 	// TODO: Eventually remove this document upgrade code
-	failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
-	/// In-flight count of autosaved-document loads from the initial startup batch; the batched failure dialog fires when this hits 0.
-	// TODO: Eventually remove this document upgrade code
-	pending_initial_autosave_loads: usize,
+	failed_to_load_documents: HashMap<DocumentId, DocumentInfo>,
 }
 
 #[message_handler_data]
 impl MessageHandler<FailedDocumentsMessage, FailedDocumentsMessageContext<'_>> for FailedDocumentsMessageHandler {
 	fn process_message(&mut self, message: FailedDocumentsMessage, responses: &mut VecDeque<Message>, context: FailedDocumentsMessageContext) {
-		let FailedDocumentsMessageContext { document_ids } = context;
+		let FailedDocumentsMessageContext { document_store } = context;
 
 		match message {
 			// TODO: Eventually remove this document upgrade code
@@ -32,19 +29,15 @@ impl MessageHandler<FailedDocumentsMessage, FailedDocumentsMessageContext<'_>> f
 				if self.failed_to_load_documents.is_empty() {
 					return;
 				}
-				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| display_name_with_fallback(info)).collect();
+				let failed_document_names = self.failed_to_load_documents.values().map(display_name_with_fallback).collect();
 				let dialog = simple_dialogs::FailedToLoadDocumentsDialog { failed_document_names };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			// TODO: Eventually remove this document upgrade code
 			FailedDocumentsMessage::DiscardFailedToLoadDocuments => {
-				let failed = std::mem::take(&mut self.failed_to_load_documents);
-				for document_id in failed.keys() {
-					document_ids.retain(|id| id != document_id);
-					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
+				for document_id in std::mem::take(&mut self.failed_to_load_documents).into_keys() {
+					responses.add(remove_stored_document(document_store.clone(), document_id));
 				}
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				responses.add(PersistentStateMessage::WriteState);
 			}
 			// TODO: Eventually remove this document upgrade code
 			FailedDocumentsMessage::DownloadFailedToLoadDocuments => {
@@ -52,60 +45,22 @@ impl MessageHandler<FailedDocumentsMessage, FailedDocumentsMessageContext<'_>> f
 					return;
 				}
 
-				let mut used_names = HashSet::new();
-				let files: Vec<(String, Vec<u8>)> = self
-					.failed_to_load_documents
-					.values()
-					.map(|(info, content)| {
-						let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
-
-						// A name that was already given out, even as another document's numbered copy, takes the next free number
-						let mut unique = format!("{stem}.{FILE_EXTENSION}");
-						let mut copy_number = 1;
-						while !used_names.insert(unique.clone()) {
-							unique = format!("{stem} ({copy_number}).{FILE_EXTENSION}");
-							copy_number += 1;
-						}
-
-						(unique, content.as_bytes().to_vec())
-					})
-					.collect();
-
-				const FOLDER_NAME: &str = "Graphite Recovered Documents";
-
-				if files.len() == 1 {
-					let (filename, content) = files.into_iter().next().expect("just checked there's one entry");
-					responses.add(FrontendMessage::TriggerSaveFile {
-						name: filename,
-						folder: None,
-						filters: vec![FileFilter {
-							name: "Graphite Document".into(),
-							extensions: vec![FILE_EXTENSION.into()],
-							mime_types: Vec::new(),
-						}],
-						content: serde_bytes::ByteBuf::from(content),
-					});
-				} else {
-					match build_recovery_zip(&files) {
-						Ok(zip_bytes) => responses.add(FrontendMessage::TriggerSaveFile {
-							name: format!("{FOLDER_NAME}.zip"),
-							folder: None,
-							filters: vec![FileFilter {
-								name: "Zip Archive".into(),
-								extensions: vec!["zip".into()],
-								mime_types: Vec::new(),
-							}],
-							content: serde_bytes::ByteBuf::from(zip_bytes),
-						}),
-						Err(e) => {
-							log::error!("Failed to build recovery zip: {e}");
-							responses.add(DialogMessage::DisplayDialogError {
-								title: "Failed to download".to_string(),
-								description: format!("Could not bundle the failed documents for download.\n\n{e}"),
-							});
+				let files = recovery_file_names(self.failed_to_load_documents.values());
+				let store = document_store.clone();
+				responses.add(async move {
+					let mut entries = Vec::new();
+					for (document_id, filename) in files {
+						let content = match store.open(document_key(document_id)).await {
+							Ok(container) => container.read(legacy_path()).await.map(|bytes| bytes.as_slice().to_vec()),
+							Err(error) => Err(error),
+						};
+						match content {
+							Ok(bytes) => entries.push((filename, bytes)),
+							Err(error) => log::error!("Reading the stored document {document_id:?} for recovery failed: {error}"),
 						}
 					}
-				}
+					recovery_download(entries)
+				});
 			}
 		}
 	}
@@ -115,39 +70,8 @@ impl MessageHandler<FailedDocumentsMessage, FailedDocumentsMessageContext<'_>> f
 
 impl FailedDocumentsMessageHandler {
 	// TODO: Eventually remove this document upgrade code
-	/// Keeps a document that failed to load, with its raw serialized content, so it can be offered for download.
-	pub(crate) fn record_failure(&mut self, document_id: DocumentId, info: DocumentInfo, serialized_content: String) {
-		self.failed_to_load_documents.insert(document_id, (info, serialized_content));
-	}
-
-	// TODO: Eventually remove this document upgrade code
-	/// Counts more autosaved documents of the startup batch whose loads the batched failure dialog waits for.
-	pub(crate) fn expect_autosave_loads(&mut self, count: usize) {
-		self.pending_initial_autosave_loads = self.pending_initial_autosave_loads.saturating_add(count);
-	}
-
-	// TODO: Eventually remove this document upgrade code
-	/// Whether documents failed to load and none of the startup batch is still loading, so the failure dialog is due.
-	pub(crate) fn has_failures_to_report(&self) -> bool {
-		self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty()
-	}
-
-	// TODO: Eventually remove this document upgrade code
-	/// The info of each document that failed to load.
-	pub(crate) fn failed_document_infos(&self) -> impl Iterator<Item = &DocumentInfo> {
-		self.failed_to_load_documents.values().map(|(info, _)| info)
-	}
-
-	// TODO: Eventually remove this document upgrade code
-	pub(crate) fn tick_autosave_load_progress(&mut self, responses: &mut VecDeque<Message>, failed: bool) {
-		if self.pending_initial_autosave_loads > 0 {
-			self.pending_initial_autosave_loads -= 1;
-			if self.has_failures_to_report() {
-				responses.add(FailedDocumentsMessage::ShowFailedToLoadDocumentsDialog);
-			}
-		} else if failed {
-			responses.add(FailedDocumentsMessage::ShowFailedToLoadDocumentsDialog);
-		}
+	pub(crate) fn record_failure(&mut self, document_id: DocumentId, info: DocumentInfo) {
+		self.failed_to_load_documents.insert(document_id, info);
 	}
 }
 
@@ -157,6 +81,76 @@ fn display_name_with_fallback(info: &DocumentInfo) -> String {
 		format!("Untitled Document ({:x})", info.id.0)
 	} else {
 		info.name.clone()
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+fn recovery_file_names<'a>(infos: impl Iterator<Item = &'a DocumentInfo>) -> Vec<(DocumentId, String)> {
+	let mut used_names = HashSet::new();
+	infos
+		.map(|info| {
+			let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
+
+			// A name that was already given out, even as another document's numbered copy, takes the next free number
+			let mut unique = format!("{stem}.{FILE_EXTENSION}");
+			let mut copy_number = 1;
+			while !used_names.insert(unique.clone()) {
+				unique = format!("{stem} ({copy_number}).{FILE_EXTENSION}");
+				copy_number += 1;
+			}
+
+			(info.id, unique)
+		})
+		.collect()
+}
+
+// TODO: Eventually remove this document upgrade code
+fn recovery_download(files: Vec<(String, Vec<u8>)>) -> Message {
+	const FOLDER_NAME: &str = "Graphite Recovered Documents";
+
+	if files.is_empty() {
+		return DialogMessage::DisplayDialogError {
+			title: "Failed to download".to_string(),
+			description: "None of the failed documents could be read from storage.".to_string(),
+		}
+		.into();
+	}
+
+	if files.len() == 1 {
+		let (filename, content) = files.into_iter().next().expect("just checked there's one entry");
+		return FrontendMessage::TriggerSaveFile {
+			name: filename,
+			folder: None,
+			filters: vec![FileFilter {
+				name: "Graphite Document".into(),
+				extensions: vec![FILE_EXTENSION.into()],
+				mime_types: Vec::new(),
+			}],
+			content: serde_bytes::ByteBuf::from(content),
+		}
+		.into();
+	}
+
+	match build_recovery_zip(&files) {
+		Ok(zip_bytes) => FrontendMessage::TriggerSaveFile {
+			name: format!("{FOLDER_NAME}.zip"),
+			folder: None,
+			filters: vec![FileFilter {
+				name: "Zip Archive".into(),
+				extensions: vec!["zip".into()],
+				mime_types: Vec::new(),
+			}],
+			content: serde_bytes::ByteBuf::from(zip_bytes),
+		}
+		.into(),
+		Err(e) => {
+			log::error!("Failed to build recovery zip: {e}");
+			DialogMessage::DisplayDialogError {
+				title: "Failed to download".to_string(),
+				description: format!("Could not bundle the failed documents for download.\n\n{e}"),
+			}
+			.into()
+		}
 	}
 }
 
@@ -229,25 +223,15 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn recovered_documents_sharing_a_name_with_a_numbered_copy_still_download() {
-		let mut handler = FailedDocumentsMessageHandler::default();
-		for (id, name) in [(1, "Art"), (2, "Art"), (3, "Art (1)")] {
-			let info = DocumentInfo {
-				id: DocumentId(id),
-				name: name.to_string(),
-				resources: None,
-				path: None,
-				is_saved: true,
-			};
-			handler.record_failure(DocumentId(id), info, "content".to_string());
-		}
+	fn recovered_documents_sharing_a_name_with_a_numbered_copy_get_distinct_file_names() {
+		let infos = [(1, "Art"), (2, "Art"), (3, "Art (1)")].map(|(id, name)| DocumentInfo {
+			id: DocumentId(id),
+			name: name.to_string(),
+			path: None,
+			is_saved: true,
+		});
 
-		let mut document_ids = VecDeque::new();
-		let mut responses = VecDeque::new();
-		let context = FailedDocumentsMessageContext { document_ids: &mut document_ids };
-		handler.process_message(FailedDocumentsMessage::DownloadFailedToLoadDocuments, &mut responses, context);
-
-		// A file name given out twice makes the archive fail to build, which shows an error dialog in place of the download
-		assert!(matches!(responses.front(), Some(Message::Frontend(FrontendMessage::TriggerSaveFile { .. }))));
+		let names: HashSet<_> = recovery_file_names(infos.iter()).into_iter().map(|(_, name)| name).collect();
+		assert_eq!(names.len(), 3);
 	}
 }

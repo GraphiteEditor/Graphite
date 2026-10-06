@@ -196,7 +196,7 @@ pub fn apply_stroke_join(drawing: &mut DrawingToolState, join: StrokeJoin, docum
 
 pub fn apply_miter_limit(drawing: &mut DrawingToolState, limit: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.miter_limit = Some(limit);
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::MiterLimitInput, TaggedValue::F64(limit), responses);
+	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::MiterLimitInput, TaggedValue::Number(limit), responses);
 }
 
 pub fn apply_paint_order(drawing: &mut DrawingToolState, order: PaintOrder, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
@@ -216,5 +216,5 @@ pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, doc
 
 pub fn apply_dash_offset(drawing: &mut DrawingToolState, offset: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.dash_offset = Some(offset);
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashOffsetInput, TaggedValue::F64(offset), responses);
+	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashOffsetInput, TaggedValue::Number(offset), responses);
 }

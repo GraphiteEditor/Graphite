@@ -3,7 +3,7 @@ use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
 	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
-	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	SELECTION_THRESHOLD,
 };
 use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardVectorEntry};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -640,16 +640,10 @@ impl PathToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
+	/// The viewport-space rectangle spanned by the drag so far, which has zero size until the pointer moves.
 	pub fn selection_box(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
-		// Convert previous mouse position to viewport space first
-		let document_to_viewport = metadata.document_to_viewport;
-		let previous_mouse = document_to_viewport.transform_point2(self.previous_mouse_position);
-		if previous_mouse == self.drag_start_pos {
-			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start_pos - tolerance, self.drag_start_pos + tolerance]
-		} else {
-			[self.drag_start_pos, previous_mouse]
-		}
+		let previous_mouse = metadata.document_to_viewport.transform_point2(self.previous_mouse_position);
+		[self.drag_start_pos, previous_mouse]
 	}
 
 	fn update_selection_status(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
@@ -1066,7 +1060,7 @@ impl PathToolData {
 		snap_angle: bool,
 		tangent_to_neighboring_tangents: bool,
 	) -> f64 {
-		let current_angle = -handle_vector.angle_to(DVec2::X);
+		let current_angle = DVec2::X.try_angle_to(handle_vector).unwrap_or(self.angle);
 
 		if let Some((vector, layer)) = shape_editor
 			.selected_shape_state
@@ -1104,10 +1098,14 @@ impl PathToolData {
 			}
 		}
 
-		if lock_angle && !self.angle_locked {
+		// Start the angle lock by saving the current angle (if possible)
+		if let Some(new_angle) = DVec2::X.try_angle_to(relative_vector)
+			&& lock_angle
+			&& !self.angle_locked
+		{
 			self.angle_locked = true;
-			self.angle = -relative_vector.angle_to(DVec2::X);
-			return -relative_vector.angle_to(DVec2::X);
+			self.angle = new_angle;
+			return self.angle;
 		}
 
 		// When the angle is locked we use the old angle
@@ -3347,27 +3345,28 @@ fn calculate_lock_angle(
 				shape_state.convert_selected_manipulators_to_colinear_handles(responses, document);
 				tool_data.temporary_colinear_handles = true;
 			}
-			Some(-(opposite_pos - anchor_position).angle_to(DVec2::X))
-		} else {
-			let angle_1 = vector
-				.adjacent_segment(&handle_id)
-				.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector, false));
-
-			let angle_2 = calculate_segment_angle(anchor, segment, vector, false);
-
-			match (angle_1, angle_2) {
-				(Some(angle_1), Some(angle_2)) => {
-					let angle = Some((angle_1 + angle_2) / 2.);
-					if tangent_to_neighboring_tangents {
-						angle.map(|angle| angle + std::f64::consts::FRAC_PI_2)
-					} else {
-						angle
-					}
-				}
-				(Some(angle_1), None) => Some(angle_1),
-				(None, Some(angle_2)) => Some(angle_2),
-				(None, None) => None,
+			if let Some(angle) = DVec2::X.try_angle_to(opposite_pos - anchor_position) {
+				return Some(angle);
 			}
+		}
+		let angle_1 = vector
+			.adjacent_segment(&handle_id)
+			.and_then(|(_, adjacent_segment)| calculate_segment_angle(anchor, adjacent_segment, vector, false));
+
+		let angle_2 = calculate_segment_angle(anchor, segment, vector, false);
+
+		match (angle_1, angle_2) {
+			(Some(angle_1), Some(angle_2)) => {
+				let angle = Some((angle_1 + angle_2) / 2.);
+				if tangent_to_neighboring_tangents {
+					angle.map(|angle| angle + std::f64::consts::FRAC_PI_2)
+				} else {
+					angle
+				}
+			}
+			(Some(angle_1), None) => Some(angle_1),
+			(None, Some(angle_2)) => Some(angle_2),
+			(None, None) => None,
 		}
 	}
 }
@@ -3435,7 +3434,7 @@ fn calculate_adjacent_anchor_tangent(currently_dragged_handle: ManipulatorPointI
 			let angle = shared_segment_handle
 				.get_position(vector)
 				.zip(adjacent_anchor_position)
-				.map(|(handle, anchor)| -(handle - anchor).angle_to(DVec2::X));
+				.and_then(|(handle, anchor)| DVec2::X.try_angle_to(handle - anchor));
 
 			(angle, adjacent_anchor_position)
 		}

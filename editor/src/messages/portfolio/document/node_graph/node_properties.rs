@@ -2,6 +2,8 @@
 
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
+use crate::messages::layout::utility_types::math_expression::{MathExpressionTokens, math_expression_error, math_expression_error_ranges, math_expression_tokens};
+use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -24,7 +26,7 @@ use graphene_std::raster::{
 	AdjustmentChannel, BlendMode, CellularDistanceFunction, CellularReturnType, Color, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
 	RelativeAbsolute, SelectiveColorChoice, TonalRange,
 };
-use graphene_std::raster_types::Image;
+use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
@@ -38,7 +40,9 @@ use graphene_std::vector::style::{
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
+use graphene_std::{Artboard, Graphic, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
+use math_parser::parser::{MessagePart, ParseError};
 use std::path::PathBuf;
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -170,14 +174,19 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 	widgets
 }
 
-/// The numeric bounds and widget mode of a number parameter, sourced from the node's field metadata.
+/// The presentation of a parameter's widget, sourced from the node's field metadata: numeric bounds, widget modes, and unit of measure.
 #[derive(Clone, Copy, Default)]
-pub(crate) struct NumberOptions {
+pub(crate) struct ParameterOptions {
 	pub soft_min: Option<f64>,
 	pub soft_max: Option<f64>,
 	pub hard_min: Option<f64>,
 	pub hard_max: Option<f64>,
 	pub slider: bool,
+	pub multiline: bool,
+	pub progression: bool,
+	pub unit: Option<&'static str>,
+	pub display_decimal_places: Option<u32>,
+	pub step: Option<f64>,
 }
 
 /// The values a range slider's two ends map to linearly and the one its double-click restores, if known.
@@ -206,29 +215,25 @@ fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> O
 	let input = resolve_document_node_type(&identifier)?.node_template.inputs.get(parameter_widgets_info.index)?;
 
 	match input.as_value()? {
-		TaggedValue::F64(value) => Some(*value),
-		TaggedValue::F32(value) => Some(*value as f64),
+		TaggedValue::Number(value) => Some(*value),
 		_ => None,
 	}
 }
 
-pub(crate) fn property_from_type(
-	node_id: NodeId,
-	index: usize,
-	ty: &Type,
-	number_options: NumberOptions,
-	unit: Option<&str>,
-	display_decimal_places: Option<u32>,
-	step: Option<f64>,
-	context: &mut NodePropertiesContext,
-) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
-	let NumberOptions {
+pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, options: ParameterOptions, context: &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
+	let ParameterOptions {
 		soft_min,
 		soft_max,
 		hard_min,
 		hard_max,
 		slider,
-	} = number_options;
+		multiline,
+		progression,
+		unit,
+		display_decimal_places,
+		step,
+	} = options;
+
 	let mut number_input = NumberInput::default();
 	if slider {
 		number_input = number_input.mode_range();
@@ -243,10 +248,8 @@ pub(crate) fn property_from_type(
 		number_input = number_input.step(step);
 	}
 
-	// Applies the parameter's typing clamp and slider extent to the widget, given the type's own default bounds.
-	// Per end: the clamp is the hard bound (or unbounded if only a soft bound is given, since soft is a suggested
-	// extent rather than a limit), and the slider extent is the soft bound, each falling back to the hard bound
-	// and then to the type default when unspecified. An end with any explicit bound ignores the type default.
+	// The hard bound sets the typing clamp, and the soft bound (or the hard one) the slider extent, each falling
+	// back to the passed-in default. A soft bound alone leaves that end unclamped, since soft is only a suggestion.
 	let bounded = |number_input: NumberInput, type_min: f64, type_max: f64| {
 		let clamp_min = hard_min.unwrap_or(if soft_min.is_some() { f64::NEG_INFINITY } else { type_min });
 		let clamp_max = hard_max.unwrap_or(if soft_max.is_some() { f64::INFINITY } else { type_max });
@@ -260,12 +263,11 @@ pub(crate) fn property_from_type(
 			.range_max(Some(extent_max).filter(|bound| bound.is_finite()))
 	};
 
-	// A range-mode number clamped at both ends by its own hard bounds, or by a type whose extent is a true limit, becomes a range
-	// slider beside its number input, unless a soft bound lets typing pass the slider. An Angle's type default is no such limit.
+	// A range-mode number hard-clamped at both ends becomes a range slider beside its number input, unless a soft bound lets typing pass it
 	let no_soft_bounds = soft_min.is_none() && soft_max.is_none();
 	let hard_both_ends = hard_min.is_some() && hard_max.is_some();
-	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput, type_limits: bool| -> LayoutGroup {
-		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && (hard_both_ends || type_limits);
+	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput| -> LayoutGroup {
+		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && hard_both_ends;
 		match (number_input.min, number_input.max) {
 			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() && min < max => {
 				let default = definition_default_number(&default_info);
@@ -298,112 +300,98 @@ pub(crate) fn property_from_type(
 	let mut extra_widgets = vec![];
 	let widgets = match ty {
 		Type::Concrete(concrete_type) => {
-			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
-				// Aliased types (ambiguous values)
-				Some("Percentage") | Some("PercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), 0., 100.), true),
-				Some("SignedPercentage") | Some("SignedPercentageF32") => number_or_slider(default_info, bounded(number_input.percentage(), -100., 100.), true),
-				Some("Angle") | Some("AngleF32") => number_or_slider(default_info, bounded(number_input.mode_range(), -180., 180.).unit(unit.unwrap_or("°")), false),
-				Some("Multiplier") => number_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY).unit(unit.unwrap_or("x"))).into(),
-				Some("PixelLength") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY).unit(unit.unwrap_or(" px"))).into(),
-				Some("Length") => number_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("Fraction") => number_or_slider(default_info, bounded(number_input.mode_range(), 0., 1.), true),
-				Some("Progression") => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
-				Some("SignedInteger") => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
-				Some("SeedValue") => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
-				Some("PixelSize") => vec2_widget(default_info, "X", "Y", unit.unwrap_or(" px"), None, false),
-				Some("TextArea") => text_area_widget(default_info).into(),
+			use std::any::TypeId;
 
-				// For all other types, use TypeId-based matching
-				_ => {
-					use std::any::TypeId;
+			// The compiler peels a rank-0 `Item` cell to its element before this arm runs, so widgets dispatch on the bare element `T`
+			fn id_is<T: 'static>(id: TypeId) -> bool {
+				id == TypeId::of::<T>()
+			}
 
-					// The compiler peels a rank-0 `Item` cell to its element before this arm runs, so widgets dispatch on the bare element `T`
-					fn id_is<T: 'static>(id: TypeId) -> bool {
-						id == TypeId::of::<T>()
-					}
-
-					match concrete_type.id {
-						// ===============
-						// PRIMITIVE TYPES
-						// ===============
-						Some(x) if id_is::<f64>(x) || id_is::<f32>(x) => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), false),
-						Some(x) if id_is::<u32>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::from(u32::MAX))).into(),
-						Some(x) if id_is::<u64>(x) => number_widget(default_info, bounded(number_input.int(), 0., f64::INFINITY)).into(),
-						Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
-						Some(x) if id_is::<String>(x) => text_widget(default_info).into(),
-						Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", "", None, false),
-						Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
-						Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
-						// ============
-						// STRUCT TYPES
-						// ============
-						Some(x) if id_is::<Font>(x) => font_widget(default_info),
-						Some(x) if id_is::<TransferCurve>(x) => transfer_curve_widget(default_info),
-						Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
-						Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
-						Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
-						Some(x) if id_is::<Resource>(x) => resource_widget(default_info, Vec::new()).into(),
-						// ===============================
-						// MANUALLY IMPLEMENTED ENUM TYPES
-						// ===============================
-						Some(x) if id_is::<ReferencePoint>(x) => reference_point_widget(default_info, false).into(),
-						Some(x) if id_is::<BlendMode>(x) => blend_mode_widget(default_info),
-						// =========================
-						// AUTO-GENERATED ENUM TYPES
-						// =========================
-						Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<XY>(x) => enum_choice::<XY>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<TextDenomination>(x) => enum_choice::<TextDenomination>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
-						Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
-						Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
-						// =====
-						// OTHER
-						// =====
-						_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
-					}
-				}
+			match concrete_type.id {
+				// ===============
+				// PRIMITIVE TYPES
+				// ===============
+				Some(x) if id_is::<f64>(x) => match progression {
+					true => progression_widget(default_info, bounded(number_input, 0., f64::INFINITY)).into(),
+					false => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)),
+				},
+				Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
+				Some(x) if id_is::<String>(x) => match multiline {
+					true => text_area_widget(default_info).into(),
+					false => text_widget(default_info).into(),
+				},
+				Some(x) if id_is::<DVec2>(x) => vec2_widget(default_info, "X", "Y", unit.unwrap_or(""), None, false),
+				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
+				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+				// ============
+				// STRUCT TYPES
+				// ============
+				Some(x) if id_is::<Font>(x) => font_widget(default_info),
+				Some(x) if id_is::<TransferCurve>(x) => transfer_curve_widget(default_info),
+				Some(x) if id_is::<Footprint>(x) => footprint_widget(default_info, &mut extra_widgets),
+				Some(x) if id_is::<Box<VectorModification>>(x) => vector_modification_widget(default_info).into(),
+				Some(x) if id_is::<Image<Color>>(x) => image_data_widget(default_info).into(),
+				Some(x) if id_is::<Resource>(x) => resource_widget(default_info, Vec::new()).into(),
+				// ===============================
+				// MANUALLY IMPLEMENTED ENUM TYPES
+				// ===============================
+				Some(x) if id_is::<ReferencePoint>(x) => reference_point_widget(default_info, false).into(),
+				Some(x) if id_is::<BlendMode>(x) => blend_mode_widget(default_info),
+				// =========================
+				// AUTO-GENERATED ENUM TYPES
+				// =========================
+				Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RedGreenBlueAlpha>(x) => enum_choice::<RedGreenBlueAlpha>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<XY>(x) => enum_choice::<XY>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<TextDenomination>(x) => enum_choice::<TextDenomination>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
+				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
+				// =====
+				// OTHER
+				// =====
+				_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
 			}
 		}
-		Type::Item(element) => return property_from_type(node_id, index, element, number_options, unit, display_decimal_places, step, context),
+		Type::Item(element) => return property_from_type(node_id, index, element, options, context),
 		Type::List(element) => match element.as_ref() {
 			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
 			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
-		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
+		Type::Fn(_, out) => return property_from_type(node_id, index, out, options, context),
+		Type::Future(out) => return property_from_type(node_id, index, out, options, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -428,6 +416,57 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 		])
 	}
 	widgets
+}
+
+/// A math expression's typeset text field, with a warning icon in the assist area giving the error in its tooltip while the expression fails to parse.
+pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, accepts_reducers: bool) -> Vec<WidgetInstance> {
+	let Some(TaggedValue::String(expression)) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
+		return text_widget(parameter_widgets_info);
+	};
+	let error = math_expression_error(expression, accepts_reducers);
+	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, accepts_reducers);
+	let input = MathExpressionInput::new(expression.clone())
+		.tokens(tokens)
+		.tooltips(tooltips)
+		.accepts_reducers(accepts_reducers)
+		.errors(math_expression_error_ranges(expression, error.as_ref()))
+		.on_update(parameter_widgets_info.update_value(|x: &MathExpressionInput| TaggedValue::String(x.value.clone())))
+		.on_commit(commit_value)
+		.widget_instance();
+
+	// The icon holds the assist area, blank without an error so an edit making or fixing one leaves the field in place, and its 12px is
+	// padded to a checkbox's 16px so the field lines up with the rows around it
+	let icon = match &error {
+		Some(error) => IconLabel::new("Warning")
+			.tooltip_label("Invalid Math Expression")
+			.tooltip_description(math_expression_error_description(error)),
+		None => IconLabel::new("Empty12px"),
+	};
+	parameter_widgets_info.blank_assist = false;
+	let mut widgets = start_widgets(&parameter_widgets_info);
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		icon.widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		input,
+	]);
+	widgets
+}
+
+/// A parse error's messages as tooltip Markdown, leaving the places they point at for the field to underline.
+fn math_expression_error_description(error: &ParseError) -> String {
+	// The quoted code may be the expression's own text, so it goes in a span nothing inside can close, and the prose is escaped
+	let messages = error.messages().iter().map(|message| {
+		let parts = message.parts().iter().map(|part| match part {
+			MessagePart::Text(text) => escape_markdown(text),
+			MessagePart::Code(code) => markdown_code_span(code),
+		});
+		parts.collect::<String>()
+	});
+	messages.collect::<Vec<_>>().join("\n")
 }
 
 pub fn text_area_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
@@ -807,7 +846,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.widget_instance(),
 			]);
 		}
-		Some(&TaggedValue::F64(value)) => {
+		Some(&TaggedValue::Number(value)) => {
 			widgets.extend_from_slice(&[
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(value))
@@ -846,14 +885,14 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 			.filter(|x| !x.is_empty())
 			.map(graphene_std::core_types::misc::parse_f64)
 			.collect::<Option<Vec<_>>>()
-			.map(TaggedValue::F64Array)
+			.map(TaggedValue::Numbers)
 	};
 
 	let Some(input) = parameter_widgets_info.input() else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(TaggedValue::F64Array(values)) = &input.as_non_exposed_value() {
+	if let Some(TaggedValue::Numbers(values)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
@@ -1008,7 +1047,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(&TaggedValue::F64(x)) = input.as_non_exposed_value() {
+	if let Some(&TaggedValue::Number(x)) = input.as_non_exposed_value() {
 		let whole_part = x.trunc();
 		let fractional_part = x.fract();
 
@@ -1021,7 +1060,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.min(0.)
 				.max(0.99999)
 				.value(Some(fractional_part))
-				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::F64(whole_part + input.value.unwrap())))
+				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::Number(whole_part + input.value.unwrap())))
 				.on_commit(commit_value)
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -1033,7 +1072,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.min(0.)
 				.is_integer(true)
 				.value(Some(whole_part))
-				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap() + fractional_part)))
+				.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::Number(input.value.unwrap() + fractional_part)))
 				.on_commit(commit_value)
 				.widget_instance(),
 		])
@@ -1120,35 +1159,19 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 		return vec![];
 	};
 	match input.as_non_exposed_value() {
-		Some(&TaggedValue::F64(x)) => widgets.extend_from_slice(&[
+		Some(&TaggedValue::Number(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap())))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Number(x.value.unwrap())))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
-		Some(&TaggedValue::F32(x)) => widgets.extend_from_slice(&[
+		Some(&TaggedValue::Integer(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32)))
-				.on_commit(commit_value)
-				.widget_instance(),
-		]),
-		Some(&TaggedValue::U32(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32)))
-				.on_commit(commit_value)
-				.widget_instance(),
-		]),
-		Some(&TaggedValue::U64(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			number_props
-				.value(Some(x as f64))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64)))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Integer(x.value.unwrap().round() as i64)))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1157,7 +1180,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			number_props
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
-				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap())))
+				.on_update(parameter_widgets_info.update_value(move |x: &NumberInput| TaggedValue::Number(x.value.unwrap())))
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
@@ -1199,6 +1222,96 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 		]);
 	}
 	LayoutGroup::row(widgets).with_tooltip_description("Formula used for blending.")
+}
+
+/// A dropdown choosing among the types this input takes across the node's registered rows. The input is a type witness:
+/// its stored value's type, not the value itself, selects the row, which is how a node offers a choice of output type.
+pub fn type_choice_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(current) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
+		return LayoutGroup::row(widgets);
+	};
+
+	// Every element type the node's rows accept at this input
+	let mut offered: Vec<Type> = Vec::new();
+	let implementation = parameter_widgets_info
+		.network_interface
+		.implementation(&parameter_widgets_info.node_id, parameter_widgets_info.selection_network_path);
+	if let Some(DocumentNodeImplementation::ProtoNode(identifier)) = implementation
+		&& let Some(rows) = interpreted_executor::node_registry::NODE_REGISTRY.get(identifier)
+	{
+		for row in rows.keys() {
+			let Some(ty) = row.inputs.get(parameter_widgets_info.index) else { continue };
+			let element = wire_element(ty);
+			if !offered.contains(&element) {
+				offered.push(element);
+			}
+		}
+	}
+	let sections = type_choice_sections(&offered);
+
+	let entry_sections = sections
+		.iter()
+		.map(|section| {
+			section
+				.iter()
+				.map(|ty| {
+					let chosen = TaggedValue::from_type_or_none(ty);
+					MenuListEntry::new(ty.to_string())
+						.label(ty.to_string())
+						.on_update(parameter_widgets_info.update_value(move |_| chosen.clone()))
+						.on_commit(commit_value)
+				})
+				.collect()
+		})
+		.collect();
+	// The dropdown counts its selection across every section, since separators divide the entries without renumbering them
+	let current_element = wire_element(&current.ty());
+	let selected = sections.iter().flatten().position(|ty| *ty == current_element).map(|position| position as u32);
+
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		DropdownInput::new(entry_sections).selected_index(selected).widget_instance(),
+	]);
+	LayoutGroup::row(widgets)
+}
+
+/// The element a wire type carries, peeling the `Item` or `List` rank a registry row or stored value wraps it in.
+fn wire_element(ty: &Type) -> Type {
+	match ty.nested_type() {
+		Type::Item(element) | Type::List(element) => (**element).clone(),
+		other => other.clone(),
+	}
+}
+
+/// The canonical order and grouping of the graph's types, which a type choice renders as dropdown sections divided by separators.
+/// Enums stay unlisted on purpose, joining any other unnamed type in a trailing alphabetical section.
+fn type_choice_sections(offered: &[Type]) -> Vec<Vec<Type>> {
+	let vocabulary = [
+		vec![concrete!(bool), concrete!(i64), concrete!(f64)],
+		vec![concrete!(DVec2)],
+		vec![concrete!(DAffine2)],
+		vec![concrete!(Artboard)],
+		vec![
+			concrete!(Graphic),
+			concrete!(Vector),
+			concrete!(Raster<CPU>),
+			concrete!(Raster<GPU>),
+			concrete!(Color),
+			concrete!(Gradient),
+			concrete!(String),
+		],
+	];
+
+	let mut sections: Vec<Vec<Type>> = vocabulary.iter().map(|section| section.iter().filter(|ty| offered.contains(ty)).cloned().collect()).collect();
+
+	let mut unlisted: Vec<Type> = offered.iter().filter(|ty| !vocabulary.iter().any(|section| section.contains(ty))).cloned().collect();
+	unlisted.sort_by_key(|ty| ty.to_string());
+	sections.push(unlisted);
+
+	sections.retain(|section| !section.is_empty());
+	sections
 }
 
 pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: ColorInput) -> LayoutGroup {
@@ -1719,7 +1832,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 				let exposed = input.is_some_and(|input| input.is_exposed());
 				let value = input
 					.and_then(|input| input.as_value())
-					.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None })
+					.and_then(|tagged| if let TaggedValue::Number(value) = tagged { Some(*value) } else { None })
 					.unwrap_or(0.);
 				(exposed, value)
 			})
@@ -1842,7 +1955,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 					NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index,
-						value: TaggedValue::F32(scale.value(scale_position) as f32).into(),
+						value: TaggedValue::Number(scale.value(scale_position)).into(),
 					}
 					.into()
 				}
@@ -1878,11 +1991,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 					.value(Some(current))
 					.min_width(60)
 					.max_width(60)
-					.on_update(update_value_at_index(
-						move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
-						node_id,
-						input_index,
-					))
+					.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 					.on_commit(commit_value)
 					.widget_instance(),
 			);
@@ -1906,8 +2015,8 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		Some(TaggedValue::HueSaturationRange(range)) => *range,
 		_ => HueSaturationRange::Master,
 	};
-	let f32_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
-		Some(TaggedValue::F32(value)) => *value,
+	let slider_value = |parameter: &ParameterRef| match document_node.inputs.get(parameter.input_index).and_then(|input| input.as_value()) {
+		Some(TaggedValue::Number(value)) => *value as f32,
 		_ => 0.,
 	};
 
@@ -1975,9 +2084,9 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 		Gradient::from((0..=stops).map(stop).collect::<Vec<_>>())
 	};
 	let saturation_track = if colorize_value {
-		toward_hue(f32_value(&hue) / 360.)
+		toward_hue(slider_value(&hue) / 360.)
 	} else if let Some([_, range_start, range_end, _]) = &range_values {
-		let (start, end) = (f32_value(range_start), f32_value(range_end));
+		let (start, end) = (slider_value(range_start), slider_value(range_end));
 		let center = start + (end - start).rem_euclid(360.) / 2.;
 		toward_hue(center / 360.)
 	} else {
@@ -2121,8 +2230,7 @@ fn slider_row(
 	};
 	// An exposed input shows only its label and source
 	let (current, tagged_value): (f64, fn(f64) -> TaggedValue) = match input.as_non_exposed_value() {
-		Some(&TaggedValue::F64(value)) => (value, TaggedValue::F64),
-		Some(&TaggedValue::F32(value)) => (value as f64, |value| TaggedValue::F32(value as f32)),
+		Some(&TaggedValue::Number(value)) => (value, TaggedValue::Number),
 		_ => return widgets,
 	};
 	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
@@ -2184,7 +2292,7 @@ fn gradient_slider_row(
 		.ok()
 		.and_then(|document_node| document_node.inputs.get(input_index))
 		.and_then(|input| input.as_non_exposed_value())
-		.and_then(|tagged| if let TaggedValue::F32(value) = tagged { Some(*value as f64) } else { None });
+		.and_then(|tagged| if let TaggedValue::Number(value) = tagged { Some(*value) } else { None });
 
 	// Only add the slider and number widgets when the input is not exposed
 	if let Some(current) = current {
@@ -2193,7 +2301,7 @@ fn gradient_slider_row(
 			max: value_max,
 			default: Some(default_value),
 		};
-		let value_at = move |position| TaggedValue::F32(slider.value(position) as f32);
+		let value_at = move |position| TaggedValue::Number(slider.value(position));
 
 		row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		row.push(
@@ -2216,11 +2324,7 @@ fn gradient_slider_row(
 				.min_width(60)
 				.max_width(60)
 				.display_decimal_places(0)
-				.on_update(update_value_at_index(
-					move |widget: &NumberInput| TaggedValue::F32(widget.value.unwrap_or(0.) as f32),
-					node_id,
-					input_index,
-				))
+				.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		);
@@ -2642,7 +2746,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 	let (no_decimals, decimal_sep_value, use_thousands, thousands_sep_value) = match get_document_node(node_id, context) {
 		Ok(document_node) => {
 			let decimal_places = match document_node.input(DecimalPlacesInput).and_then(|input| input.as_value()) {
-				Some(&TaggedValue::U32(x)) => x,
+				Some(&TaggedValue::Integer(x)) => x,
 				_ => 2,
 			};
 			let decimal_sep = match document_node.input(DecimalSeparatorInput).and_then(|input| input.as_non_exposed_value()) {
@@ -2966,10 +3070,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 					return Vec::new();
 				};
 
-				let mut number_options = NumberOptions::default();
-				let mut display_decimal_places = None;
-				let mut step = None;
-				let mut unit_suffix = None;
+				let mut options = ParameterOptions::default();
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						// Clone to end the `network_interface` borrow held via `implementation`, freeing the mutable borrow `input_type` needs below
@@ -2982,16 +3083,18 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							.get(&proto_node_identifier)
 							.and_then(|metadata| metadata.fields.get(input_index))
 						{
-							number_options = NumberOptions {
+							options = ParameterOptions {
 								soft_min: field.number_soft_min,
 								soft_max: field.number_soft_max,
 								hard_min: field.number_hard_min,
 								hard_max: field.number_hard_max,
 								slider: field.number_mode_range,
+								multiline: field.multiline,
+								progression: field.progression,
+								unit: field.unit,
+								display_decimal_places: field.number_display_decimal_places,
+								step: field.number_step,
 							};
-							display_decimal_places = field.number_display_decimal_places;
-							unit_suffix = field.unit;
-							step = field.number_step;
 							default_type = field.default_type.clone();
 						}
 
@@ -3019,7 +3122,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						.unwrap_or(concrete!(())),
 				};
 
-				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
+				property_from_type(node_id, input_index, &input_type, options, context).unwrap_or_else(|value| value)
 			});
 
 			layout.extend(row);
@@ -3404,63 +3507,6 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	vec![LayoutGroup::row(distance), join, LayoutGroup::row(miter_limit)]
 }
 
-pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	use graphene_std::math_nodes::math::*;
-
-	let expression = (|| {
-		let mut widgets = start_widgets(&ParameterWidgetsInfo::new(node_id, ExpressionInput, true, context));
-
-		let document_node = match get_document_node(node_id, context) {
-			Ok(document_node) => document_node,
-			Err(err) => {
-				log::error!("Could not get document node in offset_path_properties: {err}");
-				return Vec::new();
-			}
-		};
-		let Some(input) = document_node.input(ExpressionInput) else {
-			log::warn!("A widget failed to be built because its node's input index is invalid.");
-			return vec![];
-		};
-		if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				TextInput::new(x.clone())
-					.centered(true)
-					.on_update(update_value(
-						|x: &TextInput| {
-							TaggedValue::String({
-								let mut expression = x.value.trim().to_string();
-
-								if ["+", "-", "*", "/", "^"].iter().any(|&infix| infix == expression) {
-									expression = format!("A {expression} B");
-								} else if expression == "^" {
-									expression = String::from("A^B");
-								} else if expression == "%" || expression == "mod" {
-									expression = String::from("mod(a, b)");
-								}
-
-								expression
-							})
-						},
-						node_id,
-						ExpressionInput,
-					))
-					.on_commit(commit_value)
-					.widget_instance(),
-			])
-		}
-		widgets
-	})();
-	let operand_b = number_widget(ParameterWidgetsInfo::new(node_id, OperandBInput, true, context), NumberInput::default());
-	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_instance()];
-
-	vec![
-		LayoutGroup::row(expression).with_tooltip_description(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"."#),
-		LayoutGroup::row(operand_b).with_tooltip_description(r#"The value of "B" when calculating the expression."#),
-		LayoutGroup::row(operand_a_hint).with_tooltip_description(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected."#),
-	]
-}
-
 pub struct ParameterWidgetsInfo<'a> {
 	document_id: DocumentId,
 	network_interface: &'a NodeNetworkInterface,
@@ -3698,4 +3744,69 @@ pub mod choice {
 	}
 
 	pub struct ForValue<W>(PhantomData<W>);
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::{item, list};
+
+	#[test]
+	fn wire_element_reads_every_spelling_down_to_the_element() {
+		// A stored value's ranked type, a registry row's fn type, and a mapped row's list all carry the same element
+		let row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(item!(f64)))));
+		let mapped_row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(list!(f64)))));
+		for ty in [TaggedValue::Number(0.).ty(), item!(f64), list!(f64), row, mapped_row] {
+			assert_eq!(wire_element(&ty), concrete!(f64), "{ty:?} should read down to its element");
+		}
+
+		// The element of a stored value and of the row that accepts it agree, which is what selects the dropdown entry
+		assert_eq!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(i64)));
+		assert_ne!(wire_element(&TaggedValue::Integer(0).ty()), wire_element(&item!(f64)));
+	}
+
+	fn description(expression: &str) -> Option<String> {
+		math_expression_error(expression, false).map(|error| math_expression_error_description(&error))
+	}
+
+	fn underlined(expression: &str) -> Vec<(u32, u32)> {
+		let error = math_expression_error(expression, false);
+		math_expression_error_ranges(expression, error.as_ref()).into_iter().map(|range| (range.start, range.end)).collect()
+	}
+
+	#[test]
+	fn math_expressions_are_flagged_only_when_they_fail_to_parse() {
+		for (expression, accepts_reducers) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true)] {
+			assert!(math_expression_error(expression, accepts_reducers).is_none(), "`{expression}`");
+		}
+
+		assert!(math_expression_error("2 +", false).is_some());
+		assert!(math_expression_error("+", false).is_some(), "a lone reducer is an error where the node applies none");
+		assert_eq!(description("sin(I)").as_deref(), Some("A matrix stands where a value is needed"));
+	}
+
+	#[test]
+	fn math_expression_errors_quote_the_expression_safely() {
+		// The expression's own text sits in code it can't close, while the message's own code keeps its formatting
+		assert_eq!(description("`abc").as_deref(), Some("`` `abc `` is not recognized"));
+		assert_eq!(description("7 % 3").as_deref(), Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`"));
+
+		// A quoted token like `*` is a code span, so it can't pair with another into italics
+		let error = description("2 * * 3").unwrap();
+		assert!(error.starts_with("Found `*`, expected ") && !error.split('`').step_by(2).any(|text| text.contains('*')), "{error}");
+	}
+
+	#[test]
+	fn math_expression_errors_underline_the_place_they_point_at() {
+		assert_eq!(underlined("`abc"), [(0, 4)]);
+		assert_eq!(underlined("7 % 3"), [(2, 3)]);
+		assert_eq!(underlined("πx @ 2"), [(3, 4)], "offsets count UTF-16 code units");
+		assert_eq!(underlined("𝑥 @ 2"), [(3, 4)], "a character beyond the Basic Multilingual Plane is two units");
+		assert!(underlined("sin(I)").is_empty(), "a sort error has no place to point at unless it blames a name");
+		assert_eq!(underlined("i - r where r = -63..64"), [(12, 13)]);
+
+		// Where something is missing at the end, the character before it is underlined, past any whitespace
+		assert_eq!(underlined("(1"), [(1, 2)]);
+		assert_eq!(underlined("2 +  "), [(2, 3)]);
+	}
 }

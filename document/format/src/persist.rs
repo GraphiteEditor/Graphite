@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HotOp, Rev, TimeStamp};
+use document_graph_storage::{HotOp, Rev, TimeStamp, Value};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -74,6 +74,29 @@ impl<L: Layout> Gdd<L> {
 			byte_store.store(bytes);
 		}
 		Ok(conversion.declarations)
+	}
+
+	/// Stage ops the caller built from what the editor recorded, rather than deriving them by converting
+	/// the whole document and diffing it against the working registry.
+	///
+	/// Otherwise identical to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot): each op becomes a
+	/// hot frame, and the proto-node declaration bytes go to the byte store.
+	#[cfg(feature = "conversion")]
+	pub fn stage_constructed_ops(
+		&mut self,
+		ops: Vec<document_graph_storage::RegistryDelta>,
+		declaration_bytes: &document_graph_storage::from_runtime::DeclarationBytes,
+		byte_store: &dyn ResourceStorage,
+	) -> Result<(), Error> {
+		let hot_ops = self.session.stage_computed_ops(ops)?;
+
+		for hot_op in &hot_ops {
+			self.append_hot_frame(hot_op)?;
+		}
+		for bytes in declaration_bytes.values() {
+			byte_store.store(bytes);
+		}
+		Ok(())
 	}
 
 	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last
@@ -150,7 +173,7 @@ impl<L: Layout> Gdd<L> {
 	/// Unlike the per-interaction marker written inline at retire, this targets an already-written delta, so
 	/// the whole history file is rewritten in topological order. O(history) — fine for occasional user
 	/// labeling, not for per-interaction marking (which uses the inline path). No-op if `rev` is unknown.
-	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> Result<(), Error> {
+	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
 		}
@@ -171,6 +194,7 @@ impl<L: Layout> Gdd<L> {
 	fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			peer_id: self.session.peer(),
+			user_id: self.session.user(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
@@ -193,7 +217,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Replace the per-peer view settings and persist them to `session.json`. Called by the editor when
 	/// the viewport or a document-level toggle changes; never enters the registry, history, or CRDT.
-	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, serde_json::Value>) -> Result<(), Error> {
+	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>) -> Result<(), Error> {
 		self.view_settings = view_settings;
 		self.persist_session_state()
 	}
@@ -209,7 +233,7 @@ impl<L: Layout> Gdd<L> {
 	/// enters the registry, history, or CRDT.
 	pub fn set_network_view_settings(
 		&mut self,
-		network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+		network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 	) -> Result<(), Error> {
 		self.network_view_settings = network_view_settings;
 		self.persist_session_state()

@@ -57,6 +57,8 @@ pub struct NodeGraphMessageHandler {
 	widgets: [LayoutGroup; 2],
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
+	/// Track if nodes were duplicated during the current drag via Alt-drag.
+	pub duplicated_in_drag: bool,
 	/// Used to prevent entering a nested network if the node is dragged after double clicking
 	node_has_moved_in_drag: bool,
 	/// If dragging the selected nodes, this stores the starting position both in viewport and node graph coordinates,
@@ -81,7 +83,7 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
-	/// State for the context menu popups.
+	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
 	pub deselect_on_pointer_up: Option<usize>,
@@ -410,19 +412,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.start_previewing_without_restore(selection_network_path);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
-				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
-
-				let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
-
-				// Copy the selected nodes
-				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
-
-				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
 				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
-				responses.add(NodeGraphMessage::SelectedNodesSet {
-					nodes: new_ids.values().cloned().collect(),
-				});
+				Self::duplicate_selected_nodes(network_interface, selection_network_path, responses);
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
 				// Do not enter the nested network if the node was dragged
@@ -793,12 +784,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
 				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
 				let network_metadata = network_interface.network_metadata(selection_network_path).unwrap();
-				// Create the add node popup on right click, then exit
+				// Create the add node menu on right click, then exit
 				if right_click {
 					// Abort dragging a node
 					if self.drag_start.is_some() {
 						self.drag_start = None;
 						self.select_if_not_dragged = None;
+						self.duplicated_in_drag = false;
 						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
@@ -1044,6 +1036,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							.collect::<Vec<_>>();
 						self.begin_dragging = true;
 						self.node_has_moved_in_drag = false;
+						self.duplicated_in_drag = false;
 						self.update_node_graph_hints(responses);
 					}
 
@@ -1171,13 +1164,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.begin_dragging {
 						self.begin_dragging = false;
 						if ipp.keyboard.get(Key::Alt as usize) {
-							responses.add(NodeGraphMessage::DuplicateSelectedNodes);
+							// Duplicate nodes inline within the existing PointerDown transaction.
+							// This means a completed Alt-drag is one undo step, and aborting (right-click / Escape)
+							// rolls back both the duplication and the move with a single plain AbortTransaction.
+							Self::duplicate_selected_nodes(network_interface, selection_network_path, responses);
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
 								rubber_band: false,
 							});
 							self.preview_on_mouse_up = None;
+							self.duplicated_in_drag = true;
 						}
 					}
 
@@ -1483,6 +1480,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				self.drag_start = None;
 				self.begin_dragging = false;
+				self.duplicated_in_drag = false;
 				self.box_selection_start = None;
 
 				self.wire_in_progress_from_connector = None;
@@ -1529,15 +1527,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Collect the distance to move the shaken nodes after the undo
 				let graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
 
-				// Keep the incremental rounding baseline in sync with the total shift reapplied below
-				drag_start.round_x = graph_delta.x;
-				drag_start.round_y = graph_delta.y;
+				if !self.duplicated_in_drag {
+					// Keep the incremental rounding baseline in sync with the total shift reapplied below
+					drag_start.round_x = graph_delta.x;
+					drag_start.round_y = graph_delta.y;
 
-				// Undo to the state of the graph before shaking
-				responses.add(DocumentMessage::AbortTransaction);
+					// Undo to the state of the graph before shaking (skip for Alt-drag to avoid removing the duplicates)
+					responses.add(DocumentMessage::AbortTransaction);
 
-				// Add a history step to abort to the state before shaking if right clicked
-				responses.add(DocumentMessage::StartTransaction);
+					// Add a history step to abort to the state before shaking if right clicked
+					responses.add(DocumentMessage::StartTransaction);
+				}
 
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 					log::error!("Could not get selected nodes in ShakeNode");
@@ -1622,7 +1622,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 				}
-				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: false });
+				if !self.duplicated_in_drag {
+					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: false });
+				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -2260,6 +2262,20 @@ impl NodeGraphMessageHandler {
 		common
 	}
 
+	fn duplicate_selected_nodes(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
+
+		let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
+
+		let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
+
+		let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+		responses.add(NodeGraphMessage::SelectedNodesSet {
+			nodes: new_ids.values().cloned().collect(),
+		});
+	}
+
 	/// Send the cached layout to the frontend for the control bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
@@ -2704,7 +2720,7 @@ impl NodeGraphMessageHandler {
 		added_wires
 	}
 
-	fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
+	pub(crate) fn collect_nodes(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNode> {
 		let Some(network) = network_interface.nested_network(breadcrumb_network_path) else {
 			log::error!("Could not get nested network when collecting nodes");
 			return Vec::new();
@@ -2739,15 +2755,14 @@ impl NodeGraphMessageHandler {
 				(false, false)
 			};
 
-			let is_export = network_interface
-				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
-				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
-
 			let Some(position) = network_interface.position(&node_id, breadcrumb_network_path) else {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
+			let is_export = network_interface
+				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
+				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
+			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
 			let previewed = is_export && !is_root_node;
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
@@ -2930,6 +2945,7 @@ impl Default for NodeGraphMessageHandler {
 			widgets: [LayoutGroup::row(Vec::new()), LayoutGroup::row(Vec::new())],
 			drag_start: None,
 			begin_dragging: false,
+			duplicated_in_drag: false,
 			node_has_moved_in_drag: false,
 			shift_without_push: false,
 			box_selection_start: None,
@@ -2961,6 +2977,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
 			&& self.begin_dragging == other.begin_dragging
+			&& self.duplicated_in_drag == other.duplicated_in_drag
 			&& self.node_has_moved_in_drag == other.node_has_moved_in_drag
 			&& self.box_selection_start == other.box_selection_start
 			&& self.initial_disconnecting == other.initial_disconnecting

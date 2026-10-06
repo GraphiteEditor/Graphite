@@ -81,7 +81,7 @@ impl TypeSource {
 		}
 	}
 
-	/// Used when searching for nodes in the add Node popup.
+	/// Used when searching for nodes in the add node menu.
 	pub fn add_node_string(self) -> Option<String> {
 		self.compiled_nested_type().map(|ty| format!("type:{ty}"))
 	}

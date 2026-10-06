@@ -118,6 +118,12 @@ impl NodeGraphExecutor {
 		(node_runtime, node_executor)
 	}
 
+	/// Allows the test runner to see if any more executions have been queued.
+	#[cfg(test)]
+	pub fn current_execution_id(&self) -> u64 {
+		self.current_execution_id
+	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;
@@ -949,10 +955,8 @@ mod test {
 				Some(x.output.clone())
 			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Footprint, Output>>() {
 				Some(x.output.clone())
-			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Output>>() {
-				Some(x.output.clone())
 			} else {
-				None
+				dynamic.downcast_ref::<IORecord<Context, Output>>().map(|x| x.output.clone())
 			}
 		}
 

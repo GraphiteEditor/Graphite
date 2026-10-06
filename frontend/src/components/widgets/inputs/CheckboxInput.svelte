@@ -61,6 +61,7 @@
 		class:checked
 		class:mixed
 		for={`checkbox-input-${id}`}
+		data-checkbox-label={id}
 		on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
