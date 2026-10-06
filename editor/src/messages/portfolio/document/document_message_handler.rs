@@ -762,17 +762,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::GridOptions { options } => {
 				self.snapping_state.grid = options;
-				self.snapping_state.grid_snapping = true;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::GridOverlays { context: mut overlay_context } => {
-				if self.snapping_state.grid_snapping {
+				if self.snapping_state.grid_visible {
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
 			DocumentMessage::GridVisibility { visible } => {
-				self.snapping_state.grid_snapping = visible;
+				self.snapping_state.grid_visible = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::LayersPanelHoverOverlays { context: mut overlay_context } => {
@@ -1713,7 +1712,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
 			}
 			DocumentMessage::ToggleGridVisibility => {
-				self.snapping_state.grid_snapping = !self.snapping_state.grid_snapping;
+				self.snapping_state.grid_visible = !self.snapping_state.grid_visible;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
@@ -3697,14 +3696,14 @@ impl DocumentMessageHandler {
 				))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
-			CheckboxInput::new(self.snapping_state.grid_snapping)
+			CheckboxInput::new(self.snapping_state.grid_visible)
 				.icon("Grid")
 				.tooltip_label("Grid")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleGridVisibility))
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_instance(),
 			PopoverButton::new()
-				.popover_layout(Layout(overlay_options(&self.snapping_state.grid)))
+				.popover_layout(Layout(overlay_options(&self.snapping_state)))
 				.popover_min_width(Some(320))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -4943,6 +4942,106 @@ mod document_message_handler_tests {
 		// The first line is at 170, so the tenth is at 260
 		nudge(&mut editor, DVec2::new(BIG_NUDGE_AMOUNT, 0.)).await;
 		assert_bounds(&editor, rectangle, [DVec2::new(200., 32.), DVec2::new(260., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn a_big_nudge_lands_on_the_next_major_grid_line_while_a_plain_nudge_lands_on_the_next_minor_one() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = draw_rectangle_over_grid(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		// Major lines 40 apart in four subdivisions put minor lines 10 apart
+		let state = &mut editor.active_document_mut().snapping_state;
+		state.grid.grid_type = GridType::Rectangular { spacing: DVec2::splat(40.) };
+		state.grid.subdivisions = 4;
+
+		// The leading edge at 163 comes to the minor line at 170
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(110., 32.), DVec2::new(170., 76.)]);
+
+		// Then to the major line at 200, and from there on to the one at 240
+		nudge(&mut editor, DVec2::new(BIG_NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(140., 32.), DVec2::new(200., 76.)]);
+		nudge(&mut editor, DVec2::new(BIG_NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(180., 32.), DVec2::new(240., 76.)]);
+
+		// Going back, the leading edge at 180 comes to the major line at 160
+		nudge(&mut editor, DVec2::new(-BIG_NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(160., 32.), DVec2::new(220., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn the_grid_toggle_only_shows_or_hides_the_grid_while_snapping_to_it_follows_its_own_option() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = draw_rectangle_over_grid(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+		let shown_and_snapping = |editor: &EditorTestUtils| {
+			let state = &editor.active_document().snapping_state;
+			(state.grid_visible, state.grid_snapping)
+		};
+		assert_eq!(shown_and_snapping(&editor), (false, true));
+
+		editor.handle_message(DocumentMessage::ToggleGridVisibility).await;
+		assert_eq!(shown_and_snapping(&editor), (true, true));
+		editor.handle_message(DocumentMessage::GridVisibility { visible: false }).await;
+		assert_eq!(shown_and_snapping(&editor), (false, true));
+
+		// The hidden grid is still snapped to
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(110., 32.), DVec2::new(170., 76.)]);
+
+		// The shown grid is not snapped to once snapping to it is turned off
+		editor.handle_message(DocumentMessage::ToggleGridVisibility).await;
+		editor
+			.handle_message(DocumentMessage::SetSnapping {
+				closure: Some(|state| &mut state.grid_snapping),
+				snapping_state: false,
+			})
+			.await;
+		assert_eq!(shown_and_snapping(&editor), (true, false));
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(111., 32.), DVec2::new(171., 76.)]);
+
+		// Changing the grid's options leaves it hidden and snapping to it off
+		editor.handle_message(DocumentMessage::GridVisibility { visible: false }).await;
+		let options = editor.active_document().snapping_state.grid.clone();
+		editor.handle_message(DocumentMessage::GridOptions { options }).await;
+		assert_eq!(shown_and_snapping(&editor), (false, false));
+	}
+
+	#[tokio::test]
+	async fn a_grid_origin_following_the_artboard_is_offset_from_the_top_left_corner_of_the_active_one() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let offset = DVec2::new(3., 5.);
+		let effective_origin = |editor: &EditorTestUtils| editor.active_document().snapping_state.grid.effective_origin(editor.active_document());
+
+		// With no artboard to follow, the origin is where it says
+		let grid = &mut editor.active_document_mut().snapping_state.grid;
+		(grid.origin, grid.origin_follows_artboard) = (offset, true);
+		assert!(effective_origin(&editor).abs_diff_eq(offset, 1e-9));
+
+		// A newly drawn artboard is selected, which makes it the one followed
+		editor.drag_tool(ToolType::Artboard, 100., 50., 300., 250., ModifierKeys::empty()).await;
+		assert!(effective_origin(&editor).abs_diff_eq(DVec2::new(103., 55.), 1e-9));
+		editor.drag_tool(ToolType::Artboard, 400., 50., 600., 250., ModifierKeys::empty()).await;
+		assert!(effective_origin(&editor).abs_diff_eq(DVec2::new(403., 55.), 1e-9));
+
+		// A rectangle selected in the first artboard makes that artboard the one followed
+		editor.draw_rect(115., 80., 145., 120.).await;
+		let rectangle = editor.get_selected_layer().await.expect("the drawn rectangle should be selected");
+		assert!(effective_origin(&editor).abs_diff_eq(DVec2::new(103., 55.), 1e-9));
+
+		// With lines 10 apart from there, a nudge brings its leading edge from 145 to 153
+		let state = &mut editor.active_document_mut().snapping_state;
+		state.grid_snapping = true;
+		state.grid.grid_type = GridType::Rectangular { spacing: DVec2::splat(10.) };
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(123., 80.), DVec2::new(153., 120.)]);
+
+		// Turned off, the origin is a document position again
+		editor.active_document_mut().snapping_state.grid.origin_follows_artboard = false;
+		assert!(effective_origin(&editor).abs_diff_eq(offset, 1e-9));
 	}
 
 	#[tokio::test]

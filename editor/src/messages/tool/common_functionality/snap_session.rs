@@ -643,7 +643,7 @@ impl SnapSession {
 	}
 }
 
-/// How far a nudge moves something in document space. With grid snapping on, the position furthest along the nudge lands on the next grid line ahead, or the tenth for a big nudge.
+/// How far a nudge moves something in document space. With grid snapping on, the position furthest along the nudge lands on the next grid line ahead.
 /// A diagonal nudge does so along each of its two directions.
 pub fn nudge_translation(document: &DocumentMessageHandler, nudge: DVec2, positions: impl IntoIterator<Item = DVec2>) -> DVec2 {
 	let positions: Vec<DVec2> = positions.into_iter().collect();
@@ -657,7 +657,18 @@ pub fn nudge_translation(document: &DocumentMessageHandler, nudge: DVec2, positi
 fn nudge_along(document: &DocumentMessageHandler, nudge: DVec2, positions: &[DVec2]) -> DVec2 {
 	let translation = DVec2::from_angle(-document.document_ptz.tilt()).rotate(nudge);
 
-	let grid = if document.snapping_state.snapping_enabled { settings::grid(document) } else { None };
+	if !document.snapping_state.snapping_enabled {
+		return translation;
+	}
+
+	// A big nudge lands on the next major line, or ten lines on when the major lines are the only ones drawn
+	let big_nudge = nudge.abs().max_element() > NUDGE_AMOUNT;
+	let has_minor_lines = document.snapping_state.grid.drawn_levels(&document.document_ptz).is_some_and(|levels| levels.minor.is_some());
+	let (grid, lines_ahead) = match (big_nudge, has_minor_lines) {
+		(true, true) => (settings::major_grid(document), 1),
+		(true, false) => (settings::grid(document), (BIG_NUDGE_AMOUNT / NUDGE_AMOUNT).round() as usize),
+		(false, _) => (settings::grid(document), 1),
+	};
 	let (Some(grid), Some(direction)) = (grid, translation.try_normalize()) else { return translation };
 	let leading = positions
 		.iter()
@@ -666,14 +677,7 @@ fn nudge_along(document: &DocumentMessageHandler, nudge: DVec2, positions: &[DVe
 		.max_by(|a, b| a.dot(direction).total_cmp(&b.dot(direction)));
 	let Some(leading) = leading else { return translation };
 
-	// Each line is found ahead of the one reached before it
-	let lines_ahead = if nudge.abs().max_element() > NUDGE_AMOUNT {
-		(BIG_NUDGE_AMOUNT / NUDGE_AMOUNT).round() as usize
-	} else {
-		1
-	};
 	let distance = (0..lines_ahead).try_fold(0., |distance, _| Some(distance + grid.distance_to_next_line(leading + direction * distance, direction)?));
-
 	distance.map_or(translation, |distance| direction * distance)
 }
 

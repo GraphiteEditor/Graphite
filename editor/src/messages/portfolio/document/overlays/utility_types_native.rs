@@ -304,8 +304,9 @@ impl OverlayContext {
 		self.internal().square(position, size, color_fill, color_stroke);
 	}
 
-	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		self.internal().pixel(position, color);
+	/// Fills a square dot about `size` pixels across at each position, all in one fill, with their edges on whole physical pixels so they stay crisp.
+	pub fn dots(&mut self, positions: &[DVec2], size: f64, color: Option<&str>) {
+		self.internal().dots(positions, size, color);
 	}
 
 	pub fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -689,17 +690,18 @@ impl OverlayContextInternal {
 		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &rect);
 	}
 
-	fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = 1.;
+	fn dots(&mut self, positions: &[DVec2], size: f64, color: Option<&str>) {
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
-		let position = self.snap_to_physical_pixel_center(position);
-		let corner = position - DVec2::splat(size) / 2.;
+		let mut path = BezPath::new();
+		for &position in positions {
+			let (corner, size) = self.physical_pixel_square(position, size);
+			let rect = kurbo::Rect::new(corner.x, corner.y, corner.x + size, corner.y + size);
+			path.extend(kurbo::Shape::path_elements(&rect, 0.));
+		}
 
 		let transform = self.get_transform();
-		let rect = kurbo::Rect::new(corner.x, corner.y, corner.x + size, corner.y + size);
-
-		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &rect);
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &path);
 	}
 
 	fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -1202,5 +1204,15 @@ impl OverlayContextInternal {
 			return p.round() - DVec2::splat(0.5);
 		}
 		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)
+	}
+
+	/// The corner and side of a square about `size` pixels across centered near `position`, with its edges on whole physical pixels.
+	fn physical_pixel_square(&self, position: DVec2, size: f64) -> (DVec2, f64) {
+		let scale = self.viewport.scale();
+		let scale = if scale.is_finite() && scale > 0. { scale } else { 1. };
+
+		let physical_size = (size * scale).round().max(1.);
+		let physical_corner = (position * scale - physical_size / 2.).round();
+		(physical_corner / scale, physical_size / scale)
 	}
 }
