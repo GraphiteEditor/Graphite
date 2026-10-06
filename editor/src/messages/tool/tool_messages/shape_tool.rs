@@ -1362,7 +1362,12 @@ impl Fsm for ShapeToolFsmState {
 
 				self
 			}
-			(ShapeToolFsmState::Ready(_), ShapeToolMessage::PointerOutsideViewport { .. }) => self,
+			(ShapeToolFsmState::Ready(_), ShapeToolMessage::PointerOutsideViewport { modifier }) => {
+				let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
+				tool_data.auto_panning.stop(&messages, responses);
+
+				self
+			}
 			(_, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
