@@ -26,6 +26,7 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
+use crate::messages::tool::common_functionality::snap_session::nudge_translation;
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use crate::messages::tool::tool_messages::select_tool::{SelectToolPointerKeys, draw_layer_outline};
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -3360,10 +3361,19 @@ impl DocumentMessageHandler {
 
 		responses.add(DocumentMessage::AddTransaction);
 
-		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+		// The selection's combined bounds lead a nudge onto the grid
+		let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
+		let bounds = layers
+			.iter()
+			.filter_map(|&layer| self.metadata().bounding_box_document(layer))
+			.filter(|[min, max]| min.is_finite() && max.is_finite())
+			.reduce(Quad::combine_bounds);
+		let corners = bounds.into_iter().flat_map(|bounds| Quad::from_box(bounds).0);
+
+		let transform = DAffine2::from_translation(nudge_translation(self, DVec2::new(delta_x, delta_y), corners));
 		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
-		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+		for layer in layers {
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
 				transform,
@@ -4443,6 +4453,8 @@ fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: 
 #[cfg(test)]
 mod document_message_handler_tests {
 	use super::*;
+	use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
+	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
 
 	#[test]
@@ -4854,5 +4866,109 @@ mod document_message_handler_tests {
 		let background = root_layers[1].to_node();
 		assert_eq!(network_interface.display_name(&background, &[]), "Background");
 		assert!(network_interface.is_locked(&background, &[]), "The background should be locked");
+	}
+
+	/// Draws a rectangle between two positions, which are the same in the viewport and the document, then turns on snapping to grid lines 10 apart.
+	async fn draw_rectangle_over_grid(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) -> LayerNodeIdentifier {
+		editor.draw_rect(from.x, from.y, to.x, to.y).await;
+		let rectangle = editor.get_selected_layer().await.expect("the drawn rectangle should be selected");
+		assert_bounds(editor, rectangle, [from, to]);
+
+		let state = &mut editor.active_document_mut().snapping_state;
+		state.grid_snapping = true;
+		state.grid.grid_type = GridType::Rectangular { spacing: DVec2::splat(10.) };
+
+		rectangle
+	}
+
+	async fn nudge(editor: &mut EditorTestUtils, delta: DVec2) {
+		editor
+			.handle_message(DocumentMessage::NudgeSelectedLayers {
+				delta_x: delta.x,
+				delta_y: delta.y,
+				resize: Key::Alt,
+				resize_opposite: Key::Control,
+			})
+			.await;
+	}
+
+	fn assert_bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier, expected: [DVec2; 2]) {
+		let [min, max] = editor.active_document().metadata().bounding_box_document(layer).expect("the layer should have a bounding box");
+		let [expected_min, expected_max] = expected;
+		assert!(
+			min.distance(expected_min) < 1e-6 && max.distance(expected_max) < 1e-6,
+			"the layer spans {min} to {max} rather than {expected_min} to {expected_max}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_nudge_with_grid_snapping_on_brings_the_leading_edge_to_the_next_grid_line() {
+		let (from, to) = (DVec2::new(103., 32.), DVec2::new(163., 76.));
+		let cases = [
+			(DVec2::X, DVec2::new(7., 0.)),
+			(DVec2::NEG_X, DVec2::new(-3., 0.)),
+			(DVec2::Y, DVec2::new(0., 4.)),
+			(DVec2::NEG_Y, DVec2::new(0., -2.)),
+		];
+
+		for (direction, moved) in cases {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			let rectangle = draw_rectangle_over_grid(&mut editor, from, to).await;
+
+			nudge(&mut editor, direction * NUDGE_AMOUNT).await;
+			assert_bounds(&editor, rectangle, [from + moved, to + moved]);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_nudge_from_a_grid_line_goes_on_to_the_following_one() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = draw_rectangle_over_grid(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(110., 32.), DVec2::new(170., 76.)]);
+
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(120., 32.), DVec2::new(180., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn a_big_nudge_with_grid_snapping_on_lands_ten_grid_lines_ahead() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = draw_rectangle_over_grid(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		// The first line is at 170, so the tenth is at 260
+		nudge(&mut editor, DVec2::new(BIG_NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(200., 32.), DVec2::new(260., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn a_diagonal_nudge_with_grid_snapping_on_brings_the_leading_edge_along_each_direction_to_its_next_grid_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = draw_rectangle_over_grid(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		// The right side goes to the line at 170 and the bottom to the one at 80
+		nudge(&mut editor, DVec2::splat(NUDGE_AMOUNT)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(110., 36.), DVec2::new(170., 80.)]);
+	}
+
+	#[tokio::test]
+	async fn a_nudge_with_grid_snapping_or_all_snapping_off_moves_by_the_nudge_amount() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = draw_rectangle_over_grid(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		editor.active_document_mut().snapping_state.grid_snapping = false;
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(104., 32.), DVec2::new(164., 76.)]);
+
+		let state = &mut editor.active_document_mut().snapping_state;
+		(state.grid_snapping, state.snapping_enabled) = (true, false);
+		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
+		assert_bounds(&editor, rectangle, [DVec2::new(105., 32.), DVec2::new(165., 76.)]);
 	}
 }

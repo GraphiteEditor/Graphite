@@ -4,7 +4,7 @@ mod presenter;
 mod scene_mirror;
 mod settings;
 
-use crate::consts::DRAG_THRESHOLD;
+use crate::consts::{BIG_NUDGE_AMOUNT, DRAG_THRESHOLD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
@@ -641,6 +641,40 @@ impl SnapSession {
 		});
 		self.forget_sources_of_sleeping_positions();
 	}
+}
+
+/// How far a nudge moves something in document space. With grid snapping on, the position furthest along the nudge lands on the next grid line ahead, or the tenth for a big nudge.
+/// A diagonal nudge does so along each of its two directions.
+pub fn nudge_translation(document: &DocumentMessageHandler, nudge: DVec2, positions: impl IntoIterator<Item = DVec2>) -> DVec2 {
+	let positions: Vec<DVec2> = positions.into_iter().collect();
+	if nudge.x != 0. && nudge.y != 0. {
+		return nudge_along(document, DVec2::new(nudge.x, 0.), &positions) + nudge_along(document, DVec2::new(0., nudge.y), &positions);
+	}
+	nudge_along(document, nudge, &positions)
+}
+
+/// How far a nudge in one direction moves something in document space, as [`nudge_translation`] describes.
+fn nudge_along(document: &DocumentMessageHandler, nudge: DVec2, positions: &[DVec2]) -> DVec2 {
+	let translation = DVec2::from_angle(-document.document_ptz.tilt()).rotate(nudge);
+
+	let grid = if document.snapping_state.snapping_enabled { settings::grid(document) } else { None };
+	let (Some(grid), Some(direction)) = (grid, translation.try_normalize()) else { return translation };
+	let leading = positions
+		.iter()
+		.copied()
+		.filter(|position| position.is_finite())
+		.max_by(|a, b| a.dot(direction).total_cmp(&b.dot(direction)));
+	let Some(leading) = leading else { return translation };
+
+	// Each line is found ahead of the one reached before it
+	let lines_ahead = if nudge.abs().max_element() > NUDGE_AMOUNT {
+		(BIG_NUDGE_AMOUNT / NUDGE_AMOUNT).round() as usize
+	} else {
+		1
+	};
+	let distance = (0..lines_ahead).try_fold(0., |distance, _| Some(distance + grid.distance_to_next_line(leading + direction * distance, direction)?));
+
+	distance.map_or(translation, |distance| direction * distance)
 }
 
 /// The hints for the keys that steer snapping, shown wherever a tool snaps.

@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, Drawn, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, Drawn, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, nudge_translation, snapping_hints};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use graph_craft::document::NodeId;
@@ -596,8 +596,16 @@ impl Fsm for ArtboardToolFsmState {
 					let resized = nudge_resize_bounds(existing_top_left, existing_bottom_right, DVec2::new(delta_x, delta_y), tilt, resize_opposite);
 					(resized.min.round(), (resized.max - resized.min).round())
 				} else {
-					let delta = DVec2::from_angle(-tilt).rotate(DVec2::new(delta_x, delta_y));
-					((existing_top_left + delta).round(), (existing_bottom_right - existing_top_left).round())
+					let delta = nudge_translation(document, DVec2::new(delta_x, delta_y), Quad::from_box(bounds.bounds).0);
+
+					// Whole pixels are rounded to in the direction of the nudge, so a grid line under half a pixel ahead doesn't round it back to where it was
+					let moved = existing_top_left + delta;
+					let onward = |value: f64, step: f64| match step.partial_cmp(&0.) {
+						Some(std::cmp::Ordering::Greater) => (value - 1e-9).ceil(),
+						Some(std::cmp::Ordering::Less) => (value + 1e-9).floor(),
+						_ => value.round(),
+					};
+					(DVec2::new(onward(moved.x, delta.x), onward(moved.y, delta.y)), (existing_bottom_right - existing_top_left).round())
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -660,7 +668,9 @@ impl Fsm for ArtboardToolFsmState {
 
 #[cfg(test)]
 mod test_artboard {
+	use crate::consts::NUDGE_AMOUNT;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	pub use crate::test_utils::test_prelude::*;
 	use graphene_std::Artboard;
 	use graphene_std::list::List;
@@ -1037,5 +1047,56 @@ mod test_artboard {
 		// Its bottom comes four pixels below the rectangle's bottom, which only boxes sharing its parent would line it up with
 		let artboard = draw_artboard(&mut editor, DVec2::new(500., 110.), DVec2::new(560., 164.)).await;
 		assert_bounds(&editor, artboard, [DVec2::new(500., 110.), DVec2::new(560., 164.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_nudged_with_grid_snapping_on_lands_on_the_next_grid_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		let state = &mut editor.active_document_mut().snapping_state;
+		state.grid_snapping = true;
+		state.grid.grid_type = GridType::Rectangular { spacing: DVec2::splat(10.) };
+
+		// Drawing the overlays lays the cage around the artboard, which the nudge moves
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+		editor
+			.handle_message(ArtboardToolMessage::NudgeSelected {
+				delta_x: 0.,
+				delta_y: NUDGE_AMOUNT,
+				resize: Key::Alt,
+				resize_opposite: Key::Control,
+			})
+			.await;
+
+		assert_bounds(&editor, artboard, [DVec2::new(103., 36.), DVec2::new(163., 80.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_nudged_toward_a_grid_line_less_than_half_a_pixel_ahead_still_moves() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(21., 30.), DVec2::new(81., 70.)).await;
+
+		let state = &mut editor.active_document_mut().snapping_state;
+		state.grid_snapping = true;
+		state.grid.grid_type = GridType::Rectangular { spacing: DVec2::splat(10.) };
+		state.grid.origin = DVec2::new(0.5, 0.);
+
+		// Lines run half a pixel off the whole pixels the artboard keeps to
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+		for expected_left in [20., 10.] {
+			let nudge_left = ArtboardToolMessage::NudgeSelected {
+				delta_x: -NUDGE_AMOUNT,
+				delta_y: 0.,
+				resize: Key::Alt,
+				resize_opposite: Key::Control,
+			};
+			editor.handle_message(nudge_left).await;
+			editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			assert_bounds(&editor, artboard, [DVec2::new(expected_left, 30.), DVec2::new(expected_left + 60., 70.)]);
+		}
 	}
 }
