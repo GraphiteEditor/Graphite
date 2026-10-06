@@ -131,7 +131,7 @@ impl InputState {
 		wrap.position.x += dx;
 		wrap.position.y += dy;
 
-		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(wrap.position, viewport));
+		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(reported, viewport));
 		if let Some(wrapped) = warp_to {
 			// The next report is measured from the wrap target, but the tracked position stays continuous
 			wrap.last_reported = wrapped;
@@ -617,6 +617,30 @@ mod test {
 
 		input.set_pointer_wrap(false);
 		assert!(matches!(input.route(position), Route::Ui), "without a wrap the UI captures an outside position again");
+	}
+
+	#[test]
+	fn wrap_uses_the_os_position_not_the_tracked_one() {
+		let mut input = InputState::new();
+		let viewport = viewport();
+		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
+		input.pointer_position = PhysicalPosition::new(299., 80.);
+		input.set_pointer_wrap(true);
+
+		input.wrapped_position(PhysicalPosition::new(301., 80.));
+		assert_eq!(
+			input.take_pending_warp(),
+			Some(PhysicalPosition::new(101., 80.)),
+			"crossing the right edge moves the OS cursor to the left edge"
+		);
+
+		let position = input.wrapped_position(PhysicalPosition::new(99., 80.));
+		assert_eq!(
+			input.take_pending_warp(),
+			Some(PhysicalPosition::new(299., 80.)),
+			"the OS cursor must be warped again at the left edge even though the tracked position is back inside"
+		);
+		assert_eq!(position, PhysicalPosition::new(299., 80.));
 	}
 
 	#[test]
