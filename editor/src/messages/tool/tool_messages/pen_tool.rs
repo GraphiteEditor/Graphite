@@ -2449,39 +2449,38 @@ mod test_pen_tool {
 		editor.new_document().await;
 
 		editor.select_primary_color(Color::RED).await;
-		editor.draw_rect(D.x, D.y, C.x, C.x).await;
+		// Draw a rectangle not at the origin (so will end up with a non-identity transform)
+		editor.draw_rect(A.x, A.y, C.x, C.y).await;
 
 		editor
 	}
 
+	/// Using the path tool to merge layers (by setting the endpoint to an anchor of another layer) should produce only expected anchor positions.
 	#[tokio::test]
-	async fn offset_change_on_snap() {
+	async fn merging_layers_simple() {
 		let mut editor = create_a_rectangle().await;
-		// Ultimately brings the pointer over to D's location
-		let move_dir = A + DVec2::new(0., 100.);
 
-		click_pen(&mut editor, A).await;
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle
+		click_pen(&mut editor, B).await;
 
-		// Process of snapping the pen to the rectangle
-		editor.move_mouse(A.x, A.y, ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(A.x, A.y, ModifierKeys::empty()).await;
-		editor.move_mouse(move_dir.x, move_dir.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
-		editor.left_mouseup(move_dir.x, move_dir.y, ModifierKeys::empty()).await;
-
-		// Ensure that the changes have taken place, this may not be necessary.
-		editor.runtime.run().await;
-
-		let all_layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
-		// TODO: remove the print statements before merging.
-		println!("ALL LAYERS: {all_layers:?}");
-		for l in &all_layers {
-			let trans = editor.active_document().metadata().transform_to_viewport(*l);
-			println!("LAYER {l:?} trans: {:?}", trans.translation);
-		}
-
+		// Validate that these anchors are the only ones that exist (TODO: improve code reuse)
+		let expected_anchors = [A, B, C, D, pen_start];
 		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
-		assert_eq!(layer_to_viewport.translation, A);
+		let mut viewport_points: Vec<DVec2> = vector.point_domain.positions().iter().map(|&pos| layer_to_viewport.transform_point2(pos)).collect();
+
+		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
+			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
+				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
+			};
+			println!("Successfully found expected position {expected_position} (index {expected_index}) in viewport points as index {viewport_index}");
+			// Remove so no other one matches
+			viewport_points.remove(viewport_index);
+		}
+		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
 	}
 
 	#[tokio::test]
