@@ -526,6 +526,12 @@ impl SnapSession {
 			.retain(|id, _| awake.iter().any(|target| matches!(target, Awake::Position { id: awake_id, .. } if awake_id == id)));
 	}
 
+	/// The woken targets, oldest first.
+	#[cfg(test)]
+	pub fn awake(&self) -> &[Awake] {
+		&self.awake
+	}
+
 	/// The woken targets, joined while a box is moved by the nearest of the boxes sharing its parent, by any such box the snap is relying on, and by its artboard.
 	fn awake_around(&mut self, spaced: Option<&SpacedBox>) -> Vec<Awake> {
 		let mut awake = self.awake.clone();
