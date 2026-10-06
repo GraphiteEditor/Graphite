@@ -575,12 +575,19 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			let previous_state = self.fsm_state;
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 
-			// However a drawing, a resize, or an endpoint drag ends, its snapping gesture ends with it
+			// However one of these drags ends, its snapping gesture ends with it
 			let in_gesture = matches!(
 				previous_state,
-				ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::DraggingLineEndpoints
+				ShapeToolFsmState::Drawing(_)
+					| ShapeToolFsmState::ResizingBounds
+					| ShapeToolFsmState::RotatingBounds
+					| ShapeToolFsmState::SkewingBounds { .. }
+					| ShapeToolFsmState::DraggingLineEndpoints
 			);
 			if in_gesture && self.fsm_state != previous_state {
+				if let Some(bounds) = &mut self.tool_data.bounding_box_manager {
+					(bounds.turning, bounds.skewing) = (None, None);
+				}
 				context.snap_session.end_gesture();
 				responses.add(OverlaysMessage::Draw);
 			}
@@ -1106,12 +1113,18 @@ impl Fsm for ShapeToolFsmState {
 							return ShapeToolFsmState::ResizingBounds;
 						}
 						(false, true, false) => {
-							tool_data.data.drag_start = mouse_pos;
+							tool_data.data.drag_start = input.mouse.position;
+							if let Some(bounds) = &mut tool_data.bounding_box_manager {
+								bounds.begin_turning(SnapView::new(document, *document_id, input), snap_session, &tool_data.layers_dragging);
+							}
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::RotatingBounds;
 						}
 						(false, false, true) => {
+							if let Some(bounds) = &mut tool_data.bounding_box_manager {
+								bounds.begin_skewing(SnapView::new(document, *document_id, input), snap_session, &tool_data.layers_dragging);
+							}
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::SkewingBounds { skew: Key::Control };
@@ -1268,12 +1281,12 @@ impl Fsm for ShapeToolFsmState {
 			(ShapeToolFsmState::RotatingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					rotate_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
 						tool_data.data.drag_start,
-						input.mouse.position,
 						input.keyboard.key(modifier[1]),
 						ToolType::Shape,
 					);
@@ -1284,12 +1297,12 @@ impl Fsm for ShapeToolFsmState {
 			(ShapeToolFsmState::SkewingBounds { skew }, ShapeToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					skew_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						input.keyboard.key(skew),
 						&mut tool_data.layers_dragging,
-						input.mouse.position,
 						ToolType::Shape,
 					);
 				}
@@ -1745,5 +1758,54 @@ mod test_shape_tool {
 			let steps = (corner - state.grid.origin) / spacing;
 			assert!((steps - steps.round()).abs().max_element() < 1e-6, "the corner at {corner} is {steps} grid steps");
 		}
+	}
+
+	/// Takes hold of the cage of the selected layer, once drawing the overlays has laid it out, and drags it between two viewport positions.
+	async fn drag_cage(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) {
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+		editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(from.x, from.y, ModifierKeys::empty()).await;
+		editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(to.x, to.y, ModifierKeys::empty()).await;
+	}
+
+	fn assert_bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier, expected: [DVec2; 2]) {
+		let [min, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the rectangle should have a bounding box");
+		assert!(
+			min.distance(expected[0]) < 1e-6 && max.distance(expected[1]) < 1e-6,
+			"the rectangle spans {min} to {max} rather than {expected:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_by_its_cage_until_its_corner_nears_an_anchor_in_its_path_lands_with_the_corner_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(312., 446., 322., 456.).await;
+		editor.draw_rect(290., 270., 410., 430.).await;
+		let layer = editor.get_selected_layer().await.expect("the rectangle drawn last should be selected");
+
+		// The turn with a cosine of 0.6 and a sine of 0.8 carries the bottom right corner onto the other's top right corner, and the pointer stops two degrees short
+		let (middle, grip) = (DVec2::new(350., 350.), DVec2::new(424., 444.));
+		let pointer = middle + DVec2::from_angle(DVec2::new(0.6, 0.8).to_angle() - 2_f64.to_radians()).rotate(grip - middle);
+		drag_cage(&mut editor, grip, pointer).await;
+
+		// The turned corners lie a hundred from the middle to either side, and 96 above and below
+		assert_bounds(&editor, layer, [DVec2::new(250., 254.), DVec2::new(450., 446.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_skewed_by_its_cage_until_a_corner_nears_a_corner_of_another_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(480., 260., 520., 300.).await;
+		editor.draw_rect(300., 300., 420., 380.).await;
+		let layer = editor.get_selected_layer().await.expect("the rectangle drawn last should be selected");
+
+		// The skew handle beside the middle of the top edge brings the top right corner to three pixels short of the other's bottom left corner
+		let handle = DVec2::new(370.5, 300.);
+		drag_cage(&mut editor, handle, handle + DVec2::new(57., 5.)).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(480., 380.)]);
 	}
 }

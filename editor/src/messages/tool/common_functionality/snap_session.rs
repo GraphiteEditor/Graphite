@@ -88,6 +88,8 @@ pub struct PointOptions {
 	pub snapping: Option<usize>,
 	/// The features that make up a box being moved or stretched, which can then even out its gaps and match the sizes of the boxes beside it.
 	pub box_features: Option<BoxFeatures>,
+	/// Whether the grid is left out, as for a turn, which the grid would otherwise step at odd angles.
+	pub ignores_grid: bool,
 }
 
 /// Which features of a gesture make up a box.
@@ -210,7 +212,7 @@ impl SnapSession {
 			return free;
 		};
 		let settings = settings::settings(&document.snapping_state);
-		let grid = settings::grid(document);
+		let grid = if options.ignores_grid { None } else { settings::grid(document) };
 
 		// A box is taken where the pointer asks for it, once any track it must stay on has had its say
 		let asked = options.required.map_or(free, |track| track.nearest(free));
