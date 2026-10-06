@@ -76,8 +76,7 @@ pub struct TransformLayerMessageHandler {
 	slow: bool,
 	layer_bounding_box: Quad,
 	typing: Typing,
-	// Where the pointer was on the last frame, which the lock can wrap away from the OS cursor
-	previous_pointer_position: ViewportPosition,
+	mouse_position: ViewportPosition,
 	start_mouse: ViewportPosition,
 	original_transforms: OriginalTransforms,
 	pivot_gizmo: PivotGizmo,
@@ -135,7 +134,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 		);
 
 		let document_to_viewport = document.metadata().document_to_viewport;
-		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, start_mouse: &mut DVec2, transform: &mut DAffine2| {
+		let mut begin_operation = |operation: TransformOperation, typing: &mut Typing, mouse_position: &mut DVec2, start_mouse: &mut DVec2, transform: &mut DAffine2| {
 			if operation != TransformOperation::None {
 				selected.revert_operation();
 				typing.clear();
@@ -192,10 +191,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 			}
 
-			// Already includes any locked deltas that landed before this operation started
-			*start_mouse = self.previous_pointer_position;
+			*mouse_position = input.mouse.position;
+			*start_mouse = input.mouse.position;
 			*transform = document_to_viewport;
-			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(self.previous_pointer_position);
+			self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+
 			selected.original_transforms.clear();
 
 			selected.responses.add(DocumentMessage::StartTransaction);
@@ -340,11 +340,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::RemoveProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
-					responses.add(InputPreprocessorMessage::EndSoftwareCursor);
+					responses.add(AppWindowMessage::PointerWrap { enabled: false });
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
-				begin_operation(self.transform_operation, &mut self.typing, &mut self.start_mouse, &mut self.initial_transform);
+				begin_operation(self.transform_operation, &mut self.typing, &mut self.mouse_position, &mut self.start_mouse, &mut self.initial_transform);
 				self.transform_operation = match operation {
 					TransformType::Grab => TransformOperation::Grabbing(Default::default()),
 					TransformType::Rotate => TransformOperation::Rotating(Default::default()),
@@ -360,8 +360,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.last_point = last_point;
 				self.handle = handle;
 				self.grs_pen_handle = true;
-				self.previous_pointer_position = input.mouse.position;
-				self.start_mouse = self.previous_pointer_position;
+				self.mouse_position = input.mouse.position;
+				self.start_mouse = input.mouse.position;
 
 				let top_left = DVec2::new(last_point.x, handle.y);
 				let bottom_right = DVec2::new(handle.x, last_point.y);
@@ -386,7 +386,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::AddProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
-				responses.add(InputPreprocessorMessage::BeginSoftwareCursor { position: input.mouse.position });
+				responses.add(AppWindowMessage::PointerWrap { enabled: true });
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -474,8 +474,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::AddProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
-					self.previous_pointer_position = input.mouse.position;
-					responses.add(InputPreprocessorMessage::BeginSoftwareCursor { position: input.mouse.position });
+					responses.add(AppWindowMessage::PointerWrap { enabled: true });
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -515,7 +514,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::RemoveProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
-				responses.add(InputPreprocessorMessage::EndSoftwareCursor);
+				responses.add(AppWindowMessage::PointerWrap { enabled: false });
 			}
 			TransformLayerMessage::ConstrainX => {
 				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::X, &mut selected, &self.state, document);
@@ -526,14 +525,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
-				let pointer_position = input.mouse.position;
-
 				self.slow = input.keyboard.get(slow_key as usize);
 				let old_ptz = self.ptz;
 				self.ptz = document.document_ptz;
 				if old_ptz != self.ptz {
-					// A viewport change invalidates this frame's delta
-					self.previous_pointer_position = pointer_position;
+					self.mouse_position = input.mouse.position;
 					return;
 				}
 
@@ -547,7 +543,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
-							let delta_pos = pointer_position - self.previous_pointer_position;
+							let delta_pos = input.mouse.position - self.mouse_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
 							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
@@ -555,8 +551,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let start_offset = self.state.pivot_viewport(document) - self.previous_pointer_position;
-							let end_offset = self.state.pivot_viewport(document) - pointer_position;
+							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
+							let end_offset = self.state.pivot_viewport(document) - input.mouse.position;
 							if let Some(angle) = start_offset.try_angle_to(end_offset) {
 								let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
@@ -566,17 +562,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
-							let to_mouse_previous = self.previous_pointer_position - self.state.pivot_viewport(document);
-							let to_mouse_current = pointer_position - self.state.pivot_viewport(document);
+							let to_mouse_final = self.mouse_position - self.state.pivot_viewport(document);
+							let to_mouse_final_old = input.mouse.position - self.state.pivot_viewport(document);
 							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
-							let to_mouse_previous = self.state.project_onto_constrained(to_mouse_previous, axis_constraint);
-							let to_mouse_current = self.state.project_onto_constrained(to_mouse_current, axis_constraint);
+							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
+							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
 							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint);
 
 							let change = {
-								let previous_frame_dist = to_mouse_previous.dot(to_mouse_start);
-								let current_frame_dist = to_mouse_current.dot(to_mouse_start);
+								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
+								let current_frame_dist = to_mouse_final_old.dot(to_mouse_start);
 								let start_transform_dist = to_mouse_start.length_squared();
 
 								(current_frame_dist - previous_frame_dist) / start_transform_dist
@@ -590,7 +586,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					};
 				}
 
-				self.previous_pointer_position = pointer_position;
+				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
 				let target_layers = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();
@@ -771,26 +767,20 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+	use crate::messages::prelude::Message;
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
+	use std::collections::VecDeque;
 
-	fn document_layer_transform(editor: &EditorTestUtils, document_id: DocumentId, layer: LayerNodeIdentifier) -> Option<DAffine2> {
-		let document = editor.editor.dispatcher.message_handlers.portfolio_message_handler.document(document_id)?;
+	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
+		let document = editor.active_document();
 		let network_interface = &document.network_interface;
+		let _responses: VecDeque<Message> = VecDeque::new();
 		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface)?;
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))
-	}
-
-	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
-		let document_id = editor.active_document_id();
-		document_layer_transform(editor, document_id, layer)
-	}
-
-	fn is_transforming(editor: &EditorTestUtils) -> bool {
-		editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.is_transforming()
 	}
 
 	#[tokio::test]
@@ -859,72 +849,6 @@ mod test_transform_layer {
 			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
 			"Transform neither restored to original nor reset to identity. Original: {original_translation:?}, Final: {final_translation:?}"
 		);
-	}
-
-	#[tokio::test]
-	async fn test_select_document_cancels_the_transform_in_the_document_it_started_in() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		let first_document = editor.active_document_id();
-
-		editor.new_document().await;
-		let second_document = editor.active_document_id();
-		assert_ne!(first_document, second_document, "The second document should be the active one");
-
-		editor.handle_message(PortfolioMessage::SelectDocument { document_id: first_document }).await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-
-		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-		let original_transform = document_layer_transform(&editor, first_document, layer).unwrap();
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-
-		assert!(
-			document_layer_transform(&editor, first_document, layer).unwrap() != original_transform,
-			"The transform should apply while it runs"
-		);
-
-		editor.handle_message(PortfolioMessage::SelectDocument { document_id: second_document }).await;
-
-		assert_eq!(editor.active_document_id(), second_document, "The switch should still happen");
-		let aborted_translation = document_layer_transform(&editor, first_document, layer).unwrap().translation;
-		let original_translation = original_transform.translation;
-		assert!(
-			(aborted_translation - original_translation).length() < 5.,
-			"The transform should be aborted in the document it started in. Original: {original_translation:?}, Aborted: {aborted_translation:?}"
-		);
-	}
-
-	#[tokio::test]
-	async fn test_close_active_document_cancels_the_transform() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.new_document().await;
-		let closing_document = editor.active_document_id();
-
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-
-		assert!(is_transforming(&editor), "The transform should be running before the document closes");
-
-		editor.handle_message(PortfolioMessage::CloseDocument { document_id: closing_document }).await;
-
-		assert_ne!(editor.active_document_id(), closing_document, "The closed document should no longer be active");
-		assert!(!is_transforming(&editor), "Closing the active document should cancel the transform");
 	}
 
 	#[tokio::test]
@@ -1374,202 +1298,5 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
 		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
-	}
-
-	#[tokio::test]
-	async fn test_pointer_lock_deltas_only_apply_during_a_transform() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-
-		let pointer_before = editor.mouse_position();
-		let messages = editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(25., -5.) }).await;
-
-		assert_eq!(pointer_before, editor.mouse_position(), "locked deltas shouldn't move the pointer with no transform running");
-		assert!(
-			!messages.iter().any(|message| matches!(message, FrontendMessage::UpdateSoftwareCursor { .. })),
-			"no transform means no software cursor"
-		);
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let pointer_at_begin = editor.mouse_position();
-
-		let delta = DVec2::new(25., -5.);
-		let messages = editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta }).await;
-
-		assert_eq!(editor.mouse_position(), pointer_at_begin + delta, "locked delta should move the pointer");
-
-		let software_cursor_message = messages.iter().find_map(|message| match message {
-			FrontendMessage::UpdateSoftwareCursor { visible, x, y } => Some((*visible, *x, *y)),
-			_ => None,
-		});
-		assert_eq!(
-			software_cursor_message,
-			Some((true, pointer_at_begin.x + delta.x, pointer_at_begin.y + delta.y)),
-			"locked delta should update the software cursor"
-		);
-
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
-	}
-
-	#[tokio::test]
-	async fn test_ptz_change_mid_transform_drops_the_delta_without_moving_the_layer() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(10., 0.) }).await;
-
-		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(20., 20.) }).await;
-		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
-
-		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
-		let pointer_before = editor.mouse_position();
-
-		let dropped = DVec2::new(75., 40.);
-		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: dropped }).await;
-
-		assert_eq!(editor.mouse_position(), pointer_before + dropped, "pointer should still follow the delta the transform drops");
-		let transform_after = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(transform_after.abs_diff_eq(transform_before, 1e-5), "dropped delta shouldn't move the layer");
-
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
-	}
-
-	#[tokio::test]
-	async fn test_chained_transform_uses_accumulated_locked_position() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-
-		let start_position = editor.mouse_position();
-		let delta = DVec2::new(30., 10.);
-		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta }).await;
-
-		let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
-		assert_eq!(handler.previous_pointer_position, start_position + delta, "locked delta should accumulate");
-
-		editor.handle_message(TransformLayerMessage::BeginRotate).await;
-		let handler = &editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler;
-		assert_eq!(
-			handler.start_mouse,
-			start_position + delta,
-			"chained operation should start from the accumulated position, not the frozen one"
-		);
-
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
-	}
-
-	#[tokio::test]
-	async fn test_locked_drag_ignores_stale_absolute_reports() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let origin = editor.mouse_position();
-		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(100., 0.) }).await;
-
-		let transform_after_drag = get_layer_transform(&mut editor, layer).await.unwrap();
-		let pointer_after_drag = editor.mouse_position();
-
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-
-		assert_eq!(editor.mouse_position(), pointer_after_drag, "stale absolute report shouldn't move the pointer");
-		assert!(
-			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_drag, 1e-5),
-			"stale absolute report shouldn't move the layer"
-		);
-
-		editor.handle_message(InputPreprocessorMessage::PointerLockMove { delta: DVec2::new(10., 0.) }).await;
-		let transform_after_more_dragging = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			!transform_after_more_dragging.abs_diff_eq(transform_after_drag, 1e-5),
-			"locked deltas should keep driving the transform"
-		);
-
-		editor.move_mouse(origin.x, origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		assert!(
-			get_layer_transform(&mut editor, layer).await.unwrap().abs_diff_eq(transform_after_more_dragging, 1e-5),
-			"restored cursor position shouldn't move the layer"
-		);
-
-		editor.move_mouse(origin.x + 10., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_resuming = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			transform_after_resuming.abs_diff_eq(transform_after_more_dragging, 1e-5),
-			"resuming absolute tracking shouldn't apply the wrapped distance"
-		);
-
-		editor.move_mouse(origin.x + 40., origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_moving = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(
-			transform_after_moving.translation.x > transform_after_resuming.translation.x + 1.,
-			"absolute movement should drive the transform again"
-		);
-
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
-	}
-
-	#[tokio::test]
-	async fn test_absolute_pointer_drives_a_grab_without_a_lock() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
-		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
-		let layer = editor.active_document().metadata().all_layers().next().unwrap();
-
-		editor.handle_message(TransformLayerMessage::BeginGrab).await;
-		let transform_before = get_layer_transform(&mut editor, layer).await.unwrap();
-		let origin = editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler.previous_pointer_position;
-
-		editor.move_mouse(origin.x + 60., origin.y + 40., ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_moving = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(!transform_after_moving.abs_diff_eq(transform_before, 1e-5), "moving the pointer should drive the transform");
-
-		editor.move_mouse(origin.x, origin.y, ModifierKeys::empty(), MouseKeys::NONE).await;
-		editor
-			.handle_message(TransformLayerMessage::PointerMove {
-				slow_key: Key::Shift,
-				increments_key: Key::Control,
-			})
-			.await;
-		let transform_after_returning = get_layer_transform(&mut editor, layer).await.unwrap();
-		assert!(transform_after_returning.abs_diff_eq(transform_before, 1e-3), "returning the pointer should move the layer back");
-
-		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
 	}
 }

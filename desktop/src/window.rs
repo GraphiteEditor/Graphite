@@ -186,19 +186,13 @@ impl Window {
 		self.winit_window.set_cursor(cursor);
 	}
 
-	pub(crate) fn start_pointer_lock(&self) -> bool {
-		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
-		// Only hide the cursor if the grab actually took, otherwise a platform that refuses the lock leaves the app with no visible cursor
-		if locked {
-			self.winit_window.set_cursor_visible(false);
-		}
-		locked
+	pub(crate) fn start_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+		self.winit_window.set_cursor_visible(false);
 	}
 
 	pub(crate) fn end_pointer_lock(&self) {
 		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
-		// Show a plain cursor rather than whatever shape was applied last, so a stale hover cursor doesn't flash before the tool sets its own
-		self.winit_window.set_cursor(winit::cursor::Cursor::Icon(winit::cursor::CursorIcon::Default));
 		self.winit_window.set_cursor_visible(true);
 	}
 
@@ -206,10 +200,6 @@ impl Window {
 		if let Err(e) = self.winit_window.set_cursor_position(position.into()) {
 			tracing::warn!("Failed to place the cursor: {e}");
 		}
-	}
-
-	pub(crate) fn has_focus(&self) -> bool {
-		self.winit_window.has_focus()
 	}
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {

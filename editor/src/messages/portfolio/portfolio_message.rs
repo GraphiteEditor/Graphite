@@ -125,10 +125,6 @@ pub enum PortfolioMessage {
 	SelectDocument {
 		document_id: DocumentId,
 	},
-	// The switch itself, queued behind anything that has to run against the document being left
-	ActivateDocument {
-		document_id: DocumentId,
-	},
 	RenameDocument {
 		new_name: String,
 	},

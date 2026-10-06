@@ -1,19 +1,16 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-	import { get } from "svelte/store";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
-	import SoftwareCursor from "/src/components/views/SoftwareCursor.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
-	import { resetSoftwareCursor, softwareCursor, setSoftwareCursor } from "/src/stores/software-cursor";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
@@ -28,20 +25,6 @@
 	let rulerVertical: RulerInput | undefined;
 	let viewport: HTMLDivElement | undefined;
 	let gradientStopPicker: ColorPicker | undefined;
-	let destroyed = false;
-
-	// A granted pointer lock arrives as its own task, so a request whose transform already ended has to be handed back once it shows up
-	let pointerLockUnwanted = false;
-	// Requested once per transform, so a refused lock isn't retried on every pointer move
-	let pointerLockRequested = false;
-	const releaseUnwantedPointerLock = () => {
-		if (pointerLockUnwanted && window.document.pointerLockElement === viewport) {
-			pointerLockUnwanted = false;
-			window.document.exitPointerLock();
-			// After teardown this listener only exists to hand back a late grant, so it is done once that grant is released
-			if (destroyed) window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
-		}
-	};
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 	const editor = getContext<EditorWrapper>("editor");
@@ -328,9 +311,6 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
-		// Hover changes must not reveal the real cursor while the software one is drawn
-		if (get(softwareCursor).visible && cursor !== "None") return;
-
 		const mouseCursorIconCSSNames: Record<MouseCursorIcon, string> = {
 			Default: "default",
 			None: "none",
@@ -540,44 +520,6 @@
 			updateMouseCursor(data.cursor);
 		});
 
-		// Software cursor drawn during G/R/S transforms
-		window.document.addEventListener("pointerlockchange", releaseUnwantedPointerLock);
-
-		subscriptions.subscribeFrontendMessage("UpdateSoftwareCursor", async (data) => {
-			// Browsers only grant a lock during a user activation, so this has to happen before the `await`
-			if (isWeb && viewport) {
-				if (data.visible) {
-					if (!pointerLockRequested) {
-						pointerLockRequested = true;
-						pointerLockUnwanted = false;
-						try {
-							Promise.resolve(viewport.requestPointerLock?.()).catch(() => undefined);
-						} catch {
-							// The absolute pointer position drives the transform if the lock is refused
-						}
-					}
-				} else {
-					pointerLockRequested = false;
-					if (window.document.pointerLockElement === viewport) {
-						// The browser puts the pointer back where the lock began, so the wrapped position can't be kept
-						window.document.exitPointerLock();
-					} else {
-						// Nothing holds it yet, so the request still in flight would arrive with no transform left to drive
-						pointerLockUnwanted = true;
-					}
-				}
-			}
-
-			await tick();
-			// The awaited tick can resume after teardown, which would re-show the cursor this component just cleared
-			if (destroyed) return;
-
-			// Pointer events get reported at this position while the cursor is shown
-			setSoftwareCursor({ visible: data.visible, x: data.x, y: data.y });
-			// Keep the viewport cursor hidden for the whole transform. The tool's cursor comes back when it ends
-			updateMouseCursor(data.visible ? "None" : "Default");
-		});
-
 		// Text entry
 		subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
@@ -621,7 +563,6 @@
 	});
 
 	onDestroy(() => {
-		destroyed = true;
 		cleanupViewportResizeObserver?.();
 		viewportResizeObserver?.disconnect();
 		removeUpdatePixelRatio?.();
@@ -634,16 +575,6 @@
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentScrollbars");
 		subscriptions.unsubscribeFrontendMessage("UpdateDocumentRulers");
 		subscriptions.unsubscribeFrontendMessage("UpdateMouseCursor");
-		subscriptions.unsubscribeFrontendMessage("UpdateSoftwareCursor");
-		// The transform's end update would be dropped now that this component is unsubscribed, so clear the shared cursor instead of leaving it visible
-		resetSoftwareCursor();
-		// A lock requested just before teardown can still grant after it, so keep the listener around to hand that late grant back
-		if (window.document.pointerLockElement === viewport) window.document.exitPointerLock();
-		if (pointerLockRequested && window.document.pointerLockElement !== viewport) {
-			pointerLockUnwanted = true;
-		} else {
-			window.document.removeEventListener("pointerlockchange", releaseUnwantedPointerLock);
-		}
 		subscriptions.unsubscribeFrontendMessage("TriggerTextCommit");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextbox");
 		subscriptions.unsubscribeFrontendMessage("DisplayEditableTextboxUpdateFontData");
@@ -728,7 +659,6 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<SoftwareCursor visible={$softwareCursor.visible} x={$softwareCursor.x} y={$softwareCursor.y} />
 					<div
 						style:left={gradientStopPickerPosition ? `${gradientStopPickerPosition?.x}px` : undefined}
 						style:top={gradientStopPickerPosition ? `${gradientStopPickerPosition?.y}px` : undefined}

@@ -28,7 +28,7 @@ pub struct DispatcherMessageHandlers {
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	pub(crate) input_preprocessor_message_handler: InputPreprocessorMessageHandler,
+	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,

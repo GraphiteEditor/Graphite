@@ -269,11 +269,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					HintData::clear_layout(responses);
 				}
 
-				// A transform belongs to the document being closed, so cancel it while that document is still loaded or its software cursor and pointer lock outlive it
-				if self.active_document_id == Some(document_id) && self.active_document().is_some() {
-					responses.add(TransformLayerMessage::CancelTransformOperation);
-				}
-
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
 				responses.add(remove_stored_document(self.document_store.clone(), document_id));
@@ -786,14 +781,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
-				// Cancel the outgoing transform while the document it started in is still active, so its abort can't land in the incoming one
-				// Only a loaded active document can be transforming, and a tool message is dropped without one, so the first selection skips this
-				if self.active_document().is_some() {
-					responses.add(TransformLayerMessage::CancelTransformOperation);
-				}
-				responses.add(PortfolioMessage::ActivateDocument { document_id });
-			}
-			PortfolioMessage::ActivateDocument { document_id } => {
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {

@@ -10,11 +10,10 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::data_transfer::{DataTransferSendBuilder, TypeHint};
-use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ElementState, KeyEvent, MouseButton, StartCause, WindowEvent};
+use winit::dpi::PhysicalSize;
+use winit::event::{ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
-use winit::keyboard::{Key, KeyCode, KeyLocation, NamedKey, PhysicalKey};
 use winit::window::WindowId;
 
 use crate::dirs;
@@ -23,7 +22,7 @@ use crate::input::InputState;
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
-use crate::ui::{Cursor, InputEvent, UiCommand, UiInstance};
+use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
 use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
@@ -341,17 +340,13 @@ impl App {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { content });
 			}
 			DesktopFrontendMessage::PointerLock => {
-				let locked = self.window.as_ref().is_some_and(|window| window.start_pointer_lock());
-				if locked {
-					self.input_state.lock_pointer();
+				self.input_state.lock_pointer();
+				if let Some(window) = &self.window {
+					window.start_pointer_lock();
 				}
 			}
-			DesktopFrontendMessage::PointerUnlock { x, y } => {
-				let destination = self.input_state.viewport_to_window_position(glam::DVec2::new(x, y));
-				self.release_pointer_lock(destination);
-			}
-			DesktopFrontendMessage::UpdateSoftwareCursor { visible, x, y } => {
-				self.input_state.set_software_cursor_position(visible.then_some(glam::DVec2::new(x, y)));
+			DesktopFrontendMessage::PointerWrap { enabled } => {
+				self.input_state.set_pointer_wrap(enabled);
 			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::Exit);
@@ -495,10 +490,7 @@ impl App {
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
-				// These keep arriving mid-transform (tool hover icons, page CSS) and applying one brings the real cursor back
-				if (matches!(&cursor, Cursor::None) || !self.input_state.software_cursor_active())
-					&& let Some(window) = &mut self.window
-				{
+				if let Some(window) = &mut self.window {
 					window.set_cursor(event_loop, cursor);
 				}
 			}
@@ -543,40 +535,6 @@ impl App {
 			}
 		}
 	}
-
-	fn release_pointer_lock(&mut self, destination: Option<PhysicalPosition<f64>>) {
-		let Some(position) = self.input_state.unlock_pointer(destination) else {
-			return;
-		};
-
-		if let Some(window) = &self.window {
-			// Wayland only moves the cursor while the grab is held, so do this before releasing it
-			if destination.is_some() && window.has_focus() {
-				window.set_cursor_position(position);
-			}
-			window.end_pointer_lock();
-		}
-
-		self.ui
-			.send(UiCommand::Input(InputEvent::pointer().position(position).moved().modifiers(self.input_state.modifiers()).build()));
-	}
-
-	fn send_escape_key(&self) {
-		let escape = |state| KeyEvent {
-			physical_key: PhysicalKey::Code(KeyCode::Escape),
-			logical_key: Key::Named(NamedKey::Escape),
-			text: None,
-			text_with_all_modifiers: None,
-			key_without_modifiers: Key::Named(NamedKey::Escape),
-			location: KeyLocation::Standard,
-			state,
-			repeat: false,
-		};
-
-		for state in [ElementState::Pressed, ElementState::Released] {
-			self.ui.send(UiCommand::Input(InputEvent::key(&escape(state)).build()));
-		}
-	}
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -613,15 +571,19 @@ impl ApplicationHandler for App {
 			button,
 			..
 		} = &event && button.clone().mouse_button() == Some(MouseButton::Left)
-			&& self.input_state.pointer_locked()
+			&& let Some(pointer_lock_position) = self.input_state.unlock_pointer()
 		{
-			self.release_pointer_lock(None);
+			if let Some(window) = &self.window {
+				window.end_pointer_lock();
+			}
+			self.ui.send(UiCommand::Input(
+				InputEvent::pointer().position(pointer_lock_position).moved().modifiers(self.input_state.modifiers()).build(),
+			));
 		}
 
-		// Focus loss drops the pointer lock underneath us, and this is the only notice we get
-		// Only a transform holds a software cursor, so a lock held elsewhere (a number input) isn't cancelled
-		if matches!(event, WindowEvent::Focused(false)) && self.input_state.software_cursor_active() {
-			self.send_escape_key();
+		// A transform's wrap can't keep following the pointer once the window loses focus
+		if matches!(event, WindowEvent::Focused(false)) {
+			self.input_state.set_pointer_wrap(false);
 		}
 
 		self.input_state.process(
@@ -629,6 +591,13 @@ impl ApplicationHandler for App {
 			|message| self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Input(message))),
 			|input| self.ui.send(UiCommand::Input(input)),
 		);
+
+		// A wrap moved the pointer to the opposite edge of the viewport, so put the OS cursor there
+		if let Some(position) = self.input_state.take_pending_warp()
+			&& let Some(window) = &self.window
+		{
+			window.set_cursor_position(position);
+		}
 
 		match event {
 			WindowEvent::CloseRequested => {
@@ -747,11 +716,7 @@ impl ApplicationHandler for App {
 	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
 		if self.input_state.pointer_locked()
 			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
-			// A zero delta would otherwise count as proof the platform delivers locked deltas
-			&& (x != 0. || y != 0.)
 		{
-			self.input_state.record_locked_delta();
-			// Raw device deltas are in the backends' own units rather than the physical pixels the window position is in, so they go through unscaled
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
 			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 		}

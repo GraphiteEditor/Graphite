@@ -3,7 +3,6 @@ import type { DialogStore } from "/src/stores/dialog";
 import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
-import { softwareCursor } from "/src/stores/software-cursor";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
@@ -19,7 +18,6 @@ let viewportPointerInteractionOngoing = false;
 let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
 let canvasFocused = true;
 let inPointerLock = false;
-let escapeConsumed = false;
 let lastShakeTime = 0;
 const shakeSamples: { x: number; y: number; time: number }[] = [];
 const openFloatingMenus = new Set<string>();
@@ -81,9 +79,6 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
-	// The browser uses this Escape to drop the pointer lock, but it only cancels the transform if the key reaches the editor below
-	const escapeReleasesLock = e.code === "Escape" && inPointerLock;
-
 	const key = await getLocalizedScanCode(e);
 
 	const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -92,7 +87,6 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 	if (await shouldRedirectKeyboardEventToBackend(e, dialogStore)) {
 		e.preventDefault();
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		if (escapeReleasesLock) escapeConsumed = true;
 		editor.onKeyDown(key, modifiers, e.repeat);
 		return;
 	}
@@ -119,34 +113,8 @@ function isObserveOnly(e: MouseEvent): boolean {
 	return import.meta.env.MODE === "native" && e.getModifierState("NumLock");
 }
 
-// The software cursor's position in client coordinates, used while the frozen OS pointer reports elsewhere
-function softwareCursorClientPosition(): { x: number; y: number } | undefined {
-	const cursor = get(softwareCursor);
-	if (!cursor.visible) return undefined;
-
-	const bounds = window.document.querySelector("[data-viewport-container]")?.getBoundingClientRect();
-	if (!bounds) return undefined;
-	return { x: bounds.left + cursor.x, y: bounds.top + cursor.y };
-}
-
-// Events are reported at the software cursor, since a locked pointer is frozen
-function pointerEventPosition(e: MouseEvent): { x: number; y: number } {
-	const cursorPosition = inPointerLock ? softwareCursorClientPosition() : undefined;
-	return cursorPosition ?? { x: e.clientX, y: e.clientY };
-}
-
-// The frozen position is useless while locked, so forward the movement deltas instead
-function forwardLockedPointerDeltas(e: PointerEvent, editor: EditorWrapper): void {
-	if (e.movementX !== 0 || e.movementY !== 0) editor.appWindowPointerLockMove(e.movementX, e.movementY);
-}
-
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
-	// Number inputs lock the pointer too, so only swallow moves while the software cursor is the thing driving it
-	if (inPointerLock && get(softwareCursor).visible) {
-		forwardLockedPointerDeltas(e, editor);
-		return;
-	}
 	potentiallyRestoreCanvasFocus(e);
 
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
@@ -198,8 +166,7 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 
 	if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		const { x, y } = pointerEventPosition(e);
-		editor.onMouseDown(x, y, e.buttons, modifiers, ...pointerAttributes(e));
+		editor.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 	}
 }
 
@@ -217,8 +184,7 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	if (isObserveOnly(e) || textToolInteractiveInputElement) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
-	const { x, y } = pointerEventPosition(e);
-	editor.onMouseUp(x, y, e.buttons, modifiers, ...pointerAttributes(e));
+	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));
 }
 
 // Mouse events
@@ -256,21 +222,8 @@ export function onContextMenu(e: MouseEvent) {
 	}
 }
 
-export function onPointerLockChange(editor: EditorWrapper) {
-	const wasLocked = inPointerLock;
+export function onPointerLockChange() {
 	inPointerLock = Boolean(window.document.pointerLockElement);
-
-	// An Escape from before this lock can't be the one that releases it
-	if (inPointerLock) escapeConsumed = false;
-
-	// Losing an acquired lock mid-transform (Escape, tab switch) cancels it, unless the Escape that released it already did
-	if (wasLocked && !inPointerLock) {
-		if (escapeConsumed) escapeConsumed = false;
-		else if (get(softwareCursor).visible) {
-			editor.onKeyDown("Escape", 0, false);
-			editor.onKeyUp("Escape", 0, false);
-		}
-	}
 }
 
 // Wheel events

@@ -52,8 +52,8 @@ const listeners: Listener[] = [
 	{ target: window.document, eventName: "contextmenu", action: (e: MouseEvent) => onContextMenu(e) },
 	{ target: window.document, eventName: "fullscreenchange", action: () => fullscreenModeChanged() },
 	{ target: window.document.body, eventName: "paste", action: (e: ClipboardEvent) => editorWrapper && onPaste(e, editorWrapper) },
-	{ target: window.document, eventName: "pointerlockchange", action: () => editorWrapper && onPointerLockChange(editorWrapper) },
-	{ target: window.document, eventName: "pointerlockerror", action: () => editorWrapper && onPointerLockChange(editorWrapper) },
+	{ target: window.document, eventName: "pointerlockchange", action: onPointerLockChange },
+	{ target: window.document, eventName: "pointerlockerror", action: onPointerLockChange },
 ];
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;

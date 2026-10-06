@@ -14,16 +14,14 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowPointerLock);
 			}
-			AppWindowMessage::PointerUnlock { x, y } => {
-				#[cfg(not(target_family = "wasm"))]
-				responses.add(FrontendMessage::WindowPointerUnlock { x, y });
-				#[cfg(target_family = "wasm")]
-				let _ = (x, y);
-			}
 			AppWindowMessage::PointerLockMove { x, y } => {
 				responses.add(FrontendMessage::WindowPointerLockMove { position: (x, y) });
-				// The input preprocessor drops these unless the software cursor is active, which keeps number-input drags from moving the editor pointer
-				responses.add(InputPreprocessorMessage::PointerLockMove { delta: glam::DVec2::new(x, y) });
+			}
+			AppWindowMessage::PointerWrap { enabled } => {
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::WindowPointerWrap { enabled });
+				#[cfg(target_family = "wasm")]
+				let _ = enabled;
 			}
 			AppWindowMessage::DirectInput { enabled } => {
 				#[cfg(not(target_family = "wasm"))]

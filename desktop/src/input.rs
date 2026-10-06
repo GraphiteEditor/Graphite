@@ -26,8 +26,8 @@ pub(crate) struct InputState {
 	modifiers: ModifiersState,
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
-	software_cursor_position: Option<glam::DVec2>,
-	delivers_locked_deltas: bool,
+	pointer_wrap: Option<PointerWrap>,
+	pending_warp: Option<PhysicalPosition<f64>>,
 	click_tracker: ClickTracker,
 	shake_tracker: ShakeTracker,
 }
@@ -41,8 +41,8 @@ impl InputState {
 			modifiers: ModifiersState::default(),
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
-			software_cursor_position: None,
-			delivers_locked_deltas: false,
+			pointer_wrap: None,
+			pending_warp: None,
 			click_tracker: ClickTracker::default(),
 			shake_tracker: ShakeTracker::default(),
 		}
@@ -56,22 +56,21 @@ impl InputState {
 		self.direct_input = enabled;
 	}
 
-	pub(crate) fn set_software_cursor_position(&mut self, position: Option<glam::DVec2>) {
-		self.software_cursor_position = position;
+	/// Starts or stops wrapping the pointer around the viewport during a G/R/S transform.
+	pub(crate) fn set_pointer_wrap(&mut self, enabled: bool) {
+		self.pointer_wrap = enabled.then_some(PointerWrap {
+			position: self.pointer_position,
+			last_reported: self.pointer_position,
+		});
+		self.pending_warp = None;
 	}
 
-	pub(crate) fn software_cursor_active(&self) -> bool {
-		self.software_cursor_position.is_some()
-	}
-
-	/// Records that the locked pointer moved, which is the only proof the platform delivers locked deltas.
-	pub(crate) fn record_locked_delta(&mut self) {
-		self.delivers_locked_deltas = true;
+	/// The window position the OS cursor should be moved to, if the last pointer event wrapped it.
+	pub(crate) fn take_pending_warp(&mut self) -> Option<PhysicalPosition<f64>> {
+		self.pending_warp.take()
 	}
 
 	pub(crate) fn lock_pointer(&mut self) {
-		// Until a locked delta shows up, the reported position is still what drives the pointer
-		self.delivers_locked_deltas = false;
 		self.pointer_state = match self.pointer_state {
 			PointerState::Hover { route } => PointerState::Locked {
 				route,
@@ -86,51 +85,48 @@ impl InputState {
 		};
 	}
 
-	/// Releases the lock and returns where the pointer should end up: the destination if one is given, otherwise where the lock began.
-	pub(crate) fn unlock_pointer(&mut self, destination: Option<PhysicalPosition<f64>>) -> Option<PhysicalPosition<f64>> {
+	pub(crate) fn unlock_pointer(&mut self) -> Option<PhysicalPosition<f64>> {
 		let PointerState::Locked {
 			route: resume,
 			keys,
-			position: locked_at,
+			position: restore,
 		} = self.pointer_state
 		else {
-			let destination = destination?;
-			self.pointer_position = destination;
-			return Some(destination);
+			return None;
 		};
-
-		let position = destination.unwrap_or(locked_at);
-		self.pointer_position = position;
+		self.pointer_position = restore;
 		self.pointer_state = match keys.is_empty() {
 			true => PointerState::Hover { route: Route::Ui },
 			false => PointerState::Stroke { route: resume, keys },
 		};
-		Some(position)
+		Some(restore)
 	}
 
 	pub(crate) fn pointer_locked(&self) -> bool {
 		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
-	/// Converts a viewport position into window coordinates, clamped to the viewport bounds.
-	pub(crate) fn viewport_to_window_position(&self, position: glam::DVec2) -> Option<PhysicalPosition<f64>> {
-		let viewport = self.viewport_info.as_ref()?;
-		if !position.is_finite() {
-			return None;
+	/// Turns the reported pointer position into a continuous one while G/R/S wraps it around the viewport.
+	fn wrapped_position(&mut self, reported: PhysicalPosition<f64>) -> PhysicalPosition<f64> {
+		let viewport = self.viewport_info;
+		let Some(wrap) = self.pointer_wrap.as_mut() else { return reported };
+
+		let dx = reported.x - wrap.last_reported.x;
+		let dy = reported.y - wrap.last_reported.y;
+		wrap.last_reported = reported;
+		wrap.position.x += dx;
+		wrap.position.y += dy;
+
+		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(wrap.position, viewport));
+		if let Some(wrapped) = warp_to {
+			wrap.position = wrapped;
+			// The cursor is moved to the opposite edge, so the next report is relative to it
+			wrap.last_reported = wrapped;
 		}
 
-		let (left, top) = (viewport.x, viewport.y);
-		let (right, bottom) = (left + viewport.width, top + viewport.height);
-		let position = glam::DVec2::new(left, top) + position * viewport.scale;
-
-		Some(PhysicalPosition::new(
-			if right > left { position.x.clamp(left, right) } else { position.x },
-			if bottom > top { position.y.clamp(top, bottom) } else { position.y },
-		))
-	}
-
-	fn software_cursor_window_position(&self) -> Option<PhysicalPosition<f64>> {
-		self.viewport_to_window_position(self.software_cursor_position?)
+		let position = wrap.position;
+		self.pending_warp = warp_to;
+		position
 	}
 
 	pub(crate) fn modifiers(&self) -> ModifiersState {
@@ -140,37 +136,33 @@ impl InputState {
 	pub(crate) fn process(&mut self, event: &WindowEvent, mut editor_callback: impl FnMut(InputMessage), mut ui_callback: impl FnMut(InputEvent)) {
 		match event {
 			WindowEvent::PointerMoved { position, source, .. } => {
-				self.pointer_position = *position;
-
-				// A locked pointer freezes the OS cursor at the lock origin, so its reported position isn't movement
-				// Not every platform delivers locked deltas after accepting the lock, so the position keeps driving the pointer until one arrives
-				if self.pointer_locked() && self.delivers_locked_deltas {
-					return;
-				}
+				let position = self.wrapped_position(*position);
+				self.pointer_position = position;
 
 				let route = match self.pointer_state {
 					PointerState::Hover { .. } => {
-						let next = self.route(*position);
+						let next = self.route(position);
 						self.pointer_state = PointerState::Hover { route: next };
 						next
 					}
 					PointerState::Stroke { route, .. } => route,
-					// A lock that never delivered movement isn't locking anything, so the pointer routes like an unlocked one
 					PointerState::Locked { keys, route: resume, .. } => match keys.is_empty() {
+						true => Route::Ui,
 						false => resume,
-						true => self.route(*position),
 					},
 				};
 				match route {
-					Route::Ui => ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).build()),
+					Route::Ui => ui_callback(InputEvent::pointer().position(position).moved().modifiers(self.modifiers).build()),
 					Route::Editor => {
-						ui_callback(InputEvent::pointer().position(*position).moved().modifiers(self.modifiers).observe_only().build());
+						if !self.pointer_locked() {
+							ui_callback(InputEvent::pointer().position(position).moved().modifiers(self.modifiers).observe_only().build());
+						}
 						let editor_mouse_state = match source {
 							PointerSource::TabletTool { kind, data } => self.tablet_pointer_state(kind, data),
 							_ => self.pointer_state(),
 						};
 						let modifier_keys = self.modifier_keys();
-						if self.shake_tracker.detect(*position, self.start.elapsed()) {
+						if self.shake_tracker.detect(position, self.start.elapsed()) {
 							editor_callback(InputMessage::PointerShake { editor_mouse_state, modifier_keys });
 						}
 						editor_callback(InputMessage::PointerMove { editor_mouse_state, modifier_keys });
@@ -188,12 +180,6 @@ impl InputState {
 			WindowEvent::PointerLeft { position: None, .. } => ui_callback(InputEvent::pointer().exited().modifiers(self.modifiers).build()),
 			WindowEvent::PointerButton { state, button, position, .. } => {
 				self.pointer_position = *position;
-
-				let hit_position = if self.pointer_locked() {
-					self.software_cursor_window_position().unwrap_or(*position)
-				} else {
-					*position
-				};
 
 				let mouse_button = button.clone().mouse_button();
 				let keys = match mouse_button {
@@ -235,10 +221,10 @@ impl InputState {
 				};
 				self.pointer_state = pointer;
 
-				let count = mouse_button.map_or(1, |button| self.click_tracker.input(hit_position, button, *state));
+				let count = mouse_button.map_or(1, |button| self.click_tracker.input(*position, button, *state));
 
 				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
-				let pointer = InputEvent::pointer().position(hit_position);
+				let pointer = InputEvent::pointer().position(*position);
 				let input = match state {
 					ElementState::Pressed => pointer.pressed(button.clone(), count),
 					ElementState::Released => pointer.released(button.clone(), count),
@@ -317,7 +303,7 @@ impl InputState {
 		}
 	}
 
-	fn viewport_scale(&self) -> f64 {
+	fn scale(&self) -> f64 {
 		self.viewport_info.as_ref().map_or(1., |info| info.scale)
 	}
 
@@ -338,7 +324,7 @@ impl InputState {
 
 	fn pointer_state(&self) -> EditorPointerState {
 		EditorPointerState {
-			editor_position: (self.pointer_position.x / self.viewport_scale(), self.pointer_position.y / self.viewport_scale()).into(),
+			editor_position: (self.pointer_position.x / self.scale(), self.pointer_position.y / self.scale()).into(),
 			mouse_keys: self.pointer_keys(),
 			time: Some(self.start.elapsed().as_secs_f64() * 1000.),
 			..Default::default()
@@ -379,6 +365,13 @@ enum Route {
 	Editor,
 }
 
+/// Tracks the continuous pointer position while G/R/S wraps it around the viewport.
+struct PointerWrap {
+	position: PhysicalPosition<f64>,
+	last_reported: PhysicalPosition<f64>,
+}
+
+#[derive(Clone, Copy)]
 struct ViewportInfo {
 	x: f64,
 	y: f64,
@@ -391,6 +384,18 @@ impl ViewportInfo {
 	fn contains(&self, position: PhysicalPosition<f64>) -> bool {
 		position.x >= self.x && position.y >= self.y && position.x <= self.x + self.width && position.y <= self.y + self.height
 	}
+}
+
+/// Wraps a window position into the viewport bounds, returning `None` when it is already inside.
+fn wrap_into_viewport(position: PhysicalPosition<f64>, viewport: ViewportInfo) -> Option<PhysicalPosition<f64>> {
+	if viewport.width <= 0. || viewport.height <= 0. {
+		return None;
+	}
+
+	let relative = glam::DVec2::new(position.x - viewport.x, position.y - viewport.y);
+	let wrapped = glam::DVec2::new(viewport.x, viewport.y) + relative.rem_euclid(glam::DVec2::new(viewport.width, viewport.height));
+	let wrapped = PhysicalPosition::new(wrapped.x, wrapped.y);
+	(wrapped != position).then_some(wrapped)
 }
 
 #[derive(Default)]
@@ -507,5 +512,45 @@ impl ShakeTracker {
 		}
 
 		false
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	fn viewport() -> ViewportInfo {
+		ViewportInfo {
+			x: 100.,
+			y: 50.,
+			width: 200.,
+			height: 100.,
+			scale: 1.,
+		}
+	}
+
+	#[test]
+	fn wrap_into_viewport_wraps_past_the_edges() {
+		assert_eq!(wrap_into_viewport(PhysicalPosition::new(150., 80.), viewport()), None, "a position inside the viewport should stay put");
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(310., 80.), viewport()),
+			Some(PhysicalPosition::new(110., 80.)),
+			"a position past the right edge should wrap to the left"
+		);
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(90., 80.), viewport()),
+			Some(PhysicalPosition::new(290., 80.)),
+			"a position before the left edge should wrap to the right"
+		);
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(150., 160.), viewport()),
+			Some(PhysicalPosition::new(150., 60.)),
+			"a position past the bottom edge should wrap to the top"
+		);
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(150., 80.), ViewportInfo { width: 0., ..viewport() }),
+			None,
+			"a zero-sized viewport should not wrap"
+		);
 	}
 }
