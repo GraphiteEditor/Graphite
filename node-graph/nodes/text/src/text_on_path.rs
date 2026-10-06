@@ -320,7 +320,10 @@ pub fn place_text_on_path(
 		..crate::TypesettingConfig::default()
 	};
 
-	let Some(layout) = crate::TextContext::with_thread_local(|ctx| ctx.layout_text(text, font, typesetting)) else {
+	// A path has no lines to wrap into, so embedded paragraph breaks cannot stay: they would stack the fragments on top
+	// of each other.
+	let flattened = text.replace(['\r', '\n'], " ");
+	let Some(layout) = crate::TextContext::with_thread_local(|ctx| ctx.layout_text(&flattened, font, typesetting)) else {
 		log::error!("Text layout failed for: {text}");
 		return List::new();
 	};
