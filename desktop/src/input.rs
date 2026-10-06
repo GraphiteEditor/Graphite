@@ -56,7 +56,6 @@ impl InputState {
 		self.direct_input = enabled;
 	}
 
-	/// Starts or stops wrapping the pointer around the viewport during a G/R/S transform.
 	pub(crate) fn set_pointer_wrap(&mut self, enabled: bool) {
 		self.pointer_wrap = enabled.then_some(PointerWrap {
 			position: self.pointer_position,
@@ -106,7 +105,7 @@ impl InputState {
 		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
-	/// Turns the reported pointer position into a continuous one while G/R/S wraps it around the viewport.
+	/// Accumulates the reported window position into a continuous one while G/R/S wraps it around the viewport.
 	fn wrapped_position(&mut self, reported: PhysicalPosition<f64>) -> PhysicalPosition<f64> {
 		let viewport = self.viewport_info;
 		let Some(wrap) = self.pointer_wrap.as_mut() else { return reported };
@@ -119,7 +118,7 @@ impl InputState {
 
 		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(wrap.position, viewport));
 		if let Some(wrapped) = warp_to {
-			// The cursor is moved to the opposite edge, so the next report is relative to it, but the tracked position stays continuous
+			// The next report is measured from the wrap target, but the tracked position stays continuous
 			wrap.last_reported = wrapped;
 		}
 
@@ -311,6 +310,12 @@ impl InputState {
 	}
 
 	fn route(&self, position: PhysicalPosition<f64>) -> Route {
+		// A G/R/S wrap keeps the tracked position continuous, so it may lie outside the viewport, but the editor
+		// still owns pointer routing for the duration of the transform.
+		if self.direct_input && self.pointer_wrap.is_some() {
+			return Route::Editor;
+		}
+
 		if self.ui_captures(position) { Route::Ui } else { Route::Editor }
 	}
 
@@ -364,12 +369,13 @@ enum Route {
 	Editor,
 }
 
-/// Tracks the continuous pointer position while G/R/S wraps it around the viewport.
+/// Tracks the continuous pointer position, in physical window coordinates, while G/R/S wraps it around the viewport.
 struct PointerWrap {
 	position: PhysicalPosition<f64>,
 	last_reported: PhysicalPosition<f64>,
 }
 
+/// The viewport's bounds in physical window coordinates, and the window's scale factor.
 #[derive(Clone, Copy)]
 struct ViewportInfo {
 	x: f64,
@@ -577,5 +583,24 @@ mod test {
 			Some(PhysicalPosition::new(101., 80.)),
 			"the OS cursor should still be moved to the opposite edge"
 		);
+	}
+
+	#[test]
+	fn wrapped_position_keeps_the_editor_routed_to_receive_moves() {
+		let mut input = InputState::new();
+		let viewport = viewport();
+		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
+		input.set_direct_input(true);
+		input.pointer_position = PhysicalPosition::new(299., 80.);
+		input.set_pointer_wrap(true);
+
+		let position = input.wrapped_position(PhysicalPosition::new(301., 80.));
+		assert!(
+			matches!(input.route(position), Route::Editor),
+			"the editor must keep receiving moves once the pointer wraps outside the viewport"
+		);
+
+		input.set_pointer_wrap(false);
+		assert!(matches!(input.route(position), Route::Ui), "without a wrap the UI captures an outside position again");
 	}
 }

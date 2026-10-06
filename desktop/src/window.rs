@@ -200,9 +200,14 @@ impl Window {
 		self.winit_window.set_cursor_visible(true);
 	}
 
-	pub(crate) fn set_cursor_position(&self, position: winit::dpi::PhysicalPosition<f64>) {
-		if let Err(e) = self.winit_window.set_cursor_position(position.into()) {
-			tracing::warn!("Failed to place the cursor: {e}");
+	/// Moves the OS cursor, returning whether the platform allowed it.
+	pub(crate) fn set_cursor_position(&self, position: winit::dpi::PhysicalPosition<f64>) -> bool {
+		match self.winit_window.set_cursor_position(position.into()) {
+			Ok(()) => true,
+			Err(e) => {
+				tracing::warn!("Failed to place the cursor: {e}");
+				false
+			}
 		}
 	}
 

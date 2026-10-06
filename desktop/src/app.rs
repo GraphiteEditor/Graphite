@@ -581,7 +581,6 @@ impl ApplicationHandler for App {
 			));
 		}
 
-		// A transform's wrap can't keep following the pointer once the window loses focus
 		if matches!(event, WindowEvent::Focused(false)) {
 			self.input_state.set_pointer_wrap(false);
 		}
@@ -592,11 +591,12 @@ impl ApplicationHandler for App {
 			|input| self.ui.send(UiCommand::Input(input)),
 		);
 
-		// A wrap moved the pointer to the opposite edge of the viewport, so put the OS cursor there
-		if let Some(position) = self.input_state.take_pending_warp()
-			&& let Some(window) = &self.window
-		{
-			window.set_cursor_position(position);
+		if let Some(position) = self.input_state.take_pending_warp() {
+			let moved = self.window.as_ref().is_some_and(|window| window.set_cursor_position(position));
+			// A platform that refuses to move the pointer (Wayland) gets no wrapping
+			if !moved {
+				self.input_state.set_pointer_wrap(false);
+			}
 		}
 
 		match event {
