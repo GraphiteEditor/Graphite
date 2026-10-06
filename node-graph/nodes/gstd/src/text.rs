@@ -141,19 +141,14 @@ fn text_on_path(
 	/// Where the text starts relative to its position along the path.
 	#[default(TextAnchor::Start)]
 	text_anchor: Item<TextAnchor>,
-	/// Distance from the path's start to the first glyph.
+	/// Distance from the path's start to the first glyph, as a percentage of the path's length. Negative values and
+	/// values past 100% are allowed, so text can start before the path or past its end.
 	#[unit("%")]
 	#[default(0.)]
 	start_offset: Item<f64>,
-	/// Whether the start offset is a fraction of the path's length rather than an absolute distance.
-	#[default(true)]
-	start_offset_percent: Item<bool>,
 	/// Whether glyphs keep their size along the path or stretch to follow its curve.
 	#[default(TextPathMethod::Align)]
 	method: Item<TextPathMethod>,
-	/// How far a glyph shifts along the path to account for the curve it spans.
-	#[default(TextPathSpacing::Exact)]
-	spacing: Item<TextPathSpacing>,
 	/// Whether the *Text Length* target is enabled so the text is fitted to it.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_text_length: Item<bool>,
@@ -165,14 +160,6 @@ fn text_on_path(
 	/// How the target length is reached: by spacing alone, or by scaling glyphs too.
 	#[default(LengthAdjust::Spacing)]
 	length_adjust: Item<LengthAdjust>,
-	/// Whether the path's own length is set so its coordinates scale to it.
-	#[widget(ParsedWidgetOverride::Hidden)]
-	has_path_length: Item<bool>,
-	/// The path's own length, used to scale its coordinates when set.
-	#[unit(" px")]
-	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	#[hard(1..)]
-	path_length: Item<f64>,
 ) -> List<Vector> {
 	let defaults = TypesettingConfig::default();
 	let text = string.element().clone();
@@ -190,12 +177,10 @@ fn text_on_path(
 	};
 
 	let start_offset = start_offset.into_element();
-	let start_offset_percent = start_offset_percent.into_element();
 	let text_anchor = text_anchor.into_element();
 
 	let side = side.into_element();
 	let method = method.into_element();
-	let spacing = spacing.into_element();
 	let length_adjust = length_adjust.into_element();
 
 	// Glyphs are placed in the styled string's own space, so the string's transform rides on each produced path.
@@ -211,14 +196,11 @@ fn text_on_path(
 		typesetting.font_size,
 		typesetting.letter_spacing,
 		start_offset,
-		start_offset_percent,
 		side,
 		text_anchor,
 		method,
-		spacing,
 		optional_length(has_text_length.into_element(), text_length.into_element()),
 		length_adjust,
-		optional_length(has_path_length.into_element(), path_length.into_element()),
 	);
 	if transform != DAffine2::IDENTITY {
 		// Glyphs are placed in the styled string's own space, so its transform rides on each produced item.

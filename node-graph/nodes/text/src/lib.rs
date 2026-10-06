@@ -58,17 +58,6 @@ pub enum TextPathMethod {
 	Stretch,
 }
 
-/// How far a glyph is shifted along the path to account for the curve it spans.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
-#[widget(Dropdown)]
-pub enum TextPathSpacing {
-	/// Glyphs sit exactly where the path measures them.
-	#[default]
-	Exact,
-	/// Glyphs shift to smooth out the curve they span.
-	Auto,
-}
-
 /// How `textLength` is reconciled with the path: by adjusting spacing, by scaling glyphs too, or not at all.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, DynAny, node_macro::ChoiceType, CacheHash)]
 #[widget(Dropdown)]

@@ -595,7 +595,6 @@ tagged_value! {
 	TextPathSide(text_nodes::TextPathSide),
 	TextAnchor(text_nodes::TextAnchor),
 	TextPathMethod(text_nodes::TextPathMethod),
-	TextPathSpacing(text_nodes::TextPathSpacing),
 	LengthAdjust(text_nodes::LengthAdjust),
 	ScaleType(core_types::transform::ScaleType),
 	// Legacy

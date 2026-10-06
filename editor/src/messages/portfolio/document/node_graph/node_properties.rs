@@ -28,7 +28,7 @@ use graphene_std::raster::{
 };
 use graphene_std::raster_types::{CPU, GPU, Image, Raster};
 use graphene_std::text::{Font, TextAlign};
-use graphene_std::text_nodes::{LengthAdjust, StringCapitalization, TextAnchor, TextDenomination, TextPathMethod, TextPathSide, TextPathSpacing};
+use graphene_std::text_nodes::{LengthAdjust, StringCapitalization, TextAnchor, TextDenomination, TextPathMethod, TextPathSide};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
@@ -356,7 +356,6 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, optio
 				Some(x) if id_is::<TextPathSide>(x) => enum_choice::<TextPathSide>().for_socket(default_info).property_row(),
 				Some(x) if id_is::<TextAnchor>(x) => enum_choice::<TextAnchor>().for_socket(default_info).property_row(),
 				Some(x) if id_is::<TextPathMethod>(x) => enum_choice::<TextPathMethod>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<TextPathSpacing>(x) => enum_choice::<TextPathSpacing>().for_socket(default_info).property_row(),
 				Some(x) if id_is::<LengthAdjust>(x) => enum_choice::<LengthAdjust>().for_socket(default_info).property_row(),
 				Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
 				Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),

@@ -1,4 +1,4 @@
-use crate::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide, TextPathSpacing};
+use crate::{LengthAdjust, TextAnchor, TextPathMethod, TextPathSide};
 use core_types::list::List;
 use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
@@ -94,7 +94,7 @@ impl ArcLengthLut {
 		// A lookup interval can straddle two segments, in which case interpolating `t` from the left sample alone would
 		// place the glyph on the previous segment. Interpolate each side within its own segment and take the nearer point.
 		let (left_segment, left_t) = self.params[index];
-		let (right_segment, right_t) = self.params[next_index];
+		let (right_segment, _) = self.params[next_index];
 		if left_segment != right_segment {
 			// s sits between two segments and belongs to whichever side of their joint it is on. Interpolating across
 			// the joint would mix two different parameter spaces, bunching glyphs near each segment's start.
@@ -247,23 +247,6 @@ fn resolve_startpoint(absolute_offset: f64, total_advance: f64, text_anchor: Tex
 		TextAnchor::End => absolute_offset - total_advance,
 	}
 }
-
-fn curvature_spacing_adjustment(lut: &ArcLengthLut, mid: f64, advance: f64) -> f64 {
-	let half = advance / 2.;
-	let (_, start_angle) = at_with_extension(lut, mid - half);
-	let (_, end_angle) = at_with_extension(lut, mid + half);
-	// Take the signed angle difference the short way around the circle.
-	let angle_delta = (end_angle - start_angle + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
-	advance * angle_delta.abs() * 0.1
-}
-
-fn text_path_spacing_adjustment(spacing: TextPathSpacing, lut: &ArcLengthLut, mid: f64, advance: f64) -> f64 {
-	match spacing {
-		TextPathSpacing::Exact => 0.,
-		TextPathSpacing::Auto => curvature_spacing_adjustment(lut, mid, advance),
-	}
-}
-
 fn point_on_path(lut: &ArcLengthLut, s: f64) -> (Point, f64) {
 	if lut.is_closed {
 		lut.at_or_zero(s.rem_euclid(lut.total_length))
@@ -291,14 +274,11 @@ pub fn place_text_on_path(
 	font_size: f64,
 	character_spacing: f64,
 	start_offset: f64,
-	start_offset_percent: bool,
 	side: TextPathSide,
 	text_anchor: TextAnchor,
 	method: TextPathMethod,
-	spacing: TextPathSpacing,
 	text_length: Option<f64>,
 	length_adjust: LengthAdjust,
-	path_length: Option<f64>,
 ) -> List<Vector> {
 	let Some(mut bezpath) = path_list
 		.element(0)
@@ -328,16 +308,9 @@ pub fn place_text_on_path(
 		return List::new();
 	};
 
-	// A `pathLength` scales the source path's coordinates, so a start offset given in the same units must scale with it.
-	// A percentage offset is written 0 to 100, so it is divided back to a fraction before meeting the path length.
-	let absolute_offset = match path_length.filter(|&length| length > 1e-9) {
-		Some(path_length) => {
-			let scale = lut.total_length / path_length;
-			if start_offset_percent { start_offset / 100. * lut.total_length } else { start_offset * scale }
-		}
-		None if start_offset_percent => start_offset / 100. * lut.total_length,
-		None => start_offset,
-	};
+	// The offset is written 0 to 100 like the SVG percentage it mirrors, so it is divided back to a fraction before
+	// meeting the path length. Negative values and values past 100% are allowed.
+	let absolute_offset = start_offset / 100. * lut.total_length;
 
 	let mut path_builder = crate::path_builder::PathBuilder::new(false, layout.scale() as f64, DVec2::ZERO, DVec2::ZERO);
 
@@ -388,8 +361,7 @@ pub fn place_text_on_path(
 				let glyph_x_offset = (run_x as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
 				let mid = line_start + glyph_x_offset + scaled_advance / 2.;
 
-				let spacing_adjustment = text_path_spacing_adjustment(spacing, &lut, mid, scaled_advance);
-				let adjusted_mid = mid + spacing_adjustment;
+				let adjusted_mid = mid;
 
 				run_x += glyph.advance;
 				glyph_index += 1;
