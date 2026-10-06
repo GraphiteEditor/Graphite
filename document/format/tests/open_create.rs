@@ -596,11 +596,19 @@ fn first_commit_registers_peer_and_survives_reopen() {
 
 		gdd.commit_from_runtime(&network, &NoMetadata, &ResourceRegistry::new(), &HashMapResourceStorage::new())
 			.unwrap_or_else(|error| panic!("commit_from_runtime failed: {error:?}"));
-		assert_eq!(gdd.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "first commit registers the peer");
+		assert_eq!(
+			gdd.registry().peer_users.get(&PeerId(21)).map(|registration| registration.user),
+			Some(UserId(21)),
+			"first commit registers the peer"
+		);
 
 		let (working, layout) = gdd.into_storage();
 		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
-		assert_eq!(reopened.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "registration survives reopen");
+		assert_eq!(
+			reopened.registry().peer_users.get(&PeerId(21)).map(|registration| registration.user),
+			Some(UserId(21)),
+			"registration survives reopen"
+		);
 	});
 }
 

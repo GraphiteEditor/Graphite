@@ -1,7 +1,4 @@
-use crate::{
-	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value,
-	attr, compute_rev,
-};
+use crate::{Attributes, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -190,9 +187,7 @@ pub enum RegistryDelta {
 		id: ResourceId,
 		key: SourceKey,
 	},
-	/// Append-only registration of a device's `PeerId` against its owning `UserId`.
-	/// First write wins; conflicting re-registration errors. Duplicate identical registration
-	/// is a no-op. Not LWW — the mapping is forever.
+	/// Registers a device's `PeerId` to the `UserId` behind it; the newest registration wins.
 	RegisterPeer {
 		peer: PeerId,
 		user: UserId,
@@ -222,27 +217,5 @@ pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attri
 	AttributeDelta {
 		key: delta.key.clone(),
 		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
-	}
-}
-
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {
-	let AttributeDelta { key, value } = delta;
-	match value {
-		Some(value) => match attributes.entry(key) {
-			std::collections::btree_map::Entry::Occupied(mut entry) => {
-				if force || timestamp > entry.get().timestamp {
-					entry.insert(AttributeValue { value, timestamp });
-				}
-			}
-			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(AttributeValue { value, timestamp });
-			}
-		},
-		None => {
-			let should_remove = force || attributes.get(&key).is_none_or(|existing| timestamp > existing.timestamp);
-			if should_remove {
-				attributes.remove(&key);
-			}
-		}
 	}
 }

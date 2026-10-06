@@ -34,45 +34,57 @@ impl EditorTestUtils {
 		Self { editor, runtime }
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
-		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
-			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-			let document_id = portfolio.active_document_id.unwrap();
-			let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
-			let document = documents.get_mut(&document_id).unwrap();
+	/// Submit an evaluation to the executor, run the runtime, and process the results.
+	///
+	/// If a deferred message triggers a second graph run, this will not occur. See [`Self::eval_graph_until_finished`] for this behaviour.
+	async fn eval_graph_once(&mut self) -> Result<Instrumented, String> {
+		let portfolio = &mut self.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
 
-			let instrumented = match executor.update_node_graph_instrumented(document) {
-				Ok(instrumented) => instrumented,
-				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
-			};
+		let instrumented = match executor.update_node_graph_instrumented(document) {
+			Ok(instrumented) => instrumented,
+			Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
+		};
 
-			if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
-				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
-			}
-			runtime.run().await;
+		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+			return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+		}
+		self.runtime.run().await;
 
-			let mut messages = VecDeque::new();
-			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-				return Err(format!("Graph should render\n\n{e}"));
-			}
-			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
+		let mut messages = VecDeque::new();
+		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut messages) {
+			return Err(format!("Graph should render\n\n{e}"));
+		}
+		let frontend_messages = messages.into_iter().flat_map(|message| self.editor.handle_message(message));
 
-			for message in frontend_messages {
-				message.check_node_graph_error();
-			}
-
-			Ok(instrumented)
+		for message in frontend_messages {
+			message.check_node_graph_error();
 		}
 
-		run(&mut self.editor, &mut self.runtime)
+		Ok(instrumented)
+	}
+
+	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
+	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, String> {
+		const MAX_ITERATIONS: usize = 16;
+		for _iteration in 0..MAX_ITERATIONS {
+			let execution_id = self.portfolio_message_handler().executor.current_execution_id();
+			let result = self.eval_graph_once().await?;
+			// If there have been no other executions queued (other than the one we just queued ourselves above) then finish
+			if execution_id + 1 >= self.portfolio_message_handler().executor.current_execution_id() {
+				return Ok(result);
+			}
+		}
+		return Err(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping"));
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
 		let frontend_messages_from_msg = self.editor.handle_message(message);
 
 		// Required to process any buffered messages
-		if let Err(e) = self.eval_graph().await {
+		if let Err(e) = self.eval_graph_until_finished().await {
 			panic!("Failed to evaluate graph: {e}");
 		}
 
@@ -165,12 +177,20 @@ impl EditorTestUtils {
 		.await;
 	}
 
+	pub fn portfolio_message_handler(&self) -> &PortfolioMessageHandler {
+		&self.editor.dispatcher.message_handlers.portfolio_message_handler
+	}
+
+	pub fn portfolio_message_handler_mut(&mut self) -> &mut PortfolioMessageHandler {
+		&mut self.editor.dispatcher.message_handlers.portfolio_message_handler
+	}
+
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap()
+		self.portfolio_message_handler().active_document().unwrap()
 	}
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
+		self.portfolio_message_handler_mut().active_document_mut().unwrap()
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {

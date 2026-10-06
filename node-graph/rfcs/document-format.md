@@ -26,7 +26,8 @@ pub struct Registry {
     pub node_instances: HashMap<NodeId, Node>,                 // all nodes, flat
     pub networks: HashMap<NetworkId, Network>,                  // exports + per-network attrs
     pub resources: ResourceStore,                               // content-addressable resources (images, fonts, declarations)
-    pub peer_users: HashMap<PeerId, UserId>,                    // per-device → per-human identity
+    pub peer_users: HashMap<PeerId, PeerRegistration>,          // per-device -> per-user identity, LWW
+
     pub attributes: Attributes,                                 // document-level metadata
 }
 
@@ -56,7 +57,8 @@ pub struct ExportSlot {
 pub const ROOT_NETWORK: NetworkId = NetworkId(0);
 ```
 
-`peer_users` records the append-only `PeerId → UserId` mapping written by each device's first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
+`peer_users` records the latest `PeerId → UserId` mapping registered for each device (see [Concurrency model](#concurrency-model-cmrdt)).
+
 
 The renderable graph lives in `networks[&ROOT_NETWORK]`. By convention the renderer consumes slot 0 of its exports. The editor can pick a different slot via type-based heuristics or user choice.
 
@@ -77,7 +79,9 @@ pub struct AttributeValue {
     pub timestamp: TimeStamp,
 }
 
-pub type Attributes = BTreeMap<String, AttributeValue>;
+pub struct Attributes {
+    entries: BTreeMap<String, AttributeValue>,
+}
 ```
 
 Keys carry a namespace where one applies, mostly the `ui::*` editor-metadata keys (`ui::position`, `ui::display_name`, and so on). Compute fields use bare keys (`call_argument`, `context_features`, `original_node_id`). Values are JSON, and the per-value `TimeStamp` drives LWW on concurrent edits.
@@ -196,7 +200,8 @@ The format uses an operation-based CRDT. The transport layer delivers ops in cau
 
 Graph-shape invariants (the graph remaining a DAG, the result compiling) are best-effort. Conflicts that produce a non-compiling graph surface as wiring or type errors rather than being masked by the CRDT.
 
-Identity is two-tier. `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping). `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes an append-only entry to `Registry.peer_users`. Causal delivery guarantees the registration arrives before any of that peer's other ops. The mapping is permanent (first write wins, a conflicting re-registration errors, and an identical one is a no-op), so `RegisterPeer` is its own reverse: replaying it during undo is a no-op rather than needing a distinct removal variant.
+Identity is two-tier. `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping). `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes the peer's entry in `Registry.peer_users` along with its timestamp. Causal delivery guarantees the registration arrives before any of that peer's other ops. A device that changes person registers again, and the entry is last-writer-wins by timestamp, so every peer settles on the newest registration whatever order they arrive in. Registrations aren't undoable: `RegisterPeer` is its own reverse, so undo leaves the entry standing.
+
 
 ## Editor pipeline
 
