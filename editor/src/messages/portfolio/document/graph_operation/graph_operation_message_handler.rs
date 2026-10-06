@@ -964,7 +964,7 @@ fn usvg_text_layout_metrics(text: &str, typesetting: &TypesettingConfig) -> Opti
 }
 
 fn apply_usvg_text_transform(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text) {
-	let elem_transform = usvg_transform(text.abs_transform());
+	let element_transform = usvg_transform(text.abs_transform());
 	let first_chunk = text.chunks().first();
 	let chunk_offset = first_chunk.map(|c| DVec2::new(f64::from(c.x().unwrap_or(0.)), f64::from(c.y().unwrap_or(0.)))).unwrap_or_default();
 
@@ -978,7 +978,7 @@ fn apply_usvg_text_transform(modify_inputs: &mut ModifyInputsContext, text: &usv
 		usvg::TextAnchor::Middle => width / 2.,
 		usvg::TextAnchor::End => width,
 	};
-	let text_transform = elem_transform * DAffine2::from_translation(chunk_offset - DVec2::new(anchor_shift, baseline));
+	let text_transform = element_transform * DAffine2::from_translation(chunk_offset - DVec2::new(anchor_shift, baseline));
 
 	if text_transform.abs_diff_eq(DAffine2::IDENTITY, 1e-6) {
 		return;
@@ -1182,7 +1182,6 @@ mod tests {
 		assert!(baseline > 0. && baseline < 24., "a 24px line's baseline should sit inside it, got {baseline}");
 		assert!(width > 0., "the laid-out line should have a width to anchor against, got {width}");
 	}
-
 
 	#[tokio::test]
 	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {

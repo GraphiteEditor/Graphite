@@ -1430,9 +1430,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 	for (node_id, network_path) in &old_text_nodes {
-		// Pre-load `outward_wires` so the splice below resolves the original downstream wiring from cache rather than a mutated state.
-		let _ = document.network_interface.outward_wires(network_path);
-
 		// Convert the old node in place to the current `text` node, capturing its old inputs.
 		let Some(text_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) else {
 			continue;
@@ -1450,12 +1447,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			if let Some(input) = old_inputs.get(legacy_index) {
 				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, new_index), input.clone(), network_path);
 			}
-		}
-		// New decoration inputs at 12,13,14 default to false for migrated nodes.
-		for index in 12..=14 {
-			document
-				.network_interface
-				.set_input(&InputConnector::node_at_index(*node_id, index), NodeInput::value(TaggedValue::Bool(false), false), network_path);
 		}
 		// A `true` toggle at index 12 chose per-glyph geometry, which is now the dedicated "Text to Vector Glyphs" node
 		let separate_glyphs = matches!(old_inputs.get(12).and_then(|input| input.as_value()), Some(TaggedValue::Bool(true)));
