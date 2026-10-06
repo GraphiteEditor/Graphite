@@ -18,6 +18,8 @@ pub struct ArcLengthLut {
 	/// The (segment index, t) parameter of each sample, parallel to `lengths`.
 	params: Vec<(usize, f64)>,
 	segs: Vec<PathSeg>,
+	/// Cumulative arc length where each segment ends, so a lookup straddling two segments knows which side it is on.
+	boundaries: Vec<f64>,
 	pub total_length: f64,
 	pub is_closed: bool,
 }
@@ -31,6 +33,7 @@ impl ArcLengthLut {
 		let segs = path.segments().collect::<Vec<_>>();
 		let mut lengths = vec![0.];
 		let mut params = vec![(0_usize, 0.0)];
+		let mut boundaries = Vec::new();
 
 		let mut cumulative = 0.;
 		for (segment_index, segment) in segs.iter().enumerate() {
@@ -52,12 +55,14 @@ impl ArcLengthLut {
 			// The last sample's chord length underestimates the segment slightly; add the remainder so `total_length`
 			// matches the segment's own arc length.
 			cumulative += (segment_length - segment.arclen(ARC_LENGTH_ACCURACY)).max(0.);
+			boundaries.push(cumulative);
 		}
 
 		Self {
 			lengths,
 			params,
 			segs,
+			boundaries,
 			total_length: cumulative,
 			is_closed: matches!(path.elements().last(), Some(PathEl::ClosePath)),
 		}
@@ -91,20 +96,16 @@ impl ArcLengthLut {
 		let (left_segment, left_t) = self.params[index];
 		let (right_segment, right_t) = self.params[next_index];
 		if left_segment != right_segment {
-			let left_point = self.segs[left_segment].eval(self.interpolate(index, next_index, s, left_t));
-			let right_point = self.segs[right_segment].eval(self.interpolate(next_index, index, s, right_t));
-			return Some(
-				if left_point.distance(Point::new(self.segs[left_segment].end().x, self.segs[left_segment].end().y))
-					<= right_point.distance(Point::new(self.segs[left_segment].end().x, self.segs[left_segment].end().y))
-				{
-					let tangent = Self::eval_tangent(self.segs[left_segment], self.interpolate(index, next_index, s, left_t));
-					(left_point, tangent.y.atan2(tangent.x))
-				} else {
-					let t = self.interpolate(next_index, index, s, right_t);
-					let tangent = Self::eval_tangent(self.segs[right_segment], t);
-					(right_point, tangent.y.atan2(tangent.x))
-				},
-			);
+			// s sits between two segments and belongs to whichever side of their joint it is on. Interpolating across
+			// the joint would mix two different parameter spaces, bunching glyphs near each segment's start.
+			let (segment, t) = if s <= self.boundaries[left_segment] {
+				(left_segment, self.interpolate_in_segment(left_segment, s))
+			} else {
+				(right_segment, self.interpolate_in_segment(right_segment, s))
+			};
+			let point = self.segs[segment].eval(t);
+			let tangent = Self::eval_tangent(self.segs[segment], t);
+			return Some((point, tangent.y.atan2(tangent.x)));
 		}
 
 		let t = self.interpolate(index, next_index, s, left_t);
@@ -113,6 +114,37 @@ impl ArcLengthLut {
 	}
 
 	/// The `t` within a segment at arc length `s`, interpolating between two samples of the same segment.
+	/// The `t` on one segment whose arc length is `s`, interpolated between that segment's own samples. The segment's
+	/// ends count as implicit samples, since each segment's stored samples start past `t = 0`.
+	fn interpolate_in_segment(&self, segment: usize, s: f64) -> f64 {
+		let start_length = if segment == 0 { 0. } else { self.boundaries[segment - 1] };
+		let end_length = self.boundaries[segment];
+		if s <= start_length {
+			return 0.;
+		}
+		if s >= end_length {
+			return 1.;
+		}
+
+		let mut prev_length = start_length;
+		let mut prev_t = 0.;
+		for (index, &(seg, t)) in self.params.iter().enumerate() {
+			if seg != segment {
+				continue;
+			}
+			let length = self.lengths[index];
+			if length >= s {
+				if (length - prev_length).abs() <= 1e-9 {
+					return prev_t;
+				}
+				return prev_t + (s - prev_length) / (length - prev_length) * (t - prev_t);
+			}
+			prev_length = length;
+			prev_t = t;
+		}
+		1.
+	}
+
 	fn interpolate(&self, near_index: usize, far_index: usize, s: f64, near_t: f64) -> f64 {
 		let near_length = self.lengths[near_index];
 		let far_length = self.lengths[far_index];
@@ -197,10 +229,15 @@ fn maybe_reverse_path(path: BezPath, side: TextPathSide) -> BezPath {
 	}
 }
 
-/// Whether a glyph falls off the end of an open path, where SVG hides it rather than drawing it in place.
-/// A closed path renders one circuit and hides the rest, so nothing is ever dropped from it.
+/// Whether a glyph falls outside the single circuit that is drawn, where SVG hides it rather than drawing it in place.
+/// An open path shows its length plus a hair at each end; a closed path shows exactly one circuit, so anything past its
+/// length wraps back over the start and is hidden instead.
 fn is_glyph_hidden(mid: f64, total_length: f64, is_closed: bool) -> bool {
-	!is_closed && !(-1e-3..=total_length + 1e-3).contains(&mid)
+	if is_closed {
+		!(0.0..=total_length).contains(&mid)
+	} else {
+		!(-1e-3..=total_length + 1e-3).contains(&mid)
+	}
 }
 
 fn resolve_startpoint(absolute_offset: f64, total_advance: f64, text_anchor: TextAnchor) -> f64 {
@@ -249,6 +286,7 @@ fn stretch_point_on_path(lut: &ArcLengthLut, point: DVec2, origin: f64, advance_
 pub fn place_text_on_path(
 	text: &str,
 	path_list: &List<Vector>,
+	path_transform: DAffine2,
 	font: &Resource,
 	font_size: f64,
 	character_spacing: f64,
@@ -262,13 +300,14 @@ pub fn place_text_on_path(
 	length_adjust: LengthAdjust,
 	path_length: Option<f64>,
 ) -> List<Vector> {
-	let Some(bezpath) = path_list
+	let Some(mut bezpath) = path_list
 		.element(0)
 		.and_then(|vector| vector.stroke_bezpath_iter().find(|path| path.segments().next().is_some()))
 		.map(|path| maybe_reverse_path(path, side))
 	else {
 		return List::new();
 	};
+	bezpath.apply_affine(vector_types::kurbo::Affine::new(path_transform.to_cols_array()));
 
 	let lut = ArcLengthLut::build(&bezpath);
 	if lut.total_length < 1e-9 {
@@ -287,12 +326,13 @@ pub fn place_text_on_path(
 	};
 
 	// A `pathLength` scales the source path's coordinates, so a start offset given in the same units must scale with it.
+	// A percentage offset is written 0 to 100, so it is divided back to a fraction before meeting the path length.
 	let absolute_offset = match path_length.filter(|&length| length > 1e-9) {
 		Some(path_length) => {
 			let scale = lut.total_length / path_length;
-			if start_offset_percent { start_offset * lut.total_length } else { start_offset * scale }
+			if start_offset_percent { start_offset / 100. * lut.total_length } else { start_offset * scale }
 		}
-		None if start_offset_percent => start_offset * lut.total_length,
+		None if start_offset_percent => start_offset / 100. * lut.total_length,
 		None => start_offset,
 	};
 
@@ -341,7 +381,8 @@ pub fn place_text_on_path(
 					cumulative_offset += spacing_delta;
 				}
 
-				let glyph_x_offset = (run_x as f64 - glyph_run.offset() as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
+				// run_x already tracks the line-absolute position, so unlike the run offset it is not subtracted back out.
+				let glyph_x_offset = (run_x as f64 + glyph.x as f64) * advance_scale + cumulative_offset;
 				let mid = line_start + glyph_x_offset + scaled_advance / 2.;
 
 				let spacing_adjustment = text_path_spacing_adjustment(spacing, &lut, mid, scaled_advance);
@@ -441,12 +482,12 @@ mod tests {
 
 	#[test]
 	fn hidden_means_off_an_open_path() {
-		// A closed path hides nothing, however far along the glyph sits.
-		assert!(!is_glyph_hidden(-10., 100., true));
+		// A closed path shows exactly one circuit; anything past its length is hidden, not wrapped over the start.
+		assert!(is_glyph_hidden(-10., 100., true));
 		assert!(!is_glyph_hidden(0., 100., true));
 		assert!(!is_glyph_hidden(50., 100., true));
 		assert!(!is_glyph_hidden(100., 100., true));
-		assert!(!is_glyph_hidden(1000., 100., true));
+		assert!(is_glyph_hidden(1000., 100., true));
 
 		// An open path hides only what falls off either end.
 		assert!(is_glyph_hidden(-10., 100., false));
@@ -454,5 +495,23 @@ mod tests {
 		assert!(!is_glyph_hidden(0., 100., false));
 		assert!(!is_glyph_hidden(50., 100., false));
 		assert!(!is_glyph_hidden(100., 100., false));
+	}
+
+	#[test]
+	fn a_lookup_straddling_two_segments_stays_on_the_second() {
+		// Right angle from (0,0) to (50,0) to (50,50). One unit past the corner must sit on the vertical leg.
+		let mut path = BezPath::new();
+		path.move_to(Point::ZERO);
+		path.line_to(Point::new(50., 0.));
+		path.line_to(Point::new(50., 50.));
+		let lut = ArcLengthLut::build(&path);
+
+		let Some((point, _)) = lut.at(51.) else { panic!("s=51 should be on the path") };
+		assert!(
+			(point.x - 50.).abs() < 0.5 && (point.y - 1.).abs() < 0.5,
+			"one unit past the corner should sit near (50, 1), but sits at ({}, {})",
+			point.x,
+			point.y
+		);
 	}
 }

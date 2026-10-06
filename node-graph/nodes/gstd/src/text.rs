@@ -120,8 +120,8 @@ fn text_to_vector_glyphs(
 }
 
 /// Treats an unset or non-positive optional length input as absent.
-fn optional_length(value: f64) -> Option<f64> {
-	(value.is_finite() && value > 0.).then_some(value)
+fn optional_length(enabled: bool, value: f64) -> Option<f64> {
+	(enabled && value.is_finite() && value > 0.).then_some(value)
 }
 
 /// Flows a styled text string along a path, following the SVG 2 text-on-path layout rules.
@@ -154,6 +154,9 @@ fn text_on_path(
 	/// How far a glyph shifts along the path to account for the curve it spans.
 	#[default(TextPathSpacing::Exact)]
 	spacing: Item<TextPathSpacing>,
+	/// Whether the *Text Length* target is enabled so the text is fitted to it.
+	#[widget(ParsedWidgetOverride::Hidden)]
+	has_text_length: Item<bool>,
 	/// Target length for the text along the path.
 	#[unit(" px")]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
@@ -162,6 +165,9 @@ fn text_on_path(
 	/// How the target length is reached: by spacing alone, or by scaling glyphs too.
 	#[default(LengthAdjust::Spacing)]
 	length_adjust: Item<LengthAdjust>,
+	/// Whether the path's own length is set so its coordinates scale to it.
+	#[widget(ParsedWidgetOverride::Hidden)]
+	has_path_length: Item<bool>,
 	/// The path's own length, used to scale its coordinates when set.
 	#[unit(" px")]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
@@ -193,11 +199,14 @@ fn text_on_path(
 	let length_adjust = length_adjust.into_element();
 
 	// Glyphs are placed in the styled string's own space, so the string's transform rides on each produced path.
+	// The path's own transform is baked in before measuring, or a moved path lays its text out at the origin.
 	let transform: DAffine2 = string.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let path_transform: DAffine2 = path.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 	let mut placed = place_text_on_path(
 		&text,
 		&core_types::list::List::new_from_element(path.into_element()),
+		path_transform,
 		&font,
 		typesetting.font_size,
 		typesetting.letter_spacing,
@@ -207,9 +216,9 @@ fn text_on_path(
 		text_anchor,
 		method,
 		spacing,
-		optional_length(text_length.into_element()),
+		optional_length(has_text_length.into_element(), text_length.into_element()),
 		length_adjust,
-		optional_length(path_length.into_element()),
+		optional_length(has_path_length.into_element(), path_length.into_element()),
 	);
 	if transform != DAffine2::IDENTITY {
 		// Glyphs are placed in the styled string's own space, so its transform rides on each produced item.
