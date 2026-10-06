@@ -1443,6 +1443,26 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
+			DocumentMessage::CollapseNodePropertiesSection { node_id } => {
+				// A section that starts collapsed is recorded once, when its node is created, so this only fills a gap
+				if !self.properties_panel_collapsed_sections.contains(&node_id) {
+					self.properties_panel_collapsed_sections.push(node_id);
+				}
+			}
+			DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded } => {
+				// Only the sections currently shown change; sections for other selections keep their state
+				let shown_node_ids = self.properties_panel_message_handler.shown_section_node_ids.clone();
+				if expanded {
+					self.properties_panel_collapsed_sections.retain(|id| !shown_node_ids.contains(id));
+				} else {
+					for id in shown_node_ids {
+						if !self.properties_panel_collapsed_sections.contains(&id) {
+							self.properties_panel_collapsed_sections.push(id);
+						}
+					}
+				}
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
 				responses.add(NodeGraphMessage::ToggleSelectedVisibility);
@@ -4388,5 +4408,69 @@ mod document_message_handler_tests {
 			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
 			.count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
+	}
+
+	#[tokio::test]
+	async fn set_all_node_properties_sections_only_affects_the_shown_sections() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let layer = editor.get_selected_layer().await.unwrap();
+		let rectangle_id = graph_modification_utils::get_rectangle_id(layer, &editor.active_document().network_interface).unwrap();
+		let fill_id = graph_modification_utils::get_fill_id(layer, &editor.active_document().network_interface).unwrap();
+
+		// Selecting the layer shows its chain's sections, and rendering the panel records which they are
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor.handle_message(PropertiesPanelMessage::Refresh).await;
+
+		editor.handle_message(DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded: false }).await;
+		let collapsed = editor.active_document().properties_panel_collapsed_sections.clone();
+		assert!(
+			collapsed.contains(&rectangle_id) && collapsed.contains(&fill_id),
+			"collapsing all should record the layer's shown sections, got {collapsed:?}"
+		);
+
+		editor.handle_message(DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded: true }).await;
+		assert!(editor.active_document().properties_panel_collapsed_sections.is_empty(), "expanding all should clear the shown sections");
+
+		// A node that isn't currently shown keeps its recorded state
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![fill_id] }).await;
+		editor.handle_message(PropertiesPanelMessage::Refresh).await;
+		editor.handle_message(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: rectangle_id }).await;
+		assert_eq!(editor.active_document().properties_panel_collapsed_sections, vec![rectangle_id]);
+
+		editor.handle_message(DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded: false }).await;
+		let mut expected = vec![rectangle_id, fill_id];
+		expected.sort();
+		let mut recorded = editor.active_document().properties_panel_collapsed_sections.clone();
+		recorded.sort();
+		assert_eq!(recorded, expected, "collapsing all should add the newly shown section and keep the hidden one");
+	}
+
+	#[tokio::test]
+	async fn a_new_layers_merge_section_starts_collapsed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let merge_node_id = editor.get_selected_layer().await.unwrap().to_node();
+
+		assert!(
+			editor.active_document().properties_panel_collapsed_sections.contains(&merge_node_id),
+			"a layer's Merge node has no parameters of its own, so its section should start collapsed"
+		);
+
+		// Opening it clears the record, and closing it again restores it
+		editor.handle_message(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: merge_node_id }).await;
+		assert!(
+			!editor.active_document().properties_panel_collapsed_sections.contains(&merge_node_id),
+			"opening the section should clear its collapsed record"
+		);
+
+		editor.handle_message(DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: merge_node_id }).await;
+		assert!(
+			editor.active_document().properties_panel_collapsed_sections.contains(&merge_node_id),
+			"closing the section again should record it as collapsed"
+		);
 	}
 }

@@ -680,6 +680,11 @@ mod editor_commands {
 		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) }.into()
 	}
 
+	/// Collapse or expand every section currently shown in the Properties panel
+	fn set_all_node_properties_sections_expanded(expanded: bool) -> Message {
+		DocumentMessage::SetAllNodePropertiesSectionsExpanded { expanded }.into()
+	}
+
 	/// Delete a layer or node given its node ID
 	fn delete_node(id: u64) -> Message {
 		DocumentMessage::DeleteNode { node_id: NodeId(id) }.into()

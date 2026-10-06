@@ -64,6 +64,8 @@ impl<'a> ModifyInputsContext<'a> {
 	pub fn create_layer(&mut self, new_id: NodeId) -> LayerNodeIdentifier {
 		let new_merge_node = resolve_network_node_type("Merge").expect("Merge node").default_node_template();
 		self.network_interface.insert_node(new_id, new_merge_node, &[]);
+		// A layer's Merge node has no parameters of its own, so its section starts collapsed
+		self.responses.add(DocumentMessage::CollapseNodePropertiesSection { node_id: new_id });
 		LayerNodeIdentifier::new(new_id, self.network_interface)
 	}
 
