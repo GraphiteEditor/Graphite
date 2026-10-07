@@ -25,7 +25,7 @@ type Request =
 	| { type: "type"; text: string }
 	| { type: "screenshot"; clip?: Box }
 	| { type: "boundingBox"; selector: string }
-	| { type: "locate"; data?: string; text?: string }
+	| { type: "locate"; selector?: string; text?: string; fieldSelector: string }
 	| { type: "nextFrame"; timeout: number }
 	| { type: "takeEvents" };
 
@@ -62,22 +62,31 @@ async function close() {
 	await browser?.close();
 }
 
-function elementsWith(current: Page, data: string | undefined, text: string | undefined): Locator {
-	if (data === undefined) {
-		if (text === undefined) throw new Error("Locating needs a data attribute name or some text");
+type Located = { box: Box; text: string; value?: string };
+
+function elementsWith(current: Page, selector: string | undefined, text: string | undefined): Locator {
+	if (selector === undefined) {
+		if (text === undefined) throw new Error("Locating needs a selector or some text");
 		return current.getByText(text);
 	}
 
-	const withData = current.locator(`[data-${data}]`);
-	return text === undefined ? withData : withData.filter({ hasText: text });
+	const matching = current.locator(selector);
+	return text === undefined ? matching : matching.filter({ hasText: text });
 }
 
-async function locate(current: Page, data: string | undefined, text: string | undefined): Promise<{ box: Box; text: string }[]> {
-	const located: { box: Box; text: string }[] = [];
-	const elements = await elementsWith(current, data, text).all();
+async function locate(current: Page, request: Extract<Request, { type: "locate" }>): Promise<Located[]> {
+	const located: Located[] = [];
+	const elements = await elementsWith(current, request.selector, request.text).all();
 	for (let i = 0; i < elements.length; i++) {
 		const box = await elements[i].boundingBox();
-		if (box) located.push({ box, text: (await elements[i].textContent()) || "" });
+		if (!box) continue;
+
+		// What the element holds if it is a field, or else what the first field inside it holds
+		const value = await elements[i].evaluate((element, fieldSelector) => {
+			const field = element.matches(fieldSelector) ? element : element.querySelector(fieldSelector);
+			return field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? field.value : undefined;
+		}, request.fieldSelector);
+		located.push({ box, text: (await elements[i].textContent()) || "", value });
 	}
 	return located;
 }
@@ -114,7 +123,7 @@ async function perform(request: Request): Promise<unknown> {
 			return locator.first().boundingBox();
 		}
 		case "locate":
-			return locate(current, request.data, request.text);
+			return locate(current, request);
 		case "nextFrame": {
 			// Gives up after the timeout, so a page that has stopped drawing cannot hold up every later request
 			const frame = current.evaluate(() => new Promise((resolve) => requestAnimationFrame(resolve)));

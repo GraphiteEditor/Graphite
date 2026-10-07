@@ -1,0 +1,16 @@
+// Holding Shift while drawing a rectangle makes a square
+
+{ "type": "resize", "size": [1600, 1000] }
+
+// Open a new document
+{ "type": "press", "key": "Control+KeyN" }
+{ "type": "waitIdle" }
+{ "type": "click", "at": [802, 588] }
+{ "type": "waitIdle" }
+
+// Draw a wide rectangle with Shift held, then check its width and height came out equal
+{ "type": "press", "key": "KeyM" }
+{ "type": "drag", "from": [600, 150], "to": [760, 250], "space": "viewport", "keys": ["Shift"] }
+{ "type": "waitIdle" }
+{ "type": "expect", "value": "257.30", "count": 2 }
+{ "type": "screenshot", "path": "scenarios/shift-draws-a-square.png", "region": "viewport" }

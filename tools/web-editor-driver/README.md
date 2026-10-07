@@ -67,3 +67,26 @@ A scenario file holds the same commands the command line performs, one per line 
 Scenario files are named for what they do, ending in `.jsonl`, such as `draw-rectangle.jsonl`.
 
 The commands and their fields are defined by `Command` in `editor/control-protocol/src/lib.rs`.
+
+## QA
+
+Scenarios check themselves with `expect` steps, which fail unless the page shows the expected elements. An `expect` finds elements as `locate` does, by a `data-*` attribute name, text they contain (ignoring case), or both, then narrows them to those with a field holding a `value`, such as a number field showing `"500.26"`. With only a `value`, it looks among every field on the page. It expects exactly `count` elements, or at least one without a count, so `"count": 0` checks that something is gone:
+
+```
+{ "type": "expect", "data": "layer", "count": 2 }
+{ "type": "expect", "text": "Draw Rectangle" }
+{ "type": "expect", "value": "257.30", "count": 2 }
+```
+
+Every result lists the errors the page logged since the previous command. When `run` performs a scenario, a step fails if any were logged, unless `run` is given `--allow-console-errors`.
+
+Given a folder, `run` performs each `.jsonl` scenario file in it in a new session of its own, then prints how each went and exits with a nonzero status if any failed:
+
+```sh
+cargo run drive serve --port 8090
+cargo run drive run tools/web-editor-driver/scenarios
+```
+
+The scenarios in `scenarios/` assume a page of 1600 by 1000 pixels, which their first step sets, since the values they expect depend on the zoom that size gives a new document.
+
+The images a scenario saves to relative paths land in `output/`, or in another folder given to `run` with `--output`, such as one holding documentation screenshots. A folder's sessions open at a scale of 1, or another given with `--scale`, such as 2 for HiDPI screenshots.

@@ -121,6 +121,15 @@ pub enum Command {
 	/// Finds elements by a `data-*` attribute name, the visible text they contain, or both.
 	Locate { data: Option<String>, text: Option<String> },
 
+	/// Fails unless the page shows the expected elements, found as `locate` finds them and narrowed to those with a field holding `value`.
+	/// With only a `value`, it looks among every field. It expects exactly `count` elements, or at least one without a count.
+	Expect {
+		data: Option<String>,
+		text: Option<String>,
+		value: Option<String>,
+		count: Option<u32>,
+	},
+
 	/// Changes the size of the page, in CSS pixels.
 	Resize { size: UVec2 },
 
@@ -146,6 +155,7 @@ impl Command {
 			Command::WaitIdle { .. } => "waitIdle",
 			Command::Screenshot { .. } => "screenshot",
 			Command::Locate { .. } => "locate",
+			Command::Expect { .. } => "expect",
 			Command::Resize { .. } => "resize",
 			Command::Status {} => "status",
 		}
@@ -160,6 +170,9 @@ pub struct Located {
 	pub center: DVec2,
 	/// The start of the element's text, with its whitespace collapsed.
 	pub text: String,
+	/// What the element holds if it is a field, or else what the first field inside it holds.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub value: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -174,8 +187,6 @@ pub struct SessionStatus {
 	pub held_keys: Vec<String>,
 	pub held_buttons: Vec<MouseButton>,
 	pub crashed: bool,
-	/// The errors the page has logged since the last status report.
-	pub console_errors: Vec<String>,
 }
 
 /// What came of one command.
@@ -201,6 +212,9 @@ pub struct CommandResult {
 	pub located: Option<Vec<Located>>,
 	#[serde(default, skip_serializing_if = "Option::is_none")]
 	pub status: Option<SessionStatus>,
+	/// The errors the page logged since the previous command, or for the first, since it loaded.
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub console_errors: Vec<String>,
 }
 
 impl CommandResult {
@@ -242,7 +256,13 @@ pub enum ClientMessage {
 	Attach { version: u32, token: String },
 
 	/// Performs commands in order, stopping at the first that fails, since the later ones were written assuming it succeeded.
-	Perform { id: u64, commands: Vec<Command> },
+	/// With `fail_on_console_errors`, a command also fails if the page has logged an error since the previous one.
+	Perform {
+		id: u64,
+		commands: Vec<Command>,
+		#[serde(default)]
+		fail_on_console_errors: bool,
+	},
 
 	/// Ends the session and closes the editor.
 	Shutdown,
@@ -297,6 +317,17 @@ mod tests {
 	fn scenario_mistakes_name_their_line() {
 		let error = parse_scenario("// A mistake on the third line\n{ \"type\": \"status\" }\n{ \"type\": \"teleport\" }").unwrap_err();
 		assert!(error.starts_with("Line 3:"));
+	}
+
+	#[test]
+	fn qa_fields_parse() {
+		let steps = parse_scenario("{ \"type\": \"expect\", \"data\": \"layer\", \"count\": 0 }\n{ \"type\": \"expect\", \"value\": \"500.26\" }").unwrap();
+		assert!(matches!(steps[0], Command::Expect { count: Some(0), .. }));
+		assert!(matches!(&steps[1], Command::Expect { value: Some(value), count: None, .. } if value == "500.26"));
+
+		// Clients that predate the option leave it out
+		let perform: ClientMessage = serde_json::from_str(r#"{ "type": "perform", "id": 1, "commands": [] }"#).unwrap();
+		assert!(matches!(perform, ClientMessage::Perform { fail_on_console_errors: false, .. }));
 	}
 
 	#[test]
