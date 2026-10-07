@@ -19,6 +19,10 @@ pub struct Delta {
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default)]
 	pub attributes: Attributes,
+	/// When the delta entered history, in Unix milliseconds by the retiring peer's clock; display only and outside the rev.
+	/// Zero means unrecorded, saving the tag byte of an `Option`. Last, since the history codec is positional.
+	#[serde(default)]
+	pub(crate) retired_at_ms: u64,
 }
 
 impl Delta {
@@ -32,6 +36,7 @@ impl Delta {
 			kind,
 			reverse,
 			attributes: Attributes::default(),
+			retired_at_ms: 0,
 		}
 	}
 
@@ -52,6 +57,7 @@ impl Delta {
 			reverse: kind.clone(),
 			kind,
 			attributes: Attributes::default(),
+			retired_at_ms: 0,
 		}
 	}
 
@@ -71,6 +77,11 @@ impl Delta {
 
 	pub fn is_interaction_end(&self) -> bool {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
+	}
+
+	/// When the delta entered history in wall-clock milliseconds, if the peer that retired it recorded it.
+	pub fn retired_at(&self) -> Option<u64> {
+		(self.retired_at_ms != 0).then_some(self.retired_at_ms)
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
@@ -212,5 +223,33 @@ pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attri
 	AttributeDelta {
 		key: delta.key.clone(),
 		value: attributes.get(&delta.key).filter(|previous| !previous.deleted).map(|previous| previous.value.clone()),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn unrecorded_retired_at_costs_one_byte_and_round_trips() {
+		let base = Delta::new(
+			None,
+			PeerId(1),
+			TimeStamp { counter: 1, peer: PeerId(1) },
+			RegistryDelta::Other(Value::None),
+			RegistryDelta::Other(Value::None),
+		);
+		let mut stamped = base.clone();
+		stamped.retired_at_ms = 1_790_000_000_000;
+
+		let bare_base = postcard::to_allocvec(&base).expect("encode");
+		let bare_stamped = postcard::to_allocvec(&stamped).expect("encode");
+		// Only the integer's varint differs: one byte for zero, six for today's milliseconds, no tag byte in either.
+		assert_eq!(bare_stamped.len() - bare_base.len(), postcard::to_allocvec(&1_790_000_000_000u64).unwrap().len() - 1);
+
+		let decoded: Delta = postcard::from_bytes(&bare_stamped).expect("decode");
+		assert_eq!(decoded.retired_at(), Some(1_790_000_000_000));
+		let decoded: Delta = postcard::from_bytes(&bare_base).expect("decode");
+		assert_eq!(decoded.retired_at(), None);
 	}
 }

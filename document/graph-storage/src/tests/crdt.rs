@@ -741,6 +741,15 @@ fn all_referenced_resource_hashes_survives_undo() {
 		session.all_referenced_resource_hashes().contains(&hash),
 		"the undone interaction's resource must still be reported so GC keeps its bytes for redo"
 	);
+
+	// A later hash change, undone, keeps the new hash reported too: redo puts it back.
+	session.redo().expect("redo");
+	let changed = ResourceHash::from(&b"changed-bytes"[..]);
+	let hot_ops = session.stage_ops([crate::RegistryDelta::SetResourceHash { id, hash: Some(changed) }]).expect("stage hash change");
+	let revs = session.retire(hot_ops.last().expect("staged").timestamp).expect("retire");
+	session.mark_interaction_end(*revs.last().expect("one retired delta"));
+	session.undo().expect("undo the hash change");
+	assert!(session.all_referenced_resource_hashes().contains(&changed), "the undone hash change keeps its bytes for redo");
 }
 
 /// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
@@ -890,6 +899,30 @@ fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> Reg
 		value: Some(Value::from(value)),
 	};
 	RegistryDelta::ChangeNodeAttribute { id, delta }
+}
+
+fn hot_op(op: RegistryDelta, counter: u64, peer: u64) -> HotOp {
+	HotOp { op, timestamp: ts(counter, peer) }
+}
+
+/// So the snapshot and a replay keep the LWW winner the live view did, whether the straggler retires with it or after.
+#[test]
+fn retirement_preserves_the_live_lww_winner() {
+	for straggler_retires_alone in [false, true] {
+		let mut host = Session::with_peer(PeerId(1));
+		let winner = hot_op(set_document_attribute("k", 1), 10, 2);
+		host.replay_hot_op(winner.clone()).expect("apply winner");
+		if straggler_retires_alone {
+			host.retire(winner.timestamp).expect("retire winner");
+		}
+		host.replay_hot_op(hot_op(set_document_attribute("k", 2), 5, 3)).expect("apply straggler");
+		host.retire(winner.timestamp).expect("retire");
+
+		let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
+		let replayed = host.snapshot_from_history().expect("refold");
+		let values = [value(host.registry()), value(host.retired_registry()), value(&replayed)];
+		assert_eq!(values, [(); 3].map(|_| Some(Value::from(serde_json::json!(1)))), "straggler retires alone: {straggler_retires_alone}");
+	}
 }
 
 /// Random ops over a few colliding ids fold to one registry in any order. Removal snapshots are constant or, as a remover
