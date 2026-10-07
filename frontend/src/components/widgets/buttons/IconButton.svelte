@@ -51,6 +51,7 @@
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	data-drag-droppable={actionDragDrop ? "" : undefined}
+	data-icon-button
 	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >

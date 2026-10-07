@@ -38,8 +38,8 @@ export async function imageToCanvasContext(imageData: ImageBitmapSource): Promis
 	let svgImageData;
 	if (imageData instanceof File && imageData.type === "image/svg+xml") {
 		const svgSource = await imageData.text();
-		const svgElement = new DOMParser().parseFromString(svgSource, "image/svg+xml").querySelector("svg");
-		if (!svgElement) throw new Error("Error reading SVG file");
+		const svgElement = new DOMParser().parseFromString(svgSource, "image/svg+xml").documentElement;
+		if (!(svgElement instanceof SVGSVGElement)) throw new Error("Error reading SVG file");
 
 		let bounds = svgElement.viewBox.baseVal;
 

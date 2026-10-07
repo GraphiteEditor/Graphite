@@ -1,4 +1,4 @@
-use crate::{Attributes, NetworkId, NodeId, ResourceId, TimeStamp, attributes_value_equal};
+use crate::{Attributes, NetworkId, NodeId, ResourceId, TimeStamp, Value, attributes_value_equal};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 
@@ -75,7 +75,7 @@ pub enum NodeInput {
 		index: u32,
 	},
 	Value {
-		value: serde_json::Value,
+		value: Value,
 		exposed: bool,
 	},
 	Scope(Cow<'static, str>),

@@ -25,7 +25,12 @@ pub enum Token<'src> {
 	RParen,
 	LBrace,
 	RBrace,
+	LBracket,
+	RBracket,
+	Semicolon,
 	Comma,
+	/// The range `a..b`.
+	DotDot,
 	Plus,
 	Minus,
 	/// Reserved for percentages, so the parser never matches it and its error points a C-style remainder to `mod(a, b)`.
@@ -33,6 +38,8 @@ pub enum Token<'src> {
 	Star,
 	Slash,
 	Caret,
+	/// The postfix transpose `^T`, one token since no power by a matrix is valid.
+	Transpose,
 
 	Lt,
 	Le,
@@ -40,14 +47,29 @@ pub enum Token<'src> {
 	Ge,
 	Neq,
 	EqEq,
+	/// The `=` that defines a name in a `where` clause.
+	Equals,
 
 	If,
 	Otherwise,
-	/// Reserved for `where` bindings, so the parser never matches it yet and no host binding can claim the name first.
+	/// Begins the clause of bindings for the expression before it.
 	Where,
 
-	/// An unrecognized character; the parser never matches this, forcing a parse error rather than silently truncating the input.
-	Error,
+	/// Source that is no token, which the parser never matches, forcing a parse error rather than silently truncating the input.
+	Error(LexError),
+}
+
+/// Why a stretch of source is no token, so its parse error can say what's wrong.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum LexError {
+	/// A character or name the language doesn't use, like `@`.
+	Unrecognized,
+	/// A number that can't be read, like `1.5.5`.
+	MalformedNumber,
+	/// A number right after another, like the second in `10 000`, which would otherwise silently multiply.
+	NumberAfterNumber,
+	/// A number without its leading zero right after an operand, like `x.5`.
+	LeadingDotAfterOperand,
 }
 
 impl<'src> fmt::Display for Token<'src> {
@@ -67,13 +89,18 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::RParen => f.write_str(")"),
 			Token::LBrace => f.write_str("{"),
 			Token::RBrace => f.write_str("}"),
+			Token::LBracket => f.write_str("["),
+			Token::RBracket => f.write_str("]"),
+			Token::Semicolon => f.write_str(";"),
 			Token::Comma => f.write_str(","),
+			Token::DotDot => f.write_str(".."),
 			Token::Plus => f.write_str("+"),
 			Token::Minus => f.write_str("-"),
 			Token::Percent => f.write_str("%"),
 			Token::Star => f.write_str("*"),
 			Token::Slash => f.write_str("/"),
 			Token::Caret => f.write_str("^"),
+			Token::Transpose => f.write_str("^T"),
 
 			Token::Lt => f.write_str("<"),
 			Token::Le => f.write_str("<="),
@@ -81,12 +108,13 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Ge => f.write_str(">="),
 			Token::Neq => f.write_str("!="),
 			Token::EqEq => f.write_str("=="),
+			Token::Equals => f.write_str("="),
 
 			Token::If => f.write_str("if"),
 			Token::Otherwise => f.write_str("otherwise"),
 			Token::Where => f.write_str("where"),
 
-			Token::Error => f.write_str("<error>"),
+			Token::Error(_) => f.write_str("<error>"),
 		}
 	}
 }
@@ -113,8 +141,7 @@ impl Constant {
 			Pi => Number::Real(consts::PI),
 			Tau => Number::Real(consts::TAU),
 			E => Number::Real(consts::E),
-			// TODO: Replace with f64::GOLDEN_RATIO when we bump MSRV to 1.94
-			Phi => Number::Real(1.618033988749895),
+			Phi => Number::Real(consts::GOLDEN_RATIO),
 			Inf => Number::Real(f64::INFINITY),
 			I => Number::Complex(Complex::new(0., 1.)),
 			J => Number::Quaternion(Quaternion::J),
@@ -124,28 +151,41 @@ impl Constant {
 		}
 	}
 
-	/// The word and typeset spellings, matched exactly: constants are lowercase-only, since uppercase-initial names are reserved for matrices.
 	pub fn from_name(name: &str) -> Option<Constant> {
+		CONSTANT_SPELLINGS.into_iter().find_map(|(spelling, constant)| (name == spelling).then_some(constant))
+	}
+
+	/// The typeset spelling that stands for the constant alongside its words, which for infinity is the `∞` literal.
+	pub fn symbol(self) -> Option<&'static str> {
 		use Constant::*;
-		let spellings = [
-			("e", E),
-			("i", I),
-			("j", J),
-			("k", K),
-			("pi", Pi),
-			("π", Pi),
-			("tau", Tau),
-			("τ", Tau),
-			("phi", Phi),
-			("φ", Phi),
-			("inf", Inf),
-			("infinity", Inf),
-			("true", True),
-			("false", False),
-		];
-		spellings.into_iter().find_map(|(spelling, constant)| (name == spelling).then_some(constant))
+		match self {
+			Pi => Some("π"),
+			Tau => Some("τ"),
+			Phi => Some("φ"),
+			Inf => Some("∞"),
+			E | I | J | K | True | False => None,
+		}
 	}
 }
+
+/// The constants' word and typeset spellings, related constants together in the order an editor lists them, matched exactly: constants
+/// are lowercase-only, since uppercase-initial names are reserved for matrices.
+pub const CONSTANT_SPELLINGS: [(&str, Constant); 14] = [
+	("i", Constant::I),
+	("j", Constant::J),
+	("k", Constant::K),
+	("pi", Constant::Pi),
+	("π", Constant::Pi),
+	("tau", Constant::Tau),
+	("τ", Constant::Tau),
+	("phi", Constant::Phi),
+	("φ", Constant::Phi),
+	("e", Constant::E),
+	("inf", Constant::Inf),
+	("infinity", Constant::Inf),
+	("true", Constant::True),
+	("false", Constant::False),
+];
 
 impl fmt::Display for Constant {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -173,19 +213,38 @@ enum Bar {
 	Or,
 }
 
-/// The token of a reserved word, which is never a name, whoever would bind it.
+/// The reserved words with their tokens, which are never names, whoever would bind them.
+pub const KEYWORDS: [(&str, Token<'static>); 3] = [("if", Token::If), ("otherwise", Token::Otherwise), ("where", Token::Where)];
+
+/// The token of a reserved word.
 fn keyword(word: &str) -> Option<Token<'static>> {
-	match word {
-		"if" => Some(Token::If),
-		"otherwise" => Some(Token::Otherwise),
-		"where" => Some(Token::Where),
-		_ => None,
+	KEYWORDS.into_iter().find_map(|(spelling, token)| (word == spelling).then_some(token))
+}
+
+/// Whether a name is a matrix's by the case rule: an uppercase-initial identifier, read after the `\` prefix.
+#[inline]
+pub fn names_matrix(name: &str) -> bool {
+	let name = name.strip_prefix('\\').unwrap_or(name);
+	match name.as_bytes().first() {
+		Some(byte) if byte.is_ascii() => byte.is_ascii_uppercase(),
+		_ => name.starts_with(char::is_uppercase),
 	}
 }
 
-/// Whether a character ends an operand: a name, a number, a closing parenthesis or brace, or the `∞` literal.
+/// Whether an operand has just ended after the token, given whether one had before it. A `!` leaves that as it was, since a factorial
+/// follows an operand and a not precedes one.
+pub(crate) fn operand_ended(token: &Token, after_operand: bool) -> bool {
+	match token {
+		Token::Bang => after_operand,
+		Token::Integer(_) | Token::Float(_) | Token::Ident(_) => true,
+		Token::RParen | Token::RBrace | Token::RBracket | Token::BarClose | Token::Transpose => true,
+		_ => false,
+	}
+}
+
+/// Whether a character ends an operand: a name, a number, a closing parenthesis, brace, or bracket, or the `∞` literal.
 fn ends_operand(c: char) -> bool {
-	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | '∞')
+	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | ']' | '∞')
 }
 
 /// Reads every `|` in the source up front, since each depends on what precedes it: a bar opens a magnitude where an operand
@@ -226,6 +285,8 @@ fn classify_bars(input: &str) -> Vec<(usize, Bar)> {
 			}
 			// Whitespace changes nothing, and neither does `!`, a postfix factorial after an operand or a prefix not before one
 			c if c.is_whitespace() || c == '!' => {}
+			// The range `..` is an operator, unlike a number's decimal point
+			'.' if chars.next_if(|(_, next)| *next == '.').is_some() => after_operand = false,
 			// A name ends an operand, but a keyword like `if` comes before one
 			c if c == '\\' || unicode_ident::is_xid_start(c) => {
 				let mut end = position + c.len_utf8();
@@ -257,6 +318,14 @@ impl<'a> Lexer<'a> {
 			pos: 0,
 			bars: classify_bars(input),
 		}
+	}
+
+	/// The next token with the byte range it was read from.
+	pub fn next_spanned(&mut self) -> Option<(Range<usize>, Token<'a>)> {
+		self.skip_ws();
+		let start = self.pos;
+		let token = self.next_token()?;
+		Some((start..self.pos, token))
 	}
 
 	/// The reading of the `|` at the given byte position.
@@ -314,6 +383,11 @@ impl<'a> Lexer<'a> {
 	fn follows_operand(&self, literal_start: usize) -> bool {
 		let mut preceding = self.input[..literal_start].trim_end();
 
+		// A range's `..` set apart by whitespace is an operator, while `1...5` stays ambiguous
+		if preceding.ends_with("..") && preceding.len() < literal_start {
+			return false;
+		}
+
 		// A `!` run is postfix factorial only when an operand precedes it, otherwise it's a prefix logical not
 		while let Some(rest) = preceding.strip_suffix('!') {
 			preceding = rest.trim_end();
@@ -325,50 +399,60 @@ impl<'a> Lexer<'a> {
 			.is_some_and(|c| ends_operand(c) || (c == '|' && self.bar_at(preceding.len() - 1) == Some(Bar::Close)))
 	}
 
-	fn lex_number(&mut self) -> Option<Token<'a>> {
+	fn lex_number(&mut self) -> Result<Token<'a>, LexError> {
 		let start_pos = self.pos;
 		let (int_digits, int_value) = self.consume_digits();
 		let mut got_digit = int_digits > 0;
 		let mut plain_integer = true;
 
-		if self.peek() == Some('.') {
+		// A decimal point belongs to the number unless it begins a range's `..`
+		if self.peek() == Some('.') && !self.input[self.pos..].starts_with("..") {
 			self.bump();
 			plain_integer = false;
 			got_digit |= self.consume_digits().0 > 0;
 		}
 
-		if got_digit && matches!(self.peek(), Some('e' | 'E')) {
+		// The `e` of scientific notation needs a digit after it or after its sign, and otherwise names Euler's number
+		let after_exponent_sign = self.input[self.pos..].strip_prefix(['e', 'E']).map(|rest| rest.strip_prefix(['+', '-']).unwrap_or(rest));
+		if got_digit && after_exponent_sign.is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit())) {
 			self.bump();
 			plain_integer = false;
 			if matches!(self.peek(), Some('+' | '-')) {
 				self.bump();
 			}
-			if self.consume_digits().0 == 0 {
-				self.pos = start_pos;
-				return None;
-			}
+			self.consume_digits();
 		}
 
-		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1..5`, `1.5.5`), so reject rather than letting it parse as implicit multiplication
+		// A numeric literal cannot be glued directly to another by a stray decimal point or digit (e.g. `1.5.5`, `1.5 5`), so reject rather than letting it parse as implicit multiplication
 		let leading_dot = self.input[start_pos..].starts_with('.');
-		if !got_digit || self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) || self.follows_number_literal(start_pos) || (leading_dot && self.follows_operand(start_pos)) {
+		let glued = self.peek().is_some_and(|c| c == '.' || c.is_ascii_digit()) && !self.input[self.pos..].starts_with("..");
+		let error = if !got_digit || glued {
+			Some(LexError::MalformedNumber)
+		} else if self.follows_number_literal(start_pos) {
+			Some(LexError::NumberAfterNumber)
+		} else if leading_dot && self.follows_operand(start_pos) {
+			Some(LexError::LeadingDotAfterOperand)
+		} else {
+			None
+		};
+		if let Some(error) = error {
 			self.pos = start_pos;
-			return None;
+			return Err(error);
 		}
 
 		// A whole number is kept exact while it fits integer storage (18 digits always do), and the accumulation is exact up
 		// to 15 digits; longer whole literals and fractional ones get std's correctly-rounded parsing
 		let literal = &self.input[start_pos..self.pos];
 		if plain_integer && int_digits <= 15 {
-			return Some(Token::Integer(int_value as i64));
+			return Ok(Token::Integer(int_value as i64));
 		}
 		if plain_integer && let Ok(integer) = literal.parse::<i64>() {
-			return Some(Token::Integer(integer));
+			return Ok(Token::Integer(integer));
 		}
 
 		// A literal spelled as a real, like `2.0` or `1e3`, still names a whole number, so it takes integer storage while it fits
-		let float = literal.parse::<f64>().ok()?;
-		Some(match Number::real_or_integer(float) {
+		let float = literal.parse::<f64>().map_err(|_| LexError::MalformedNumber)?;
+		Ok(match Number::real_or_integer(float) {
 			Number::Integer(integer) => Token::Integer(integer),
 			_ => Token::Float(float),
 		})
@@ -382,7 +466,7 @@ impl<'a> Lexer<'a> {
 		let mut previous = first;
 		while let Some(c) = self.peek() {
 			let dot_between_digits = c == '.' && previous.is_ascii_digit() && self.input[self.pos + 1..].chars().next().is_some_and(|next| next.is_ascii_digit());
-			// The middle dot and its Greek twin are identifier characters in Unicode, but they would pass for the `⋅` operator mid-name
+			// The middle dot and its Greek twin are identifier characters in Unicode, but a reader would take `a·b` for a product
 			let middle_dot = matches!(c as u32, 0xB7 | 0x387);
 			if !((unicode_ident::is_xid_continue(c) && !middle_dot) || dot_between_digits) {
 				break;
@@ -409,7 +493,7 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					AndAnd
 				} else {
-					Error
+					Error(LexError::Unrecognized)
 				}
 			}
 			'|' => match self.bar_at(start) {
@@ -419,29 +503,43 @@ impl<'a> Lexer<'a> {
 				}
 				Some(Bar::Open) => BarOpen,
 				Some(Bar::Close) => BarClose,
-				None => Error,
+				None => Error(LexError::Unrecognized),
 			},
 
 			'(' => LParen,
 			')' => RParen,
 			'{' => LBrace,
 			'}' => RBrace,
+			'[' => LBracket,
+			']' => RBracket,
+			';' => Semicolon,
 			',' => Comma,
 			'+' => Plus,
 			'-' => Minus,
 			'*' => Star,
 			'%' => Percent,
 			'/' => Slash,
-			'^' => Caret,
+			// `^T` is the transpose where the `T` stands alone, spaces between or not
+			'^' => {
+				let rest = &self.input[self.pos..];
+				let after_spaces = rest.trim_start();
+				if after_spaces.starts_with('T') && !after_spaces[1..].starts_with(unicode_ident::is_xid_continue) {
+					self.pos += rest.len() - after_spaces.len() + 1;
+					Transpose
+				} else {
+					Caret
+				}
+			}
 			'≠' => Neq,
+			'.' if self.peek() == Some('.') => {
+				self.bump();
+				DotDot
+			}
 
 			// A symbol can't be a name, so unlike `inf`, no binding can shadow `∞`
 			'∞' => Float(f64::INFINITY),
 
 			// Typeset math symbol aliases
-			'−' => Minus,
-			'×' | '⋅' => Star,
-			'÷' => Slash,
 			'∧' => AndAnd,
 			'∨' => OrOr,
 			// Its own token rather than a `Bang` alias, since `!` is also the postfix factorial and `5¬` is not one
@@ -480,16 +578,16 @@ impl<'a> Lexer<'a> {
 					self.bump();
 					EqEq
 				} else {
-					Error
+					Equals
 				}
 			}
 
 			c if c.is_ascii_digit() || (c == '.' && self.peek().is_some_and(|c| c.is_ascii_digit())) => {
 				self.pos = start;
 				match self.lex_number() {
-					Some(number) => number,
+					Ok(number) => number,
 					// Consume the whole malformed numeric run so the error span covers it and lexing makes forward progress
-					None => {
+					Err(error) => {
 						self.pos = start;
 						let mut prev = '\0';
 						while let Some(c) = self.peek() {
@@ -500,7 +598,7 @@ impl<'a> Lexer<'a> {
 							prev = c;
 							self.bump();
 						}
-						Error
+						Error(error)
 					}
 				}
 			}
@@ -520,7 +618,7 @@ impl<'a> Lexer<'a> {
 				} else {
 					// Digits, combining marks, invisible formatting characters, and symbols never begin a name, which also
 					// leaves `#`, `$`, `~`, and `@` free to become namespace prefixes once a host scope needs them
-					Error
+					Error(LexError::Unrecognized)
 				}
 			}
 		};
@@ -537,6 +635,12 @@ impl<'a> Iterator for Lexer<'a> {
 	}
 }
 
+/// The byte offset where a name borrowed directly from the source begins in it, as a lexed name always is, or `None` for one borrowed from elsewhere.
+pub(crate) fn offset_in(source: &str, name: &str) -> Option<usize> {
+	let start = (name.as_ptr() as usize).checked_sub(source.as_ptr() as usize)?;
+	(start + name.len() <= source.len()).then_some(start)
+}
+
 /// Replaces each whole identifier for which `rename` returns a new spelling, so `b` never matches inside `logb`, and leaves all other source text untouched.
 /// Returns `None` if the source fails to lex.
 pub fn rename_identifiers(source: &str, mut rename: impl FnMut(&str) -> Option<String>) -> Option<String> {
@@ -546,11 +650,11 @@ pub fn rename_identifiers(source: &str, mut rename: impl FnMut(&str) -> Option<S
 
 	while let Some(token) = lexer.next_token() {
 		match token {
-			Token::Error => return None,
+			Token::Error(_) => return None,
 			Token::Ident(name) => {
-				if let Some(new_name) = rename(name) {
-					// An `Ident` always borrows directly from the source, so its span is recoverable by pointer offset
-					let start = name.as_ptr() as usize - source.as_ptr() as usize;
+				if let Some(new_name) = rename(name)
+					&& let Some(start) = offset_in(source, name)
+				{
 					result.push_str(&source[copied_up_to..start]);
 					result.push_str(&new_name);
 					copied_up_to = start + name.len();

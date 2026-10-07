@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
-use document_graph_storage::{Declarations, Registry};
+use document_graph_storage::{Declarations, Registry, Value};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
@@ -132,14 +132,7 @@ impl DocumentHistory {
 	/// every later one stages the `deltas` the store recorded. No-op while unmounted. Proto-node declaration
 	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
 	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
-	pub fn stage_snapshot(
-		&mut self,
-		deltas: &[EditorDelta],
-		interface: &NodeNetworkInterface,
-		registry: &ResourceRegistry,
-		view_settings: BTreeMap<String, serde_json::Value>,
-		byte_store: &dyn ResourceStorage,
-	) {
+	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
 		let needs_whole_document_stage = self.needs_whole_document_stage;
 		let Some(storage) = self.storage.as_mut() else { return };
 
@@ -204,7 +197,7 @@ impl DocumentHistory {
 	}
 
 	/// The parts of a commit that are not the graph: the per-peer and per-network view settings.
-	fn persist_view_state(&mut self, interface: &NodeNetworkInterface, view_settings: BTreeMap<String, serde_json::Value>) {
+	fn persist_view_state(&mut self, interface: &NodeNetworkInterface, view_settings: BTreeMap<String, Value>) {
 		let Some(storage) = self.storage.as_mut() else { return };
 
 		let network_view_settings = storage

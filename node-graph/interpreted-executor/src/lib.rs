@@ -6,7 +6,6 @@ pub mod util;
 mod tests {
 	use core_types::*;
 	use futures::executor::block_on;
-	use graphene_core::ops::passthrough;
 
 	#[test]
 	fn double_number() {
@@ -22,7 +21,7 @@ mod tests {
 					DocumentNode {
 						inputs: vec![],
 						call_argument: concrete!(u32),
-						implementation: DocumentNodeImplementation::ProtoNode(passthrough::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						..Default::default()
 					},
 				),

@@ -6,7 +6,7 @@ pub mod regex;
 mod text_context;
 mod to_path;
 
-use convert_case::{Boundary, Converter, pattern};
+use convert_case::{Boundary, Converter, Pattern};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
@@ -163,23 +163,24 @@ fn escape_string(input: String) -> String {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, CacheHash, dyn_any::DynAny, node_macro::ChoiceType, serde::Serialize, serde::Deserialize)]
 #[widget(Dropdown)]
 pub enum StringCapitalization {
-	/// "on the origin of species" — Converts all letters to lower case.
+	/// *"on the origin of species"* — Converts all letters to lower case.
 	#[default]
 	#[label("lower case")]
 	LowerCase,
-	/// "ON THE ORIGIN OF SPECIES" — Converts all letters to upper case.
+	/// *"ON THE ORIGIN OF SPECIES"* — Converts all letters to upper case.
 	#[label("UPPER CASE")]
 	UpperCase,
-	/// "On The Origin Of Species" — Converts the first letter of every word to upper case.
+	#[menu_separator]
+	/// *"On The Origin Of Species"* — Converts the first letter of every word to upper case.
 	#[label("Capital Case")]
 	CapitalCase,
-	/// "On the Origin of Species" — Converts the first letter of significant words to upper case.
+	/// *"On the Origin of Species"* — Converts the first letter of significant words to upper case.
 	#[label("Headline Case")]
 	HeadlineCase,
-	/// "On the origin of species" — Converts the first letter of every word to lower case, except the initial word which is made upper case.
+	/// *"On the origin of species"* — Converts the first letter of every word to lower case, except the initial word which is made upper case.
 	#[label("Sentence case")]
 	SentenceCase,
-	/// "on The Origin Of Species" — Converts the first letter of every word to upper case, except the initial word which is made lower case.
+	/// *"on The Origin Of Species"* — Converts the first letter of every word to upper case, except the initial word which is made lower case.
 	#[label("camel Case")]
 	CamelCase,
 }
@@ -560,7 +561,7 @@ fn string_repeat(
 	#[default("\\n")]
 	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	separator_escaping: Item<bool>,
 ) -> Item<String> {
@@ -821,18 +822,22 @@ fn string_capitalization(
 			StringCapitalization::LowerCase => input.to_lowercase(),
 			StringCapitalization::UpperCase => input.to_uppercase(),
 
-			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
-			StringCapitalization::CapitalCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(&joiner).convert(&input),
+			// Word-aware capitalizations: split into nonempty words, then rejoin with the joiner
+			StringCapitalization::CapitalCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Capital]).set_delimiter(joiner).convert(&input),
 			StringCapitalization::HeadlineCase => {
 				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
 				// then apply the titlecase crate for smart capitalization (lowercasing short words like "of", "the", etc.),
 				// then rejoin with the custom joiner without mangling the capitalization
-				let spaced = Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(" ").convert(&input);
+				let spaced = Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Capital]).set_delimiter(" ").convert(input);
 				let headline = titlecase::titlecase(&spaced);
-				Converter::new().set_boundaries(&[Boundary::SPACE]).set_pattern(pattern::noop).set_delim(&joiner).convert(&headline)
+				Converter::new()
+					.set_boundaries(&[Boundary::Space])
+					.set_pattern(Pattern::RemoveEmpty)
+					.set_delimiter(joiner)
+					.convert(headline)
 			}
-			StringCapitalization::SentenceCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::sentence).set_delim(&joiner).convert(&input),
-			StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&input),
+			StringCapitalization::SentenceCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Sentence]).set_delimiter(joiner).convert(input),
+			StringCapitalization::CamelCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Camel]).set_delimiter(joiner).convert(input),
 		}
 	}
 	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
@@ -907,7 +912,7 @@ fn string_split(
 	#[default("\\n")]
 	delimiter: Item<String>,
 	/// Whether to convert escape sequences found in the delimiter into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	delimiter_escaping: Item<bool>,
 ) -> List<String> {
@@ -929,7 +934,7 @@ fn string_join(
 	#[default(", ")]
 	separator: Item<String>,
 	/// Whether to convert escape sequences found in the separator into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
+	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	separator_escaping: Item<bool>,
 ) -> Item<String> {
@@ -998,5 +1003,43 @@ mod tests {
 		for text in ["", "3", "3, 4, 5", "3, four", "(3, 4.5]"] {
 			assert_eq!(parse(text), fallback, "{text:?} should fall back");
 		}
+	}
+
+	#[test]
+	fn string_capitalization_test() {
+		use StringCapitalization::*;
+		fn run(string: &str, capitalization: StringCapitalization, joiner: Option<&str>) -> String {
+			string_capitalization(
+				(),
+				Item::new_from_element(string.to_string()),
+				Item::new_from_element(capitalization),
+				Item::new_from_element(joiner.is_some()),
+				Item::new_from_element(joiner.map_or_default(|s| s.to_string())),
+			)
+			.into_element()
+		}
+
+		let sample_str = "Alice wAs_BeGinning to_getVery TIRED";
+
+		assert_eq!(run(sample_str, LowerCase, None), "alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, UpperCase, None), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run(sample_str, CapitalCase, None), "Alice WAs_BeGinning To_GetVery TIRED");
+		assert_eq!(run(sample_str, HeadlineCase, None), "Alice wAs_BeGinning to_getVery TIRED");
+		assert_eq!(run(sample_str, SentenceCase, None), "Alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, CamelCase, None), "alice Was_Beginning To_Getvery Tired");
+
+		assert_eq!(run(sample_str, LowerCase, Some(":")), "alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, UpperCase, Some(":")), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run(sample_str, CapitalCase, Some(":")), "Alice:W:As:Be:Ginning:To:Get:Very:Tired");
+		assert_eq!(run(sample_str, HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
+		assert_eq!(run(sample_str, SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run(sample_str, CamelCase, Some(":")), "alice:W:As:Be:Ginning:To:Get:Very:Tired");
+
+		// Repeated, leading, and trailing separators must not add extra joiners or shift which word is cased as the first
+		assert_eq!(run("  Chapter I - Down the Rabbit-Hole ", CapitalCase, Some("_")), "Chapter_I_Down_The_Rabbit_Hole");
+		assert_eq!(run("  Chapter I - Down the Rabbit-Hole ", HeadlineCase, Some("-")), "Chapter-I-Down-the-Rabbit-Hole");
+		assert_eq!(run("  leading words", SentenceCase, Some(" ")), "Leading words");
+		assert_eq!(run("__init__", CamelCase, Some("")), "init");
+		assert_eq!(run(" ", CapitalCase, Some("_")), "");
 	}
 }

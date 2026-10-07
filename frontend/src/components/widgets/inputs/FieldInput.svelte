@@ -76,7 +76,7 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, monospace, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
+<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, monospace, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut} {...$$restProps}>
 	{#if !textarea}
 		<input
 			type="text"

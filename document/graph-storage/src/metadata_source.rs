@@ -8,6 +8,8 @@ use std::collections::HashMap;
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 
+use crate::Value;
+
 /// One node's editor-side metadata, produced by `Registry::to_runtime_with_metadata`. One entry per
 /// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
 #[derive(Clone, Debug, PartialEq)]
@@ -52,11 +54,11 @@ pub struct InputMetadataEntry {
 	pub input_description: Option<String>,
 	pub widget_override: Option<String>,
 	/// Reassembled from `ui::input_data::<sub_key>` attributes.
-	pub input_data: HashMap<String, serde_json::Value>,
+	pub input_data: HashMap<String, Value>,
 }
 
 /// Editor-side metadata source. Methods default to "no data" so implementors only override what
-/// they carry. Returns are JSON-shaped where the underlying types live editor-side (PTZ, etc.).
+/// they carry. Returns are type-erased as [`Value`] where the underlying types live editor-side (PTZ, etc.).
 pub trait NodeMetadataSource {
 	fn position(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<Position> {
 		None
@@ -88,7 +90,7 @@ pub trait NodeMetadataSource {
 		None
 	}
 	/// Returns owned to stay object-safe. Each entry is stored as `ui::input_data::<key>` for per-key LWW.
-	fn input_data(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, serde_json::Value> {
+	fn input_data(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, Value> {
 		HashMap::new()
 	}
 

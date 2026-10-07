@@ -1,6 +1,4 @@
-use crate::{
-	Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev,
-};
+use crate::{Attributes, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev};
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +20,7 @@ pub struct Delta {
 	/// Local, mutable annotations on this commit (interaction-end marker, future commit messages / labels).
 	/// Deliberately excluded from `compute_rev`: relabeling a commit must not change its content-addressed
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
-	#[serde(default, skip_serializing_if = "Attributes::is_empty")]
+	#[serde(default)]
 	pub attributes: Attributes,
 }
 
@@ -71,11 +69,11 @@ impl Delta {
 
 	/// Mark this delta as the last op of a user interaction, so the undo cursor treats it as a checkpoint.
 	pub fn mark_interaction_end(&mut self, timestamp: TimeStamp) {
-		self.attributes.set(attr::delta::INTERACTION_END, serde_json::Value::Bool(true), timestamp);
+		self.attributes.set(attr::delta::INTERACTION_END, Value::Bool(true), timestamp);
 	}
 
 	pub fn is_interaction_end(&self) -> bool {
-		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == serde_json::Value::Bool(true))
+		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
@@ -182,16 +180,14 @@ pub enum RegistryDelta {
 	AddSource {
 		id: ResourceId,
 		key: SourceKey,
-		source: serde_json::Value,
+		source: Value,
 	},
 	/// Remove one entry from a resource's source chain. LWW against the entry's timestamp.
 	RemoveSource {
 		id: ResourceId,
 		key: SourceKey,
 	},
-	/// Append-only registration of a device's `PeerId` against its owning `UserId`.
-	/// First write wins; conflicting re-registration errors. Duplicate identical registration
-	/// is a no-op. Not LWW — the mapping is forever.
+	/// Registers a device's `PeerId` to the `UserId` behind it; the newest registration wins.
 	RegisterPeer {
 		peer: PeerId,
 		user: UserId,
@@ -207,41 +203,19 @@ pub enum RegistryDelta {
 		extra_parents: Vec<Rev>,
 	},
 	// Allow for future delta types without a model change
-	Other(serde_json::Value),
+	Other(Value),
 }
 
 /// `value: None` means remove. The timestamp comes from the wrapping `Delta`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeDelta {
 	pub key: String,
-	pub value: Option<serde_json::Value>,
+	pub value: Option<Value>,
 }
 
 pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
 	AttributeDelta {
 		key: delta.key.clone(),
 		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
-	}
-}
-
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {
-	let AttributeDelta { key, value } = delta;
-	match value {
-		Some(value) => match attributes.entry(key) {
-			std::collections::btree_map::Entry::Occupied(mut entry) => {
-				if force || timestamp > entry.get().timestamp {
-					entry.insert(Value { value, timestamp });
-				}
-			}
-			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(Value { value, timestamp });
-			}
-		},
-		None => {
-			let should_remove = force || attributes.get(&key).is_none_or(|existing| timestamp > existing.timestamp);
-			if should_remove {
-				attributes.remove(&key);
-			}
-		}
 	}
 }

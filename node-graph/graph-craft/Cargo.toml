@@ -4,8 +4,14 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [features]
 default = ["dealloc_nodes", "wgpu", "loading"]
@@ -70,7 +76,6 @@ wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-winit = { workspace = true }
 mmap-io = { workspace = true }
 
 [dev-dependencies]

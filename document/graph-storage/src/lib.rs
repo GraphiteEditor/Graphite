@@ -10,6 +10,7 @@ pub mod model;
 pub mod registry;
 pub mod resources;
 pub mod session;
+pub mod value;
 
 #[cfg(any(feature = "conversion", test))]
 pub mod from_runtime;
@@ -27,6 +28,7 @@ pub use model::*;
 pub use registry::*;
 pub use resources::*;
 pub use session::*;
+pub use value::{Value, ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
 pub use from_runtime::{
@@ -40,6 +42,7 @@ pub use to_runtime::Declarations;
 
 #[cfg(test)]
 mod tests {
+	mod bookkeeping;
 	mod crdt;
 	mod round_trip;
 }

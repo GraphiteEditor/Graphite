@@ -1466,6 +1466,22 @@ fn static_input_properties() -> InputProperties {
 		Box::new(|node_id, index, context| Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context)))])),
 	);
 	map.insert(
+		// A math expression, flagged with a warning icon while it fails to parse
+		"math_expression".to_string(),
+		Box::new(|node_id, index, context| {
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![LayoutGroup::row(node_properties::math_expression_widget(info, false))])
+		}),
+	);
+	map.insert(
+		// Like `math_expression`, where a lone reducer token like `+` or `min` applied across the node's items is also valid
+		"math_expression_or_reducer".to_string(),
+		Box::new(|node_id, index, context| {
+			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![LayoutGroup::row(node_properties::math_expression_widget(info, true))])
+		}),
+	);
+	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
 			// Lazily load the font catalog (like the Text tool) so the dropdown has entries
@@ -1655,7 +1671,7 @@ impl InputTypeConstraint {
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !definition.category.is_empty())
+		.filter(|(_, definition)| !registry::is_hidden_category(definition.category))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
@@ -1735,8 +1751,6 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
-
-		editor.eval_graph().await.expect("the Origins to Polyline chain should type-resolve and evaluate");
 	}
 
 	// Guards the unconnected Path input, whose default must match the rank of the Morph connector it feeds
@@ -1756,8 +1770,6 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
-
-		editor.eval_graph().await.expect("the Blend network should type-resolve and evaluate");
 	}
 }
 

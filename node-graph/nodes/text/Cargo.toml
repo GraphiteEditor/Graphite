@@ -5,8 +5,14 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [features]
 default = ["serde"]
@@ -18,7 +24,6 @@ wasm = ["core-types/wasm", "tsify", "wasm-bindgen"]
 core-types = { workspace = true }
 graphene-hash = { workspace = true }
 graphene-resource = { workspace = true }
-raster-types = { workspace = true }
 vector-types = { workspace = true }
 node-macro = { workspace = true }
 

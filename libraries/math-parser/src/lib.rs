@@ -1,19 +1,25 @@
 pub mod ast;
+pub mod completion;
 pub mod constants;
 pub mod context;
+pub mod documentation;
 pub mod executer;
+pub mod highlight;
 pub mod lexer;
+pub mod matrix;
+pub mod object;
 pub mod parser;
 pub mod quaternion;
 pub mod reducer;
+pub mod sort;
 pub mod value;
 
 use context::EvalContext;
 use executer::EvalError;
+use object::Object;
 use parser::ParseError;
-use value::Value;
 
-pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError> {
+pub fn evaluate(expression: &str) -> Result<Result<Object, EvalError>, ParseError> {
 	let expr = ast::Node::try_parse_from_str(expression);
 	let context = EvalContext::default();
 	expr.map(|node| node.eval(&context))
@@ -22,23 +28,39 @@ pub fn evaluate(expression: &str) -> Result<Result<Value, EvalError>, ParseError
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use matrix::{Affine2, Linear2, Matrix};
 	use quaternion::Quaternion;
-	use value::{Complex, Number, Rung, Vector1, Vector2, Vector3, Weighted};
+	use value::{Complex, Number, Rung, Value, Vector1, Vector2, Vector3, Weighted};
 
 	const EPSILON: f64 = 1e-10_f64;
 
 	#[test]
 	fn malformed_juxtaposed_numbers_fail_to_parse() {
 		// Two numbers cannot be glued together by a stray decimal point (they must not parse as implicit multiplication)
-		for input in ["1..5", "1.5.5", "1..", ".5.5"] {
+		for input in ["1.5.5", "1..", ".5.5", "1...5"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
 
 	#[test]
+	fn a_number_before_euler_multiplies_unless_an_exponent_follows() {
+		// The `e` of scientific notation needs a digit after it or after its sign, so `2e` reaches Euler's number like `2pi` reaches pi
+		let real = |input: &str| evaluate(input).unwrap().unwrap().as_real().unwrap();
+		let e = std::f64::consts::E;
+		assert_eq!(real("2e"), 2. * e);
+		assert_eq!(real("2e^2"), 2. * e * e);
+		assert_eq!(real("2e - 1"), 2. * e - 1.);
+		assert_eq!(real("2e-pi"), 2. * e - std::f64::consts::PI);
+		assert_eq!(real("2exp(1)"), 2. * e);
+		assert_eq!(real("2e-1"), 0.2);
+		assert_eq!(real("2E+1"), 20.);
+		assert_eq!(real("2.5e3"), 2500.);
+	}
+
+	#[test]
 	fn unrecognized_characters_fail_to_parse() {
 		// Unrecognized trailing input must be rejected rather than silently dropped after a valid prefix
-		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "2 = 3", "\\", "2 \\ 3", "\\2", "\\_foo"] {
+		for input in ["2@", "5#", "2 $ 3", "sqrt(4)@", "5 & 3", "5 | 3", "\\", "2 \\ 3", "\\2", "\\_foo"] {
 			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
 		}
 	}
@@ -53,11 +75,119 @@ mod tests {
 	}
 
 	#[test]
+	fn errors_after_an_operator_point_past_it() {
+		// The deepest failure is reported, rather than the operator before it being blamed for the expression not ending there
+		for (input, expected) in [
+			("x + 1.5.5", "`1.5.5` is not a valid number, at 4..9"),
+			("sin(1.5.5)", "`1.5.5` is not a valid number, at 4..9"),
+			("x < #", "`#` is not recognized, at 4..5"),
+			("x +", "Found end of input, expected `-`, `+`, `!`, `¬`, or a value, at 3..3"),
+			("2 * * 3", "Found `*`, expected `-`, `+`, `!`, `¬`, or a value, at 4..5"),
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
+		}
+	}
+
+	#[test]
 	fn error_spans_begin_at_the_token() {
 		for (input, expected) in [("2 %", "at 2..3"), ("x  if 1", "at 3..5")] {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.ends_with(expected), "`{input}` gave the error `{error}`");
 		}
+
+		// Every message is in sentence case, including the parser library's own "found ... expected ..." phrasing
+		for input in ["2 +", "(1", "[1;i"] {
+			let error = evaluate(input).unwrap_err().to_string();
+			assert!(error.starts_with(char::is_uppercase), "`{input}` gave the error `{error}`");
+		}
+
+		// Source the lexer can't read is quoted with the reason
+		for (input, expected) in [
+			("x @ 2", "`@` is not recognized, at 2..3"),
+			("#foo", "`#foo` is not recognized, at 0..4"),
+			("1.5.5", "`1.5.5` is not a valid number, at 0..5"),
+			("10 000", "`000` can't follow another number, so write them as one or put `*` between them, at 3..6"),
+			("x.5", "`.5` needs its leading zero after an operand, like `0.5`, at 1..3"),
+		] {
+			assert_eq!(evaluate(input).unwrap_err().to_string(), expected, "`{input}`");
+		}
+
+		// The quoted source is a part of its own, so a host can render it safely whatever it holds, backticks included, and the span
+		// stands apart from the prose, which a sort error has only where it blames a name
+		use parser::MessagePart::{Code, Text};
+		let message = |input: &str| ast::Node::try_parse_from_str(input).unwrap_err().messages()[0].clone();
+		assert_eq!(message("`abc").parts(), [Code("`abc".into()), Text(" is not recognized".into())]);
+		assert_eq!(message("`abc").span(), Some(0..4));
+		assert_eq!(
+			message("7 % 3").parts(),
+			[Code("%".into()), Text(" is reserved for percentages, so the remainder is written ".into()), Code("mod(a, b)".into()),]
+		);
+		assert_eq!(message("7 % 3").span(), Some(2..3));
+		assert_eq!(message("sin(I)").parts(), [Text("A matrix stands where a value is needed".into())]);
+		assert_eq!(message("sin(I)").span(), None);
+		assert_eq!(message("m where m = I").span(), Some(8..9));
+
+		// The tokens the parser library quotes are code too, as is the code a custom message writes between backticks
+		assert_eq!(
+			message("2 * * 3").parts(),
+			[
+				Text("Found ".into()),
+				Code("*".into()),
+				Text(", expected ".into()),
+				Code("-".into()),
+				Text(", ".into()),
+				Code("+".into()),
+				Text(", ".into()),
+				Code("!".into()),
+				Text(", ".into()),
+				Code("¬".into()),
+				Text(", or a value".into())
+			]
+		);
+		assert_eq!(
+			message("{1 if x, 2 otherwise, 3 otherwise}").parts(),
+			[Text("A piecewise has at most one ".into()), Code("otherwise".into()), Text(" case".into())]
+		);
+	}
+
+	#[test]
+	fn arithmetic_operators_have_no_typeset_spellings() {
+		// An editor typesets `-`, `*`, and `/` for display, so the language keeps one spelling of each
+		for input in ["5 − 3", "−5", "3 × 4", "3 ⋅ 4", "8 ÷ 2"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+	}
+
+	#[test]
+	fn an_expression_too_large_to_read_within_the_stack_is_refused() {
+		// At the limits, reading, highlighting, completing, and evaluating fit in half the stack WebAssembly gives
+		std::thread::Builder::new()
+			.stack_size(512 * 1024)
+			.spawn(|| {
+				let sum = vec!["x"; 64].join(" + ");
+				let negations = format!("{}1", "-".repeat(127));
+				// Each matrix in a product is evaluated a level deeper than the last, with the largest frames of any chain
+				let product = format!("{}1", "I ".repeat(127));
+				let nested = format!("{}1{}", "(".repeat(32), ")".repeat(32));
+				let bindings = (0..99).map(|n| format!("a{n} = I a{}", n + 1)).collect::<Vec<_>>().join(", ");
+				let bindings = format!("a0 where {bindings}, a99 = 1");
+				for source in [&sum, &negations, &product, &nested, &bindings] {
+					assert!(evaluate(source).is_ok(), "`{source}` should be read");
+					highlight::highlight(source, false);
+					completion::completions(source, source.len(), true);
+				}
+			})
+			.unwrap()
+			.join()
+			.unwrap();
+
+		// Past them, it's an error rather than a crash
+		let too_long = vec!["x"; 257].join(" + ");
+		let too_deep = format!("{}1", "I ".repeat(128));
+		let too_nested = format!("{}1{}", "(".repeat(33), ")".repeat(33));
+		assert_eq!(evaluate(&too_long).unwrap_err().to_string(), "The expression is too long to read");
+		assert_eq!(evaluate(&too_deep).unwrap_err().to_string(), "The expression is too long to read");
+		assert_eq!(evaluate(&too_nested).unwrap_err().to_string(), "The expression's brackets nest too deeply to read");
 	}
 
 	#[test]
@@ -139,7 +269,6 @@ mod tests {
 			("x if 1", "`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`"),
 			("{1 if 1 otherwise}", "`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`"),
 			("{1 otherwise, 2 otherwise}", "A piecewise has at most one `otherwise` case"),
-			("where", "`where` is a reserved word, so it can't be a name"),
 		] {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.starts_with(expected), "`{input}` gave the error `{error}`");
@@ -203,7 +332,7 @@ mod tests {
 		for input in ["1 < 2 > 1", "1 < 2 != 3", "1 == 2 != 2"] {
 			let error = evaluate(input).unwrap_err().to_string();
 			let expected = "A comparison chain must read in one direction: all ascending (`<`, `<=`, `==`), all descending (`>`, `>=`, `==`), or all `!=`";
-			assert_eq!(error, format!("{expected} at 0..{}", input.len()), "`{input}`");
+			assert_eq!(error, format!("{expected}, at 0..{}", input.len()), "`{input}`");
 		}
 	}
 
@@ -263,6 +392,8 @@ mod tests {
 	fn display_writes_the_nonzero_parts_with_their_bases() {
 		for (input, expected) in [
 			("sqrt(-4)", "2i"),
+			("sqrt(-1)", "i"),
+			("1 - i", "1-i"),
 			("1 - 2i", "1-2i"),
 			("(1 + i) / 2", "0.5+0.5i"),
 			("2i + 3j", "2i+3j"),
@@ -292,7 +423,7 @@ mod tests {
 			("(-1+227i)!", Complex::new(-1.4098280082608946e-157, -2.309687847859193e-156)),
 			("(-1.5+300i)!", Complex::new(-9.760049091627542e-208, 1.5632983579858933e-207)),
 		] {
-			let Value::Number(actual) = evaluate(input).unwrap().unwrap();
+			let Value::Number(actual) = evaluate(input).unwrap().unwrap().into_value().unwrap();
 			let actual = actual.as_complex().unwrap();
 			assert!((actual - expected).norm() / expected.norm() < 1e-12, "`{input}`: expected {expected}, got {actual}");
 		}
@@ -316,7 +447,7 @@ mod tests {
 			("choose(-0.5, 5000)", Complex::from(0.007978646139382154), 1e-10),
 			("choose(1.5 + 2i, 5000)", Complex::new(-2.541871408941716e-8, -8.84744846043224e-9), 1e-10),
 		] {
-			let Value::Number(actual) = evaluate(input).unwrap().unwrap();
+			let Value::Number(actual) = evaluate(input).unwrap().unwrap().into_value().unwrap();
 			let actual = actual.as_complex().unwrap();
 			assert!((actual - expected).norm() / expected.norm() < tolerance, "`{input}`: expected {expected}, got {actual}");
 		}
@@ -331,7 +462,7 @@ mod tests {
 			("(3 + 4i) / (1 + 2i)", Complex::new(2.2, -0.4)),
 			("harmmean(i, 1)", Complex::new(1., 1.)),
 		] {
-			assert_eq!(evaluate(input).unwrap().unwrap(), Value::from(expected), "`{input}`");
+			assert_eq!(evaluate(input).unwrap().unwrap(), Object::from(expected), "`{input}`");
 		}
 	}
 
@@ -341,7 +472,7 @@ mod tests {
 		for (input, expected) in [("choose(2.5, 2)", 1.875), ("pick(2.5, 2)", 3.75), ("choose(-0.5, 2)", 0.375)] {
 			assert_eq!(evaluate(input).unwrap().unwrap().as_real(), Some(expected), "`{input}`");
 		}
-		assert_eq!(evaluate("choose(i, 2)").unwrap().unwrap(), Value::from(Complex::new(-0.5, -0.5)));
+		assert_eq!(evaluate("choose(i, 2)").unwrap().unwrap(), Object::from(Complex::new(-0.5, -0.5)));
 	}
 
 	#[test]
@@ -359,6 +490,9 @@ mod tests {
 		impl context::FunctionProvider for Host {
 			fn run_function(&self, name: &str, _: &[Value]) -> Option<Value> {
 				(name == "f").then(|| Value::from_f64(f64::NAN))
+			}
+			fn provides(&self, name: &str) -> bool {
+				name == "f"
 			}
 		}
 		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(Host, Host));
@@ -399,8 +533,6 @@ mod tests {
 			("rms(1e-320)", 1e-320),
 			("lerp(-1e308, 1e308, 0.5)", 0.),
 			("lerp(-1e308, 1e308, 1)", 1e308),
-			("remap(0, -1e308, 1e308, 0, 1)", 0.5),
-			("remap(0.5, 0, 1, -1e308, 1e308)", 0.),
 		] {
 			assert_eq!(evaluate(input).unwrap().unwrap().as_real(), Some(expected), "`{input}`");
 		}
@@ -410,7 +542,7 @@ mod tests {
 		assert!(!matches!(evaluate(input), Ok(Ok(value)) if value.as_real().is_some_and(f64::is_finite)), "`{input}`");
 
 		// Each part averages over its own scale, so a small part beside huge ones keeps its precision
-		let Value::Number(mean) = evaluate("mean(1e308, 1e308, j)").unwrap().unwrap();
+		let Value::Number(mean) = evaluate("mean(1e308, 1e308, j)").unwrap().unwrap().into_value().unwrap();
 		assert_eq!(mean.to_quaternion().y, 1. / 3.);
 	}
 
@@ -432,6 +564,18 @@ mod tests {
 			("snap(2.6 - 1.4k, 0.3)", "snap(2.6, 0.3) + snap(-1.4, 0.3) k"),
 		] {
 			assert_eq!(evaluate(input).unwrap().unwrap(), evaluate(expected).unwrap().unwrap(), "`{input}`");
+		}
+	}
+
+	#[test]
+	fn every_spelling_of_a_base_2_or_10_logarithm_is_exact() {
+		// A change of base misses by an ulp on some powers, where the logarithms of bases 2 and 10 are correctly rounded
+		let real = |source: &str| evaluate(source).unwrap().unwrap().as_real();
+		for source in ["log2(2^29)", "log_2(2^29)", "log(2^29, 2)"] {
+			assert_eq!(real(source), Some(29.), "`{source}`");
+		}
+		for source in ["log(1e15)", "log10(1e15)", "log_10(1e15)", "log(1e15, 10)"] {
+			assert_eq!(real(source), Some(15.), "`{source}`");
 		}
 	}
 
@@ -476,6 +620,9 @@ mod tests {
 			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
 				(name == "sin").then(|| Value::from_f64(2. * args[0].as_real().unwrap()))
 			}
+			fn provides(&self, name: &str) -> bool {
+				name == "sin"
+			}
 		}
 		let eval = |source: &str| {
 			ast::Node::try_parse_from_str(source)
@@ -487,6 +634,299 @@ mod tests {
 
 		assert_eq!(eval("sin(3)"), Some(6.));
 		assert_eq!(eval("\\sin(pi / 2)"), Some(1.));
+	}
+
+	#[test]
+	fn host_functions_shadow_matrix_builtins_when_parsing() {
+		// A host function gives a value, so a host parsing with its functions reads a call of that name as one, not the builtin
+		struct Halving;
+		impl context::FunctionProvider for Halving {
+			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+				(name == "clamp").then(|| Value::from_f64(args[0].as_real().unwrap_or_default() / 2.))
+			}
+			fn provides(&self, name: &str) -> bool {
+				name == "clamp"
+			}
+		}
+		let eval = |source: &str| {
+			ast::Node::try_parse_with_functions(source, &Halving)
+				.unwrap()
+				.eval(&EvalContext::new(context::NothingMap, Halving))
+				.unwrap()
+				.as_real()
+		};
+
+		assert_eq!(eval("clamp(8)"), Some(4.));
+		assert_eq!(eval("\\clamp(8, 0..5)"), Some(5.));
+		assert!(ast::Node::try_parse_from_str("clamp(8)").is_err(), "without the host, `clamp` is the builtin");
+	}
+
+	/// Binds `x` to 3 and `y` to 4, and supplies the function `double`.
+	struct WhereHost;
+
+	impl context::ValueProvider for WhereHost {
+		fn get_value(&self, name: &str) -> Option<Value> {
+			match name {
+				"x" => Some(Value::from_f64(3.)),
+				"y" => Some(Value::from_f64(4.)),
+				_ => None,
+			}
+		}
+	}
+
+	impl context::FunctionProvider for WhereHost {
+		fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+			(name == "double").then(|| Value::from_f64(2. * args[0].as_real().unwrap()))
+		}
+		fn provides(&self, name: &str) -> bool {
+			name == "double"
+		}
+	}
+
+	fn evaluate_with_where_host(source: &str) -> Result<Object, EvalError> {
+		ast::Node::try_parse_with_functions(source, &WhereHost).unwrap().eval(&EvalContext::new(WhereHost, WhereHost))
+	}
+
+	#[test]
+	fn where_defines_names_for_the_expression_before_it() {
+		let real = |source: &str| evaluate_with_where_host(source).unwrap().as_real();
+
+		assert_eq!(real("a + b where a = 1, b = 2"), Some(3.));
+		assert_eq!(real("{sin(r)/r if r != 0, 1 otherwise} where r = hypot(x, y)"), Some(5_f64.sin() / 5.));
+		assert_eq!(real("f(0) + f(1) where f(t) = t^2 + c, c = 3"), Some(7.));
+		assert_eq!(real("g(2, 3) where g(a, b) = a b"), Some(6.));
+
+		// A clause runs to its closing parenthesis, so every comma inside separates definitions
+		assert_eq!(real("2 (a + b where a = x^2, b = y^2)"), Some(50.));
+		assert_eq!(real("(a where a = 1) + (a where a = 2)"), Some(3.));
+		assert_eq!(real("a where a = (b where b = 2) + 1"), Some(3.));
+
+		// Within a call's parentheses, a clause after the last argument is read by every argument, but not by the function's name
+		assert_eq!(real("sqrt(a where a = 16)"), Some(4.));
+		assert_eq!(real("max(a, b where a = 1, b = 2)"), Some(2.));
+		assert_eq!(real("f(2 where f(t) = t + 1) where f(t) = 10 t"), Some(20.));
+		assert_eq!(real("k(a where a = 3, k = 5) where k = 2"), Some(6.));
+		assert_eq!(real("sin(0 where sin = 2)"), Some(0.));
+	}
+
+	#[test]
+	fn where_definitions_are_ordered_by_dependency() {
+		let real = |source: &str| evaluate(source).unwrap().unwrap().as_real();
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// A definition may read any other in its clause, whatever their order
+		assert_eq!(real("a where a = b + 1, b = 2"), Some(3.));
+		assert_eq!(real("f(1) where f(t) = g(t) + c, g(t) = 2t, c = 1"), Some(3.));
+
+		// A cycle could never finish, whether through values, functions, or a nested clause, and the error points at its first definition
+		assert_eq!(error("x where x = x + 1"), "`x` is defined in terms of itself, at 8..9");
+		assert_eq!(error("f(1) where f(t) = f(t - 1)"), "`f` is defined in terms of itself, at 11..12");
+		assert_eq!(error("a where a = b, b = a"), "`a` and `b` are defined in terms of each other, at 8..9");
+		assert_eq!(error("f(1) where f(t) = g(t), g(t) = f(t)"), "`f` and `g` are defined in terms of each other, at 11..12");
+		assert_eq!(error("a where a = b, b = c, c = f(1), f(t) = a"), "`a`, `b`, `c`, and `f` are defined in terms of each other, at 8..9");
+		assert_eq!(error("a where a = (c where c = b), b = a"), "`a` and `b` are defined in terms of each other, at 8..9");
+
+		// A parameter or an inner definition of the same name is another name, as is a function beside a value
+		assert_eq!(real("a where f(a) = a + 1, a = f(2)"), Some(3.));
+		assert_eq!(real("a where a = (b where b = 1), b = a"), Some(1.));
+		assert_eq!(real("f(2) where f = 3, f(t) = f t"), Some(6.));
+	}
+
+	#[test]
+	fn where_scoping_is_lexical() {
+		let real = |source: &str| evaluate_with_where_host(source).unwrap().as_real();
+
+		// A clause shadows the host's bindings, the builtins, and enclosing clauses, and a parameter shadows every outer name
+		assert_eq!(real("x where x = 2"), Some(2.));
+		assert_eq!(real("e + \\e where e = 2"), Some(2. + std::f64::consts::E));
+		assert_eq!(real("(a where a = 2) + a where a = 5"), Some(7.));
+		assert_eq!(real("f(1) where f(a) = a, a = 5"), Some(1.));
+		assert_eq!(real("f(1) + x where f(x) = x"), Some(4.));
+
+		// A function reads the names around its definition, not around its call
+		assert_eq!(real("(f(1) where a = 5) where f(t) = t + a, a = 2"), Some(3.));
+
+		// A clause's names are unknown outside its parentheses
+		assert!(matches!(evaluate_with_where_host("(a where a = 1) + a"), Err(EvalError::MissingValue(name)) if name == "a"));
+	}
+
+	#[test]
+	fn where_calls_and_values_are_separate_namespaces() {
+		let real = |source: &str| evaluate_with_where_host(source).unwrap().as_real();
+
+		assert_eq!(real("f + f(1) where f = 2, f(t) = t + 1"), Some(4.));
+
+		// A value leaves any function of its name a call, and multiplies its one argument only where no such function exists
+		assert_eq!(real("sin(0) + sin where sin = 2"), Some(2.));
+		assert_eq!(real("double(1) + double where double = 5"), Some(7.));
+		assert_eq!(real("k(x + 1) where k = 2"), Some(8.));
+
+		// A defined function shadows the host's function and the builtin of its name, which the prefix still reaches
+		assert_eq!(real("double(1) where double(t) = t + 5"), Some(6.));
+		assert_eq!(real("sin(2) where sin(t) = t"), Some(2.));
+		assert_eq!(real("\\sin(0) where sin(t) = t + 1"), Some(0.));
+
+		// A function is only ever called, so its bare name reads a value
+		assert!(matches!(evaluate("f where f(t) = t").unwrap(), Err(EvalError::MissingValue(name)) if name == "f"));
+	}
+
+	#[test]
+	fn where_definitions_are_evaluated_lazily_and_once() {
+		use std::cell::Cell;
+		use std::rc::Rc;
+
+		struct Counting(Rc<Cell<u32>>);
+		impl context::FunctionProvider for Counting {
+			fn run_function(&self, name: &str, args: &[Value]) -> Option<Value> {
+				(name == "counted").then(|| {
+					self.0.set(self.0.get() + 1);
+					args[0]
+				})
+			}
+			fn provides(&self, name: &str) -> bool {
+				name == "counted"
+			}
+		}
+		let calls = Rc::new(Cell::new(0));
+		let counted = |source: &str| {
+			calls.set(0);
+			let node = ast::Node::try_parse_with_functions(source, &Counting(calls.clone())).unwrap();
+			let result = node.eval(&EvalContext::new(context::NothingMap, Counting(calls.clone()))).unwrap().as_real();
+			(result, calls.get())
+		};
+
+		// A definition or argument the result never reaches is never evaluated, so its error is never raised
+		for source in ["1 where a = 0/0", "f(0/0) where f(t) = 1", "{1 if 1 > 0, a otherwise} where a = 0/0"] {
+			assert_eq!(evaluate(source).unwrap().unwrap().as_real(), Some(1.), "`{source}`");
+		}
+		assert!(matches!(evaluate("a + 1 where a = 0/0").unwrap(), Err(EvalError::Indeterminate)));
+
+		// A definition is evaluated once however often it's read, as is an argument within one call
+		assert_eq!(counted("a + a + a where a = counted(2)"), (Some(6.), 1));
+		assert_eq!(counted("f(counted(2)) where f(t) = t t t"), (Some(8.), 1));
+		assert_eq!(counted("0 where a = counted(2)"), (Some(0.), 0));
+
+		// So reads never multiply the work, however deeply calls nest
+		let nested = format!("{}1{} where f(t) = t + t", "f(".repeat(30), ")".repeat(30));
+		assert_eq!(evaluate(&nested).unwrap().unwrap().as_real(), Some(2_f64.powi(30)));
+	}
+
+	#[test]
+	fn where_names_follow_the_case_rule() {
+		let real = |source: &str| evaluate(source).unwrap().unwrap().as_real();
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// A name beginning with a capital letter defines a matrix and any other a value, parameters included
+		assert_eq!(real("det(M) where M = 2 I"), Some(16.));
+		assert_eq!(real("det(F(3)) where F(t) = t I"), Some(81.));
+		assert_eq!(real("f(2 I) where f(T) = det(T)"), Some(16.));
+
+		// A name of the wrong case is recased in the message where the case exists to flip, and the error points at its definition
+		assert_eq!(error("m where m = I"), "`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`, at 8..9");
+		assert_eq!(
+			error("Mass where Mass = 1"),
+			"`Mass` is defined as a value, so rename it to begin with a lowercase letter, like `mass`, at 11..15"
+		);
+		assert_eq!(
+			error("f(1) where f(t) = t I"),
+			"`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`, at 11..12"
+		);
+		assert_eq!(error("あ where あ = I"), "`あ` is defined as a matrix, so rename it to begin with a capital letter, at 10..13");
+		assert_eq!(error("𝐀 where 𝐀 = 1"), "`𝐀` is defined as a value, so rename it to begin with a lowercase letter, at 11..15");
+
+		// The definition is checked before any read of it, even one in an earlier definition, so a read never takes the blame
+		assert_eq!(
+			error("det(m) where m = I"),
+			"`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`, at 13..14"
+		);
+		assert_eq!(
+			error("a where a = det(m), m = I"),
+			"`m` is defined as a matrix, so rename it to begin with a capital letter, like `M`, at 20..21"
+		);
+		assert_eq!(
+			error("det(f(1)) where f(t) = t I"),
+			"`f(t)` is defined as a matrix, so rename `f` to begin with a capital letter, like `F`, at 16..17"
+		);
+		assert_eq!(
+			error("Width < 10 where Width = 5"),
+			"`Width` is defined as a value, so rename it to begin with a lowercase letter, like `width`, at 17..22"
+		);
+
+		// A definition agreeing with its name leaves a mismatched read the mistake, like a host's name
+		assert_eq!(error("det(m) where m = 2"), "A value stands where a matrix is needed");
+		assert_eq!(error("det(f(1)) where f(t) = 2 t"), "A value stands where a matrix is needed");
+		assert_eq!(error("det(x)"), "A value stands where a matrix is needed");
+
+		// A parameter has no definition, so a read in its function's body decides its sort, and the error points at the parameter
+		assert_eq!(
+			error("f(1) where f(t) = det(t)"),
+			"`t` is used as a matrix, so rename it to begin with a capital letter, like `T`, at 13..14"
+		);
+		assert_eq!(
+			error("f(2 I) where f(t) = t^T"),
+			"`t` is used as a matrix, so rename it to begin with a capital letter, like `T`, at 15..16"
+		);
+
+		// A call is blamed on the parameter where the body could take what's passed, and otherwise on the called name
+		assert_eq!(
+			error("f(2 I) where f(t) = 2 t"),
+			"`t` is passed a matrix, so rename it to begin with a capital letter, like `T`, at 15..16"
+		);
+		assert_eq!(error("f(1) where f(T) = det(T)"), "`f(T)` is passed a value for `T`, which its body uses as a matrix, at 0..1");
+		assert_eq!(error("f(I) where f(t) = sin(t)"), "`f(t)` is passed a matrix for `t`, which its body uses as a value, at 0..1");
+		assert!(evaluate("f(1) where f(t) = f(I)").is_err(), "a body testing a call to itself must still finish");
+
+		// One function serves every rung it's called with
+		assert_eq!(real("f(2) + f(i) where f(t) = t^2"), Some(3.));
+	}
+
+	#[test]
+	fn where_definitions_are_checked_when_parsed() {
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// Each name is defined once per clause, where a function and a value may share one
+		assert_eq!(error("a where a = 1, a = 2"), "`a` is defined twice in one `where` clause, at 15..16");
+		assert_eq!(error("f(1) where f(t) = t, f(t, u) = t"), "`f` is defined twice in one `where` clause, at 21..22");
+		assert_eq!(error("f(1, 2) where f(t, t) = t"), "`f` has two parameters named `t`, at 19..20");
+
+		// A function takes one argument per parameter, and has at least one parameter
+		assert_eq!(error("f(1, 2) where f(t) = t"), "`f` takes 1 argument, at 0..1");
+		assert_eq!(error("f(1) where f(a, b) = a"), "`f` takes 2 arguments, at 0..1");
+		assert!(evaluate("f(1) where f() = 1").is_err());
+
+		// The prefix always reaches the builtin, so no clause can define a name that has it
+		assert!(error("\\pi where \\pi = 3").starts_with("A `\\` name is always the builtin, so no `where` clause can define one"));
+
+		// Even an unread definition must stand
+		assert_eq!(error("1 where a = sin(I)"), "A matrix stands where a value is needed");
+	}
+
+	#[test]
+	fn misplaced_equals_and_where_are_told_where_they_belong() {
+		let error = |source: &str| evaluate(source).unwrap_err().to_string();
+
+		// A single `=` only defines, so one that compares is pointed to `==`
+		for source in ["x = 2", "{1 if x = 0, 2 otherwise}", "a where a = 1 = 2"] {
+			let error = error(source);
+			assert!(
+				error.starts_with("`=` names a value in a `where` clause, so equality is written `==`"),
+				"`{source}` gave the error `{error}`"
+			);
+		}
+
+		// A clause ends the whole expression or stands within parentheses, with commas between its definitions
+		for source in ["[a where a = 1]", "a where a = 1 where b = 2", "{a where a = 1 if 1, 0 otherwise}", "|a where a = 1|"] {
+			let error = error(source);
+			assert!(
+				error.starts_with("`where` defines names for the whole expression or within parentheses"),
+				"`{source}` gave the error `{error}`"
+			);
+		}
+
+		// Elsewhere the parser says what it expected
+		assert_eq!(error("x where"), "Found end of input, expected a name, at 7..7");
+		assert_eq!(error("x where a"), "Found end of input, expected `(` or `=`, at 9..9");
+		assert_eq!(error("x where a = = 2"), "Found `=`, expected `-`, `+`, `!`, `¬`, or a value, at 12..13");
 	}
 
 	#[test]
@@ -535,27 +975,33 @@ mod tests {
 		assert_eq!(value.as_real(), Some(1. / 9.));
 	}
 
-	fn run_end_to_end_test(input: &str, expected_value: Value) {
+	fn run_end_to_end_test(input: &str, expected: Object) {
 		let expr = match ast::Node::try_parse_from_str(input) {
 			Ok(expr) => expr,
 			Err(err) => panic!("failed to parse `{input}`: {err}"),
 		};
 		let context = EvalContext::default();
 
-		let actual_value = match expr.eval(&context) {
+		let actual = match expr.eval(&context) {
 			Ok(v) => v,
 			Err(err) => panic!("failed to evaluate `{input}` because of error {err}"),
 		};
 
-		// Storage is never observable, so the comparison reads both values by their four parts, with infinities matched exactly
-		let (Value::Number(actual), Value::Number(expected)) = (actual_value, expected_value);
-		let (actual, expected) = (actual.to_quaternion().parts(), expected.to_quaternion().parts());
-		for ((actual, expected), basis) in actual.into_iter().zip(expected).zip(["1", "i", "j", "k"]) {
+		// Storage is never observable, so a value compares by its four parts and a matrix by its twenty entries, with infinities matched exactly
+		let entries = |object: &Object| match object {
+			Object::Value(Value::Number(number)) => number.to_quaternion().parts().to_vec(),
+			Object::Matrix(matrix) => matrix.rows.iter().chain([&matrix.translation]).flat_map(|row| row.parts()).collect::<Vec<f64>>(),
+		};
+		assert!(actual.as_matrix().is_some() == expected.as_matrix().is_some(), "`{input}`: expected {expected}, got {actual}");
+		if let (Some(actual), Some(expected)) = (actual.as_matrix(), expected.as_matrix()) {
+			assert_eq!(actual.axes, expected.axes, "`{input}`: the axes the matrix acts on");
+		}
+		for (index, (actual, expected)) in entries(&actual).into_iter().zip(entries(&expected)).enumerate() {
 			if actual.is_infinite() || expected.is_infinite() {
-				assert!(actual == expected, "`{input}` → `{basis}` part: expected {expected:?}, got {actual:?}");
+				assert!(actual == expected, "`{input}` → part {index}: expected {expected:?}, got {actual:?}");
 			} else {
 				let difference = (actual - expected).abs();
-				assert!(difference < EPSILON, "`{input}` → `{basis}` part: expected {expected}, got {actual}, Δ={difference}");
+				assert!(difference < EPSILON, "`{input}` → part {index}: expected {expected}, got {actual}, Δ={difference}");
 			}
 		}
 	}
@@ -660,12 +1106,12 @@ mod tests {
 		// Mathematical constants
 		constant_pi: "pi" => std::f64::consts::PI,
 		constant_e: "e" => std::f64::consts::E,
-		constant_phi: "phi" => 1.61803398875,
+		constant_phi: "phi" => std::f64::consts::GOLDEN_RATIO,
 		constant_tau: "tau" => 2. * std::f64::consts::PI,
 		constant_infinity: "{inf if inf == ∞, 0 otherwise}" => f64::INFINITY,
 		multiply_pi: "2 * pi" => 2. * std::f64::consts::PI,
 		add_e_constant: "e + 1" => std::f64::consts::E + 1.,
-		multiply_phi_constant: "phi * 2" => 1.61803398875 * 2.,
+		multiply_phi_constant: "phi * 2" => std::f64::consts::GOLDEN_RATIO * 2.,
 		exponent_tau: "2^tau" => 2f64.powf(2. * std::f64::consts::PI),
 		infinity_subtract_large_number: "inf - 1000" => f64::INFINITY,
 
@@ -734,6 +1180,11 @@ mod tests {
 		logical_not_one: "!1" => 0.,
 		logical_not_expression: "!(2 - 2)" => 1.,
 
+		// NOT binds as tightly as a sign, before a product, a comparison, or `&&`
+		logical_not_before_product: "!0 * 0" => 0.,
+		logical_not_before_comparison: "!0 < 5" => 1.,
+		logical_not_before_and: "!0 && 0" => 0.,
+
 		// Log / exp / pow / root
 		log_ln: "ln(e)" => 1.,
 		log_log10: "log(100)" => 2.,
@@ -791,11 +1242,6 @@ mod tests {
 		mapping_max_variadic: "max(5, 2, 8, 4)" => 8.,
 
 		// Typeset math symbol aliases
-		alias_minus_sign: "5 − 3" => 2.,
-		alias_unary_minus_sign: "−5 + 6" => 1.,
-		alias_multiplication_sign: "3 × 4" => 12.,
-		alias_dot_operator: "3 ⋅ 4" => 12.,
-		alias_division_sign: "8 ÷ 2" => 4.,
 		alias_logical_and: "{2 if 1 ∧ 1, 3 otherwise}" => 2.,
 		alias_logical_or: "{2 if 0 ∨ 1, 3 otherwise}" => 2.,
 		alias_logical_not: "¬0" => 1.,
@@ -837,7 +1283,7 @@ mod tests {
 		statistics_rms_quaternion: "rms(3j, 4k)" => 12.5_f64.sqrt(),
 		logical_xor_odd_parity: "xor(1, 1, 1)" => 1.,
 		logical_xor_even_parity: "xor(1, 0, 1)" => 0.,
-		mapping_remap: "remap(5, 0, 10, 0, 100)" => 50.,
+		mapping_remap: "remap(5, 0..10, 0..100)" => 50.,
 
 		// GCD / LCM
 		gcd_simple: "gcd(24, 18)" => 6.,
@@ -1158,7 +1604,7 @@ mod tests {
 		quaternion_floor_componentwise: "floor(1.5i + 2.5j)" => Quaternion::new(0., 1., 2., 0.),
 		quaternion_snap_componentwise: "snap(0.4 + 1.6j - 2.8k, 2)" => Quaternion::new(0., 0., 2., -2.),
 		quaternion_min_componentwise: "min(1 + 5j, 3 + 2j)" => Quaternion::new(1., 0., 2., 0.),
-		quaternion_clamp_componentwise: "clamp(5i - 5j, -i - j, i + j)" => Quaternion::new(0., 1., -1., 0.),
+		quaternion_clamp_componentwise: "clamp(5i - 5j, (-i - j)..(i + j))" => Quaternion::new(0., 1., -1., 0.),
 		quaternion_lerp: "lerp(2i, 4j, 0.5)" => Quaternion::new(0., 1., 2., 0.),
 		quaternion_mean_pointwise: "mean(2i, 4j)" => Quaternion::new(0., 1., 2., 0.),
 		quaternion_abs_per_part: "abs(-1 - 2i + 3j - 4k)" => Quaternion::new(1., 2., 3., 4.),
@@ -1167,7 +1613,7 @@ mod tests {
 		// A real is a quaternion with zero vector parts, so as a bound it holds a vector's parts to zero
 		quaternion_max_with_zero: "max(2i - 3j, 0)" => Complex::new(0., 2.),
 		quaternion_max_with_real: "max(0.5i + 2j, 1)" => Quaternion::new(1., 0.5, 2., 0.),
-		quaternion_clamp_by_reals: "clamp(3i, 1, 2)" => 1.,
+		quaternion_clamp_moves_other_parts_into_the_range: "clamp(3 + 3i, 1..2)" => 2.,
 
 		// Vector functions: the dot product spans all four parts, the cross product only the vector parts
 		vector_dot: "dot(3i + 4j, i)" => 3.,
@@ -1220,6 +1666,317 @@ mod tests {
 		vector_project_infinite: "project(inf i, i)" => Complex::new(0., f64::INFINITY),
 		vector_project_onto_infinite: "project(i, inf i)" => Complex::new(0., 1.),
 		vector_reject_infinite: "reject(inf i, j)" => Complex::new(0., f64::INFINITY),
+
+		// Matrix literals build rows or columns, landing on the rung their count names
+		matrix_identity_literal: "[1;i;j;k]" => Matrix::IDENTITY,
+		matrix_short_rows_pad: "[i;j]" => Matrix::from_rows(&[Quaternion::I, Quaternion::J]).unwrap(),
+		matrix_one_row_is_the_weight: "[3i + 4j]" => Matrix::from_rows(&[Quaternion::new(0., 3., 4., 0.)]).unwrap(),
+		matrix_columns_transpose_rows: "[1,i]" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
+		matrix_swizzle: "[k;j;i] (1i + 2j + 3k)" => Quaternion::new(0., 3., 2., 1.),
+		matrix_real_part: "[1] (3 + 4i)" => 3.,
+		matrix_coefficient: "[j] (1i + 2j + 3k)" => 2.,
+		matrix_argand_shuffle: "[1;i] (3 + 4i)" => Quaternion::new(0., 3., 4., 0.),
+		matrix_argand_shuffle_inverse: "[i;j;0;0] (3i + 4j)" => Complex::new(3., 4.),
+		matrix_splat: "[1;1] 5" => Quaternion::new(0., 5., 5., 0.),
+		matrix_positional_construction: "[3;4] 1" => Quaternion::new(0., 3., 4., 0.),
+		matrix_scaled_pick: "[1;i;2j;-k] (1 + 2i + 3j + 4k)" => Quaternion::new(1., 2., 6., -4.),
+		matrix_projection: "[i;j;0] (1i + 2j + 3k)" => Quaternion::new(0., 1., 2., 0.),
+		matrix_dot_product: "[3i + 4j] (i + j)" => 7.,
+		matrix_columns_apply: "[j, i] (3i + 4j)" => Quaternion::new(0., 4., 3., 0.),
+		matrix_skew_literal: "[i + 0.5j, j] i" => Quaternion::new(0., 1., 0.5, 0.),
+
+		// Products: a matrix applies to a value and composes with a matrix, and a value on the left acts as `L_q`
+		matrix_composition: "[i;j] [j;i] (i + 2j)" => Quaternion::new(0., 2., 1., 0.),
+		matrix_scaled_by_value: "(2 I) (3i)" => Complex::new(0., 6.),
+		matrix_left_multiplication: "(i I) j" => Quaternion::K,
+		matrix_implicit_scalar: "2[i;j] (i + j)" => Quaternion::new(0., 2., 2., 0.),
+		matrix_call_syntax_applies: "I(3i)" => Complex::new(0., 3.),
+		matrix_zero_entry_beside_infinity: "[1] (inf i)" => 0.,
+		matrix_infinite_part_passes: "[i] (inf i)" => f64::INFINITY,
+
+		// A matrix applies to the whole product after it, unless parentheses give it one factor
+		matrix_applies_to_rest_of_product: "[1;i] 2 i" => Quaternion::new(0., 0., 2., 0.),
+		matrix_applies_to_parenthesized_factor: "([1;i] 2) i" => -2.,
+		matrix_scales_rest_of_product: "scale(3) 2 i" => Complex::new(0., 6.),
+		matrix_applies_through_matrix: "(scale(3) 2 scale(5)) i" => Complex::new(0., 30.),
+		matrix_dot_of_product: "[1] 3i conj(2i)" => 6.,
+		matrix_over_value_then_factor: "scale(3) / 2 i" => Complex::new(0., 1.5),
+		matrix_applies_before_division: "(I + 4i) 2i / 2" => Complex::new(0., 5.),
+		value_before_matrix_in_product: "2 [1;i] 3" => Complex::new(0., 6.),
+		value_over_matrix_then_factor: "2 / I 3" => 6.,
+		matrix_over_matrix_then_value: "I / [1;i;j;k] (2i)" => Complex::new(0., 2.),
+
+		// A product of values alone folds left whatever its length
+		product_folds_left: "8 / 2 / 2" => 2.,
+		product_alternates_operators: "2 * 3 / 4 * 5" => 7.5,
+		product_within_sums: "2 * 3 * 4 - 5 * 6 / 3" => 14.,
+
+		// Sums attach a translation, which `A 0` reads back
+		matrix_translation: "(I + 5i + 4j) 0" => Quaternion::new(0., 5., 4., 0.),
+		matrix_translation_first: "(5i + I + 4j) 0" => Quaternion::new(0., 5., 4., 0.),
+		matrix_translation_subtracted: "(I - 2(-2.5i - 2j)) 0" => Quaternion::new(0., 5., 4., 0.),
+		matrix_linear_part: "(I + 5i) - (I + 5i) 0" => Matrix::IDENTITY,
+		matrix_translation_function: "translation(I + 5i)" => Complex::new(0., 5.),
+		matrix_linear_function: "linear(I + 5i)" => Matrix::IDENTITY,
+		matrix_pointwise_sum: "I + I" => Matrix::linear([Quaternion::new(2., 0., 0., 0.), Quaternion::new(0., 2., 0., 0.), Quaternion::new(0., 0., 2., 0.), Quaternion::new(0., 0., 0., 2.)]),
+		matrix_pointwise_difference: "I - I" => Matrix::ZERO,
+		matrix_value_minus_matrix: "(5i - I) 0" => Complex::new(0., 5.),
+		matrix_affine_composition: "((I + i) (I + j)) 0" => Quaternion::new(0., 1., 1., 0.),
+
+		// Division is times-inverse on every sort, and whole powers compose
+		matrix_inverse_application: "[1;2i;3j;k]^-1 (2i + 3j)" => Quaternion::new(0., 1., 1., 0.),
+		matrix_square: "[1;2i;3j;k]^2 (i + j)" => Quaternion::new(0., 4., 9., 0.),
+		matrix_zeroth_power: "[1;2i;3j;k]^0" => Matrix::IDENTITY,
+		matrix_over_matrix: "(I + 5i) / (I + 5i)" => Matrix::IDENTITY,
+		matrix_over_value: "I / 2" => 0.5,
+		value_over_matrix: "(2 / I) 3" => 6.,
+		matrix_transpose: "[1;i]^T" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
+		matrix_transpose_spaced: "[1;i] ^ T" => Matrix::from_columns(&[Quaternion::ONE, Quaternion::I]).unwrap(),
+		matrix_transpose_then_inverse: "[1;2i;3j;k]^T^-1 (2i + 3j)" => Quaternion::new(0., 1., 1., 0.),
+		matrix_determinant: "det([1;2i;3j;k])" => 6.,
+		matrix_determinant_of_padded_literal: "det([2i;3j])" => 0.,
+		matrix_determinant_of_left_multiplication: "det(matrix(3 + 4i))" => 625.,
+
+		// Builders
+		matrix_of_value_multiplies: "matrix(1 + i) (2 + j)" => Quaternion::new(2., 2., 1., 1.),
+		matrix_rotation: "rotation(pi/2) i" => Quaternion::J,
+		matrix_rotation_about_axis: "rotation(pi/2, i) j" => Quaternion::K,
+		matrix_rotation_keeps_weight: "rotation(pi) (1 + i)" => Complex::new(1., -1.),
+		matrix_rotation_matches_rotate: "rotation(1, i + j) (2i + 3k) - rotate(2i + 3k, 1, i + j)" => 0.,
+		matrix_uniform_scale: "scale(2) (1 + i + j)" => Quaternion::new(1., 2., 2., 0.),
+		matrix_componentwise_product: "scale(3i + 2j) (5i + 7j)" => Quaternion::new(0., 15., 14., 0.),
+		matrix_componentwise_quotient: "scale(3i + 2j + k)^-1 (6i + 4j)" => Quaternion::new(0., 2., 2., 0.),
+		matrix_shear: "shear(i, j, 0.5) (2j)" => Quaternion::new(0., 1., 2., 0.),
+		matrix_shear_infinite: "shear(i, j, inf) (2j)" => Quaternion::new(0., f64::INFINITY, 2., 0.),
+		matrix_shear_infinite_leaves_other_axes: "shear(i, j, inf) i" => Complex::new(0., 1.),
+
+		// Inverses scale their entries first, so a huge or tiny map inverts, and a whole power reads its exponent exactly
+		matrix_inverse_of_huge_scale: "scale(1e103)^-1 (1e103 i)" => Complex::new(0., 1.),
+		matrix_inverse_of_tiny_scale: "scale(1e-110)^-1 (1e-110 i)" => Complex::new(0., 1.),
+		matrix_power_past_exact_reals: "(-I)^(2^53 + 1) i" => Complex::new(0., -1.),
+
+		// A map keeps the axes it acts on through its linear part and a real scale factor
+		matrix_linear_keeps_axes: "linear((i + j)..(3i + 3j))" => Matrix::range(Quaternion::ZERO, Quaternion::new(0., 2., 2., 0.)),
+		linear_part_of_range_keeps_its_axes: "within(0.5 + i, linear(0..(2i + 2j)))" => 0.,
+		within_scaled_range: "within(1.5, 2 (0..1))" => 1.,
+		scaled_range_keeps_its_axes: "within(1.5 + 0.5i, 2 (0..1))" => 0.,
+		outside_left_multiplication: "within(3, matrix(2))" => 0.,
+
+		// Comparisons are pointwise, a piecewise may take matrix values, and `\I` reaches the identity past any binding
+		matrix_equality: "I == [1;i;j;k]" => 1.,
+		matrix_inequality: "I != [i;j]" => 1.,
+		matrix_equality_chain: "I == [1;i;j;k] == I" => 1.,
+		matrix_distinct_chain: "I != [i;j] != [1]" => 1.,
+		matrix_in_piecewise: "{I if 1, [i;j] otherwise} k" => Quaternion::K,
+		matrix_builtin_identity_prefix: "\\I k" => Quaternion::K,
+
+		// A range sends parameter 0 to its first corner and 1 to its second on the parts the corners have, leaving the others untouched
+		range_application: "(0..10) 0.5" => 5.,
+		range_reversed: "(10..0) 0.25" => 7.5,
+		range_reaches_past_products: "(0..2pi) 0.5" => std::f64::consts::PI,
+		range_unit_is_identity: "0..1 == I" => 1.,
+		range_normalization: "(2..4)^-1 (3)" => 0.5,
+		range_leaves_other_parts: "(0..10) (0.5 + 3i)" => Complex::new(5., 3.),
+		box_scales_its_axes: "(0..(3i + 4j)) (0.5i + 0.5j)" => Quaternion::new(0., 1.5, 2., 0.),
+		box_leaves_the_weight: "(0..(3i + 4j)) (1 + 0.5i)" => Complex::new(1., 1.5),
+		box_from_a_corner: "((2i + 2j)..(4i + 6j)) (0.5i + 0.5j)" => Quaternion::new(0., 3., 4., 0.),
+		box_over_every_axis: "(0..(5 + 6i + 7j + 8k)) (1 + i + j + k)" => Quaternion::new(5., 6., 7., 8.),
+		box_parameter_is_per_axis: "(0..(5 + 6i + 7j + 8k)) 1" => 5.,
+		range_composes_with_a_rotation: "(rotation(pi/2) (0..(2i + 2j))) (i + j)" => Quaternion::new(0., -2., 2., 0.),
+		range_shifted_by_a_translation: "((0..(i + j)) + 5i) (i + j)" => Quaternion::new(0., 6., 1., 0.),
+
+		// Membership, clamping, and remapping read the range's parameter on the axes it spans, boundary included
+		within_range: "within(0.5, 0..1)" => 1.,
+		within_range_boundary: "within(1, 0..1)" => 1.,
+		outside_range: "within(1.5, 0..1)" => 0.,
+		outside_range_off_its_axis: "within(0.5 + 7i, 0..1)" => 0.,
+		within_box: "within(2i + 3j, 0..(4i + 4j))" => 1.,
+		outside_box_on_one_axis: "within(2i + 5j, 0..(4i + 4j))" => 0.,
+		outside_box_off_its_axes: "within(9 + 2i + 3j, 0..(4i + 4j))" => 0.,
+		within_rotated_box: "within(0.1i + 0.5j, rotation(pi/4) (0..(i + j)))" => 1.,
+		outside_rotated_box: "within(0.9i + 0.5j, rotation(pi/4) (0..(i + j)))" => 0.,
+		within_parallelogram: "within(2i + j, [2i, i + j] + i)" => 1.,
+		outside_parallelogram: "within(i + j, [2i, i + j] + i)" => 0.,
+		clamp_to_range: "clamp(1.5, 0..1)" => 1.,
+		clamp_within_range: "clamp(0.25, 0..1)" => 0.25,
+		clamp_moves_other_parts_into_the_range: "clamp(-3 + 7i, 0..1)" => 0.,
+		clamp_to_box: "clamp(2i + 3j, 0..(i + j))" => Quaternion::new(0., 1., 1., 0.),
+		clamp_within_box: "clamp(0.5i, 0..(i + j))" => Complex::new(0., 0.5),
+		clamp_to_rotated_box: "clamp(2i, rotation(pi/2) (0..(i + j)))" => 0.,
+		smoothstep_at_the_start: "smoothstep(0, 0..1)" => 0.,
+		smoothstep_at_a_quarter: "smoothstep(0.25, 0..1)" => 0.15625,
+		smoothstep_midway: "smoothstep(3, 2..4)" => 0.5,
+		smoothstep_at_the_end: "smoothstep(1, 0..1)" => 1.,
+		smoothstep_clamps_past_the_edges: "smoothstep(-7, 0..1) + smoothstep(7, 0..1)" => 1.,
+		smoothstep_reversed_range: "smoothstep(0.25, 1..0)" => 0.84375,
+		smoothstep_antialiased_edge: "smoothstep(0, -1..1)" => 0.5,
+		smoothstep_per_axis: "smoothstep(0.25i + 0.5j, 0..(i + j))" => Quaternion::new(0., 0.15625, 0.5, 0.),
+		smoothstep_drops_the_parts_the_range_lacks: "smoothstep(0.5 + 3i, 0..1)" => 0.5,
+		smoothstep_continuity_zero_is_the_ramp: "smoothstep(0.25, 0..1, 0)" => 0.25,
+		smoothstep_continuity_one_is_the_default: "smoothstep(0.25, 0..1, 1)" => 0.15625,
+		smoothstep_continuity_two_is_the_quintic: "smoothstep(0.25, 0..1, 2)" => 0.103515625,
+		smoothstep_continuity_three_is_the_septic: "smoothstep(0.25, 0..1, 1 + 2)" => 0.070556640625,
+		smoothstep_every_continuity_crosses_the_middle: "smoothstep(0.5, 0..1, 0) + smoothstep(0.5, 0..1, 2) + smoothstep(0.5, 0..1, 3)" => 1.5,
+		remap_between_ranges: "remap(0.25i + 0.5j, 0..(i + j), 0..(2i + 4j))" => Quaternion::new(0., 0.5, 2., 0.),
+		remap_reversing: "remap(2, 0..10, 100..0)" => 80.,
+		remap_extrapolates: "remap(3, 0..2, 0..1)" => 1.5,
+		remap_passes_uncovered_parts: "remap(0.5 + 3i, 0..1, 0..10)" => Complex::new(5., 3.),
+		remap_to_infinity: "remap(0.5, 0..1, inf..inf)" => f64::INFINITY,
+		within_huge_box: "within(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k))" => 1.,
+		within_tiny_box: "within(5e-111 i, 0..(1e-110 i + 1e-110 j + 1e-110 k))" => 1.,
+		remap_from_huge_box: "remap(5e200 i, 0..(1e201 i + 1e201 j + 1e201 k), 0..(i + j + k))" => Complex::new(0., 0.5),
+	}
+
+	#[test]
+	fn smoothstep_eases_along_a_rotated_box() {
+		// The parameter is read in the box's own frame, so the ease follows a rotated box's axes and lands on the parameter's
+		let Value::Number(number) = *evaluate("smoothstep(-0.5i + 0.25j, rotation(pi/2) (0..(i + j)))").unwrap().unwrap().as_value().unwrap();
+		for (part, expected) in number.to_quaternion().parts().into_iter().zip([0., 0.15625, 0.5, 0.]) {
+			assert!((part - expected).abs() < 1e-12, "{part} against {expected}");
+		}
+	}
+
+	#[test]
+	fn range_syntax() {
+		// A range's corners are values, a range is a matrix, and a range cannot chain
+		let message = |input: &str| evaluate(input).unwrap_err().to_string();
+		assert_eq!(message("I..1"), "A matrix stands where a value is needed");
+		assert_eq!(message("sin(0..1)"), "A matrix stands where a value is needed");
+		assert_eq!(message("within(0..1, 0..1)"), "A matrix stands where a value is needed");
+		assert_eq!(message("within(1, 2)"), "A value stands where a matrix is needed");
+		assert_eq!(message("0..1 < 2"), "The operator has no meaning for a matrix");
+		assert!(evaluate("0..1..2").is_err());
+
+		// A number's decimal point still lexes beside a range, and whitespace around `..` is free
+		assert_eq!(evaluate("(1.5..2.5) 0.5").unwrap().unwrap().as_real(), Some(2.));
+		assert_eq!(evaluate("(1 .. 3) 0.5").unwrap().unwrap().as_real(), Some(2.));
+		assert_eq!(evaluate("(0 .. .5) 1").unwrap().unwrap().as_real(), Some(0.5));
+		assert_eq!(evaluate("(-1..1) 0.75").unwrap().unwrap().as_real(), Some(0.5));
+
+		// A flat range holds only its one value on the flat axis, while remapping from it has no parameter to carry
+		let within = |input: &str| evaluate(input).unwrap().unwrap().as_bool();
+		assert_eq!(within("within(5, 5..5)"), Some(true));
+		assert_eq!(within("within(4, 5..5)"), Some(false));
+		assert_eq!(within("within(0, 0..0)"), Some(true));
+		assert_eq!(evaluate("clamp(1, 3..3)").unwrap().unwrap().as_real(), Some(3.));
+		assert_eq!(evaluate("(5..5) 0.5").unwrap().unwrap().as_real(), Some(5.));
+		assert!(matches!(evaluate("remap(2, 2..2, 0..10)").unwrap(), Err(EvalError::FlatRemapSource)));
+		assert!(matches!(evaluate("remap(0.5i + 0.5k, 0..(i + k), 0..(2i + 2j + 2k))").unwrap(), Err(EvalError::FlatRemapSource)));
+		assert!(matches!(evaluate("within(1, [i, 2i])").unwrap(), Err(EvalError::SingularRange)));
+		assert!(matches!(evaluate("smoothstep(5, 5..5)").unwrap(), Err(EvalError::FlatSmoothstep)));
+		assert!(matches!(evaluate("smoothstep(0.5, 0..inf)").unwrap(), Err(EvalError::Indeterminate)));
+		assert_eq!(message("smoothstep(1, 0..1, 0..1)"), "A matrix stands where a value is needed");
+		for input in ["smoothstep(0.5, 0..1, 4)", "smoothstep(0.5, 0..1, 1.5)", "smoothstep(0.5, 0..1, -1)"] {
+			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SmoothstepContinuity)), "`{input}`");
+		}
+
+		// Arguments are evaluated in order, so the range's error is raised before the continuity's
+		assert!(matches!(evaluate("smoothstep(1, x..1, y)").unwrap(), Err(EvalError::MissingValue(name)) if name == "x"));
+
+		// Matrix builtins check their argument counts as the expression is parsed, blaming the function's name
+		for input in [
+			"within(1)",
+			"clamp(1, 0..1, 0..1)",
+			"remap(1, 0..1)",
+			"smoothstep(1, 0..1, 1, 1)",
+			"rotation()",
+			"rotation(1, k, 2)",
+			"shear(i, j)",
+			"scale()",
+			"matrix(1, 2)",
+		] {
+			let name_end = input.find('(').unwrap_or_default();
+			assert_eq!(evaluate(input).unwrap_err().to_string(), format!("Invalid arguments for function call, at 0..{name_end}"), "`{input}`");
+		}
+
+		// A range literal's corners bound it directly, so they may be infinite, while other regions with infinite entries have no inverse
+		assert_eq!(within("within(5i, 0..(inf i))"), Some(true));
+		assert_eq!(within("within(-5i, 0..(inf i))"), Some(false));
+		assert_eq!(within("within(1e300, 0..inf)"), Some(true));
+		assert_eq!(within("within(-1, 0..inf)"), Some(false));
+		assert_eq!(within("within(inf, 0..inf)"), Some(true));
+		assert_eq!(within("within(-7, -inf..inf)"), Some(true));
+		assert_eq!(evaluate("clamp(-3, 0..inf)").unwrap().unwrap().as_real(), Some(0.));
+		assert_eq!(evaluate("clamp(5, 0..inf)").unwrap().unwrap().as_real(), Some(5.));
+		assert_eq!(evaluate("clamp(5, -inf..0)").unwrap().unwrap().as_real(), Some(0.));
+		assert_eq!(evaluate("clamp(0.3, 0.1..0.2)").unwrap().unwrap().as_real(), Some(0.2));
+		assert!(matches!(evaluate("within(1, 2 (0..inf))").unwrap(), Err(EvalError::Indeterminate)));
+		assert!(matches!(evaluate("remap(1, 0..inf, 0..1)").unwrap(), Err(EvalError::Indeterminate)));
+
+		// A box spans its corners' rung, so a part they share is flat and admits only their value there
+		assert_eq!(within("within(0.5i + 0.5k, 0..(i + k))"), Some(true));
+		assert_eq!(within("within(0.5i + 3j + 0.5k, 0..(i + k))"), Some(false));
+		assert_eq!(within("within(0.5i + 2j, (2j)..(i + 2j))"), Some(true));
+		assert_eq!(within("within(0.5i + 3j, (2j)..(i + 2j))"), Some(false));
+		assert_eq!(within("within(0.5 + 0.5k, 0..(1 + i + k))"), Some(true));
+		assert_eq!(within("within(0.5 + 0.5j + 0.5k, 0..(1 + i + k))"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5k, rotation(pi/2) (0..(i + k)))"), Some(false));
+		assert_eq!(within("within(-0.5i + 0.5j + 5k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(within("within(-0.5i + 0.5j + 4k, rotation(pi/2) (0..(i + j)) + 5k)"), Some(false));
+		assert_eq!(evaluate("clamp(0.5i + 3j + 0.5k, 0..(i + k))").unwrap().unwrap(), Object::from(Quaternion::new(0., 0.5, 0., 0.5)));
+		assert_eq!(within("within(1.5i + 2j, scale(3i + 2j))"), Some(true));
+		assert_eq!(within("within(1.5i + 2j + k, scale(3i + 2j))"), Some(false));
+
+		// A box holds only the points between its corners on every part, so a part neither corner has must be 0, and a box whose
+		// height shrinks to nothing holds just the points on its base
+		assert_eq!(within("within(2i, 0..1)"), Some(false));
+		assert_eq!(within("within(2i, I)"), Some(false));
+		assert_eq!(within("within(0.5 + 0.5i + 0.5j + 0.5k, I)"), Some(true));
+		assert_eq!(within("within(0.5i, 0..1i)"), Some(true));
+		assert_eq!(within("within(0.5i + 3j, 0..1i)"), Some(false));
+		assert_eq!(within("within(2i, 0..(3i + 0j))"), Some(true));
+		assert_eq!(within("within(2i + 5j, 0..(3i + 0j))"), Some(false));
+		assert_eq!(within("within(2i + 5j, 0..(3i + 1e-300j))"), Some(false));
+		assert_eq!(evaluate("clamp(2i + 5j, 0..3i)").unwrap().unwrap(), Object::from(Complex::new(0., 2.)));
+
+		// A region's parameters are its inner map's, so an outer map or a translation adds no axes to a box
+		assert_eq!(within("within(0.5, I (0..1))"), Some(true));
+		assert_eq!(within("within(2i, I (0..1))"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5j, scale(2) (0..(i + j)))"), Some(true));
+		assert_eq!(within("within(0.5i + 0.5j + 0.5k, scale(2) (0..(i + j)))"), Some(false));
+		assert_eq!(within("within(0.5i + 0.5j + 5k, (0..(i + j)) + 5k)"), Some(true));
+		assert_eq!(within("within(0.5i + 0.5j + 5.5k, (0..(i + j)) + 5k)"), Some(false));
+		assert_eq!(within("within(0.5i - 0.5j + 0.5k, rotation(pi/2, i) (0..(i + j)))"), Some(false));
+		assert_eq!(
+			evaluate("clamp(0.5i + 0.5j + 5k, scale(2) (0..(i + j)))").unwrap().unwrap(),
+			Object::from(Quaternion::new(0., 0.5, 0.5, 0.))
+		);
+
+		// A range reads as a Transform when its corners leave the weight and `z` alone
+		let affine = |input: &str| evaluate(input).unwrap().unwrap().into_matrix().unwrap().as_affine2();
+		assert_eq!(
+			affine("(i + j)..(3i + 4j)"),
+			Some(Affine2 {
+				linear: Linear2([[2., 0.], [0., 3.]]),
+				translation: [1., 1.]
+			})
+		);
+		assert_eq!(affine("0..10"), None);
+	}
+
+	#[test]
+	fn within_tolerates_a_hair_of_float_error() {
+		let within = |input: &str| evaluate(input).unwrap().unwrap().as_bool();
+
+		// A point a billionth of the region's scale off an edge or a flat side is within, and one further off is not
+		assert_eq!(within("within(1 + 1e-12, 0..1)"), Some(true));
+		assert_eq!(within("within(-1e-12, 0..1)"), Some(true));
+		assert_eq!(within("within(1 + 1e-7, 0..1)"), Some(false));
+		assert_eq!(within("within(1e4 + 1e-6, 0..1e4)"), Some(true));
+		assert_eq!(within("within(0.5i + 1e-12 j, 0..(i + k))"), Some(true));
+		assert_eq!(within("within(0.5i + 1e-6 j, 0..(i + k))"), Some(false));
+		assert_eq!(within("within(1.5i + 2j + 1e-12 k, scale(3i + 2j))"), Some(true));
+		assert_eq!(within("within(1.5i + 2j + 1e-6 k, scale(3i + 2j))"), Some(false));
+
+		// So a point computed onto a rotated region's edge, or a rotated point landing beside a flat side, counts
+		assert_eq!(within("within(0.5i + 0.5j, rotation(pi/4))"), Some(true));
+		assert_eq!(within("within(rotate(i, pi), (-i)..0)"), Some(true));
+
+		// The scale is the corners' or the map's magnitude, so a region at the origin with no extent is exact
+		assert_eq!(within("within(1e16 + 1e6, 0..1e16)"), Some(true));
+		assert_eq!(within("within(1e16 + 1e8, 0..1e16)"), Some(false));
+		assert_eq!(within("within(1e-300, 0..0)"), Some(false));
+		assert_eq!(within("within(-1e-20, 0..inf)"), Some(false));
 	}
 
 	#[test]
@@ -1277,7 +2034,7 @@ mod tests {
 
 	#[test]
 	fn vector_queries_require_the_other_parts_to_be_zero() {
-		let value = |source: &str| evaluate(source).unwrap().unwrap();
+		let value = |source: &str| evaluate(source).unwrap().unwrap().into_value().unwrap();
 
 		// A query succeeds exactly when the parts outside its rung are zero, so a real is a particle but not a vector
 		assert_eq!(value("3i + 4j").as_vector2(), Some(Vector2([3., 4.])));
@@ -1308,7 +2065,14 @@ mod tests {
 				}
 			}
 		}
-		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(VectorBindings, context::NothingMap)).unwrap();
+		let eval = |source: &str| {
+			ast::Node::try_parse_from_str(source)
+				.unwrap()
+				.eval(&EvalContext::new(VectorBindings, context::NothingMap))
+				.unwrap()
+				.into_value()
+				.unwrap()
+		};
 
 		// A bound vector takes part in the algebra like any literal, and the result queries back at its rung
 		assert_eq!(eval("|v|").as_real(), Some(5.));
@@ -1378,7 +2142,7 @@ mod tests {
 		// Selection and rounding return the integer itself, and a literal spelled as a real is the same whole number
 		assert_eq!(evaluate_i64("max(2^53 + 1, 2^53)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("min(2^53 + 1, 2^53 + 2)"), Some((1_i64 << 53) + 1));
-		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0, 2^60)"), Some((1_i64 << 53) + 1));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0..2^60)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("floor(2^53 + 1)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("snap(2^53 + 1, 1)"), Some((1_i64 << 53) + 1));
 		assert_eq!(evaluate_i64("snap(2^60 + 3, 2)"), Some((1_i64 << 60) + 4));
@@ -1393,8 +2157,12 @@ mod tests {
 		assert_eq!(evaluate_i64("gcd(2^126, 6)"), Some(2));
 		assert!(evaluate("gcd(2^127, 2)").unwrap().is_err());
 
-		// Crossed bounds settle on the upper one
-		assert_eq!(evaluate_i64("clamp(5, 10, 0)"), Some(0));
+		// A reversed range clamps to its own ends, and the ends order exactly past the reals' limit
+		assert_eq!(evaluate_i64("clamp(15, 10..0)"), Some(10));
+		assert_eq!(evaluate_i64("clamp(-5, 10..0)"), Some(0));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0..2^53)"), Some(1 << 53));
+		assert_eq!(evaluate_i64("clamp(2^53 + 1, 0..(2^53 + 2))"), Some((1 << 53) + 1));
+		assert_eq!(evaluate_i64("clamp(-2^53 - 1, (-2^53)..0)"), Some(-(1 << 53)));
 
 		// A fractional quotient, a power, and a factorial past integer storage continue in the reals
 		assert_eq!(evaluate("7 / 2").unwrap().unwrap().as_real(), Some(3.5));
@@ -1427,8 +2195,123 @@ mod tests {
 	}
 
 	#[test]
+	fn matrix_sort_errors() {
+		// Sorts are fixed by spelling, so a matrix or a value standing where the other belongs fails the parse
+		let message = |input: &str| evaluate(input).unwrap_err().to_string();
+		for input in ["[I]", "sin(I)", "max(I, 1)", "I + [I]", "{1 if I, 0 otherwise}"] {
+			assert_eq!(message(input), "A matrix stands where a value is needed", "`{input}`");
+		}
+		for input in ["2^T", "det(1)"] {
+			assert_eq!(message(input), "A value stands where a matrix is needed", "`{input}`");
+		}
+		// Matrices have no order, magnitude, factorial, or logic, and compare only with matrices
+		for input in ["I < I", "|I|", "I!", "!I", "I && 1", "I == 1", "I^I", "1^I", "I < 1 < 2"] {
+			assert_eq!(message(input), "The operator has no meaning for a matrix", "`{input}`");
+		}
+		assert_eq!(message("{I if 1, 2 otherwise}"), "A piecewise's cases must all be values or all be matrices");
+		assert_eq!(message("I(1, 2)"), "Invalid arguments for function call, at 0..1");
+
+		// A fractional power, the inverse of a padded literal (whose zero rows make it singular), and the transpose of a translated matrix fail at evaluation
+		for input in ["I^0.5", "I^inf", "I^i"] {
+			let error = evaluate(input).unwrap().unwrap_err();
+			assert_eq!(error.to_string(), "A matrix power must be an integer", "`{input}`");
+		}
+		for input in ["[i;j]^-1", "I / [i;j]", "[i;j]^-2"] {
+			assert!(matches!(evaluate(input).unwrap(), Err(EvalError::SingularMatrix)), "expected `{input}` to be singular");
+		}
+		assert!(matches!(evaluate("(I + 5i)^T").unwrap(), Err(EvalError::AffineTranspose)));
+		assert!(matches!(evaluate("M").unwrap(), Err(EvalError::MissingValue(name)) if name == "M"));
+	}
+
+	#[test]
+	fn matrix_literal_syntax_errors() {
+		for input in ["[]", "[1; i, j]", "[1 2]", "[1;]", "[;1]", "[1,]"] {
+			assert!(evaluate(input).is_err(), "expected `{input}` to be a parse error");
+		}
+
+		let error = evaluate("[1;i;j;k;1]").unwrap_err().to_string();
+		assert!(error.starts_with("A matrix literal has at most four entries"), "{error}");
+	}
+
+	#[test]
+	fn matrices_bind_and_query_by_case() {
+		struct Bindings;
+		impl context::ValueProvider for Bindings {
+			fn get_value(&self, name: &str) -> Option<Value> {
+				(name == "x").then(|| Value::from_f64(2.))
+			}
+			fn get_matrix(&self, name: &str) -> Option<Matrix> {
+				match name {
+					// A shear with a translation, as a host's `DAffine2` binds
+					"X" => Some(Matrix::from(Affine2 {
+						linear: Linear2([[1., 0.], [0.5, 1.]]),
+						translation: [5., 4.],
+					})),
+					// A binding shadows the identity like any constant
+					"I" => Some(Matrix::ZERO),
+					"N" => Some(Matrix::IDENTITY.translated(Quaternion::splat(f64::NAN))),
+					_ => None,
+				}
+			}
+		}
+		let eval = |source: &str| ast::Node::try_parse_from_str(source).unwrap().eval(&EvalContext::new(Bindings, context::NothingMap));
+
+		// A NaN from a host matrix is an error naming its source, like a NaN value
+		assert!(matches!(eval("N"), Err(EvalError::NotANumber(name)) if name == "N"));
+		assert!(matches!(eval("N i"), Err(EvalError::NotANumber(name)) if name == "N"));
+
+		// `X` maps the plane, leaving the weight and `z` untouched
+		assert_eq!(eval("X (2i + 2j)").unwrap(), Object::from(Quaternion::new(0., 8., 6., 0.)));
+		assert_eq!(eval("X (1 + k)").unwrap(), Object::from(Quaternion::new(1., 5., 4., 1.)));
+		assert_eq!(eval("x X 0").unwrap(), Object::from(Quaternion::new(0., 10., 8., 0.)));
+		assert_eq!(eval("I").unwrap(), Object::from(Matrix::ZERO));
+		assert_eq!(eval("\\I").unwrap(), Object::from(Matrix::IDENTITY));
+		assert!(matches!(eval("Y"), Err(EvalError::MissingValue(name)) if name == "Y"));
+
+		// A query checks its refinement losslessly: the weight untouched for all, `z` untouched for the plane, no translation for a linear map
+		let x = eval("X").unwrap().into_matrix().unwrap();
+		assert_eq!(
+			x.as_affine2(),
+			Some(Affine2 {
+				linear: Linear2([[1., 0.], [0.5, 1.]]),
+				translation: [5., 4.]
+			})
+		);
+		assert_eq!(x.as_linear2(), None);
+		assert_eq!(x.as_affine3().map(|affine| affine.translation), Some([5., 4., 0.]));
+		assert_eq!(eval("linear(X)").unwrap().into_matrix().unwrap().as_linear2(), Some(Linear2([[1., 0.], [0.5, 1.]])));
+		let rotation = eval("rotation(1, i)").unwrap().into_matrix().unwrap();
+		assert_eq!(rotation.as_affine2(), None);
+		assert!(rotation.as_linear3().is_some());
+		assert_eq!(eval("[1;i]").unwrap().into_matrix().unwrap().as_affine3(), None);
+
+		// A matrix is no value to the value readers
+		assert_eq!(eval("X").unwrap().as_real(), None);
+	}
+
+	#[test]
+	fn matrices_display_as_row_literals() {
+		for (input, expected) in [
+			("I", "[1;i;j;k]"),
+			("[i;j]", "[i;j]"),
+			("[3i + 4j]", "[3i+4j]"),
+			("[1;i]^T", "[i;j;0;0]"),
+			("-I", "[-1;-i;-j;-k]"),
+			("I - I", "[0]"),
+			("I + 5i", "[1;i;j;k] + 5i"),
+			("I - 5i", "[1;i;j;k] + (-5i)"),
+			("I + 5i + 4j", "[1;i;j;k] + (5i+4j)"),
+			("I + i", "[1;i;j;k] + i"),
+			("2..4", "[2;i;j;k] + 2"),
+			("0..(3i + 4j)", "[1;3i;4j;k]"),
+		] {
+			assert_eq!(evaluate(input).unwrap().unwrap().to_string(), expected, "`{input}`");
+		}
+	}
+
+	#[test]
 	fn minimal_rungs_follow_content() {
-		let rung = |source: &str| evaluate(source).unwrap().unwrap().rung();
+		let rung = |source: &str| evaluate(source).unwrap().unwrap().as_value().unwrap().rung();
 
 		// The rung is decided by the value rather than by how it was computed or stored
 		assert_eq!(rung("1 < 2"), Rung::Bool);

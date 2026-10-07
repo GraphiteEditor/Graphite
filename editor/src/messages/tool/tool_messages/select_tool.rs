@@ -1028,10 +1028,11 @@ impl Fsm for SelectToolFsmState {
 						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 					}
 
-					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
-						let mouse_position = mouse_position - tool_data.drag_start;
+					if let Some(angle) = DVec2::X.try_angle_to(mouse_position - tool_data.drag_start)
+						&& axis_state.is_none_or(|(axis, _)| !axis.is_constraint())
+						&& tool_data.axis_align
+					{
 						let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-						let angle = -mouse_position.angle_to(DVec2::X);
 						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
 						// Anchor the guide to the dragged layers' center at the moment the drag began. It's computed live (rather than

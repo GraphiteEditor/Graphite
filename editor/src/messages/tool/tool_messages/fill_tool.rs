@@ -269,7 +269,7 @@ mod test_fill {
 
 	// The Fill tool writes solid colors, whose stored values the input monitor records as `Item<Color>` wires
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Item<Color>> {
-		let instrumented = match editor.eval_graph().await {
+		let instrumented = match editor.eval_graph_until_finished().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};

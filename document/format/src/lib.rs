@@ -16,7 +16,7 @@ use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session};
+use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::ResourceHash;
@@ -48,15 +48,13 @@ pub type GddV1 = Gdd<GddV1Layout>;
 pub const MANIFEST_CODEC: Codec = Codec::Json;
 
 /// Working-copy codecs. The working copy lives in appdata, not under VCS — these defaults
-/// optimize for size and write cost. MessagePack is self-describing, so it round-trips the
-/// type-erased `serde_json::Value` bodies that resource and attribute deltas carry (a non-self-
-/// describing format like postcard cannot). JSON/JSONL is opt-in via `ExportFormat::Folder` for
-/// users who want a diffable on-disk representation. Recorded in the manifest at create time and
-/// read back on open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
+/// optimize for size and write cost. JSON/JSONL is opt-in via `ExportFormat::Folder` for users who
+/// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
+/// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
-pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::MessagePack;
-pub const DEFAULT_HISTORY_CODEC: Codec = Codec::MessagePackFrames;
-pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::MessagePackFrames;
+pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
+pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
+pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 
 /// Editor-facing handle. Owns the `Session` and the working-copy container; mutations are mirrored
 /// to disk continuously (every retirement appends to the history file and re-snapshots the registry).
@@ -79,10 +77,10 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) manifest: Manifest,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
-	pub(crate) view_settings: std::collections::BTreeMap<String, serde_json::Value>,
+	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
-	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -143,18 +141,19 @@ impl<L: Layout> Gdd<L> {
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
 
 		let peer = session_state.peer_id;
+		let user = session_state.user_id;
 		let mut session = match (has_registry, has_history) {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
+				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(peer, registry)?
+				Session::bootstrap_from_registry(peer, user, registry)?
 			}
-			(false, _) => Session::replay_from_history(peer, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
 		};
 
 		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
@@ -180,7 +179,11 @@ impl<L: Layout> Gdd<L> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
-		let session_state = SessionState { peer_id: peer, ..Default::default() };
+		let session_state = SessionState {
+			peer_id: peer,
+			user_id: UserId(peer.0),
+			..Default::default()
+		};
 		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
 
 		let session = Session::with_peer(peer);
@@ -259,13 +262,13 @@ impl<L: Layout> Gdd<L> {
 
 	/// The per-peer view settings read from `session.json` (PTZ, rulers, overlays, snapping, collapse).
 	/// Opaque `ui::doc::*` blobs; the editor decodes them. Empty for a fresh document.
-	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, serde_json::Value> {
+	pub fn view_settings(&self) -> &std::collections::BTreeMap<String, document_graph_storage::Value> {
 		&self.view_settings
 	}
 
 	/// The per-network view settings read from `session.json` (node-graph nav + previewing), keyed by
 	/// [`NetworkId`](document_graph_storage::NetworkId). Opaque `ui::nav::*` / `ui::previewing` blobs the editor decodes.
-	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>> {
+	pub fn network_view_settings(&self) -> &std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>> {
 		&self.network_view_settings
 	}
 

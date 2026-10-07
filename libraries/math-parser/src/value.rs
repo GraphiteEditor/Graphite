@@ -479,6 +479,7 @@ impl Number {
 				Number::Quaternion(quaternion) => Number::Quaternion(-quaternion),
 			}),
 			UnaryOp::Not => self.as_bool().map(|boolean| Number::from_bool(!boolean)),
+			UnaryOp::Transpose => None,
 			UnaryOp::Magnitude => Some(match self {
 				Number::Integer(integer) => i64::try_from(integer.unsigned_abs()).map_or(Number::Real(integer.unsigned_abs() as f64), Number::Integer),
 				_ => Number::Real(self.magnitude()),

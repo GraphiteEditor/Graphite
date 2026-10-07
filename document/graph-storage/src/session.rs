@@ -2,7 +2,9 @@
 use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
-use crate::{ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId};
+use crate::{
+	ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value, to_value,
+};
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -27,9 +29,13 @@ impl Session {
 		Self::with_peer(PeerId(core_types::uuid::generate_uuid()))
 	}
 
-	/// Construct a session bound to a specific `PeerId`. Used by tests; production code wants
-	/// `Session::new`.
+	/// A session for `peer` standing for itself as a person, for tests and tools without a stored identity.
 	pub fn with_peer(peer: PeerId) -> Self {
+		Self::with_identity(peer, UserId(peer.0))
+	}
+
+	/// A session for device `peer` used by person `user`, whom its registration records.
+	pub fn with_identity(peer: PeerId, user: UserId) -> Self {
 		Self {
 			document: Document {
 				working_registry: Registry::default(),
@@ -40,6 +46,7 @@ impl Session {
 				redo_stack: Vec::new(),
 				clock: LamportClock::new(peer),
 				peer,
+				user,
 				last_broadcast_rev: None,
 				next_node_counter: 0,
 			},
@@ -49,6 +56,15 @@ impl Session {
 
 	pub fn peer(&self) -> PeerId {
 		self.document.peer
+	}
+
+	pub fn user(&self) -> UserId {
+		self.document.user
+	}
+
+	pub fn user_of(&self, peer: PeerId) -> Option<UserId> {
+		let registered = || self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user);
+		(peer == self.document.peer).then_some(self.document.user).or_else(registered)
 	}
 
 	pub fn registry(&self) -> &Registry {
@@ -104,7 +120,7 @@ impl Session {
 	/// Used on a throwaway session clone at export time so the exported registry and history agree;
 	/// callers must guarantee the bytes are available in the export's resource store.
 	pub fn embed_resource_sources(&mut self, ids: impl IntoIterator<Item = ResourceId>) -> Result<Vec<Rev>, CrdtError> {
-		let embedded = serde_json::to_value(graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
+		let embedded = to_value(&graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
 
 		let mut ops = Vec::new();
 		for id in ids {
@@ -141,15 +157,15 @@ impl Session {
 	/// The peer's first contribution is preceded by a `RegisterPeer` op, so the device's
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
 	/// before any of its edits. A no-op batch doesn't register — registration rides a real edit.
-	fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+	pub(crate) fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
 		let mut pending: Vec<RegistryDelta> = ops.into_iter().collect();
 		if pending.is_empty() {
 			return Ok(Vec::new());
 		}
 
-		if !self.document.working_registry.peer_users.contains_key(&self.document.peer) {
-			let user = UserId(self.document.peer.0);
-			pending.insert(0, RegistryDelta::RegisterPeer { peer: self.document.peer, user });
+		let (peer, user) = (self.document.peer, self.document.user);
+		if self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
+			pending.insert(0, RegistryDelta::RegisterPeer { peer, user });
 		}
 
 		let mut staged = Vec::with_capacity(pending.len());
@@ -213,7 +229,7 @@ impl Session {
 	/// Wrap an already-materialized snapshot. Trusts `registry` to match `history`; advances the
 	/// clock past every observed timestamp but does not re-apply ops. `history` is taken in on-disk
 	/// (topological) order.
-	pub fn load(peer: PeerId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
+	pub fn load(peer: PeerId, user: UserId, registry: Registry, history: Vec<Delta>, head: Option<Rev>, redo_stack: Vec<Rev>, next_node_counter: u64) -> Self {
 		let mut clock = LamportClock::new(peer);
 		for delta in &history {
 			clock.observe(delta.timestamp);
@@ -231,6 +247,7 @@ impl Session {
 				redo_stack,
 				clock,
 				peer,
+				user,
 				last_broadcast_rev: None,
 				next_node_counter,
 			},
@@ -240,8 +257,8 @@ impl Session {
 
 	/// Rebuild the registry from scratch by applying every delta in causal order.
 	/// `deltas` must be in causal order (every parent before its children).
-	pub fn replay_from_history(peer: PeerId, deltas: impl IntoIterator<Item = Delta>, next_node_counter: u64) -> Result<Self, CrdtError> {
-		let mut session = Self::with_peer(peer);
+	pub fn replay_from_history(peer: PeerId, user: UserId, deltas: impl IntoIterator<Item = Delta>, next_node_counter: u64) -> Result<Self, CrdtError> {
+		let mut session = Self::with_identity(peer, user);
 		session.document.next_node_counter = next_node_counter;
 
 		for delta in deltas {
@@ -328,7 +345,7 @@ impl Session {
 	/// Low-level: set a local annotation attribute (e.g. a commit message) on a retired delta in place.
 	/// Excluded from the delta's content-addressed `Rev`, so identity is unchanged. Returns whether the
 	/// delta was found. The `Gdd` layer re-persists the affected history frame after calling this.
-	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> bool {
+	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> bool {
 		let timestamp = self.document.clock.tick();
 		self.document.history.annotate(rev, key, value, timestamp)
 	}
@@ -433,9 +450,9 @@ impl Session {
 
 	/// Build a synthetic linear history whose replay reproduces `registry`. Each op gets a
 	/// freshly-ticked clock timestamp and chains to the previous op's `Rev`.
-	pub fn bootstrap_from_registry(peer: PeerId, registry: Registry) -> Result<Self, CrdtError> {
+	pub fn bootstrap_from_registry(peer: PeerId, user: UserId, registry: Registry) -> Result<Self, CrdtError> {
 		let ops = crate::delta::compute_deltas(&Registry::default(), &registry);
-		let mut session = Self::with_peer(peer);
+		let mut session = Self::with_identity(peer, user);
 		session.commit_ops(ops, false)?;
 		// No hot ops on this path, so the working registry must mirror the freshly-built snapshot.
 		session.document.working_registry = session.document.retired_snapshot.clone();
@@ -604,9 +621,6 @@ pub enum CrdtError {
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]
 	NetworkAlreadyExists(NetworkId),
-	/// PeerId is already registered to a different UserId.
-	#[error("Peer {0:?} is already registered to a different user")]
-	PeerRegistrationConflict(PeerId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
 }

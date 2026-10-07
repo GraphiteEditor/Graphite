@@ -73,17 +73,13 @@ pub struct Source {
 }
 
 /// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
-#[derive(Clone, Debug, PartialEq, Eq, DynAny, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, DynAny, Default, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct OriginalLocation {
 	/// The original location to the document node - e.g. [grandparent_id, parent_id, node_id].
 	pub path: Option<Vec<NodeId>>,
-	/// Each document input source maps to one proto node input (however one proto node input may come from several sources)
-	pub inputs_source: HashMap<Source, usize>,
 	/// List of nodes which depend on this node
 	pub dependants: Vec<Vec<NodeId>>,
-	/// A list of flags indicating whether the input is exposed in the UI
-	pub inputs_exposed: Vec<bool>,
 	/// For automatically inserted Convert and Into nodes, if there is an error, display it on the node it is connect to.
 	pub auto_convert_index: Option<usize>,
 }
@@ -102,24 +98,6 @@ impl Default for DocumentNode {
 	}
 }
 
-impl Hash for OriginalLocation {
-	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.path.hash(state);
-		self.inputs_source.iter().for_each(|val| val.hash(state));
-		self.inputs_exposed.hash(state);
-	}
-}
-impl OriginalLocation {
-	pub fn inputs(&self, index: usize) -> impl Iterator<Item = Source> + '_ {
-		[(index >= 1).then(|| Source {
-			node: self.path.clone().unwrap_or_default(),
-			index: self.inputs_exposed.iter().take(index - 1).filter(|&&exposed| exposed).count(),
-		})]
-		.into_iter()
-		.flatten()
-		.chain(self.inputs_source.iter().filter(move |x| *x.1 == index).map(|(source, _)| source.clone()))
-	}
-}
 impl DocumentNode {
 	/// The input slot named by the given parameter symbol, e.g. `node.input(stroke::WeightInput)`.
 	pub fn input<P: NodeParameter>(&self, _parameter: P) -> Option<&NodeInput> {
@@ -149,7 +127,7 @@ impl DocumentNode {
 	}
 
 	/// Locate the input that is a [`NodeInput::Import`] at index `offset` and replace it with a [`NodeInput::Node`].
-	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize, source: impl Iterator<Item = Source>, skip: usize) {
+	pub fn populate_first_network_input(&mut self, node_id: NodeId, output_index: usize, offset: usize) {
 		let (index, _) = self
 			.inputs
 			.iter()
@@ -158,10 +136,6 @@ impl DocumentNode {
 			.unwrap_or_else(|| panic!("no network input found for {self:#?} and offset: {offset}"));
 
 		self.inputs[index] = NodeInput::Node { node_id, output_index };
-		let input_source = &mut self.original_location.inputs_source;
-		for source in source {
-			input_source.insert(source, (index + 1).saturating_sub(skip));
-		}
 	}
 
 	fn resolve_proto_node(self) -> ProtoNode {
@@ -825,7 +799,6 @@ impl NodeNetwork {
 				log::warn!("Attempting to overwrite node path");
 			} else {
 				node.original_location.path = Some(new_path);
-				node.original_location.inputs_exposed = node.inputs.iter().map(|input| input.is_exposed()).collect();
 				node.original_location.dependants = (0..node.implementation.output_count()).map(|_| Vec::new()).collect();
 			}
 		}
@@ -905,6 +878,13 @@ impl NodeNetwork {
 			self.nodes.insert(node_id, document_node);
 		}
 
+		// Remove references to nodes that have been deleted
+		for node in self.nodes.values_mut() {
+			for dependants in &mut node.original_location.dependants {
+				dependants.retain(|dependant| !old_nodes.contains_key(dependant));
+			}
+		}
+
 		// Check if inputs are used and store for return value
 		let mut are_inputs_used = vec![false; number_of_inputs];
 		for node in &self.nodes {
@@ -937,7 +917,19 @@ impl NodeNetwork {
 			node.implementation = passthrough_node;
 
 			// Connect layer node to the group below
-			node.inputs.drain(1..);
+			let removed_inputs = node.inputs.split_off(1);
+
+			// Remove the dependants on the ignored inputs
+			for removed_input in removed_inputs {
+				if let NodeInput::Node { node_id, output_index } = removed_input
+					&& let Some(former_dependency) = self.nodes.get_mut(&node_id)
+					// Ensure that the other node inputs do not also reference the dependancy
+					&& !node.inputs.iter().any(|input| matches!(input, NodeInput::Node { node_id: other, .. } if *other == node_id))
+				{
+					former_dependency.original_location.dependants[output_index].retain(|&dependant| dependant != id);
+				}
+			}
+
 			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
 			return;
@@ -995,7 +987,7 @@ impl NodeNetwork {
 					match *parent_input {
 						// If the input to self is a node, connect the corresponding output of the inner network to it
 						NodeInput::Node { node_id, output_index } => {
-							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, node.original_location.inputs(*import_index), 1);
+							nested_node.populate_first_network_input(node_id, output_index, nested_input_index);
 							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("Unable to find input node {node_id:?}"));
 							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
@@ -1016,6 +1008,16 @@ impl NodeNetwork {
 			}
 			self.nodes.insert(nested_node_id, nested_node);
 		}
+
+		// Remove the newly flattened node from the dependants
+		for parent_input in &node.inputs {
+			if let NodeInput::Node { node_id, output_index } = *parent_input
+				&& let Some(input_node) = self.nodes.get_mut(&node_id)
+			{
+				input_node.original_location.dependants[output_index].retain(|&dependant| dependant != id);
+			}
+		}
+
 		// TODO: Add support for flattening exports that are NodeInput::Import (https://github.com/GraphiteEditor/Graphite/issues/1762)
 
 		self.replace_node_with_its_exports(id, &node.original_location, &inner_network.exports);
@@ -1039,6 +1041,9 @@ impl NodeNetwork {
 					for dep in &original_location.dependants[i] {
 						new_output_node.original_location.dependants[*output_index].push(*dep);
 					}
+
+					// Remove references from dependants on wrapper
+					new_output_node.original_location.dependants[*output_index].retain(|&dependant| dependant != id);
 				}
 			}
 
@@ -1057,7 +1062,6 @@ impl NodeNetwork {
 	) {
 		// Replace value exports and imports with value nodes, added inside the nested network
 		for export in inputs {
-			let export: &mut NodeInput = export;
 			let previous_export = std::mem::replace(export, NodeInput::import(concrete!(()), 0));
 
 			let (tagged_value, exposed) = match previous_export {
@@ -1097,70 +1101,62 @@ impl NodeNetwork {
 		}
 	}
 
-	fn remove_passthrough_node(&mut self, id: NodeId) -> Result<(), String> {
-		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
-		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation
-			&& *ident == graphene_core::ops::passthrough::IDENTIFIER
+	fn remove_passthrough_node(&mut self, passthrough_id: NodeId) {
+		let node = self.nodes.remove(&passthrough_id).unwrap_or_else(|| panic!("Node with id {passthrough_id} does not exist"));
+
+		let implementation = &node.implementation;
+		assert!(
+			matches!(implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER),
+			"remove_passthrough_node was given a node {implementation:?} and id {passthrough_id:?}",
+		);
+		assert_eq!(node.inputs.len(), 1, "Passthrough node has more than one input");
+
+		// Consider the upstream node (the input to the passthrough)
+		if let NodeInput::Node {
+			node_id: upstream_node_id,
+			output_index: upstream_output_index,
+			..
+		} = node.inputs[0]
+			&& let Some(upstream_node) = self.nodes.get_mut(&upstream_node_id)
 		{
-			assert_eq!(node.inputs.len(), 1, "Passthrough node has more than one input");
-			if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
-				let node_input_output_index = output_index;
-				// TODO fix
-				if let Some(input_node) = self.nodes.get_mut(&node_id) {
-					for &dep in &node.original_location.dependants[0] {
-						input_node.original_location.dependants[output_index].push(dep);
-					}
-				}
+			let dependants_of_upstream = &mut upstream_node.original_location.dependants[upstream_output_index];
+			// Add our dependants to the list of dependants
+			dependants_of_upstream.extend(node.original_location.dependants[0].iter().copied());
+			// Remove ourselves from the list of dependants
+			dependants_of_upstream.retain(|&dependant| dependant != passthrough_id);
+		};
 
-				let input_node_id = node_id;
-				for output in self.nodes.values_mut() {
-					for (index, input) in output.inputs.iter_mut().enumerate() {
-						if let NodeInput::Node {
-							node_id: output_node_id,
-							output_index: output_output_index,
-							..
-						} = input && *output_node_id == id
-						{
-							*output_node_id = input_node_id;
-							*output_output_index = node_input_output_index;
+		// Check if the passthrough output is connected to a network export
+		for node_input in self.exports.iter_mut() {
+			if matches!(node_input,  NodeInput::Node { node_id, .. } if *node_id == passthrough_id) {
+				*node_input = node.inputs[0].clone();
+			}
+		}
 
-							let input_source = &mut output.original_location.inputs_source;
-							for source in node.original_location.inputs(index) {
-								input_source.insert(source, index);
-							}
-						}
-					}
-					for node_input in self.exports.iter_mut() {
-						if let NodeInput::Node { node_id, output_index, .. } = node_input
-							&& *node_id == id
-						{
-							*node_id = input_node_id;
-							*output_index = node_input_output_index;
-						}
-					}
+		// Look at all downstream nodes
+		for &dependant_id in &node.original_location.dependants[0] {
+			let Some(dependant_node) = self.nodes.get_mut(&dependant_id) else {
+				error!("remove_passthrough_node got a dependant id {dependant_id:?} that did not exist in the network\n{self:#?}");
+				continue;
+			};
+			for input in dependant_node.inputs.iter_mut() {
+				if matches!(input, NodeInput::Node { node_id, .. } if *node_id == passthrough_id) {
+					*input = node.inputs[0].clone();
 				}
 			}
-			self.nodes.remove(&id);
 		}
-		Ok(())
 	}
 
-	/// Strips out any [`graphene_core::ops::PassthroughNode`]s that are unnecessary.
-	pub fn remove_redundant_passthrough_nodes(&mut self) {
+	/// Strips out all [`graphene_core::ops::PassthroughNode`]s.
+	pub fn remove_all_passthrough_nodes(&mut self) {
 		let passthrough_nodes = self
 			.nodes
 			.iter()
-			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER)
-					&& node.inputs.len() == 1
-					&& matches!(node.inputs[0], NodeInput::Node { .. })
-			})
+			.filter(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::passthrough::IDENTIFIER))
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>();
 		for id in passthrough_nodes {
-			if let Err(e) = self.remove_passthrough_node(id) {
-				log::warn!("{e}")
-			}
+			self.remove_passthrough_node(id);
 		}
 	}
 
@@ -1204,6 +1200,9 @@ impl NodeNetwork {
 
 	/// Creates a proto network for evaluating each output of this network.
 	pub fn into_proto_networks(self) -> impl Iterator<Item = ProtoNetwork> {
+		#[cfg(test)]
+		self.validate_dependants();
+
 		let nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 
 		// Create a network to evaluate each output
@@ -1243,6 +1242,38 @@ impl NodeNetwork {
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
 		let nodes = self.nodes.iter().map(|(id, node)| (id, node, Vec::new())).collect();
 		RecursiveNodeIter { nodes }
+	}
+
+	/// Ensure the cached list of dependants exactly matches the real list of dependants
+	#[cfg(test)]
+	fn validate_dependants(&self) {
+		use std::collections::HashSet;
+
+		let mut dependants = HashMap::<NodeId, Vec<HashSet<NodeId>>>::new();
+
+		for (&id, node) in self.nodes.iter() {
+			dependants.insert(id, vec![HashSet::new(); node.implementation.output_count()]);
+		}
+
+		for (&id, node) in self.nodes.iter() {
+			for input in &node.inputs {
+				if let NodeInput::Node { node_id, output_index } = *input {
+					dependants.get_mut(&node_id).unwrap()[output_index].insert(id);
+				}
+			}
+		}
+
+		for (&id, node) in self.nodes.iter() {
+			for output_index in 0..node.implementation.output_count() {
+				let real_dependants = &dependants.get(&id).unwrap()[output_index];
+				let listed_dependants = node.original_location.dependants.get(output_index).map_or_default(|d| d.iter().copied().collect::<HashSet<_>>());
+				assert_eq!(
+					real_dependants, &listed_dependants,
+					"real {:?} should equal listed {:?} for output index {} in id {:?} in network:\n{:#?}",
+					real_dependants, listed_dependants, output_index, id, self
+				);
+			}
+		}
 	}
 }
 
@@ -1451,8 +1482,7 @@ mod test {
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
-							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
-							inputs_exposed: vec![true, true],
+							dependants: vec![vec![NodeId(11)]],
 							..Default::default()
 						},
 
@@ -1467,8 +1497,7 @@ mod test {
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true],
+							dependants: vec![vec![]],
 							..Default::default()
 						},
 						..Default::default()
@@ -1482,8 +1511,7 @@ mod test {
 						construction_args: ConstructionArgs::Value(TaggedValue::Integer(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true, false],
+							dependants: vec![vec![NodeId(10)]],
 							..Default::default()
 						},
 						..Default::default()
@@ -1493,7 +1521,8 @@ mod test {
 			.into_iter()
 			.collect(),
 		};
-		let network = flat_network();
+		let mut network = flat_network();
+		network.populate_dependants();
 		let mut resolved_network = network.into_proto_networks().collect::<Vec<_>>();
 		resolved_network[0].nodes.sort_unstable_by_key(|(id, _)| *id);
 
@@ -1512,7 +1541,6 @@ mod test {
 						inputs: vec![NodeInput::import(concrete!(i64), 0), NodeInput::node(NodeId(14), 0)],
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
-							inputs_source: [(Source { node: vec![], index: 0 }, 1)].into(),
 							dependants: vec![vec![NodeId(11)]],
 							..Default::default()
 						},
@@ -1526,7 +1554,7 @@ mod test {
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(4)]),
-							dependants: vec![vec![NodeId(1), NodeId(10)]],
+							dependants: vec![vec![NodeId(10)]],
 							..Default::default()
 						},
 						..Default::default()
@@ -1563,8 +1591,6 @@ mod test {
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
-							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
-							inputs_exposed: vec![true, true],
 							..Default::default()
 						},
 						..Default::default()
@@ -1577,8 +1603,6 @@ mod test {
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true, false],
 							..Default::default()
 						},
 						..Default::default()
@@ -1591,8 +1615,6 @@ mod test {
 						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
-							inputs_source: HashMap::new(),
-							inputs_exposed: vec![true],
 							..Default::default()
 						},
 						..Default::default()
@@ -1660,8 +1682,11 @@ mod test {
 		let _new_ids = 101..;
 		network.populate_dependants();
 		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10000));
+		network.validate_dependants();
 		network.flatten_with_fns(NodeId(2), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), || NodeId(10001));
+		network.validate_dependants();
 		network.remove_dead_nodes(0);
+		network.validate_dependants();
 		network
 	}
 
@@ -1669,11 +1694,82 @@ mod test {
 	fn simple_duplicate() {
 		let result = output_duplicate(vec![NodeInput::node(NodeId(1), 0)], NodeInput::node(NodeId(1), 0));
 		println!("{result:#?}");
+		result.validate_dependants();
 		assert_eq!(result.exports.len(), 1, "The number of outputs should remain as 1");
 		assert_eq!(result.exports[0], NodeInput::node(NodeId(11), 0), "The outer network output should be from a duplicated inner network");
 		let mut ids = result.nodes.keys().copied().collect::<Vec<_>>();
 		ids.sort();
 		assert_eq!(ids, vec![NodeId(11), NodeId(10010)], "Should only contain passthrough and values");
+	}
+
+	fn passthrough_network() -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(10), 0)],
+			nodes: [
+				(
+					NodeId(1),
+					DocumentNode {
+						implementation: DocumentNodeImplementation::Network(NodeNetwork {
+							exports: vec![NodeInput::node(NodeId(5), 0); 3],
+							..Default::default()
+						}),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(10),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(1), 2)],
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(11),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(10), 0), NodeInput::node(NodeId(10), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("add")),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(12),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(10), 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("double")),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	#[test]
+	fn remove_passthrough_node() {
+		let mut network = passthrough_network();
+		network.generate_node_paths(&[]);
+		network.populate_dependants();
+		network.remove_all_passthrough_nodes();
+
+		assert_eq!(network.nodes.len(), 3);
+
+		let mut generator_dependants = network.nodes.get(&NodeId(1)).unwrap().original_location.dependants[2].clone();
+		generator_dependants.sort();
+		generator_dependants.dedup();
+		assert_eq!(generator_dependants, vec![NodeId(11), NodeId(12)]);
+
+		let add_inputs = &network.nodes.get(&NodeId(11)).unwrap().inputs;
+		assert_eq!(add_inputs, &vec![NodeInput::node(NodeId(1), 2); 2]);
+
+		let double_inputs = &network.nodes.get(&NodeId(12)).unwrap().inputs;
+		assert_eq!(double_inputs, &vec![NodeInput::node(NodeId(1), 2); 1]);
+
+		assert_eq!(&network.exports, &vec![NodeInput::node(NodeId(1), 2), NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(1), 2)]);
+
+		network.validate_dependants();
 	}
 
 	// TODO: Write more tests

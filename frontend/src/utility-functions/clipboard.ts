@@ -25,6 +25,13 @@ export function readAtCaret(cut: boolean): string | undefined {
 		return selectedText;
 	}
 
+	// A field that handles copying itself, like one displaying its text in other glyphs, gives the text it would put on the clipboard
+	if (element instanceof HTMLElement && element.isContentEditable) {
+		const clipboardData = new DataTransfer();
+		const handled = !element.dispatchEvent(new ClipboardEvent(cut ? "cut" : "copy", { clipboardData, bubbles: true, cancelable: true }));
+		if (handled) return clipboardData.getData("text/plain") || undefined;
+	}
+
 	const selection = window.getSelection();
 	if (!selection || selection.rangeCount === 0) {
 		return undefined;
@@ -63,6 +70,10 @@ export function insertAtCaret(text: string) {
 		const newPos = start + text.length;
 		element.selectionStart = element.selectionEnd = newPos;
 	} else if (element instanceof HTMLElement && element.isContentEditable) {
+		// A field that applies its own edits, like one displaying its text in other glyphs, takes the text as it would a paste
+		const handled = !element.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", data: text, bubbles: true, cancelable: true }));
+		if (handled) return;
+
 		const selection = window.getSelection();
 		if (!selection || selection.rangeCount === 0) return;
 

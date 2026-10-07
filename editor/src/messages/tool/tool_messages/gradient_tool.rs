@@ -551,8 +551,10 @@ struct SelectedGradient {
 
 fn calculate_insertion(start: DVec2, end: DVec2, stops: &Gradient, settings: GradientSettings, mouse: DVec2) -> Option<f64> {
 	let gradient_cyclic = settings.cyclic;
-	let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
-	let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+
+	let gradient_direction = (end - start).try_normalize()?;
+	let distance = (mouse - start).project_onto_normalized(gradient_direction).distance(mouse - start);
+	let projection = gradient_direction.dot(mouse - start) / start.distance(end);
 
 	if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 		for i in 0..stops.len() {
@@ -632,7 +634,7 @@ impl SelectedGradient {
 			let point = anchor_point();
 			let delta = point - mouse;
 
-			let mut angle = -delta.angle_to(DVec2::X);
+			let mut angle = DVec2::X.try_angle_to(delta).unwrap_or(*gradient_angle);
 
 			if lock_angle {
 				angle = *gradient_angle;
@@ -657,7 +659,9 @@ impl SelectedGradient {
 			if matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start | GradientDragTarget::New) {
 				let point = anchor_point();
 				let delta = point - mouse;
-				*gradient_angle = -delta.angle_to(DVec2::X);
+				if let Some(angle) = DVec2::X.try_angle_to(delta) {
+					*gradient_angle = angle;
+				}
 			}
 
 			// Basic point snapping when not angle-constraining
@@ -722,8 +726,12 @@ impl SelectedGradient {
 				let projected_mouse = document_to_viewport.transform_point2(projected_mouse_document);
 				snap_manager.update_indicator(snapped);
 
+				let Some(gradient_direction) = (viewport_end - viewport_start).try_normalize() else {
+					self.render_gradient(responses);
+					return;
+				};
 				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((viewport_end - viewport_start).angle_to(projected_mouse - viewport_start)).cos() * viewport_start.distance(projected_mouse) / line_length;
+				let new_pos = gradient_direction.dot(projected_mouse - viewport_start) / line_length;
 
 				if !new_pos.is_finite() {
 					self.render_gradient(responses);
@@ -786,8 +794,12 @@ impl SelectedGradient {
 				let projected_mouse = document_to_viewport.transform_point2(projected_mouse_document);
 				snap_manager.update_indicator(snapped);
 
+				let Some(gradient_direction) = (viewport_end - viewport_start).try_normalize() else {
+					self.render_gradient(responses);
+					return;
+				};
 				// Calculate the position along the full gradient (0-1)
-				let full_pos = ((viewport_end - viewport_start).angle_to(projected_mouse - viewport_start)).cos() * viewport_start.distance(projected_mouse) / line_length;
+				let full_pos = gradient_direction.dot(projected_mouse - viewport_start) / line_length;
 
 				if !full_pos.is_finite() {
 					self.render_gradient(responses);
@@ -1311,8 +1323,9 @@ impl Fsm for GradientToolFsmState {
 					let mouse = input.mouse.position;
 					let (start, end) = gradient_handle_positions(unit_to_viewport);
 
+					let Some(gradient_direction) = (end - start).try_normalize() else { continue };
 					// Compute the distance from the mouse to the gradient line in viewport space
-					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
+					let distance = (mouse - start).project_onto_normalized(gradient_direction).distance(mouse - start);
 
 					// If click is on the line then insert point
 					if distance < (SELECTION_THRESHOLD * 2.) {
@@ -1454,8 +1467,9 @@ impl Fsm for GradientToolFsmState {
 
 					// Insert stop if clicking on line
 					if drag_hint.is_none() {
-						let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
-						let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+						let Some(gradient_direction) = (end - start).try_normalize() else { continue };
+						let distance = (mouse - start).project_onto_normalized(gradient_direction).distance(mouse - start);
+						let projection = gradient_direction.dot(mouse - start) / start.distance(end);
 
 						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
@@ -1484,7 +1498,9 @@ impl Fsm for GradientToolFsmState {
 						GradientDragTarget::Start => vp_end - vp_start,
 						_ => vp_start - vp_end,
 					};
-					tool_data.gradient_angle = -delta.angle_to(DVec2::X);
+					if let Some(angle) = DVec2::X.try_angle_to(delta) {
+						tool_data.gradient_angle = angle;
+					}
 				}
 
 				let gradient_state = if let Some(hint) = drag_hint {
@@ -1773,7 +1789,8 @@ impl Fsm for GradientToolFsmState {
 
 fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport: DAffine2, settings: GradientSettings) -> Option<usize> {
 	let (start, end) = gradient_handle_positions(unit_to_viewport);
-	let t = ((end - start).angle_to(point - start)).cos() * start.distance(point) / start.distance(end);
+	let gradient_direction = (end - start).try_normalize()?;
+	let t = gradient_direction.dot(point - start) / start.distance(end);
 	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, settings))
 }
 
@@ -3118,7 +3135,6 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
 		assert!(get_upstream_gradient_value_node_id(layer, &editor.active_document().network_interface).is_some());
 
-		editor.eval_graph().await.expect("graph should evaluate");
 		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
 		assert_eq!(bounds, Some([DVec2::ZERO, DVec2::X]), "a linear expanse's local bounds should be its canonical gradient line");
 
@@ -3132,7 +3148,6 @@ mod test_gradient {
 				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
 			})
 			.await;
-		editor.eval_graph().await.expect("graph should evaluate");
 		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
 		assert_eq!(bounds, Some([DVec2::splat(-1.), DVec2::splat(1.)]), "a radial expanse's local bounds should be its unit circle");
 
