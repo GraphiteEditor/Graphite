@@ -409,7 +409,7 @@ struct PenToolData {
 
 	/// The layer's transform to document space as it was when a press joined the layer to another, kept while that press waits for the merged path to place its anchor in.
 	merging_from: Option<DAffine2>,
-	/// The release and confirmation that arrive during that wait.
+	/// The release, confirmation, and latest pointer move that arrive during that wait.
 	held_input: Vec<PenToolMessage>,
 
 	previous_handle_start_pos: DVec2,
@@ -1576,14 +1576,22 @@ impl Fsm for PenToolFsmState {
 
 		let ToolMessage::Pen(event) = event else { return self };
 
-		// A press waiting for its layers to merge keeps the release and confirmation for once its anchor is placed, and takes no other input
+		// A press waiting for its layers to merge keeps its release, confirmation, and latest move for once its anchor is placed
 		if tool_data.merging_from.is_some() {
 			match event {
 				PenToolMessage::DragStop | PenToolMessage::Confirm => {
 					tool_data.held_input.push(event);
 					return self;
 				}
-				PenToolMessage::DragStart { .. } | PenToolMessage::PointerMove { .. } | PenToolMessage::PointerOutsideViewport { .. } | PenToolMessage::GRS { .. } => return self,
+				PenToolMessage::PointerMove { .. } => {
+					// A move reads where the pointer is when it's handled, so only the latest one counts
+					if matches!(tool_data.held_input.last(), Some(PenToolMessage::PointerMove { .. })) {
+						tool_data.held_input.pop();
+					}
+					tool_data.held_input.push(event);
+					return self;
+				}
+				PenToolMessage::DragStart { .. } | PenToolMessage::PointerOutsideViewport { .. } | PenToolMessage::GRS { .. } => return self,
 				_ => {}
 			}
 		}
@@ -2747,6 +2755,60 @@ mod test_pen_tool {
 		editor.eval_graph_until_finished().await.expect("The graph should evaluate");
 		editor.left_mouseup(away.x, away.y, ModifierKeys::empty()).await;
 		assert_the_two_paths_are_joined(&editor);
+	}
+
+	/// Where every anchor and handle of the drawn path is in the viewport, in an order that lets two drawings be compared.
+	fn manipulator_positions(editor: &EditorTestUtils) -> Vec<DVec2> {
+		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+
+		let handles = vector
+			.segment_domain
+			.ids()
+			.iter()
+			.flat_map(|&segment| [ManipulatorPointId::PrimaryHandle(segment), ManipulatorPointId::EndHandle(segment)])
+			.filter_map(|handle| handle.get_position(&vector));
+		let mut positions: Vec<DVec2> = vector
+			.point_domain
+			.positions()
+			.iter()
+			.copied()
+			.chain(handles)
+			.map(|position| layer_to_viewport.transform_point2(position))
+			.collect();
+		positions.sort_by(|a, b| a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y)));
+		positions
+	}
+
+	#[tokio::test]
+	async fn a_drag_released_before_the_paths_have_merged_shapes_the_join_as_one_released_after() {
+		let away = |join: DVec2| join + DVec2::new(40., 60.);
+
+		// Pressing on the end of the first path, dragging out a handle, and releasing once the paths have merged
+		let mut settled = EditorTestUtils::create();
+		settled.new_document().await;
+		let join = bring_a_second_path_to_the_end_of_the_first(&mut settled).await;
+		settled.left_mousedown(join.x, join.y, ModifierKeys::empty()).await;
+		settled.move_mouse(away(join).x, away(join).y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		settled.left_mouseup(away(join).x, away(join).y, ModifierKeys::empty()).await;
+
+		// The same drag, all of it arriving before the graph has caught up
+		let mut hurried = EditorTestUtils::create();
+		hurried.new_document().await;
+		let join = bring_a_second_path_to_the_end_of_the_first(&mut hurried).await;
+		press_without_evaluating(&mut hurried, join);
+		let modifier_keys = ModifierKeys::empty();
+		let editor_mouse_state = pointer_state(away(join), MouseKeys::LEFT);
+		hurried.editor.handle_message(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys });
+		let editor_mouse_state = pointer_state(away(join), MouseKeys::empty());
+		hurried.editor.handle_message(InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys });
+		hurried.eval_graph_until_finished().await.expect("The graph should evaluate");
+
+		assert_the_two_paths_are_joined(&hurried);
+		let (settled, hurried) = (manipulator_positions(&settled), manipulator_positions(&hurried));
+		assert!(settled.len() > 3, "the settled drag should have drawn handles, not only the three anchors");
+		assert_eq!(settled.len(), hurried.len(), "settled {settled:?}, hurried {hurried:?}");
+		assert!(settled.iter().zip(&hurried).all(|(a, b)| a.distance(*b) < 1e-6), "settled {settled:?}, hurried {hurried:?}");
 	}
 
 	#[tokio::test]
