@@ -268,30 +268,38 @@ impl Fsm for ArtboardToolFsmState {
 				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
 				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
 
-				if quick_measurement_enabled && not_resizing && alt_pressed {
-					// Get the selected artboard bounds
-					let selected_artboard_bounds = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)).map(Rect::from_box);
+				if quick_measurement_enabled
+					&& not_resizing && alt_pressed
+					&& let Some(selected_artboard) = tool_data.selected_artboard
+					&& let Some(selected_bounds) = document.metadata().bounding_box_document(selected_artboard).map(Rect::from_box)
+				{
+					// Find the topmost artboard under the pointer and the topmost other layer above it or within it in one pass
+					let (mut hovered_artboard, mut hovered_layer): (Option<LayerNodeIdentifier>, _) = (None, None);
+					for layer in document.click_xray(input, viewport) {
+						let is_artboard = document.network_interface.is_artboard(&layer.to_node(), &[]);
 
-					// Find hovered artboard or regular layer
-					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input, viewport);
-					let hovered_layer = document.click_xray(input, viewport).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+						match hovered_artboard {
+							// Beneath the topmost artboard, only what lies within it shows, since its background hides the rest
+							Some(artboard) => {
+								if hovered_layer.is_none() && !is_artboard && artboard.is_ancestor_of(document.metadata(), &layer) {
+									hovered_layer = Some(layer);
+								}
+								break;
+							}
+							None if is_artboard => hovered_artboard = Some(layer),
+							None => hovered_layer = hovered_layer.or(Some(layer)),
+						}
+					}
 
-					// Get bounds for the hovered object (prioritize artboards)
-					let hovered_bounds = if let Some(artboard) = hovered_artboard {
-						document.metadata().bounding_box_document(artboard).map(Rect::from_box)
-					} else if let Some(layer) = hovered_layer {
-						document.metadata().bounding_box_document(layer).map(Rect::from_box)
-					} else {
-						None
+					// Another artboard is measured to first, and over the selected one, the topmost other layer under the pointer instead
+					let measured_layer = match hovered_artboard {
+						Some(artboard) if artboard != selected_artboard => Some(artboard),
+						_ => hovered_layer,
 					};
 
-					// If both selected artboard and hovered object bounds exist, overlay measurement lines
-					if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_artboard_bounds, hovered_bounds) {
-						// Don't measure if it's the same artboard
-						if selected_artboard_bounds != Some(hovered_bounds) {
-							let document_to_viewport = document.metadata().document_to_viewport;
-							measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
-						}
+					if let Some(hovered_bounds) = measured_layer.and_then(|layer| document.metadata().bounding_box_document(layer)).map(Rect::from_box) {
+						let document_to_viewport = document.metadata().document_to_viewport;
+						measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, &mut overlay_context);
 					}
 				}
 
