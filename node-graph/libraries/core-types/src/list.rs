@@ -60,6 +60,10 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+/// Radial gradient's focal center (`fx`/`fy` in SVG), as a `DVec2` in gradient-local unit space, relative to the gradient's center.
+pub const ATTR_GRADIENT_FOCAL_CENTER: &str = "gradient_focal_center";
+/// Radial gradient's focal radius (`fr` in SVG), as a fraction of the gradient's radius.
+pub const ATTR_GRADIENT_FOCAL_RADIUS: &str = "gradient_focal_radius";
 /// Gradient's `GradientSpace`, the color space its stops interpolate in.
 pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
 /// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the

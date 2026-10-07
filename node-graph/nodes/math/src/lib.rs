@@ -1586,7 +1586,13 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 #[node_macro::node(category("Gradient"))]
 fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
+	let form = *gradient_form.element();
+	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, form);
+	// A focal point only describes a radial gradient, so it goes away with the linear form rather than lingering
+	if matches!(form, vector_types::GradientForm::Linear) {
+		let _: Option<glam::DVec2> = gradient.remove_attribute(core_types::ATTR_GRADIENT_FOCAL_CENTER);
+		let _: Option<f64> = gradient.remove_attribute(core_types::ATTR_GRADIENT_FOCAL_RADIUS);
+	}
 	gradient
 }
 

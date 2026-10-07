@@ -1,6 +1,9 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
-use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
+use core_types::list::{
+	ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_FOCAL_CENTER, ATTR_GRADIENT_FOCAL_RADIUS, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT,
+	ATTR_POSITION, Item, List,
+};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -15,6 +18,61 @@ pub enum GradientForm {
 	Linear,
 	/// Transitions the colors outward from a center point.
 	Radial,
+}
+
+/// A radial gradient's focal point, matching SVG's `fx`/`fy`/`fr`: a center and a radius, both relative to the
+/// gradient's own center and radius, so they scale with the gradient.
+///
+/// Only applies to radial gradients; a linear gradient ignores it. `focal_radius` is a ratio of the gradient's
+/// radius, where `0` is a point at the focal center (SVG's default focal point).
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, graphene_hash::CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GradientFocalPoint {
+	/// The focal point's offset from the gradient's center, in the gradient's local space.
+	pub center: DVec2,
+	/// The focal circle's radius as a fraction of the gradient's radius. Zero is a point at `center`.
+	pub radius: f64,
+}
+
+impl GradientFocalPoint {
+	/// Whether the focal point is the default: at the gradient's center with no radius, which a radial gradient renders
+	/// identically without it.
+	pub fn is_default(&self) -> bool {
+		self.center.abs_diff_eq(DVec2::ZERO, f64::EPSILON) && self.radius.abs() <= f64::EPSILON
+	}
+
+	/// Pulls a focal point into the range every renderer agrees on: the center strictly inside the end circle and the
+	/// radius at most the outer radius. Outside it, cone semantics and other renderers part ways.
+	pub fn clamped(self) -> Self {
+		let center = if self.center.length() >= 1. { self.center.normalize_or_zero() * (1. - 1e-6) } else { self.center };
+		Self {
+			center,
+			radius: self.radius.clamp(0., 1.),
+		}
+	}
+
+	/// The focal point an item carries in its attributes beside a gradient element, defaulting each absent one.
+	pub fn from_item_attributes<T>(item: &Item<T>) -> Self {
+		Self {
+			center: item.attribute_cloned_or_default(ATTR_GRADIENT_FOCAL_CENTER),
+			radius: item.attribute_cloned_or(ATTR_GRADIENT_FOCAL_RADIUS, 0.),
+		}
+	}
+
+	/// The focal point a gradient list carries at `index` beside that row's gradient element, defaulting each absent one.
+	pub fn from_list_row_attributes<T>(list: &List<T>, index: usize) -> Self {
+		Self {
+			center: list.attribute_cloned_or_default(ATTR_GRADIENT_FOCAL_CENTER, index),
+			radius: list.attribute_cloned_or(ATTR_GRADIENT_FOCAL_RADIUS, index, 0.),
+		}
+	}
+}
+
+impl From<&Item<Gradient>> for GradientFocalPoint {
+	fn from(item: &Item<Gradient>) -> Self {
+		Self::from_item_attributes(item)
+	}
 }
 
 /// A gradient's stops: a list of colors (linear, unassociated alpha) whose optional `position` and `midpoint`
@@ -113,6 +171,12 @@ pub struct GradientRamp<C = Color> {
 	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "GradientInterpolation::is_default"))]
 	#[cfg_attr(feature = "wasm", tsify(optional))]
 	pub gradient_interpolation: GradientInterpolation,
+	/// A radial gradient's focal point, carried as a sibling field like the other whole-ramp settings so SVG `fx`/`fy`/`fr`
+	/// survives import, document storage, and node value round-trips. Stored here rather than on the first stop so it is
+	/// unaffected by inserting or removing stops.
+	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
+	#[cfg_attr(feature = "wasm", tsify(optional))]
+	pub focal_point: Option<GradientFocalPoint>,
 }
 
 unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientRamp<C> {
@@ -128,6 +192,7 @@ impl<C> From<GradientStops<C>> for GradientRamp<C> {
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
 			gradient_interpolation: Default::default(),
+			focal_point: None,
 		}
 	}
 }
@@ -141,6 +206,7 @@ impl From<&Gradient> for GradientRamp {
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
 			gradient_interpolation: Default::default(),
+			focal_point: None,
 		}
 	}
 }
@@ -183,12 +249,19 @@ impl From<GradientRamp> for Item<Gradient> {
 		if !ramp.gradient_interpolation.is_default() {
 			item.set_attribute(ATTR_GRADIENT_INTERPOLATION, ramp.gradient_interpolation);
 		}
+		if let Some(focal_point) = ramp.focal_point.filter(|focal_point| !focal_point.is_default()) {
+			item.set_attribute(ATTR_GRADIENT_FOCAL_CENTER, focal_point.center);
+			if focal_point.radius.abs() > f64::EPSILON {
+				item.set_attribute(ATTR_GRADIENT_FOCAL_RADIUS, focal_point.radius);
+			}
+		}
 		item
 	}
 }
 
 impl From<&Item<Gradient>> for GradientRamp {
 	fn from(item: &Item<Gradient>) -> Self {
+		let focal_point = GradientFocalPoint::from_item_attributes(item);
 		Self {
 			stops: item.element().into(),
 			gradient_spread: item.attribute_cloned_or_default(ATTR_GRADIENT_SPREAD),
@@ -196,6 +269,7 @@ impl From<&Item<Gradient>> for GradientRamp {
 			gradient_cyclic: item.attribute_cloned_or_default(ATTR_GRADIENT_CYCLIC),
 			gradient_hue_direction: item.attribute_cloned_or_default(ATTR_GRADIENT_HUE_DIRECTION),
 			gradient_interpolation: item.attribute_cloned_or_default(ATTR_GRADIENT_INTERPOLATION),
+			focal_point: (!focal_point.is_default()).then_some(focal_point),
 		}
 	}
 }
@@ -225,6 +299,7 @@ impl From<&GradientRamp> for GradientRamp<SRGBA8> {
 			gradient_cyclic: ramp.gradient_cyclic,
 			gradient_hue_direction: ramp.gradient_hue_direction,
 			gradient_interpolation: ramp.gradient_interpolation,
+			focal_point: ramp.focal_point,
 		}
 	}
 }
@@ -238,6 +313,7 @@ impl From<&Gradient> for GradientRamp<SRGBA8> {
 			gradient_cyclic: Default::default(),
 			gradient_hue_direction: Default::default(),
 			gradient_interpolation: Default::default(),
+			focal_point: None,
 		}
 	}
 }
@@ -248,14 +324,16 @@ impl From<&GradientRamp<SRGBA8>> for GradientRamp {
 		let mut gradient = Gradient::from(&ramp.stops);
 		gradient.elide_default_attributes(ramp.gradient_cyclic);
 
-		Self {
+		let mut converted = Self {
 			gradient_spread: ramp.gradient_spread,
 			gradient_space: ramp.gradient_space,
 			gradient_cyclic: ramp.gradient_cyclic,
 			gradient_hue_direction: ramp.gradient_hue_direction,
 			gradient_interpolation: ramp.gradient_interpolation,
 			..Self::from(gradient)
-		}
+		};
+		converted.focal_point = ramp.focal_point;
+		converted
 	}
 }
 
@@ -277,6 +355,12 @@ impl<C> GradientRamp<C> {
 		self.gradient_hue_direction = hue_direction;
 		self.gradient_interpolation = interpolation;
 
+		self
+	}
+
+	/// Carries a radial focal point beside the stops, so it survives inserting, removing, reversing, and sorting them.
+	pub fn with_focal_point(mut self, focal_point: Option<GradientFocalPoint>) -> Self {
+		self.focal_point = focal_point.filter(|focal_point| !focal_point.is_default());
 		self
 	}
 }
@@ -1933,6 +2017,56 @@ mod tests {
 	}
 
 	#[test]
+	fn focal_point_round_trips_through_the_ramp_item_and_attributes() {
+		// SVG's fx/fy/fr must survive the ramp round-trip that SVG import uses, rather than being dropped
+		let focal_point = GradientFocalPoint {
+			center: DVec2::new(0.3, -0.2),
+			radius: 0.4,
+		};
+		let ramp = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE])).with_focal_point(Some(focal_point));
+		assert_eq!(ramp.focal_point, Some(focal_point), "the ramp should carry the focal point");
+
+		let json = serde_json::to_string(&ramp).unwrap();
+		assert!(json.contains("focal_point"), "the focal point must serialize: {json}");
+		assert_eq!(serde_json::from_str::<GradientRamp>(&json).unwrap(), ramp);
+
+		let item = Item::<Gradient>::from(ramp.clone());
+		assert_eq!(GradientFocalPoint::from_item_attributes(&item), focal_point);
+		assert_eq!(GradientRamp::from(&item).focal_point, Some(focal_point), "reading the item back should keep the focal point");
+	}
+
+	#[test]
+	fn stop_edits_leave_a_ramp_level_focal_point_alone() {
+		let focal_point = GradientFocalPoint {
+			center: DVec2::new(0.25, -0.5),
+			radius: 0.5,
+		};
+		let stops = Gradient::from(vec![Color::BLACK, Color::WHITE, Color::RED]);
+
+		// Each of these rebuilds the stop list, which used to carry the focal point on its first row
+		let mut sorted = stops.clone();
+		sorted.sort(false);
+		let mut removed = stops.clone();
+		removed.remove(0);
+		let mut popped = stops.clone();
+		popped.pop();
+		for edited in [stops.reversed(false), stops.reversed(true), sorted, removed, popped] {
+			let ramp = GradientRamp::from(edited).with_focal_point(Some(focal_point));
+			assert_eq!(ramp.focal_point, Some(focal_point), "stop edits must not wipe the ramp-level focal point");
+		}
+	}
+
+	#[test]
+	fn a_default_focal_point_is_not_stored() {
+		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		let ramp = GradientRamp::from(gradient);
+		assert_eq!(ramp.focal_point, None, "a gradient with no focal point should not store one");
+
+		let json = serde_json::to_string(&ramp).unwrap();
+		assert!(!json.contains("focal_point"), "an absent focal point must not serialize: {json}");
+	}
+
+	#[test]
 	fn gradient_spread_serializes_only_when_not_default() {
 		let default_spread = GradientRamp::from(Gradient::from(vec![Color::BLACK, Color::WHITE]));
 		let json = serde_json::to_string(&default_spread).unwrap();
@@ -3053,5 +3187,27 @@ mod tests {
 			"renderers only accept offsets from 0 to 1, got {positions:?}"
 		);
 		assert_eq!(samples.first().map(|(_, color, _)| *color), Some(Color::RED), "the lone stop's color should still fill the ramp");
+	}
+
+	#[test]
+	fn clamping_keeps_a_focal_point_where_renderers_agree() {
+		let clamped = GradientFocalPoint {
+			center: DVec2::new(2., 0.),
+			radius: 2.,
+		}
+		.clamped();
+		assert!(clamped.center.length() < 1., "the center must sit strictly inside the end circle, got {}", clamped.center);
+		assert!((0. ..=1.).contains(&clamped.radius), "the radius must not exceed the outer one, got {}", clamped.radius);
+
+		let already_valid = GradientFocalPoint {
+			center: DVec2::new(0.2, -0.3),
+			radius: 0.4,
+		}
+		.clamped();
+		assert_eq!(
+			(already_valid.center, already_valid.radius),
+			(DVec2::new(0.2, -0.3), 0.4),
+			"a valid focal point should pass through untouched"
+		);
 	}
 }
