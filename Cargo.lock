@@ -2040,6 +2040,7 @@ dependencies = [
  "dyn-any",
  "glam 0.33.10",
  "graph-craft",
+ "graphene-animation",
  "graphene-application-io",
  "graphene-core",
  "graphene-hash",
@@ -2064,6 +2065,17 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
+]
+
+[[package]]
+name = "graphene-animation"
+version = "0.0.0"
+dependencies = [
+ "dyn-any",
+ "glam 0.33.10",
+ "graphene-hash",
+ "kurbo",
+ "serde",
 ]
 
 [[package]]
@@ -2129,6 +2141,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam 0.33.10",
+ "graphene-animation",
  "graphene-hash",
  "graphic-types",
  "log",
@@ -2990,6 +3003,7 @@ dependencies = [
  "futures",
  "glam 0.33.10",
  "graph-craft",
+ "graphene-animation",
  "graphene-core",
  "graphene-std",
  "gungraun",

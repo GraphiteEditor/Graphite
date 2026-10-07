@@ -2,6 +2,7 @@ use core_types::list::{Item, List};
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphene_animation::AnimationCurve;
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -25,6 +26,14 @@ pub enum RealTimeMode {
 pub enum AnimationTimeMode {
 	AnimationTime,
 	FrameNumber,
+}
+
+/// Evaluate the value of an animation curve
+#[node_macro::node(category("Animation"))]
+fn eval_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: Item<AnimationCurve>) -> Item<f64> {
+	let curve = curve.into_element();
+	let time = ctx.try_animation_time().unwrap_or_default();
+	Item::new_from_element(curve.evaluate(time))
 }
 
 /// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
