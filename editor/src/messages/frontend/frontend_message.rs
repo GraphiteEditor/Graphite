@@ -8,6 +8,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
 };
+use crate::messages::portfolio::document::utility_types::guide::GuideRulerEntry;
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::portfolio::ingest::utility_types::IngestAction;
@@ -263,6 +264,9 @@ pub enum FrontendMessage {
 		flip: bool,
 		#[serde(rename = "selectionQuad")]
 		selection_quad: Option<[(f64, f64); 4]>,
+		/// The guides the top ruler and then the left ruler can grab, so the user can move them.
+		#[serde(rename = "guideOffsets")]
+		guide_offsets: [Vec<GuideRulerEntry>; 2],
 	},
 	UpdateDocumentScrollbars {
 		position: (f64, f64),

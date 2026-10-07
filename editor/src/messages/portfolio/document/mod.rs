@@ -7,6 +7,7 @@ pub(crate) mod storage_tests;
 
 pub mod data_panel;
 pub mod graph_operation;
+pub mod guide_lines;
 pub mod navigation;
 pub mod node_graph;
 pub mod overlays;

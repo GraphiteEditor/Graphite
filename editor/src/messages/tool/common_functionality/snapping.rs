@@ -7,7 +7,7 @@ mod snap_results;
 use crate::consts::{COLOR_OVERLAY_BLACK_75, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GuideLineSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 pub use alignment_snapper::*;
 pub use distribution_snapper::*;
@@ -179,10 +179,15 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 			if let Some(snapped_point_document) = Quad::intersect_rays(line_i.point.snapped_point_document, line_i.direction, line_j.point.snapped_point_document, line_j.direction) {
 				let distance = snap_to.distance(snapped_point_document);
 				if !best.as_ref().is_some_and(|best: &SnappedPoint| best.distance < distance) {
+					// A crossing involving a guide is a guide intersection, so the overlay names it as one.
+					let target = match (line_i.point.target, line_j.point.target) {
+						(SnapTarget::GuideLine(_), _) | (_, SnapTarget::GuideLine(_)) => SnapTarget::GuideLine(GuideLineSnapTarget::Intersection),
+						_ => SnapTarget::Grid(GridSnapTarget::Intersection),
+					};
 					best = Some(SnappedPoint {
 						snapped_point_document,
 						distance,
-						target: SnapTarget::Grid(GridSnapTarget::Intersection),
+						target,
 						tolerance: line_i.point.tolerance,
 						source: line_i.point.source,
 						at_intersection: true,
@@ -284,9 +289,10 @@ impl SnapManager {
 			snapped_points.push(closest_curve.clone());
 		}
 
-		if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
-			&& let Some(closest_line) = get_closest_line(&snap_results.grid_lines)
-		{
+		// Guide lines share the grid's line list, so they match whichever snap category is enabled.
+		let lines_enabled = document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
+			|| document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Line));
+		if lines_enabled && let Some(closest_line) = get_closest_line(&snap_results.grid_lines) {
 			snapped_points.push(closest_line.clone());
 		}
 
@@ -296,9 +302,9 @@ impl SnapManager {
 			{
 				snapped_points.push(closest_curves_intersection);
 			}
-			if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection))
-				&& let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines)
-			{
+			let intersections_enabled = document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection))
+				|| document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Intersection));
+			if intersections_enabled && let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines) {
 				snapped_points.push(closest_grid_intersection);
 			}
 		}

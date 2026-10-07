@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
+	import type { GuideRulerEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
@@ -49,7 +50,11 @@
 	let rulerTilt = 0;
 	let rulerFlip = false;
 	let rulerCursorPosition: { x: number; y: number } | undefined;
+	/// The viewport's corner in client coordinates, which the rulers measure pointer positions from.
+	$: rulerViewportOrigin = viewportBounds ? { x: viewportBounds.left, y: viewportBounds.top } : undefined;
 	let rulerSelectionQuad: [number, number][] | undefined;
+	/// The guides the top ruler can grab, and then the ones the left ruler can, in the order the editor sends them.
+	let rulerGuideOffsets: [GuideRulerEntry[], GuideRulerEntry[]] = [[], []];
 	let viewportBounds: DOMRect | undefined;
 
 	// Rendered SVG viewport data
@@ -295,7 +300,16 @@
 		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean, tilt: number, flip: boolean, selectionQuad: [number, number][] | undefined) {
+	export function updateDocumentRulers(
+		origin: [number, number],
+		spacing: number,
+		interval: number,
+		visible: boolean,
+		tilt: number,
+		flip: boolean,
+		selectionQuad: [number, number][] | undefined,
+		guideOffsets: [GuideRulerEntry[], GuideRulerEntry[]],
+	) {
 		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
@@ -303,6 +317,7 @@
 		rulerTilt = tilt;
 		rulerFlip = flip;
 		rulerSelectionQuad = selectionQuad;
+		rulerGuideOffsets = guideOffsets;
 	}
 
 	function updateRulerCursorPosition(e: PointerEvent) {
@@ -509,8 +524,8 @@
 		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible, tilt, flip, selectionQuad } = data;
-			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined);
+			const { origin, spacing, interval, visible, tilt, flip, selectionQuad, guideOffsets } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined, guideOffsets);
 		});
 
 		// Update mouse cursor icon
@@ -626,7 +641,13 @@
 						numberInterval={rulerInterval}
 						direction="Horizontal"
 						cursorPosition={rulerCursorPosition}
+						viewportOrigin={rulerViewportOrigin}
 						selectionQuad={rulerSelectionQuad}
+						guideOffsets={rulerGuideOffsets[0]}
+						on:createGuideLine={(event) => editor.beginCreateGuideLine("Vertical", event.detail.x, event.detail.y)}
+						on:grabGuideLine={(event) => editor.beginGrabGuideLine(event.detail.id)}
+						on:dragGuideLine={(event) => editor.dragGuideLine(event.detail.x, event.detail.y)}
+						on:endGuideLineDrag={(event) => editor.endGuideLineDrag(event.detail.discard)}
 						bind:this={rulerHorizontal}
 					/>
 				</LayoutRow>
@@ -643,7 +664,13 @@
 							numberInterval={rulerInterval}
 							direction="Vertical"
 							cursorPosition={rulerCursorPosition}
+							viewportOrigin={rulerViewportOrigin}
 							selectionQuad={rulerSelectionQuad}
+							guideOffsets={rulerGuideOffsets[1]}
+							on:createGuideLine={(event) => editor.beginCreateGuideLine("Horizontal", event.detail.x, event.detail.y)}
+							on:grabGuideLine={(event) => editor.beginGrabGuideLine(event.detail.id)}
+							on:dragGuideLine={(event) => editor.dragGuideLine(event.detail.x, event.detail.y)}
+							on:endGuideLineDrag={(event) => editor.endGuideLineDrag(event.detail.discard)}
 							bind:this={rulerVertical}
 						/>
 					</LayoutCol>
