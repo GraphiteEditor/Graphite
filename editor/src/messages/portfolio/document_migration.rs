@@ -1408,6 +1408,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	for (node_id, node, network_path) in &nodes {
 		migrate_node(node_id, node, network_path, document, reset_node_definitions_on_open);
 	}
+	create_layer_stacks(document);
 
 	// The old geometry-producing "Text" node was split into the current "Text" (`String[]`) -> converter pair, which reuses the same proto
 	// identifier. Runs after `migrate_node` normalizes old text nodes to the legacy 13-input layout, distinguished from the current 12-input
@@ -3102,34 +3103,35 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// ==================================
-	// PUT ALL MIGRATIONS ABOVE THIS LINE
-	// ==================================
+	Some(())
+}
 
-	// Ensure layers are positioned as stacks if they are upstream siblings of another layer
+/// Ensure layers are positioned as stacks if they are upstream siblings of another layer
+fn create_layer_stacks(document: &mut DocumentMessageHandler) {
 	document.network_interface.load_structure();
 	let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
 	for layer in all_layers {
-		let (downstream_node, input_index) = document
+		let Some((downstream_node, input_index)) = document
 			.network_interface
 			.outward_wires(&[])
 			.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
 			.and_then(|outward_wires| outward_wires.first())
-			.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))?;
+			.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
+		else {
+			continue;
+		};
 		// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
 		if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
 			// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
 			let (Some(layer_position), Some(downstream_position)) = (document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[])) else {
 				log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
-				return None;
+				continue;
 			};
 			if layer_position.x == downstream_position.x {
 				document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
 			}
 		}
 	}
-
-	Some(())
 }
 
 /// Migrates document nodes whose catalog definitions have been removed.
