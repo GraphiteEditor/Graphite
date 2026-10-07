@@ -94,8 +94,8 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
-#[node_macro::node(category("Raster: Channels"))]
-pub fn combine_channels(
+#[node_macro::node(category("Raster: Channels"), name("Channels to Image"))]
+pub fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
 	#[expose] red: Item<Raster<CPU>>,

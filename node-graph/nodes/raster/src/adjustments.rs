@@ -154,8 +154,8 @@ pub struct ImageChannels {
 
 /// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
 #[cfg(feature = "std")]
-#[node_macro::node(name("Split Channels"), category("Raster: Channels"))]
-fn split_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
+#[node_macro::node(category("Raster: Channels"), name("Image to Channels"))]
+fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 	let (image, attributes) = image.into_parts();
 	let (width, height) = (image.width, image.height);
 

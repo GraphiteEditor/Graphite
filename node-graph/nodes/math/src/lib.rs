@@ -1739,9 +1739,9 @@ fn footprint_value(
 
 /// Composes a vec2 from its X and Y components.
 ///
-/// The inverse of this node is **Split Vec2**, which decomposes a vec2 back into its X and Y components.
-#[node_macro::node(category("Math: Vec2"), name("Combine Vec2"))]
-fn combine_vec2(
+/// The inverse of this node is **Vec2 to Numbers**, which decomposes a vec2 back into its X and Y components.
+#[node_macro::node(category("Math: Vec2"), name("Numbers to Vec2"))]
+fn numbers_to_vec2(
 	_: impl Ctx,
 	_primary: (),
 	/// The X component of the vec2.
@@ -1765,9 +1765,9 @@ pub struct Vec2Components {
 
 /// Decomposes the X and Y components of a vec2.
 ///
-/// The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.
-#[node_macro::node(category("Math: Vec2"), name("Split Vec2"))]
-fn split_vec2(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Components {
+/// The inverse of this node is **Numbers to Vec2**, which composes a vec2 from its X and Y components.
+#[node_macro::node(category("Math: Vec2"), name("Vec2 to Numbers"))]
+fn vec2_to_numbers(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Components {
 	let (vec2, attributes) = vec2.into_parts();
 
 	Vec2Components {
