@@ -2973,11 +2973,12 @@ impl DocumentMessageHandler {
 		};
 
 		if resize {
-			let layers: Vec<_> = self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)).collect();
 			// Combine only finite bounds (a non-finite box would poison the scale), bailing before opening a transaction if none remain
-			let Some([min, max]) = layers
-				.iter()
-				.filter_map(|&layer| self.metadata().bounding_box_document(layer))
+			let Some([min, max]) = self
+				.network_interface
+				.shallowest_unique_layers(&[])
+				.filter(|&layer| can_move(layer))
+				.filter_map(|layer| self.metadata().bounding_box_document(layer))
 				.filter(|[min, max]| min.is_finite() && max.is_finite())
 				.reduce(Quad::combine_bounds)
 			else {
@@ -2992,7 +2993,7 @@ impl DocumentMessageHandler {
 
 			responses.add(DocumentMessage::AddTransaction);
 
-			for layer in self.network_interface.layers_with_unique_transform_node(layers) {
+			for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer))) {
 				responses.add(GraphOperationMessage::TransformChange {
 					layer,
 					transform,
