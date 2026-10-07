@@ -47,13 +47,10 @@ impl Preprocessor {
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
-			match &mut node.implementation {
-				DocumentNodeImplementation::Network(nested) => {
-					self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
-					continue;
-				}
-				_ => {}
-			};
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
+				continue;
+			}
 
 			for input in node.inputs.iter_mut() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
