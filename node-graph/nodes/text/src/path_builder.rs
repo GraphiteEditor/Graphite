@@ -110,6 +110,7 @@ impl PathBuilder {
 	}
 
 	/// Draws a glyph whose every outline point is mapped through `map`, for stretching text along a path's curvature.
+	/// The outline already arrives scaled through the pen, so `map` works in placed-glyph space directly.
 	pub fn draw_glyph_with_mapping(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, mut map: impl FnMut(DVec2) -> DVec2) {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
@@ -118,7 +119,6 @@ impl PathBuilder {
 		if let Some(style_skew) = style_skew {
 			self.glyph_bezpath.apply_affine(Affine::new(style_skew.to_cols_array()));
 		}
-		self.glyph_bezpath.apply_affine(Affine::scale(self.scale));
 
 		// Map every on-curve and off-curve point through the caller's placement function.
 		let mapped = core::mem::take(&mut self.glyph_bezpath)
@@ -198,11 +198,20 @@ impl PathBuilder {
 		}
 	}
 
-	pub fn finalize(mut self) -> List<Vector> {
+	pub fn finalize(self) -> List<Vector> {
+		self.finish(true)
+	}
+
+	/// Finalizes without the text-tool frame metadata, for outputs like text on a path that no text box owns.
+	pub fn finalize_without_text_frame(self) -> List<Vector> {
+		self.finish(false)
+	}
+
+	fn finish(mut self, stamp_text_frame: bool) -> List<Vector> {
 		// Empty list = all glyphs clipped by height. Create a placeholder with the same item-0
 		// transform a populated list would have so `local_transforms` stays stable mid-drag.
 		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
-		if self.vector_list.is_empty() {
+		if self.vector_list.is_empty() && stamp_text_frame {
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
 			let item = Item::new_from_element(Vector::default())
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
@@ -249,10 +258,12 @@ impl PathBuilder {
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
-		let frame = DAffine2::from_scale(self.text_frame_size);
-		for index in 0..self.vector_list.len() {
-			if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
-				self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+		if stamp_text_frame {
+			let frame = DAffine2::from_scale(self.text_frame_size);
+			for index in 0..self.vector_list.len() {
+				if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
+					self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+				}
 			}
 		}
 

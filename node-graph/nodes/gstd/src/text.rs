@@ -133,7 +133,7 @@ fn text_on_path(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).
 	string: Item<String>,
-	/// The path whose glyphs follow.
+	/// The path that the glyphs follow.
 	path: Item<Vector>,
 	/// Which side of the path's direction the glyphs sit on.
 	#[default(TextPathSide::Left)]
@@ -141,8 +141,7 @@ fn text_on_path(
 	/// Where the text starts relative to its position along the path.
 	#[default(TextAnchor::Start)]
 	text_anchor: Item<TextAnchor>,
-	/// Distance from the path's start to the first glyph, as a percentage of the path's length. Negative values and
-	/// values past 100% are allowed, so text can start before the path or past its end.
+	/// Distance from the path's start to the first glyph, as a percentage of the path's length. Negative values and values past 100% are allowed.
 	#[unit("%")]
 	#[default(0.)]
 	start_offset: Item<f64>,
@@ -155,12 +154,11 @@ fn text_on_path(
 	/// Target length for the text along the path.
 	#[unit(" px")]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
-	#[hard(1..)]
 	text_length: Item<f64>,
 	/// How the target length is reached: by spacing alone, or by scaling glyphs too.
 	#[default(LengthAdjust::Spacing)]
 	length_adjust: Item<LengthAdjust>,
-) -> List<Vector> {
+) -> Item<Vector> {
 	let defaults = TypesettingConfig::default();
 	let text = string.element().clone();
 
@@ -179,10 +177,6 @@ fn text_on_path(
 	let start_offset = start_offset.into_element();
 	let text_anchor = text_anchor.into_element();
 
-	let side = side.into_element();
-	let method = method.into_element();
-	let length_adjust = length_adjust.into_element();
-
 	// Glyphs are placed in the styled string's own space, so the string's transform rides on each produced path.
 	// The path's own transform is baked in before measuring, or a moved path lays its text out at the origin.
 	let transform: DAffine2 = string.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -195,19 +189,20 @@ fn text_on_path(
 		&font,
 		typesetting.font_size,
 		typesetting.letter_spacing,
-		start_offset,
-		side,
-		text_anchor,
-		method,
-		optional_length(has_text_length.into_element(), text_length.into_element()),
-		length_adjust,
+		typesetting.letter_tilt,
+		TextPathConfig {
+			side: side.into_element(),
+			text_anchor,
+			start_offset,
+			method: method.into_element(),
+			text_length: optional_length(has_text_length.into_element(), text_length.into_element()),
+			length_adjust: length_adjust.into_element(),
+		},
 	);
 	if transform != DAffine2::IDENTITY {
-		// Glyphs are placed in the styled string's own space, so its transform rides on each produced item.
-		for index in 0..placed.len() {
-			let local = placed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, index);
-			placed.set_attribute(ATTR_TRANSFORM, index, transform * local);
-		}
+		// Glyphs are placed in the styled string's own space, so its transform rides on the produced item.
+		let local = placed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+		placed.set_attribute(ATTR_TRANSFORM, transform * local);
 	}
 	placed
 }
