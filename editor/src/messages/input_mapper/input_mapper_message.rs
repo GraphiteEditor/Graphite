@@ -22,3 +22,9 @@ pub enum InputMapperMessage {
 	PointerShake,
 	WheelScroll,
 }
+
+impl InputMapperMessage {
+	pub const fn is_no_repeat(&self) -> bool {
+		matches!(self, InputMapperMessage::KeyDownNoRepeat(_) | InputMapperMessage::KeyUpNoRepeat(_))
+	}
+}
