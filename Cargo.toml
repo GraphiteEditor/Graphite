@@ -12,6 +12,7 @@ members = [
 	"document/graph-storage",
 	"document/container",
 	"editor",
+	"editor/control-protocol",
 	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
@@ -35,6 +36,7 @@ members = [
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
 	"tools/node-docs",
+	"tools/web-editor-driver",
 ]
 default-members = [
 	"editor",
@@ -107,6 +109,7 @@ wgpu-executor = { path = "node-graph/libraries/wgpu-executor" }
 wgpu-sync = { path = "libraries/wgpu-sync" }
 graphite-proc-macros = { path = "proc-macros" }
 graphite-editor = { path = "editor" }
+graphite-editor-control-protocol = { path = "editor/control-protocol" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
 ipsum = { path = "libraries/ipsum" }
 
