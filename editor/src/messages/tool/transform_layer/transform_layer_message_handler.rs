@@ -87,6 +87,7 @@ pub struct TransformLayerMessageHandler {
 	ptz: PTZ,
 	initial_transform: DAffine2,
 	operation_count: usize,
+	scaled_in_sequence: bool,
 	was_grabbing: bool,
 
 	// Pen tool (outgoing handle GRS manipulation)
@@ -311,9 +312,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::ApplyTransformOperation { final_transform } => {
 				selected.original_transforms.clear();
 				self.typing.clear();
+				let bake_scale = final_transform && self.scaled_in_sequence;
 				if final_transform {
 					self.transform_operation = TransformOperation::None;
 					self.operation_count = 0;
+					self.scaled_in_sequence = false;
 				}
 
 				if using_pen_tool {
@@ -324,7 +327,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					selected.responses.add(PenToolMessage::Confirm);
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
-					if final_transform {
+					// A grab or rotate must not fold an existing scale into the generator
+					if bake_scale {
 						for &layer in &selected_layers {
 							responses.add(GraphOperationMessage::BakeShapeScale { layer });
 						}
@@ -352,7 +356,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation = match operation {
 					TransformType::Grab => TransformOperation::Grabbing(Default::default()),
 					TransformType::Rotate => TransformOperation::Rotating(Default::default()),
-					TransformType::Scale => TransformOperation::Scaling(Default::default()),
+					TransformType::Scale => {
+						self.scaled_in_sequence = true;
+						TransformOperation::Scaling(Default::default())
+					}
 				};
 				self.layer_bounding_box = selected.bounding_box();
 				let bounding_box = select_tool::create_bounding_box_transform(document);
@@ -488,6 +495,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::BeginRotate => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Rotate }),
 			TransformLayerMessage::BeginScale => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Scale }),
 			TransformLayerMessage::CancelTransformOperation => {
+				self.scaled_in_sequence = false;
 				if using_path_tool {
 					self.ghost_outline.clear();
 					self.was_grabbing = false;
@@ -1409,5 +1417,54 @@ mod test_transform_layer {
 			(ellipse_transform.matrix2.x_axis.length() - 1.).abs() < 1e-6,
 			"Ellipse transform scale should be 1 after the scale is baked"
 		);
+	}
+
+	#[tokio::test]
+	async fn test_grab_does_not_bake_existing_scale() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_scale(glam::DVec2::splat(2.)),
+				transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let (width, height) = rectangle_size(&editor, layer);
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let (width_after_grab, height_after_grab) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert_eq!(width_after_grab, width, "Moving must not rewrite the rectangle width");
+		assert_eq!(height_after_grab, height, "Moving must not rewrite the rectangle height");
+		assert!((transform.matrix2.x_axis.length() - 2.).abs() < 1e-6, "An existing scale must stay on the Transform node after a move");
+	}
+
+	#[tokio::test]
+	async fn test_scale_then_grab_still_bakes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let (width, height) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			(width - 200.).abs() < 1e-6 && (height - 200.).abs() < 1e-6,
+			"A scale chained into a move should still bake, got {width}x{height}"
+		);
+		assert!((transform.matrix2.x_axis.length() - 1.).abs() < 1e-6, "The chained scale should leave the Transform scale at 1");
 	}
 }
