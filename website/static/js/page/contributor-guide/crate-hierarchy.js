@@ -1,9 +1,9 @@
 document.addEventListener("DOMContentLoaded", () => {
-	const container = document.querySelector(".crate-hierarchy");
+	const container = document.querySelector("[data-crate-hierarchy]");
 	if (!container) return;
 
-	const svg = container.querySelector("svg");
-	if (!svg) return;
+	const svg = container.querySelector("[data-crate-hierarchy-graph]");
+	if (!(svg instanceof SVGSVGElement)) return;
 
 	// Wrap SVG in a viewport container
 	const viewport = document.createElement("div");
@@ -18,11 +18,12 @@ document.addEventListener("DOMContentLoaded", () => {
 	// Create zoom controls
 	const controls = document.createElement("div");
 	controls.className = "crate-hierarchy-controls";
-	controls.innerHTML = `<button class="zoom-in"></button><button class="zoom-out"></button>`;
+	const zoomInButton = document.createElement("button");
+	zoomInButton.className = "zoom-in";
+	const zoomOutButton = document.createElement("button");
+	zoomOutButton.className = "zoom-out";
+	controls.append(zoomInButton, zoomOutButton);
 	container.insertBefore(controls, viewport);
-	const zoomInBtn = controls.querySelector(".zoom-in");
-	const zoomOutBtn = controls.querySelector(".zoom-out");
-	if (!(zoomInBtn instanceof HTMLButtonElement) || !(zoomOutBtn instanceof HTMLButtonElement)) return;
 
 	// Lock the viewport height to the SVG's natural rendered height (ignoring any zoom transform)
 	const updateViewportHeight = () => {
@@ -72,13 +73,13 @@ document.addEventListener("DOMContentLoaded", () => {
 	}
 
 	function updateButtons() {
-		if (zoomInBtn instanceof HTMLButtonElement) zoomInBtn.disabled = scale >= MAX_SCALE;
-		if (zoomOutBtn instanceof HTMLButtonElement) zoomOutBtn.disabled = scale <= MIN_SCALE;
+		zoomInButton.disabled = scale >= MAX_SCALE;
+		zoomOutButton.disabled = scale <= MIN_SCALE;
 	}
 
 	function applyTransform() {
 		clampPan();
-		if (svg) svg.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+		if (svg instanceof SVGSVGElement) svg.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
 		updateButtons();
 	}
 
@@ -144,11 +145,11 @@ document.addEventListener("DOMContentLoaded", () => {
 	);
 
 	// Button zoom (animated, zoom toward center of viewport)
-	zoomInBtn?.addEventListener("click", () => {
+	zoomInButton.addEventListener("click", () => {
 		const rect = viewport.getBoundingClientRect();
 		animateZoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, scale + BUTTON_ZOOM_STEP);
 	});
-	zoomOutBtn?.addEventListener("click", () => {
+	zoomOutButton.addEventListener("click", () => {
 		const rect = viewport.getBoundingClientRect();
 		animateZoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, scale - BUTTON_ZOOM_STEP);
 	});
