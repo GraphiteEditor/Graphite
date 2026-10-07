@@ -2484,6 +2484,39 @@ mod test_pen_tool {
 	}
 
 	#[tokio::test]
+	async fn merging_two_pen_paths() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create First Pen path
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, C).await;
+
+		// Abort the first pen process
+		editor.handle_message(ToolMessage::Pen(PenToolMessage::Abort)).await;
+
+		// Create a second pen stroke
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+
+		// Validate that these anchors are the only ones that exist (TODO: improve code reuse)
+		let expected_anchors = [A, B, C];
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		let mut viewport_points: Vec<DVec2> = vector.point_domain.positions().iter().map(|&pos| layer_to_viewport.transform_point2(pos)).collect();
+
+		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
+			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
+				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
+			};
+			println!("Successfully found expected position {expected_position} (index {expected_index}) in viewport points as index {viewport_index}");
+			// Remove so no other one matches
+			viewport_points.remove(viewport_index);
+		}
+		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
+	}
+
+	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
