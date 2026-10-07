@@ -12,22 +12,12 @@
 	"type": "module",
 	"scripts": {
 		"postinstall": "node .build-scripts/install.ts",
-		"check": "tsc --noEmit && eslint",
-		"fix": "eslint --fix"
+		"check": "node ../frontend/node_modules/typescript/bin/tsc --noEmit && node ../frontend/node_modules/eslint/bin/eslint.js",
+		"fix": "node ../frontend/node_modules/eslint/bin/eslint.js --fix"
 	},
-	"//": "Waiting on <https://github.com/import-js/eslint-plugin-import/issues/3227> before we can update @eslint/js and eslint to 10.x",
 	"devDependencies": {
-		"@eslint/js": "^9.39.2",
-		"@types/node": "^25.5.2",
-		"eslint-import-resolver-typescript": "^4.4.4",
-		"eslint-plugin-import": "^2.32.0",
-		"eslint-plugin-prettier": "^5.5.5",
-		"eslint": "^9.39.2",
-		"prettier": "^3.8.1",
 		"sass": "1.99.0",
-		"tar": "^7.5.13",
-		"typescript-eslint": "^8.58.0",
-		"typescript": "^6.0.2"
+		"tar": "^7.5.13"
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.2.8",

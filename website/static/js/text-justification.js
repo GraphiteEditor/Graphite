@@ -1,4 +1,5 @@
 window.addEventListener("DOMContentLoaded", () => {
+	// eslint-disable-next-line graphite/require-data-selectors -- Markdown writes these paragraphs, which leaves no way to mark them
 	document.querySelectorAll("section p").forEach((paragraph) => {
 		const /** @type {[Text, NodeList][]} */ mutationQueue = [];
 

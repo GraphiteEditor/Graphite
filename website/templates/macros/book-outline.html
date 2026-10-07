@@ -8,7 +8,7 @@
 	{%- if children | length > 0 %}
 	{{ tabs }}<ul>
 	{%- for child in children %}
-	{{ tabs }}	<li><a href="#{{ child.id }}" title="{{ child.title | safe }}">{{ child.title }}</a></li>
+	{{ tabs }}	<li><a href="#{{ child.id }}" title="{{ child.title | safe }}" data-contents-link="{{ child.id }}">{{ child.title }}</a></li>
 	{{- self::render_book_page_toc(children = child.children, indents = indents + 1) -}}
 	{%- endfor %}
 	{{ tabs }}</ul>
