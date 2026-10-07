@@ -3441,7 +3441,9 @@ name = "math-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
+ "dyn-any",
  "glam 0.33.10",
+ "graphene-core",
  "graphic-types",
  "log",
  "math-parser",
@@ -4414,6 +4416,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
+ "glam 0.33.10",
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
@@ -4636,6 +4639,7 @@ dependencies = [
  "fastnoise-lite",
  "futures",
  "glam 0.33.10",
+ "graphene-core",
  "graphene-hash",
  "graphene-resource",
  "image",

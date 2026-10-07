@@ -21,6 +21,7 @@ shader-nodes = ["std", "dep:raster-nodes-shaders", "dep:wgpu-executor"]
 std = [
 	"serde",
 	"dep:core-types",
+	"dep:graphene-core",
 	"dep:dyn-any",
 	"dep:graphene-resource",
 	"dep:graphene-hash",
@@ -50,6 +51,7 @@ node-macro = { workspace = true }
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 core-types = { workspace = true, optional = true }
+graphene-core = { workspace = true, optional = true }
 graphene-resource = { workspace = true, optional = true }
 graphene-hash = { workspace = true, optional = true }
 raster-types = { workspace = true, optional = true }

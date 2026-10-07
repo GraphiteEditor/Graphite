@@ -8,7 +8,6 @@ use graphene_animation::AnimationCurve;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
-use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
 #[cfg(target_family = "wasm")]
@@ -345,14 +344,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				TextDenomination,
 				DesaturateMethod,
 				RedGreenBlue,
-				RedGreenBlueAlpha,
 				RelativeAbsolute,
 				SelectiveColorChoice,
 				TonalRange,
 				AdjustmentChannel,
 				HueSaturationRange,
 				Stroke,
-				XY,
 				ScaleType,
 				ReferencePoint,
 				CentroidType,
