@@ -47,13 +47,10 @@ impl Preprocessor {
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
-			match &mut node.implementation {
-				DocumentNodeImplementation::Network(nested) => {
-					self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
-					continue;
-				}
-				_ => {}
-			};
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
+				continue;
+			}
 
 			for input in node.inputs.iter_mut() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
@@ -494,14 +491,14 @@ mod destructure_tests {
 		}
 	}
 
-	/// A network where a multi-output Split Vec2 node's X and Y outputs (indices 1 and 2, after the hidden primary) feed an Add node.
-	fn split_vec2_network() -> NodeNetwork {
-		let split_vec2 = DocumentNode {
+	/// A network where a multi-output Vec2 to Numbers node's X and Y outputs (indices 1 and 2, after the hidden primary) feed an Add node.
+	fn vec2_to_numbers_network() -> NodeNetwork {
+		let vec2_to_numbers = DocumentNode {
 			inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::new(3., 5.)), false)],
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::split_vec_2::IDENTIFIER),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
 			..Default::default()
 		};
-		multi_output_into_add_network(split_vec2, [1, 2])
+		multi_output_into_add_network(vec2_to_numbers, [1, 2])
 	}
 
 	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
@@ -515,14 +512,14 @@ mod destructure_tests {
 
 	#[test]
 	fn multi_output_node_expands_into_generated_destructure_network() {
-		let split_vec2_identifier = graphene_std::math_nodes::split_vec_2::IDENTIFIER;
+		let vec2_to_numbers_identifier = graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER;
 		let destructure = registry::MULTI_OUTPUT_NODES
-			.get(&split_vec2_identifier)
-			.expect("Split Vec2 should be registered as a multi-output node");
+			.get(&vec2_to_numbers_identifier)
+			.expect("Vec2 to Numbers should be registered as a multi-output node");
 		assert_eq!(destructure.fields.iter().map(|field| field.name).collect::<Vec<_>>(), vec!["X", "Y"]);
 		assert!(destructure.hidden_primary_output());
 
-		let mut network = split_vec2_network();
+		let mut network = vec2_to_numbers_network();
 		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
 
 		// The multi-output node is substituted with a transient generated network: the struct as the hidden primary export,
@@ -545,7 +542,7 @@ mod destructure_tests {
 			panic!("The Memoize node should pull from the struct-producing node")
 		};
 		let main_node = generated.nodes.get(main_node_id).unwrap();
-		assert_eq!(main_node.implementation, DocumentNodeImplementation::ProtoNode(split_vec2_identifier));
+		assert_eq!(main_node.implementation, DocumentNodeImplementation::ProtoNode(vec2_to_numbers_identifier));
 
 		for (field, export) in destructure.fields.iter().zip(&generated.exports[1..]) {
 			let NodeInput::Node { node_id: extractor_id, .. } = export else {
@@ -559,7 +556,7 @@ mod destructure_tests {
 
 	#[test]
 	fn multi_output_node_compiles_and_executes() {
-		let mut network = split_vec2_network();
+		let mut network = vec2_to_numbers_network();
 		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
 
 		// X + Y of (3, 5) should be 8

@@ -40,8 +40,8 @@ pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// 	pub y: Item<f64>,
 /// }
 ///
-/// #[node_macro::node(category("Math: Vec2"), name("Split Vec2"))]
-/// fn split_vec2(_: impl Ctx, vec2: Item<DVec2>) -> Vec2Components {
+/// #[node_macro::node(category("Math: Vec2"), name("Vec2 to Numbers"))]
+/// fn vec2_to_numbers(_: impl Ctx, vec2: Item<DVec2>) -> Vec2Components {
 /// 	let (vec2, attributes) = vec2.into_parts();
 ///
 /// 	Vec2Components {

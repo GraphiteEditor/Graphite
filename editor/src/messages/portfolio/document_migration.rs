@@ -433,8 +433,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"math_nodes::AsU64Node",
 		],
 	},
-	// The old 'Vec2 Value' node took separate X and Y inputs, a role now filled by 'Combine Vec2', while the new 'Vec2 Value' node takes a single vec2 input.
-	// Old references (including these older aliases) are remapped here to `vec_2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Combine Vec2' node.
+	// The old 'Vec2 Value' node took separate X and Y inputs, a role now filled by 'Numbers to Vec2', while the new 'Vec2 Value' node takes a single vec2 input.
+	// Old references (including these older aliases) are remapped here to `vec_2_value::IDENTIFIER` so the per-node migration in `migrate_node` can detect the leftover 3-input shape and convert it into a 'Numbers to Vec2' node.
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
 		aliases: &[
@@ -444,6 +444,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ops::CoordinateValueNode",
 			"graphene_math_nodes::CoordinateValueNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::numbers_to_vec_2::IDENTIFIER,
+		aliases: &["math_nodes::CombineVec2Node"],
 	},
 	// ================================
 	// path bool
@@ -507,8 +511,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::combine_channels::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::std_nodes::CombineChannelsNode", "graphene_std::raster::CombineChannelsNode"],
+		node: graphene_std::raster_nodes::std_nodes::channels_to_image::IDENTIFIER,
+		aliases: &[
+			"raster_nodes::std_nodes::CombineChannelsNode",
+			"graphene_raster_nodes::std_nodes::CombineChannelsNode",
+			"graphene_std::raster::CombineChannelsNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
@@ -1374,13 +1382,13 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// The "Split Vec2", "Split Vector2", and "Split Channels" wrapper networks became the multi-output `split_vec2` and `split_channels` proto nodes.
+	// The "Split Vec2", "Split Vector2", and "Split Channels" wrapper networks became the multi-output `vec2_to_numbers` and `image_to_channels` proto nodes.
 	// A wrapper saved before these gained a hidden primary output had each field one output lower, so its wires shift up by one.
 	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: replacing the outer network impl orphans its child paths.
 	let split_wrapper_replacements = [
-		("Split Vec2", graphene_std::math_nodes::split_vec_2::IDENTIFIER),
-		("Split Vector2", graphene_std::math_nodes::split_vec_2::IDENTIFIER),
-		("Split Channels", graphene_std::raster_nodes::adjustments::split_channels::IDENTIFIER),
+		("Split Vec2", graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
+		("Split Vector2", graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
+		("Split Channels", graphene_std::raster_nodes::adjustments::image_to_channels::IDENTIFIER),
 	];
 	for (old_reference, new_identifier) in split_wrapper_replacements {
 		let split_nodes: Vec<(NodeId, Vec<NodeId>)> = document
@@ -1428,7 +1436,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// The standalone "Extract XY" and "Extract Channel" nodes were removed in favor of the multi-output "Split Vec2" and "Split Channels" nodes.
+	// The standalone "Extract XY" and "Extract Channel" nodes were removed in favor of the multi-output "Vec2 to Numbers" and "Image to Channels" nodes.
 	// Convert each to its replacement, moving its downstream wires to the field output for the axis or channel it extracted.
 	const EXTRACT_XY: [&str; 2] = ["graphene_core::extract_xy::ExtractXyNode", "graphene_core::ops::ExtractXyNode"];
 	const EXTRACT_CHANNEL: [&str; 4] = [
@@ -1445,9 +1453,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			let DocumentNodeImplementation::ProtoNode(protonode_id) = &node.implementation else { return None };
 			let name = protonode_id.as_str().split('<').next().unwrap_or_default();
 			if EXTRACT_XY.contains(&name) {
-				Some((*node_id, path, graphene_std::math_nodes::split_vec_2::IDENTIFIER, "Extract XY"))
+				Some((*node_id, path, graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER, "Extract XY"))
 			} else if EXTRACT_CHANNEL.contains(&name) {
-				Some((*node_id, path, graphene_std::raster_nodes::adjustments::split_channels::IDENTIFIER, "Extract Channel"))
+				Some((*node_id, path, graphene_std::raster_nodes::adjustments::image_to_channels::IDENTIFIER, "Extract Channel"))
 			} else {
 				None
 			}
@@ -2425,10 +2433,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Convert the old 'Vec2 Value' node, identified by its leftover 3-input shape with separate X and Y inputs,
-	// into the 'Combine Vec2' node which now fills that role (the new 'Vec2 Value' node instead takes a single vec2 input)
+	// into the 'Numbers to Vec2' node which now fills that role (the new 'Vec2 Value' node instead takes a single vec2 input)
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::vec_2_value::IDENTIFIER) && inputs_count == 3 {
-		let combine_vec2_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::combine_vec_2::IDENTIFIER);
-		let mut node_template = resolve_document_node_type(&combine_vec2_reference)?.default_node_template();
+		let numbers_to_vec2_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::numbers_to_vec_2::IDENTIFIER);
+		let mut node_template = resolve_document_node_type(&numbers_to_vec2_reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
