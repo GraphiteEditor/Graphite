@@ -690,3 +690,33 @@ fn declarations_round_trip_through_byte_store() {
 		}
 	});
 }
+
+#[cfg(feature = "conversion")]
+#[test]
+fn an_export_without_history_drops_tombstones() {
+	use document_format::{ExportFormat, ExportOptions};
+	use document_graph_storage::{Network, NetworkId, RegistryDelta};
+
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xAC, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+		let id = NetworkId(7);
+		gdd.stage_constructed_ops(vec![RegistryDelta::AddNetwork { id, network: Network::default() }], &Default::default(), &empty_byte_store())
+			.unwrap();
+		gdd.stage_constructed_ops(vec![RegistryDelta::RemoveNetwork { id, snapshot: Network::default() }], &Default::default(), &empty_byte_store())
+			.unwrap();
+		assert!(gdd.registry().removed_networks.contains_key(&id));
+
+		let dir = tempfile::tempdir().unwrap();
+		let dest = dir.path().join("flat");
+		let options = ExportOptions {
+			include_history: false,
+			..ExportOptions::default()
+		};
+		gdd.export(&dest, ExportFormat::Folder, options, &empty_byte_store(), None)
+			.await
+			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
+
+		let reopened = GddV1::open(&dest).await.unwrap_or_else(|error| panic!("open failed: {error:?}"));
+		assert!(reopened.registry().removed_networks.is_empty(), "a document without history starts without tombstones");
+	});
+}

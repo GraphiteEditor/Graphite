@@ -166,14 +166,14 @@ fn diff_resource_entry(id: ResourceId, from: &ResourceEntry, to: &ResourceEntry,
 		deltas.push(RegistryDelta::SetResourceHash { id, hash: to.hash });
 	}
 
-	for (key, _) in &from.sources {
+	for (key, _) in from.live_sources() {
 		if to.source(key).is_none() {
 			deltas.push(RegistryDelta::RemoveSource { id, key: *key });
 		}
 	}
 
 	// Compare source bodies only; the per-source timestamp is derived from the diff, not part of it.
-	for (key, to_source) in &to.sources {
+	for (key, to_source) in to.live_sources() {
 		if from.source(key).is_none_or(|from_source| from_source.source != to_source.source) {
 			deltas.push(RegistryDelta::AddSource {
 				id,
@@ -196,15 +196,15 @@ fn nodes_have_same_implementation(a: &Node, b: &Node) -> bool {
 fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) -> Vec<AttributeDelta> {
 	let mut deltas = Vec::new();
 
-	for key in from.keys() {
-		if !to.contains_key(key) {
+	for (key, _) in from.live() {
+		if to.get(key).is_none_or(|value| value.deleted) {
 			deltas.push(AttributeDelta { key: key.clone(), value: None });
 		}
 	}
 
 	// Compare by `value` only; the per-entry `timestamp` is derived from the diff, not part of it.
-	for (key, to_value) in to {
-		if from.get(key).is_none_or(|from_value| from_value.value != to_value.value) {
+	for (key, to_value) in to.live() {
+		if from.get(key).is_none_or(|from_value| from_value.deleted || from_value.value != to_value.value) {
 			deltas.push(AttributeDelta {
 				key: key.clone(),
 				value: Some(to_value.value.clone()),
@@ -340,6 +340,7 @@ mod tests {
 			crate::AttributeValue {
 				value: Value::Str("old".into()),
 				timestamp: stamp(0),
+				deleted: false,
 			},
 		);
 		from.node_instances.insert(NodeId(42), node);
@@ -350,6 +351,7 @@ mod tests {
 			crate::AttributeValue {
 				value: Value::Str("new".into()),
 				timestamp: stamp(1),
+				deleted: false,
 			},
 		);
 
@@ -375,6 +377,7 @@ mod tests {
 			crate::AttributeValue {
 				value: Value::Str("value".into()),
 				timestamp: stamp(1),
+				deleted: false,
 			},
 		);
 

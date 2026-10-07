@@ -4,7 +4,7 @@ use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
 use document_graph_storage::attr::node as node_attr;
 use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
-use document_graph_storage::{AttributeDelta, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
+use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
 use document_graph_storage::{convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
 use graph_craft::document::NodeId;
@@ -381,15 +381,37 @@ fn construct_structural_additions(
 		// A node the registry already holds is updated rather than rebuilt: rebuilding would clear the
 		// `ui::*` attributes it carries, and restating those would clobber whatever a concurrent peer
 		// wrote to its name, lock or pin.
-		match batch.node(id).is_some() {
-			true => {
+		match batch.node(id) {
+			Some(held) => {
+				// The swap did not write the slots' `ui::*` attributes, so they carry over to the slots that survive it with
+				// their stamps, tombstones and the held floor, losing to a concurrent write. The other attributes the new implementation
+				// lacks go by tombstone instead.
+				let inputs = node
+					.inputs()
+					.iter()
+					.enumerate()
+					.map(|(index, slot)| {
+						let mut slot = slot.clone();
+						if let Some(previous) = held.inputs().get(index) {
+							for (key, value) in previous.attributes.iter() {
+								if key.starts_with("ui::") {
+									slot.attributes.insert(key.clone(), value.clone());
+								} else if !value.deleted && !slot.attributes.contains_key(key) {
+									slot.attributes.insert(key.clone(), AttributeValue::deleted(TimeStamp::ORIGIN));
+								}
+							}
+							slot.attributes.set_floor(previous.attributes.floor());
+						}
+						slot
+					})
+					.collect();
 				ops.push(RegistryDelta::SetNodeImplementation {
 					id,
 					implementation: node.implementation().clone(),
 				});
-				ops.push(RegistryDelta::SetNodeInputs { id, inputs: node.inputs().to_vec() });
+				ops.push(RegistryDelta::SetNodeInputs { id, inputs });
 			}
-			false => ops.push(RegistryDelta::AddNode { id, node: node.clone() }),
+			None => ops.push(RegistryDelta::AddNode { id, node: node.clone() }),
 		}
 		batch.record_addition(id, node);
 	}
@@ -497,6 +519,7 @@ fn construct_metadata_snapshot(
 			let current = batch
 				.network(network_id)
 				.and_then(|network| network.attributes.get(node_attr::ui::REFERENCE))
+				.filter(|value| !value.deleted)
 				.map(|value| value.value.clone());
 			if current != target {
 				ops.push(RegistryDelta::ChangeNetworkAttribute {
@@ -533,19 +556,19 @@ fn construct_metadata_snapshot(
 	Ok(())
 }
 
-/// Every `ui::` attribute of `encoded`, plus a clear for each `ui::` key of `current` that `encoded`
+/// Every `ui::` attribute of `encoded`, plus a clear for each live `ui::` key of `current` that `encoded`
 /// does not carry. Values are compared only to decide what to clear, never to skip a write.
 ///
 /// Restating a value that already matches looks redundant but is load-bearing: `current` is the
 /// registry as it stood before the batch, and these writes follow an op in the same batch that
 /// rebuilt what they describe. A value the pre-batch state agrees with may already have been cleared
 /// by that op, so skipping it would leave the attribute missing.
-fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
+pub(super) fn ui_attribute_writes(current: Option<&Attributes>, encoded: &Attributes) -> Vec<AttributeDelta> {
 	let owned = |key: &str| key.starts_with("ui::");
 	let mut deltas = Vec::new();
 
 	if let Some(current) = current {
-		for key in current.keys() {
+		for (key, _) in current.live() {
 			if owned(key) && !encoded.contains_key(key) {
 				deltas.push(AttributeDelta { key: key.clone(), value: None });
 			}
