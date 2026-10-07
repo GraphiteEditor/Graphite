@@ -7,6 +7,7 @@ use graphene_resource::{Resource, ResourceHash};
 use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
+use vector_types::kurbo::Rect;
 use vector_types::Vector;
 
 thread_local! {
@@ -73,7 +74,7 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 ///
 /// Justification only stretches spaces, so the line's width grows by `space_extra` per space, not per glyph. Shared by the vector
 /// shaper and the SVG/Vello text renderers so the placement logic lives in one place.
-pub fn decoration_rects(glyph_run: &GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, run_spaces: usize, typesetting: TypesettingConfig) -> Vec<(DVec2, DVec2)> {
+pub fn decoration_rects(glyph_run: &GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, run_spaces: usize, typesetting: TypesettingConfig) -> Vec<Rect> {
 	let metrics = glyph_run.run().metrics();
 	let baseline = glyph_run.baseline() as f64;
 	let start = (glyph_run.offset() + x_offset) as f64;
@@ -87,7 +88,7 @@ pub fn decoration_rects(glyph_run: &GlyphRun<'_, ()>, x_offset: f32, space_extra
 	]
 	.into_iter()
 	.filter(|(enabled, _, _)| *enabled)
-	.map(|(_, y, thickness)| (DVec2::new(start, y), DVec2::new(end, y + thickness)))
+	.map(|(_, y, thickness)| Rect::new(start, y, end, y + thickness))
 	.collect()
 }
 

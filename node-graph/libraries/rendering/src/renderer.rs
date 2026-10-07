@@ -3187,15 +3187,10 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 
 			// Decorations are emitted here too, matching how the vector shaper draws them, so rendering or exporting a Text node
 			// directly shows the same lines as the Text to Vector chain.
-			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
-				let mut rect = BezPath::new();
-				rect.move_to(to_point(min.min(max)));
-				rect.line_to(to_point(DVec2::new(max.x, min.y)));
-				rect.line_to(to_point(max.max(min)));
-				rect.line_to(to_point(DVec2::new(min.x, max.y)));
-				rect.close_path();
-				rect.apply_affine(Affine::scale(1. / scale));
-				glyph_paths.push(rect.to_svg());
+			for rect in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
+				let mut path = rect.to_path(0.);
+				path.apply_affine(Affine::scale(1. / scale));
+				glyph_paths.push(path.to_svg());
 			}
 		});
 	});
@@ -3306,19 +3301,14 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 
 			// Decorations are drawn here too, matching how the vector shaper emits them, so a Text node rendered directly shows
 			// the same lines as the Text to Vector chain.
-			for (min, max) in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
-				let mut rect = kurbo::BezPath::new();
-				rect.move_to(to_point(min.min(max)));
-				rect.line_to(to_point(DVec2::new(max.x, min.y)));
-				rect.line_to(to_point(max.max(min)));
-				rect.line_to(to_point(DVec2::new(min.x, max.y)));
-				rect.close_path();
-				rect.apply_affine(kurbo::Affine::scale(1. / layout.scale() as f64));
+			for rect in text_nodes::decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
+				let mut path = rect.to_path(0.);
+				path.apply_affine(kurbo::Affine::scale(1. / layout.scale() as f64));
 				if let RenderMode::Outline = render_params.render_mode {
 					let (outline_stroke, outline_color) = get_outline_styles(render_params);
-					scene.stroke(&outline_stroke, affine, outline_color, None, &rect);
+					scene.stroke(&outline_stroke, affine, outline_color, None, &path);
 				} else {
-					scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, &rect);
+					scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, &path);
 				}
 			}
 		});

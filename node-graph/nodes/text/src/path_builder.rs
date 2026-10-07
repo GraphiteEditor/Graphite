@@ -26,7 +26,7 @@ pub struct PathBuilder {
 	/// The signed area of everything drawn into the merged item so far, whose sign is the glyphs' winding direction.
 	glyph_signed_area: f64,
 	/// Decoration rectangles held back while drawing, so they can be wound to match the glyphs once those are all in.
-	buffered_decorations: Vec<(DVec2, DVec2)>,
+	buffered_decorations: Vec<Rect>,
 	/// Decoration items held back while drawing in per-glyph mode, so glyph *i* stays item *i*.
 	buffered_decoration_items: Vec<Item<Vector>>,
 	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
@@ -170,18 +170,18 @@ impl PathBuilder {
 	}
 
 	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, typesetting: TypesettingConfig, per_glyph_items: bool, x_offset: f32, space_extra: f32, run_spaces: usize) {
-		for (min, max) in decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
+		for rect in decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
 			if per_glyph_items {
-				let rect = rectangle_bezpath(min * self.scale, max * self.scale);
-				let translation = min;
+				let scaled = Rect::new(rect.x0 * self.scale, rect.y0 * self.scale, rect.x1 * self.scale, rect.y1 * self.scale);
+				let translation = DVec2::new(rect.x0, rect.y0);
 				let frame = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -translation);
 				self.buffered_decoration_items.push(
-					Item::new_from_element(Vector::from_bezpath(rect))
+					Item::new_from_element(Vector::from_bezpath(scaled.to_path(0.)))
 						.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(translation))
 						.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame),
 				);
 			} else {
-				self.buffered_decorations.push((min * self.scale, max * self.scale));
+				self.buffered_decorations.push(Rect::new(rect.x0 * self.scale, rect.y0 * self.scale, rect.x1 * self.scale, rect.y1 * self.scale));
 			}
 		}
 	}
@@ -241,12 +241,12 @@ impl PathBuilder {
 		if !self.buffered_decorations.is_empty() {
 			let glyph_sign = self.glyph_signed_area.signum();
 			let compound = self.vector_list.element_mut(0).unwrap();
-			for (min, max) in core::mem::take(&mut self.buffered_decorations) {
-				let mut rect = rectangle_bezpath(min, max);
-				if glyph_sign != 0. && rect.area().signum() != glyph_sign {
-					rect = rect.reverse_subpaths();
+			for rect in core::mem::take(&mut self.buffered_decorations) {
+				let mut path = rect.to_path(0.);
+				if glyph_sign != 0. && path.area().signum() != glyph_sign {
+					path = path.reverse_subpaths();
 				}
-				compound.append_bezpath(rect);
+				compound.append_bezpath(path);
 			}
 		}
 
@@ -392,7 +392,7 @@ mod tests {
 		let mut builder = PathBuilder::new(false, 1., DVec2::ONE, DVec2::ZERO);
 		builder.glyph_signed_area += glyph.area();
 		builder.vector_list.element_mut(0).unwrap().append_bezpath(glyph);
-		builder.buffered_decorations.push((DVec2::new(2., 4.), DVec2::new(8., 5.)));
+		builder.buffered_decorations.push(Rect::new(2., 4., 8., 5.));
 		builder.finalize()
 	}
 
