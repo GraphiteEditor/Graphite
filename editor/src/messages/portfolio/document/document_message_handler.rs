@@ -37,7 +37,7 @@ use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
 use graphene_std::Cover;
@@ -2174,7 +2174,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
+		let document_message_handler = deserialize_replacing_null_floats_with_zero::<DocumentMessageHandler>(serialized_content)
 			.or_else(|e| {
 				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code

@@ -848,8 +848,39 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		}
 	}
 
-	let tagged_value: TaggedValue = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+	// Reparsing from text on failure provides the error positions needed to replace any `null` saved in place of a float
+	let tagged_value = TaggedValue::deserialize(&value)
+		.or_else(|_| deserialize_replacing_null_floats_with_zero(&value.to_string()))
+		.map_err(serde::de::Error::custom)?;
 	Ok(MemoHash::new(tagged_value))
+}
+
+/// Parses JSON where NaN or infinity was saved as `null`, which serde_json rejects as a float, by replacing each rejected `null` with `0.0` until it parses.
+#[cfg(feature = "loading")]
+pub fn deserialize_replacing_null_floats_with_zero<T: serde::de::DeserializeOwned>(serialized_content: &str) -> serde_json::Result<T> {
+	let mut content = std::borrow::Cow::Borrowed(serialized_content);
+
+	// O(n) reparse per replaced `null`, which only happens for content that would otherwise fail to load
+	loop {
+		let error = match serde_json::from_str(&content) {
+			Ok(value) => return Ok(value),
+			Err(error) => error,
+		};
+
+		// serde_json reports the position just past the `null` it read in place of a float
+		if !error.to_string().starts_with("invalid type: null, expected f") {
+			return Err(error);
+		}
+		let Some(preceding_lines) = error.line().checked_sub(1) else { return Err(error) };
+		let line_start = content.split_inclusive('\n').take(preceding_lines).map(str::len).sum::<usize>();
+		let null_end = line_start + error.column();
+		let Some(null_start) = null_end.checked_sub("null".len()).filter(|&start| content.get(start..null_end) == Some("null")) else {
+			return Err(error);
+		};
+
+		log::warn!("Loading a `null` in place of a number as 0 (line {}, column {})", error.line(), error.column());
+		content.to_mut().replace_range(null_start..null_end, "0.0");
+	}
 }
 
 impl Display for TaggedValue {

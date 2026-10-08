@@ -3449,6 +3449,37 @@ mod tests {
 		}
 	}
 
+	#[test]
+	fn null_floats_load_as_zero() {
+		use crate::messages::portfolio::document::utility_types::misc::PTZ;
+		use graph_craft::document::value::deserialize_replacing_null_floats_with_zero;
+
+		#[derive(serde::Deserialize)]
+		struct Example {
+			position: DVec2,
+			scale: f64,
+			opacity: Option<f64>,
+		}
+
+		let content = "{\n\t\"position\": [1.5, null],\n\t\"scale\": null,\n\t\"opacity\": null\n}";
+		let example = deserialize_replacing_null_floats_with_zero::<Example>(content).expect("a `null` in place of a float should load");
+		assert_eq!(example.position, DVec2::new(1.5, 0.));
+		assert_eq!(example.scale, 0.);
+		assert_eq!(example.opacity, None);
+
+		// A `null` standing in for something other than a float is still an error
+		let content = r#"{"position": null, "scale": 1, "opacity": 1}"#;
+		assert!(deserialize_replacing_null_floats_with_zero::<Example>(content).is_err());
+
+		// Node input values are parsed from an intermediate JSON value, which carries no error positions
+		let input = serde_json::from_str::<NodeInput>(r#"{"Value":{"tagged_value":{"DVec2":[null,2.5]},"exposed":false}}"#).expect("a `null` in a node input value should load");
+		assert_eq!(input.as_value(), Some(&TaggedValue::DVec2(DVec2::new(0., 2.5))));
+
+		// A zoom of 0 would make the view's transform singular
+		let ptz = deserialize_replacing_null_floats_with_zero::<PTZ>(r#"{"pan":[0.0,0.0],"tilt":0.0,"zoom":null,"flip":false}"#).expect("a `null` zoom should load");
+		assert_eq!(ptz.zoom(), crate::consts::VIEWPORT_ZOOM_SCALE_MIN);
+	}
+
 	// The removed-definition blocks above abort silently via `?` if their swap target ever leaves the catalog
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
