@@ -5,7 +5,9 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::parse_css_color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientFocalPoint, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops};
+use graphene_std::vector::style::{
+	FillChoice, Gradient, GradientFocalPoint, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops,
+};
 
 /// Bounds for a midpoint position (relative to the interval between two adjacent gradient stops).
 const MIN_MIDPOINT: f64 = 0.01;

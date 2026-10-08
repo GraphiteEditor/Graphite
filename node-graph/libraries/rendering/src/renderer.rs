@@ -2764,9 +2764,9 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
-		let settings = gradient_settings_from_item(item);
-		let focal_point = gradient_focal_point_from_item(item);
-		let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
+	let settings = gradient_settings_from_item(item);
+	let focal_point = gradient_focal_point_from_item(item);
+	let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 	render.leaf_tag(tag, |attributes| {
 		if let Some((min, size)) = thumbnail_rect {
 			attributes.push("x", min.x.to_string());

@@ -3252,7 +3252,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	match &fill {
-		ResolvedFill::Gradient { gradient: stops, settings, focal_point, .. } => {
+		ResolvedFill::Gradient {
+			gradient: stops,
+			settings,
+			focal_point,
+			..
+		} => {
 			let stops = stops.clone();
 			let settings = *settings;
 			let focal_point = *focal_point;
@@ -3280,9 +3285,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoice::<SRGBA8>::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, settings, focal_point, .. } => {
-			FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings).with_focal_point(*focal_point))
-		}
+		ResolvedFill::Gradient {
+			gradient: stops,
+			settings,
+			focal_point,
+			..
+		} => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings).with_focal_point(*focal_point)),
 		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
 	};
 
