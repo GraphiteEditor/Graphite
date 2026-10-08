@@ -12,7 +12,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
-use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{Gradient, GradientFocalPoint, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
 use std::sync::Arc;
@@ -796,6 +796,7 @@ pub struct FillNodeGradient {
 	pub gradient_form: GradientForm,
 	pub settings: GradientSettings,
 	pub transform: DAffine2,
+	pub focal_point: Option<GradientFocalPoint>,
 	/// Whether the transform input holds a plain value (so it may be written to) rather than a wire.
 	pub transform_is_value: bool,
 }
@@ -809,6 +810,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 	};
 	let settings = GradientSettings::from(ramp);
 	let stops = Gradient::from(ramp);
+	let focal_point = ramp.focal_point;
 	let gradient_form = match fill_node.input(fill::GradientFormInput).and_then(|input| input.as_value()) {
 		Some(&TaggedValue::GradientForm(value)) => value,
 		_ => GradientForm::default(),
@@ -826,6 +828,7 @@ pub fn read_fill_node_gradient(fill_node: &DocumentNode, bounding_box: impl FnOn
 		gradient_form,
 		settings,
 		transform,
+		focal_point,
 		transform_is_value: transform_input.is_some(),
 	})
 }
@@ -982,6 +985,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					gradient_form,
 					gradient_settings: ramp.into(),
 					transform,
+					focal_point: ramp.focal_point,
 				});
 			}
 		}

@@ -35,8 +35,8 @@ use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
-	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
-	build_transform_with_y_preservation,
+	FillChoice, Gradient, GradientFocalPoint, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign,
+	StrokeCap, StrokeJoin, build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
 use graphene_std::{Artboard, Graphic, Vector};
@@ -3191,6 +3191,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			gradient_form: GradientForm,
 			settings: GradientSettings,
 			transform: DAffine2,
+			focal_point: Option<GradientFocalPoint>,
 			/// Whether the transform input holds a plain value (so the "Reverse Direction" button may write to it) rather than a wire.
 			transform_is_value: bool,
 		},
@@ -3221,6 +3222,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						gradient_form: gradient.gradient_form,
 						settings: gradient.settings,
 						transform: gradient.transform,
+						focal_point: gradient.focal_point,
 						transform_is_value: gradient.transform_is_value,
 					},
 					None => ResolvedFill::Other,
@@ -3247,15 +3249,21 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	match &fill {
-		ResolvedFill::Gradient { gradient: stops, settings, .. } => {
+		ResolvedFill::Gradient {
+			gradient: stops,
+			settings,
+			focal_point,
+			..
+		} => {
 			let stops = stops.clone();
 			let settings = *settings;
+			let focal_point = *focal_point;
 
 			let reverse_button = IconButton::new("Reverse", 24)
 				.tooltip_label("Reverse Stops")
 				.tooltip_description("Reverse the gradient color stops.")
 				.on_update(update_value(
-					move |_| TaggedValue::GradientRamp(GradientRamp::from(stops.reversed(settings.cyclic)).with_settings(settings)),
+					move |_| TaggedValue::GradientRamp(GradientRamp::from(stops.reversed(settings.cyclic)).with_settings(settings).with_focal_point(focal_point)),
 					node_id,
 					PaintInput,
 				))
@@ -3274,7 +3282,12 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				FillChoice::<SRGBA8>::None
 			}
 		}
-		ResolvedFill::Gradient { gradient: stops, settings, .. } => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings)),
+		ResolvedFill::Gradient {
+			gradient: stops,
+			settings,
+			focal_point,
+			..
+		} => FillChoice::<SRGBA8>::Gradient(GradientRamp::from(stops).with_settings(*settings).with_focal_point(*focal_point)),
 		ResolvedFill::Other => FillChoice::<SRGBA8>::None,
 	};
 

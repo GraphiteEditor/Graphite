@@ -14,7 +14,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Gradient, GradientFocalPoint, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
 #[derive(ExtractField)]
@@ -51,9 +51,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				gradient_form,
 				gradient_settings,
 				transform,
+				focal_point,
 			} => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
-					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_settings, transform);
+					modify_inputs.fill_gradient_set(gradient, gradient_form, gradient_settings, transform, focal_point);
 				}
 			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
@@ -1033,12 +1034,14 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				space: gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma),
 				..Default::default()
 			};
-			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform, None);
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
+
 			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
-			let edge = center + DVec2::X * radial.r().get() as f64;
+			let radius = radial.r().get() as f64;
+			let edge = center + DVec2::X * radius;
 			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
 			let direction = end - start;
 			let transform = DAffine2::from_cols(direction, direction.perp(), start);
@@ -1056,12 +1059,23 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 					Gradient::new(stops)
 				}
 			};
+
+			// The focal point, relative to the gradient's center and outer radius, so SVG `fx`/`fy`/`fr` round-trips. A plain
+			// radial (focal point at the center, no `fr`) carries none, keeping the fill node's form input authoritative.
+			let focal = DVec2::new(radial.fx() as f64, radial.fy() as f64);
+			let focal_point = GradientFocalPoint {
+				center: if radius > 0. { (focal - center) / radius } else { DVec2::ZERO },
+				radius: if radius > 0. { radial.fr().get() as f64 / radius } else { 0. },
+			}
+			.clamped();
+			let focal_point = (!focal_point.is_default()).then_some(focal_point);
+
 			let settings = GradientSettings {
 				spread: convert_gradient_spread(radial.spread_method()),
 				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),
 				..Default::default()
 			};
-			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform, focal_point);
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

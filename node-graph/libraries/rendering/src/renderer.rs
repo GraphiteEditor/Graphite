@@ -24,7 +24,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::raster_types::{CPU, GPU, Image, Raster, Texture};
-use graphic_types::vector_types::gradient::{Gradient, GradientForm};
+use graphic_types::vector_types::gradient::{Gradient, GradientFocalPoint, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
@@ -507,6 +507,44 @@ pub(crate) fn gradient_settings_from_item(item: ItemRef<'_, Gradient>) -> Gradie
 	}
 }
 
+/// The focal point a gradient item carries beside its element, defaulting each absent value.
+///
+/// Clamped into the range every renderer agrees on, since node-built values skip the import-time clamp.
+pub(crate) fn gradient_focal_point_from_item(item: ItemRef<'_, Gradient>) -> GradientFocalPoint {
+	match item {
+		ItemRef::ListItem(list, index) => GradientFocalPoint::from_list_row_attributes(list, index).clamped(),
+		ItemRef::Item(item) => GradientFocalPoint::from_item_attributes(item).clamped(),
+	}
+}
+
+/// A radial gradient's focal circle placed within its end circle: the focal center scaled by the end radius,
+/// with the end circle itself staying at the gradient's center.
+pub(crate) fn radial_focal_position(focal_point: GradientFocalPoint, end_radius: f64) -> peniko::RadialGradientPosition {
+	peniko::RadialGradientPosition {
+		start_center: to_point(focal_point.center * end_radius),
+		start_radius: (focal_point.radius * end_radius) as f32,
+		end_center: to_point(DVec2::ZERO),
+		end_radius: end_radius as f32,
+	}
+}
+
+/// A radial gradient's `fx`/`fy`/`fr` attributes, rounded like the other export values.
+pub(crate) fn focal_attributes(focal_point: GradientFocalPoint) -> String {
+	let mut attrs = String::new();
+	if !focal_point.center.abs_diff_eq(DVec2::ZERO, f64::EPSILON) {
+		let _ = write!(
+			attrs,
+			r#" fx="{}" fy="{}""#,
+			(focal_point.center.x * 1_000_000.).round() / 1_000_000.,
+			(focal_point.center.y * 1_000_000.).round() / 1_000_000.
+		);
+	}
+	if focal_point.radius > f64::EPSILON {
+		let _ = write!(attrs, r#" fr="{}""#, (focal_point.radius * 1_000_000.).round() / 1_000_000.);
+	}
+	attrs
+}
+
 /// Whether the affine transform inverts to a finite matrix (a zero, subnormal, or NaN determinant does not).
 pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
@@ -639,6 +677,7 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 	let stops = gradient_item.element()?;
 
 	let gradient_form: GradientForm = gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let focal_point = gradient_focal_point_from_item(gradient_item);
 	let gradient_transform: DAffine2 = gradient_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(gradient_item);
 
@@ -668,13 +707,7 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 				end: to_point(end),
 			}
 			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
-				start_center: to_point(start),
-				start_radius: 0.,
-				end_center: to_point(start),
-				end_radius: start.distance(end) as f32,
-			}
-			.into(),
+			GradientForm::Radial => radial_focal_position(focal_point, start.distance(end)).into(),
 		},
 		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
@@ -2732,6 +2765,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 	let settings = gradient_settings_from_item(item);
+	let focal_point = gradient_focal_point_from_item(item);
 	let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 	render.leaf_tag(tag, |attributes| {
 		if let Some((min, size)) = thumbnail_rect {
@@ -2778,6 +2812,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 		};
 
 		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
+		let focal_attrs = focal_attributes(focal_point);
 		match gradient_form {
 			GradientForm::Linear => {
 				let _ = write!(
@@ -2788,7 +2823,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 			GradientForm::Radial => {
 				let _ = write!(
 					&mut attributes.0.svg_defs,
-					r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
+					r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{focal_attrs}{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
 				);
 			}
 		}
@@ -2827,6 +2862,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 		let settings = gradient_settings_from_item(item);
+		let focal_point = gradient_focal_point_from_item(item);
 		let (samples, span) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
 
 		let stops = peniko_color_stops(&samples);
@@ -2841,13 +2877,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 				end: to_point(DVec2::X * span.1),
 			}
 			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
-				start_center: to_point(DVec2::ZERO),
-				start_radius: 0.,
-				end_center: to_point(DVec2::ZERO),
-				end_radius: span.1 as f32,
-			}
-			.into(),
+			GradientForm::Radial => radial_focal_position(focal_point, span.1).into(),
 		};
 
 		let fill = peniko::Brush::Gradient(peniko::Gradient {
