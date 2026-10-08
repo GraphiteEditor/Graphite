@@ -327,7 +327,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 
 				let mut added_transaction = false;
-				for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface)) {
+				for layer in self.network_interface.layers_with_unique_transform_node(
+					self.network_interface
+						.selected_nodes()
+						.selected_unlocked_layers(&self.network_interface)
+						.filter(|&layer| self.metadata().bounding_box_viewport(layer).is_some()),
+				) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
@@ -4391,6 +4396,144 @@ mod document_message_handler_tests {
 			width_after > width_before && (width_after - width_before * 1.1).abs() < width_before * 0.02,
 			"one nudge should widen the shared node by about 10%, but it went from {width_before} to {width_after}"
 		);
+	}
+
+	// A layer without bounds must not consume the shared Transform slot ahead of a bounded layer that still needs aligning.
+	#[tokio::test]
+	async fn aligning_with_a_boundless_sharer_first_still_aligns() {
+		use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+		use crate::messages::tool::common_functionality::graph_modification_utils;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect_a = editor.get_selected_layer().await.unwrap();
+		editor.drag_tool(ToolType::Rectangle, 200., 0., 300., 100., ModifierKeys::empty()).await;
+		let rect_b = editor.get_selected_layer().await.unwrap();
+		editor.drag_tool(ToolType::Rectangle, 400., 0., 500., 100., ModifierKeys::empty()).await;
+		let rect_c = editor.get_selected_layer().await.unwrap();
+
+		// Whichever layer the align loop visits first is hidden, so a boundless layer always consumes the shared slot first.
+		let known = [rect_a, rect_b, rect_c];
+		let order: Vec<_> = editor.active_document().metadata().all_layers().filter(|layer| known.contains(layer)).collect();
+		assert_eq!(order.len(), 3, "the document should hold exactly the three rectangles");
+		let hidden = order[0];
+		let mut bounded = known.into_iter().filter(|layer| *layer != hidden).collect::<Vec<_>>();
+		bounded.sort_by(|a, b| {
+			let min_x = |layer: &LayerNodeIdentifier| editor.active_document().metadata().bounding_box_document(*layer).unwrap()[0].x;
+			min_x(a).partial_cmp(&min_x(b)).unwrap()
+		});
+		let [anchor, target] = [bounded[0], bounded[1]];
+
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let hidden_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, hidden, &editor.active_document().network_interface).unwrap();
+		let target_stroke = graph_modification_utils::get_stroke_id(target, &editor.active_document().network_interface).unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::primary_input(target_stroke),
+				input: NodeInput::node(hidden_transform, 0),
+			})
+			.await;
+
+		let network_interface = &editor.active_document().network_interface;
+		assert_eq!(
+			ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, hidden, network_interface),
+			ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, target, network_interface),
+			"The hidden layer and the target should share one Transform node"
+		);
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![hidden.to_node()] }).await;
+		editor.handle_message(DocumentMessage::ToggleSelectedVisibility).await;
+		assert!(
+			editor.active_document().metadata().bounding_box_viewport(hidden).is_none(),
+			"a hidden layer should have no viewport bounds"
+		);
+
+		let anchor_min_before = editor.active_document().metadata().bounding_box_document(anchor).unwrap()[0].x;
+
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![anchor.to_node(), target.to_node(), hidden.to_node()],
+			})
+			.await;
+		editor
+			.handle_message(DocumentMessage::AlignSelectedLayers {
+				axis: AlignAxis::X,
+				aggregate: AlignAggregate::Min,
+			})
+			.await;
+
+		let anchor_min_after = editor.active_document().metadata().bounding_box_document(anchor).unwrap()[0].x;
+		let target_min_after = editor.active_document().metadata().bounding_box_document(target).unwrap()[0].x;
+		assert!((anchor_min_after - anchor_min_before).abs() < 1e-6, "the anchor should not move, but went from {anchor_min_before} to {anchor_min_after}");
+		assert!(
+			(target_min_after - anchor_min_after).abs() < 1e-6,
+			"the bounded sharer should align to {anchor_min_after}, but sits at {target_min_after}"
+		);
+	}
+
+	// Sharing works through nesting too: a layer inside an untransformed folder composes through the same downstream
+	// transform as a root layer, so the pair still receives the drag's translation once, not once per layer.
+	#[tokio::test]
+	async fn dragging_nested_layers_sharing_a_transform_node_moves_them_once() {
+		use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+		use crate::messages::tool::common_functionality::graph_modification_utils;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let first = editor.get_selected_layer().await.unwrap();
+		editor.drag_tool(ToolType::Rectangle, 200., 0., 300., 100., ModifierKeys::empty()).await;
+		let second = editor.get_selected_layer().await.unwrap();
+
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let folder = editor.get_selected_layer().await.unwrap();
+		editor
+			.handle_message(NodeGraphMessage::MoveLayerToStack {
+				layer: second,
+				parent: folder,
+				insert_index: 0,
+			})
+			.await;
+
+		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
+		let first_transform = ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, first, &editor.active_document().network_interface).unwrap();
+		let second_stroke = graph_modification_utils::get_stroke_id(second, &editor.active_document().network_interface).unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::primary_input(second_stroke),
+				input: NodeInput::node(first_transform, 0),
+			})
+			.await;
+
+		let network_interface = &editor.active_document().network_interface;
+		assert_eq!(
+			ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, first, network_interface),
+			ModifyInputsContext::locate_node_in_layer_chain(&transform_reference, second, network_interface),
+			"The two layers should share one Transform node across the folder boundary"
+		);
+
+		let first_before = editor.active_document().metadata().transform_to_document(first).translation;
+		let second_before = editor.active_document().metadata().transform_to_document(second).translation;
+
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: vec![first.to_node(), second.to_node()],
+			})
+			.await;
+
+		// Drag the selection by 50px on each axis, starting on top of the first rectangle.
+		editor.drag_tool(ToolType::Select, 50., 50., 100., 100., ModifierKeys::empty()).await;
+
+		for (layer, before) in [(first, first_before), (second, second_before)] {
+			let delta = editor.active_document().metadata().transform_to_document(layer).translation - before;
+			assert!(
+				(delta - DVec2::new(50., 50.)).length() < 1e-6,
+				"Layer {layer:?} should have moved once by the drag delta, but moved by {delta}"
+			);
+		}
 	}
 
 	// TODO: Fix https://github.com/GraphiteEditor/Graphite/issues/2688 and reenable this as part of that fix.

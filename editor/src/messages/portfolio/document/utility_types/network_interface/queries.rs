@@ -783,6 +783,10 @@ impl NodeNetworkInterface {
 	///
 	/// Layers sharing a Transform node compose through it, so transforming each of them would apply the same change once
 	/// per layer. Keep only the first layer for each Transform node, or all of them when the layer has no Transform node.
+	///
+	/// One shared node holds one value, so a single application is the closest any bulk operation gets: the first layer's
+	/// context converts exactly, and any sharer under a different downstream transform follows through the shared node.
+	/// Splitting the node per branch would be the full fix for divergent sharers; until then this never applies twice.
 	pub fn layers_with_unique_transform_node<'a>(&'a self, layers: impl IntoIterator<Item = LayerNodeIdentifier> + 'a) -> impl Iterator<Item = LayerNodeIdentifier> + 'a {
 		let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
 		let mut seen_transform_nodes = HashSet::new();
