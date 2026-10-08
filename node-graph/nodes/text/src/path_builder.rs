@@ -7,8 +7,13 @@ use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{MetadataProvider, OutlineGlyph};
-use vector_types::kurbo::{Affine, BezPath, Point, Rect, Shape};
+use vector_types::kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape};
 use vector_types::vector::{Vector, VectorExt};
+
+/// Converts a mapped point back into kurbo's point type.
+fn to_kurbo_point(point: DVec2) -> Point {
+	Point { x: point.x, y: point.y }
+}
 
 pub struct PathBuilder {
 	origin: DVec2,
@@ -98,6 +103,43 @@ impl PathBuilder {
 		has_geometry
 	}
 
+	/// Draws a glyph placed by an explicit transform, for laying text along a path where the placement is computed
+	/// outside the shaper.
+	pub fn draw_glyph_with_transform(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, transform: DAffine2) {
+		self.draw_glyph(glyph, size, normalized_coords, DVec2::ZERO, style_skew, transform, false);
+	}
+
+	/// Draws a glyph whose every outline point is mapped through `map`, for stretching text along a path's curvature.
+	/// The outline already arrives scaled through the pen, so `map` works in placed-glyph space directly.
+	pub fn draw_glyph_with_mapping(&mut self, glyph: &OutlineGlyph<'_>, size: f32, normalized_coords: &[NormalizedCoord], style_skew: Option<DAffine2>, mut map: impl FnMut(DVec2) -> DVec2) {
+		let location_ref = LocationRef::new(normalized_coords);
+		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
+		glyph.draw(settings, self).unwrap();
+
+		if let Some(style_skew) = style_skew {
+			self.glyph_bezpath.apply_affine(Affine::new(style_skew.to_cols_array()));
+		}
+
+		// Map every on-curve and off-curve point through the caller's placement function.
+		let mapped = core::mem::take(&mut self.glyph_bezpath)
+			.into_iter()
+			.map(|element| match element {
+				PathEl::MoveTo(point) => PathEl::MoveTo(to_kurbo_point(map(DVec2::new(point.x, point.y)))),
+				PathEl::LineTo(point) => PathEl::LineTo(to_kurbo_point(map(DVec2::new(point.x, point.y)))),
+				PathEl::QuadTo(control, point) => PathEl::QuadTo(to_kurbo_point(map(DVec2::new(control.x, control.y))), to_kurbo_point(map(DVec2::new(point.x, point.y)))),
+				PathEl::CurveTo(control_1, control_2, point) => PathEl::CurveTo(
+					to_kurbo_point(map(DVec2::new(control_1.x, control_1.y))),
+					to_kurbo_point(map(DVec2::new(control_2.x, control_2.y))),
+					to_kurbo_point(map(DVec2::new(point.x, point.y))),
+				),
+				PathEl::ClosePath => PathEl::ClosePath,
+			})
+			.collect();
+
+		// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
+		self.vector_list.element_mut(0).unwrap().append_bezpath(mapped);
+	}
+
 	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
 		let mut run_x = glyph_run.offset() + x_offset;
 		let run_y = glyph_run.baseline();
@@ -156,11 +198,20 @@ impl PathBuilder {
 		}
 	}
 
-	pub fn finalize(mut self) -> List<Vector> {
+	pub fn finalize(self) -> List<Vector> {
+		self.finish(true)
+	}
+
+	/// Finalizes without the text-tool frame metadata, for outputs like text on a path that no text box owns.
+	pub fn finalize_without_text_frame(self) -> List<Vector> {
+		self.finish(false)
+	}
+
+	fn finish(mut self, stamp_text_frame: bool) -> List<Vector> {
 		// Empty list = all glyphs clipped by height. Create a placeholder with the same item-0
 		// transform a populated list would have so `local_transforms` stays stable mid-drag.
 		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
-		if self.vector_list.is_empty() {
+		if self.vector_list.is_empty() && stamp_text_frame {
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -self.first_glyph_offset);
 			let item = Item::new_from_element(Vector::default())
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(self.first_glyph_offset))
@@ -207,10 +258,12 @@ impl PathBuilder {
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
-		let frame = DAffine2::from_scale(self.text_frame_size);
-		for index in 0..self.vector_list.len() {
-			if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
-				self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+		if stamp_text_frame {
+			let frame = DAffine2::from_scale(self.text_frame_size);
+			for index in 0..self.vector_list.len() {
+				if self.vector_list.attribute::<DAffine2>(ATTR_EDITOR_TEXT_FRAME, index).is_none() {
+					self.vector_list.set_attribute(ATTR_EDITOR_TEXT_FRAME, index, frame);
+				}
 			}
 		}
 
