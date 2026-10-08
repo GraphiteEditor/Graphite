@@ -193,9 +193,10 @@ impl AlignmentSnapper {
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, config: SnapTypeConfiguration) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_path = matches!(point.source, SnapSource::Path(_));
+		let is_pivot = matches!(point.source, SnapSource::Pivot(_));
 		let path_selected = snap_data.has_manipulators();
 
-		if is_bbox || (is_path && path_selected) || (is_path && point.alignment) {
+		if is_bbox || is_pivot || (is_path && path_selected) || (is_path && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, SnapConstraint::None, config);
 		}
 	}
@@ -203,9 +204,10 @@ impl AlignmentSnapper {
 	pub fn constrained_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults, constraint: SnapConstraint, config: SnapTypeConfiguration) {
 		let is_bbox = matches!(point.source, SnapSource::BoundingBox(_));
 		let is_path = matches!(point.source, SnapSource::Path(_));
+		let is_pivot = matches!(point.source, SnapSource::Pivot(_));
 		let path_selected = snap_data.has_manipulators();
 
-		if is_bbox || (is_path && path_selected) || (is_path && point.alignment) {
+		if is_bbox || is_pivot || (is_path && path_selected) || (is_path && point.alignment) {
 			self.snap_bbox_points(snap_data, point, snap_results, constraint, config);
 		}
 	}
