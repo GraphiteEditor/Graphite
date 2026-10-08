@@ -508,10 +508,12 @@ pub(crate) fn gradient_settings_from_item(item: ItemRef<'_, Gradient>) -> Gradie
 }
 
 /// The focal point a gradient item carries beside its element, defaulting each absent value.
+///
+/// Clamped into the range every renderer agrees on, since node-built values skip the import-time clamp.
 pub(crate) fn gradient_focal_point_from_item(item: ItemRef<'_, Gradient>) -> GradientFocalPoint {
 	match item {
-		ItemRef::ListItem(list, index) => GradientFocalPoint::from_list_row_attributes(list, index),
-		ItemRef::Item(item) => GradientFocalPoint::from_item_attributes(item),
+		ItemRef::ListItem(list, index) => GradientFocalPoint::from_list_row_attributes(list, index).clamped(),
+		ItemRef::Item(item) => GradientFocalPoint::from_item_attributes(item).clamped(),
 	}
 }
 
