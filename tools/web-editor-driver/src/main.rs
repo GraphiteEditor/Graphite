@@ -615,11 +615,13 @@ fn run_scenario_folder(folder: &Path, allow_console_errors: bool, output: Option
 		return Err("A session is already running, so stop it before running a folder of scenarios, which starts a new session for each".to_string());
 	}
 
-	let entries = std::fs::read_dir(folder).map_err(|error| format!("Failed to read the folder {}: {error}", folder.display()))?;
+	let read_error = |error: std::io::Error| format!("Failed to read the folder {}: {error}", folder.display());
+	let entries = std::fs::read_dir(folder).map_err(read_error)?;
 	let mut files = entries
-		.filter_map(|entry| entry.ok().map(|entry| entry.path().components().collect::<PathBuf>()))
-		.filter(|path| path.extension().is_some_and(|extension| extension == "jsonl"))
-		.collect::<Vec<_>>();
+		.map(|entry| entry.map(|entry| entry.path().components().collect::<PathBuf>()))
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(read_error)?;
+	files.retain(|path| path.extension().is_some_and(|extension| extension == "jsonl"));
 	files.sort();
 	if files.is_empty() {
 		return Err(format!("The folder {} has no scenario files ending in .jsonl", folder.display()));
