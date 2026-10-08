@@ -299,6 +299,9 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	// Upgrade the document's nodes to be compatible with the latest version
 	document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
+	// A zoom outside the allowed range, like a non-finite one loaded as 0, would leave the canvas unusable
+	document.document_ptz.set_zoom(document.document_ptz.zoom());
+
 	// Load the document's embedded resources into the resource storage
 	std::mem::take(&mut document.resources.embedded).into_iter().for_each(|(hash, resource)| {
 		let data: Arc<[u8]> = Arc::from(resource.as_ref());

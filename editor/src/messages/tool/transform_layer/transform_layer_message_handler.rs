@@ -566,18 +566,18 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
 							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint);
 
-							let change = {
+							// Starting on the pivot leaves no distance to measure the scale against
+							let start_transform_dist = to_mouse_start.length_squared();
+							if start_transform_dist > f64::EPSILON {
 								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
 								let current_frame_dist = to_mouse_final_old.dot(to_mouse_start);
-								let start_transform_dist = to_mouse_start.length_squared();
+								let change = (current_frame_dist - previous_frame_dist) / start_transform_dist;
+								let change = if self.slow { change / SLOWING_DIVISOR } else { change };
 
-								(current_frame_dist - previous_frame_dist) / start_transform_dist
-							};
-							let change = if self.slow { change / SLOWING_DIVISOR } else { change };
-
-							scale = scale.increment_amount(change);
-							self.transform_operation = TransformOperation::Scaling(scale);
-							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+								scale = scale.increment_amount(change);
+								self.transform_operation = TransformOperation::Scaling(scale);
+								self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+							}
 						}
 					};
 				}
@@ -1185,6 +1185,30 @@ mod test_transform_layer {
 		let new_scale_y = final_transform.matrix2.y_axis.length();
 		assert!(new_scale_x > 0., "After rescaling, scale factor X should be nonzero");
 		assert!(new_scale_y > 0., "After rescaling, scale factor Y should be nonzero");
+	}
+
+	#[tokio::test]
+	async fn test_scale_starting_on_pivot() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document();
+		let layer = document.metadata().all_layers().next().unwrap();
+
+		// The pivot is at the center of the rectangle
+		editor.move_mouse(50., 50., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.move_mouse(150., 150., ModifierKeys::empty(), MouseKeys::NONE).await;
+		editor
+			.handle_message(TransformLayerMessage::PointerMove {
+				slow_key: Key::Shift,
+				increments_key: Key::Control,
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(final_transform.is_finite(), "Scaling from the pivot should leave the transform finite, got: {final_transform:?}");
 	}
 
 	#[tokio::test]
