@@ -1,3 +1,9 @@
+<script context="module" lang="ts">
+	/// The pointer holding the active guide drag, shared by both rulers since the backend holds a single drag:
+	/// a press elsewhere mid-drag is ignored rather than overwriting it.
+	let activeGuidePointerId: number | undefined = undefined;
+</script>
+
 <script lang="ts">
 	import { createEventDispatcher, onMount } from "svelte";
 	import type { GuideRulerEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -70,15 +76,16 @@
 	}
 
 	function onPointerDown(event: PointerEvent) {
-		// Only the primary button draws or grabs a guide; a right-click must not start one, nor may a second
-		// pointer steal the drag the first one holds.
-		if (event.button !== 0 || dragging) return;
+		// Only the primary button draws or grabs a guide; a right-click must not start one, nor may any pointer
+		// steal the drag another one holds on either ruler.
+		if (event.button !== 0 || dragging || activeGuidePointerId !== undefined) return;
 		const position = viewportPosition(event);
 		if (!position) return;
 		const grabbed = guideNear(event);
 		// A press that finds nothing draws a guide; one that finds a line moves that line. Either way the backend holds
 		// the drag, so this never has to name a line it is in the middle of creating.
 		dragging = true;
+		activeGuidePointerId = event.pointerId;
 		drewDuringDrag = grabbed === undefined;
 		if (grabbed) {
 			dispatch("grabGuideLine", { id: grabbed.id });
@@ -92,6 +99,7 @@
 
 	function onPointerMove(event: PointerEvent) {
 		if (dragging) {
+			if (event.pointerId !== activeGuidePointerId) return;
 			const position = viewportPosition(event);
 			if (position) dispatch("dragGuideLine", position);
 		} else {
@@ -101,17 +109,19 @@
 	}
 
 	function onPointerUp(event: PointerEvent) {
-		if (!dragging) return;
+		if (!dragging || event.pointerId !== activeGuidePointerId) return;
 		dragging = false;
+		activeGuidePointerId = undefined;
 		hoverCursor = undefined;
 		// Releasing where the drag began leaves no guide behind, matching a drag out that never left the ruler.
 		dispatch("endGuideLineDrag", { discard: drewDuringDrag && overRuler(event) });
 		drewDuringDrag = false;
 	}
 
-	function onPointerCancel() {
-		if (!dragging) return;
+	function onPointerCancel(event: PointerEvent) {
+		if (!dragging || event.pointerId !== activeGuidePointerId) return;
 		dragging = false;
+		activeGuidePointerId = undefined;
 		hoverCursor = undefined;
 		dispatch("endGuideLineDrag", { discard: drewDuringDrag });
 		drewDuringDrag = false;
