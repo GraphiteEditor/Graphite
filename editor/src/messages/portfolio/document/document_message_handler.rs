@@ -632,7 +632,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					let mut added_transaction = false;
-					for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface)) {
+					for layer in self
+						.network_interface
+						.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface))
+					{
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -655,7 +658,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let bbox_trans = DAffine2::from_translation(-center);
 
 					let mut added_transaction = false;
-					for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface)) {
+					for layer in self
+						.network_interface
+						.layers_with_unique_transform_node(self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface))
+					{
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -2998,7 +3004,10 @@ impl DocumentMessageHandler {
 
 			responses.add(DocumentMessage::AddTransaction);
 
-			for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer))) {
+			for layer in self
+				.network_interface
+				.layers_with_unique_transform_node(self.network_interface.shallowest_unique_layers(&[]).filter(|&layer| can_move(layer)))
+			{
 				responses.add(GraphOperationMessage::TransformChange {
 					layer,
 					transform,
@@ -3015,7 +3024,10 @@ impl DocumentMessageHandler {
 		let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
 		responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
 
-		for layer in self.network_interface.layers_with_unique_transform_node(self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer))) {
+		for layer in self
+			.network_interface
+			.layers_with_unique_transform_node(self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)))
+		{
 			responses.add(GraphOperationMessage::TransformChange {
 				layer,
 				transform,
@@ -4350,14 +4362,10 @@ mod document_message_handler_tests {
 		// The rewired layers sit on top of each other, so the flip is invisible in the rendered bounds. The shared node's
 		// own scale is what says whether it was mirrored once or twice.
 		let scale_index = graphene_std::transform_nodes::transform::ScaleInput::INDEX;
-		let Some(TaggedValue::DVec2(scale)) = editor.active_document().network_interface.document_network().nodes[&shared_transform].inputs[scale_index].as_value()
-		else {
+		let Some(TaggedValue::DVec2(scale)) = editor.active_document().network_interface.document_network().nodes[&shared_transform].inputs[scale_index].as_value() else {
 			panic!("The shared Transform node should still hold a scale");
 		};
-		assert!(
-			scale.x * scale.y < 0.,
-			"one flip should leave the shared node mirrored, but its scale is {scale:?}"
-		);
+		assert!(scale.x * scale.y < 0., "one flip should leave the shared node mirrored, but its scale is {scale:?}");
 	}
 
 	// A resize applied twice lands at twice the requested size.
@@ -4466,7 +4474,10 @@ mod document_message_handler_tests {
 
 		let anchor_min_after = editor.active_document().metadata().bounding_box_document(anchor).unwrap()[0].x;
 		let target_min_after = editor.active_document().metadata().bounding_box_document(target).unwrap()[0].x;
-		assert!((anchor_min_after - anchor_min_before).abs() < 1e-6, "the anchor should not move, but went from {anchor_min_before} to {anchor_min_after}");
+		assert!(
+			(anchor_min_after - anchor_min_before).abs() < 1e-6,
+			"the anchor should not move, but went from {anchor_min_before} to {anchor_min_after}"
+		);
 		assert!(
 			(target_min_after - anchor_min_after).abs() < 1e-6,
 			"the bounded sharer should align to {anchor_min_after}, but sits at {target_min_after}"
