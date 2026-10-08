@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-	import type { GuideRulerEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "/src/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
@@ -20,7 +19,7 @@
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 	import { setupViewportResizeObserver, hasFirstArtworkBeenReceived, markFirstArtworkReceived } from "/src/utility-functions/viewports";
-	import type { EditorWrapper, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, GuideRulerEntry, MenuDirection, MouseCursorIcon, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;

@@ -43,7 +43,7 @@
 	/** Dispatched for every stage of a guide line drag: drawing, grabbing, moving, and ending it. */
 	const dispatch = createEventDispatcher<{
 		createGuideLine: { x: number; y: number };
-		grabGuideLine: { id: bigint };
+		grabGuideLine: { id: GuideRulerEntry["id"] };
 		dragGuideLine: { x: number; y: number };
 		endGuideLineDrag: { discard: boolean };
 	}>();
