@@ -513,7 +513,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuListEntry::new("Make Path Editable")
 							.label("Make Path Editable")
-							.icon("NodeShape")
+							.icon("Path")
 							.on_commit(|_| NodeGraphMessage::AddPathNode.into())
 							.disabled(!make_path_editable_is_allowed),
 						MenuListEntry::new("Expand Fill/Stroke")

@@ -1,61 +1,54 @@
-// Graphics
-import GraphiteLogotypeSolid from "/../branding/assets/graphics/graphite-logotype-solid.svg";
-
-const GRAPHICS = {
-	GraphiteLogotypeSolid: { svg: GraphiteLogotypeSolid, size: undefined },
-} as const;
-
 // 12px Solid
-import Add from "/../branding/assets/icon-12px-solid/add.svg";
-import Checkmark from "/../branding/assets/icon-12px-solid/checkmark.svg";
-import Clipped from "/../branding/assets/icon-12px-solid/clipped.svg";
-import CloseX from "/../branding/assets/icon-12px-solid/close-x.svg";
-import Delay from "/../branding/assets/icon-12px-solid/delay.svg";
-import DotThick from "/../branding/assets/icon-12px-solid/dot-thick.svg";
-import Dot from "/../branding/assets/icon-12px-solid/dot.svg";
-import DropdownArrow from "/../branding/assets/icon-12px-solid/dropdown-arrow.svg";
-import Edit12px from "/../branding/assets/icon-12px-solid/edit-12px.svg";
-import Empty12px from "/../branding/assets/icon-12px-solid/empty-12px.svg";
-import Failure from "/../branding/assets/icon-12px-solid/failure.svg";
-import FullscreenEnter from "/../branding/assets/icon-12px-solid/fullscreen-enter.svg";
-import FullscreenExit from "/../branding/assets/icon-12px-solid/fullscreen-exit.svg";
-import GradientSpreadClear from "/../branding/assets/icon-12px-solid/gradient-spread-clear.svg";
-import GradientSpreadPad from "/../branding/assets/icon-12px-solid/gradient-spread-pad.svg";
-import GradientSpreadReflect from "/../branding/assets/icon-12px-solid/gradient-spread-reflect.svg";
-import GradientSpreadRepeat from "/../branding/assets/icon-12px-solid/gradient-spread-repeat.svg";
-import GridDotted from "/../branding/assets/icon-12px-solid/grid-dotted.svg";
-import Grid from "/../branding/assets/icon-12px-solid/grid.svg";
-import Info from "/../branding/assets/icon-12px-solid/info.svg";
-import KeyboardArrowDown from "/../branding/assets/icon-12px-solid/keyboard-arrow-down.svg";
-import KeyboardArrowLeft from "/../branding/assets/icon-12px-solid/keyboard-arrow-left.svg";
-import KeyboardArrowRight from "/../branding/assets/icon-12px-solid/keyboard-arrow-right.svg";
-import KeyboardArrowUp from "/../branding/assets/icon-12px-solid/keyboard-arrow-up.svg";
-import KeyboardBackspace from "/../branding/assets/icon-12px-solid/keyboard-backspace.svg";
-import KeyboardCommand from "/../branding/assets/icon-12px-solid/keyboard-command.svg";
-import KeyboardControl from "/../branding/assets/icon-12px-solid/keyboard-control.svg";
-import KeyboardEnter from "/../branding/assets/icon-12px-solid/keyboard-enter.svg";
-import KeyboardOption from "/../branding/assets/icon-12px-solid/keyboard-option.svg";
-import KeyboardShift from "/../branding/assets/icon-12px-solid/keyboard-shift.svg";
-import KeyboardSpace from "/../branding/assets/icon-12px-solid/keyboard-space.svg";
-import KeyboardTab from "/../branding/assets/icon-12px-solid/keyboard-tab.svg";
-import License12px from "/../branding/assets/icon-12px-solid/license-12px.svg";
-import Link from "/../branding/assets/icon-12px-solid/link.svg";
-import Overlays from "/../branding/assets/icon-12px-solid/overlays.svg";
-import Remove from "/../branding/assets/icon-12px-solid/remove.svg";
-import RenderModeNormal from "/../branding/assets/icon-12px-solid/render-mode-normal.svg";
-import RenderModeOutline from "/../branding/assets/icon-12px-solid/render-mode-outline.svg";
-import RenderModePixels from "/../branding/assets/icon-12px-solid/render-mode-pixels.svg";
-import RenderModeSvg from "/../branding/assets/icon-12px-solid/render-mode-svg.svg";
-import Snapping from "/../branding/assets/icon-12px-solid/snapping.svg";
-import SwapHorizontal from "/../branding/assets/icon-12px-solid/swap-horizontal.svg";
-import SwapVertical from "/../branding/assets/icon-12px-solid/swap-vertical.svg";
-import VerticalEllipsis from "/../branding/assets/icon-12px-solid/vertical-ellipsis.svg";
-import Warning from "/../branding/assets/icon-12px-solid/warning.svg";
-import WindowButtonWinClose from "/../branding/assets/icon-12px-solid/window-button-win-close.svg";
-import WindowButtonWinMaximize from "/../branding/assets/icon-12px-solid/window-button-win-maximize.svg";
-import WindowButtonWinMinimize from "/../branding/assets/icon-12px-solid/window-button-win-minimize.svg";
-import WindowButtonWinRestoreDown from "/../branding/assets/icon-12px-solid/window-button-win-restore-down.svg";
-import WorkingColors from "/../branding/assets/icon-12px-solid/working-colors.svg";
+import Add from "/../branding/assets/12x12-ui-general/add.svg";
+import Checkmark from "/../branding/assets/12x12-ui-general/checkmark.svg";
+import Clipped from "/../branding/assets/12x12-ui-general/clipped.svg";
+import CloseX from "/../branding/assets/12x12-ui-general/close-x.svg";
+import Delay from "/../branding/assets/12x12-ui-general/delay.svg";
+import DotThick from "/../branding/assets/12x12-ui-general/dot-thick.svg";
+import Dot from "/../branding/assets/12x12-ui-general/dot.svg";
+import DropdownArrow from "/../branding/assets/12x12-ui-general/dropdown-arrow.svg";
+import Edit12px from "/../branding/assets/12x12-ui-general/edit-12px.svg";
+import Empty12px from "/../branding/assets/12x12-ui-general/empty-12px.svg";
+import Failure from "/../branding/assets/12x12-ui-general/failure.svg";
+import FullscreenEnter from "/../branding/assets/12x12-ui-general/fullscreen-enter.svg";
+import FullscreenExit from "/../branding/assets/12x12-ui-general/fullscreen-exit.svg";
+import GradientSpreadClear from "/../branding/assets/12x12-ui-general/gradient-spread-clear.svg";
+import GradientSpreadPad from "/../branding/assets/12x12-ui-general/gradient-spread-pad.svg";
+import GradientSpreadReflect from "/../branding/assets/12x12-ui-general/gradient-spread-reflect.svg";
+import GradientSpreadRepeat from "/../branding/assets/12x12-ui-general/gradient-spread-repeat.svg";
+import GridDotted from "/../branding/assets/12x12-ui-general/grid-dotted.svg";
+import Grid from "/../branding/assets/12x12-ui-general/grid.svg";
+import Info from "/../branding/assets/12x12-ui-general/info.svg";
+import KeyboardArrowDown from "/../branding/assets/12x12-ui-general/keyboard-arrow-down.svg";
+import KeyboardArrowLeft from "/../branding/assets/12x12-ui-general/keyboard-arrow-left.svg";
+import KeyboardArrowRight from "/../branding/assets/12x12-ui-general/keyboard-arrow-right.svg";
+import KeyboardArrowUp from "/../branding/assets/12x12-ui-general/keyboard-arrow-up.svg";
+import KeyboardBackspace from "/../branding/assets/12x12-ui-general/keyboard-backspace.svg";
+import KeyboardCommand from "/../branding/assets/12x12-ui-general/keyboard-command.svg";
+import KeyboardControl from "/../branding/assets/12x12-ui-general/keyboard-control.svg";
+import KeyboardEnter from "/../branding/assets/12x12-ui-general/keyboard-enter.svg";
+import KeyboardOption from "/../branding/assets/12x12-ui-general/keyboard-option.svg";
+import KeyboardShift from "/../branding/assets/12x12-ui-general/keyboard-shift.svg";
+import KeyboardSpace from "/../branding/assets/12x12-ui-general/keyboard-space.svg";
+import KeyboardTab from "/../branding/assets/12x12-ui-general/keyboard-tab.svg";
+import License12px from "/../branding/assets/12x12-ui-general/license-12px.svg";
+import Link from "/../branding/assets/12x12-ui-general/link.svg";
+import Overlays from "/../branding/assets/12x12-ui-general/overlays.svg";
+import Remove from "/../branding/assets/12x12-ui-general/remove.svg";
+import RenderModeNormal from "/../branding/assets/12x12-ui-general/render-mode-normal.svg";
+import RenderModeOutline from "/../branding/assets/12x12-ui-general/render-mode-outline.svg";
+import RenderModePixels from "/../branding/assets/12x12-ui-general/render-mode-pixels.svg";
+import RenderModeSvg from "/../branding/assets/12x12-ui-general/render-mode-svg.svg";
+import Snapping from "/../branding/assets/12x12-ui-general/snapping.svg";
+import SwapHorizontal from "/../branding/assets/12x12-ui-general/swap-horizontal.svg";
+import SwapVertical from "/../branding/assets/12x12-ui-general/swap-vertical.svg";
+import VerticalEllipsis from "/../branding/assets/12x12-ui-general/vertical-ellipsis.svg";
+import Warning from "/../branding/assets/12x12-ui-general/warning.svg";
+import WindowButtonWinClose from "/../branding/assets/12x12-ui-general/window-button-win-close.svg";
+import WindowButtonWinMaximize from "/../branding/assets/12x12-ui-general/window-button-win-maximize.svg";
+import WindowButtonWinMinimize from "/../branding/assets/12x12-ui-general/window-button-win-minimize.svg";
+import WindowButtonWinRestoreDown from "/../branding/assets/12x12-ui-general/window-button-win-restore-down.svg";
+import WorkingColors from "/../branding/assets/12x12-ui-general/working-colors.svg";
 
 const SOLID_12PX = {
 	Add: { svg: Add, size: 12 },
@@ -111,144 +104,140 @@ const SOLID_12PX = {
 } as const;
 
 // 16px Solid
-import AlignBottom from "/../branding/assets/icon-16px-solid/align-bottom.svg";
-import AlignHorizontalCenter from "/../branding/assets/icon-16px-solid/align-horizontal-center.svg";
-import AlignLeft from "/../branding/assets/icon-16px-solid/align-left.svg";
-import AlignRight from "/../branding/assets/icon-16px-solid/align-right.svg";
-import AlignTop from "/../branding/assets/icon-16px-solid/align-top.svg";
-import AlignVerticalCenter from "/../branding/assets/icon-16px-solid/align-vertical-center.svg";
-import Artboard from "/../branding/assets/icon-16px-solid/artboard.svg";
-import BooleanDifference from "/../branding/assets/icon-16px-solid/boolean-difference.svg";
-import BooleanDivide from "/../branding/assets/icon-16px-solid/boolean-divide.svg";
-import BooleanIntersect from "/../branding/assets/icon-16px-solid/boolean-intersect.svg";
-import BooleanSubtractBack from "/../branding/assets/icon-16px-solid/boolean-subtract-back.svg";
-import BooleanSubtractFront from "/../branding/assets/icon-16px-solid/boolean-subtract-front.svg";
-import BooleanUnion from "/../branding/assets/icon-16px-solid/boolean-union.svg";
-import Bug from "/../branding/assets/icon-16px-solid/bug.svg";
-import CheckboxChecked from "/../branding/assets/icon-16px-solid/checkbox-checked.svg";
-import CheckboxUnchecked from "/../branding/assets/icon-16px-solid/checkbox-unchecked.svg";
-import CloseAll from "/../branding/assets/icon-16px-solid/close-all.svg";
-import Close from "/../branding/assets/icon-16px-solid/close.svg";
-import Code from "/../branding/assets/icon-16px-solid/code.svg";
-import Copy from "/../branding/assets/icon-16px-solid/copy.svg";
-import Credits from "/../branding/assets/icon-16px-solid/credits.svg";
-import CustomColor from "/../branding/assets/icon-16px-solid/custom-color.svg";
-import Cut from "/../branding/assets/icon-16px-solid/cut.svg";
-import DeselectAll from "/../branding/assets/icon-16px-solid/deselect-all.svg";
-import Edit from "/../branding/assets/icon-16px-solid/edit.svg";
-import Empty from "/../branding/assets/icon-16px-solid/empty.svg";
-import ExpandFillStroke from "/../branding/assets/icon-16px-solid/expand-fill-stroke.svg";
-import EyeHidden from "/../branding/assets/icon-16px-solid/eye-hidden.svg";
-import EyeHide from "/../branding/assets/icon-16px-solid/eye-hide.svg";
-import EyeShow from "/../branding/assets/icon-16px-solid/eye-show.svg";
-import EyeVisible from "/../branding/assets/icon-16px-solid/eye-visible.svg";
-import Eyedropper from "/../branding/assets/icon-16px-solid/eyedropper.svg";
-import FileExport from "/../branding/assets/icon-16px-solid/file-export.svg";
-import FileImport from "/../branding/assets/icon-16px-solid/file-import.svg";
-import File from "/../branding/assets/icon-16px-solid/file.svg";
-import FlipHorizontal from "/../branding/assets/icon-16px-solid/flip-horizontal.svg";
-import FlipVertical from "/../branding/assets/icon-16px-solid/flip-vertical.svg";
-import FolderOpen from "/../branding/assets/icon-16px-solid/folder-open.svg";
-import Folder from "/../branding/assets/icon-16px-solid/folder.svg";
-import FrameAll from "/../branding/assets/icon-16px-solid/frame-all.svg";
-import FrameSelected from "/../branding/assets/icon-16px-solid/frame-selected.svg";
-import GraphViewClosed from "/../branding/assets/icon-16px-solid/graph-view-closed.svg";
-import GraphViewOpen from "/../branding/assets/icon-16px-solid/graph-view-open.svg";
-import GraphiteLogo from "/../branding/assets/icon-16px-solid/graphite-logo.svg";
-import HandleVisibilityAll from "/../branding/assets/icon-16px-solid/handle-visibility-all.svg";
-import HandleVisibilityFrontier from "/../branding/assets/icon-16px-solid/handle-visibility-frontier.svg";
-import HandleVisibilitySelected from "/../branding/assets/icon-16px-solid/handle-visibility-selected.svg";
-import Heart from "/../branding/assets/icon-16px-solid/heart.svg";
-import HistoryRedo from "/../branding/assets/icon-16px-solid/history-redo.svg";
-import HistoryUndo from "/../branding/assets/icon-16px-solid/history-undo.svg";
-import IconsGrid from "/../branding/assets/icon-16px-solid/icons-grid.svg";
-import Image from "/../branding/assets/icon-16px-solid/image.svg";
-import InterpolationBlend from "/../branding/assets/icon-16px-solid/interpolation-blend.svg";
-import InterpolationMorph from "/../branding/assets/icon-16px-solid/interpolation-morph.svg";
-import Layer from "/../branding/assets/icon-16px-solid/layer.svg";
-import License from "/../branding/assets/icon-16px-solid/license.svg";
-import NewLayer from "/../branding/assets/icon-16px-solid/new-layer.svg";
-import NodeBlur from "/../branding/assets/icon-16px-solid/node-blur.svg";
-import NodeBrushwork from "/../branding/assets/icon-16px-solid/node-brushwork.svg";
-import NodeColorCorrection from "/../branding/assets/icon-16px-solid/node-color-correction.svg";
-import NodeGradient from "/../branding/assets/icon-16px-solid/node-gradient.svg";
-import NodeMagicWand from "/../branding/assets/icon-16px-solid/node-magic-wand.svg";
-import NodeMask from "/../branding/assets/icon-16px-solid/node-mask.svg";
-import NodeMotionBlur from "/../branding/assets/icon-16px-solid/node-motion-blur.svg";
-import NodeNodes from "/../branding/assets/icon-16px-solid/node-nodes.svg";
-import NodeOutput from "/../branding/assets/icon-16px-solid/node-output.svg";
-import NodeShape from "/../branding/assets/icon-16px-solid/node-shape.svg";
-import NodeText from "/../branding/assets/icon-16px-solid/node-text.svg";
-import NodeTransform from "/../branding/assets/icon-16px-solid/node-transform.svg";
-import Node from "/../branding/assets/icon-16px-solid/node.svg";
-import PadlockLocked from "/../branding/assets/icon-16px-solid/padlock-locked.svg";
-import PadlockUnlocked from "/../branding/assets/icon-16px-solid/padlock-unlocked.svg";
-import Paste from "/../branding/assets/icon-16px-solid/paste.svg";
-import PinActive from "/../branding/assets/icon-16px-solid/pin-active.svg";
-import PinInactive from "/../branding/assets/icon-16px-solid/pin-inactive.svg";
-import PlaybackPause from "/../branding/assets/icon-16px-solid/playback-pause.svg";
-import PlaybackPlay from "/../branding/assets/icon-16px-solid/playback-play.svg";
-import PlaybackToEnd from "/../branding/assets/icon-16px-solid/playback-to-end.svg";
-import PlaybackToStart from "/../branding/assets/icon-16px-solid/playback-to-start.svg";
-import Random from "/../branding/assets/icon-16px-solid/random.svg";
-import Reload from "/../branding/assets/icon-16px-solid/reload.svg";
-import Reset from "/../branding/assets/icon-16px-solid/reset.svg";
-import Resync from "/../branding/assets/icon-16px-solid/resync.svg";
-import ReverseRadialGradientToLeft from "/../branding/assets/icon-16px-solid/reverse-radial-gradient-to-left.svg";
-import ReverseRadialGradientToRight from "/../branding/assets/icon-16px-solid/reverse-radial-gradient-to-right.svg";
-import Reverse from "/../branding/assets/icon-16px-solid/reverse.svg";
-import Save from "/../branding/assets/icon-16px-solid/save.svg";
-import SelectAll from "/../branding/assets/icon-16px-solid/select-all.svg";
-import SelectParent from "/../branding/assets/icon-16px-solid/select-parent.svg";
-import Settings from "/../branding/assets/icon-16px-solid/settings.svg";
-import SmallDot from "/../branding/assets/icon-16px-solid/small-dot.svg";
-import StackBottom from "/../branding/assets/icon-16px-solid/stack-bottom.svg";
-import StackHollow from "/../branding/assets/icon-16px-solid/stack-hollow.svg";
-import StackLower from "/../branding/assets/icon-16px-solid/stack-lower.svg";
-import StackRaise from "/../branding/assets/icon-16px-solid/stack-raise.svg";
-import StackReverse from "/../branding/assets/icon-16px-solid/stack-reverse.svg";
-import Stack from "/../branding/assets/icon-16px-solid/stack.svg";
-import StrokeAlignCenter from "/../branding/assets/icon-16px-solid/stroke-align-center.svg";
-import StrokeAlignInside from "/../branding/assets/icon-16px-solid/stroke-align-inside.svg";
-import StrokeAlignOutside from "/../branding/assets/icon-16px-solid/stroke-align-outside.svg";
-import StrokeCapButt from "/../branding/assets/icon-16px-solid/stroke-cap-butt.svg";
-import StrokeCapRound from "/../branding/assets/icon-16px-solid/stroke-cap-round.svg";
-import StrokeCapSquare from "/../branding/assets/icon-16px-solid/stroke-cap-square.svg";
-import StrokeJoinBevel from "/../branding/assets/icon-16px-solid/stroke-join-bevel.svg";
-import StrokeJoinMiter from "/../branding/assets/icon-16px-solid/stroke-join-miter.svg";
-import StrokeJoinRound from "/../branding/assets/icon-16px-solid/stroke-join-round.svg";
-import StrokeOrderAbove from "/../branding/assets/icon-16px-solid/stroke-order-above.svg";
-import StrokeOrderBelow from "/../branding/assets/icon-16px-solid/stroke-order-below.svg";
-import TextAlignCenter from "/../branding/assets/icon-16px-solid/text-align-center.svg";
-import TextAlignLeft from "/../branding/assets/icon-16px-solid/text-align-left.svg";
-import TextAlignRight from "/../branding/assets/icon-16px-solid/text-align-right.svg";
-import TextAlignSpineAway from "/../branding/assets/icon-16px-solid/text-align-spine-away.svg";
-import TextAlignSpineTowards from "/../branding/assets/icon-16px-solid/text-align-spine-towards.svg";
-import TextJustifyAll from "/../branding/assets/icon-16px-solid/text-justify-all.svg";
-import TextJustifyCenter from "/../branding/assets/icon-16px-solid/text-justify-center.svg";
-import TextJustifyLeft from "/../branding/assets/icon-16px-solid/text-justify-left.svg";
-import TextJustifyRight from "/../branding/assets/icon-16px-solid/text-justify-right.svg";
-import TiltReset from "/../branding/assets/icon-16px-solid/tilt-reset.svg";
-import Tilt from "/../branding/assets/icon-16px-solid/tilt.svg";
-import TransformationGrab from "/../branding/assets/icon-16px-solid/transformation-grab.svg";
-import TransformationRotate from "/../branding/assets/icon-16px-solid/transformation-rotate.svg";
-import TransformationScale from "/../branding/assets/icon-16px-solid/transformation-scale.svg";
-import Trash from "/../branding/assets/icon-16px-solid/trash.svg";
-import TurnNegative90 from "/../branding/assets/icon-16px-solid/turn-negative-90.svg";
-import TurnPositive90 from "/../branding/assets/icon-16px-solid/turn-positive-90.svg";
-import UserManual from "/../branding/assets/icon-16px-solid/user-manual.svg";
-import ViewportDesignMode from "/../branding/assets/icon-16px-solid/viewport-design-mode.svg";
-import ViewportGuideMode from "/../branding/assets/icon-16px-solid/viewport-guide-mode.svg";
-import ViewportSelectMode from "/../branding/assets/icon-16px-solid/viewport-select-mode.svg";
-import Volunteer from "/../branding/assets/icon-16px-solid/volunteer.svg";
-import Website from "/../branding/assets/icon-16px-solid/website.svg";
-import WorkingColorsPrimary from "/../branding/assets/icon-16px-solid/working-colors-primary.svg";
-import WorkingColorsSecondary from "/../branding/assets/icon-16px-solid/working-colors-secondary.svg";
-import Zoom1x from "/../branding/assets/icon-16px-solid/zoom-1x.svg";
-import Zoom2x from "/../branding/assets/icon-16px-solid/zoom-2x.svg";
-import ZoomIn from "/../branding/assets/icon-16px-solid/zoom-in.svg";
-import ZoomOut from "/../branding/assets/icon-16px-solid/zoom-out.svg";
-import ZoomReset from "/../branding/assets/icon-16px-solid/zoom-reset.svg";
+import AlignBottom from "/../branding/assets/16x16-ui-general/align-bottom.svg";
+import AlignHorizontalCenter from "/../branding/assets/16x16-ui-general/align-horizontal-center.svg";
+import AlignLeft from "/../branding/assets/16x16-ui-general/align-left.svg";
+import AlignRight from "/../branding/assets/16x16-ui-general/align-right.svg";
+import AlignTop from "/../branding/assets/16x16-ui-general/align-top.svg";
+import AlignVerticalCenter from "/../branding/assets/16x16-ui-general/align-vertical-center.svg";
+import Artboard from "/../branding/assets/16x16-ui-general/artboard.svg";
+import Blur from "/../branding/assets/16x16-ui-general/blur.svg";
+import BooleanDifference from "/../branding/assets/16x16-ui-general/boolean-difference.svg";
+import BooleanDivide from "/../branding/assets/16x16-ui-general/boolean-divide.svg";
+import BooleanIntersect from "/../branding/assets/16x16-ui-general/boolean-intersect.svg";
+import BooleanSubtractBack from "/../branding/assets/16x16-ui-general/boolean-subtract-back.svg";
+import BooleanSubtractFront from "/../branding/assets/16x16-ui-general/boolean-subtract-front.svg";
+import BooleanUnion from "/../branding/assets/16x16-ui-general/boolean-union.svg";
+import Brush from "/../branding/assets/16x16-ui-general/brush.svg";
+import Bug from "/../branding/assets/16x16-ui-general/bug.svg";
+import CheckboxChecked from "/../branding/assets/16x16-ui-general/checkbox-checked.svg";
+import CheckboxUnchecked from "/../branding/assets/16x16-ui-general/checkbox-unchecked.svg";
+import CloseAll from "/../branding/assets/16x16-ui-general/close-all.svg";
+import Close from "/../branding/assets/16x16-ui-general/close.svg";
+import Code from "/../branding/assets/16x16-ui-general/code.svg";
+import ColorPalette from "/../branding/assets/16x16-ui-general/color-palette.svg";
+import Copy from "/../branding/assets/16x16-ui-general/copy.svg";
+import Credits from "/../branding/assets/16x16-ui-general/credits.svg";
+import CustomColor from "/../branding/assets/16x16-ui-general/custom-color.svg";
+import Cut from "/../branding/assets/16x16-ui-general/cut.svg";
+import DeselectAll from "/../branding/assets/16x16-ui-general/deselect-all.svg";
+import Edit from "/../branding/assets/16x16-ui-general/edit.svg";
+import Empty from "/../branding/assets/16x16-ui-general/empty.svg";
+import ExpandFillStroke from "/../branding/assets/16x16-ui-general/expand-fill-stroke.svg";
+import EyeHidden from "/../branding/assets/16x16-ui-general/eye-hidden.svg";
+import EyeHide from "/../branding/assets/16x16-ui-general/eye-hide.svg";
+import EyeShow from "/../branding/assets/16x16-ui-general/eye-show.svg";
+import EyeVisible from "/../branding/assets/16x16-ui-general/eye-visible.svg";
+import Eyedropper from "/../branding/assets/16x16-ui-general/eyedropper.svg";
+import FileExport from "/../branding/assets/16x16-ui-general/file-export.svg";
+import FileImport from "/../branding/assets/16x16-ui-general/file-import.svg";
+import File from "/../branding/assets/16x16-ui-general/file.svg";
+import FlipHorizontal from "/../branding/assets/16x16-ui-general/flip-horizontal.svg";
+import FlipVertical from "/../branding/assets/16x16-ui-general/flip-vertical.svg";
+import FolderOpen from "/../branding/assets/16x16-ui-general/folder-open.svg";
+import Folder from "/../branding/assets/16x16-ui-general/folder.svg";
+import FrameAll from "/../branding/assets/16x16-ui-general/frame-all.svg";
+import FrameSelected from "/../branding/assets/16x16-ui-general/frame-selected.svg";
+import Gradient from "/../branding/assets/16x16-ui-general/gradient.svg";
+import GraphViewClosed from "/../branding/assets/16x16-ui-general/graph-view-closed.svg";
+import GraphViewOpen from "/../branding/assets/16x16-ui-general/graph-view-open.svg";
+import GraphiteLogo from "/../branding/assets/16x16-ui-general/graphite-logo.svg";
+import HandleVisibilityAll from "/../branding/assets/16x16-ui-general/handle-visibility-all.svg";
+import HandleVisibilityFrontier from "/../branding/assets/16x16-ui-general/handle-visibility-frontier.svg";
+import HandleVisibilitySelected from "/../branding/assets/16x16-ui-general/handle-visibility-selected.svg";
+import Heart from "/../branding/assets/16x16-ui-general/heart.svg";
+import HistoryRedo from "/../branding/assets/16x16-ui-general/history-redo.svg";
+import HistoryUndo from "/../branding/assets/16x16-ui-general/history-undo.svg";
+import IconsGrid from "/../branding/assets/16x16-ui-general/icons-grid.svg";
+import Image from "/../branding/assets/16x16-ui-general/image.svg";
+import InterpolationBlend from "/../branding/assets/16x16-ui-general/interpolation-blend.svg";
+import InterpolationMorph from "/../branding/assets/16x16-ui-general/interpolation-morph.svg";
+import Layer from "/../branding/assets/16x16-ui-general/layer.svg";
+import License from "/../branding/assets/16x16-ui-general/license.svg";
+import MagicWand from "/../branding/assets/16x16-ui-general/magic-wand.svg";
+import NewLayer from "/../branding/assets/16x16-ui-general/new-layer.svg";
+import Node from "/../branding/assets/16x16-ui-general/node.svg";
+import PadlockLocked from "/../branding/assets/16x16-ui-general/padlock-locked.svg";
+import PadlockUnlocked from "/../branding/assets/16x16-ui-general/padlock-unlocked.svg";
+import Paste from "/../branding/assets/16x16-ui-general/paste.svg";
+import Path from "/../branding/assets/16x16-ui-general/path.svg";
+import PinActive from "/../branding/assets/16x16-ui-general/pin-active.svg";
+import PinInactive from "/../branding/assets/16x16-ui-general/pin-inactive.svg";
+import PlaybackPause from "/../branding/assets/16x16-ui-general/playback-pause.svg";
+import PlaybackPlay from "/../branding/assets/16x16-ui-general/playback-play.svg";
+import PlaybackToEnd from "/../branding/assets/16x16-ui-general/playback-to-end.svg";
+import PlaybackToStart from "/../branding/assets/16x16-ui-general/playback-to-start.svg";
+import Random from "/../branding/assets/16x16-ui-general/random.svg";
+import Reload from "/../branding/assets/16x16-ui-general/reload.svg";
+import Reset from "/../branding/assets/16x16-ui-general/reset.svg";
+import Resync from "/../branding/assets/16x16-ui-general/resync.svg";
+import ReverseRadialGradientToLeft from "/../branding/assets/16x16-ui-general/reverse-radial-gradient-to-left.svg";
+import ReverseRadialGradientToRight from "/../branding/assets/16x16-ui-general/reverse-radial-gradient-to-right.svg";
+import Reverse from "/../branding/assets/16x16-ui-general/reverse.svg";
+import Save from "/../branding/assets/16x16-ui-general/save.svg";
+import SelectAll from "/../branding/assets/16x16-ui-general/select-all.svg";
+import SelectParent from "/../branding/assets/16x16-ui-general/select-parent.svg";
+import Settings from "/../branding/assets/16x16-ui-general/settings.svg";
+import SmallDot from "/../branding/assets/16x16-ui-general/small-dot.svg";
+import StackBottom from "/../branding/assets/16x16-ui-general/stack-bottom.svg";
+import StackHollow from "/../branding/assets/16x16-ui-general/stack-hollow.svg";
+import StackLower from "/../branding/assets/16x16-ui-general/stack-lower.svg";
+import StackRaise from "/../branding/assets/16x16-ui-general/stack-raise.svg";
+import StackReverse from "/../branding/assets/16x16-ui-general/stack-reverse.svg";
+import Stack from "/../branding/assets/16x16-ui-general/stack.svg";
+import StrokeAlignCenter from "/../branding/assets/16x16-ui-general/stroke-align-center.svg";
+import StrokeAlignInside from "/../branding/assets/16x16-ui-general/stroke-align-inside.svg";
+import StrokeAlignOutside from "/../branding/assets/16x16-ui-general/stroke-align-outside.svg";
+import StrokeCapButt from "/../branding/assets/16x16-ui-general/stroke-cap-butt.svg";
+import StrokeCapRound from "/../branding/assets/16x16-ui-general/stroke-cap-round.svg";
+import StrokeCapSquare from "/../branding/assets/16x16-ui-general/stroke-cap-square.svg";
+import StrokeJoinBevel from "/../branding/assets/16x16-ui-general/stroke-join-bevel.svg";
+import StrokeJoinMiter from "/../branding/assets/16x16-ui-general/stroke-join-miter.svg";
+import StrokeJoinRound from "/../branding/assets/16x16-ui-general/stroke-join-round.svg";
+import StrokeOrderAbove from "/../branding/assets/16x16-ui-general/stroke-order-above.svg";
+import StrokeOrderBelow from "/../branding/assets/16x16-ui-general/stroke-order-below.svg";
+import TextAlignCenter from "/../branding/assets/16x16-ui-general/text-align-center.svg";
+import TextAlignLeft from "/../branding/assets/16x16-ui-general/text-align-left.svg";
+import TextAlignRight from "/../branding/assets/16x16-ui-general/text-align-right.svg";
+import TextAlignSpineAway from "/../branding/assets/16x16-ui-general/text-align-spine-away.svg";
+import TextAlignSpineTowards from "/../branding/assets/16x16-ui-general/text-align-spine-towards.svg";
+import TextJustifyAll from "/../branding/assets/16x16-ui-general/text-justify-all.svg";
+import TextJustifyCenter from "/../branding/assets/16x16-ui-general/text-justify-center.svg";
+import TextJustifyLeft from "/../branding/assets/16x16-ui-general/text-justify-left.svg";
+import TextJustifyRight from "/../branding/assets/16x16-ui-general/text-justify-right.svg";
+import Text from "/../branding/assets/16x16-ui-general/text.svg";
+import TiltReset from "/../branding/assets/16x16-ui-general/tilt-reset.svg";
+import Tilt from "/../branding/assets/16x16-ui-general/tilt.svg";
+import Transform from "/../branding/assets/16x16-ui-general/transform.svg";
+import TransformationGrab from "/../branding/assets/16x16-ui-general/transformation-grab.svg";
+import TransformationRotate from "/../branding/assets/16x16-ui-general/transformation-rotate.svg";
+import TransformationScale from "/../branding/assets/16x16-ui-general/transformation-scale.svg";
+import Trash from "/../branding/assets/16x16-ui-general/trash.svg";
+import TurnNegative90 from "/../branding/assets/16x16-ui-general/turn-negative-90.svg";
+import TurnPositive90 from "/../branding/assets/16x16-ui-general/turn-positive-90.svg";
+import UserManual from "/../branding/assets/16x16-ui-general/user-manual.svg";
+import ViewportDesignMode from "/../branding/assets/16x16-ui-general/viewport-design-mode.svg";
+import ViewportGuideMode from "/../branding/assets/16x16-ui-general/viewport-guide-mode.svg";
+import ViewportSelectMode from "/../branding/assets/16x16-ui-general/viewport-select-mode.svg";
+import Volunteer from "/../branding/assets/16x16-ui-general/volunteer.svg";
+import Website from "/../branding/assets/16x16-ui-general/website.svg";
+import WorkingColorsPrimary from "/../branding/assets/16x16-ui-general/working-colors-primary.svg";
+import WorkingColorsSecondary from "/../branding/assets/16x16-ui-general/working-colors-secondary.svg";
+import Zoom1x from "/../branding/assets/16x16-ui-general/zoom-1x.svg";
+import Zoom2x from "/../branding/assets/16x16-ui-general/zoom-2x.svg";
+import ZoomIn from "/../branding/assets/16x16-ui-general/zoom-in.svg";
+import ZoomOut from "/../branding/assets/16x16-ui-general/zoom-out.svg";
+import ZoomReset from "/../branding/assets/16x16-ui-general/zoom-reset.svg";
 
 const SOLID_16PX = {
 	AlignBottom: { svg: AlignBottom, size: 16 },
@@ -258,18 +247,21 @@ const SOLID_16PX = {
 	AlignTop: { svg: AlignTop, size: 16 },
 	AlignVerticalCenter: { svg: AlignVerticalCenter, size: 16 },
 	Artboard: { svg: Artboard, size: 16 },
+	Blur: { svg: Blur, size: 16 },
 	BooleanDifference: { svg: BooleanDifference, size: 16 },
 	BooleanDivide: { svg: BooleanDivide, size: 16 },
 	BooleanIntersect: { svg: BooleanIntersect, size: 16 },
 	BooleanSubtractBack: { svg: BooleanSubtractBack, size: 16 },
 	BooleanSubtractFront: { svg: BooleanSubtractFront, size: 16 },
 	BooleanUnion: { svg: BooleanUnion, size: 16 },
+	Brush: { svg: Brush, size: 16 },
 	Bug: { svg: Bug, size: 16 },
 	CheckboxChecked: { svg: CheckboxChecked, size: 16 },
 	CheckboxUnchecked: { svg: CheckboxUnchecked, size: 16 },
 	Close: { svg: Close, size: 16 },
 	CloseAll: { svg: CloseAll, size: 16 },
 	Code: { svg: Code, size: 16 },
+	ColorPalette: { svg: ColorPalette, size: 16 },
 	Copy: { svg: Copy, size: 16 },
 	Credits: { svg: Credits, size: 16 },
 	CustomColor: { svg: CustomColor, size: 16 },
@@ -292,6 +284,7 @@ const SOLID_16PX = {
 	FolderOpen: { svg: FolderOpen, size: 16 },
 	FrameAll: { svg: FrameAll, size: 16 },
 	FrameSelected: { svg: FrameSelected, size: 16 },
+	Gradient: { svg: Gradient, size: 16 },
 	GraphiteLogo: { svg: GraphiteLogo, size: 16 },
 	GraphViewClosed: { svg: GraphViewClosed, size: 16 },
 	GraphViewOpen: { svg: GraphViewOpen, size: 16 },
@@ -307,23 +300,13 @@ const SOLID_16PX = {
 	InterpolationMorph: { svg: InterpolationMorph, size: 16 },
 	Layer: { svg: Layer, size: 16 },
 	License: { svg: License, size: 16 },
+	MagicWand: { svg: MagicWand, size: 16 },
 	NewLayer: { svg: NewLayer, size: 16 },
 	Node: { svg: Node, size: 16 },
-	NodeBlur: { svg: NodeBlur, size: 16 },
-	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
-	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
-	NodeGradient: { svg: NodeGradient, size: 16 },
-	NodeMagicWand: { svg: NodeMagicWand, size: 16 },
-	NodeMask: { svg: NodeMask, size: 16 },
-	NodeMotionBlur: { svg: NodeMotionBlur, size: 16 },
-	NodeNodes: { svg: NodeNodes, size: 16 },
-	NodeOutput: { svg: NodeOutput, size: 16 },
-	NodeShape: { svg: NodeShape, size: 16 },
-	NodeText: { svg: NodeText, size: 16 },
-	NodeTransform: { svg: NodeTransform, size: 16 },
 	PadlockLocked: { svg: PadlockLocked, size: 16 },
 	PadlockUnlocked: { svg: PadlockUnlocked, size: 16 },
 	Paste: { svg: Paste, size: 16 },
+	Path: { svg: Path, size: 16 },
 	PinActive: { svg: PinActive, size: 16 },
 	PinInactive: { svg: PinInactive, size: 16 },
 	PlaybackPause: { svg: PlaybackPause, size: 16 },
@@ -359,6 +342,7 @@ const SOLID_16PX = {
 	StrokeJoinRound: { svg: StrokeJoinRound, size: 16 },
 	StrokeOrderAbove: { svg: StrokeOrderAbove, size: 16 },
 	StrokeOrderBelow: { svg: StrokeOrderBelow, size: 16 },
+	Text: { svg: Text, size: 16 },
 	TextAlignCenter: { svg: TextAlignCenter, size: 16 },
 	TextAlignLeft: { svg: TextAlignLeft, size: 16 },
 	TextAlignRight: { svg: TextAlignRight, size: 16 },
@@ -370,6 +354,7 @@ const SOLID_16PX = {
 	TextJustifyRight: { svg: TextJustifyRight, size: 16 },
 	Tilt: { svg: Tilt, size: 16 },
 	TiltReset: { svg: TiltReset, size: 16 },
+	Transform: { svg: Transform, size: 16 },
 	TransformationGrab: { svg: TransformationGrab, size: 16 },
 	TransformationRotate: { svg: TransformationRotate, size: 16 },
 	TransformationScale: { svg: TransformationScale, size: 16 },
@@ -392,18 +377,18 @@ const SOLID_16PX = {
 } as const;
 
 // 16px Two-Tone
-import MouseHintDrag from "/../branding/assets/icon-16px-two-tone/mouse-hint-drag.svg";
-import MouseHintLmbDouble from "/../branding/assets/icon-16px-two-tone/mouse-hint-lmb-double.svg";
-import MouseHintLmbDrag from "/../branding/assets/icon-16px-two-tone/mouse-hint-lmb-drag.svg";
-import MouseHintLmb from "/../branding/assets/icon-16px-two-tone/mouse-hint-lmb.svg";
-import MouseHintMmbDrag from "/../branding/assets/icon-16px-two-tone/mouse-hint-mmb-drag.svg";
-import MouseHintMmb from "/../branding/assets/icon-16px-two-tone/mouse-hint-mmb.svg";
-import MouseHintNone from "/../branding/assets/icon-16px-two-tone/mouse-hint-none.svg";
-import MouseHintRmbDouble from "/../branding/assets/icon-16px-two-tone/mouse-hint-rmb-double.svg";
-import MouseHintRmbDrag from "/../branding/assets/icon-16px-two-tone/mouse-hint-rmb-drag.svg";
-import MouseHintRmb from "/../branding/assets/icon-16px-two-tone/mouse-hint-rmb.svg";
-import MouseHintScrollDown from "/../branding/assets/icon-16px-two-tone/mouse-hint-scroll-down.svg";
-import MouseHintScrollUp from "/../branding/assets/icon-16px-two-tone/mouse-hint-scroll-up.svg";
+import MouseHintDrag from "/../branding/assets/16x16-ui-input-devices/mouse-hint-drag.svg";
+import MouseHintLmbDouble from "/../branding/assets/16x16-ui-input-devices/mouse-hint-lmb-double.svg";
+import MouseHintLmbDrag from "/../branding/assets/16x16-ui-input-devices/mouse-hint-lmb-drag.svg";
+import MouseHintLmb from "/../branding/assets/16x16-ui-input-devices/mouse-hint-lmb.svg";
+import MouseHintMmbDrag from "/../branding/assets/16x16-ui-input-devices/mouse-hint-mmb-drag.svg";
+import MouseHintMmb from "/../branding/assets/16x16-ui-input-devices/mouse-hint-mmb.svg";
+import MouseHintNone from "/../branding/assets/16x16-ui-input-devices/mouse-hint-none.svg";
+import MouseHintRmbDouble from "/../branding/assets/16x16-ui-input-devices/mouse-hint-rmb-double.svg";
+import MouseHintRmbDrag from "/../branding/assets/16x16-ui-input-devices/mouse-hint-rmb-drag.svg";
+import MouseHintRmb from "/../branding/assets/16x16-ui-input-devices/mouse-hint-rmb.svg";
+import MouseHintScrollDown from "/../branding/assets/16x16-ui-input-devices/mouse-hint-scroll-down.svg";
+import MouseHintScrollUp from "/../branding/assets/16x16-ui-input-devices/mouse-hint-scroll-up.svg";
 
 const TWO_TONE_16PX = {
 	MouseHintDrag: { svg: MouseHintDrag, size: 16 },
@@ -421,27 +406,27 @@ const TWO_TONE_16PX = {
 } as const;
 
 // 24px Two-Tone
-import GeneralArtboardTool from "/../branding/assets/icon-24px-two-tone/general-artboard-tool.svg";
-import GeneralEyedropperTool from "/../branding/assets/icon-24px-two-tone/general-eyedropper-tool.svg";
-import GeneralFillTool from "/../branding/assets/icon-24px-two-tone/general-fill-tool.svg";
-import GeneralGradientTool from "/../branding/assets/icon-24px-two-tone/general-gradient-tool.svg";
-import GeneralNavigateTool from "/../branding/assets/icon-24px-two-tone/general-navigate-tool.svg";
-import GeneralSelectTool from "/../branding/assets/icon-24px-two-tone/general-select-tool.svg";
-import RasterBrushTool from "/../branding/assets/icon-24px-two-tone/raster-brush-tool.svg";
-import RasterCloneTool from "/../branding/assets/icon-24px-two-tone/raster-clone-tool.svg";
-import RasterDetailTool from "/../branding/assets/icon-24px-two-tone/raster-detail-tool.svg";
-import RasterHealTool from "/../branding/assets/icon-24px-two-tone/raster-heal-tool.svg";
-import RasterPatchTool from "/../branding/assets/icon-24px-two-tone/raster-patch-tool.svg";
-import RasterRelightTool from "/../branding/assets/icon-24px-two-tone/raster-relight-tool.svg";
-import VectorEllipseTool from "/../branding/assets/icon-24px-two-tone/vector-ellipse-tool.svg";
-import VectorFreehandTool from "/../branding/assets/icon-24px-two-tone/vector-freehand-tool.svg";
-import VectorLineTool from "/../branding/assets/icon-24px-two-tone/vector-line-tool.svg";
-import VectorPathTool from "/../branding/assets/icon-24px-two-tone/vector-path-tool.svg";
-import VectorPenTool from "/../branding/assets/icon-24px-two-tone/vector-pen-tool.svg";
-import VectorPolygonTool from "/../branding/assets/icon-24px-two-tone/vector-polygon-tool.svg";
-import VectorRectangleTool from "/../branding/assets/icon-24px-two-tone/vector-rectangle-tool.svg";
-import VectorSplineTool from "/../branding/assets/icon-24px-two-tone/vector-spline-tool.svg";
-import VectorTextTool from "/../branding/assets/icon-24px-two-tone/vector-text-tool.svg";
+import GeneralArtboardTool from "/../branding/assets/24x24-tools/general-artboard-tool.svg";
+import GeneralEyedropperTool from "/../branding/assets/24x24-tools/general-eyedropper-tool.svg";
+import GeneralFillTool from "/../branding/assets/24x24-tools/general-fill-tool.svg";
+import GeneralGradientTool from "/../branding/assets/24x24-tools/general-gradient-tool.svg";
+import GeneralNavigateTool from "/../branding/assets/24x24-tools/general-navigate-tool.svg";
+import GeneralSelectTool from "/../branding/assets/24x24-tools/general-select-tool.svg";
+import RasterBrushTool from "/../branding/assets/24x24-tools/raster-brush-tool.svg";
+import RasterCloneTool from "/../branding/assets/24x24-tools/raster-clone-tool.svg";
+import RasterDetailTool from "/../branding/assets/24x24-tools/raster-detail-tool.svg";
+import RasterHealTool from "/../branding/assets/24x24-tools/raster-heal-tool.svg";
+import RasterPatchTool from "/../branding/assets/24x24-tools/raster-patch-tool.svg";
+import RasterRelightTool from "/../branding/assets/24x24-tools/raster-relight-tool.svg";
+import VectorEllipseTool from "/../branding/assets/24x24-tools/vector-ellipse-tool.svg";
+import VectorFreehandTool from "/../branding/assets/24x24-tools/vector-freehand-tool.svg";
+import VectorLineTool from "/../branding/assets/24x24-tools/vector-line-tool.svg";
+import VectorPathTool from "/../branding/assets/24x24-tools/vector-path-tool.svg";
+import VectorPenTool from "/../branding/assets/24x24-tools/vector-pen-tool.svg";
+import VectorPolygonTool from "/../branding/assets/24x24-tools/vector-polygon-tool.svg";
+import VectorRectangleTool from "/../branding/assets/24x24-tools/vector-rectangle-tool.svg";
+import VectorSplineTool from "/../branding/assets/24x24-tools/vector-spline-tool.svg";
+import VectorTextTool from "/../branding/assets/24x24-tools/vector-text-tool.svg";
 
 const TWO_TONE_24PX = {
 	GeneralArtboardTool: { svg: GeneralArtboardTool, size: 24 },
@@ -461,19 +446,22 @@ const TWO_TONE_24PX = {
 	VectorLineTool: { svg: VectorLineTool, size: 24 },
 	VectorPathTool: { svg: VectorPathTool, size: 24 },
 	VectorPenTool: { svg: VectorPenTool, size: 24 },
-	VectorRectangleTool: { svg: VectorRectangleTool, size: 24 },
 	VectorPolygonTool: { svg: VectorPolygonTool, size: 24 },
+	VectorRectangleTool: { svg: VectorRectangleTool, size: 24 },
 	VectorSplineTool: { svg: VectorSplineTool, size: 24 },
 	VectorTextTool: { svg: VectorTextTool, size: 24 },
 } as const;
 
+// Graphics
+import GraphiteLogotype from "/../branding/assets/graphite-logotype.svg";
+
 // All icons
 const ICON_LIST = {
-	...GRAPHICS,
 	...SOLID_12PX,
 	...SOLID_16PX,
 	...TWO_TONE_16PX,
 	...TWO_TONE_24PX,
+	GraphiteLogotype: { svg: GraphiteLogotype, size: undefined },
 } as const;
 
 // Exported icons and types
