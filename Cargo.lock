@@ -2427,6 +2427,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-editor-control-protocol"
+version = "0.0.0"
+dependencies = [
+ "glam 0.33.10",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "graphite-proc-macros"
 version = "0.0.0"
 dependencies = [
@@ -6894,6 +6903,22 @@ dependencies = [
  "log",
  "once_cell",
  "pkg-config",
+]
+
+[[package]]
+name = "web-editor-driver"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "clap",
+ "getrandom 0.3.3",
+ "glam 0.33.10",
+ "graphite-editor-control-protocol",
+ "image",
+ "interprocess",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -45,7 +45,7 @@ fn requirements(task: &Task) -> Vec<Requirement> {
 					|| match task.profile {
 						Profile::Debug => true,
 						Profile::Release => false,
-						Profile::Default => matches!(task.action, Action::Run),
+						Profile::Default => matches!(task.action, Action::Run | Action::Drive),
 					}
 			}),
 			..Default::default()
