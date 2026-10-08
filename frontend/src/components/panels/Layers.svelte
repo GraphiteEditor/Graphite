@@ -1224,7 +1224,18 @@
 			justify-content: space-between;
 
 			.widget-span:first-child {
-				flex: 1 0 auto;
+				flex: 1 1 auto;
+				// Widgets squished to their minimums overflow into the bar so it can scroll
+				overflow: visible;
+
+				> :is(.dropdown-input, .number-input) {
+					min-width: 64px;
+				}
+
+				// The blend mode is sized for its longest name, so it gives up that spare room before the fields lose any of theirs
+				> .dropdown-input {
+					flex-shrink: 10000;
+				}
 			}
 
 			&:not(:has(*)) {
