@@ -7,8 +7,8 @@ use graphene_resource::{Resource, ResourceHash};
 use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
-use vector_types::kurbo::Rect;
 use vector_types::Vector;
+use vector_types::kurbo::Rect;
 
 thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());

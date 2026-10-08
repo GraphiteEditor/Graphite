@@ -182,7 +182,8 @@ impl PathBuilder {
 						.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame),
 				);
 			} else {
-				self.buffered_decorations.push(Rect::new(rect.x0 * self.scale, rect.y0 * self.scale, rect.x1 * self.scale, rect.y1 * self.scale));
+				self.buffered_decorations
+					.push(Rect::new(rect.x0 * self.scale, rect.y0 * self.scale, rect.x1 * self.scale, rect.y1 * self.scale));
 			}
 		}
 	}
