@@ -290,8 +290,7 @@ impl SnapManager {
 		}
 
 		// Guide lines share the grid's line list, so they match whichever snap category is enabled.
-		let lines_enabled = document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
-			|| document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Line));
+		let lines_enabled = document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) || document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Line));
 		if lines_enabled && let Some(closest_line) = get_closest_line(&snap_results.grid_lines) {
 			snapped_points.push(closest_line.clone());
 		}

@@ -688,7 +688,11 @@ mod editor_commands {
 
 	/// Starts drawing a guide line through a viewport-space position, which then follows the pointer
 	fn begin_create_guide_line(direction: GuideLineDirection, x: f64, y: f64) -> Message {
-		DocumentMessage::GuideLines(GuideLinesMessage::BeginCreate { direction, viewport_position: (x, y).into() }).into()
+		DocumentMessage::GuideLines(GuideLinesMessage::BeginCreate {
+			direction,
+			viewport_position: (x, y).into(),
+		})
+		.into()
 	}
 
 	/// Starts dragging the guide line with this id, which the ruler read off the line it was drawn from
