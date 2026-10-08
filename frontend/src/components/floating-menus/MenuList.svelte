@@ -39,6 +39,8 @@
 	export let interactive = false;
 	export let scrollableY = false;
 	export let virtualScrolling = false;
+	// Whether to measure the menu's width for its spawner to size itself by
+	export let measuresNaturalWidth = false;
 	// Whether the highlight moves to each new active entry given while the menu is open
 	export let highlightFollowsActiveEntry = false;
 
@@ -62,7 +64,7 @@
 	$: watchOpen(open);
 	$: watchEntries(entries);
 	$: watchEntriesHash(entriesHash);
-	$: watchRemeasureWidth(filteredEntries, drawIcon);
+	$: watchRemeasureWidth(reactiveEntries, drawIcon, self);
 	$: watchHighlightedWithSearch(filteredEntries, open);
 	$: watchActiveEntry(activeEntry, entriesHash);
 
@@ -199,9 +201,14 @@
 		reactiveEntries = entries;
 	}
 
-	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
+	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean, ___: FloatingMenu | undefined) {
+		if (!measuresNaturalWidth) return;
+
 		// Skip re-measurement for virtual scrolling menus since ResizeObserver handles their width
 		if (virtualScrolling) return;
+
+		// A search shows only the matching entries, which would measure narrower than the whole menu
+		if (search) return;
 
 		self?.measureAndEmitNaturalWidth();
 	}
@@ -565,12 +572,6 @@
 
 					{#if entry.children}
 						<MenuList
-							on:naturalWidth={({ detail }) => {
-								// We do a manual dispatch here instead of just `on:naturalWidth` as a workaround for the <script> tag
-								// at the top of this file displaying a "'render' implicitly has return type 'any' because..." error.
-								// See explanation at <https://github.com/sveltejs/language-tools/issues/452#issuecomment-723148184>.
-								dispatch("naturalWidth", detail);
-							}}
 							on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
 							parentsValuePath={[...parentsValuePath, entry.value]}
 							open={openChildValue === entry.value}

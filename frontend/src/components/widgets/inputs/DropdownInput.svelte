@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, onDestroy } from "svelte";
 	import MenuList from "/src/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import { openDropdownMenuCount } from "/src/stores/dropdown-menus";
 	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const DASH_ENTRY: MenuListEntry = {
@@ -52,14 +53,28 @@
 	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
 	let fileDragOver = false;
+	// The width of the menu's widest entry, so the dropdown keeps one width whichever entry is chosen
+	let naturalWidth = 0;
+	let measuredWidth = 0;
+	let countedAsOpen = false;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchEntries(entries);
 	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
+	$: if ($openDropdownMenuCount === 0) naturalWidth = measuredWidth;
+
+	onDestroy(() => {
+		if (countedAsOpen) openDropdownMenuCount.update((count) => count - 1);
+	});
 
 	function watchOpen(open: boolean) {
 		initialSelectedIndex = open ? selectedIndex : undefined;
+
+		if (open !== countedAsOpen) {
+			openDropdownMenuCount.update((count) => count + (open ? 1 : -1));
+			countedAsOpen = open;
+		}
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
@@ -155,6 +170,7 @@
 	class="dropdown-input"
 	classes={{ narrow, "auto-width": autoWidth, "file-drag-over": fileDragOver }}
 	styles={{
+		...(naturalWidth > 0 ? { width: `${naturalWidth}px` } : {}),
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
 		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
 	}}
@@ -182,7 +198,8 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		on:naturalWidth={({ detail }) => (measuredWidth = detail)}
+		measuresNaturalWidth={true}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
 		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
 		on:hoverOutEntry={() => dispatchHoverOutEntry()}
