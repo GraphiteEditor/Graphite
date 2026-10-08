@@ -1,7 +1,6 @@
 use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
-use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
@@ -2081,7 +2080,7 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 		let mut content = content;
 		let (progression, reverse, parameterized_distance) = (*progression.element(), *reverse.element(), *parameterized_distance.element());
 
-		let euclidian = !parameterized_distance;
+		let euclidean = !parameterized_distance;
 
 		let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
 
@@ -2097,7 +2096,7 @@ async fn cut_path<V: MapVectorItems + 'n + Send>(
 				result_vector.append_bezpath(bezpath.clone());
 			}
 			let t = if t_value == bezpath_count { 1. } else { t_value.fract() };
-			let t = if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
+			let t = if euclidean { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
 			if let Some((first, second)) = split_bezpath(&bezpath, t) {
 				result_vector.append_bezpath(first);
@@ -2173,17 +2172,19 @@ async fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 	})
 }
 
-/// The position and tangent angle at a point along a path, split into separate node outputs.
+/// The position, tangent direction, and normal direction at a point along a path, split into separate node outputs.
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, node_macro::Destructure)]
 pub struct PathEvaluation {
 	/// The position of the point on the path.
 	#[primary]
 	pub position: Item<DVec2>,
-	/// The angle of the tangent at the point on the path.
-	pub tangent: Item<f64>,
+	/// The unit vector pointing along the path in its direction of travel.
+	pub tangent: Item<DVec2>,
+	/// The unit vector perpendicular to the path, pointing to the left of its direction of travel as seen in the viewport. That is outward from clockwise closed paths.
+	pub normal: Item<DVec2>,
 }
 
-/// Determines the position and tangent angle at a point on the path, given by its progression from 0 to 1 along the path.
+/// Determines the position, tangent direction, and normal direction at a point on the path, given by its progression from 0 to 1 along the path.
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
@@ -2198,11 +2199,9 @@ async fn evaluate_path(
 	reverse: Item<bool>,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
 	parameterized_distance: Item<bool>,
-	/// Whether the resulting tangent angle should be given in radians instead of degrees.
-	radians: Item<bool>,
 ) -> PathEvaluation {
-	let (progression, reverse, parameterized_distance, radians) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element(), radians.into_element());
-	let euclidian = !parameterized_distance;
+	let (progression, reverse, parameterized_distance) = (progression.into_element(), reverse.into_element(), parameterized_distance.into_element());
+	let euclidean = !parameterized_distance;
 
 	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let mut bezpaths: Vec<_> = content.element().stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect();
@@ -2214,12 +2213,13 @@ async fn evaluate_path(
 	let Some((bezpath, transform)) = bezpaths.get_mut(index) else {
 		return PathEvaluation {
 			position: Item::new_from_element(DVec2::ZERO),
-			tangent: Item::new_from_element(0.),
+			tangent: Item::new_from_element(DVec2::ZERO),
+			normal: Item::new_from_element(DVec2::ZERO),
 		};
 	};
 
 	let t = if progression == bezpath_count { 1. } else { progression.fract() };
-	let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
+	let t_value = |t: f64| if euclidean { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
 	// Apply the transform once so both the position and tangent are computed on the transformed path
 	bezpath.apply_affine(Affine::new(transform.to_cols_array()));
@@ -2231,12 +2231,15 @@ async fn evaluate_path(
 		let t = t + if t > 0.5 { -0.001 } else { 0.001 };
 		tangent = point_to_dvec2(tangent_on_bezpath(bezpath, t_value(t), None));
 	}
-	let angle = if reverse { -DVec2::X } else { DVec2::X }.try_angle_to(tangent).unwrap_or(0.);
-	let tangent = if radians { angle } else { angle.to_degrees() };
+	let tangent = if reverse { -tangent } else { tangent }.normalize_or_zero();
+
+	// Rotating a quarter turn counterclockwise as seen in the viewport, where the Y axis points down, matches the 'Offset Points' normal
+	let normal = -tangent.perp();
 
 	PathEvaluation {
 		position: Item::new_from_element(position),
 		tangent: Item::new_from_element(tangent),
+		normal: Item::new_from_element(normal),
 	}
 }
 

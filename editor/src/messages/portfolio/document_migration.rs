@@ -1503,8 +1503,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
-	// "Position on Path" and "Tangent on Path" were merged into the multi-output "Evaluate Path" node, with position at output 0 and tangent at output 1.
-	// Tangent instances have their downstream wires moved to output 1, and default the radians input to true since radians was their only option.
+	// "Position on Path" and "Tangent on Path" were merged into the multi-output "Evaluate Path" node, with position at output 0 and tangent direction at output 1.
+	// Tangent instances get an "Inverse Tangent" node inserted to turn that direction back into the angle their downstream wires expect.
 	const POSITION_ON_PATH: &str = "graphene_core::vector::PositionOnPathNode";
 	const TANGENT_ON_PATH: &str = "graphene_core::vector::TangentOnPathNode";
 	let evaluate_path_nodes: Vec<(NodeId, Vec<NodeId>, bool)> = document
@@ -1521,7 +1521,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		})
 		.collect();
 	for (node_id, network_path, is_tangent) in &evaluate_path_nodes {
-		// Capture the old output's downstream connections before mutating, so a tangent node's wires can be remapped to output index 1
+		// Capture the old output's downstream connections before mutating, so a tangent node's wires can be moved onto the inserted angle conversion
 		let downstream_from_output = document
 			.network_interface
 			.outward_wires(network_path)
@@ -1538,7 +1538,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
 			continue;
 		};
-		// The old single-output nodes have no output names, so set them to match the new multi-output node's "Position" and "Tangent" ports
+		// The old single-output nodes have no output names, so set them to match the new multi-output node's "Position", "Tangent", and "Normal" ports
 		document.network_interface.set_output_names(node_id, output_names, network_path);
 		reset_default_display_name(document, node_id, network_path, if *is_tangent { "Tangent on Path" } else { "Position on Path" });
 
@@ -1547,14 +1547,30 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
 		}
 
-		if *is_tangent {
-			// Forward the radians input if the tangent node already had it, otherwise default it to true to preserve the old behavior
-			let radians = old_inputs.get(4).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::Bool(true), false));
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), radians, network_path);
+		if *is_tangent && !downstream_from_output.is_empty() {
+			let Some(inverse_tangent_definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::tangent_inverse::IDENTIFIER)) else {
+				log::error!("Could not resolve the Inverse Tangent node while migrating Tangent on Path node {node_id}");
+				continue;
+			};
 
-			// Remap the tangent node's downstream connections from the old single output to the new tangent output at index 1
+			// Feed the tangent direction into the inserted "Inverse Tangent" node, carrying over the old radians input (true when absent, since radians was once the only option)
+			let inverse_tangent_id = NodeId::new();
+			document
+				.network_interface
+				.insert_node(inverse_tangent_id, inverse_tangent_definition.default_node_template(), network_path);
+			let radians = old_inputs.get(4).cloned().unwrap_or_else(|| NodeInput::value(TaggedValue::Bool(true), false));
+			document.network_interface.set_input(&InputConnector::node_at_index(inverse_tangent_id, 1), radians, network_path);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(inverse_tangent_id, 0), NodeInput::node(*node_id, 1), network_path);
+
+			if let Some(position) = document.network_interface.position(node_id, network_path) {
+				document.network_interface.shift_absolute_node_position(&inverse_tangent_id, position + IVec2::new(7, 0), network_path);
+			}
+
+			// Move the tangent node's downstream connections from its old single output to the inserted angle conversion
 			for input_connector in &downstream_from_output {
-				document.network_interface.set_input(input_connector, NodeInput::node(*node_id, 1), network_path);
+				document.network_interface.set_input(input_connector, NodeInput::node(inverse_tangent_id, 0), network_path);
 			}
 		}
 	}

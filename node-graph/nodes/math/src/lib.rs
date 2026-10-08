@@ -741,7 +741,7 @@ fn sine_inverse(
 	#[range]
 	#[hard(-1..1)]
 	value: Item<f64>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
@@ -759,7 +759,7 @@ fn cosine_inverse(
 	#[range]
 	#[hard(-1..1)]
 	value: Item<f64>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
@@ -773,14 +773,15 @@ fn cosine_inverse(
 /// `atan`: the angle whose tangent is the input scalar number.
 /// `atan2`: the angle of a ray from the origin to the input vec2.
 ///
-/// The resulting angle is always in the range `[-90°, 90°]` or, in radians, `[-π/2, π/2]`.
+/// The resulting `atan` angle is always in the range `[-90°, 90°]` or, in radians, `[-π/2, π/2]`.
+/// The resulting `atan2` angle is always in the range `[-180°, 180°]` or, in radians, `[-π, π]`.
 #[node_macro::node(category("Math: Trig"))]
 fn tangent_inverse<T: TangentInverse>(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated.
 	#[implementations(f64, DVec2)]
 	value: Item<T>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<T::Output> {
 	let (value, attributes) = value.into_parts();
