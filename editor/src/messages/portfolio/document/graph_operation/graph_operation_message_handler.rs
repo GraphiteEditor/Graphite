@@ -16,6 +16,7 @@ use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
+use std::sync::{Arc, OnceLock};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -502,7 +503,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+				let options = usvg_options();
+				let tree = match usvg::Tree::from_str(&svg, &options) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DialogMessage::DisplayDialogError {
@@ -565,6 +567,42 @@ fn usvg_color(c: usvg::Color, a: f32) -> Color {
 
 fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 	DAffine2::from_cols_array(&[c.sx as f64, c.ky as f64, c.kx as f64, c.sy as f64, c.tx as f64, c.ty as f64])
+}
+
+/// The usvg options used when parsing an SVG.
+///
+/// usvg drops a `<text>` element outright when it can find no font to shape it with, so the database needs at least one
+/// face. Graphite reshapes imported text with its own shaper, so the fallback font alone is enough, and holding the database
+/// in a `OnceLock` keeps every paste from rescanning the system's fonts and the editor's cached ones.
+fn usvg_options() -> usvg::Options<'static> {
+	static DATABASE: OnceLock<(String, Arc<usvg::fontdb::Database>)> = OnceLock::new();
+
+	let (fallback_family, database) = DATABASE.get_or_init(|| {
+		let mut fontdb = usvg::fontdb::Database::new();
+		fontdb.load_font_data(graphene_std::text::FALLBACK_FONT_RESOURCE.to_vec());
+
+		let fallback_family = fontdb
+			.faces()
+			.next()
+			.and_then(|face| face.families.first().map(|(name, _)| name.clone()))
+			.unwrap_or_else(|| graphene_std::consts::DEFAULT_FONT_FAMILY.to_string());
+
+		// A document's own `font-family` is usually a font usvg doesn't have, so aim the generic families at the fallback
+		// too. That resolves to text being imported rather than dropped.
+		fontdb.set_sans_serif_family(&fallback_family);
+		fontdb.set_serif_family(&fallback_family);
+		fontdb.set_monospace_family(&fallback_family);
+		fontdb.set_cursive_family(&fallback_family);
+		fontdb.set_fantasy_family(&fallback_family);
+
+		(fallback_family, Arc::new(fontdb))
+	});
+
+	usvg::Options {
+		font_family: fallback_family.clone(),
+		fontdb: database.clone(),
+		..Default::default()
+	}
 }
 
 const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
@@ -814,8 +852,9 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
+			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, usvg_text_typesetting(text), layer);
 			modify_inputs.fill_color_set(Some(Color::BLACK));
+			apply_usvg_text_transform(modify_inputs, text);
 		}
 	}
 }
@@ -866,8 +905,9 @@ fn import_usvg_node_inner(
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
-			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, TypesettingConfig::default(), layer);
+			modify_inputs.insert_text(text.chunks().iter().map(|chunk| chunk.text()).collect(), font, usvg_text_typesetting(text), layer);
 			modify_inputs.fill_color_set(Some(Color::BLACK));
+			apply_usvg_text_transform(modify_inputs, text);
 			0
 		}
 	}
@@ -887,6 +927,66 @@ fn insert_brush_strokes_chain(network_interface: &mut NodeNetworkInterface, laye
 	]);
 	network_interface.insert_node(strokes_node_id, strokes_node, &[]);
 	network_interface.set_input(&InputConnector::node_at_index(layer.to_node(), 1), NodeInput::node(strokes_node_id, 0), &[]);
+}
+
+fn usvg_text_typesetting(text: &usvg::Text) -> TypesettingConfig {
+	let mut typesetting = TypesettingConfig::default();
+
+	for span in text.chunks().iter().flat_map(|chunk| chunk.spans()) {
+		let decoration = span.decoration();
+		typesetting.underline |= decoration.underline().is_some();
+		typesetting.overline |= decoration.overline().is_some();
+		typesetting.strikethrough |= decoration.line_through().is_some();
+	}
+
+	if let Some(first_span) = text.chunks().first().and_then(|chunk| chunk.spans().first()) {
+		typesetting.font_size = first_span.font_size().get() as f64;
+	}
+
+	typesetting
+}
+
+/// Lays imported SVG text out once so its SVG position, which marks the baseline, converts to the top-left origin a
+/// Graphite text layer uses. Returns the first line's baseline and the laid-out width that `middle` and `end` anchors
+/// measure against, or `None` when the text cannot be laid out, in which case the SVG position is used as-is.
+fn usvg_text_layout_metrics(text: &str, typesetting: &TypesettingConfig) -> Option<(f64, f64)> {
+	use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
+	use graphene_std::text::TextContext;
+
+	TextContext::with_thread_local(|context| {
+		let layout = context.layout_text(text, &FALLBACK_FONT_RESOURCE, typesetting.clone())?;
+		let baseline = layout.lines().next()?.items().find_map(|item| match item {
+			parley::layout::PositionedLayoutItem::GlyphRun(run) => Some(f64::from(run.baseline())),
+			_ => None,
+		})?;
+		Some((baseline, f64::from(layout.full_width())))
+	})
+}
+
+fn apply_usvg_text_transform(modify_inputs: &mut ModifyInputsContext, text: &usvg::Text) {
+	let element_transform = usvg_transform(text.abs_transform());
+	let first_chunk = text.chunks().first();
+	let chunk_offset = first_chunk.map(|c| DVec2::new(f64::from(c.x().unwrap_or(0.)), f64::from(c.y().unwrap_or(0.)))).unwrap_or_default();
+
+	// SVG positions text by its baseline while a Graphite layer starts at its layout's top-left, so the first baseline
+	// comes off, and `middle` and `end` anchors shift back by the laid-out width.
+	let text_string: String = text.chunks().iter().map(|chunk| chunk.text()).collect();
+	let typesetting = usvg_text_typesetting(text);
+	let (baseline, width) = usvg_text_layout_metrics(&text_string, &typesetting).unwrap_or_default();
+	let anchor_shift = match first_chunk.map(|chunk| chunk.anchor()).unwrap_or_default() {
+		usvg::TextAnchor::Start => 0.,
+		usvg::TextAnchor::Middle => width / 2.,
+		usvg::TextAnchor::End => width,
+	};
+	let text_transform = element_transform * DAffine2::from_translation(chunk_offset - DVec2::new(anchor_shift, baseline));
+
+	if text_transform.abs_diff_eq(DAffine2::IDENTITY, 1e-6) {
+		return;
+	}
+	// `insert_text` always creates a Transform node; update it in-place.
+	if let Some(transform_node_id) = modify_inputs.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, false) {
+		transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, text_transform);
+	}
 }
 
 /// Helper to apply path data (vector geometry, fill, stroke, transform) to a layer.
@@ -1070,6 +1170,18 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn imported_text_baseline_comes_off_before_placement() {
+		use graphene_std::text::TypesettingConfig;
+
+		let typesetting = TypesettingConfig { font_size: 24., ..Default::default() };
+		let Some((baseline, width)) = usvg_text_layout_metrics("Hello", &typesetting) else {
+			panic!("the fallback font should lay text out");
+		};
+		assert!(baseline > 0. && baseline < 24., "a 24px line's baseline should sit inside it, got {baseline}");
+		assert!(width > 0., "the laid-out line should have a width to anchor against, got {width}");
+	}
 
 	#[tokio::test]
 	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {

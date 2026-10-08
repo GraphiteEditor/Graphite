@@ -8,6 +8,7 @@ use parley::fontique::{Blob, FamilyId, FontInfo};
 use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use std::collections::HashMap;
 use vector_types::Vector;
+use vector_types::kurbo::Rect;
 
 thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
@@ -16,7 +17,7 @@ thread_local! {
 /// Iterates the glyph runs of a laid-out text in reading order, computing each line's last-line alignment correction
 /// (`x_offset` and per-space `space_extra`) and skipping runs clipped by `max_height`. Shared by the vector shaper and the
 /// SVG/Vello text renderers so the alignment logic lives in one place.
-pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: TypesettingConfig, mut visit: impl FnMut(&GlyphRun<'_, ()>, f32, f32)) {
+pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: TypesettingConfig, mut visit: impl FnMut(&GlyphRun<'_, ()>, f32, f32, usize)) {
 	let alignment_width = typesetting.max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
 	let last_line_correction = typesetting.align.last_line_correction();
 
@@ -29,6 +30,8 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 		let mut x_offset = 0.;
 		let mut space_extra = 0.;
 
+		// Byte index past which clusters are trailing whitespace, kept out of both the divisor and any run's share.
+		let mut visible_end_index = range.end;
 		if is_last_para_line && let Some(correction) = last_line_correction {
 			let metrics = line.metrics();
 			let content_advance = metrics.advance - metrics.trailing_whitespace;
@@ -42,7 +45,7 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 					// Parley's `trailing_whitespace` is in advance units, not bytes, so we re-derive the byte boundary here to filter cluster ranges.
 					let line_text = text.get(range.clone()).unwrap_or("");
 					let trailing_len = line_text.len() - line_text.trim_end().len();
-					let visible_end_index = range.end - trailing_len;
+					visible_end_index = range.end - trailing_len;
 
 					let space_count: usize = line
 						.runs()
@@ -60,10 +63,33 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 			if let PositionedLayoutItem::GlyphRun(glyph_run) = item
 				&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
 			{
-				visit(&glyph_run, x_offset, space_extra);
+				let run_spaces = glyph_run.run().clusters().filter(|c| c.is_space_or_nbsp() && c.text_range().start < visible_end_index).count();
+				visit(&glyph_run, x_offset, space_extra, run_spaces);
 			}
 		}
 	}
+}
+
+/// Yields the rectangle of each enabled text decoration line for a glyph run, in layout units with y growing downward.
+///
+/// Justification only stretches spaces, so the line's width grows by `space_extra` per space, not per glyph. Shared by the vector
+/// shaper and the SVG/Vello text renderers so the placement logic lives in one place.
+pub fn decoration_rects(glyph_run: &GlyphRun<'_, ()>, x_offset: f32, space_extra: f32, run_spaces: usize, typesetting: TypesettingConfig) -> Vec<Rect> {
+	let metrics = glyph_run.run().metrics();
+	let baseline = glyph_run.baseline() as f64;
+	let start = (glyph_run.offset() + x_offset) as f64;
+	// The run's own share of the line's justification, counted the same way the total was.
+	let end = start + (glyph_run.advance() + space_extra * run_spaces as f32) as f64;
+
+	[
+		(typesetting.underline, baseline - metrics.underline_offset as f64, metrics.underline_size as f64),
+		(typesetting.overline, baseline - metrics.ascent as f64, metrics.underline_size as f64),
+		(typesetting.strikethrough, baseline - metrics.strikethrough_offset as f64, metrics.strikethrough_size as f64),
+	]
+	.into_iter()
+	.filter(|(enabled, _, _)| *enabled)
+	.map(|(_, y, thickness)| Rect::new(start, y, end, y + thickness))
+	.collect()
 }
 
 /// Unified thread-local text processing context that combines font and layout management
@@ -154,8 +180,17 @@ impl TextContext {
 
 		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
-		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra, run_spaces| {
+			// Underline and overline sit behind the glyphs, while strikethrough sits on top of them.
+			let behind_glyphs = TypesettingConfig { strikethrough: false, ..typesetting };
+			path_builder.render_decoration_run(glyph_run, behind_glyphs, per_glyph_items, x_offset, space_extra, run_spaces);
 			path_builder.render_glyph_run(glyph_run, typesetting.letter_tilt, per_glyph_items, x_offset, space_extra);
+			let strikethrough_only = TypesettingConfig {
+				underline: false,
+				overline: false,
+				..typesetting
+			};
+			path_builder.render_decoration_run(glyph_run, strikethrough_only, per_glyph_items, x_offset, space_extra, run_spaces);
 		});
 
 		path_builder.finalize()

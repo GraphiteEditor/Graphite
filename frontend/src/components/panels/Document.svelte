@@ -384,6 +384,7 @@
 		textInput.style.color = data.color;
 		textInput.style.textAlign = data.align;
 		textInput.style.textAlignLast = data.alignLast;
+		textInput.style.textDecoration = data.textDecoration;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
