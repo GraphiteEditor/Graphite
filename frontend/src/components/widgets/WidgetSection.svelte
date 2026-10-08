@@ -359,8 +359,33 @@
 				}
 
 				> .text-label:first-of-type {
-					flex: 0 0 20%;
+					flex: 0 1 calc(20% + var(--absorbed-room, 0px) - var(--wire-indent, 0px));
 					margin-left: 16px;
+
+					// A parameter name keeps its column until the widgets after it are squeezed to a usable width, then gives up space and fades where it's cut off
+					&:not(:last-child, .parameter-chain-toggle) {
+						overflow: hidden;
+						mask-image: linear-gradient(to left, transparent, black 12px);
+					}
+				}
+
+				// A blank assist and the gap after it become room for the name
+				> .text-label:first-of-type:has(+ .separator.section + .separator.unrelated) {
+					--absorbed-room: calc(24px + 16px);
+
+					+ .separator.section,
+					+ .separator.section + .separator.unrelated {
+						display: none;
+					}
+				}
+
+				// An optional parameter's checkbox fills the assist, so only the gap before it becomes room for the name
+				> .text-label:first-of-type:has(+ .separator.unrelated + .separator.related) {
+					--absorbed-room: 16px;
+
+					+ .separator.unrelated {
+						display: none;
+					}
 				}
 
 				// Indented to leave room for the wire that rises past to the connector of an input whose chain is shown
@@ -369,7 +394,7 @@
 
 					// Shortened by the indent so the widgets after it stay aligned with other rows
 					+ .text-label {
-						flex-basis: calc(20% - 20px);
+						--wire-indent: 20px;
 					}
 				}
 
@@ -384,8 +409,22 @@
 					margin-left: 8px;
 				}
 
-				> .text-button {
-					flex-grow: 1;
+				> .separator.horizontal.unrelated {
+					flex-shrink: 1;
+					min-width: 8px;
+				}
+
+				// Widgets share the row's width, each narrowing to no less than a usable width
+				> :is(.number-input, .text-input, .dropdown-input, .color-input, .text-button, .radio-input, .slider-input) {
+					flex: 1 1 0;
+				}
+
+				> :is(.number-input, .text-input, .dropdown-input, .color-input, .text-button) {
+					min-width: 64px;
+				}
+
+				> .slider-input {
+					min-width: 32px;
 				}
 
 				> .parameter-expose-button + .text-label ~ .number-input:last-child {

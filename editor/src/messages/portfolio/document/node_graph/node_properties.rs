@@ -202,6 +202,7 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 		widgets.push(
 			ParameterChainToggle::new(parameter_widgets_info.name.clone())
 				.expanded(parameter_widgets_info.chain_expanded)
+				.tooltip_label(parameter_widgets_info.name.clone())
 				.tooltip_description(parameter_widgets_info.description.clone())
 				.on_update(move |_| DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index }.into())
 				.widget_instance(),
@@ -209,6 +210,7 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 	} else {
 		widgets.push(
 			TextLabel::new(parameter_widgets_info.name.clone())
+				.tooltip_label(parameter_widgets_info.name.clone())
 				.tooltip_description(parameter_widgets_info.description.clone())
 				.widget_instance(),
 		);
