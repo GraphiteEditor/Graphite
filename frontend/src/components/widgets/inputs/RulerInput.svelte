@@ -46,16 +46,17 @@
 	let hoverCursor: string | undefined = undefined;
 
 	/** The pointer's position in viewport space, so the backend can convert it even on a tilted canvas. */
-	function viewportPosition(event: MouseEvent): { x: number; y: number } {
+	function viewportPosition(event: MouseEvent): { x: number; y: number } | undefined {
 		// Measured from the viewport's corner rather than this ruler's: a ruler sits `RULER_THICKNESS` outside the viewport,
 		// so measuring from the strip itself would land every guide that far off along the axis it points across.
-		if (!viewportOrigin) return { x: 0, y: 0 };
+		if (!viewportOrigin) return undefined;
 		return { x: event.clientX - viewportOrigin.x, y: event.clientY - viewportOrigin.y };
 	}
 
 	/// The guide line under the pointer, or undefined when there is none to grab.
 	function guideNear(event: MouseEvent): GuideRulerEntry | undefined {
 		const position = viewportPosition(event);
+		if (!position) return undefined;
 		// The top ruler measures X and the left one measures Y, so the distance along it is the matching coordinate.
 		const along = isHorizontal ? position.x : position.y;
 		return guideOffsets?.find((guide) => Math.abs(guide.offset - along) <= GUIDE_GRAB_DISTANCE);
@@ -69,8 +70,11 @@
 	}
 
 	function onPointerDown(event: PointerEvent) {
-		// Only the primary button draws or grabs a guide; a right-click must not start one.
-		if (event.button !== 0) return;
+		// Only the primary button draws or grabs a guide; a right-click must not start one, nor may a second
+		// pointer steal the drag the first one holds.
+		if (event.button !== 0 || dragging) return;
+		const position = viewportPosition(event);
+		if (!position) return;
 		const grabbed = guideNear(event);
 		// A press that finds nothing draws a guide; one that finds a line moves that line. Either way the backend holds
 		// the drag, so this never has to name a line it is in the middle of creating.
@@ -79,7 +83,7 @@
 		if (grabbed) {
 			dispatch("grabGuideLine", { id: grabbed.id });
 		} else {
-			dispatch("createGuideLine", viewportPosition(event));
+			dispatch("createGuideLine", position);
 		}
 
 		// Without capture, moving off the narrow ruler strip ends the drag and a guide can't be pulled onto the canvas.
@@ -88,7 +92,8 @@
 
 	function onPointerMove(event: PointerEvent) {
 		if (dragging) {
-			dispatch("dragGuideLine", viewportPosition(event));
+			const position = viewportPosition(event);
+			if (position) dispatch("dragGuideLine", position);
 		} else {
 			// A guide on this ruler moves across it, so hovering one shows the matching resize cursor.
 			hoverCursor = guideNear(event) ? (isHorizontal ? "ew-resize" : "ns-resize") : undefined;
