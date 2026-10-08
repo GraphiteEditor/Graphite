@@ -666,9 +666,16 @@ pub struct PTZ {
 	/// Angle in radians.
 	tilt: f64,
 	/// Scale factor.
+	#[serde(deserialize_with = "deserialize_clamped_zoom")]
 	zoom: f64,
 	/// Flipped status.
 	pub flip: bool,
+}
+
+/// A zoom outside the allowed range, like a non-finite one loaded as 0, would leave the view unusable.
+fn deserialize_clamped_zoom<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+	let zoom = <f64 as serde::Deserialize>::deserialize(deserializer)?;
+	Ok(zoom.clamp(crate::consts::VIEWPORT_ZOOM_SCALE_MIN, crate::consts::VIEWPORT_ZOOM_SCALE_MAX))
 }
 
 impl Default for PTZ {
