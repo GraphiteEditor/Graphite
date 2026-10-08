@@ -286,8 +286,7 @@ pub fn place_text_on_path(
 						let (point, angle) = point_on_path(&lut, mid);
 						let final_transform = DAffine2::from_translation(DVec2::new(point.x, point.y))
 							* DAffine2::from_angle(angle)
-							* tilt
-							* DAffine2::from_translation(DVec2::new(-scaled_advance / 2., -glyph.y as f64))
+							* tilt * DAffine2::from_translation(DVec2::new(-scaled_advance / 2., -glyph.y as f64))
 							* DAffine2::from_scale(DVec2::new(advance_scale, 1.));
 						path_builder.draw_glyph_with_transform(&glyph_outline, run_font_size, &normalized_coords, style_skew, final_transform);
 					}
