@@ -104,11 +104,11 @@ fn serve(stream: Stream, state: &HostState) {
 		};
 
 		let reply = match message {
-			ClientMessage::Perform { id, commands } => {
+			ClientMessage::Perform { id, commands, fail_on_console_errors } => {
 				let mut session = state.session.lock().unwrap_or_else(PoisonError::into_inner);
 				HostMessage::Results {
 					id,
-					results: perform_all(&mut session, &commands),
+					results: perform_all(&mut session, &commands, fail_on_console_errors),
 				}
 			}
 			ClientMessage::Shutdown => {
@@ -127,10 +127,10 @@ fn serve(stream: Stream, state: &HostState) {
 	}
 }
 
-fn perform_all(session: &mut EditorSession, commands: &[Command]) -> Vec<CommandResult> {
+fn perform_all(session: &mut EditorSession, commands: &[Command], fail_on_console_errors: bool) -> Vec<CommandResult> {
 	let mut results = Vec::new();
 	for command in commands {
-		let result = session.perform(command);
+		let result = session.perform(command, fail_on_console_errors);
 		let failed = !result.ok;
 		results.push(result);
 

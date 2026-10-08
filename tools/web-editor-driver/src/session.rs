@@ -24,6 +24,9 @@ const IDLE_CAPTURE_COUNT: u32 = 3;
 const IDLE_MINIMUM_SPAN: Duration = Duration::from_millis(200);
 const DEFAULT_FILMSTRIP_FRAMES: u32 = 8;
 const LOCATED_TEXT_LENGTH: usize = 80;
+// The frontend's text, number, and text area fields, and the layer name fields
+const FIELD_SELECTOR: &str = "[data-input-element], [data-layer-name-input]";
+const EXPECT_SHOWN_VALUES: usize = 5;
 
 #[derive(Debug, Clone)]
 pub struct SessionOptions {
@@ -96,6 +99,7 @@ pub struct EditorSession {
 	held_keys: Vec<HeldKey>,
 	held_buttons: Vec<MouseButton>,
 	crashed: bool,
+	console_errors: Vec<String>,
 }
 
 impl EditorSession {
@@ -111,14 +115,46 @@ impl EditorSession {
 			held_keys: Vec::new(),
 			held_buttons: Vec::new(),
 			crashed: false,
+			console_errors: Vec::new(),
 		};
 		session.wait_idle(IDLE_TIMEOUT)?;
 
 		Ok(session)
 	}
 
-	pub fn perform(&mut self, command: &Command) -> CommandResult {
-		self.dispatch(command).unwrap_or_else(|error| CommandResult::failed(command, error))
+	/// Performs a command and reports on it along with the errors the page logged since the previous one, failing it if the page crashed meanwhile.
+	pub fn perform(&mut self, command: &Command, fail_on_console_errors: bool) -> CommandResult {
+		let crashed_before = self.crashed;
+		let mut result = self.dispatch(command).unwrap_or_else(|error| CommandResult::failed(command, error));
+
+		let collected = self.collect_events();
+		result.console_errors = std::mem::take(&mut self.console_errors);
+
+		let failure = if let Err(error) = collected {
+			Some(error)
+		} else if self.crashed && !crashed_before {
+			Some("The page crashed".to_string())
+		} else if fail_on_console_errors && !result.console_errors.is_empty() {
+			Some("The page logged errors during this step or late from an earlier one".to_string())
+		} else {
+			None
+		};
+		if result.ok
+			&& let Some(failure) = failure
+		{
+			result.ok = false;
+			result.error = Some(failure);
+		}
+
+		result
+	}
+
+	// Notes whether the page has crashed and keeps the errors it has logged until the current command reports them
+	fn collect_events(&mut self) -> Result<(), String> {
+		let events = self.browser.take_events()?;
+		self.crashed |= events.crashed;
+		self.console_errors.extend(events.console_errors);
+		Ok(())
 	}
 
 	fn dispatch(&mut self, command: &Command) -> Result<CommandResult, String> {
@@ -241,6 +277,7 @@ impl EditorSession {
 				result.path = Some(path);
 			}
 			Command::Locate { data, text } => result.located = Some(self.locate(data.as_deref(), text.as_deref())?),
+			Command::Expect { data, text, value, count } => result.located = Some(self.expect(data.as_deref(), text.as_deref(), value.as_deref(), *count)?),
 			Command::Resize { size } => {
 				if size.min_element() == 0 {
 					return Err("The page's width and height must be at least one pixel".to_string());
@@ -255,8 +292,7 @@ impl EditorSession {
 	}
 
 	fn status(&mut self) -> Result<SessionStatus, String> {
-		let events = self.browser.take_events()?;
-		self.crashed |= events.crashed;
+		self.collect_events()?;
 
 		// A crashed page answers no queries
 		let viewport = if self.crashed { None } else { self.region_box(Some("viewport"))? };
@@ -269,7 +305,6 @@ impl EditorSession {
 			held_keys: self.held_keys.iter().map(|held| held.pressed_as.clone()).collect(),
 			held_buttons: self.held_buttons.clone(),
 			crashed: self.crashed,
-			console_errors: events.console_errors,
 		})
 	}
 
@@ -440,15 +475,70 @@ impl EditorSession {
 			return Err("Locating needs a `data` attribute name or some visible `text`".to_string());
 		}
 
-		let located = self.browser.locate(data, text)?.into_iter().map(|element| {
+		self.find_elements(data.map(data_selector).as_deref(), text)
+	}
+
+	fn expect(&self, data: Option<&str>, text: Option<&str>, value: Option<&str>, count: Option<u32>) -> Result<Vec<Located>, String> {
+		// With only a value to go on, every field is a candidate
+		let selector = match (data, text, value) {
+			(Some(data), _, _) => Some(data_selector(data)),
+			(None, None, Some(_)) => Some(FIELD_SELECTOR.to_string()),
+			(None, None, None) => return Err("Expecting needs a `data` attribute name, some visible `text`, or a field's `value`".to_string()),
+			(None, Some(_), _) => None,
+		};
+		let candidates = self.find_elements(selector.as_deref(), text)?;
+		let candidate_values = candidates.iter().filter_map(|element| element.value.clone()).collect::<Vec<_>>();
+		let found = candidates.into_iter().filter(|element| value.is_none() || element.value.as_deref() == value).collect::<Vec<_>>();
+
+		let matched = match count {
+			Some(count) => found.len() == count as usize,
+			None => !found.is_empty(),
+		};
+		if matched {
+			return Ok(found);
+		}
+
+		let description = [
+			data.map(|data| format!("with the `data-{data}` attribute")),
+			text.map(|text| format!("containing the text \"{text}\"")),
+			value.map(|value| format!("with a field holding \"{value}\"")),
+		];
+		let description = description.into_iter().flatten().collect::<Vec<_>>().join(" and ");
+		let expected = match count {
+			Some(1) => "exactly 1 element".to_string(),
+			Some(count) => format!("exactly {count} elements"),
+			None => "at least 1 element".to_string(),
+		};
+
+		// Listing what the fields held instead helps tell a wrong value from a missing field
+		let held = if value.is_some() && !candidate_values.is_empty() {
+			let shown = candidate_values.iter().take(EXPECT_SHOWN_VALUES).map(|value| format!("\"{value}\"")).collect::<Vec<_>>();
+			format!(", while the fields held {}", shown.join(", "))
+		} else {
+			String::new()
+		};
+		Err(format!("Expected {expected} {description}, but found {}{held}", found.len()))
+	}
+
+	fn find_elements(&self, selector: Option<&str>, text: Option<&str>) -> Result<Vec<Located>, String> {
+		let located = self.browser.locate(selector, text, FIELD_SELECTOR)?.into_iter().map(|element| {
 			let bounds = element.bounds;
 			let text = element.text.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(LOCATED_TEXT_LENGTH).collect();
 			let center = DVec2::new(bounds.x + bounds.width / 2., bounds.y + bounds.height / 2.);
 
-			Located { bounds, center, text }
+			Located {
+				bounds,
+				center,
+				text,
+				value: element.value,
+			}
 		});
 		Ok(located.collect())
 	}
+}
+
+fn data_selector(data: &str) -> String {
+	format!("[data-{data}]")
 }
 
 fn button_name(button: MouseButton) -> &'static str {

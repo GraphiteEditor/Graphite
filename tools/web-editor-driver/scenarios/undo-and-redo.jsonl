@@ -1,0 +1,23 @@
+// Undo and redo drawing a rectangle
+
+{ "type": "resize", "size": [1600, 1000] }
+
+// Open a new document
+{ "type": "press", "key": "Control+KeyN" }
+{ "type": "waitIdle" }
+{ "type": "click", "at": [802, 588] }
+{ "type": "waitIdle" }
+
+// Draw a rectangle
+{ "type": "press", "key": "KeyM" }
+{ "type": "drag", "from": [200, 150], "to": [500, 350], "space": "viewport" }
+{ "type": "waitIdle" }
+{ "type": "expect", "data": "layer", "count": 2 }
+
+// Undo it, then redo it
+{ "type": "press", "key": "Control+KeyZ" }
+{ "type": "waitIdle" }
+{ "type": "expect", "data": "layer", "count": 1 }
+{ "type": "press", "key": "Control+Shift+KeyZ" }
+{ "type": "waitIdle" }
+{ "type": "expect", "data": "layer", "count": 2 }

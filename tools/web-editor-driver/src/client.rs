@@ -64,10 +64,10 @@ impl Connection {
 		}
 	}
 
-	pub fn perform(&mut self, commands: Vec<Command>) -> Result<Vec<CommandResult>, String> {
+	pub fn perform(&mut self, commands: Vec<Command>, fail_on_console_errors: bool) -> Result<Vec<CommandResult>, String> {
 		let id = self.next_id;
 		self.next_id += 1;
-		self.send(&ClientMessage::Perform { id, commands })?;
+		self.send(&ClientMessage::Perform { id, commands, fail_on_console_errors })?;
 
 		match self.receive()? {
 			Some(HostMessage::Results { id: answered, results }) if answered == id => Ok(results),
@@ -133,9 +133,9 @@ pub fn session_state() -> SessionState {
 	}
 }
 
-pub fn perform(commands: Vec<Command>) -> Result<Vec<CommandResult>, String> {
+pub fn perform(commands: Vec<Command>, fail_on_console_errors: bool) -> Result<Vec<CommandResult>, String> {
 	match session_state() {
-		SessionState::Running(_, mut connection) => connection.perform(commands),
+		SessionState::Running(_, mut connection) => connection.perform(commands, fail_on_console_errors),
 		SessionState::Refused(_, reason) => Err(reason),
 		SessionState::Unresponsive(_) => Err("The session is not answering, so stop it and start a new one".to_string()),
 		SessionState::NotRunning => Err("No session is running, so start one first".to_string()),

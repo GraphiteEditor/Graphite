@@ -12,10 +12,10 @@ mod socket;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use glam::{DVec2, UVec2};
-use graphite_editor_control_protocol::{Command, CommandResult, Filmstrip, MouseButton, Rectangle, Space, parse_scenario};
+use graphite_editor_control_protocol::{Command, Filmstrip, MouseButton, Rectangle, Space, parse_scenario};
 use serde::Serialize;
 use std::num::NonZeroU32;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use crate::session::SessionOptions;
@@ -230,6 +230,24 @@ enum CliCommand {
 		text: Option<String>,
 	},
 
+	/// Fail unless the page shows the expected elements, found as `locate` finds them and narrowed to those with a field holding `--value`.
+	///
+	/// With only `--value`, it looks among every field. It expects exactly `--count` elements, or at least one without a count.
+	Expect {
+		/// The name of a `data-*` attribute the elements have, without the `data-` prefix.
+		#[arg(long)]
+		data: Option<String>,
+		/// Text the elements contain.
+		#[arg(long)]
+		text: Option<String>,
+		/// What the element's field must hold, such as the text shown in a number field.
+		#[arg(long)]
+		value: Option<String>,
+		/// How many elements must match, where 0 expects none.
+		#[arg(long)]
+		count: Option<u32>,
+	},
+
 	/// Pause for a number of milliseconds, or with `idle`, wait until the editor stops redrawing.
 	Wait {
 		/// A number of milliseconds, or `idle`.
@@ -246,10 +264,21 @@ enum CliCommand {
 		shot: Shot,
 	},
 
-	/// Perform the steps of a scenario file.
+	/// Perform the steps of a scenario file in the current session, or of each scenario file in a folder, each in a new session.
+	///
+	/// A step fails if the page logged errors since the step before it, unless `--allow-console-errors` allows them.
 	Run {
-		/// The scenario file, which holds one command per line written as JSON, along with any blank lines and `//` comments.
-		file: PathBuf,
+		/// The scenario file, which holds one command per line written as JSON along with any blank lines and `//` comments, or a folder of them.
+		path: PathBuf,
+		/// Let scenarios pass when the page logs errors.
+		#[arg(long)]
+		allow_console_errors: bool,
+		/// The folder that the images scenarios save to relative paths land in, rather than the driver's `output` folder.
+		#[arg(long)]
+		output: Option<PathBuf>,
+		/// How many device pixels make one CSS pixel in the sessions a folder's scenarios each start, 1 by default.
+		#[arg(long, value_parser = parse_scale)]
+		scale: Option<f64>,
 		#[command(flatten)]
 		shot: Shot,
 	},
@@ -473,6 +502,7 @@ fn commands_for(command: CliCommand) -> Result<(Vec<Command>, Option<PathBuf>), 
 			no_shot,
 		),
 		CliCommand::Locate { data, text } => (vec![Command::Locate { data, text }], no_shot),
+		CliCommand::Expect { data, text, value, count } => (vec![Command::Expect { data, text, value, count }], no_shot),
 		CliCommand::Wait { duration, shot } => {
 			let command = if duration == "idle" {
 				Command::WaitIdle { timeout: None }
@@ -486,17 +516,185 @@ fn commands_for(command: CliCommand) -> Result<(Vec<Command>, Option<PathBuf>), 
 			let commands = serde_json::from_str(&json).map_err(|error| format!("Expected a JSON array of commands: {error}"))?;
 			(commands, shot)
 		}
-		CliCommand::Run { file, shot } => {
-			let contents = std::fs::read_to_string(&file).map_err(|error| format!("Failed to read {}: {error}", file.display()))?;
-			let steps = parse_scenario(&contents).map_err(|error| format!("The scenario in {} could not be read. {error}", file.display()))?;
-			(steps, shot)
-		}
-		CliCommand::Install | CliCommand::Serve { .. } | CliCommand::Start { .. } | CliCommand::Stop | CliCommand::Shutdown | CliCommand::Host { .. } => {
-			return Err("This command does not act on the editor".to_string());
+		CliCommand::Install | CliCommand::Serve { .. } | CliCommand::Start { .. } | CliCommand::Stop | CliCommand::Shutdown | CliCommand::Run { .. } | CliCommand::Host { .. } => {
+			return Err("This command is not a batch of commands".to_string());
 		}
 	};
 
 	Ok((commands, shot.path))
+}
+
+// Performs the commands, followed by a screenshot once the editor is idle if asked for one, and prints the results, returning whether all succeeded
+fn perform_and_print(mut commands: Vec<Command>, shot: Option<PathBuf>, fail_on_console_errors: bool) -> Result<bool, String> {
+	if let Some(path) = shot {
+		commands.push(Command::WaitIdle { timeout: None });
+		commands.push(Command::Screenshot {
+			path,
+			cursor: None,
+			region: None,
+			clip: None,
+		});
+	}
+
+	let results = client::perform(commands, fail_on_console_errors)?;
+	print_json(&results);
+	Ok(results.iter().all(|result| result.ok))
+}
+
+fn read_scenario(path: &Path, output: Option<&Path>) -> Result<Vec<Command>, String> {
+	let contents = std::fs::read_to_string(path).map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+	let mut steps = parse_scenario(&contents).map_err(|error| format!("The scenario in {} could not be read. {error}", path.display()))?;
+
+	if let Some(output) = output {
+		for step in &mut steps {
+			let saved_path = match step {
+				Command::Screenshot { path, .. } => path,
+				Command::Drag { filmstrip: Some(filmstrip), .. } => &mut filmstrip.path,
+				_ => continue,
+			};
+			*saved_path = output_path_in(output, saved_path);
+		}
+	}
+
+	Ok(steps)
+}
+
+fn output_path_in(output: &Path, path: &Path) -> PathBuf {
+	if path.is_absolute() { path.to_path_buf() } else { output.join(path) }
+}
+
+fn run_scenarios(path: &Path, allow_console_errors: bool, output: Option<PathBuf>, scale: Option<f64>, shot: Option<PathBuf>) -> Result<bool, String> {
+	// Made absolute because the session's host resolves paths from its own working directory
+	let output = output
+		.map(|output| std::path::absolute(&output).map_err(|error| format!("Failed to find the folder {}: {error}", output.display())))
+		.transpose()?;
+
+	if path.is_dir() {
+		if shot.is_some() {
+			return Err("The --shot option works with a scenario file rather than a folder".to_string());
+		}
+		return run_scenario_folder(path, allow_console_errors, output.as_deref(), scale.unwrap_or(1.));
+	}
+
+	if scale.is_some() {
+		return Err("The --scale option works with a folder, since a single scenario runs in the session already started, which `start --scale` sets".to_string());
+	}
+
+	let steps = read_scenario(path, output.as_deref())?;
+	let shot = shot.map(|shot| match output.as_deref() {
+		Some(output) => output_path_in(output, &shot),
+		None => shot,
+	});
+	perform_and_print(steps_then_settle(steps).collect(), shot, !allow_console_errors)
+}
+
+// Ends a scenario by waiting for the editor to settle, so errors it logs after the last step are reported too
+fn steps_then_settle(steps: Vec<Command>) -> impl Iterator<Item = Command> {
+	steps.into_iter().chain([Command::WaitIdle { timeout: None }])
+}
+
+/// How one scenario in a folder went.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScenarioOutcome {
+	file: PathBuf,
+	ok: bool,
+	/// The step that failed, counted from 1.
+	#[serde(skip_serializing_if = "Option::is_none")]
+	failed_step: Option<usize>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	error: Option<String>,
+	/// The errors the page logged along the way, which are reported here even when they are allowed.
+	#[serde(skip_serializing_if = "Vec::is_empty")]
+	console_errors: Vec<String>,
+}
+
+// Runs each scenario in a new session of its own, so none depends on what an earlier one left behind
+fn run_scenario_folder(folder: &Path, allow_console_errors: bool, output: Option<&Path>, scale: f64) -> Result<bool, String> {
+	if !matches!(client::session_state(), client::SessionState::NotRunning) {
+		return Err("A session is already running, so stop it before running a folder of scenarios, which starts a new session for each".to_string());
+	}
+
+	let read_error = |error: std::io::Error| format!("Failed to read the folder {}: {error}", folder.display());
+	let entries = std::fs::read_dir(folder).map_err(read_error)?;
+	let mut files = entries
+		.map(|entry| entry.map(|entry| entry.path().components().collect::<PathBuf>()))
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(read_error)?;
+	files.retain(|path| path.extension().is_some_and(|extension| extension == "jsonl"));
+	files.sort();
+	if files.is_empty() {
+		return Err(format!("The folder {} has no scenario files ending in .jsonl", folder.display()));
+	}
+
+	let url = editor_url(None);
+	let outcomes = files
+		.iter()
+		.map(|file| run_scenario_in_new_session(file, &url, allow_console_errors, output, scale))
+		.collect::<Vec<_>>();
+
+	print_json(&outcomes);
+	Ok(outcomes.iter().all(|outcome| outcome.ok))
+}
+
+fn run_scenario_in_new_session(file: &Path, url: &str, allow_console_errors: bool, output: Option<&Path>, scale: f64) -> ScenarioOutcome {
+	let mut outcome = ScenarioOutcome {
+		file: file.to_path_buf(),
+		ok: false,
+		failed_step: None,
+		error: None,
+		console_errors: Vec::new(),
+	};
+
+	let steps = match read_scenario(file, output) {
+		Ok(steps) => steps,
+		Err(error) => {
+			outcome.error = Some(error);
+			return outcome;
+		}
+	};
+	eprintln!("Running {}", file.display());
+
+	let options = SessionOptions {
+		url: url.to_string(),
+		size: paths::DEFAULT_WINDOW_SIZE,
+		scale,
+		headed: false,
+	};
+	if let Err(error) = client::start_session(&options) {
+		outcome.error = Some(error);
+		return outcome;
+	}
+
+	let step_count = steps.len();
+	let performed = client::perform(steps_then_settle(steps).collect(), !allow_console_errors);
+	client::stop_session();
+
+	let results = match performed {
+		Ok(results) => results,
+		Err(error) => {
+			outcome.error = Some(error);
+			return outcome;
+		}
+	};
+	outcome.console_errors = results.iter().flat_map(|result| result.console_errors.iter().cloned()).collect();
+
+	match results.iter().position(|result| !result.ok) {
+		Some(index) if index == step_count => outcome.error = results[index].error.as_ref().map(|error| format!("{error} after the last step")),
+		Some(index) => {
+			outcome.failed_step = Some(index + 1);
+			outcome.error = results[index].error.clone();
+		}
+		None if results.len() <= step_count => outcome.error = Some(format!("Only {} of the {step_count} steps ran", results.len().min(step_count))),
+		None => outcome.ok = true,
+	}
+	outcome
+}
+
+// The address given, or else the dev server that `serve` started, or else the one `cargo run` serves
+fn editor_url(url: Option<String>) -> String {
+	url.or_else(|| processes::dev_server_record().map(|record| format!("http://127.0.0.1:{}/", record.port)))
+		.unwrap_or_else(|| paths::DEFAULT_EDITOR_URL.to_string())
 }
 
 fn print_json(value: &impl Serialize) {
@@ -541,9 +739,7 @@ fn run(command: CliCommand) -> Result<bool, String> {
 			println!("Serving the editor at http://127.0.0.1:{}/", record.port);
 		}
 		CliCommand::Start { url, size, scale, headed } => {
-			let url = url
-				.or_else(|| processes::dev_server_record().map(|record| format!("http://127.0.0.1:{}/", record.port)))
-				.unwrap_or_else(|| paths::DEFAULT_EDITOR_URL.to_string());
+			let url = editor_url(url);
 			let size = size.unwrap_or(paths::DEFAULT_WINDOW_SIZE);
 
 			client::start_session(&SessionOptions {
@@ -563,21 +759,16 @@ fn run(command: CliCommand) -> Result<bool, String> {
 			let size = UVec2::new(width, height);
 			host::run(SessionOptions { url, size, scale, headed })?;
 		}
+		CliCommand::Run {
+			path,
+			allow_console_errors,
+			output,
+			scale,
+			shot,
+		} => return run_scenarios(&path, allow_console_errors, output, scale, shot.path),
 		command => {
-			let (mut commands, shot) = commands_for(command)?;
-			if let Some(path) = shot {
-				commands.push(Command::WaitIdle { timeout: None });
-				commands.push(Command::Screenshot {
-					path,
-					cursor: None,
-					region: None,
-					clip: None,
-				});
-			}
-
-			let results: Vec<CommandResult> = client::perform(commands)?;
-			print_json(&results);
-			return Ok(results.iter().all(|result| result.ok));
+			let (commands, shot) = commands_for(command)?;
+			return perform_and_print(commands, shot, false);
 		}
 	}
 
@@ -598,7 +789,6 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::path::Path;
 
 	#[test]
 	fn arguments_parse() {
@@ -655,5 +845,30 @@ mod tests {
 
 		let nested = paths::output_path(Path::new("folder/shot.png"));
 		assert_eq!(nested.as_os_str(), paths::output_directory().join("folder").join("shot.png").as_os_str());
+	}
+
+	#[test]
+	fn scenario_images_go_in_the_given_output_folder() {
+		let scenario = std::env::temp_dir().join(format!("web-editor-driver-test-{}.jsonl", std::process::id()));
+		let steps = [
+			r#"{ "type": "screenshot", "path": "shot.png" }"#,
+			r#"{ "type": "drag", "from": [0, 0], "to": [10, 10], "filmstrip": { "path": "strip.png" } }"#,
+		];
+		std::fs::write(&scenario, steps.join("\n")).unwrap();
+
+		let output = std::env::temp_dir().join("documentation");
+		let steps = read_scenario(&scenario, Some(&output));
+		let _ = std::fs::remove_file(&scenario);
+
+		let saved_paths = steps
+			.unwrap()
+			.into_iter()
+			.filter_map(|step| match step {
+				Command::Screenshot { path, .. } => Some(path),
+				Command::Drag { filmstrip, .. } => filmstrip.map(|filmstrip| filmstrip.path),
+				_ => None,
+			})
+			.collect::<Vec<_>>();
+		assert_eq!(saved_paths, [output.join("shot.png"), output.join("strip.png")]);
 	}
 }

@@ -64,9 +64,10 @@ enum Request<'a> {
 	},
 	Locate {
 		#[serde(skip_serializing_if = "Option::is_none")]
-		data: Option<&'a str>,
+		selector: Option<&'a str>,
 		#[serde(skip_serializing_if = "Option::is_none")]
 		text: Option<&'a str>,
+		field_selector: &'a str,
 	},
 	NextFrame {
 		timeout: u64,
@@ -93,6 +94,7 @@ pub struct RawLocated {
 	#[serde(rename = "box")]
 	pub bounds: Rectangle,
 	pub text: String,
+	pub value: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -290,8 +292,9 @@ impl Browser {
 		self.request(Request::BoundingBox { selector })
 	}
 
-	pub fn locate(&self, data: Option<&str>, text: Option<&str>) -> Result<Vec<RawLocated>, String> {
-		self.request(Request::Locate { data, text })
+	/// The displayed elements matching a CSS selector, containing some text, or both, with the value of each one's field, as the field selector finds it.
+	pub fn locate(&self, selector: Option<&str>, text: Option<&str>, field_selector: &str) -> Result<Vec<RawLocated>, String> {
+		self.request(Request::Locate { selector, text, field_selector })
 	}
 
 	/// Waits for the page to draw its next frame, or for the timeout if it has stopped drawing.
