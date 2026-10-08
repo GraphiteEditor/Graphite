@@ -172,7 +172,8 @@ impl PathBuilder {
 	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, typesetting: TypesettingConfig, per_glyph_items: bool, x_offset: f32, space_extra: f32, run_spaces: usize) {
 		for rect in decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
 			if per_glyph_items {
-				let scaled = Rect::new(rect.x0 * self.scale, rect.y0 * self.scale, rect.x1 * self.scale, rect.y1 * self.scale);
+				// Item-local geometry starts at the origin like a glyph's, so the layer-space offset rides only on the transform.
+				let scaled = Rect::new(0., 0., (rect.x1 - rect.x0) * self.scale, (rect.y1 - rect.y0) * self.scale);
 				let translation = DVec2::new(rect.x0, rect.y0);
 				let frame = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -translation);
 				self.buffered_decoration_items.push(
@@ -413,5 +414,43 @@ mod tests {
 		let areas = output_subpath_areas(&finalized_with_glyph_and_decoration(triangle(false)));
 		assert_eq!(areas.len(), 2, "the glyph and its decoration should both be present");
 		assert!(areas.iter().all(|&area| area < 0.), "a clockwise glyph must gain a clockwise decoration, got {areas:?}");
+	}
+
+	#[test]
+	fn per_glyph_decoration_items_land_on_the_run() {
+		use crate::text_context::{TextContext, decoration_rects, for_each_styled_glyph_run};
+		use crate::{FALLBACK_FONT_RESOURCE, TypesettingConfig};
+
+		let typesetting = TypesettingConfig {
+			underline: true,
+			..TypesettingConfig::default()
+		};
+		let layout = TextContext::with_thread_local(|ctx| ctx.layout_text("Hi", &FALLBACK_FONT_RESOURCE, typesetting)).expect("layout should succeed");
+
+		let mut expected = Vec::new();
+		for_each_styled_glyph_run(&layout, "Hi", typesetting, |run, _, space_extra, run_spaces| {
+			expected.extend(decoration_rects(run, 50., space_extra, run_spaces, typesetting));
+		});
+		assert_eq!(expected.len(), 1, "the laid-out text should be one run");
+
+		let mut builder = PathBuilder::new(true, 1., DVec2::ONE, DVec2::ZERO);
+		// A nonzero x offset proves the item transform isn't applied on top of absolute geometry.
+		// Glyphs are drawn first, exactly like the per-glyph text pipeline does, so no empty placeholder appears.
+		for_each_styled_glyph_run(&layout, "Hi", typesetting, |run, _, space_extra, run_spaces| {
+			builder.render_glyph_run(run, 0., true, 50., space_extra);
+			builder.render_decoration_run(run, typesetting, true, 50., space_extra, run_spaces);
+		});
+		let output = builder.finalize();
+		assert_eq!(output.len(), 3, "two glyphs plus one decoration item, got {}", output.len());
+
+		let vector = output.element(2).expect("the decoration item should come after its glyphs");
+		let offset = output.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 2).translation;
+		let [min, max] = vector.bounding_box().expect("the decoration should have bounds");
+
+		// World rect = item offset + item-local geometry. Absolute geometry here would count the offset twice.
+		let world = [min + offset, max + offset];
+		let wanted = [DVec2::new(expected[0].x0, expected[0].y0), DVec2::new(expected[0].x1, expected[0].y1)];
+		assert!((world[0] - wanted[0]).length() < 1e-6, "got {world:?} for {wanted:?}");
+		assert!((world[1] - wanted[1]).length() < 1e-6, "got {world:?} for {wanted:?}");
 	}
 }
