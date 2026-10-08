@@ -84,7 +84,7 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 impl LayoutHolder for NewDocumentDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let name = vec![
-			TextLabel::new("Name").table_align(true).min_width(90).widget_instance(),
+			TextLabel::new("Name").table_align(true).min_width(90).max_width(90).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(&self.name)
 				.on_update(|text_input: &TextInput| NewDocumentDialogMessage::Name { name: text_input.value.clone() }.into())
@@ -94,7 +94,12 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 
 		let checkbox_id = CheckboxId::new();
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).for_checkbox(checkbox_id).widget_instance(),
+			TextLabel::new("Infinite Canvas")
+				.table_align(true)
+				.min_width(90)
+				.max_width(90)
+				.for_checkbox(checkbox_id)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite { infinite: checkbox_input.checked }.into())
@@ -103,7 +108,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 		];
 
 		let scale = vec![
-			TextLabel::new("Dimensions").table_align(true).min_width(90).widget_instance(),
+			TextLabel::new("Dimensions").table_align(true).min_width(90).max_width(90).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.dimensions.x as f64))
 				.label("W")

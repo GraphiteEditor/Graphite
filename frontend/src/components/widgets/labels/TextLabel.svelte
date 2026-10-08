@@ -83,6 +83,7 @@
 	class:selectable
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
+	class:auto-width={autoWidth}
 	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth > 0 ? `${minWidth}px` : undefined}
 	style:max-width={maxWidth > 0 ? `${maxWidth}px` : undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
@@ -106,6 +107,10 @@
 
 		&.narrow.narrow {
 			--widget-height: 20px;
+		}
+
+		&.auto-width {
+			flex-shrink: 0;
 		}
 
 		&.disabled {
@@ -147,7 +152,7 @@
 		}
 
 		&.table-align {
-			flex: 0 0 30%;
+			flex: 0 1 30%;
 			text-align: right;
 		}
 

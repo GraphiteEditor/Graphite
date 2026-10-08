@@ -131,10 +131,6 @@
 				}
 			}
 
-			.radio-input button {
-				flex-grow: 1;
-			}
-
 			.text-label.multiline {
 				user-select: text;
 			}

@@ -20,7 +20,8 @@
 			margin: -4px;
 			width: calc(100% + 2 * 4px);
 
-			.text-label {
+			// Buttons are one line tall, so their labels don't wrap
+			.text-label:not(.text-button *) {
 				white-space: wrap;
 			}
 

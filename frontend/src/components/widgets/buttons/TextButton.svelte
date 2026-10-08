@@ -113,16 +113,16 @@
 	.text-button-container {
 		position: relative;
 		display: flex;
-		flex: 1 1 auto;
+		flex: 0 1 auto;
 
 		&:has(.auto-width) {
-			flex: 1 0 auto;
+			flex: 0 0 auto;
 		}
 	}
 
 	.text-button {
 		display: flex;
-		flex: 1 1 auto;
+		flex: 0 1 auto;
 		justify-content: center;
 		align-items: center;
 		white-space: nowrap;
@@ -139,7 +139,7 @@
 		--widget-height: 24px;
 
 		&.auto-width {
-			flex: 1 0 auto;
+			flex: 0 0 auto;
 		}
 
 		&.narrow.narrow {
@@ -209,6 +209,7 @@
 
 		.text-label {
 			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 	}
 

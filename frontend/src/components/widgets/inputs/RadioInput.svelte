@@ -61,6 +61,22 @@
 		border-radius: 2px;
 		--widget-height: 24px;
 		height: var(--widget-height);
+		// Insets the ends here rather than with wider end margins, which would widen every equal-width column
+		padding: 0 1px;
+
+		// Equal-width buttons, each as wide as the widest label until the radio is given more or less room to divide evenly
+		&.radio-input {
+			display: grid;
+			grid-auto-flow: column;
+			grid-auto-columns: minmax(24px, 1fr);
+			min-width: min-content;
+		}
+
+		// Icons, and labels when the radio is auto-width, stay whole rather than being cut off
+		&:not(:has(.text-label)),
+		&.auto-width {
+			grid-auto-columns: minmax(min-content, 1fr);
+		}
 
 		button {
 			background: var(--color-4-dimgray);
@@ -73,17 +89,6 @@
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			// `min-width: fit-content` and `flex: 1 1 0` together allow us to occupy space such that we're always at least the content width,
-			// but if the container is set wider, we distribute the space evenly (so buttons with short and long labels would have equal widths).
-			flex: 1 1 100%;
-
-			&:first-of-type {
-				margin-left: 2px;
-			}
-
-			&:last-of-type {
-				margin-right: 2px;
-			}
 
 			&.active {
 				background: var(--color-e-nearwhite);
@@ -108,10 +113,6 @@
 				flex: 0 1 auto;
 				text-overflow: ellipsis;
 			}
-		}
-
-		&.auto-width button .text-label {
-			flex: 0 0 auto;
 		}
 
 		&:not(.disabled) button:not(.active):hover {
