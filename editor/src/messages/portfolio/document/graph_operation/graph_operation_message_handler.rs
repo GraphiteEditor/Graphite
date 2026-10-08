@@ -502,7 +502,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				insert_index,
 				center,
 			} => {
-				let tree = match usvg::Tree::from_str(&svg, &usvg::Options::default()) {
+				let tree = match usvg::Tree::from_str(&svg, &usvg_options()) {
 					Ok(t) => t,
 					Err(e) => {
 						responses.add(DialogMessage::DisplayDialogError {
@@ -809,8 +809,8 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 		usvg::Node::Path(path) => {
 			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
+		usvg::Node::Image(image) => {
+			import_usvg_image(modify_inputs, node, image, layer);
 		}
 		usvg::Node::Text(text) => {
 			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.to_string(), graphene_std::consts::DEFAULT_FONT_STYLE.to_string());
@@ -860,8 +860,8 @@ fn import_usvg_node_inner(
 			import_usvg_path(modify_inputs, node, path, layer, gradient_info);
 			0
 		}
-		usvg::Node::Image(_image) => {
-			warn!("Skip image");
+		usvg::Node::Image(image) => {
+			import_usvg_image(modify_inputs, node, image, layer);
 			0
 		}
 		usvg::Node::Text(text) => {
@@ -1067,9 +1067,140 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 	};
 }
 
+/// The usvg options for parsing an SVG pasted into or opened by the editor.
+///
+/// Only images embedded as data URIs are resolved. Any other `href` is refused rather than read, because usvg's default
+/// resolver treats it as a local file path, which would pull the user's files into a document they might share.
+pub(crate) fn usvg_options() -> usvg::Options<'static> {
+	usvg::Options {
+		image_href_resolver: usvg::ImageHrefResolver {
+			resolve_data: usvg::ImageHrefResolver::default_data_resolver(),
+			resolve_string: Box::new(|_, _| None),
+		},
+		..Default::default()
+	}
+}
+
+fn import_usvg_image(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, image: &usvg::Image, layer: LayerNodeIdentifier) {
+	// usvg hands us the already-encoded bytes, which we store as an embedded resource
+	let image_data = match image.kind() {
+		usvg::ImageKind::JPEG(data) | usvg::ImageKind::PNG(data) | usvg::ImageKind::GIF(data) | usvg::ImageKind::WEBP(data) => data.as_slice(),
+		// A nested SVG is preprocessed by usvg into a tree of its own, which we don't import here, and neither is a
+		// non-default `preserveAspectRatio` slicing or clip reproduced
+		usvg::ImageKind::SVG(_) => {
+			warn!("Skipping SVG image: only embedded raster data URI images are imported");
+			return;
+		}
+	};
+
+	let transform_node_id = modify_inputs.insert_image_data(image_data.into(), layer);
+
+	// `abs_transform` already accounts for the image's x, y, width, height and aspect-ratio alignment, so scaling by the
+	// pixel size reproduces the source raster at its native resolution
+	let pixel_size = DVec2::new(image.size().width() as f64, image.size().height() as f64);
+	transform_utils::update_transform(
+		modify_inputs.network_interface,
+		&transform_node_id,
+		usvg_transform(node.abs_transform()) * DAffine2::from_scale(pixel_size),
+	);
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	/// A 1x1 transparent PNG, embedded as a data URI.
+	const PNG_DATA_URI: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+	fn count_image_nodes(tree: &usvg::Tree) -> usize {
+		fn walk(group: &usvg::Group, count: &mut usize) {
+			for node in group.children() {
+				match node {
+					usvg::Node::Image(_) => *count += 1,
+					// Only groups nest further children
+					usvg::Node::Group(nested) => walk(nested, count),
+					_ => {}
+				}
+			}
+		}
+		let mut count = 0;
+		walk(tree.root(), &mut count);
+		count
+	}
+
+	#[test]
+	fn svg_data_uri_images_are_imported() {
+		let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="{PNG_DATA_URI}" width="10" height="10"/></svg>"#);
+		let tree = usvg::Tree::from_str(&svg, &usvg_options()).expect("an embedded data URI image should parse");
+		assert_eq!(count_image_nodes(&tree), 1, "the embedded image should survive parsing");
+	}
+
+	#[test]
+	fn a_local_file_reference_is_refused_rather_than_read() {
+		// A real image that usvg's own resolver does load, so this fails if the refusal is ever dropped. Pointing at a
+		// path that doesn't exist would pass either way, because a missing file is dropped whatever the resolver does.
+		let readable_image = concat!(env!("CARGO_MANIFEST_DIR"), "/../node-graph/graph-craft/src/null.png");
+		let options = usvg_options();
+
+		assert!(
+			usvg::ImageHrefResolver::default_string_resolver()(readable_image, &options).is_some(),
+			"the image should be one usvg can load, or this test proves nothing"
+		);
+		assert!(
+			(options.image_href_resolver.resolve_string)(readable_image, &options).is_none(),
+			"a path on disk must not be read into the document"
+		);
+	}
+
+	#[test]
+	fn an_unresolvable_reference_does_not_fail_the_whole_parse() {
+		let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="C:/Users/someone/Pictures/private.png" width="10" height="10"/></svg>"#;
+		let tree = usvg::Tree::from_str(svg, &usvg_options()).expect("an unresolvable image reference shouldn't fail the whole parse");
+		assert_eq!(count_image_nodes(&tree), 0, "a non-data-URI reference should not become an image node");
+	}
+
+	/// Imports an SVG the way a paste or a file open does, and reports whether any layer ended up with an Image node
+	async fn imported_svg_contains_an_image(svg: &str) -> bool {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(DocumentMessage::InsertSvg {
+				name: None,
+				svg: svg.to_string(),
+				mouse: None,
+				parent_and_insert_index: None,
+				place_at_origin: false,
+			})
+			.await;
+
+		let document = editor.active_document();
+		document.metadata().all_layers().filter(|&layer| layer != LayerNodeIdentifier::ROOT_PARENT).any(|layer| {
+			NodeGraphLayer::new(layer, &document.network_interface)
+				.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER))
+				.is_some()
+		})
+	}
+
+	#[tokio::test]
+	async fn an_imported_embedded_image_reaches_the_document() {
+		// The counterpart to the test below, so that it can't pass by never finding an image at all
+		let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="{PNG_DATA_URI}" width="10" height="10"/></svg>"#);
+
+		assert!(imported_svg_contains_an_image(&svg).await, "an embedded data URI image should be imported");
+	}
+
+	#[tokio::test]
+	async fn an_imported_local_file_reference_embeds_nothing() {
+		// An href that isn't a data URI names a path on the user's disk, which must not be read into the document
+		let svg = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><image href="{}" width="10" height="10"/></svg>"#,
+			concat!(env!("CARGO_MANIFEST_DIR"), "/../node-graph/graph-craft/src/null.png")
+		);
+
+		assert!(!imported_svg_contains_an_image(&svg).await, "a local file reference must not become an embedded image");
+	}
 
 	#[tokio::test]
 	async fn stroke_order_set_reorders_the_fill_and_stroke_nodes() {
