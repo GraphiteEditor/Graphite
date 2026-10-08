@@ -3860,6 +3860,7 @@ impl DocumentMessageHandler {
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 				.disabled(disabled)
 				.draw_icon(false)
+				.sizing(WidgetSizing::default().grow(false))
 				.tooltip_label("Blend Mode")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3881,6 +3882,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Opacity")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3902,6 +3904,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Fill Opacity")
 				.widget_instance(),
 		];
