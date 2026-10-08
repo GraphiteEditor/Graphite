@@ -334,6 +334,7 @@ fn document_settings_round_trip() {
 		rulers_visible: document.rulers_visible,
 		snapping_state: &document.snapping_state,
 		collapsed: &document.collapsed,
+		guide_lines: &document.guide_lines_message_handler,
 	}
 	.to_view_map();
 

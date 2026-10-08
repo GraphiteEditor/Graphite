@@ -17,6 +17,7 @@ mod editor_commands {
 	use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 	use editor::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
+	use editor::messages::portfolio::document::guide_lines::GuideLinesMessage;
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
@@ -685,6 +686,30 @@ mod editor_commands {
 		DocumentMessage::DeleteNode { node_id: NodeId(id) }.into()
 	}
 
+	/// Starts drawing a guide line through a viewport-space position, which then follows the pointer
+	fn begin_create_guide_line(direction: GuideLineDirection, x: f64, y: f64) -> Message {
+		DocumentMessage::GuideLines(GuideLinesMessage::BeginCreate {
+			direction,
+			viewport_position: (x, y).into(),
+		})
+		.into()
+	}
+
+	/// Starts dragging the guide line with this id, which the ruler read off the line it was drawn from
+	fn begin_grab_guide_line(id: GuideLineId) -> Message {
+		DocumentMessage::GuideLines(GuideLinesMessage::BeginGrab { id }).into()
+	}
+
+	/// Moves whichever guide line the current drag is holding
+	fn drag_guide_line(x: f64, y: f64) -> Message {
+		DocumentMessage::GuideLines(GuideLinesMessage::Drag { viewport_position: (x, y).into() }).into()
+	}
+
+	/// Ends the current drag, throwing away the guide line when the drag is discarded
+	fn end_guide_line_drag(discard: bool) -> Message {
+		DocumentMessage::GuideLines(GuideLinesMessage::EndDrag { discard }).into()
+	}
+
 	/// Toggle lock state of a layer from the layer list
 	fn toggle_layer_lock(node_id: u64) -> Message {
 		NodeGraphMessage::ToggleLocked {
@@ -763,6 +788,8 @@ macro_rules! editor_proxy_types {
 
 editor_proxy_types! {
 	FileType = editor::messages::frontend::utility_types::FileType;
+	GuideLineDirection = editor::messages::portfolio::document::utility_types::guide::GuideLineDirection;
+	GuideLineId = editor::messages::portfolio::document::utility_types::guide::GuideLineId;
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;

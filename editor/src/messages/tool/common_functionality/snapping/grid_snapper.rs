@@ -1,11 +1,13 @@
 use super::*;
-use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
+use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, GuideLineSnapTarget, SnapTarget};
 use glam::DVec2;
 use graphene_std::renderer::Quad;
 
+/// One line that things snap to, carrying the snap target it belongs to so grid lines and guide lines can share a list.
 struct Line {
 	pub point: DVec2,
 	pub direction: DVec2,
+	pub target: SnapTarget,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -26,10 +28,12 @@ impl GridSnapper {
 			lines.push(Line {
 				direction,
 				point: perpendicular * (((document_point - origin) / spacing).ceil() * spacing + origin),
+				target: SnapTarget::Grid(GridSnapTarget::Line),
 			});
 			lines.push(Line {
 				direction,
 				point: perpendicular * (((document_point - origin) / spacing).floor() * spacing + origin),
+				target: SnapTarget::Grid(GridSnapTarget::Line),
 			});
 		}
 		lines
@@ -55,10 +59,12 @@ impl GridSnapper {
 		lines.push(Line {
 			point: DVec2::new(x_max, 0.),
 			direction: DVec2::Y,
+			target: SnapTarget::Grid(GridSnapTarget::Line),
 		});
 		lines.push(Line {
 			point: DVec2::new(x_min, 0.),
 			direction: DVec2::Y,
+			target: SnapTarget::Grid(GridSnapTarget::Line),
 		});
 
 		let y_projected_onto_x = document_point.y + tan_a * (document_point.x - origin.x);
@@ -67,10 +73,12 @@ impl GridSnapper {
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_x_max),
 			direction: DVec2::new(1., -tan_a),
+			target: SnapTarget::Grid(GridSnapTarget::Line),
 		});
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_x_min),
 			direction: DVec2::new(1., -tan_a),
+			target: SnapTarget::Grid(GridSnapTarget::Line),
 		});
 
 		let y_projected_onto_z = document_point.y - tan_b * (document_point.x - origin.x);
@@ -79,20 +87,44 @@ impl GridSnapper {
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_z_max),
 			direction: DVec2::new(1., tan_b),
+			target: SnapTarget::Grid(GridSnapTarget::Line),
 		});
 		lines.push(Line {
 			point: DVec2::new(origin.x, y_onto_z_min),
 			direction: DVec2::new(1., tan_b),
+			target: SnapTarget::Grid(GridSnapTarget::Line),
 		});
 
 		lines
 	}
 
 	fn get_snap_lines(&self, document_point: DVec2, snap_data: &mut SnapData) -> Vec<Line> {
-		match snap_data.document.snapping_state.grid.grid_type {
+		let mut lines = match snap_data.document.snapping_state.grid.grid_type {
 			GridType::Rectangular { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
 			GridType::Isometric { y_axis_spacing, angle_a, angle_b } => self.get_snap_lines_isometric(document_point, snap_data, y_axis_spacing, angle_a, angle_b),
+		};
+		lines.extend(self.get_guide_snap_lines(snap_data));
+		lines
+	}
+
+	/// The user's guide lines, added to the same list the grid produces so closest-line and line-intersection snapping
+	/// come for free rather than needing a parallel implementation.
+	fn get_guide_snap_lines(&self, snap_data: &SnapData) -> Vec<Line> {
+		let document = snap_data.document;
+		if !document.snapping_state.target_enabled(SnapTarget::GuideLine(GuideLineSnapTarget::Line)) {
+			return Vec::new();
 		}
+
+		document
+			.guide_lines_message_handler
+			.guide_lines
+			.iter()
+			.map(|guide_line| Line {
+				point: guide_line.anchor(),
+				direction: guide_line.direction_vector(),
+				target: SnapTarget::GuideLine(GuideLineSnapTarget::Line),
+			})
+			.collect()
 	}
 
 	pub fn free_snap(&mut self, snap_data: &mut SnapData, point: &SnapCandidatePoint, snap_results: &mut SnapResults) {
@@ -110,15 +142,13 @@ impl GridSnapper {
 				continue;
 			}
 
-			if snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
-				|| snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection))
-			{
+			if snap_data.document.snapping_state.target_enabled(line.target) {
 				snap_results.grid_lines.push(SnappedLine {
 					direction: line.direction,
 					point: SnappedPoint {
 						snapped_point_document: projected,
 						source: point.source,
-						target: SnapTarget::Grid(GridSnapTarget::Line),
+						target: line.target,
 						source_bounds: point.quad,
 						distance,
 						tolerance,
@@ -127,7 +157,10 @@ impl GridSnapper {
 				});
 			}
 
-			let normal_target = SnapTarget::Grid(GridSnapTarget::LineNormal);
+			let normal_target = match line.target {
+				SnapTarget::GuideLine(_) => line.target,
+				_ => SnapTarget::Grid(GridSnapTarget::LineNormal),
+			};
 			if snap_data.document.snapping_state.target_enabled(normal_target) {
 				for &neighbor in &point.neighbors {
 					let projected = (neighbor - line.point).project_onto(line.direction) + line.point;
@@ -163,11 +196,11 @@ impl GridSnapper {
 				continue;
 			};
 			let distance = intersection.distance(point.document_point);
-			if distance < tolerance && snap_data.document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) {
+			if distance < tolerance && snap_data.document.snapping_state.target_enabled(line.target) {
 				snap_results.points.push(SnappedPoint {
 					snapped_point_document: intersection,
 					source: point.source,
-					target: SnapTarget::Grid(GridSnapTarget::Line),
+					target: line.target,
 					at_intersection: false,
 					constrained: true,
 					source_bounds: point.quad,

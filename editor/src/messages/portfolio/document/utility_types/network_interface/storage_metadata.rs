@@ -31,6 +31,8 @@ pub enum InterfaceRebuildError {
 /// Per-peer view settings persisted in `session.json` under `ui::doc::*` (viewport view, render mode,
 /// overlay/ruler visibility, snapping, collapsed layers). Not part of the registry/CRDT/history; see
 /// [`DocumentSettings::to_view_map`].
+use crate::messages::portfolio::document::guide_lines::GuideLinesMessageHandler;
+
 pub struct DocumentSettings<'a> {
 	pub document_ptz: &'a PTZ,
 	pub render_mode: &'a RenderMode,
@@ -38,6 +40,7 @@ pub struct DocumentSettings<'a> {
 	pub rulers_visible: bool,
 	pub snapping_state: &'a SnappingState,
 	pub collapsed: &'a CollapsedLayers,
+	pub guide_lines: &'a GuideLinesMessageHandler,
 }
 
 /// Adapts a `&NodeNetworkInterface` to `document-graph-storage`'s `NodeMetadataSource` (node/network metadata
@@ -134,6 +137,7 @@ impl DocumentSettings<'_> {
 			(session::doc::RULERS_VISIBLE, to_value(&self.rulers_visible)),
 			(session::doc::SNAPPING, to_value(self.snapping_state)),
 			(session::doc::COLLAPSED, to_value(self.collapsed)),
+			(session::doc::GUIDE_LINES, to_value(self.guide_lines)),
 		];
 
 		entries

@@ -160,6 +160,7 @@ pub const SCALE_EFFECT: f64 = 0.5;
 
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
+pub const COLOR_GUIDE_LINE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_BLUE_50: &str = "#00a8ff80";
 pub const COLOR_OVERLAY_BLUE_25: &str = "#00a8ff40";
 pub const COLOR_OVERLAY_BLUE_05: &str = "#00a8ff0d";

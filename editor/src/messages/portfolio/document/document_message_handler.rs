@@ -15,10 +15,12 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+use crate::messages::portfolio::document::guide_lines::{GuideLinesMessageContext, GuideLinesMessageHandler};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
+use crate::messages::portfolio::document::overlays::guide_overlays::draw_guide_lines;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -84,6 +86,8 @@ pub struct DocumentMessageHandler {
 	pub node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
 	pub overlays_message_handler: OverlaysMessageHandler,
+	#[serde(default)]
+	pub guide_lines_message_handler: GuideLinesMessageHandler,
 	#[serde(skip)]
 	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
 	#[serde(skip)]
@@ -178,6 +182,7 @@ impl Default for DocumentMessageHandler {
 			navigation_handler: NavigationMessageHandler::default(),
 			node_graph_handler: NodeGraphMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
+			guide_lines_message_handler: GuideLinesMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
 			// ============================================
@@ -709,6 +714,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if self.snapping_state.grid_snapping {
 					grid_overlay(self, &mut overlay_context)
 				}
+				draw_guide_lines(self, &mut overlay_context);
 			}
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
@@ -1008,6 +1014,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					None
 				};
 
+				let guide_handler = &self.guide_lines_message_handler;
+				let guide_offsets = if !self.graph_view_overlay_open {
+					// Each guide is listed on every ruler its own line reaches, which is how a tilted canvas routes it to the
+					// rulers it visibly crosses rather than the ones its document direction happens to name. Rulers aren't
+					// shown while the node graph is open, so neither are their guides.
+					let mut top = Vec::new();
+					let mut left = Vec::new();
+					for line in &guide_handler.guide_lines {
+						for (is_top, entry) in line.ruler_crossings(document_to_viewport) {
+							if is_top {
+								top.push(entry);
+							} else {
+								left.push(entry);
+							}
+						}
+					}
+					[top, left]
+				} else {
+					[Vec::new(), Vec::new()]
+				};
+
 				responses.add(FrontendMessage::UpdateDocumentRulers {
 					origin: ruler_origin.into(),
 					spacing: ruler_spacing,
@@ -1016,6 +1043,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					tilt: if self.graph_view_overlay_open { 0. } else { current_ptz.tilt() },
 					flip: !self.graph_view_overlay_open && current_ptz.flip,
 					selection_quad,
+					guide_offsets,
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
@@ -1442,6 +1470,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.properties_panel_collapsed_sections.push(node_id);
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::GuideLines(message) => {
+				let document_to_viewport = self.metadata().document_to_viewport;
+				self.guide_lines_message_handler.process_message(message, responses, GuideLinesMessageContext { document_to_viewport });
+				responses.add(OverlaysMessage::Draw);
+				// The rulers carry the offsets used to grab a guide, so they have to follow every change
+				responses.add(DocumentMessage::RenderRulers);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
@@ -2081,6 +2116,7 @@ impl DocumentMessageHandler {
 			rulers_visible: self.rulers_visible,
 			snapping_state: &self.snapping_state,
 			collapsed: &self.collapsed,
+			guide_lines: &self.guide_lines_message_handler,
 		}
 		.to_view_map()
 	}
@@ -2110,6 +2146,9 @@ impl DocumentMessageHandler {
 		}
 		if let Some(value) = decode(view_settings, doc::COLLAPSED) {
 			self.collapsed = value;
+		}
+		if let Some(value) = decode(view_settings, doc::GUIDE_LINES) {
+			self.guide_lines_message_handler = value;
 		}
 	}
 

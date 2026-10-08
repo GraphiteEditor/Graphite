@@ -1,5 +1,19 @@
+<script context="module" lang="ts">
+	/// The pointer holding the active guide drag, shared by both rulers since the backend holds a single drag:
+	/// a press elsewhere mid-drag is ignored rather than overwriting it.
+	let activeGuidePointerId: number | undefined = undefined;
+</script>
+
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { createEventDispatcher, onMount } from "svelte";
+	import type { GuideRulerEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	const GUIDE_GRAB_DISTANCE = 4;
+
+	/// Whether a guide drag is in progress. The backend holds which line it is moving, so this only tracks that one is.
+	let dragging = false;
+	/// Whether the current drag drew its guide, which is thrown away if the drag is released where it began.
+	let drewDuringDrag = false;
 
 	const SELECTION_ENDPOINT_SIZE = 5;
 	const RULER_THICKNESS = 16;
@@ -21,6 +35,97 @@
 	export let microDivisions = 2;
 	export let cursorPosition: { x: number; y: number } | undefined = undefined;
 	export let selectionQuad: [number, number][] | undefined = undefined;
+	/// The viewport's top-left corner in client coordinates, which pointer positions are measured from.
+	export let viewportOrigin: { x: number; y: number } | undefined = undefined;
+	/// Each guide line this ruler can grab, with its offset along the ruler in viewport pixels.
+	export let guideOffsets: GuideRulerEntry[] | undefined = undefined;
+
+	/** Dispatched for every stage of a guide line drag: drawing, grabbing, moving, and ending it. */
+	const dispatch = createEventDispatcher<{
+		createGuideLine: { x: number; y: number };
+		grabGuideLine: { id: GuideRulerEntry["id"] };
+		dragGuideLine: { x: number; y: number };
+		endGuideLineDrag: { discard: boolean };
+	}>();
+
+	/// Resize cursor shown while hovering a guide, matching the direction that guide moves.
+	let hoverCursor: string | undefined = undefined;
+
+	/** The pointer's position in viewport space, so the backend can convert it even on a tilted canvas. */
+	function viewportPosition(event: MouseEvent): { x: number; y: number } | undefined {
+		// Measured from the viewport's corner rather than this ruler's: a ruler sits `RULER_THICKNESS` outside the viewport,
+		// so measuring from the strip itself would land every guide that far off along the axis it points across.
+		if (!viewportOrigin) return undefined;
+		return { x: event.clientX - viewportOrigin.x, y: event.clientY - viewportOrigin.y };
+	}
+
+	/// The guide line under the pointer, or undefined when there is none to grab.
+	function guideNear(event: MouseEvent): GuideRulerEntry | undefined {
+		const position = viewportPosition(event);
+		if (!position) return undefined;
+		// The top ruler measures X and the left one measures Y, so the distance along it is the matching coordinate.
+		const along = isHorizontal ? position.x : position.y;
+		return guideOffsets?.find((guide) => Math.abs(guide.offset - along) <= GUIDE_GRAB_DISTANCE);
+	}
+
+	/// Whether the pointer is still over this ruler, in which case releasing throws away a guide being drawn.
+	function overRuler(event: PointerEvent): boolean {
+		const bounds = rulerInput?.getBoundingClientRect();
+		if (!bounds) return true;
+		return isHorizontal ? event.clientY >= bounds.top && event.clientY <= bounds.bottom : event.clientX >= bounds.left && event.clientX <= bounds.right;
+	}
+
+	function onPointerDown(event: PointerEvent) {
+		// Only the primary button draws or grabs a guide; a right-click must not start one, nor may any pointer
+		// steal the drag another one holds on either ruler.
+		if (event.button !== 0 || dragging || activeGuidePointerId !== undefined) return;
+		const position = viewportPosition(event);
+		if (!position) return;
+		const grabbed = guideNear(event);
+		// A press that finds nothing draws a guide; one that finds a line moves that line. Either way the backend holds
+		// the drag, so this never has to name a line it is in the middle of creating.
+		dragging = true;
+		activeGuidePointerId = event.pointerId;
+		drewDuringDrag = grabbed === undefined;
+		if (grabbed) {
+			dispatch("grabGuideLine", { id: grabbed.id });
+		} else {
+			dispatch("createGuideLine", position);
+		}
+
+		// Without capture, moving off the narrow ruler strip ends the drag and a guide can't be pulled onto the canvas.
+		rulerInput?.setPointerCapture(event.pointerId);
+	}
+
+	function onPointerMove(event: PointerEvent) {
+		if (dragging) {
+			if (event.pointerId !== activeGuidePointerId) return;
+			const position = viewportPosition(event);
+			if (position) dispatch("dragGuideLine", position);
+		} else {
+			// A guide on this ruler moves across it, so hovering one shows the matching resize cursor.
+			hoverCursor = guideNear(event) ? (isHorizontal ? "ew-resize" : "ns-resize") : undefined;
+		}
+	}
+
+	function onPointerUp(event: PointerEvent) {
+		if (!dragging || event.pointerId !== activeGuidePointerId) return;
+		dragging = false;
+		activeGuidePointerId = undefined;
+		hoverCursor = undefined;
+		// Releasing where the drag began leaves no guide behind, matching a drag out that never left the ruler.
+		dispatch("endGuideLineDrag", { discard: drewDuringDrag && overRuler(event) });
+		drewDuringDrag = false;
+	}
+
+	function onPointerCancel(event: PointerEvent) {
+		if (!dragging || event.pointerId !== activeGuidePointerId) return;
+		dragging = false;
+		activeGuidePointerId = undefined;
+		hoverCursor = undefined;
+		dispatch("endGuideLineDrag", { discard: drewDuringDrag });
+		drewDuringDrag = false;
+	}
 
 	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
@@ -202,7 +307,15 @@
 </script>
 
 <div class="ruler-input">
-	<div class={`ruler-area ${direction === "Horizontal" ? "horizontal" : "vertical"}`} bind:this={rulerInput}>
+	<div
+		class={`ruler-area ${direction === "Horizontal" ? "horizontal" : "vertical"}`}
+		bind:this={rulerInput}
+		style:cursor={hoverCursor}
+		on:pointerdown={onPointerDown}
+		on:pointermove={onPointerMove}
+		on:pointerup={onPointerUp}
+		on:pointercancel={onPointerCancel}
+	>
 		<svg style:width={svgBounds.width} style:height={svgBounds.height}>
 			<path d={svgPath} />
 			{#each svgTexts as svgText}
@@ -289,6 +402,8 @@
 		.selection-overlay-container {
 			overflow: hidden;
 			position: absolute;
+			// Sits above the ruler area, so it must not swallow the pointerdown that starts a guide drag.
+			pointer-events: none;
 			z-index: 1;
 			top: 0;
 			left: 0;

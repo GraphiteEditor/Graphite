@@ -106,6 +106,7 @@ impl SnappingState {
 			},
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
+			SnapTarget::GuideLine(_) => true,
 			SnapTarget::Alignment(AlignmentSnapTarget::AlignWithAnchorPoint) => self.path.align_with_anchor_point,
 			SnapTarget::Alignment(_) => self.bounding_box.align_with_edges,
 			SnapTarget::DistributeEvenly(_) => self.bounding_box.distribute_evenly,
@@ -539,6 +540,24 @@ pub enum GridSnapTarget {
 	Intersection,
 }
 
+/// The part of a guide line a snap landed on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+pub enum GuideLineSnapTarget {
+	/// Along a guide line.
+	Line,
+	/// Where two guide lines cross, or a guide line crosses the grid.
+	Intersection,
+}
+
+impl fmt::Display for GuideLineSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			GuideLineSnapTarget::Line => write!(f, "Guide: Along Line"),
+			GuideLineSnapTarget::Intersection => write!(f, "Guide: Intersection Point"),
+		}
+	}
+}
+
 impl fmt::Display for GridSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -616,6 +635,7 @@ pub enum SnapTarget {
 	Path(PathSnapTarget),
 	Artboard(ArtboardSnapTarget),
 	Grid(GridSnapTarget),
+	GuideLine(GuideLineSnapTarget),
 	Alignment(AlignmentSnapTarget),
 	DistributeEvenly(DistributionSnapTarget),
 }
@@ -637,6 +657,7 @@ impl fmt::Display for SnapTarget {
 			SnapTarget::Path(path_snap_target) => write!(f, "{path_snap_target}"),
 			SnapTarget::Artboard(artboard_snap_target) => write!(f, "{artboard_snap_target}"),
 			SnapTarget::Grid(grid_snap_target) => write!(f, "{grid_snap_target}"),
+			SnapTarget::GuideLine(guide_line_snap_target) => write!(f, "{guide_line_snap_target}"),
 			SnapTarget::Alignment(alignment_snap_target) => write!(f, "{alignment_snap_target}"),
 			SnapTarget::DistributeEvenly(distribution_snap_target) => write!(f, "{distribution_snap_target}"),
 		}
