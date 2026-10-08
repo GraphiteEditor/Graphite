@@ -5,7 +5,8 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import { openDropdownMenuCount } from "/src/stores/dropdown-menus";
-	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const DASH_ENTRY: MenuListEntry = {
 		value: "",
@@ -35,14 +36,11 @@
 	export let entriesHash: bigint | undefined = undefined;
 	// Styling
 	export let narrow = false;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	// Behavior
 	export let virtualScrolling = false;
 	export let interactive = true;
 	export let takesFileDrop = false;
-	// Sizing
-	export let autoWidth = false;
-	export let minWidth = 0;
-	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -168,11 +166,10 @@
 
 <LayoutRow
 	class="dropdown-input"
-	classes={{ narrow, "auto-width": autoWidth, "file-drag-over": fileDragOver }}
+	classes={{ narrow, "file-drag-over": fileDragOver }}
 	styles={{
 		...(naturalWidth > 0 ? { width: `${naturalWidth}px` } : {}),
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+		...widgetSizingStyles(sizing),
 	}}
 	on:dragover={fileDragOverWidget}
 	on:dragleave={fileDragLeaveWidget}
@@ -221,10 +218,6 @@
 		position: relative;
 		flex: 1 1 auto;
 		--widget-height: 24px;
-
-		&.auto-width {
-			flex: 1 0 auto;
-		}
 
 		&.narrow.narrow {
 			--widget-height: 20px;

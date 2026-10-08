@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 	import FieldInput from "/src/components/widgets/inputs/FieldInput.svelte";
-	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ commitText: string }>();
 
@@ -13,10 +13,7 @@
 	// Styling
 	export let narrow = false;
 	export let centered = false;
-	// Sizing
-	export let autoWidth = false;
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -87,9 +84,7 @@
 	{tooltipDescription}
 	{tooltipShortcut}
 	{placeholder}
-	{autoWidth}
-	{minWidth}
-	{maxWidth}
+	{sizing}
 	data-text-input
 	bind:this={self}
 />

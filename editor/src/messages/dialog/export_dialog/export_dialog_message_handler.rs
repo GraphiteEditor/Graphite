@@ -123,13 +123,16 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).min_width(100).max_width(100).widget_instance(),
+			TextLabel::new("File Type").table_align(true).sizing(WidgetSizing::fixed(100)).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			DropdownInput::new(entries).selected_index(selected_index.map(|index| index as u32)).min_width(200).widget_instance(),
+			DropdownInput::new(entries)
+				.selected_index(selected_index.map(|index| index as u32))
+				.sizing(WidgetSizing::default().min_width(200))
+				.widget_instance(),
 		];
 
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width(100).max_width(100).widget_instance(),
+			TextLabel::new("Scale Factor").table_align(true).sizing(WidgetSizing::fixed(100)).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
@@ -138,7 +141,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.increment_step(0.5)
 				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
-				.min_width(200)
+				.sizing(WidgetSizing::default().min_width(200))
 				.widget_instance(),
 		];
 
@@ -177,7 +180,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		}
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).min_width(100).max_width(100).widget_instance(),
+			TextLabel::new("Bounds").table_align(true).sizing(WidgetSizing::fixed(100)).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_instance(),
 		];

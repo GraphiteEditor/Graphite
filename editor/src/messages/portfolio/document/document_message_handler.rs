@@ -4311,7 +4311,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.min(0.000001)
 			.max(1000000.)
 			.tooltip_label(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
-			.min_width(80)
+			.sizing(WidgetSizing::default().min_width(80))
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,

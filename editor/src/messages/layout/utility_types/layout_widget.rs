@@ -902,6 +902,72 @@ pub enum Widget {
 	WorkingColorsInput(WorkingColorsInput),
 }
 
+/// How a widget claims width within its row, borrowing the model of flexbox. Parts left unset follow the defaults of the layout it appears in.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSizing {
+	/// The width in pixels before growing or shrinking.
+	pub basis: Option<u32>,
+	/// Whether it widens into spare room in its row.
+	pub grow: Option<bool>,
+	/// Whether it narrows below its starting width when its row runs out of room.
+	pub shrink: Option<bool>,
+	/// The narrowest it can be, in pixels.
+	pub min_width: Option<u32>,
+	/// The widest it can be, in pixels.
+	pub max_width: Option<u32>,
+}
+
+impl WidgetSizing {
+	/// Exactly this many pixels wide, neither growing nor shrinking.
+	pub const fn fixed(width: u32) -> Self {
+		Self {
+			basis: Some(width),
+			grow: Some(false),
+			shrink: Some(false),
+			min_width: Some(width),
+			max_width: Some(width),
+		}
+	}
+
+	/// As wide as its content, neither growing nor shrinking.
+	pub const fn hug() -> Self {
+		Self {
+			basis: None,
+			grow: Some(false),
+			shrink: Some(false),
+			min_width: None,
+			max_width: None,
+		}
+	}
+
+	pub const fn basis(mut self, width: u32) -> Self {
+		self.basis = Some(width);
+		self
+	}
+
+	pub const fn grow(mut self, grow: bool) -> Self {
+		self.grow = Some(grow);
+		self
+	}
+
+	pub const fn shrink(mut self, shrink: bool) -> Self {
+		self.shrink = Some(shrink);
+		self
+	}
+
+	pub const fn min_width(mut self, width: u32) -> Self {
+		self.min_width = Some(width);
+		self
+	}
+
+	pub const fn max_width(mut self, width: u32) -> Self {
+		self.max_width = Some(width);
+		self
+	}
+}
+
 /// A single change to part of the UI, containing the location of the change and the new value.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

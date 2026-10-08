@@ -3,7 +3,8 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{
 		value: string;
@@ -25,9 +26,7 @@
 	export let monospace = false;
 	export let narrow = false;
 	export let textarea = false;
-	export let autoWidth = false;
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
@@ -111,12 +110,11 @@
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
 <LayoutRow
 	class={`field-input ${className}`}
-	classes={{ disabled, narrow, monospace, "auto-width": autoWidth, ...classes }}
+	classes={{ disabled, narrow, monospace, ...classes }}
 	style={styleName}
 	styles={{
 		...styles,
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+		...widgetSizingStyles(sizing),
 		...(editingWidth !== undefined ? { width: `${editingWidth}px` } : {}),
 	}}
 	{tooltipLabel}
@@ -222,14 +220,6 @@
 			+ .after-label-spacer {
 				width: 4px;
 				flex: 0 1 auto;
-			}
-		}
-
-		&.auto-width {
-			flex-shrink: 0;
-
-			label {
-				flex: 1 0 auto;
 			}
 		}
 

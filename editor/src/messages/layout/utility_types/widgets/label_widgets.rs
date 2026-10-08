@@ -1,4 +1,5 @@
 use super::input_widgets::CheckboxId;
+use crate::messages::layout::utility_types::layout_widget::WidgetSizing;
 use crate::messages::{frontend::IconName, input_mapper::utility_types::misc::ActionShortcut};
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
@@ -70,14 +71,7 @@ pub struct TextLabel {
 	pub center_align: bool,
 	#[serde(rename = "tableAlign")]
 	pub table_align: bool,
-
-	// Sizing
-	#[serde(rename = "autoWidth")]
-	pub auto_width: bool,
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
+	pub sizing: WidgetSizing,
 	#[serde(rename = "minWidthCharacters")]
 	pub min_width_characters: u32,
 

@@ -7,7 +7,7 @@
 	import type { Decimal, Digit } from "/src/utility-functions/decimal";
 	import { roundAwayFloatNoise } from "/src/utility-functions/numbers";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
@@ -32,6 +32,7 @@
 	export let disabled = false;
 	// Styling
 	export let narrow = false;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	// Behavior
 	/// Mode behavior
 	/// "Increment" shows arrows and allows dragging left/right to change the value.
@@ -62,10 +63,6 @@
 	/// digit with `digit`.
 	export let digit: Digit = { part: "mantissa", place: 0 };
 
-	// Sizing
-	export let autoWidth = false;
-	export let minWidth = 0;
-	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -979,9 +976,7 @@
 	styles={{
 		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	}}
-	{autoWidth}
-	{minWidth}
-	{maxWidth}
+	{sizing}
 	hideContextMenu={true}
 	spellcheck={false}
 	bind:this={self}

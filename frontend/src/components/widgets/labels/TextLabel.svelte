@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from "svelte";
-	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	let className = "";
 	export { className as class };
@@ -23,10 +24,7 @@
 	export let selectable = false;
 	export let centerAlign = false;
 	export let tableAlign = false;
-	// Sizing
-	export let autoWidth = false;
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	export let minWidthCharacters = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
@@ -38,7 +36,11 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
-	$: extraStyles = Object.entries(styles)
+	$: extraStyles = Object.entries({
+		...styles,
+		...widgetSizingStyles(sizing),
+		...(minWidthCharacters ? { "min-width": `${minWidthCharacters}ch` } : {}),
+	})
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
@@ -83,9 +85,6 @@
 	class:selectable
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	class:auto-width={autoWidth}
-	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth > 0 ? `${minWidth}px` : undefined}
-	style:max-width={maxWidth > 0 ? `${maxWidth}px` : undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
@@ -107,10 +106,6 @@
 
 		&.narrow.narrow {
 			--widget-height: 20px;
-		}
-
-		&.auto-width {
-			flex-shrink: 0;
 		}
 
 		&.disabled {

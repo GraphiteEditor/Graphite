@@ -3,7 +3,8 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { RadioEntryData } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { RadioEntryData, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
@@ -14,10 +15,7 @@
 	export let entries: RadioEntryData[];
 	// Styling
 	export let narrow = false;
-	// Sizing
-	export let autoWidth = false;
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 
 	$: mixed = selectedIndex === undefined && !disabled;
 
@@ -27,14 +25,7 @@
 	}
 </script>
 
-<LayoutRow
-	class="radio-input"
-	classes={{ disabled, narrow, mixed, "auto-width": autoWidth }}
-	styles={{
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
-	}}
->
+<LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={widgetSizingStyles(sizing)}>
 	{#each entries as entry, index}
 		<button
 			class:active={!mixed ? index === selectedIndex : undefined}
@@ -72,9 +63,8 @@
 			min-width: min-content;
 		}
 
-		// Icons, and labels when the radio is auto-width, stay whole rather than being cut off
-		&:not(:has(.text-label)),
-		&.auto-width {
+		// Icons stay whole rather than being cut off
+		&:not(:has(.text-label)) {
 			grid-auto-columns: minmax(min-content, 1fr);
 		}
 
