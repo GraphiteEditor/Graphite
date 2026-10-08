@@ -747,7 +747,7 @@ fn snap_pivot_to_bounds(document: &DocumentMessageHandler, document_mouse: DVec2
 			let distance = candidate.document_point.distance(document_mouse);
 			(candidate, distance)
 		})
-		.filter(|&(_, distance)| distance < tolerance)
+		.filter(|&(_, distance)| distance <= tolerance)
 		.min_by(|(_, a), (_, b)| a.total_cmp(b))
 		.map(|(candidate, distance)| snapping::SnappedPoint {
 			snapped_point_document: candidate.document_point,
