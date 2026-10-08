@@ -58,14 +58,13 @@ pub fn write_contact_sheet(path: &Path, frames: &[Frame], scale: f64) -> Result<
 
 // Inverts the colors under a crosshair one CSS pixel thick, keeping it visible against light and dark backgrounds alike
 fn draw_crosshair(image: &mut RgbaImage, pointer: DVec2, scale: f64) {
-	let center = pointer.round();
 	let to_device_pixels = |css: DVec2| (css * scale).round().as_i64vec2();
 
-	// Half-open ranges of device pixels for each line's thickness and its reach to either side of the center
-	let line_start = to_device_pixels(center);
-	let line_end = to_device_pixels(center + 1.);
-	let reach_start = to_device_pixels(center - CROSSHAIR_HALF_SIZE);
-	let reach_end = to_device_pixels(center + CROSSHAIR_HALF_SIZE + 1.);
+	// Half-open ranges of device pixels for each line's thickness and its reach to either side of the pointer
+	let line_start = to_device_pixels(pointer);
+	let line_end = to_device_pixels(pointer + 1.);
+	let reach_start = to_device_pixels(pointer - CROSSHAIR_HALF_SIZE);
+	let reach_end = to_device_pixels(pointer + CROSSHAIR_HALF_SIZE + 1.);
 
 	for y in reach_start.y.max(0)..reach_end.y.min(image.height() as i64) {
 		for x in reach_start.x.max(0)..reach_end.x.min(image.width() as i64) {

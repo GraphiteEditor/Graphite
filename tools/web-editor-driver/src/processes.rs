@@ -311,7 +311,10 @@ pub fn start_dev_server(port: u16) -> Result<DevServerRecord, String> {
 		// Vite exits when it cannot take the port, so an answer only counts while the process started here is still running
 		let running = process.is_running();
 		if running && port_answers(port) {
-			write_record(&paths::dev_server_file(), &record)?;
+			if let Err(error) = write_record(&paths::dev_server_file(), &record) {
+				terminate(record.process_id);
+				return Err(error);
+			}
 			return Ok(record);
 		}
 		if !running {

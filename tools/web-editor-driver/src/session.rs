@@ -1,5 +1,6 @@
 use glam::{DVec2, UVec2};
 use graphite_editor_control_protocol::{Command, CommandResult, Filmstrip, Located, MouseButton, Rectangle, SessionStatus, Space};
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -125,8 +126,9 @@ impl EditorSession {
 
 		match command {
 			Command::Move { to, space, steps } => {
+				let steps = explicit_step_count(*steps)?;
 				let to = self.to_page(*to, *space)?;
-				self.move_pointer(to, steps.map(|steps| steps.get()), None)?;
+				self.move_pointer(to, steps, None)?;
 			}
 			Command::Down { button } => self.press_button(button.unwrap_or_default(), 1)?,
 			Command::Up { button } => self.release_button(button.unwrap_or_default(), 1)?,
@@ -160,6 +162,7 @@ impl EditorSession {
 			} => {
 				let button = button.unwrap_or_default();
 				self.require_button_not_held(button)?;
+				let steps = explicit_step_count(*steps)?;
 
 				let from = self.to_page(*from, *space)?;
 				let to = self.to_page(*to, *space)?;
@@ -169,7 +172,7 @@ impl EditorSession {
 				let dragged = self
 					.hold_keys(keys.as_deref().unwrap_or_default(), &mut pressed_keys)
 					.and_then(|()| self.press_button(button, 1))
-					.and_then(|()| self.move_pointer(to, steps.map(|steps| steps.get()), filmstrip.as_ref()));
+					.and_then(|()| self.move_pointer(to, steps, filmstrip.as_ref()));
 
 				// Whatever the drag pressed is released at the end or on failure, but stays held with `release: false` once the drag succeeds
 				let released = if dragged.is_err() || *release != Some(false) {
@@ -239,6 +242,9 @@ impl EditorSession {
 			}
 			Command::Locate { data, text } => result.located = Some(self.locate(data.as_deref(), text.as_deref())?),
 			Command::Resize { size } => {
+				if size.min_element() == 0 {
+					return Err("The page's width and height must be at least one pixel".to_string());
+				}
 				self.browser.resize(*size)?;
 				self.size = *size;
 			}
@@ -450,6 +456,14 @@ fn button_name(button: MouseButton) -> &'static str {
 		MouseButton::Left => "left",
 		MouseButton::Middle => "middle",
 		MouseButton::Right => "right",
+	}
+}
+
+// Refused rather than lowered, since taking fewer steps than asked would change the motion the caller described
+fn explicit_step_count(steps: Option<NonZeroU32>) -> Result<Option<u32>, String> {
+	match steps.map(NonZeroU32::get) {
+		Some(steps) if steps > MAX_POINTER_STEPS => Err(format!("A move takes at most {MAX_POINTER_STEPS} steps")),
+		steps => Ok(steps),
 	}
 }
 

@@ -39,7 +39,7 @@ enum CliCommand {
 	/// Serve the editor with the Vite dev server, building its Wasm first when run through `cargo run drive`.
 	Serve {
 		/// The port to serve on, which `start` then opens.
-		#[arg(long, default_value_t = 8080)]
+		#[arg(long, default_value_t = 8080, value_parser = clap::value_parser!(u16).range(1..))]
 		port: u16,
 	},
 
@@ -346,11 +346,14 @@ fn parse_point(value: &str) -> Result<DVec2, String> {
 }
 
 fn parse_size(value: &str) -> Result<UVec2, String> {
-	let [width, height] = parse_numbers::<2>(value, 'x')?;
-	if width < 1. || height < 1. || width.fract() != 0. || height.fract() != 0. {
-		return Err("Expected a width and height that are positive integers".to_string());
-	}
-	Ok(UVec2::new(width as u32, height as u32))
+	let lengths = value
+		.split('x')
+		.map(|part| part.trim().parse::<NonZeroU32>().ok().map(NonZeroU32::get))
+		.collect::<Option<Vec<_>>>()
+		.and_then(|lengths| <[u32; 2]>::try_from(lengths).ok());
+	lengths
+		.map(UVec2::from)
+		.ok_or_else(|| "Expected a width and height that are positive integers, as <width>x<height>".to_string())
 }
 
 fn parse_clip(value: &str) -> Result<Rectangle, String> {
@@ -602,6 +605,8 @@ mod tests {
 		assert_eq!(parse_point("10,-20.5").unwrap(), DVec2::new(10., -20.5));
 		assert_eq!(parse_size("1600x1000").unwrap(), UVec2::new(1600, 1000));
 		assert!(parse_size("1600x0").is_err());
+		assert!(parse_size("1600.5x1000").is_err());
+		assert!(parse_size("5000000000x1000").is_err());
 		assert!(parse_clip("1,2,3").is_err());
 		assert!(parse_space("document").is_err());
 		assert!(parse_scale("0").is_err());
