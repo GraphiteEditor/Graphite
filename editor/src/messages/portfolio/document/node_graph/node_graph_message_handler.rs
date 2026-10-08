@@ -2900,8 +2900,23 @@ impl NodeGraphMessageHandler {
 		let dragging_box_selection = self.box_selection_start.is_some_and(|(_, box_selection_dragged)| box_selection_dragged);
 
 		// Cancel the ongoing action
-		if wiring || dragging_nodes || dragging_box_selection {
-			HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
+		let cancel = || HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]);
+		if wiring || dragging_nodes {
+			HintData(vec![cancel()]).send_layout(responses);
+			return;
+		}
+
+		// Box selection in progress, with modifier shortcuts
+		if dragging_box_selection {
+			HintData(vec![
+				cancel(),
+				HintGroup(vec![
+					HintInfo::keys([Key::Shift], "Extend"),
+					HintInfo::keys([Key::Alt], "Subtract"),
+					HintInfo::keys([Key::Control], "Exclude Layers"),
+				]),
+			])
+			.send_layout(responses);
 			return;
 		}
 
