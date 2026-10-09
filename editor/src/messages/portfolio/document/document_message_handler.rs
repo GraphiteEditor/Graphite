@@ -17,7 +17,6 @@ use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, 
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
@@ -254,6 +253,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport });
 			}
 			DocumentMessage::PropertiesPanel(message) => {
+				let wire_in_progress_output_types = self.node_graph_handler.wire_in_progress_output_types(&self.network_interface, &self.selection_network_path);
 				let context = PropertiesPanelMessageContext {
 					executor,
 					document_id,
@@ -264,6 +264,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					fonts,
 					properties_panel_open,
 					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					wire_in_progress_output_types: &wire_in_progress_output_types,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -582,11 +583,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				// Abort wire in progress of being connected
 				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
-					self.node_graph_handler.wire_in_progress_from_connector = None;
-					self.node_graph_handler.wire_in_progress_to_connector = None;
-					self.node_graph_handler.wire_in_progress_type = FrontendGraphDataType::General;
-
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+					self.node_graph_handler.end_wire_in_progress(responses);
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 				// Close the context menu if it's open

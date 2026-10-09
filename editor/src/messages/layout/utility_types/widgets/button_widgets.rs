@@ -4,6 +4,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::tool_messages::tool_prelude::WidgetCallback;
 use derivative::*;
+use graph_craft::document::NodeId;
 use graphene_std::color::SRGBA8;
 use graphene_std::vector::style::FillChoice;
 use graphite_proc_macros::WidgetBuilder;
@@ -95,6 +96,15 @@ pub struct ParameterExposeButton {
 	pub exposed: bool,
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
+	/// The node whose input this connector represents, so it can be dragged to and from as a wire endpoint.
+	#[serde(rename = "nodeId")]
+	pub node_id: NodeId,
+	/// A `u32` so it reaches the frontend as a number rather than a bigint.
+	#[serde(rename = "inputIndex")]
+	pub input_index: u32,
+	/// Whether the wire currently being dragged in the graph can be dropped onto this connector.
+	#[serde(rename = "wireDropTarget")]
+	pub wire_drop_target: bool,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

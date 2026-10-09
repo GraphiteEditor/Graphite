@@ -160,7 +160,7 @@
 	}
 </script>
 
-<LayoutCol class="properties">
+<LayoutCol class="properties" data-properties-panel>
 	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown}>
 		<WidgetLayout layout={$propertiesPanelLayout} layoutTarget="PropertiesPanel" />
 		{#if dragging && insertMarkerTop !== undefined}

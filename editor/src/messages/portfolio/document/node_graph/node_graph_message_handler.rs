@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{
 	DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
 };
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic, WireInProgressAnchor};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
@@ -83,6 +83,12 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
+	/// The connector the wire being dragged is anchored at.
+	pub wire_in_progress_anchor: Option<WireInProgressAnchor>,
+	/// The Properties panel input connector hovered by a wire dragged from an output, with its position in viewport coordinates.
+	wire_in_progress_properties_target: Option<(InputConnector, DVec2)>,
+	/// Whether the pointer dragging a wire is over the Properties panel, where graph connectors beneath it can't be hovered.
+	wire_in_progress_hovering_properties_panel: bool,
 	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
@@ -322,36 +328,29 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				});
 				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
-				if let Some(output_connector_position) = self.wire_in_progress_from_connector {
-					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-						log::error!("Could not get network metadata in CreateNodeFromContextMenu");
-						return;
-					};
-					let output_connector_position_viewport = network_metadata
-						.persistent_metadata
-						.navigation_metadata
-						.node_graph_to_viewport
-						.transform_point2(output_connector_position);
-					let Some(output_connector) = &network_interface.output_connector_from_click(output_connector_position_viewport, breadcrumb_network_path) else {
-						log::error!("Could not get output from connector start");
-						return;
-					};
-
-					// Ensure connection is to correct input of new node. If it does not have an input then do not connect
-					if let Some((input_index, _)) = node_template.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
-						responses.add(NodeGraphMessage::CreateWire {
-							output_connector: *output_connector,
-							input_connector: InputConnector::node_at_index(node_id, input_index),
-						});
-
-						responses.add(NodeGraphMessage::RunDocumentGraph);
+				if let Some(anchor) = self.wire_in_progress_anchor {
+					match anchor {
+						// Connect to the first exposed input of the new node, if it has one
+						WireInProgressAnchor::Output(output_connector) => {
+							if let Some((input_index, _)) = node_template.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
+								responses.add(NodeGraphMessage::CreateWire {
+									output_connector,
+									input_connector: InputConnector::node_at_index(node_id, input_index),
+								});
+								responses.add(NodeGraphMessage::RunDocumentGraph);
+							}
+						}
+						// Feed the anchored input from the primary output of the new node
+						WireInProgressAnchor::Input { input_connector, .. } => {
+							responses.add(NodeGraphMessage::CreateWire {
+								output_connector: OutputConnector::primary_output(node_id),
+								input_connector,
+							});
+							responses.add(NodeGraphMessage::RunDocumentGraph);
+						}
 					}
-
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
 				}
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				self.end_wire_in_progress(responses);
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
 				});
@@ -808,12 +807,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
-						self.wire_in_progress_from_connector = None;
-						self.wire_in_progress_to_connector = None;
-						self.wire_in_progress_type = FrontendGraphDataType::General;
-
+						self.end_wire_in_progress(responses);
 						responses.add(DocumentMessage::AbortTransaction);
-						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 						return;
 					}
 
@@ -915,14 +910,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 				if self.context_menu.is_some() {
 					self.context_menu = None;
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
+					self.end_wire_in_progress(responses);
 
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
 					});
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				}
 
 				// Toggle visibility of clicked node and return
@@ -948,21 +940,38 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.preview_on_mouse_up = Some(clicked_node);
 				}
 
-				// Begin moving an existing wire
-				if let Some(clicked_input) = &clicked_input {
+				if let Some(clicked_input) = clicked_input {
 					responses.add(DocumentMessage::StartTransaction);
-					self.initial_disconnecting = true;
-					self.disconnecting = Some(*clicked_input);
 
-					let output_connector = if *clicked_input == InputConnector::Export(0) {
+					let output_connector = if clicked_input == InputConnector::Export(0) {
 						network_interface.root_node(breadcrumb_network_path).map(|root_node| root_node.to_connector())
 					} else {
-						network_interface.upstream_output_connector(clicked_input, breadcrumb_network_path)
+						network_interface.upstream_output_connector(&clicked_input, breadcrumb_network_path)
 					};
-					let Some(output_connector) = output_connector else { return };
-					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, breadcrumb_network_path);
 
-					self.wire_in_progress_type = network_interface.output_type(&output_connector, breadcrumb_network_path).displayed_type();
+					// Begin moving an existing wire
+					if let Some(output_connector) = output_connector {
+						self.initial_disconnecting = true;
+						self.disconnecting = Some(clicked_input);
+
+						self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, breadcrumb_network_path);
+						self.wire_in_progress_type = network_interface.output_type(&output_connector, breadcrumb_network_path).displayed_type();
+						self.wire_in_progress_anchor = Some(WireInProgressAnchor::Output(output_connector));
+						responses.add(PropertiesPanelMessage::Refresh);
+					}
+					// Begin creating a new wire backward from an unconnected input
+					else {
+						self.initial_disconnecting = false;
+
+						self.wire_in_progress_from_connector = network_interface.input_position(&clicked_input, selection_network_path);
+						self.wire_in_progress_type = network_interface.input_type(&clicked_input, selection_network_path).displayed_type();
+						self.wire_in_progress_anchor = Some(WireInProgressAnchor::Input {
+							input_connector: clicked_input,
+							properties_panel_position: None,
+						});
+					}
+
+					self.update_node_graph_hints(responses);
 					return;
 				}
 
@@ -974,6 +983,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					let output_type = network_interface.output_type(&clicked_output, breadcrumb_network_path);
 					self.wire_in_progress_type = output_type.displayed_type();
+					self.wire_in_progress_anchor = Some(WireInProgressAnchor::Output(clicked_output));
+					log::debug!("[wire-drag] Started wire from output {clicked_output:?}, refreshing the Properties panel");
+					responses.add(PropertiesPanelMessage::Refresh);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1066,9 +1078,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				// Auto-panning
+				// Auto-panning, except while a wire is dragged over the Properties panel
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
-				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+				if self.wire_in_progress_hovering_properties_panel {
+					self.auto_panning.stop(&messages, responses);
+				} else {
+					self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+				}
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -1079,74 +1095,77 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.transform_point2(viewport_location);
 
 				if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
-					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
-					if let Some(to_connector) = &to_connector {
-						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
-							log::error!("Could not get input position for connector: {to_connector:?}");
-							return;
-						};
-						self.wire_in_progress_to_connector = Some(input_position);
-					}
-					// Not hovering over a node input or node output, update with the mouse position.
-					else {
-						self.wire_in_progress_to_connector = Some(point);
-						// Disconnect if the wire was previously connected to an input
-						if let Some(disconnecting) = &self.disconnecting {
-							let mut disconnect_root_node = false;
-							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
-								&& root_node_to_restore.is_some()
-								&& *disconnecting == InputConnector::Export(0)
-							{
-								disconnect_root_node = true;
-							}
-							if disconnect_root_node {
-								responses.add(NodeGraphMessage::DisconnectRootNode);
-							} else {
-								responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
-							}
-							// Update the frontend that the node is disconnected
-							responses.add(NodeGraphMessage::RunDocumentGraph);
-							responses.add(NodeGraphMessage::SendGraph);
-							self.disconnecting = None;
-						}
-					}
+					let viewport_to_node_graph = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse();
 
-					if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
-						// If performance is a concern this can be stored as a field in the wire_in_progress_from/to_connector struct, and updated when snapping to an output
-						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-							return;
-						};
-						let from_connector_viewport = network_metadata
-							.persistent_metadata
-							.navigation_metadata
-							.node_graph_to_viewport
-							.transform_point2(wire_in_progress_from_connector);
-						let from_connector_is_layer = network_interface
-							.output_connector_from_click(from_connector_viewport, selection_network_path)
-							.is_some_and(|output_connector| {
-								if let OutputConnector::Node { node_id, .. } = output_connector {
-									network_interface.is_layer(&node_id, selection_network_path)
-								} else {
-									false
-								}
-							});
-						let to_connector_is_layer = to_connector.is_some_and(|to_connector| {
-							if let InputConnector::Node { node_id, input_index } = to_connector {
-								input_index == 0 && network_interface.is_layer(&node_id, selection_network_path)
-							} else {
-								false
+					// Layer stack connectors leave the wire vertically
+					let is_layer_output =
+						|output_connector: &OutputConnector| matches!(output_connector, OutputConnector::Node { node_id, .. } if network_interface.is_layer(node_id, selection_network_path));
+					let is_layer_stack_input =
+						|input_connector: &InputConnector| matches!(input_connector, InputConnector::Node { node_id, input_index: 0 } if network_interface.is_layer(node_id, selection_network_path));
+
+					// Wire endpoints ordered from output to input, plus whether each one is a layer stack connector
+					let wire_endpoints = match self.wire_in_progress_anchor {
+						// Dragging backward from an input, so snap the loose end to an output under the pointer
+						Some(WireInProgressAnchor::Input {
+							input_connector,
+							properties_panel_position,
+						}) => {
+							// An anchor in the Properties panel stays put on screen while the graph may pan beneath it
+							if let Some(properties_panel_position) = properties_panel_position {
+								self.wire_in_progress_from_connector = Some(viewport_to_node_graph.transform_point2(properties_panel_position));
 							}
-						});
-						let vector_wire = build_vector_wire(
-							wire_in_progress_from_connector,
-							wire_in_progress_to_connector,
-							from_connector_is_layer,
-							to_connector_is_layer,
-							GraphWireStyle::Direct,
-						);
-						let path_string = vector_wire.to_svg();
+
+							let hovered_output = (!self.wire_in_progress_hovering_properties_panel)
+								.then(|| network_interface.output_connector_from_click(viewport_location, selection_network_path))
+								.flatten();
+							let hovered_output_position = hovered_output.and_then(|output_connector| network_interface.output_position(&output_connector, selection_network_path));
+							self.wire_in_progress_to_connector = Some(hovered_output_position.unwrap_or(point));
+
+							let input_is_layer = properties_panel_position.is_none() && is_layer_stack_input(&input_connector);
+							let output_is_layer = hovered_output.as_ref().is_some_and(is_layer_output);
+							self.wire_in_progress_to_connector
+								.zip(self.wire_in_progress_from_connector)
+								.map(|(output_position, input_position)| (output_position, input_position, output_is_layer, input_is_layer))
+						}
+						// Dragging forward from an output, so snap the loose end to an input under the pointer or in the Properties panel
+						Some(WireInProgressAnchor::Output(output_connector)) => {
+							let hovered_input = (!self.wire_in_progress_hovering_properties_panel)
+								.then(|| network_interface.input_connector_from_click(viewport_location, selection_network_path))
+								.flatten();
+							let hovered_input_position = hovered_input.and_then(|input_connector| network_interface.input_position(&input_connector, selection_network_path));
+							let properties_target_position = self.wire_in_progress_properties_target.map(|(_, position)| viewport_to_node_graph.transform_point2(position));
+							self.wire_in_progress_to_connector = Some(properties_target_position.or(hovered_input_position).unwrap_or(point));
+
+							// Disconnect if the wire was previously connected to an input
+							if hovered_input.is_none()
+								&& let Some(disconnecting) = self.disconnecting.take()
+							{
+								let disconnect_root_node =
+									disconnecting == InputConnector::Export(0) && matches!(network_interface.previewing(selection_network_path), Previewing::Yes { root_node_to_restore: Some(_) });
+								if disconnect_root_node {
+									responses.add(NodeGraphMessage::DisconnectRootNode);
+								} else {
+									responses.add(NodeGraphMessage::DisconnectInput { input_connector: disconnecting });
+								}
+
+								// Update the frontend that the node is disconnected
+								responses.add(NodeGraphMessage::RunDocumentGraph);
+								responses.add(NodeGraphMessage::SendGraph);
+							}
+
+							let output_is_layer = is_layer_output(&output_connector);
+							let input_is_layer = properties_target_position.is_none() && hovered_input.as_ref().is_some_and(is_layer_stack_input);
+							self.wire_in_progress_from_connector
+								.zip(self.wire_in_progress_to_connector)
+								.map(|(output_position, input_position)| (output_position, input_position, output_is_layer, input_is_layer))
+						}
+						None => None,
+					};
+
+					if let Some((output_position, input_position, output_is_layer, input_is_layer)) = wire_endpoints {
+						let vector_wire = build_vector_wire(output_position, input_position, output_is_layer, input_is_layer, GraphWireStyle::Direct);
 						let wire_path = WirePath {
-							path_string,
+							path_string: vector_wire.to_svg(),
 							data_type: self.wire_in_progress_type,
 							thick: false,
 							dashed: false,
@@ -1271,44 +1290,53 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.node_graph_to_viewport
 					.inverse()
 					.transform_point2(ipp.mouse.position);
-				// Disconnect if the wire was previously connected to an input
-				if let (Some(wire_in_progress_from_connector), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) {
-					// Check if dragged connector is reconnected to another input
+				if let (Some(anchor), Some(wire_in_progress_to_connector)) = (self.wire_in_progress_anchor, self.wire_in_progress_to_connector) {
 					let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
-					let from_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_from_connector);
 					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
-					let output_connector = network_interface.output_connector_from_click(from_connector_viewport, selection_network_path);
-					let input_connector = network_interface.input_connector_from_click(to_connector_viewport, selection_network_path);
+					let over_graph = !self.wire_in_progress_hovering_properties_panel;
 
-					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
-						responses.add(NodeGraphMessage::CreateWire {
-							input_connector: *input_connector,
-							output_connector: *output_connector,
-						});
+					// Resolve the loose end of the wire to the connector it was released on
+					let (output_connector, input_connector) = match anchor {
+						WireInProgressAnchor::Output(output_connector) => {
+							let properties_target = self.wire_in_progress_properties_target.map(|(input_connector, _)| input_connector);
+							let hovered_input = over_graph
+								.then(|| network_interface.input_connector_from_click(to_connector_viewport, selection_network_path))
+								.flatten();
+							(Some(output_connector), properties_target.or(hovered_input))
+						}
+						WireInProgressAnchor::Input { input_connector, .. } => {
+							let hovered_output = over_graph
+								.then(|| network_interface.output_connector_from_click(to_connector_viewport, selection_network_path))
+								.flatten();
+							(hovered_output, Some(input_connector))
+						}
+					};
 
+					log::debug!(
+						"[wire-drag] Released with anchor {anchor:?}, properties target {:?}, over graph {over_graph}, resolved {output_connector:?} -> {input_connector:?}",
+						self.wire_in_progress_properties_target
+					);
+					if let (Some(output_connector), Some(input_connector)) = (output_connector, input_connector) {
+						responses.add(NodeGraphMessage::CreateWire { output_connector, input_connector });
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-
 						responses.add(NodeGraphMessage::SendGraph);
-					} else if !self.initial_disconnecting
-						&& input_connector.is_none()
-						&& let Some(output_connector) = output_connector
-					{
+					}
+					// Released over empty graph space, so offer to create a node to connect the wire to
+					else if !self.initial_disconnecting && over_graph {
 						// If the add node menu is already open, we don't want to open it again
 						if self.context_menu.is_some() {
 							return;
 						}
 
-						// Get the output types from the network interface
-						let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-							warn!("No network_metadata");
-							return;
-						};
-
-						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().y() - 173. { -173. } else { 0. };
+						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().x() - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > viewport.size().y() - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
-						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
+						// The node catalog filters by input type, so a wire from an input isn't filtered
+						let compatible_type = match anchor {
+							WireInProgressAnchor::Output(output_connector) => network_interface.output_type(&output_connector, selection_network_path).add_node_string(),
+							WireInProgressAnchor::Input { .. } => None,
+						};
 
 						self.context_menu = Some(ContextMenuInformation {
 							context_menu_coordinates: (point + node_graph_shift).as_ivec2().into(),
@@ -1319,6 +1347,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(FrontendMessage::UpdateContextMenuInformation {
 							context_menu_information: self.context_menu.clone(),
 						});
+						// Remove the drop target highlights while the wire waits on the menu
+						responses.add(PropertiesPanelMessage::Refresh);
 						return;
 					}
 				}
@@ -1483,28 +1513,69 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.duplicated_in_drag = false;
 				self.box_selection_start = None;
 
-				self.wire_in_progress_from_connector = None;
-				self.wire_in_progress_to_connector = None;
-				self.wire_in_progress_type = FrontendGraphDataType::General;
+				self.end_wire_in_progress(responses);
 
 				self.reordering_export = None;
 				self.reordering_import = None;
 
 				responses.add(DocumentMessage::EndTransaction);
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });
 				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
 				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
 				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
-				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
+				let wiring_over_graph = self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() && !self.wire_in_progress_hovering_properties_panel;
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || wiring_over_graph {
 					let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
 				} else {
 					// Auto-panning
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 					self.auto_panning.stop(&messages, responses);
 				}
+			}
+			NodeGraphMessage::StartWireFromPropertiesPanel { input_connector, editor_position } => {
+				if self.wire_in_progress_anchor.is_some() {
+					return;
+				}
+				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+					log::error!("Could not get network metadata in StartWireFromPropertiesPanel");
+					return;
+				};
+
+				// Dragging out of the Properties panel dismisses any open node creation menu
+				if self.context_menu.take().is_some() {
+					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
+				}
+
+				let viewport_position: DVec2 = (viewport.logical(editor_position) - viewport.offset()).into();
+				let viewport_to_node_graph = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse();
+
+				responses.add(DocumentMessage::StartTransaction);
+				self.initial_disconnecting = false;
+				self.disconnecting = None;
+
+				self.wire_in_progress_from_connector = Some(viewport_to_node_graph.transform_point2(viewport_position));
+				self.wire_in_progress_type = network_interface.input_type(&input_connector, selection_network_path).displayed_type();
+				self.wire_in_progress_anchor = Some(WireInProgressAnchor::Input {
+					input_connector,
+					properties_panel_position: Some(viewport_position),
+				});
+				self.wire_in_progress_hovering_properties_panel = true;
+
+				self.update_node_graph_hints(responses);
+			}
+			NodeGraphMessage::SetWirePropertiesPanelHover { hovering_panel, target } => {
+				log::debug!("[wire-drag] Hover report: over panel {hovering_panel}, target {target:?}, anchor {:?}", self.wire_in_progress_anchor);
+				let Some(anchor) = self.wire_in_progress_anchor else { return };
+
+				self.wire_in_progress_hovering_properties_panel = hovering_panel;
+
+				// Only a wire dragged from an output can be dropped onto a Properties panel input
+				self.wire_in_progress_properties_target = match anchor {
+					WireInProgressAnchor::Output(_) => target.map(|(input_connector, editor_position)| (input_connector, (viewport.logical(editor_position) - viewport.offset()).into())),
+					WireInProgressAnchor::Input { .. } => None,
+				};
 			}
 			NodeGraphMessage::ShakeNode => {
 				let Some((drag_start, _)) = &mut self.drag_start else {
@@ -2235,6 +2306,40 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 }
 
 impl NodeGraphMessageHandler {
+	/// Ends the wire in progress, removing it from the frontend along with any Properties panel drop target highlights.
+	pub fn end_wire_in_progress(&mut self, responses: &mut VecDeque<Message>) {
+		if matches!(self.wire_in_progress_anchor, Some(WireInProgressAnchor::Output(_))) {
+			responses.add(PropertiesPanelMessage::Refresh);
+		}
+
+		self.wire_in_progress_from_connector = None;
+		self.wire_in_progress_to_connector = None;
+		self.wire_in_progress_type = FrontendGraphDataType::General;
+		self.wire_in_progress_anchor = None;
+		self.wire_in_progress_properties_target = None;
+		self.wire_in_progress_hovering_properties_panel = false;
+
+		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+	}
+
+	/// The types a wire being dragged from an output could carry, used by the Properties panel to mark compatible inputs as drop targets.
+	pub fn wire_in_progress_output_types(&self, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Vec<Type> {
+		// The wire stays visible while the node creation menu is open, but it can no longer be dropped
+		if self.context_menu.is_some() {
+			return Vec::new();
+		}
+
+		let Some(WireInProgressAnchor::Output(output_connector)) = self.wire_in_progress_anchor else {
+			return Vec::new();
+		};
+		let output_types = network_interface.potential_output_types(&output_connector, network_path);
+		log::debug!(
+			"[wire-drag] Output {output_connector:?} has type source {:?}, potential types {output_types:?}",
+			network_interface.output_type(&output_connector, network_path)
+		);
+		output_types
+	}
+
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
 		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp, SendClickTargets, EndSendClickTargets);
@@ -2957,6 +3062,9 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			wire_in_progress_type: FrontendGraphDataType::General,
+			wire_in_progress_anchor: None,
+			wire_in_progress_properties_target: None,
+			wire_in_progress_hovering_properties_panel: false,
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),

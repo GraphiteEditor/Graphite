@@ -4,6 +4,7 @@
 	import Tooltip from "/src/components/floating-menus/Tooltip.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import WireInProgress from "/src/components/views/WireInProgress.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import PanelSubdivision from "/src/components/window/PanelSubdivision.svelte";
 	import StatusBar from "/src/components/window/StatusBar.svelte";
@@ -27,6 +28,7 @@
 		<PanelSubdivision subdivision={$portfolio.panelLayout.root} depth={0} />
 	</LayoutRow>
 	<StatusBar />
+	<WireInProgress />
 	{#if $dialog.visible}
 		<Dialog />
 	{/if}

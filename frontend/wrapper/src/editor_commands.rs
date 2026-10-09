@@ -19,7 +19,7 @@ mod editor_commands {
 	use editor::messages::input_mapper::utility_types::pointer::{EditorPointerState, ScrollDelta};
 	use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
+	use editor::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector};
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
 	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
@@ -611,6 +611,26 @@ mod editor_commands {
 			add_transaction: true,
 		}
 		.into()
+	}
+
+	/// Begin dragging a wire out of a Properties panel input connector, anchored at its center
+	fn start_wire_from_properties_panel(node_id: u64, input_index: usize, x: f64, y: f64) -> Message {
+		NodeGraphMessage::StartWireFromPropertiesPanel {
+			input_connector: InputConnector::node_at_index(NodeId(node_id), input_index),
+			editor_position: (x, y).into(),
+		}
+		.into()
+	}
+
+	/// Release a wire dragged out of the Properties panel, whose pointer down never reached the editor
+	fn release_wire_from_properties_panel() -> Message {
+		NodeGraphMessage::PointerUp.into()
+	}
+
+	/// Report whether the wire in progress is over the Properties panel, and which input connector there it hovers (centered at `x`, `y`)
+	fn set_wire_properties_panel_hover(hovering_panel: bool, target_node_id: Option<u64>, target_input_index: usize, x: f64, y: f64) -> Message {
+		let target = target_node_id.map(|node_id| (InputConnector::node_at_index(NodeId(node_id), target_input_index), (x, y).into()));
+		NodeGraphMessage::SetWirePropertiesPanelHover { hovering_panel, target }.into()
 	}
 
 	/// Respond to selection read

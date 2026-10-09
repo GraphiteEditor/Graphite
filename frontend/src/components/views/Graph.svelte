@@ -711,15 +711,6 @@
 						{/if}
 					{/each}
 				{/each}
-				{#if $nodeGraph.wirePathInProgress}
-					<path
-						d={$nodeGraph.wirePathInProgress?.pathString}
-						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
-						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
-						style:--data-dasharray={`3,${$nodeGraph.wirePathInProgress.dashed ? 2 : 0}`}
-					/>
-				{/if}
 			</svg>
 		</div>
 

@@ -1,3 +1,4 @@
+use graphene_std::Type;
 use graphene_std::uuid::NodeId;
 
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -17,6 +18,7 @@ pub struct PropertiesPanelMessageContext<'a> {
 	pub fonts: &'a FontsMessageHandler,
 	pub properties_panel_open: bool,
 	pub properties_panel_collapsed_sections: &'a [NodeId],
+	pub wire_in_progress_output_types: &'a [Type],
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -35,6 +37,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			fonts,
 			properties_panel_open,
 			properties_panel_collapsed_sections,
+			wire_in_progress_output_types,
 		} = context;
 
 		match message {
@@ -60,6 +63,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					document_name,
 					fonts,
 					properties_panel_collapsed_sections,
+					wire_in_progress_output_types,
 				};
 				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
 

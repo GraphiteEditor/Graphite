@@ -33,6 +33,8 @@ pub struct NodePropertiesContext<'a> {
 	pub document_name: &'a str,
 	/// The node IDs whose Properties panel sections the user has collapsed.
 	pub properties_panel_collapsed_sections: &'a [NodeId],
+	/// The types a wire being dragged from an output could carry, so compatible inputs can be marked as drop targets.
+	pub wire_in_progress_output_types: &'a [Type],
 }
 
 impl NodePropertiesContext<'_> {

@@ -7,7 +7,7 @@ use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, 
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, type_feeds_connector};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
@@ -82,10 +82,13 @@ pub fn commit_value<T>(_: &T) -> Message {
 	DocumentMessage::AddTransaction.into()
 }
 
-pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetInstance {
+pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool, wire_drop_target: bool) -> WidgetInstance {
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
+		.node_id(node_id)
+		.input_index(index as u32)
+		.wire_drop_target(wire_drop_target)
 		.tooltip_description(if exposed {
 			"Stop exposing this parameter as a node input in the graph."
 		} else {
@@ -153,6 +156,7 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 			parameter_widgets_info.index,
 			parameter_widgets_info.input_type,
 			input.is_exposed(),
+			parameter_widgets_info.wire_drop_target,
 		));
 	}
 	widgets.push(
@@ -3517,6 +3521,8 @@ pub struct ParameterWidgetsInfo<'a> {
 	input_type: FrontendGraphDataType,
 	blank_assist: bool,
 	exposable: bool,
+	/// Whether a wire being dragged from an output could be connected to this parameter.
+	wire_drop_target: bool,
 	fonts: &'a FontsMessageHandler,
 }
 
@@ -3550,6 +3556,22 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
+		let wire_drop_target = !context.wire_in_progress_output_types.is_empty()
+			&& context
+				.network_interface
+				.potential_valid_input_types(&InputConnector::node_at_index(node_id, index), context.selection_network_path)
+				.iter()
+				.any(|valid_type| context.wire_in_progress_output_types.iter().any(|output_type| type_feeds_connector(output_type, valid_type)));
+		if !context.wire_in_progress_output_types.is_empty() {
+			let valid_types = context
+				.network_interface
+				.potential_valid_input_types(&InputConnector::node_at_index(node_id, index), context.selection_network_path)
+				.iter()
+				.map(|valid_type| valid_type.nested_type().clone())
+				.collect::<Vec<_>>();
+			log::debug!("[wire-drag] Input {name} ({node_id}, {index}) has valid types {valid_types:?}, drop target: {wire_drop_target}");
+		}
+
 		ParameterWidgetsInfo {
 			document_id: context.document_id,
 			network_interface: context.network_interface,
@@ -3564,6 +3586,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			input_type,
 			blank_assist,
 			exposable: true,
+			wire_drop_target,
 		}
 	}
 

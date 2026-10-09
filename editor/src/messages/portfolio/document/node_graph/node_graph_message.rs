@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
-use glam::IVec2;
+use glam::{DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -120,6 +120,16 @@ pub enum NodeGraphMessage {
 	PointerUp,
 	PointerOutsideViewport {
 		shift: Key,
+	},
+	/// Begins dragging a wire out of an input connector shown in the Properties panel.
+	StartWireFromPropertiesPanel {
+		input_connector: InputConnector,
+		editor_position: DVec2,
+	},
+	/// Reports whether the wire in progress is over the Properties panel, and which input connector there it hovers (at its editor position).
+	SetWirePropertiesPanelHover {
+		hovering_panel: bool,
+		target: Option<(InputConnector, DVec2)>,
 	},
 	ShakeNode,
 	UpdateNodeGraphWidth,

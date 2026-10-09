@@ -1,3 +1,5 @@
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+use glam::DVec2;
 use graph_craft::document::NodeId;
 use graphene_std::{Type, simplify_identifier_name};
 
@@ -160,6 +162,19 @@ pub enum ContextMenuData {
 	CreateNode {
 		#[serde(rename = "compatibleType")]
 		compatible_type: Option<String>,
+	},
+}
+
+/// The connector a wire being dragged starts from, which stays fixed while its other end follows the pointer.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WireInProgressAnchor {
+	/// Dragged from an output toward a compatible input.
+	Output(OutputConnector),
+	/// Dragged from an input toward a compatible output.
+	Input {
+		input_connector: InputConnector,
+		/// Set when dragged out of the Properties panel, in viewport coordinates, since the input may not be exposed in the graph.
+		properties_panel_position: Option<DVec2>,
 	},
 }
 
