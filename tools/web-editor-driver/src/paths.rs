@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 pub const DEFAULT_EDITOR_URL: &str = "http://localhost:8080/";
 pub const DEFAULT_WINDOW_SIZE: UVec2 = UVec2::new(1600, 1000);
+pub const BROWSERS_PATH_VARIABLE: &str = "PLAYWRIGHT_BROWSERS_PATH";
 
 pub fn tool_directory() -> PathBuf {
 	PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -16,9 +17,14 @@ pub fn playwright_directory() -> PathBuf {
 	tool_directory().join("playwright")
 }
 
-// The browser is downloaded here so the driver is isolated from any browser, profile, or history already on the machine
+/// The browsers the environment provides.
+pub fn provided_browsers_directory() -> Option<PathBuf> {
+	std::env::var_os(BROWSERS_PATH_VARIABLE).filter(|path| !path.is_empty()).map(PathBuf::from)
+}
+
+// Otherwise the browser is downloaded here, so the driver is isolated from any browser, profile, or history already on the machine
 pub fn browsers_directory() -> PathBuf {
-	tool_directory().join(".browsers")
+	provided_browsers_directory().unwrap_or_else(|| tool_directory().join(".browsers"))
 }
 
 pub fn session_directory() -> PathBuf {

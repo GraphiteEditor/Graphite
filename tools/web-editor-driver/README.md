@@ -20,6 +20,8 @@ Requires Node.js 22.18 or newer.
 cargo run drive install
 ```
 
+On Nix use the shell `nix develop .#full`
+
 ## Usage
 
 ```sh

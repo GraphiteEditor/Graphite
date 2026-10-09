@@ -129,7 +129,7 @@ impl Browser {
 
 		let mut process = Command::new("node")
 			.arg(script)
-			.env("PLAYWRIGHT_BROWSERS_PATH", paths::browsers_directory())
+			.env(paths::BROWSERS_PATH_VARIABLE, paths::browsers_directory())
 			.current_dir(paths::playwright_directory())
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped())
