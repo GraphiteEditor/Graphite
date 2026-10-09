@@ -1,6 +1,7 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::frontend::IconName;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -30,7 +31,13 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "implementationName")]
 	pub implementation_name: String,
 	#[serde(rename = "iconName")]
-	pub icon_name: Option<IconName>,
+	pub icon_name: IconName,
+	/// The nodes in the chain feeding this layer, in the graph's left-to-right order.
+	#[serde(rename = "chainNodes")]
+	pub chain_nodes: Vec<LayerPanelChainNode>,
+	/// The data type flowing from the chain into the layer, which colors the connector between them.
+	#[serde(rename = "chainDataType")]
+	pub chain_data_type: FrontendGraphDataType,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
@@ -43,6 +50,20 @@ pub struct LayerPanelEntry {
 	pub descendant_of_selected: bool,
 	pub clipped: bool,
 	pub clippable: bool,
+}
+
+/// A node in the chain feeding a layer, shown as a button with its icon in the layer's row.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct LayerPanelChainNode {
+	pub id: NodeId,
+	pub icon: IconName,
+	pub name: String,
+	/// Whether the node is selected, shown in every layer whose chain shares it.
+	pub selected: bool,
+	/// Whether the node can be dragged to reorder it, unlike a source node (with no primary input) fixed at the chain's upstream end.
+	pub reorderable: bool,
+	pub visible: bool,
 }
 
 /// IMPORTANT: the same node may appear multiple times.

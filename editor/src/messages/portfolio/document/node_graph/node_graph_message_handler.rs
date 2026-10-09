@@ -13,7 +13,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode};
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -2880,6 +2880,7 @@ impl NodeGraphMessageHandler {
 			.selected_layers(network_interface.document_metadata())
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
+		let selected_nodes = network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
 
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
@@ -2909,10 +2910,34 @@ impl NodeGraphMessageHandler {
 
 				let clippable = layer.can_be_clipped(network_interface.document_metadata()) && network_interface.layer_hosts_blending_nodes(&node_id, &[]);
 
+				// Listed left to right as in the graph
+				let chain_nodes = network_interface
+					.layer_chain_nodes(node_id, &[])
+					.into_iter()
+					.rev()
+					.map(|chain_node_id| LayerPanelChainNode {
+						id: chain_node_id,
+						icon: network_interface.node_icon(&chain_node_id, &[]).to_string(),
+						name: network_interface.display_name(&chain_node_id, &[]),
+						selected: selected_nodes.contains(&chain_node_id),
+						reorderable: network_interface.has_primary_input(&chain_node_id, &[]),
+						visible: network_interface.is_visible(&chain_node_id, &[]),
+					})
+					.collect::<Vec<_>>();
+
+				// Only colors the connector drawn beside a chain, so a layer without one skips resolving the type
+				let chain_data_type = if chain_nodes.is_empty() {
+					FrontendGraphDataType::default()
+				} else {
+					network_interface.input_type(&InputConnector::layer_secondary_input(node_id), &[]).displayed_type()
+				};
+
 				let data = LayerPanelEntry {
 					id: node_id,
 					implementation_name: network_interface.implementation_name(&node_id, &[]),
-					icon_name: network_interface.is_artboard(&node_id, &[]).then(|| "Artboard".to_string()),
+					icon_name: network_interface.node_icon(&node_id, &[]).to_string(),
+					chain_nodes,
+					chain_data_type,
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,

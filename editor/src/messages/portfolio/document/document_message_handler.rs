@@ -164,6 +164,9 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// The ID of the chain node at the start of a range selection among a layer's chain node icons in the Layers panel, working like `layer_range_selection_reference`.
+	#[serde(skip)]
+	chain_node_range_selection_reference: Option<NodeId>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -209,6 +212,7 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+			chain_node_range_selection_reference: None,
 			is_loaded: false,
 		}
 	}
@@ -412,6 +416,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
+				self.chain_node_range_selection_reference = None;
 			}
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
@@ -464,6 +469,30 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
+				// With only chain nodes selected (such as when dropped onto the Layers panel's New Layer button), each is copied beside itself in its chain
+				// as if duplicated one at a time, and the copies become the selection
+				if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_none() {
+					// Chains are only found in the document network, not inside a nested one open in the graph
+					let chain_nodes = self.selected_reorderable_chain_nodes();
+					if chain_nodes.is_empty() || !self.selection_network_path.is_empty() {
+						return;
+					}
+
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+					for node_id in chain_nodes {
+						responses.add(NodeGraphMessage::DuplicateChainNodes {
+							node_ids: vec![node_id],
+							destination: None,
+							select_copies: true,
+						});
+					}
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
+					responses.add(PropertiesPanelMessage::Refresh);
+					return;
+				}
+
 				responses.add(DocumentMessage::AddTransaction);
 
 				let mut new_dragging = Vec::new();
@@ -766,7 +795,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if let [layer] = *layers.as_slice() {
 					let node_ids = vec![node_id];
 					if duplicate {
-						responses.add(DocumentMessage::DuplicateChainNodes { node_ids, layer, insert_index });
+						responses.add(DocumentMessage::DuplicateChainNodes {
+							node_ids,
+							layer,
+							insert_index,
+							select_copies: false,
+						});
 					} else {
 						responses.add(DocumentMessage::MoveChainNodes { node_ids, layer, insert_index });
 					}
@@ -785,13 +819,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
-			DocumentMessage::DuplicateChainNodes { node_ids, layer, insert_index } => {
+			DocumentMessage::DuplicateChainNodes {
+				node_ids,
+				layer,
+				insert_index,
+				select_copies,
+			} => {
 				// Insert copies of nodes into a layer's chain by rewiring the graph
 				responses.add(DocumentMessage::AddTransaction);
+				if select_copies {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+				}
 				responses.add(NodeGraphMessage::DuplicateChainNodes {
 					node_ids,
 					destination: Some((layer, insert_index)),
-					select_copies: false,
+					select_copies,
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1275,6 +1317,38 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 			}
+			DocumentMessage::SelectChainNode { layer, node_id, ctrl, shift } => {
+				// The layer's chain as listed beside it in the Layers panel, which a Shift-click range runs along
+				let chain = self.network_interface.layer_chain_nodes(layer, &[]);
+
+				let selected_nodes = self.network_interface.selected_nodes();
+				let range_start = self
+					.chain_node_range_selection_reference
+					.filter(|start| shift && selected_nodes.selected_nodes().any(|selected| selected == start))
+					.and_then(|start| chain.iter().position(|id| *id == start));
+				let clicked = chain.iter().position(|id| *id == node_id);
+
+				// Shift-clicking selects the range from the still-selected last clicked node in this chain, adding it with Ctrl
+				if let (Some(start), Some(end)) = (range_start, clicked) {
+					let nodes = chain[start.min(end)..=start.max(end)].to_vec();
+					if ctrl {
+						responses.add(NodeGraphMessage::SelectedNodesAdd { nodes });
+					} else {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					}
+					return;
+				}
+
+				// Otherwise, Ctrl-clicking toggles the node's selection while a plain click selects only it, either way starting a new range
+				if !ctrl {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+				} else if self.network_interface.selected_nodes().selected_nodes().any(|selected| *selected == node_id) {
+					responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![node_id] });
+				} else {
+					responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![node_id] });
+				}
+				self.chain_node_range_selection_reference = Some(node_id);
+			}
 			DocumentMessage::SetActivePanel { active_panel } => {
 				match active_panel {
 					PanelType::Document => {
@@ -1463,14 +1537,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let chain = recursive
 					.then(|| self.network_interface.downstream_layer_for_chain_node(&node_id, network_path))
 					.flatten()
-					.map(|layer| {
-						self.network_interface
-							.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
-							.enumerate()
-							.take_while(|(index, chain_node_id)| *index == 0 || !self.network_interface.is_layer(chain_node_id, network_path))
-							.map(|(_, chain_node_id)| chain_node_id)
-							.collect::<Vec<_>>()
-					})
+					.map(|layer| std::iter::once(layer).chain(self.network_interface.layer_chain_nodes(layer, network_path)).collect::<Vec<_>>())
 					// A node that only leads into a chain from the side, or into no layer at all, isn't part of one
 					.filter(|chain| chain.contains(&node_id));
 				let node_ids = chain.unwrap_or_else(|| vec![node_id]);
@@ -1818,11 +1885,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		#[cfg(not(target_family = "wasm"))]
 		common.extend(actions!(DocumentMessageDiscriminant::SaveDocumentAs));
 
+		// Deleting, duplicating, and hiding apply to any selected nodes, not just layers, such as chain nodes selected in the Layers panel
+		if self.network_interface.selected_nodes().has_selected_nodes() {
+			common.extend(actions!(DocumentMessageDiscriminant;
+				DeleteSelectedLayers,
+				DuplicateSelectedLayers,
+			));
+			if !self.graph_view_overlay_open {
+				common.extend(actions!(DocumentMessageDiscriminant::ToggleSelectedVisibility));
+			}
+		}
+
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some() {
 			let mut select = actions!(DocumentMessageDiscriminant;
-				DeleteSelectedLayers,
-				DuplicateSelectedLayers,
 				GroupSelectedLayers,
 				BlendSelectedLayers,
 				MorphSelectedLayers,
@@ -1834,10 +1910,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				ToggleSelectedLocked
 			);
 			if !self.graph_view_overlay_open {
-				select.extend(actions!(DocumentMessageDiscriminant;
-					NudgeSelectedLayers,
-					ToggleSelectedVisibility,
-				));
+				select.extend(actions!(DocumentMessageDiscriminant::NudgeSelectedLayers));
 			}
 			common.extend(select);
 		}
@@ -2611,6 +2684,26 @@ impl DocumentMessageHandler {
 		self.network_interface
 			.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
+	}
+
+	/// The selected nodes that can be reordered in layers' chains, ordered by their layer's place in the Layers panel, then from the layer outward.
+	fn selected_reorderable_chain_nodes(&self) -> Vec<NodeId> {
+		let selected_nodes = self.network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
+
+		// Only walk the layers' chains, in O(nodes in all chains), when something other than layers is selected
+		if selected_nodes.iter().all(|node_id| self.network_interface.is_layer(node_id, &[])) {
+			return Vec::new();
+		}
+
+		let mut chain_nodes = Vec::new();
+		for layer in self.metadata().all_layers() {
+			for node_id in self.network_interface.reorderable_chain(layer.to_node(), &[]) {
+				if selected_nodes.contains(&node_id) && !chain_nodes.contains(&node_id) {
+					chain_nodes.push(node_id);
+				}
+			}
+		}
+		chain_nodes
 	}
 
 	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> usize {
@@ -3625,7 +3718,8 @@ impl DocumentMessageHandler {
 		let has_multiple_selection = selected_layers.next().is_some();
 		for _ in selected_layers {}
 
-		let selection_all_visible = selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_visible(&layer.to_node(), &[]));
+		// Visibility applies to every selected node, layer or not, while locking applies to layers
+		let selection_all_visible = selected_nodes.selected_nodes().all(|node_id| self.network_interface.is_visible(node_id, &[]));
 		let selection_all_locked = selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
 
 		let widgets = vec![
@@ -3634,7 +3728,7 @@ impl DocumentMessageHandler {
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
-				.disabled(!has_selection)
+				.disabled(!selected_nodes.has_selected_nodes())
 				.widget_instance(),
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
@@ -3694,6 +3788,7 @@ impl DocumentMessageHandler {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
+				.drag_drop_kinds(DragDropKinds::Layers)
 				.disabled(!has_selection)
 				.widget_instance(),
 			IconButton::new("NewLayer", 24)
@@ -3701,13 +3796,16 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.on_drag_drop(|_| DocumentMessage::DuplicateSelectedLayers.into())
+				.drag_drop_kinds(DragDropKinds::LayersAndChainNodes)
+				.disabled(!has_selection && selected_nodes.has_selected_nodes())
 				.widget_instance(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.on_drag_drop(|_| DocumentMessage::DeleteSelectedLayers.into())
-				.disabled(!has_selection)
+				.drag_drop_kinds(DragDropKinds::LayersAndChainNodes)
+				.disabled(!selected_nodes.has_selected_nodes())
 				.widget_instance(),
 		];
 		responses.add(LayoutMessage::SendLayout {

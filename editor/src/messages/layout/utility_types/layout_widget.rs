@@ -60,7 +60,7 @@ define_layout_target!(
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
-	/// Selected layer status (hidden/locked) at the bottom left of the Layers panel.
+	/// Visibility and lock toggles for the selection at the bottom left of the Layers panel.
 	LayersPanelBottomLeftBar,
 	/// Controls for adding, grouping, and deleting layers at the bottom right of the Layers panel.
 	LayersPanelBottomRightBar,
