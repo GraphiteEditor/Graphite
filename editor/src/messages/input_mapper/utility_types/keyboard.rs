@@ -239,8 +239,6 @@ pub enum Key {
 	FakeKeyPlus,
 	/// Not a physical key that can be pressed. May be used so that an actual shortcut bound to all ten number keys (0, ..., 9) can separately map this fake "key" as an additional binding to display the "0–9" shortcut label in the UI.
 	FakeKeyNumbers,
-	/// Not a physical key that can be pressed. Inserted automatically alongside every double-tapped key so the "2x" label shows in the UI.
-	FakeKeyDoubleTap,
 
 	_KeysVariantCount, // This has to be the last element in the enum
 }
@@ -332,7 +330,6 @@ impl fmt::Display for Key {
 			// Fake keys for displaying special labels in the UI
 			Self::FakeKeyPlus => "+",
 			Self::FakeKeyNumbers => "0–9",
-			Self::FakeKeyDoubleTap => "2x",
 
 			_ => key_name.as_str(),
 		};

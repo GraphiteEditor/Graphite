@@ -1,5 +1,5 @@
 use crate::application::Editor;
-use crate::consts::DOUBLE_CLICK_MILLISECONDS;
+use crate::consts::DOUBLE_TAP_MILLISECONDS;
 use crate::messages::input_mapper::utility_types::keyboard::{Key, KeyStates, ModifierKeys};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
 use crate::messages::input_mapper::utility_types::pointer::{MouseButton, MouseKeys, PointerState};
@@ -18,10 +18,18 @@ pub struct InputPreprocessorMessageHandler {
 	pub keyboard: KeyStates,
 	pub mouse: PointerState,
 	pointer_down_time: f64,
-	/// The most recent non-repeated key press and the timestamp of when it occurred, used as the first tap in double-tap detection.
-	last_key_down: Option<(Key, u64)>,
-	/// Set when a second tap of the same key occurs within the double-tap threshold. Cleared by any interrupting input (mouse button, scroll, or different key). The `DoubleTap` event is emitted on `KeyUp` if this is still set.
-	double_tap_key: Option<(Key, u64)>,
+	/// Double-tap detection state, timed as one gesture from the first tap's key-down.
+	double_tap_state: DoubleTapState,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum DoubleTapState {
+	#[default]
+	Idle,
+	/// The first press of the key, timed from its key-down.
+	FirstTap { key: Key, start_time: u64 },
+	/// The second press of the key is down, still timed from the first tap's key-down.
+	SecondTap { key: Key, start_time: u64 },
 }
 
 #[message_handler_data]
@@ -53,24 +61,19 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.keyboard.set(key as usize);
 
 				if !key_repeat {
-					let no_mouse_buttons_held = self.mouse.mouse_keys.is_empty();
-					let no_modifier_keys_held = modifier_keys.is_empty();
+					// A press that arrives with a mouse button or modifier held can neither open nor close a double tap,
+					// and it breaks a first tap already waiting
+					let interrupted = !self.mouse.mouse_keys.is_empty() || !modifier_keys.is_empty();
 
-					if !no_mouse_buttons_held || !no_modifier_keys_held {
-						// A press that arrives with a mouse button or modifier held can neither open nor close a double tap,
-						// and it breaks a first tap already waiting
-						self.last_key_down = None;
-						self.double_tap_key = None;
-					} else if self
-						.last_key_down
-						.is_some_and(|(last_key, last_time)| last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS)
-					{
-						self.double_tap_key = Some((key, self.time));
-						self.last_key_down = None;
-					} else {
-						self.last_key_down = Some((key, self.time));
-						self.double_tap_key = None;
-					}
+					self.double_tap_state = match (interrupted, self.double_tap_state) {
+						(true, _) => DoubleTapState::Idle,
+						(false, DoubleTapState::FirstTap { key: first_key, start_time }) if first_key == key && self.time.saturating_sub(start_time) < DOUBLE_TAP_MILLISECONDS => {
+							DoubleTapState::SecondTap { key, start_time }
+						}
+						// A late second press starts a new first tap instead of carrying a pair that can't succeed,
+						// so a slow tap followed by a quick double tap still works
+						(false, _) => DoubleTapState::FirstTap { key, start_time: self.time },
+					};
 
 					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
 				}
@@ -82,12 +85,17 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
 				}
-				if let Some((double_tap_key, double_tap_time)) = self.double_tap_key.take()
-					&& double_tap_key == key
+				if let DoubleTapState::SecondTap { key: tapped_key, start_time } = self.double_tap_state
+					&& tapped_key == key
 					&& self.mouse.mouse_keys.is_empty()
-					&& self.time.saturating_sub(double_tap_time) < DOUBLE_CLICK_MILLISECONDS
 				{
-					responses.add(InputMapperMessage::DoubleTap(key));
+					self.double_tap_state = DoubleTapState::Idle;
+
+					// Note: `self.time` only advances on animation-frame ticks, so while the editor is stalled both taps can
+					// share a stale timestamp. That makes a double tap easier to trigger, not harder, so no correction is applied.
+					if self.time.saturating_sub(start_time) < DOUBLE_TAP_MILLISECONDS {
+						responses.add(InputMapperMessage::DoubleTap(key));
+					}
 				}
 				responses.add(InputMapperMessage::KeyUp(key));
 			}
@@ -154,8 +162,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 impl InputPreprocessorMessageHandler {
 	fn clear_double_tap_state(&mut self) {
-		self.last_key_down = None;
-		self.double_tap_key = None;
+		self.double_tap_state = DoubleTapState::Idle;
 	}
 
 	fn translate_mouse_event(&mut self, mut new_state: PointerState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
@@ -234,7 +241,8 @@ impl InputPreprocessorMessageHandler {
 
 #[cfg(test)]
 mod test {
-	use crate::consts::DOUBLE_CLICK_MILLISECONDS;
+	use super::DoubleTapState;
+	use crate::consts::DOUBLE_TAP_MILLISECONDS;
 	use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
 	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys};
 	use crate::messages::prelude::*;
@@ -366,6 +374,12 @@ mod test {
 		);
 	}
 
+	fn tap(input_preprocessor: &mut InputPreprocessorMessageHandler, key: Key, time: u64, responses: &mut VecDeque<Message>) {
+		input_preprocessor.time = time;
+		key_down(input_preprocessor, key, responses);
+		key_up(input_preprocessor, key, responses);
+	}
+
 	fn process_input(input_preprocessor: &mut InputPreprocessorMessageHandler, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>) {
 		input_preprocessor.process_message(
 			message,
@@ -381,21 +395,21 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		input_preprocessor.time = 50;
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
-		assert_eq!(input_preprocessor.double_tap_key, Some((Key::Space, 50)));
+		// The stored time stays at the first tap's key-down, since the whole gesture is timed from there
+		assert_eq!(input_preprocessor.double_tap_state, DoubleTapState::SecondTap { key: Key::Space, start_time: 0 });
 
 		responses.clear();
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
-		assert!(input_preprocessor.double_tap_key.is_none());
+		assert_eq!(input_preprocessor.double_tap_state, DoubleTapState::Idle);
 	}
 
 	#[test]
@@ -403,15 +417,21 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
-		input_preprocessor.time = DOUBLE_CLICK_MILLISECONDS + 1;
+		// A second press that already arrives too late starts a new first tap instead of completing the pair
+		input_preprocessor.time = DOUBLE_TAP_MILLISECONDS + 1;
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
-		assert!(input_preprocessor.double_tap_key.is_none());
+		assert_eq!(
+			input_preprocessor.double_tap_state,
+			DoubleTapState::FirstTap {
+				key: Key::Space,
+				start_time: DOUBLE_TAP_MILLISECONDS + 1
+			}
+		);
 
 		responses.clear();
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
@@ -420,22 +440,40 @@ mod test {
 	}
 
 	#[test]
-	fn process_double_tap_held_too_long() {
+	fn process_double_tap_exceeding_total_duration_fails() {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		input_preprocessor.time = 50;
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 		responses.clear();
 
-		input_preprocessor.time = 50 + DOUBLE_CLICK_MILLISECONDS + 1;
+		// The whole gesture from the first key-down to the second key-up must fit within the limit
+		input_preprocessor.time = 50 + DOUBLE_TAP_MILLISECONDS + 1;
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+	}
+
+	#[test]
+	fn process_slow_tap_then_quick_double_tap_still_works() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let mut responses = VecDeque::new();
+
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
+		responses.clear();
+
+		// Too slow to pair with the first tap, so this becomes a new first tap of its own
+		tap(&mut input_preprocessor, Key::Space, DOUBLE_TAP_MILLISECONDS + 1, &mut responses);
+		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+		responses.clear();
+
+		// A quick pair after that still registers
+		tap(&mut input_preprocessor, Key::Space, DOUBLE_TAP_MILLISECONDS + 51, &mut responses);
+		assert!(responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
 	}
 
 	#[test]
@@ -443,8 +481,7 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		input_preprocessor.time = 50;
@@ -471,8 +508,7 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		input_preprocessor.time = 50;
@@ -501,14 +537,13 @@ mod test {
 
 		input_preprocessor.mouse.mouse_keys = MouseKeys::LEFT;
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		input_preprocessor.time = 50;
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 
-		assert!(input_preprocessor.double_tap_key.is_none());
+		assert_eq!(input_preprocessor.double_tap_state, DoubleTapState::Idle);
 
 		responses.clear();
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
@@ -531,14 +566,13 @@ mod test {
 			},
 			&mut responses,
 		);
-		assert!(
-			input_preprocessor.double_tap_key.is_none() && input_preprocessor.last_key_down.is_none(),
+		assert_eq!(
+			input_preprocessor.double_tap_state,
+			DoubleTapState::Idle,
 			"a modified first press should leave no double-tap state at all"
 		);
 
-		input_preprocessor.time = 50;
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 50, &mut responses);
 
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
 	}
@@ -548,19 +582,20 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		// A different key between the taps makes the next Space press start a fresh pair.
-		input_preprocessor.time = 50;
-		key_down(&mut input_preprocessor, Key::KeyA, &mut responses);
-		key_up(&mut input_preprocessor, Key::KeyA, &mut responses);
+		tap(&mut input_preprocessor, Key::KeyA, 50, &mut responses);
 		responses.clear();
 
 		input_preprocessor.time = 100;
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		assert!(input_preprocessor.double_tap_key.is_none(), "the intervening key should have reset the detector");
+		assert_eq!(
+			input_preprocessor.double_tap_state,
+			DoubleTapState::FirstTap { key: Key::Space, start_time: 100 },
+			"the intervening key should have reset the detector"
+		);
 
 		responses.clear();
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
@@ -572,8 +607,7 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		// Shift+Space is its own shortcut, so a modifier held on the second tap suppresses the double tap.
@@ -588,7 +622,7 @@ mod test {
 			&mut responses,
 		);
 
-		assert!(input_preprocessor.double_tap_key.is_none());
+		assert_eq!(input_preprocessor.double_tap_state, DoubleTapState::Idle);
 
 		responses.clear();
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);
@@ -600,8 +634,7 @@ mod test {
 		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
 		let mut responses = VecDeque::new();
 
-		key_down(&mut input_preprocessor, Key::Space, &mut responses);
-		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		tap(&mut input_preprocessor, Key::Space, 0, &mut responses);
 		responses.clear();
 
 		// A held key's auto-repeat must not read as a second tap.
@@ -616,7 +649,7 @@ mod test {
 			&mut responses,
 		);
 
-		assert!(input_preprocessor.double_tap_key.is_none());
+		assert_eq!(input_preprocessor.double_tap_state, DoubleTapState::FirstTap { key: Key::Space, start_time: 0 });
 
 		responses.clear();
 		key_up(&mut input_preprocessor, Key::Space, &mut responses);

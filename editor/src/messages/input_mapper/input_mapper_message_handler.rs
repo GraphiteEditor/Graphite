@@ -70,10 +70,7 @@ impl InputMapperMessageHandler {
 			use InputMapperMessage as IMM;
 			match entry.input {
 				IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) => keys.push(key),
-				IMM::DoubleTap(key) => {
-					keys.push(Key::FakeKeyDoubleTap);
-					keys.push(key);
-				}
+				IMM::DoubleTap(key) => keys.extend([key, key]),
 				_ => (),
 			}
 
