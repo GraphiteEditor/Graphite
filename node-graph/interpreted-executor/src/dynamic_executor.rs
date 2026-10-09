@@ -1,4 +1,5 @@
 use crate::node_registry;
+use core_types::SourceId;
 use dyn_any::StaticType;
 use graph_craft::Type;
 use graph_craft::document::NodeId;
@@ -20,6 +21,7 @@ pub struct DynamicExecutor {
 	typing_context: TypingContext,
 	// This allows us to keep the nodes around for one more frame which is used for introspection
 	orphaned_nodes: HashSet<NodeId>,
+	sources: Vec<SourceId>,
 }
 
 impl Default for DynamicExecutor {
@@ -29,6 +31,7 @@ impl Default for DynamicExecutor {
 			tree: Default::default(),
 			typing_context: TypingContext::new(&node_registry::NODE_REGISTRY),
 			orphaned_nodes: HashSet::new(),
+			sources: Vec::new(),
 		}
 	}
 }
@@ -52,6 +55,7 @@ impl DynamicExecutor {
 		let mut typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 		typing_context.update(&proto_network)?;
 		let output = proto_network.output;
+		let sources = proto_network.source_ids().copied().collect();
 		let tree = BorrowTree::new(proto_network, &typing_context)?;
 
 		Ok(Self {
@@ -59,7 +63,12 @@ impl DynamicExecutor {
 			output,
 			typing_context,
 			orphaned_nodes: HashSet::new(),
+			sources,
 		})
+	}
+
+	pub fn sources(&self) -> &[SourceId] {
+		&self.sources
 	}
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
@@ -87,6 +96,7 @@ impl DynamicExecutor {
 			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
 		})?;
 
+		self.sources = proto_network.source_ids().copied().collect();
 		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));

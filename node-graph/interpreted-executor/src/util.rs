@@ -5,10 +5,11 @@ use graph_craft::generic;
 use graph_craft::{concrete, item};
 use graphene_std::Context;
 use graphene_std::ContextFeatures;
+use graphene_std::RuntimeHandle;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
-pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>) -> NodeNetwork {
+pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, runtime: RuntimeHandle) -> NodeNetwork {
 	let inner_network = DocumentNode {
 		implementation: DocumentNodeImplementation::Network(network),
 		inputs: vec![],
@@ -113,8 +114,16 @@ pub fn wrap_network_in_scope(network: NodeNetwork, editor_api: Arc<PlatformEdito
 			inputs: vec![NodeInput::value(TaggedValue::EditorApi(editor_api), false)],
 			..Default::default()
 		},
+		DocumentNode {
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
+			inputs: vec![NodeInput::value(TaggedValue::Runtime(runtime), false)],
+			..Default::default()
+		},
 	];
-	let scope_injections = vec![("editor-api".to_string(), (NodeId(2), item!(Arc<PlatformEditorApi>)))];
+	let scope_injections = vec![
+		("editor-api".to_string(), (NodeId(2), item!(Arc<PlatformEditorApi>))),
+		("runtime".to_string(), (NodeId(3), item!(RuntimeHandle))),
+	];
 
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],

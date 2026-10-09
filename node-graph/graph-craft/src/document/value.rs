@@ -7,7 +7,7 @@ use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
 use core_types::transform::Footprint;
-use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, SourceId, Type, TypeDescriptor};
+use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, RuntimeHandle, SourceId, Type, TypeDescriptor};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -118,6 +118,8 @@ macro_rules! tagged_value {
 			#[serde(skip)]
 			SourceId(SourceId),
 			#[serde(skip)]
+			Runtime(RuntimeHandle),
+			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 			/// Only used by the `resource` node, should never be serialized
 			#[serde(skip)]
@@ -151,6 +153,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => node.cache_hash(state),
 					Self::ContextModification(modification) => modification.cache_hash(state),
 					Self::SourceId(source) => source.cache_hash(state),
+					Self::Runtime(runtime) => runtime.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 					Self::ResourceHash(x) => x.cache_hash(state),
@@ -225,6 +228,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => Box::new(node),
 					Self::ContextModification(modification) => Box::new(Item::new_from_element(modification)),
 					Self::SourceId(source) => Box::new(Item::new_from_element(source)),
+					Self::Runtime(runtime) => Box::new(Item::new_from_element(runtime)),
 					Self::EditorApi(x) => Box::new(Item::new_from_element(x)),
 					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
@@ -294,6 +298,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => Arc::new(node),
 					Self::ContextModification(modification) => Arc::new(Item::new_from_element(modification)),
 					Self::SourceId(source) => Arc::new(Item::new_from_element(source)),
+					Self::Runtime(runtime) => Arc::new(Item::new_from_element(runtime)),
 					Self::EditorApi(x) => Arc::new(Item::new_from_element(x)),
 					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
@@ -326,6 +331,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(_) => concrete!(DocumentNode),
 					Self::ContextModification(_) => item!(ContextModification),
 					Self::SourceId(_) => item!(SourceId),
+					Self::Runtime(_) => item!(RuntimeHandle),
 					Self::EditorApi(_) => item!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => item!(ResourceHash),
 				};
@@ -493,6 +499,7 @@ macro_rules! tagged_value {
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
 					Self::ContextModification(modification) => format!("ContextModification({modification:?})"),
 					Self::SourceId(source) => format!("SourceId({source:?})"),
+					Self::Runtime(_) => "Runtime".to_string(),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 					Self::ResourceHash(hash) => format!("ResourceHash({hash:?})"),
 				}
