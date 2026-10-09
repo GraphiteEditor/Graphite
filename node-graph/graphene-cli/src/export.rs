@@ -1,5 +1,6 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
+use graphene_std::Generations;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
@@ -28,6 +29,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn export_document(
 	executor: &DynamicExecutor,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
@@ -36,6 +38,7 @@ pub async fn export_document(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	transparent: bool,
+	generations: Generations,
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
@@ -57,7 +60,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor.execute(render_config.into_context()).await?;
+	let result = executor.execute(render_config.into_context_with_generations(generations)).await?;
 
 	// Handle the result based on output type
 	match result {
@@ -156,6 +159,7 @@ pub async fn export_gif(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	animation: AnimationParams,
+	generations: Generations,
 ) -> Result<(), Box<dyn Error>> {
 	use image::codecs::gif::{GifEncoder, Repeat};
 	use image::{Frame, RgbaImage};
@@ -195,7 +199,7 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor.execute(render_config.into_context()).await?;
+		let result = executor.execute(render_config.into_context_with_generations(generations.clone())).await?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {

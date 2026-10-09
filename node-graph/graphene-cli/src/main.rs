@@ -12,6 +12,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::ApplicationIo;
+use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -176,7 +177,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: Some(application_io_for_api),
 		editor_preferences: Box::new(preferences),
 	});
-	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref())?;
+	let runtime = AsyncRuntime::new(Arc::new(TokioSpawner));
+	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
 
 	match app.command {
 		Command::Compile { print_proto, .. } => {
@@ -208,6 +210,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 			// Create executor
 			let executor = create_executor(proto_graph)?;
+			runtime.retain_sources(executor.sources());
+			let generations = runtime.snapshot();
 
 			if fps <= 0. {
 				return Err("Fps number must be positive".into());
@@ -216,9 +220,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Perform export based on file type
 			if file_type == export::FileType::Gif {
 				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation).await?;
+				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation, generations).await?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
+				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent, generations).await?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
@@ -256,10 +260,10 @@ fn init_logging(log_level: u8) {
 		.unwrap();
 }
 
-fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>) -> Result<ProtoNetwork, Box<dyn Error>> {
+fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let preprocessor = preprocessor::Preprocessor::new();
 
-	let mut network = wrap_network_in_scope(network, editor_api);
+	let mut network = wrap_network_in_scope(network, editor_api, runtime);
 
 	// A `.gdd` resolves resource hashes from its registry; a legacy `.graphite` has no resource store, so it
 	// preprocesses against an empty registry (matching the pre-`.gdd` CLI behavior).
@@ -277,4 +281,11 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let executor = DynamicExecutor::new(proto_network).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
 	Ok(executor)
+}
+
+struct TokioSpawner;
+impl Spawn for TokioSpawner {
+	fn spawn(&self, task: Task) {
+		tokio::spawn(task);
+	}
 }

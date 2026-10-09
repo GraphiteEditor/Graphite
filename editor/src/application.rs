@@ -8,7 +8,6 @@ use std::sync::{Arc, OnceLock};
 
 pub struct Editor {
 	pub dispatcher: Dispatcher,
-	task_executor: TaskExecutor,
 }
 
 impl Editor {
@@ -28,8 +27,9 @@ impl Editor {
 		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), wake);
 		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
 		crate::node_graph_executor::replace_application_io(application_io);
+		crate::node_graph_executor::replace_task_executor(task_executor.handle());
 
-		Self { dispatcher, task_executor }
+		Self { dispatcher }
 	}
 
 	#[cfg(test)]
@@ -41,11 +41,12 @@ impl Editor {
 		let task_executor = TaskExecutor::blocking();
 		let mut dispatcher = Dispatcher::with_executor(executor);
 		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), Arc::new(|| {}));
-		let editor = Self { dispatcher, task_executor };
+		let editor = Self { dispatcher };
 
 		let mut application_io = PlatformApplicationIo::default();
 		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_storage_message_handler.resources());
 		runtime.replace_application_io(application_io);
+		runtime.replace_task_executor(task_executor.handle());
 
 		(editor, runtime)
 	}

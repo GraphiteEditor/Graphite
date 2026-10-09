@@ -1,5 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::task::TaskExecutorHandle;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -17,6 +18,7 @@ use graphene_std::ops::ConvertAsync;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
+use graphene_std::runtime::AsyncRuntime;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
@@ -40,6 +42,7 @@ pub struct NodeRuntime {
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
+	async_runtime: Option<AsyncRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -106,6 +109,7 @@ impl NodeRuntime {
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
+			async_runtime: None,
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
@@ -324,7 +328,7 @@ impl NodeRuntime {
 	}
 
 	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
@@ -346,17 +350,22 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).map_err(|(types, e)| {
+		let result = self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
-		})
+		});
+		self.async_runtime().retain_sources(self.executor.sources());
+		result
 	}
 
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
 		match self.executor.input_type() {
-			Some(t) if t == concrete!(Context) => (&self.executor).execute(render_config.into_context()).await.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(Context) => (&self.executor)
+				.execute(render_config.into_context_with_generations(self.async_runtime().snapshot()))
+				.await
+				.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
@@ -570,6 +579,12 @@ pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 		node_runtime.replace_application_io(application_io);
 	}
 }
+pub(crate) fn replace_task_executor(handle: TaskExecutorHandle) {
+	let mut node_runtime = NODE_RUNTIME.lock();
+	if let Some(node_runtime) = &mut *node_runtime {
+		node_runtime.replace_task_executor(handle);
+	}
+}
 
 impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
@@ -578,6 +593,14 @@ impl NodeRuntime {
 			editor_preferences: Box::new(self.editor_preferences.clone()),
 		}
 		.into();
+	}
+
+	pub(crate) fn replace_task_executor(&mut self, handle: TaskExecutorHandle) {
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(handle)));
+	}
+
+	fn async_runtime(&self) -> &AsyncRuntime {
+		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
 	}
 }
 
