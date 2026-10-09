@@ -1,7 +1,7 @@
 use core_types::list::{Item, List};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
-use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -23,7 +23,7 @@ pub struct RenderIntermediate {
 }
 
 #[node_macro::node(category(""))]
-async fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
+fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	ctx: impl Ctx + ExtractVarArgs + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> List<Artboard>,
@@ -35,7 +35,7 @@ async fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
-) -> Item<RenderIntermediate> {
+) -> Result<Item<RenderIntermediate>, Interrupt> {
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
@@ -43,7 +43,7 @@ async fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		.expect("Downcasting render params yielded invalid type");
 
 	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
-	let data = data.eval(ctx).await;
+	let data = data.eval(ctx)?;
 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
@@ -72,7 +72,7 @@ async fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		}
 	};
 
-	Item::new_from_element(intermediate)
+	Ok(Item::new_from_element(intermediate))
 }
 
 #[node_macro::node(category(""))]
@@ -146,11 +146,11 @@ fn render(
 }
 
 #[node_macro::node(category(""))]
-async fn create_context(
+fn create_context(
 	// The executor boundary supplies the render config as the sole vararg (see `wrap_network_in_scope()`)
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>>,
-) -> Item<RenderOutput> {
+) -> Result<Item<RenderOutput>, Interrupt> {
 	let render_config = ctx.vararg(0).ok().and_then(|config| config.downcast_ref::<RenderConfig>()).copied().unwrap_or_else(|| {
 		log::error!("The boundary context is missing its render config vararg");
 		RenderConfig::default()
@@ -185,8 +185,8 @@ async fn create_context(
 		.with_generations(ctx.try_generations().cloned().unwrap_or_default())
 		.into_context();
 
-	let mut result = data.eval(ctx).await;
+	let mut result = data.eval(ctx)?;
 
 	result.element_mut().metadata.apply_transform(glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_config.scale)));
-	result
+	Ok(result)
 }

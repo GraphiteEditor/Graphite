@@ -11,7 +11,7 @@ fn setup_run_cached(name: &str) -> DynamicExecutor {
 
 	// Warm up the cache by running once
 	let context = RenderConfig::default().into_context();
-	let _ = futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), context));
+	let _ = executor.tree().eval_tagged_value(executor.output(), &context);
 
 	executor
 }
@@ -20,7 +20,7 @@ fn setup_run_cached(name: &str) -> DynamicExecutor {
 #[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_cached)]
 pub fn run_cached(executor: DynamicExecutor) -> DynamicExecutor {
 	let context = RenderConfig::default().into_context();
-	black_box(futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), black_box(context))).unwrap());
+	black_box(executor.tree().eval_tagged_value(executor.output(), black_box(&context)).unwrap());
 
 	// Return the executor so its teardown happens outside the measured section
 	executor

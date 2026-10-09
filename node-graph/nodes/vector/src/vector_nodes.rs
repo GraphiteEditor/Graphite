@@ -2,6 +2,7 @@ use core::cmp::Ordering;
 use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::FallibleVec2Operations;
+use core_types::Interrupt;
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
@@ -244,7 +245,7 @@ fn assign_colors<T>(
 	repeat_every: Item<i64>,
 ) -> T
 where
-	T: VectorListIterMut + 'n + Send,
+	T: VectorListIterMut + Send,
 {
 	let (fill, stroke, reverse, randomize) = (fill.into_element(), stroke.into_element(), reverse.into_element(), randomize.into_element());
 	let (seed, repeat_every) = (seed.into_element(), repeat_every.into_element());
@@ -317,7 +318,7 @@ fn fill<V>(
 	_transform: Item<DAffine2>,
 ) -> Item<V>
 where
-	Item<V>: VectorItemMut + 'n + Send,
+	Item<V>: VectorItemMut + Send,
 {
 	let _gradient_form = _gradient_form.into_element();
 	let (_has_transform, _transform) = (_has_transform.into_element(), *_transform.element());
@@ -424,7 +425,7 @@ fn stroke<V>(
 	dash_offset: Item<f64>,
 ) -> Item<V>
 where
-	Item<V>: VectorItemMut + 'n + Send,
+	Item<V>: VectorItemMut + Send,
 {
 	let mut content = content;
 	let (weight, align, cap, join, miter_limit, dash_offset) = (
@@ -473,7 +474,7 @@ fn dash_pattern(
 }
 
 #[node_macro::node(category("Repeat"), name("Copy to Points"), path(core_types::vector))]
-fn copy_to_points<I: 'n + Send + Clone>(
+fn copy_to_points<I: Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
@@ -563,7 +564,7 @@ fn copy_to_points<I: 'n + Send + Clone>(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn round_corners<V: MapVectorItems + 'n + Send>(
+fn round_corners<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
 	#[unit(" px")]
@@ -886,7 +887,7 @@ pub mod extrude_algorithms {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn extrude<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
+fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
 		let (direction, joining_algorithm) = (*direction.element(), *joining_algorithm.element());
@@ -897,7 +898,7 @@ fn extrude<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn box_warp<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
+fn box_warp<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let target = rectangle.into_element();
 
@@ -980,7 +981,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-fn pack_strips<T: 'n + Send + Clone>(
+fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -1103,7 +1104,7 @@ where
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
 #[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(core_types::vector))]
-fn auto_tangents<V: MapVectorItems + 'n + Send>(
+fn auto_tangents<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
@@ -1255,7 +1256,7 @@ fn auto_tangents<V: MapVectorItems + 'n + Send>(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn bounding_box<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
+fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		let result = content
@@ -1308,7 +1309,7 @@ fn points_to_vector(
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector"), name("Points to Polyline"), path(core_types::vector))]
-fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
+fn points_to_polyline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
 	let closed = *closed.element();
 
 	V::map_vector_items(points, |points| {
@@ -1338,7 +1339,7 @@ fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementati
 
 /// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn relax_points<V: MapVectorItems + 'n + Send>(
+fn relax_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// A vector path or point cloud to relax.
 	#[implementations(Graphic, Vector)]
@@ -1366,7 +1367,7 @@ fn relax_points<V: MapVectorItems + 'n + Send>(
 ///
 /// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
-fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
+fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
 		let connect_cells = *connect_cells.element();
@@ -1386,7 +1387,7 @@ fn voronoi_cells<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(G
 ///
 /// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
 #[node_macro::node(category("Vector"), path(core_types::vector))]
-fn triangulate<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
+fn triangulate<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
 		let connect_cells = *connect_cells.element();
@@ -1496,7 +1497,7 @@ fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("offset_path_properties"))]
-fn offset_path<V: MapVectorItems + 'n + Send>(
+fn offset_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	distance: Item<f64>,
@@ -1699,14 +1700,14 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn solidify_stroke<V: SolidifyStroke + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+fn solidify_stroke<V: SolidifyStroke + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
 	V::solidify_strokes(content)
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn separate_subpaths<V: ExpandVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+fn separate_subpaths<V: ExpandVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	V::expand_vector_items(content, |content| {
 		let bezpaths = content.element().stroke_bezpath_iter().collect::<Vec<_>>();
 
@@ -1747,22 +1748,22 @@ fn path_is_closed(
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_points<V: MapVectorItems + 'n + Send>(
+fn map_points<V: MapVectorItems + Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	mapped: impl Node<Context<'static>, Output = Item<DVec2>>,
-) -> Item<V> {
+) -> Result<Item<V>, Interrupt> {
 	let mut content = content;
 
 	for vector in V::vector_elements_mut(&mut content) {
 		for (index, (_, position)) in vector.point_domain.positions_mut().enumerate() {
 			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
 
-			*position = mapped.eval(owned_ctx.into_context()).await.into_element();
+			*position = mapped.eval(owned_ctx.into_context())?.into_element();
 		}
 	}
 
-	content
+	Ok(content)
 }
 
 /// Combines every vector path across the input into a single compound path.
@@ -1816,7 +1817,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
-fn sample_polyline<V: MapVectorItems + 'n + Send>(
+fn sample_polyline<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	spacing: Item<PointSpacingType>,
@@ -1895,7 +1896,7 @@ fn sample_polyline<V: MapVectorItems + 'n + Send>(
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn simplify<V: MapVectorItems + 'n + Send>(
+fn simplify<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to simplify.
 	#[implementations(Graphic, Vector)]
@@ -1937,7 +1938,7 @@ fn simplify<V: MapVectorItems + 'n + Send>(
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn decimate<V: MapVectorItems + 'n + Send>(
+fn decimate<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to decimate.
 	#[implementations(Graphic, Vector)]
@@ -2064,7 +2065,7 @@ fn decimate<V: MapVectorItems + 'n + Send>(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-fn cut_path<V: MapVectorItems + 'n + Send>(
+fn cut_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The path to insert a cut into.
 	#[implementations(Graphic, Vector)]
@@ -2115,7 +2116,7 @@ fn cut_path<V: MapVectorItems + 'n + Send>(
 
 /// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn cut_segments<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
+fn cut_segments<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
@@ -2257,7 +2258,7 @@ fn tangent_on_path(
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector), memoize)]
-fn scatter_points<V: MapVectorItems + 'n + Send>(
+fn scatter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	#[unit(" px")]
@@ -2303,7 +2304,7 @@ fn scatter_points<V: MapVectorItems + 'n + Send>(
 }
 
 #[node_macro::node(name("Spline"), category("Vector: Modifier"), path(core_types::vector))]
-fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
+fn spline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 		// Exit early if there are no points to generate splines from.
@@ -2399,7 +2400,7 @@ fn apply_point_deltas(element: &mut Vector, deltas: &[DVec2], transform: DAffine
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn jitter_points<V: MapVectorItems + 'n + Send>(
+fn jitter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
 	#[implementations(Graphic, Vector)]
@@ -2455,7 +2456,7 @@ fn jitter_points<V: MapVectorItems + 'n + Send>(
 /// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
 /// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-fn offset_points<V: MapVectorItems + 'n + Send>(
+fn offset_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
 	#[implementations(Graphic, Vector)]
@@ -3530,27 +3531,27 @@ fn path_length(_: impl Ctx, source: Item<Vector>) -> Item<f64> {
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Item<f64> {
+fn area(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>) -> Result<Item<f64>, Interrupt> {
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let vector = content.eval(new_ctx).await;
+	let vector = content.eval(new_ctx)?;
 
 	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let area_scale = transform.matrix2.determinant().abs();
 	let area = vector.element().stroke_bezpath_iter().map(|subpath| subpath.area() * area_scale).sum::<f64>();
 
-	Item::new_from_element(area)
+	Ok(Item::new_from_element(area))
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
-async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Item<DVec2> {
+fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<Context<'static>, Output = Item<Vector>>, centroid_type: Item<CentroidType>) -> Result<Item<DVec2>, Interrupt> {
 	let centroid_type = centroid_type.into_element();
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(Footprint::default()).into_context();
-	let vector = content.eval(new_ctx).await;
+	let vector = content.eval(new_ctx)?;
 
 	let transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let position = element_centroid(vector.element(), transform, centroid_type);
 
-	Item::new_from_element(position)
+	Ok(Item::new_from_element(position))
 }
 
 /// The area- or length-weighted centroid of one vector element's subpaths, averaging raw point positions when the weights all vanish.
@@ -3585,22 +3586,19 @@ fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: Centro
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Node;
+	use core_types::{Node, Poll};
 	use kurbo::{CubicBez, Point, Rect};
-	use std::future::Future;
-	use std::pin::Pin;
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
 	use vector_types::vector::algorithms::shapes::ellipse_bezpath;
 	use vector_types::vector::misc::pathseg_abs_diff_eq;
 
 	#[derive(Clone)]
-	pub struct FutureWrapperNode<T: Clone>(T);
+	pub struct ValueNode<T: Clone>(T);
 
-	impl<'i, T: 'i + Clone + Send> Node<'i, Footprint> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, _input: Footprint) -> Self::Output {
-			let value = self.0.clone();
-			Box::pin(async move { value })
+	impl<T: Clone> Node<Footprint> for ValueNode<T> {
+		type Output = T;
+		fn eval(&self, _input: &Footprint) -> Poll<T> {
+			Poll::Final(self.0.clone())
 		}
 	}
 
@@ -3640,8 +3638,8 @@ mod test {
 		assert!(result.element().segment_domain.ids().is_empty());
 	}
 
-	#[tokio::test]
-	async fn offset_path_does_not_duplicate_closing_anchors() {
+	#[test]
+	fn offset_path_does_not_duplicate_closing_anchors() {
 		// Offsetting closed triangles must not leave each subpath with a redundant start/end anchor (a Kurbo offset
 		// contour returns to approximately, not exactly, its start; that near-coincident point must close, not duplicate).
 		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
@@ -3659,8 +3657,8 @@ mod test {
 		assert!(subpaths > 0);
 	}
 
-	#[tokio::test]
-	async fn delaunay_disconnected_cells_make_one_subpath_per_triangle() {
+	#[test]
+	fn delaunay_disconnected_cells_make_one_subpath_per_triangle() {
 		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
 		let vector = result.element();
 		// The square plus its center tessellates into four triangles, each its own closed subpath.
@@ -3670,8 +3668,8 @@ mod test {
 		assert!(!vector.use_face_fill());
 	}
 
-	#[tokio::test]
-	async fn delaunay_and_voronoi_cells_share_winding() {
+	#[test]
+	fn delaunay_and_voronoi_cells_share_winding() {
 		fn signed_area(anchors: &[DVec2]) -> f64 {
 			(0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.
 		}
@@ -3701,8 +3699,8 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn delaunay_shared_mesh_welds_points_and_shares_edges() {
+	#[test]
+	fn delaunay_shared_mesh_welds_points_and_shares_edges() {
 		let result = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true));
 		let vector = result.element();
 		// The connected mesh reuses the five input points and shares edges, so it fills face by face.
@@ -3712,8 +3710,8 @@ mod test {
 		assert_eq!(vector.segment_domain.ids().len(), 8);
 	}
 
-	#[tokio::test]
-	async fn voronoi_disconnected_cells_make_a_subpath_per_cell() {
+	#[test]
+	fn voronoi_disconnected_cells_make_a_subpath_per_cell() {
 		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false));
 		let vector = result.element();
 		let cells = vector.stroke_manipulator_groups().filter(|(_, closed)| *closed).count();
@@ -3728,16 +3726,16 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn voronoi_shared_mesh_uses_face_fill() {
+	#[test]
+	fn voronoi_shared_mesh_uses_face_fill() {
 		let result = super::voronoi_cells((), vector_item_from_points(&SQUARE_WITH_CENTER), item(true));
 		let vector = result.element();
 		assert!(vector.use_face_fill());
 		assert!(!vector.segment_domain.ids().is_empty());
 	}
 
-	#[tokio::test]
-	async fn voronoi_leaves_degenerate_input_untouched() {
+	#[test]
+	fn voronoi_leaves_degenerate_input_untouched() {
 		// Two points cannot form a diagram, so the element passes through unchanged.
 		let points = [DVec2::new(0., 0.), DVec2::new(1., 1.)];
 		let result = super::voronoi_cells((), vector_item_from_points(&points), item(false));
@@ -3746,8 +3744,8 @@ mod test {
 		assert_eq!(vector.segment_domain.ids().len(), 0);
 	}
 
-	#[tokio::test]
-	async fn relax_points_redistributes_anchors() {
+	#[test]
+	fn relax_points_redistributes_anchors() {
 		// Four hull corners plus two off-center interior points.
 		let points = [
 			DVec2::new(0., 0.),
@@ -3775,8 +3773,8 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn bounding_box() {
+	#[test]
+	fn bounding_box() {
 		let bounding_box = super::bounding_box((), Item::new_from_element(Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))));
 		let bounding_box = bounding_box.element();
 		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
@@ -3795,7 +3793,7 @@ mod test {
 		let square = Vector::from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
 		let mut square = List::new_from_element(square);
 		square.with_attribute_mut_or_default(ATTR_TRANSFORM, 0, |t: &mut DAffine2| *t *= DAffine2::from_angle(std::f64::consts::FRAC_PI_4));
-		let bounding_box = BoundingBoxNodeMapped { content: FutureWrapperNode(square) }.eval(Footprint::default()).await;
+		let bounding_box = BoundingBoxNodeMapped { content: ValueNode(square) }.eval(&Footprint::default()).value().unwrap();
 		let bounding_box = bounding_box.element(0).unwrap();
 		assert_eq!(bounding_box.stroke_manipulator_groups().count(), 1);
 		let manipulator_groups_anchors = bounding_box
@@ -3812,8 +3810,8 @@ mod test {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
 	}
-	#[tokio::test]
-	async fn copy_to_points() {
+	#[test]
+	fn copy_to_points() {
 		let points = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
 		let element = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
 
@@ -3845,8 +3843,8 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn sample_polyline() {
+	#[test]
+	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
 		let sample_polyline = super::sample_polyline(
 			Footprint::default(),
@@ -3864,8 +3862,8 @@ mod test {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
-	#[tokio::test]
-	async fn sample_polyline_adaptive_spacing() {
+	#[test]
+	fn sample_polyline_adaptive_spacing() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
 		let sample_polyline = super::sample_polyline(
 			Footprint::default(),
@@ -3883,8 +3881,8 @@ mod test {
 			assert!(pos.distance(expected) < 1e-3, "Expected {expected} found {pos}");
 		}
 	}
-	#[tokio::test]
-	async fn poisson() {
+	#[test]
+	fn poisson() {
 		let poisson_points = super::scatter_points(
 			Footprint::default(),
 			vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.))),
@@ -3901,8 +3899,8 @@ mod test {
 			assert!(point.length() < 50. + 1., "Expected point in circle {point}")
 		}
 	}
-	#[tokio::test]
-	async fn path_length() {
+	#[test]
+	fn path_length() {
 		let bezpath = Rect::new(100., 100., 201., 201.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale(DVec2::new(2., 2.));
 		let item = create_vector_item(bezpath, transform);
@@ -3912,15 +3910,15 @@ mod test {
 		// 101 (each rectangle edge length) * 4 (rectangle perimeter) * 2 (scale)
 		assert_eq!(length.into_element(), 101. * 4. * 2.);
 	}
-	#[tokio::test]
-	async fn spline() {
+	#[test]
+	fn spline() {
 		let spline = super::spline(Footprint::default(), vector_item_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY)));
 		let spline = spline.element();
 		assert_eq!(spline.stroke_bezpath_iter().count(), 1);
 		assert_eq!(spline.point_domain.positions(), &[DVec2::ZERO, DVec2::new(100., 0.), DVec2::new(100., 100.), DVec2::new(0., 100.)]);
 	}
-	#[tokio::test]
-	async fn morph() {
+	#[test]
+	fn morph() {
 		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
 		let mut second_rectangle = rectangles.clone_item(0).unwrap();
 		*second_rectangle.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM) *= DAffine2::from_translation((-100., -100.).into());
@@ -3945,8 +3943,8 @@ mod test {
 		assert!((morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 0).translation - DVec2::new(-50., -50.)).length() < 1e-3);
 	}
 
-	#[tokio::test]
-	async fn morph_interpolates_fill() {
+	#[test]
+	fn morph_interpolates_fill() {
 		let rect = || {
 			let mut v = Vector::default();
 			v.append_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
@@ -3985,8 +3983,8 @@ mod test {
 		assert!(color.r() > 0. && color.b() > 0., "Fill should be a red-to-blue blend, got {color:?}");
 	}
 
-	#[tokio::test]
-	async fn morph_pairs_appearance_coverages_by_cover() {
+	#[test]
+	fn morph_pairs_appearance_coverages_by_cover() {
 		let rect = || {
 			let mut v = Vector::default();
 			v.append_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
@@ -4057,8 +4055,8 @@ mod test {
 		);
 	}
 
-	#[tokio::test]
-	async fn bevel_rect() {
+	#[test]
+	fn bevel_rect() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
 		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), Item::new_from_element(2_f64.sqrt() * 10.));
 		let beveled = beveled.element();
@@ -4079,8 +4077,8 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(10., 100.), Point::new(0., 90.))));
 	}
 
-	#[tokio::test]
-	async fn bevel_open_curve() {
+	#[test]
+	fn bevel_open_curve() {
 		let curve = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(10., 0.), Point::new(10., 100.), Point::new(100., 0.)));
 
 		let mut source = BezPath::new();
@@ -4103,8 +4101,8 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(-8.2, 0.), trimmed.start())));
 	}
 
-	#[tokio::test]
-	async fn bevel_with_transform() {
+	#[test]
+	fn bevel_with_transform() {
 		let curve = PathSeg::Cubic(CubicBez::new(Point::ZERO, Point::new(10., 0.), Point::new(10., 100.), Point::new(100., 0.)));
 
 		let mut source = BezPath::new();
@@ -4130,8 +4128,8 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(-8.2, 0.), trimmed.start())));
 	}
 
-	#[tokio::test]
-	async fn bevel_too_high() {
+	#[test]
+	fn bevel_too_high() {
 		let mut source = BezPath::new();
 		source.move_to(Point::ZERO);
 		source.line_to(Point::new(100., 0.));
@@ -4154,8 +4152,8 @@ mod test {
 		contains_segment(beveled.clone(), PathSeg::Line(Line::new(Point::new(100., 50.), Point::new(50., 100.))));
 	}
 
-	#[tokio::test]
-	async fn bevel_repeated_point() {
+	#[test]
+	fn bevel_repeated_point() {
 		let line = PathSeg::Line(Line::new(Point::ZERO, Point::new(100., 0.)));
 		let point = PathSeg::Cubic(CubicBez::new(Point::new(100., 0.), Point::ZERO, Point::ZERO, Point::new(100., 0.)));
 		let curve = PathSeg::Cubic(CubicBez::new(Point::new(100., 0.), Point::new(110., 0.), Point::new(110., 200.), Point::new(200., 0.)));
@@ -4170,8 +4168,8 @@ mod test {
 	}
 
 	// A rank-0 vector reaches the same per-list styling path as a vector list, rather than being skipped
-	#[tokio::test]
-	async fn assign_colors_reaches_rank_0_vector_graphics() {
+	#[test]
+	fn assign_colors_reaches_rank_0_vector_graphics() {
 		let leaf = Graphic::Vector(Box::new(vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY))));
 		let content = List::new_from_element(leaf);
 

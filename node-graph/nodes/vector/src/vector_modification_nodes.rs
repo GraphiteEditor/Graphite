@@ -35,7 +35,7 @@ fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<Vect
 
 /// Bakes the content's transform attribute into its underlying value, removing the attribute.
 #[node_macro::node(category("Vector"))]
-fn bake_transform<T: BakeTransform + 'n + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] content: Item<T>) -> Item<T> {
+fn bake_transform<T: BakeTransform + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] content: Item<T>) -> Item<T> {
 	let mut content = content;
 	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
 		content.element_mut().bake_transform(&transform);

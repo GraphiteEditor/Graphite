@@ -1,6 +1,6 @@
 use core_types::list::Item;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
@@ -9,15 +9,15 @@ use vector_types::vector::style::RenderMode;
 use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-async fn render_pixel_preview(
+fn render_pixel_preview(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
 	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
-) -> Item<RenderOutput> {
+) -> Result<Item<RenderOutput>, Interrupt> {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
 		log::error!("invalid render params for pixel preview");
 		let context = OwnedContextImpl::from(ctx).into_context();
-		return data.eval(context).await;
+		return data.eval(context);
 	};
 	let physical_scale = render_params.scale;
 
@@ -26,7 +26,7 @@ async fn render_pixel_preview(
 
 	if render_params.render_mode != RenderMode::PixelPreview || !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || viewport_zoom <= 1. {
 		let context = OwnedContextImpl::from(ctx).into_context();
-		return data.eval(context).await;
+		return data.eval(context);
 	}
 
 	let physical_resolution = footprint.resolution;
@@ -53,10 +53,10 @@ async fn render_pixel_preview(
 	};
 
 	let new_ctx = OwnedContextImpl::from(ctx).with_footprint(upstream_footprint).with_vararg(Box::new(render_params)).into_context();
-	let mut result = data.eval(new_ctx).await.into_element();
+	let mut result = data.eval(new_ctx)?.into_element();
 
 	let RenderOutputType::Texture(ref source_texture) = result.data else {
-		return Item::new_from_element(result);
+		return Ok(Item::new_from_element(result));
 	};
 
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
@@ -72,7 +72,7 @@ async fn render_pixel_preview(
 
 	result.metadata.apply_transform(footprint.transform * DAffine2::from_translation(upstream_min));
 
-	Item::new_from_element(result)
+	Ok(Item::new_from_element(result))
 }
 
 #[node_macro::node(category(""), inject_scope)]

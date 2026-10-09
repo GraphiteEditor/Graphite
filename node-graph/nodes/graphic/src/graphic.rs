@@ -1,7 +1,7 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
@@ -383,7 +383,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 }
 
 #[node_macro::node(category("General"))]
-async fn map<Item: AnyHash + Send + Sync + CacheHash>(
+fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		List<String>,
@@ -417,22 +417,22 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<Artboard>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
-) -> List<Item> {
+) -> Result<List<Item>, Interrupt> {
 	let mut rows = List::new();
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
-		let list = mapped.eval(owned_ctx.into_context()).await;
+		let list = mapped.eval(owned_ctx.into_context())?;
 
 		rows.extend(list);
 	}
 
-	rows
+	Ok(rows)
 }
 
 #[node_macro::node(category("General"))]
-fn mirror<T: BoundingBox + 'n + Send + Clone>(
+fn mirror<T: BoundingBox + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Graphic,
@@ -516,7 +516,7 @@ fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath
 /// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted input adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"))]
-async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
+fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The list to set the named attribute on (one value per item).
 	#[implementations(
@@ -541,18 +541,18 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	/// The attribute name (key) to write or replace.
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	value: impl Node<'n, Context<'static>, Output = Item<AttributeValueDyn>>,
-) -> List<T> {
+	value: impl Node<Context<'static>, Output = Item<AttributeValueDyn>>,
+) -> Result<List<T>, Interrupt> {
 	let name = name.into_element();
 
 	let mut content = content;
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
 		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(row)).with_index(index);
-		let v = value.eval(owned_ctx.into_context()).await.into_element();
+		let v = value.eval(owned_ctx.into_context())?.into_element();
 		content.set_attribute_value_dyn(&name, index, v);
 	}
-	content
+	Ok(content)
 }
 
 /// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
@@ -813,7 +813,7 @@ fn read_attribute_raster(
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
 #[node_macro::node(category("General"))]
-fn extend<T: 'n + Send + Clone>(
+fn extend<T: Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
 	#[implementations(
@@ -863,7 +863,7 @@ fn extend<T: 'n + Send + Clone>(
 /// Performs an obsolete function as part of a migration from an older document format.
 /// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
-fn legacy_layer_extend<T: 'n + Send + Clone>(
+fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
@@ -890,7 +890,7 @@ fn legacy_layer_extend<T: 'n + Send + Clone>(
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
-fn into_group<T: Into<Graphic> + 'n>(
+fn into_group<T: Into<Graphic>>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,

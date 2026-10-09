@@ -2,7 +2,7 @@ use core::f64;
 use core_types::color::Color;
 use core_types::list::{Item, List};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, Interrupt, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -10,7 +10,7 @@ use vector_types::Gradient;
 
 /// Applies the specified transform to the input content.
 #[node_macro::node(category("Math: Transform"))]
-async fn transform<T: 'n + Send + 'static>(
+fn transform<T: Send + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
 		Context -> Item<DAffine2>,
@@ -33,7 +33,7 @@ async fn transform<T: 'n + Send + 'static>(
 	#[widget(ParsedWidgetOverride::Custom = "transform_skew")]
 	#[hard(-89.9..89.9)]
 	skew: Item<DVec2>,
-) -> Item<T> {
+) -> Result<Item<T>, Interrupt> {
 	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
 
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
@@ -48,24 +48,24 @@ async fn transform<T: 'n + Send + 'static>(
 		ctx = ctx.with_footprint(footprint);
 	}
 
-	let mut item = content.eval(ctx.into_context()).await;
+	let mut item = content.eval(ctx.into_context())?;
 
 	item.left_apply_transform(&matrix);
 
-	item
+	Ok(item)
 }
 
 /// The whole-`List` counterpart of `transform`, composing the matrix onto every item of a rank-1 content wire.
 /// Registered under the `TransformNode` identifier by manual registry rows, since the macro's element-wise variants require an `Item`-peeling primary.
 #[node_macro::node(category(""), skip_impl)]
-async fn transform_list<T: 'n + Send + 'static>(
+fn transform_list<T: Send + 'static>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	content: impl Node<Context<'static>, Output = List<T>>,
 	translation: Item<DVec2>,
 	rotation: Item<f64>,
 	scale: Item<DVec2>,
 	#[hard(-89.9..89.9)] skew: Item<DVec2>,
-) -> List<T> {
+) -> Result<List<T>, Interrupt> {
 	let (translation, rotation, scale, skew) = (*translation.element(), *rotation.element(), *scale.element(), *skew.element());
 
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
@@ -80,11 +80,11 @@ async fn transform_list<T: 'n + Send + 'static>(
 		ctx = ctx.with_footprint(footprint);
 	}
 
-	let mut list = content.eval(ctx.into_context()).await;
+	let mut list = content.eval(ctx.into_context())?;
 
 	list.left_apply_transform(&matrix);
 
-	list
+	Ok(list)
 }
 
 /// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.
@@ -156,7 +156,7 @@ fn replace_transform<T>(
 
 /// Obtains the transform of the input content.
 #[node_macro::node(category("Math: Transform"), path(core_types::vector))]
-fn extract_transform<T: 'n + Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
+fn extract_transform<T: Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
 	Item::new_from_element(content.attribute_cloned_or_default(ATTR_TRANSFORM))
 }
 

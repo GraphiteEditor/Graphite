@@ -13,7 +13,7 @@ fn push_node_sync() {
 	let context = TypingContext::default();
 	tree.push_node(NodeId(0), val_1_protonode, &context).unwrap();
 	let _node = tree.get(NodeId(0)).unwrap();
-	let result: Option<Item<i64>> = futures::executor::block_on(tree.eval(NodeId(0), ()));
+	let result: Option<Item<i64>> = tree.eval(NodeId(0), &());
 	assert_eq!(result.map(|item| *item.element()), Some(2_i64));
 }
 
@@ -43,10 +43,10 @@ fn item_wire_variant_resolves_and_executes() {
 	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(item!(Vector)));
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
+	let result: Option<Item<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The Item wire variant should downcast and execute end-to-end");
 
-	let wrong_type: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let wrong_type: Option<List<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(wrong_type.is_none(), "An Item wire should not downcast as a List");
 }
 
@@ -69,7 +69,7 @@ fn item_wire_promotes_to_list_connector() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The promotion adapter should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<graphene_std::vector::misc::BoxCorners>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<graphene_std::vector::misc::BoxCorners>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The promoted wire should execute end-to-end");
 }
 
@@ -99,7 +99,7 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The promotion adapters should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<graphene_std::Graphic>> = tree.eval(NodeId(3), &context);
 	let stack = result.expect("The layer coercion path should execute end-to-end");
 	assert_eq!(stack.len(), 1, "The rank-0 content should contribute exactly one graphic to the stack");
 }
@@ -133,7 +133,7 @@ fn mixed_rank_connectors_resolve_via_promotion() {
 	let tree = BorrowTree::new(network, &typing_context).expect("Construction should wrap the promoted argument");
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<Vector>> = tree.eval(NodeId(3), &context);
 	assert!(result.is_some(), "The zipped mapped variant should execute end-to-end");
 }
 
@@ -146,7 +146,7 @@ fn all_item_connectors_resolve_without_promotion() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The rank-0 variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<Item<Vector>> = tree.eval(NodeId(3), &context);
 	assert!(result.is_some(), "The rank-0 variant should execute and stay rank 0");
 }
 
@@ -194,7 +194,7 @@ fn transform_composes_onto_item_wire() {
 	let tree = BorrowTree::new(network, &typing_context).expect("Transform's rank-0 variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(output, context));
+	let result: Option<Item<Vector>> = tree.eval(output, &context);
 	let item = result.expect("A rank-0 chain through Transform should stay rank 0");
 	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
 	assert_eq!(transform.translation, DVec2::new(5., 0.), "The translation should compose onto the item's transform attribute");
@@ -214,7 +214,7 @@ fn transform_broadcasts_item_content_across_a_framed_parameter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The mapped variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(output, context));
+	let result: Option<List<Vector>> = tree.eval(output, &context);
 	let list = result.expect("The broadcast should produce a List");
 	assert_eq!(list.len(), 2, "One output item per frame slot");
 
@@ -247,7 +247,7 @@ fn generator_frames_over_a_list_parameter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The mapped generator variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<Vector>> = tree.eval(NodeId(3), &context);
 	let list = result.expect("The generator frame should produce a List<Vector>");
 	assert_eq!(list.len(), 3, "One circle per radius slot");
 }
@@ -317,7 +317,7 @@ fn value_wires_materialize_as_items_at_resolution() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The all-Item variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<DAffine2>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+	let result: Option<Item<DAffine2>> = tree.eval(NodeId(5), &context);
 	let item = result.expect("A value matrix should flow through Transform as an Item");
 	let transform = item.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
 	assert_eq!(transform.translation, DVec2::new(7., 0.), "The translation should compose onto the gained transform attribute");
@@ -341,7 +341,7 @@ fn position_value_converts_through_the_vector_input_adapter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The conversion constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The position should arrive as an Item<Vector> single-anchor path");
 }
 
@@ -366,7 +366,7 @@ fn position_value_raises_into_the_into_group_reducer() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The reducer constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Graphic>> = tree.eval(NodeId(1), &context);
 	let grouped = result.expect("The position should arrive as an Item<Graphic>");
 
 	let Graphic::VectorList(anchors) = grouped.element() else {
@@ -400,7 +400,7 @@ fn color_list_wraps_through_the_colors_to_gradient_node() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The node constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<graphene_std::vector::Gradient>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<Item<graphene_std::vector::Gradient>> = tree.eval(NodeId(3), &context);
 	let gradient = result.expect("The color list should arrive wrapped as a gradient");
 	assert_eq!(gradient.element().len(), 1, "The single color should become the gradient's one stop");
 }
@@ -445,7 +445,7 @@ fn as_graphic_converts_a_vector_list_element_wise() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The mapped constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<Graphic>> = futures::executor::block_on(tree.eval(NodeId(5), context));
+	let result: Option<List<Graphic>> = tree.eval(NodeId(5), &context);
 	let graphics = result.expect("The vector list should arrive as a graphic list");
 
 	assert_eq!(graphics.len(), 2, "Each vector should become its own graphic rather than collapsing into one group");
@@ -481,7 +481,7 @@ fn gradient_value_embeds_through_the_graphic_input_adapter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The embedding constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Graphic>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Graphic>> = tree.eval(NodeId(1), &context);
 	let embedded = result.expect("The gradient should arrive as an Item<Graphic>");
 
 	assert!(embedded.attributes().iter_any().next().is_none(), "The fresh outer envelope describes the graphic, so it starts empty");
@@ -511,7 +511,7 @@ fn number_value_splats_through_the_vec2_input_adapter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The splat constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<glam::DVec2>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<glam::DVec2>> = tree.eval(NodeId(1), &context);
 	assert_eq!(result.map(|item| *item.element()), Some(glam::DVec2::splat(-60.)), "The scalar should splat into both axes");
 }
 
@@ -533,7 +533,7 @@ fn number_value_formats_through_the_string_input_adapter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The formatting constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<String>> = tree.eval(NodeId(1), &context);
 	assert_eq!(result.map(|item| item.element().clone()), Some("42".to_string()), "The number should format as its text representation");
 }
 
@@ -556,7 +556,7 @@ fn bool_value_embeds_through_the_number_input_adapter() {
 		let tree = BorrowTree::new(network, &typing_context).expect("The embedding constructor should instantiate");
 
 		let context: Context = None;
-		let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		let result: Option<Item<f64>> = tree.eval(NodeId(1), &context);
 		assert_eq!(result.map(|item| *item.element()), Some(expected), "{value} should embed as exactly {expected}");
 	}
 }
@@ -580,7 +580,7 @@ fn bool_value_formats_through_the_string_input_adapter() {
 		let tree = BorrowTree::new(network, &typing_context).expect("The formatting constructor should instantiate");
 
 		let context: Context = None;
-		let result: Option<Item<String>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+		let result: Option<Item<String>> = tree.eval(NodeId(1), &context);
 		assert_eq!(result.map(|item| item.element().clone()), Some(expected.to_string()), "{value} should format as `{expected}`");
 	}
 }
@@ -605,7 +605,7 @@ fn list_wire_erases_through_the_list_dyn_input_adapter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The erasure constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<ListDyn> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<ListDyn> = tree.eval(NodeId(1), &context);
 	let erased = result.expect("The erased list should arrive as a ListDyn");
 	assert_eq!(erased.len(), 3, "The erased list should keep its row count");
 }
@@ -627,7 +627,7 @@ fn value_wire_passes_through_the_input_adapter_as_item() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<f64>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<f64>> = tree.eval(NodeId(1), &context);
 	assert_eq!(result.map(|item| *item.element()), Some(3.), "The value should arrive as an Item");
 }
 
@@ -653,7 +653,7 @@ fn modification_value_rides_the_item_wire_through_its_input_adapter() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The passthrough constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<Box<VectorModification>>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<Box<VectorModification>>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The modification should arrive as an Item");
 }
 
@@ -677,7 +677,7 @@ fn item_wire_boxes_into_the_attribute_value_connector() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The boxing constructor should instantiate");
 
 	let context: Context = None;
-	let result: Option<Item<AttributeValueDyn>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let result: Option<Item<AttributeValueDyn>> = tree.eval(NodeId(1), &context);
 	let boxed = result.expect("The boxed attribute value should arrive as an Item");
 	assert_eq!(
 		boxed.element().0.as_any().downcast_ref::<f64>(),
@@ -691,10 +691,10 @@ fn list_wire_variant_resolves_and_executes() {
 	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(list!(Vector)));
 
 	let context: Context = None;
-	let result: Option<List<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context.clone()));
+	let result: Option<List<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(result.is_some(), "The mapped List wire variant should downcast and execute end-to-end");
 
-	let wrong_type: Option<Item<Vector>> = futures::executor::block_on(tree.eval(NodeId(1), context));
+	let wrong_type: Option<Item<Vector>> = tree.eval(NodeId(1), &context);
 	assert!(wrong_type.is_none(), "A List wire should not downcast as an Item");
 }
 
@@ -735,7 +735,7 @@ fn expander_flattens_under_the_frame() {
 	let tree = BorrowTree::new(network, &typing_context).expect("The expander variant should instantiate");
 
 	let context: Context = None;
-	let result: Option<List<String>> = futures::executor::block_on(tree.eval(output, context));
+	let result: Option<List<String>> = tree.eval(output, &context);
 	let list = result.expect("An Item-wired expander should produce a List");
 	assert_eq!(list.len(), 2, "Splitting \"a,b\" on the comma should expand into two rows");
 	let substrings: Vec<_> = list.iter_element_values().map(|s| s.as_str()).collect();
@@ -780,7 +780,7 @@ fn whole_list_switches_as_one_bundle() {
 
 	let tree = BorrowTree::new(network, &typing_context).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
-	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
+	let result: Option<List<f64>> = tree.eval(NodeId(4), &context);
 	let list = result.expect("The whole stack should round-trip through the bundle switch back to a flat List<f64>");
 	let values: Vec<f64> = list.iter_element_values().copied().collect();
 	assert_eq!(values, [1., 2., 3.], "The taken branch's whole list should come through unchanged");
@@ -815,7 +815,7 @@ fn a_bundle_unbundles_into_a_list_connector() {
 
 	let tree = BorrowTree::new(network, &typing_context).expect("The unbundle adapter should instantiate");
 	let context: Context = None;
-	let result: Option<List<graphene_std::Graphic>> = futures::executor::block_on(tree.eval(NodeId(3), context));
+	let result: Option<List<graphene_std::Graphic>> = tree.eval(NodeId(3), &context);
 	assert!(result.is_some(), "The unbundled stack should flow into Extend as a List<Graphic>");
 }
 
@@ -857,7 +857,7 @@ fn a_whole_list_of_scalars_switches_as_one_bundle() {
 
 	let tree = BorrowTree::new(network, &typing_context).expect("The bundle, wrap, and unbundle adapters should instantiate");
 	let context: Context = None;
-	let result: Option<List<f64>> = futures::executor::block_on(tree.eval(NodeId(4), context));
+	let result: Option<List<f64>> = tree.eval(NodeId(4), &context);
 	let list = result.expect("The whole scalar list should round-trip through the bundle switch");
 	assert_eq!(list.len(), 2, "The true branch's whole list should be selected and preserved intact");
 }

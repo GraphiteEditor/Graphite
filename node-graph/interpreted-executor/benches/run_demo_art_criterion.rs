@@ -36,7 +36,7 @@ fn run_once<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	let executor = DynamicExecutor::new(proto_network).unwrap();
 	let footprint = Footprint::default();
 
-	c.bench_function(name, |b| b.iter(|| futures::executor::block_on((&executor).execute(footprint))));
+	c.bench_function(name, |b| b.iter(|| (&executor).execute(footprint)));
 }
 fn run_once_demo(c: &mut Criterion) {
 	let mut g = c.benchmark_group("Run Once no render");

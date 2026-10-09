@@ -60,7 +60,10 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor.execute(render_config.into_context_with_generations(generations)).await?;
+	let result = executor
+		.execute(render_config.into_context_with_generations(generations))?
+		.value()
+		.ok_or("The node graph produced no frame")?;
 
 	// Handle the result based on output type
 	match result {
@@ -199,7 +202,10 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor.execute(render_config.into_context_with_generations(generations.clone())).await?;
+		let result = executor
+			.execute(render_config.into_context_with_generations(generations.clone()))?
+			.value()
+			.ok_or("The node graph produced no frame")?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
