@@ -45,6 +45,7 @@ pub(crate) struct ParsedNodeFn {
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
+	pub(crate) icon: Option<LitStr>,
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
 	pub(crate) properties_string: Option<LitStr>,
@@ -407,6 +408,7 @@ impl Parse for NodeFnAttributes {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let mut category = None;
 		let mut display_name = None;
+		let mut icon = None;
 		let mut path = None;
 		let mut skip_impl = false;
 		let mut properties_string = None;
@@ -450,6 +452,18 @@ impl Parse for NodeFnAttributes {
 					}
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
+				}
+				// Name of the icon, from the frontend's icon registry, shown for this node in the node graph.
+				//
+				// Example usage:
+				// #[node_macro::node(..., icon("NodeCircle"), ...)]
+				"icon" => {
+					let meta = meta.require_list()?;
+					if icon.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'icon' attributes are not allowed"));
+					}
+					let parsed_icon: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'icon', e.g., icon(\"NodeCircle\")"))?;
+					icon = Some(parsed_icon);
 				}
 				// Override for the fully qualified path used by Graphene to identify the node implementation.
 				// If not provided, the path will be inferred from the module path and function name.
@@ -563,7 +577,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -589,6 +603,7 @@ impl Parse for NodeFnAttributes {
 		Ok(NodeFnAttributes {
 			category,
 			display_name,
+			icon,
 			path,
 			skip_impl,
 			properties_string,
@@ -1278,6 +1293,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
+				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: true,
 				properties_string: None,
@@ -1353,6 +1369,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("General")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
 				properties_string: None,
@@ -1445,6 +1462,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector: Shape")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
 				properties_string: None,
@@ -1516,6 +1534,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster: Adjustment")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
 				properties_string: None,
@@ -1599,6 +1618,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
+				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: false,
 				properties_string: None,
@@ -1685,6 +1705,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
 				properties_string: None,
@@ -1756,6 +1777,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),
+				icon: None,
 				path: None,
 				skip_impl: false,
 				properties_string: None,

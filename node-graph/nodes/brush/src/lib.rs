@@ -12,7 +12,7 @@ pub(crate) const DEFAULT_HARDNESS: f64 = 0.;
 pub(crate) const DEFAULT_FLOW: f64 = 100.;
 pub(crate) const DEFAULT_COLOR: Color = Color::BLACK;
 
-#[node_macro::node(category("Raster: Brush"))]
+#[node_macro::node(category("Raster: Brush"), icon("NodeBrushStrokes"))]
 fn brush_strokes(
 	_: impl Ctx,
 	strokes: List<Stroke>,

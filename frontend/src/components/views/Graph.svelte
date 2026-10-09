@@ -7,6 +7,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
@@ -730,6 +731,7 @@
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
+			{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
 			<div
 				class="node"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -748,6 +750,7 @@
 			>
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+					<IconLabel {icon} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
@@ -1210,7 +1213,7 @@
 			}
 
 			&.previewed::after {
-				border: 1px dashed var(--data-color);
+				border: 1px dashed var(--color-e-nearwhite);
 			}
 
 			.connectors {
@@ -1264,7 +1267,7 @@
 
 			.thumbnail {
 				background: var(--color-2-mildblack);
-				border: 1px solid var(--data-color-dim);
+				border: 1px solid var(--color-5-dullgray);
 				border-radius: 2px;
 				position: relative;
 				box-sizing: border-box;
@@ -1391,7 +1394,7 @@
 			top: calc((var(--offset-top) + 0.5) * 24px);
 
 			&::after {
-				border: 1px solid var(--data-color-dim);
+				border: 1px solid var(--color-5-dullgray);
 				border-radius: 2px;
 			}
 
@@ -1441,13 +1444,16 @@
 				}
 
 				.icon-label {
-					display: none; // Remove after we have unique icons for the nodes
 					margin: 0 8px;
 				}
 
 				.text-label {
-					// margin-right: 4px; // Restore after reenabling icon-label
 					margin: 0 8px;
+				}
+
+				.icon-label + .text-label {
+					margin-left: 0;
+					margin-right: 4px;
 				}
 			}
 

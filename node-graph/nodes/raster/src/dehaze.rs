@@ -6,7 +6,7 @@ use raster_types::Image;
 use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
-#[node_macro::node(category("Raster: Filter"))]
+#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"))]
 async fn dehaze(
 	_: impl Ctx,
 	image_frame: Item<Raster<CPU>>,

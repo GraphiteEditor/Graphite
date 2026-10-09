@@ -705,6 +705,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+	let icon = &attributes.icon.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
 	let inject_scope_flag = attributes.inject_scope;
 	// A node returning a `Destructure` struct records its fields as output connectors
@@ -927,6 +928,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let metadata = NodeMetadata {
 					display_name: #display_name,
 					category: #category,
+					icon: #icon,
 					description: #description,
 					properties: #properties,
 					context_features: vec![#(ContextFeature::#context_features,)*],

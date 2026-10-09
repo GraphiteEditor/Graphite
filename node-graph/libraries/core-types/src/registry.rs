@@ -11,6 +11,7 @@ use std::sync::{LazyLock, Mutex};
 pub struct NodeMetadata {
 	pub display_name: &'static str,
 	pub category: &'static str,
+	pub icon: Option<&'static str>,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
 	pub properties: Option<&'static str>,

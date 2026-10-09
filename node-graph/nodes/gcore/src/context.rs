@@ -6,7 +6,7 @@ use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
 use raster_types::{CPU, Raster};
 
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadContext"), path(graphene_core::vector))]
 fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Item<Graphic> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -14,7 +14,7 @@ fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Item<Graphic> {
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadContext"), path(graphene_core::vector))]
 fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Item<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -22,7 +22,7 @@ fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Item<Vector> {
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadContext"), path(graphene_core::vector))]
 fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Item<Raster<CPU>> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -30,7 +30,7 @@ fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Item<Raster<CPU>> {
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadContext"), path(graphene_core::vector))]
 fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Item<Color> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -38,7 +38,7 @@ fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Item<Color> {
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
-#[node_macro::node(category("Context"), path(graphene_core::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadContext"), path(graphene_core::vector))]
 fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Item<Gradient> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -47,7 +47,7 @@ fn read_gradient(ctx: impl Ctx + ExtractVarArgs) -> Item<Gradient> {
 }
 
 /// Reads the current number from within a **Map** node's loop.
-#[node_macro::node(category("Context"))]
+#[node_macro::node(category("Context"), icon("NodeReadContext"))]
 fn read_number(ctx: impl Ctx + ExtractVarArgs) -> Item<f64> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -65,7 +65,7 @@ fn read_number(ctx: impl Ctx + ExtractVarArgs) -> Item<f64> {
 	Default::default()
 }
 
-#[node_macro::node(category("Context"), path(core_types::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadPosition"), path(core_types::vector))]
 async fn read_position(
 	ctx: impl Ctx + ExtractPosition,
 	_primary: (),
@@ -84,7 +84,7 @@ async fn read_position(
 /// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Repeat*.
 ///
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
-#[node_macro::node(category("Context"), path(core_types::vector))]
+#[node_macro::node(category("Context"), icon("NodeReadIndex"), path(core_types::vector))]
 async fn read_index(
 	ctx: impl Ctx + ExtractIndex,
 	_primary: (),

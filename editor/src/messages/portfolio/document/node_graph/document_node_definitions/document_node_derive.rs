@@ -38,6 +38,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 		let NodeMetadata {
 			display_name,
 			category,
+			icon,
 			fields,
 			description,
 			properties,
@@ -104,6 +105,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 					..Default::default()
 				},
 				category,
+				icon: *icon,
 				description: Cow::Borrowed(description),
 				properties: *properties,
 			},
