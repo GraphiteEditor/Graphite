@@ -469,34 +469,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
-				// With only chain nodes selected (such as when dropped onto the Layers panel's New Layer button), each is copied beside itself in its chain
-				// as if duplicated one at a time, and the copies become the selection
-				if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_none() {
-					// Chains are only found in the document network, not inside a nested one open in the graph
-					let chain_nodes = self.selected_reorderable_chain_nodes();
-					if chain_nodes.is_empty() || !self.selection_network_path.is_empty() {
-						return;
-					}
-
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
-					for node_id in chain_nodes {
-						responses.add(NodeGraphMessage::DuplicateChainNodes {
-							node_ids: vec![node_id],
-							destination: None,
-							select_copies: true,
-						});
-					}
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(NodeGraphMessage::SendGraph);
-					responses.add(PropertiesPanelMessage::Refresh);
+				let network_path = self.selection_network_path.clone();
+				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&network_path).unwrap_or_default();
+				let selected_nodes = selected_nodes.selected_nodes().copied().collect::<Vec<_>>();
+				if selected_nodes.is_empty() {
 					return;
 				}
 
 				responses.add(DocumentMessage::AddTransaction);
 
+				// Layers in the layer structure are copied with their content into the stack beside their originals
 				let mut new_dragging = Vec::new();
-				let mut layers = self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+				let mut layers = if network_path.is_empty() {
+					self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>()
+				} else {
+					Vec::new()
+				};
+				let structure_layers = layers.iter().map(|layer| layer.to_node()).collect::<Vec<_>>();
 
 				layers.sort_by_key(|layer| {
 					let Some(parent) = layer.parent(self.metadata()) else { return usize::MAX };
@@ -517,7 +506,40 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+
+				// Each other selected node is duplicated in place as if one at a time, leaving out what the layer copies already brought along
+				let other_nodes = selected_nodes.into_iter().filter(|node_id| !structure_layers.contains(node_id)).collect::<Vec<_>>();
+				if !other_nodes.is_empty() {
+					let layer_content = self
+						.network_interface
+						.upstream_flow_back_from_nodes(structure_layers, &[], FlowType::LayerChildrenUpstreamFlow)
+						.collect::<HashSet<_>>();
+					let other_nodes = other_nodes.into_iter().filter(|node_id| !layer_content.contains(node_id)).collect::<Vec<_>>();
+
+					// Chain nodes in the layer structure go beside themselves in their chain
+					let chain_nodes = if network_path.is_empty() {
+						self.selected_reorderable_chain_nodes().into_iter().filter(|node_id| other_nodes.contains(node_id)).collect()
+					} else {
+						Vec::new()
+					};
+					for node_id in &chain_nodes {
+						responses.add(NodeGraphMessage::DuplicateChainNodes {
+							node_ids: vec![*node_id],
+							destination: None,
+							select_copies: true,
+						});
+					}
+
+					// The rest go into their primary flow, or loose when in none
+					let flow_nodes = other_nodes.into_iter().filter(|node_id| !chain_nodes.contains(node_id)).collect::<Vec<_>>();
+					if !flow_nodes.is_empty() {
+						responses.add(NodeGraphMessage::DuplicateNodesInFlow { node_ids: flow_nodes });
+					}
+				}
+
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {

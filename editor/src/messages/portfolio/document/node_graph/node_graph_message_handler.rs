@@ -414,10 +414,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetRootNodeToRestore { root_node_to_restore } => {
 				network_interface.set_root_node_to_restore(root_node_to_restore, selection_network_path);
 			}
-			NodeGraphMessage::DuplicateSelectedNodes => {
-				responses.add(DocumentMessage::AddTransaction);
-				Self::duplicate_selected_nodes(network_interface, selection_network_path, responses);
-			}
+			// Duplicates in the flow like everywhere else
+			NodeGraphMessage::DuplicateSelectedNodes => responses.add(DocumentMessage::DuplicateSelectedLayers),
 			NodeGraphMessage::EnterNestedNetwork => {
 				// Do not enter the nested network if the node was dragged
 				if self.node_has_moved_in_drag {
@@ -743,6 +741,42 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if select_copies {
 					responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: copies });
 				}
+			}
+			NodeGraphMessage::DuplicateNodesInFlow { node_ids } => {
+				let mut copies = Vec::new();
+				let mut loose_nodes = Vec::new();
+				for node_id in node_ids {
+					match network_interface.duplicate_node_in_flow(&node_id, selection_network_path) {
+						Some(copy) => copies.push(copy),
+						None => loose_nodes.push(node_id),
+					}
+				}
+
+				// Nodes in no flow get copies offset from their originals, keeping the wires among them, and a layer brings its content along
+				if !loose_nodes.is_empty() {
+					let loose_layers = loose_nodes
+						.iter()
+						.copied()
+						.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+						.collect::<Vec<_>>();
+					let layer_content = network_interface.upstream_flow_back_from_nodes(loose_layers, selection_network_path, FlowType::LayerChildrenUpstreamFlow);
+					let copy_ids = loose_nodes
+						.iter()
+						.copied()
+						.chain(layer_content)
+						.collect::<HashSet<_>>()
+						.into_iter()
+						.enumerate()
+						.map(|(index, node_id)| (node_id, NodeId(index as u64)))
+						.collect::<HashMap<_, _>>();
+
+					let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
+					let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+					copies.extend(loose_nodes.iter().filter_map(|node_id| new_ids.get(copy_ids.get(node_id)?)));
+					network_interface.insert_node_group(nodes, new_ids, selection_network_path);
+				}
+
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: copies });
 			}
 			NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index } => {
 				network_interface.move_chain_nodes(&node_ids, layer, insert_index, selection_network_path);

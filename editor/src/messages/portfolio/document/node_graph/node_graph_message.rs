@@ -107,6 +107,9 @@ pub enum NodeGraphMessage {
 		destination: Option<(NodeId, usize)>,
 		select_copies: bool,
 	},
+	DuplicateNodesInFlow {
+		node_ids: Vec<NodeId>,
+	},
 	PasteIntoChain {
 		target: ChainInsertionPoint,
 		copies: Vec<ChainNodeCopy>,

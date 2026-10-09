@@ -548,6 +548,197 @@ async fn a_chain_node_reading_from_a_layer_joins_its_chain_only_as_an_unwired_co
 }
 
 #[tokio::test]
+async fn duplicating_a_mixed_graph_selection_stacks_the_layers_and_offsets_the_other_nodes() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let (layer, near, _, _, _) = layer_with_chain(&mut editor).await;
+	let loose = editor.create_node_by_name_at(rectangle_definition(), 40, 40).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(layer, network_interface), artboard_layer, 0, &[]);
+
+	// The selected chain node comes along with its layer's copy, so only the loose node gets an offset copy of its own
+	editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer, near, loose] }).await;
+	editor.handle_message(NodeGraphMessage::DuplicateSelectedNodes).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let children = artboard_layer.children(network_interface.document_metadata()).map(|child| child.to_node()).collect::<Vec<_>>();
+	assert_eq!(children.len(), 2, "The layer's copy should join the stack beside it");
+	let layer_copy = *children.iter().find(|child| **child != layer).unwrap();
+	assert_eq!(chain_of(network_interface, layer_copy).len(), 3, "The layer's copy should bring its own chain");
+
+	let selected = network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>();
+	assert_eq!(selected.len(), 2, "Only the layer's copy and the loose node's copy should be selected");
+	assert!(selected.contains(&layer_copy), "The layer's copy should be selected");
+	let loose_copy = *selected.iter().find(|node| **node != layer_copy).unwrap();
+	assert_eq!(
+		network_interface.position(&loose_copy, &[]),
+		network_interface.position(&loose, &[]).map(|position| position + IVec2::new(2, 2))
+	);
+
+	assert_invariants(&editor, "after duplicating a mixed selection of layers and nodes");
+}
+
+/// A generator feeding three nodes in a row through their primary inputs, outside any layer.
+async fn floating_flow(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId, NodeId) {
+	let generator = editor.create_node_by_name_at(rectangle_definition(), 0, 40).await;
+	let first = editor.create_node_by_name_at(fill_definition(), 7, 40).await;
+	let middle = editor.create_node_by_name_at(fill_definition(), 14, 40).await;
+	let last = editor.create_node_by_name_at(fill_definition(), 21, 40).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.create_wire(&OutputConnector::primary_output(generator), &InputConnector::primary_input(first), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(first), &InputConnector::primary_input(middle), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(middle), &InputConnector::primary_input(last), &[]);
+
+	(generator, first, middle, last)
+}
+
+async fn duplicate_selection(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> Vec<NodeId> {
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+	editor.handle_message(DocumentMessage::DuplicateSelectedLayers).await;
+	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
+}
+
+fn primary_input_of(network_interface: &NodeNetworkInterface, node_id: NodeId) -> Option<NodeInput> {
+	network_interface.input_from_connector(&InputConnector::primary_input(node_id), &[]).cloned()
+}
+
+#[tokio::test]
+async fn duplicating_a_node_inside_a_flow_puts_its_copy_right_after_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, middle, last) = floating_flow(&mut editor).await;
+
+	let copies = duplicate_selection(&mut editor, vec![middle]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		primary_input_of(network_interface, copies[0]),
+		Some(NodeInput::node(middle, 0)),
+		"The copy should be fed by the original"
+	);
+	assert_eq!(
+		primary_input_of(network_interface, last),
+		Some(NodeInput::node(copies[0], 0)),
+		"The copy should feed what the original fed"
+	);
+
+	assert_invariants(&editor, "after duplicating a node inside a flow");
+}
+
+#[tokio::test]
+async fn duplicating_the_end_of_a_flow_extends_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, _, last) = floating_flow(&mut editor).await;
+
+	let copies = duplicate_selection(&mut editor, vec![last]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+	assert_eq!(
+		primary_input_of(&editor.active_document().network_interface, copies[0]),
+		Some(NodeInput::node(last, 0)),
+		"The copy should extend the flow from the original"
+	);
+
+	assert_invariants(&editor, "after duplicating the end of a flow");
+}
+
+#[tokio::test]
+async fn duplicating_a_solo_node_or_a_generator_makes_an_offset_copy_outside_the_flow() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (generator, first, _, _) = floating_flow(&mut editor).await;
+	let solo = editor.create_node_by_name_at(fill_definition(), 0, 60).await;
+
+	let copies = duplicate_selection(&mut editor, vec![generator, solo]).await;
+	assert_eq!(copies.len(), 2, "Both copies should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		primary_input_of(network_interface, first),
+		Some(NodeInput::node(generator, 0)),
+		"The generator should still feed the flow"
+	);
+	for copy in copies {
+		let original = if network_interface.reference(&copy, &[]) == network_interface.reference(&generator, &[]) {
+			generator
+		} else {
+			solo
+		};
+		assert_eq!(
+			network_interface.position(&copy, &[]),
+			network_interface.position(&original, &[]).map(|position| position + IVec2::new(2, 2)),
+			"A copy outside the flow should sit offset from its original"
+		);
+		assert!(
+			!matches!(primary_input_of(network_interface, copy), Some(NodeInput::Node { .. })),
+			"A copy outside the flow should not be wired into it"
+		);
+	}
+
+	assert_invariants(&editor, "after duplicating nodes outside any flow");
+}
+
+#[tokio::test]
+async fn duplicating_a_floating_layer_in_a_stack_puts_its_copy_above_it_with_its_content() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, _, _, _) = layer_with_chain(&mut editor).await;
+	let layer_above = editor.create_node_by_name_at(merge_definition(), 30, 0).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&layer_above, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(layer), &InputConnector::primary_input(layer_above), &[]);
+
+	let copies = duplicate_selection(&mut editor, vec![layer]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.is_layer(&copies[0], &[]), "The copy should be a layer");
+	assert_eq!(
+		primary_input_of(network_interface, copies[0]),
+		Some(NodeInput::node(layer, 0)),
+		"The copy should be stacked on the original"
+	);
+	assert_eq!(
+		primary_input_of(network_interface, layer_above),
+		Some(NodeInput::node(copies[0], 0)),
+		"The layer above should now be stacked on the copy"
+	);
+	assert_eq!(chain_of(network_interface, copies[0]).len(), 3, "The copy should bring a copy of the layer's chain");
+
+	assert_invariants(&editor, "after duplicating a floating layer in a stack");
+}
+
+#[tokio::test]
+async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, _, _, _) = layer_with_chain(&mut editor).await;
+
+	let copies = duplicate_selection(&mut editor, vec![layer]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.is_layer(&copies[0], &[]), "The copy should be a layer");
+	assert_eq!(chain_of(network_interface, copies[0]).len(), 3, "The copy should bring a copy of the layer's chain");
+	assert_eq!(
+		network_interface.position(&copies[0], &[]),
+		network_interface.position(&layer, &[]).map(|position| position + IVec2::new(2, 2)),
+		"The copy should sit offset from the original"
+	);
+
+	assert_invariants(&editor, "after duplicating a solo floating layer");
+}
+
+#[tokio::test]
 async fn move_layer_to_stack_builds_the_layer_stack() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
