@@ -2,7 +2,7 @@ use core_types::list::{Item, List};
 use core_types::{ATTR_END, ATTR_NAME, ATTR_START, Ctx};
 
 /// Checks whether the string contains a match for the given regular expression pattern. Optionally restricts the match to only the start and/or end of the string.
-#[node_macro::node(category("Text: Regex"))]
+#[node_macro::node(category("Text: Regex"), icon("NodeRegexContains"))]
 fn regex_contains(
 	_: impl Ctx,
 	/// The string to search within.
@@ -44,7 +44,7 @@ fn regex_contains(
 }
 
 /// Replaces matches of a regular expression pattern in the string. The replacement string can reference captures: `$0` for the whole match and `$1`, `$2`, etc. for capture groups.
-#[node_macro::node(category("Text: Regex"))]
+#[node_macro::node(category("Text: Regex"), icon("NodeRegexReplace"))]
 fn regex_replace(
 	_: impl Ctx,
 	string: Item<String>,
@@ -168,7 +168,7 @@ fn regex_find(
 /// Finds all non-overlapping matches of a regular expression pattern in the string, returning a list of the matched substrings.
 ///
 /// Each item carries `start` and `end` byte-offset attributes pointing into the original string.
-#[node_macro::node(category("Text: Regex"))]
+#[node_macro::node(category("Text: Regex"), icon("NodeRegexFindAll"))]
 fn regex_find_all(
 	_: impl Ctx,
 	/// The string to search within.
@@ -215,7 +215,7 @@ fn regex_find_all(
 /// Splits a string into a list of substrings pulled from between separator characters as matched by a regular expression.
 ///
 /// For example, splitting "Three, two, one... LIFTOFF" with pattern `\W+` (non-word characters) produces `["Three", "two", "one", "LIFTOFF"]`.
-#[node_macro::node(category("Text: Regex"))]
+#[node_macro::node(category("Text: Regex"), icon("NodeRegexSplit"))]
 fn regex_split(
 	_: impl Ctx,
 	/// The string to split into substrings.

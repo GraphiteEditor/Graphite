@@ -30,7 +30,7 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category("Debug"), icon("NodeSampleImage"))]
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	let image_frame_transform: DAffine2 = image_frame.attribute_cloned_or_default(ATTR_TRANSFORM);
 
@@ -94,7 +94,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
-#[node_macro::node(category("Raster: Channels"), name("Channels to Image"))]
+#[node_macro::node(category("Raster: Channels"), icon("NodeChannelsToImage"), name("Channels to Image"))]
 pub fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
@@ -149,7 +149,7 @@ pub fn channels_to_image(
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster"), icon("NodeMask"))]
 pub fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
@@ -239,7 +239,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 	Item::from_parts(Raster::new_cpu(new_image), attributes)
 }
 
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category("Debug"), icon("NodeEmptyImage"))]
 pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
 	let transform = transform.into_element();
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
@@ -253,7 +253,7 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 /// Displays an image from a file.
 ///
 /// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster"), icon("NodeImage"))]
 pub fn image<'a: 'n>(
 	_: impl Ctx,
 	_primary: (),
@@ -268,7 +268,7 @@ pub fn image<'a: 'n>(
 }
 
 /// Generates customizable procedural noise patterns.
-#[node_macro::node(category("Raster: Pattern"))]
+#[node_macro::node(category("Raster: Pattern"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
 pub fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
@@ -434,7 +434,7 @@ pub fn noise_pattern(
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
-#[node_macro::node(category("Raster: Pattern"))]
+#[node_macro::node(category("Raster: Pattern"), icon("NodeMandelbrot"))]
 pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();

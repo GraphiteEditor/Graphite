@@ -212,7 +212,7 @@ impl ValueProvider for SingleVariableMathContext {
 /// Evaluates a math expression written in terms of the single variable `x`, which carries the input value, or `X` when the input is a Transform.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
-#[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"))]
+#[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"), icon("NodeMathFx"))]
 fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
@@ -284,7 +284,7 @@ impl ValueProvider for PositionalMathContext {
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
-#[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"))]
+#[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"), icon("NodeMathF"))]
 fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
@@ -335,7 +335,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 }
 
 /// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeAdd"))]
 fn add<A: Add<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the addition operation.
@@ -351,7 +351,7 @@ fn add<A: Add<B>, B>(
 }
 
 /// The subtraction operation (`-`) calculates the difference between two scalar numbers or vec2s.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeSubtract"))]
 fn subtract<A: Sub<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the subtraction operation.
@@ -367,7 +367,7 @@ fn subtract<A: Sub<B>, B>(
 }
 
 /// The multiplication operation (`×`) calculates the product of two scalar numbers, vec2s, or transforms.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeMultiply"))]
 fn multiply<A: Mul<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
@@ -421,7 +421,7 @@ impl SafeDivide<DVec2> for f64 {
 /// The division operation (`÷`) calculates the quotient of two scalar numbers or vec2s.
 ///
 /// Produces 0 for any division by 0. With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeDivide"))]
 fn divide<A: SafeDivide<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
@@ -454,7 +454,7 @@ impl Componentwise for DVec2 {
 /// The reciprocal operation (`1/x`) calculates the multiplicative inverse of a number.
 ///
 /// Produces 0 if the input is 0. With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeReciprocal"))]
 fn reciprocal<T: Componentwise>(
 	_: impl Ctx,
 	/// The number for which the reciprocal is calculated.
@@ -469,7 +469,7 @@ fn reciprocal<T: Componentwise>(
 /// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vec2s.
 ///
 /// The sign of the result shares the sign of the numerator unless *Always Positive* is enabled.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeModulo"))]
 fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy>(
 	_: impl Ctx,
 	/// The left-hand side of the modulo operation.
@@ -538,7 +538,7 @@ impl Exponent<DVec2> for f64 {
 /// The exponent operation (`^`) calculates the result of raising a number to a power.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeExponent"))]
 fn exponent<A: Exponent<B>, B>(
 	_: impl Ctx,
 	/// The base number that is raised to the power.
@@ -598,7 +598,7 @@ impl NthRoot<DVec2> for f64 {
 /// The `n`th root operation (`√`) calculates the inverse of exponentiation. Square root inverts squaring, cube root inverts cubing, and so on.
 ///
 /// This is equivalent to raising the number to the power of `1/n`. With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeRoot"))]
 fn root<A: NthRoot<B>, B>(
 	_: impl Ctx,
 	/// The number inside the radical for which the `n`th root is calculated.
@@ -660,7 +660,7 @@ impl Logarithm<DVec2> for f64 {
 /// The logarithmic function (`log`) calculates the logarithm of a number with a specified base. If the natural logarithm function (`ln`) is desired, set the base to "e".
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeLogarithm"))]
 fn logarithm<A: Logarithm<B>, B>(
 	_: impl Ctx,
 	/// The number for which the logarithm is calculated.
@@ -679,7 +679,7 @@ fn logarithm<A: Logarithm<B>, B>(
 /// The sine trigonometric function (`sin`) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeSine"))]
 fn sine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
@@ -698,7 +698,7 @@ fn sine<T: Componentwise>(
 /// The cosine trigonometric function (`cos`) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeCosine"))]
 fn cosine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
@@ -717,7 +717,7 @@ fn cosine<T: Componentwise>(
 /// The tangent trigonometric function (`tan`) calculates the ratio of the angle's opposite side length to its adjacent side length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeTangent"))]
 fn tangent<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
@@ -734,7 +734,7 @@ fn tangent<T: Componentwise>(
 }
 
 /// The inverse sine trigonometric function (`asin`) calculates the angle whose sine is the input value.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeSineInverse"))]
 fn sine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
@@ -752,7 +752,7 @@ fn sine_inverse(
 }
 
 /// The inverse cosine trigonometric function (`acos`) calculates the angle whose cosine is the input value.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeCosineInverse"))]
 fn cosine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
@@ -775,7 +775,7 @@ fn cosine_inverse(
 ///
 /// The resulting `atan` angle is always in the range `[-90°, 90°]` or, in radians, `[-π/2, π/2]`.
 /// The resulting `atan2` angle is always in the range `[-180°, 180°]` or, in radians, `[-π, π]`.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeTangentInverse"))]
 fn tangent_inverse<T: TangentInverse>(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated.
@@ -809,7 +809,7 @@ impl TangentInverse for DVec2 {
 /// Linearly maps an input value from one range to another. The ranges may be reversed.
 ///
 /// For example, 0.5 in the input range `[0, 1]` would map to 0 in the output range `[-180, 180]`.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeRemap"))]
 fn remap(
 	_: impl Ctx,
 	/// The value to be mapped between ranges.
@@ -873,7 +873,7 @@ impl Lerp for DVec2 {
 /// Linearly interpolates between the start and end values, where a factor of 0 gives the start value, 1 gives the end value, and 0.5 gives their midpoint.
 ///
 /// With vec2 inputs, this traces the straight line path between the two points.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeLerp"))]
 fn lerp<T: Lerp>(
 	_: impl Ctx,
 	/// The value produced when the factor is 0.
@@ -905,7 +905,7 @@ fn lerp<T: Lerp>(
 }
 
 /// The random function (`rand`) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeRandom"))]
 fn random(
 	_: impl Ctx,
 	_primary: (),
@@ -927,21 +927,21 @@ fn random(
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Converts a `Number` to the `Integer` type, which may be the required type for certain node inputs.
-#[node_macro::node(category("Type Assertion"))]
+#[node_macro::node(category("Type Assertion"), icon("NodeAsInteger"))]
 fn as_integer(_: impl Ctx, value: Item<i64>) -> Item<i64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Converts an `Integer` or `Bool` to the `Number` type, which may be the required type for certain node inputs. A `Bool` becomes 0 (false) or 1 (true).
-#[node_macro::node(category("Type Assertion"))]
+#[node_macro::node(category("Type Assertion"), icon("NodeAsNumber"))]
 fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Passes a true or false value through as the type `Bool`, which may be the required type for certain node inputs.
-#[node_macro::node(category("Type Assertion"))]
+#[node_macro::node(category("Type Assertion"), icon("NodeAsBool"))]
 fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
 }
@@ -949,7 +949,7 @@ fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 /// The rounding function (`round`) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeRound"))]
 fn round<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded to the nearest whole number.
@@ -964,7 +964,7 @@ fn round<T: Componentwise>(
 /// The floor function (`floor`) rounds down an input value to the nearest whole number, unless the input number is already whole.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeFloor"))]
 fn floor<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded down.
@@ -979,7 +979,7 @@ fn floor<T: Componentwise>(
 /// The ceiling function (`ceil`) rounds up an input value to the nearest whole number, unless the input number is already whole.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeCeiling"))]
 fn ceiling<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded up.
@@ -1013,7 +1013,7 @@ impl AbsoluteValue for i64 {
 /// The absolute value function (`abs`) removes the negative sign from an input value, if present.
 ///
 /// With a vec2 input, this applies separately to the X and Y components. For the overall length of a vec2, see the "Magnitude" node instead.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeAbsoluteValue"))]
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
@@ -1028,7 +1028,7 @@ fn absolute_value<T: AbsoluteValue>(
 /// The sign function (`sign`) reports whether an input value is positive (1), negative (-1), or zero (0).
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeSign"))]
 fn sign<T: Componentwise>(
 	_: impl Ctx,
 	/// The number whose sign is checked.
@@ -1112,7 +1112,7 @@ impl MinMax<DVec2> for f64 {
 /// The minimum function (`min`) picks the smaller of two numbers.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMin"))]
 fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
@@ -1130,7 +1130,7 @@ fn min<A: MinMax<B>, B>(
 /// The maximum function (`max`) picks the larger of two numbers.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMax"))]
 fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
@@ -1148,7 +1148,7 @@ fn max<A: MinMax<B>, B>(
 /// The clamp function (`clamp`) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeClamp"))]
 fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
@@ -1173,7 +1173,7 @@ where
 }
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeGreatestCommonDivisor"))]
 fn greatest_common_divisor(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
@@ -1191,7 +1191,7 @@ fn greatest_common_divisor(
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeLeastCommonMultiple"))]
 fn least_common_multiple(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
@@ -1209,13 +1209,13 @@ fn least_common_multiple(
 }
 
 /// Adds together all the numbers in the input list, producing their total.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeSum"))]
 fn sum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().sum())
 }
 
 /// Averages all the numbers in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeAverage"))]
 fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	let count = values.len();
 	let average = if count == 0 { 0. } else { values.iter_element_values().sum::<f64>() / count as f64 };
@@ -1224,31 +1224,31 @@ fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
 }
 
 /// Gives the smallest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMinimum"))]
 fn minimum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().copied().reduce(f64::min).unwrap_or_default())
 }
 
 /// Gives the largest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMaximum"))]
 fn maximum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().copied().reduce(f64::max).unwrap_or_default())
 }
 
 /// Outputs true if at least one value in the input list is true. An empty list gives false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeAny"))]
 fn any(_: impl Ctx, values: List<bool>) -> Item<bool> {
 	Item::new_from_element(values.iter_element_values().any(|&value| value))
 }
 
 /// Outputs true only if every value in the input list is true. An empty list gives true.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeAll"))]
 fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 	Item::new_from_element(values.iter_element_values().all(|&value| value))
 }
 
 /// Outputs true if the value is anything other than zero. A vector counts as zero only when every component is zero.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeIsNonzero"))]
 fn is_nonzero<T: Default + std::cmp::PartialEq>(
 	_: impl Ctx,
 	/// The value compared against zero.
@@ -1261,7 +1261,7 @@ fn is_nonzero<T: Default + std::cmp::PartialEq>(
 
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
 /// If enabled with *Or Equal*, the less-than-or-equal operation (`<=`) is used instead.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLessThan"))]
 fn less_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
@@ -1282,7 +1282,7 @@ fn less_than<T: std::cmp::PartialOrd<T>>(
 
 /// The greater-than operation (`>`) compares two values and returns true if the first value is greater than the second, or false if it is not.
 /// If enabled with *Or Equal*, the greater-than-or-equal operation (`>=`) is used instead.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeGreaterThan"))]
 fn greater_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
@@ -1302,7 +1302,7 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 }
 
 /// The equality operation (`==`, `XNOR`) compares two values and returns true if they are equal, or false if they are not.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeEquals"))]
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
@@ -1318,7 +1318,7 @@ fn equals<T: std::cmp::PartialEq<T>>(
 }
 
 /// The inequality operation (`!=`, `XOR`) compares two values and returns true if they are not equal, or false if they are.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeNotEquals"))]
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
@@ -1334,7 +1334,7 @@ fn not_equals<T: std::cmp::PartialEq<T>>(
 }
 
 /// The logical OR operation (`||`) returns true if either of the two inputs are true, or false if both are false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLogicalOr"))]
 fn logical_or(
 	_: impl Ctx,
 	/// One of the two boolean values, either of which may be true for the node to output true.
@@ -1349,7 +1349,7 @@ fn logical_or(
 }
 
 /// The logical AND operation (`&&`) returns true if both of the two inputs are true, or false if any are false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLogicalAnd"))]
 fn logical_and(
 	_: impl Ctx,
 	/// One of the two boolean values, both of which must be true for the node to output true.
@@ -1364,7 +1364,7 @@ fn logical_and(
 }
 
 /// The logical NOT operation (`!`) reverses true and false value of the input.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLogicalNot"))]
 fn logical_not(
 	_: impl Ctx,
 	/// The boolean value to be reversed.
@@ -1376,7 +1376,7 @@ fn logical_not(
 }
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeSwitch"))]
 async fn switch<T: 'n + Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	condition: Item<bool>,
@@ -1447,19 +1447,19 @@ async fn switch<T: 'n + Send>(
 }
 
 /// Constructs a `Bool` value which may be set to true or false.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeBoolValue"))]
 fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: Item<bool>) -> Item<bool> {
 	bool_value
 }
 
 /// Constructs a number value which may be set to any real number.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeNumberValue"))]
 fn number_value(_: impl Ctx, _primary: (), number: Item<f64>) -> Item<f64> {
 	number
 }
 
 /// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodePercentageValue"))]
 fn percentage_value(
 	_: impl Ctx,
 	_primary: (),
@@ -1472,19 +1472,19 @@ fn percentage_value(
 }
 
 /// Constructs a vec2 value, a two-dimensional quantity which may be set to any XY pair.
-#[node_macro::node(category("Value"), name("Vec2 Value"))]
+#[node_macro::node(category("Value"), icon("NodeVec2Value"), name("Vec2 Value"))]
 fn vec2_value(_: impl Ctx, _primary: (), #[name("Vec2")] vec2: Item<DVec2>) -> Item<DVec2> {
 	vec2
 }
 
 /// Constructs a color value which may be set to any color.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeColorValue"))]
 fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Item<Color>) -> Item<Color> {
 	color
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
-#[node_macro::node(category("Color"), name("RGBA to Color"))]
+#[node_macro::node(category("Color"), icon("NodeRgbaToColor"), name("RGBA to Color"))]
 fn rgba_to_color(
 	_: impl Ctx,
 	_primary: (),
@@ -1512,7 +1512,7 @@ fn rgba_to_color(
 }
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
-#[node_macro::node(category("Color"), name("HSVA to Color"))]
+#[node_macro::node(category("Color"), icon("NodeHsvaToColor"), name("HSVA to Color"))]
 fn hsva_to_color(
 	_: impl Ctx,
 	_primary: (),
@@ -1542,7 +1542,7 @@ fn hsva_to_color(
 }
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
-#[node_macro::node(category("Color"), name("HSLA to Color"))]
+#[node_macro::node(category("Color"), icon("NodeHslaToColor"), name("HSLA to Color"))]
 fn hsla_to_color(
 	_: impl Ctx,
 	_primary: (),
@@ -1571,20 +1571,20 @@ fn hsla_to_color(
 }
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
-#[node_macro::node(category("Color"), name("String to Color"))]
+#[node_macro::node(category("Color"), icon("NodeStringToColor"), name("String to Color"))]
 fn string_to_color(_: impl Ctx, string: Item<String>) -> Item<Color> {
 	let color = core_types::misc::parse_css_color(string.element()).unwrap_or_default();
 	Item::new_from_element(color)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeGradientValue"))]
 fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>) -> Item<Gradient> {
 	gradient
 }
 
 /// Sets the form (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientForm"))]
 fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
@@ -1592,7 +1592,7 @@ fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vect
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientSpread"))]
 fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
@@ -1600,7 +1600,7 @@ fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<
 }
 
 /// Sets the color space in which each gradient in the input list interpolates between its stops.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientSpace"))]
 fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
@@ -1608,7 +1608,7 @@ fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_type
 }
 
 /// Sets the path each gradient in the input list interpolates along, deciding whether it jumps, turns corners, or flows smoothly through its stops.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientInterpolation"))]
 fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *interpolation.element());
@@ -1616,7 +1616,7 @@ fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, interpolation: 
 }
 
 /// Sets whether each gradient in the input list treats its stops as a cycle, interpolating from the last stop back around to the first.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientCyclic"))]
 fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_CYCLIC, *cyclic.element());
@@ -1624,7 +1624,7 @@ fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) ->
 }
 
 /// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientHueDirection"))]
 fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
@@ -1634,7 +1634,7 @@ fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: 
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientPositions"))]
 fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
@@ -1647,7 +1647,7 @@ fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64
 /// Non-cyclic gradients have no interval following the last stop, meaning the midpoint is ignored in that position.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientMidpoints"))]
 fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
@@ -1656,7 +1656,7 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 }
 
 /// Reverses the order of each gradient's stops, moving the color at the start of the ramp to the end and vice versa.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientReverse"))]
 fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
 	let settings = vector_types::GradientSettings::from(&gradient);
 	let mut gradient = gradient;
@@ -1668,7 +1668,7 @@ fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
 /// Shifts every stop along each gradient's ramp, sliding the colors within the gradient without moving the gradient itself.
 ///
 /// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end and keep going, leaving the visible ramp to blend between whichever colors still span it.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientShift"))]
 fn gradient_shift(
 	_: impl Ctx,
 	gradient: Item<Gradient>,
@@ -1687,7 +1687,7 @@ fn gradient_shift(
 /// The factor multiplies every stop's distance from the pivot, so 2 spreads the ramp over twice its span while 0.5 packs it into half. A negative factor mirrors the stops across the pivot, reversing the order of the colors.
 ///
 /// The pivot is the one point that stays put, measured against the whole ramp from 0 at the start to 1 at the end.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientStretch"))]
 fn gradient_stretch(
 	_: impl Ctx,
 	gradient: Item<Gradient>,
@@ -1706,7 +1706,7 @@ fn gradient_stretch(
 }
 
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Color"), icon("NodeEvaluateGradient"))]
 fn evaluate_gradient(
 	_: impl Ctx,
 	_primary: (),
@@ -1721,7 +1721,7 @@ fn evaluate_gradient(
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeFootprintValue"))]
 fn footprint_value(
 	_: impl Ctx,
 	_primary: (),
@@ -1741,7 +1741,7 @@ fn footprint_value(
 /// Composes a vec2 from its X and Y components.
 ///
 /// The inverse of this node is **Vec2 to Numbers**, which decomposes a vec2 back into its X and Y components.
-#[node_macro::node(category("Math: Vec2"), name("Numbers to Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeNumbersToVec2"), name("Numbers to Vec2"))]
 fn numbers_to_vec2(
 	_: impl Ctx,
 	_primary: (),
@@ -1767,7 +1767,7 @@ pub struct Vec2Components {
 /// Decomposes the X and Y components of a vec2.
 ///
 /// The inverse of this node is **Numbers to Vec2**, which composes a vec2 from its X and Y components.
-#[node_macro::node(category("Math: Vec2"), name("Vec2 to Numbers"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeVec2ToNumbers"), name("Vec2 to Numbers"))]
 fn vec2_to_numbers(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Components {
 	let (vec2, attributes) = vec2.into_parts();
 
@@ -1782,7 +1782,7 @@ fn vec2_to_numbers(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Compon
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).
 /// The output ranges from the positive to negative product of their lengths based on when they are pointing in the same or opposite directions.
 /// If either vec2 has zero length, the output is 0.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeDotProduct"))]
 fn dot_product(
 	_: impl Ctx,
 	/// An operand of the dot product operation.
@@ -1808,7 +1808,7 @@ fn dot_product(
 /// The cross product operation (`×`) calculates the signed area of the parallelogram formed by a vec2 pair.
 ///
 /// The sign gives the rotation direction from the first vec2 to the second: positive for clockwise, negative for counterclockwise, and 0 when both are parallel, as drawn in the viewport.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeCrossProduct"))]
 fn cross_product(
 	_: impl Ctx,
 	/// The vec2 on the left-hand side of the cross product operation.
@@ -1825,7 +1825,7 @@ fn cross_product(
 /// Calculates the angle swept between two vec2s.
 ///
 /// The angle ranges from -180° to 180° (or -π to π radians) and its sign gives the sweep direction from the "Direction From" input to the "Direction To" input: positive for clockwise, negative for counterclockwise, as drawn in the viewport and matching the direction convention of the Transform node's rotation.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeAngleBetween"))]
 fn angle_between(
 	_: impl Ctx,
 	/// The direction the angle is measured from.
@@ -1866,7 +1866,7 @@ impl ToPosition for DAffine2 {
 }
 
 /// Calculates the angle needed for a rightward-facing object placed at the "Position From" point to turn so it points toward the "Position To" point.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeAngleTo"))]
 fn angle_to<T: ToPosition, U: ToPosition>(
 	_: impl Ctx,
 	/// The position from which the angle is measured.
@@ -1890,7 +1890,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 }
 
 /// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow it represents.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeMagnitude"))]
 fn magnitude(_: impl Ctx, vec2: Item<DVec2>) -> Item<f64> {
 	let (vec2, attributes) = vec2.into_parts();
 
@@ -1898,7 +1898,7 @@ fn magnitude(_: impl Ctx, vec2: Item<DVec2>) -> Item<f64> {
 }
 
 /// Measures the distance between two points, which is the length of the straight line segment connecting them.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeDistance"))]
 fn distance(
 	_: impl Ctx,
 	/// The point the distance is measured from.
@@ -1914,7 +1914,7 @@ fn distance(
 /// Scales the input vec2 to unit length while preserving its direction. This is equivalent to dividing the input vec2 by its own magnitude.
 ///
 /// Returns 0 when the input vec2 has zero length.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeNormalize"))]
 fn normalize(_: impl Ctx, vec2: Item<DVec2>) -> Item<DVec2> {
 	let (vec2, attributes) = vec2.into_parts();
 

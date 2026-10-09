@@ -41,7 +41,7 @@ impl Preprocessor {
 		}
 	}
 
-	/// Replace every `TaggedValue::Resource(hash)` and `TaggedValue::AnimationCurve(curve)` input with a reference to a freshly inserted `resource` / `eval_curve` proto node.
+	/// Replace every `TaggedValue::Resource(hash)` and `TaggedValue::AnimationCurve(curve)` input with a reference to a freshly inserted `resource` / `evaluate_curve` proto node.
 	fn replace_inputs_with_producer_nodes(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
@@ -80,7 +80,7 @@ impl Preprocessor {
 						let id = NodeId::new();
 						let curve_node = DocumentNode {
 							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
-							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::eval_curve::IDENTIFIER),
+							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::evaluate_curve::IDENTIFIER),
 							context_features: ContextDependencies {
 								extract: ContextFeatures::ANIMATION_TIME,
 								inject: ContextFeatures::empty(),

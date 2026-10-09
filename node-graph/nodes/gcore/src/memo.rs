@@ -11,7 +11,7 @@ use std::sync::Mutex;
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
 /// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
-#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
+#[node_macro::node(category("General"), icon("NodeMemoize"), path(graphene_core::memo), skip_impl)]
 async fn memoize<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, content: impl Node<I, Output = T>, #[data] cache: Arc<Mutex<Option<(u64, T)>>>) -> T {
 	// Caches the output of a given node called with a specific input.
 	//

@@ -7,7 +7,7 @@ use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
-#[node_macro::node(category("Repeat"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeat"))]
 async fn repeat<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -52,7 +52,7 @@ async fn repeat<T: Send + Clone + 'static>(
 	result_list
 }
 
-#[node_macro::node(category("Repeat"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeatArray"))]
 pub async fn repeat_array<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -113,7 +113,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	result_list
 }
 
-#[node_macro::node(category("Repeat"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeatRadial"))]
 async fn repeat_radial<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -170,7 +170,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 	result_list
 }
 
-#[node_macro::node(category("Repeat"), name("Repeat on Points"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeatOnPoints"), name("Repeat on Points"))]
 async fn repeat_on_points<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs,
 	points: List<Vector>,

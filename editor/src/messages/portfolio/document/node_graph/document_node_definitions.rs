@@ -3,6 +3,7 @@ mod document_node_derive;
 use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo, SliderRange};
 use super::utility_types::{FrontendNodeType, InputTypeConstraint};
+use crate::messages::frontend::IconName;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
@@ -128,6 +129,9 @@ pub struct DocumentNodeDefinition {
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
 
+	/// Name of the icon, from the frontend's icon registry, shown for this node in the node graph.
+	pub icon: Option<&'static str>,
+
 	/// User-facing description of the node's functionality.
 	pub description: Cow<'static, str>,
 
@@ -150,6 +154,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
 			category: "General",
+			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
 				..Default::default()
@@ -160,6 +165,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Merge",
 			category: "General",
+			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(5), 0)],
@@ -231,6 +237,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Artboard",
 			category: "General",
+			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(4), 0)],
@@ -338,6 +345,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Blend",
 			category: "Vector",
+			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(16), 0)],
@@ -512,6 +520,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
 			category: "Vector",
+			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(7), 0)],
@@ -591,6 +600,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Load Image",
 			category: "Web Request",
+			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -626,6 +636,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
+			icon: Some("NodeRasterize"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(2), 0)],
@@ -677,6 +688,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "",
+			icon: None,
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Extract,
 				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
@@ -690,6 +702,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
 			category: "Text: Regex",
+			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![
@@ -762,6 +775,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
+			icon: Some("NodePath"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -1586,6 +1600,13 @@ pub fn collect_node_descriptions() -> Vec<(String, String)> {
 				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
 			)
 		})
+		.collect()
+}
+
+pub fn collect_node_icons() -> Vec<(String, IconName)> {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|(identifier, definition)| Some((identifier.serialized(), definition.icon?.to_string())))
 		.collect()
 }
 

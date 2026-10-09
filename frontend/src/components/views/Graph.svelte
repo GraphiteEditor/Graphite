@@ -7,6 +7,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
@@ -322,15 +323,17 @@
 			{#each $nodeGraphWires.values() as map}
 				{#each map.values() as { pathString, centerPathString, dataType, thick, dashed }}
 					{#if thick}
-						<path
-							d={pathString}
-							style:--data-line-width="8px"
-							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-						/>
-						<!-- A thin inner line splits the layer-stack wire down the middle reaching past the ends into the cleaved connector slots -->
-						<path d={centerPathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+						<g class:dashed>
+							<path
+								d={pathString}
+								style:--data-line-width="8px"
+								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+							/>
+							<!-- A thin inner line splits the layer-stack wire down the middle reaching past the ends into the cleaved connector slots -->
+							<path d={centerPathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+						</g>
 					{/if}
 				{/each}
 			{/each}
@@ -689,25 +692,27 @@
 				{#each $nodeGraphWires.values() as map}
 					{#each map.values() as { pathString, dataType, thick, dashed, isList }}
 						{#if !thick}
-							{#if isList}
-								<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
-								<path
-									d={pathString}
-									style:--data-line-width="4px"
-									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-								/>
-								<path d={pathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
-							{:else}
-								<path
-									d={pathString}
-									style:--data-line-width="2px"
-									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-								/>
-							{/if}
+							<g class:dashed>
+								{#if isList}
+									<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
+									<path
+										d={pathString}
+										style:--data-line-width="4px"
+										style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+										style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+										style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+									/>
+									<path d={pathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+								{:else}
+									<path
+										d={pathString}
+										style:--data-line-width="2px"
+										style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+										style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+										style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+									/>
+								{/if}
+							</g>
 						{/if}
 					{/each}
 				{/each}
@@ -730,6 +735,7 @@
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
+			{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
 			<div
 				class="node"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -748,6 +754,7 @@
 			>
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+					<IconLabel {icon} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
@@ -1049,6 +1056,11 @@
 					stroke-width: var(--data-line-width);
 					stroke-dasharray: var(--data-dasharray);
 				}
+
+				// The previewed node's temporary wire stands out in the bright data color
+				.dashed path {
+					stroke: var(--data-color);
+				}
 			}
 		}
 
@@ -1210,7 +1222,7 @@
 			}
 
 			&.previewed::after {
-				border: 1px dashed var(--data-color);
+				border: 1px dashed var(--color-e-nearwhite);
 			}
 
 			.connectors {
@@ -1264,7 +1276,7 @@
 
 			.thumbnail {
 				background: var(--color-2-mildblack);
-				border: 1px solid var(--data-color-dim);
+				border: 1px solid var(--color-5-dullgray);
 				border-radius: 2px;
 				position: relative;
 				box-sizing: border-box;
@@ -1331,7 +1343,7 @@
 					field-sizing: content;
 					// Stack above the absolutely-positioned grip/lock/visibility siblings, which can otherwise overlap the input's right edge and hijack clicks there.
 					position: relative;
-					z-index: 1;
+					z-index: 2;
 				}
 			}
 
@@ -1379,6 +1391,13 @@
 				bottom: 0;
 			}
 
+			// Above layers drawn later whose chain area extends over this layer's right edge, so hovering still reaches them
+			.solo-drag-grip,
+			.lock,
+			.visibility {
+				z-index: 1;
+			}
+
 			.input.connectors .connector {
 				left: 24px;
 			}
@@ -1391,7 +1410,7 @@
 			top: calc((var(--offset-top) + 0.5) * 24px);
 
 			&::after {
-				border: 1px solid var(--data-color-dim);
+				border: 1px solid var(--color-5-dullgray);
 				border-radius: 2px;
 			}
 
@@ -1441,13 +1460,16 @@
 				}
 
 				.icon-label {
-					display: none; // Remove after we have unique icons for the nodes
 					margin: 0 8px;
 				}
 
 				.text-label {
-					// margin-right: 4px; // Restore after reenabling icon-label
 					margin: 0 8px;
+				}
+
+				.icon-label + .text-label {
+					margin-left: 0;
+					margin-right: 4px;
 				}
 			}
 
