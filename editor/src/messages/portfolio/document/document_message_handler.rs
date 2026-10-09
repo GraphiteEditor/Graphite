@@ -287,6 +287,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses,
 					DataPanelMessageContext {
 						network_interface: &mut self.network_interface,
+						selection_network_path: &self.selection_network_path,
 						data_panel_open,
 					},
 				);
