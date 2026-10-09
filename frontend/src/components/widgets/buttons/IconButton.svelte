@@ -39,15 +39,25 @@
 	}
 	onMount(() => buttonElement?.addEventListener("dragdrop", handleDragDrop));
 	onDestroy(() => buttonElement?.removeEventListener("dragdrop", handleDragDrop));
+
+	// After a pointer click, the new state's icon replaces the hover icon until the pointer leaves and comes back
+	let hoverIconSuppressed = false;
+	$: showsHoverIcon = Boolean(hoverIcon) && !disabled && !hoverIconSuppressed;
+
+	function click(e: MouseEvent) {
+		if (e.detail > 0) hoverIconSuppressed = true;
+		action(e);
+	}
 </script>
 
 <button
 	class={`icon-button size-${size} ${className} ${extraClasses}`.trim()}
-	class:hover-icon={hoverIcon && !disabled}
+	class:hover-icon={showsHoverIcon}
 	class:disabled
 	class:emphasized
 	bind:this={buttonElement}
-	on:click={action}
+	on:click={click}
+	on:pointerleave={() => (hoverIconSuppressed = false)}
 	{disabled}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
@@ -58,7 +68,7 @@
 	{...$$restProps}
 >
 	<IconLabel {icon} />
-	{#if hoverIcon && !disabled}
+	{#if hoverIcon && showsHoverIcon}
 		<IconLabel icon={hoverIcon} />
 	{/if}
 </button>
@@ -79,7 +89,7 @@
 			fill: var(--color-e-nearwhite);
 		}
 
-		// The `where` pseudo-class does not contribtue to specificity
+		// The `where` pseudo-class does not contribute to specificity
 		& + :where(.icon-button) {
 			margin-left: 0;
 		}
