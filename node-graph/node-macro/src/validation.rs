@@ -72,6 +72,12 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 }
 
 fn validate_element_wise(parsed: &ParsedNodeFn) {
+	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		emit_error!(parsed.fn_name.span(), "An async node cannot take `impl Node` inputs");
+	}
+	if parsed.attributes.placeholder.is_some() && !parsed.is_async {
+		emit_error!(parsed.fn_name.span(), "Only an async node can have a `placeholder`");
+	}
 	if parsed.attributes.skip_impl {
 		return;
 	}

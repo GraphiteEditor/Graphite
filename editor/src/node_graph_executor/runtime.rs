@@ -22,7 +22,7 @@ use graphene_std::runtime::AsyncRuntime;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic};
+use graphene_std::{Artboard, Context, Graphic, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
@@ -218,7 +218,7 @@ impl NodeRuntime {
 						render_config.export_format = ExportFormat::Svg;
 					}
 
-					let result = self.execute_network(render_config).await;
+					let result = self.execute_network(render_config);
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					if !render_config.for_eyedropper {
@@ -358,17 +358,25 @@ impl NodeRuntime {
 		result
 	}
 
-	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		match self.executor.input_type() {
+		let state = match self.executor.input_type() {
 			Some(t) if t == concrete!(Context) => (&self.executor)
 				.execute(render_config.into_context_with_generations(self.async_runtime().snapshot()))
-				.await
-				.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
+				.map_err(|e| e.to_string())?,
+			Some(t) if t == concrete!(()) => (&self.executor).execute(()).map_err(|e| e.to_string())?,
+			Some(t) => return Err(format!("Invalid input type {t:?}")),
+			_ => return Err(format!("No input type:\n{:?}", self.node_graph_errors)),
+		};
+		match state {
+			Poll::Final(value) | Poll::Partial(value) => Ok(value),
+			Poll::Fallback(boxed) => {
+				let (value, error) = *boxed;
+				Ok(value)
+			}
+			Poll::Pending => Err("Node graph evaluation is pending".to_string()),
+			Poll::Error(error) => Err(format!("Node graph evaluation failed: {error}")),
 		}
 	}
 

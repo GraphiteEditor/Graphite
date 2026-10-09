@@ -1,9 +1,8 @@
-use crate::{Color, ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
-use dyn_any::{DynAny, StaticType};
+use crate::poll::Poll;
+use crate::{Color, ContextFeature, Node, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
-use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
 
 // Translation struct between macro and definition
@@ -71,24 +70,20 @@ pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::ne
 pub static NODE_METADATA: LazyLock<Mutex<HashMap<ProtoNodeIdentifier, NodeMetadata>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[cfg(not(target_family = "wasm"))]
-pub type DynFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n + Send>>;
+pub type Any = Box<dyn std::any::Any + Send>;
 #[cfg(target_family = "wasm")]
-pub type DynFuture<'n, T> = Pin<Box<dyn std::future::Future<Output = T> + 'n>>;
-pub type LocalFuture<'n, T> = Pin<Box<dyn Future<Output = T> + 'n>>;
+pub type Any = Box<dyn std::any::Any>;
 #[cfg(not(target_family = "wasm"))]
-pub type Any<'n> = Box<dyn DynAny<'n> + 'n + Send>;
+pub type AnyInput = dyn std::any::Any + Send;
 #[cfg(target_family = "wasm")]
-pub type Any<'n> = Box<dyn DynAny<'n> + 'n>;
-pub type FutureAny<'n> = DynFuture<'n, Any<'n>>;
+pub type AnyInput = dyn std::any::Any;
 // TODO: is this safe? This is assumed to be send+sync.
 #[cfg(not(target_family = "wasm"))]
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n + Send + Sync;
+pub type TypeErasedNode<'n> = dyn Node<AnyInput, Output = Any> + 'n + Send + Sync;
 #[cfg(target_family = "wasm")]
-pub type TypeErasedNode<'n> = dyn for<'i> NodeIO<'i, Any<'i>, Output = FutureAny<'i>> + 'n;
-pub type TypeErasedPinnedRef<'n> = Pin<&'n TypeErasedNode<'n>>;
+pub type TypeErasedNode<'n> = dyn Node<AnyInput, Output = Any> + 'n;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
-pub type TypeErasedPinned<'n> = Pin<Box<TypeErasedNode<'n>>>;
 
 pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
 
@@ -152,32 +147,27 @@ impl NodeContainer {
 	}
 }
 
-/// Boxes the input and downcasts the output.
-/// Wraps around a node taking Box<dyn DynAny> and returning Box<dyn DynAny>
+/// Erases the input and downcasts the output.
+/// Wraps around a node taking `&dyn Any` and returning `Box<dyn Any>`
 #[derive(Clone)]
 pub struct DowncastBothNode<I, O> {
 	node: SharedNodeContainer,
 	_i: PhantomData<I>,
 	_o: PhantomData<O>,
 }
-impl<'input, O, I> Node<'input, I> for DowncastBothNode<I, O>
+impl<I, O> Node<I> for DowncastBothNode<I, O>
 where
-	O: 'input + StaticType + WasmNotSend,
-	I: 'input + StaticType + WasmNotSend,
+	I: 'static + WasmNotSend,
+	O: 'static + WasmNotSend,
 {
-	type Output = DynFuture<'input, O>;
+	type Output = O;
 	#[inline]
-	#[track_caller]
-	fn eval(&'input self, input: I) -> Self::Output {
-		{
-			let node_name = self.node.node_name();
-			let input = Box::new(input);
-			let future = self.node.eval(input);
-			Box::pin(async move {
-				let out = dyn_any::downcast(future.await).unwrap_or_else(|e| panic!("DowncastBothNode wrong output type: {e} in: \n{node_name}"));
-				*out
-			})
-		}
+	fn eval(&self, input: &I) -> Poll<O> {
+		self.node.eval(input).map(|output| {
+			*output
+				.downcast::<O>()
+				.unwrap_or_else(|_| panic!("DowncastBothNode wrong output type: expected {} in: \n{}", std::any::type_name::<O>(), self.node.node_name()))
+		})
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
@@ -193,32 +183,6 @@ impl<I, O> DowncastBothNode<I, O> {
 		}
 	}
 }
-pub struct FutureWrapperNode<Node> {
-	node: Node,
-}
-
-impl<'i, T: 'i + WasmNotSend, N> Node<'i, T> for FutureWrapperNode<N>
-where
-	N: Node<'i, T, Output: WasmNotSend> + WasmNotSend,
-{
-	type Output = DynFuture<'i, N::Output>;
-	#[inline(always)]
-	fn eval(&'i self, input: T) -> Self::Output {
-		let result = self.node.eval(input);
-		Box::pin(async move { result })
-	}
-
-	#[inline(always)]
-	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
-	}
-}
-
-impl<N> FutureWrapperNode<N> {
-	pub const fn new(node: N) -> Self {
-		Self { node }
-	}
-}
 
 pub struct DynAnyNode<I, O, Node> {
 	node: Node,
@@ -226,36 +190,26 @@ pub struct DynAnyNode<I, O, Node> {
 	_o: PhantomData<O>,
 }
 
-impl<'input, I, O, N> Node<'input, Any<'input>> for DynAnyNode<I, O, N>
+impl<I, O, N> Node<AnyInput> for DynAnyNode<I, O, N>
 where
-	I: 'input + StaticType + WasmNotSend,
-	O: 'input + StaticType + WasmNotSend,
-	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
+	I: 'static,
+	O: 'static + WasmNotSend,
+	N: Node<I, Output = O>,
 {
-	type Output = FutureAny<'input>;
+	type Output = Any;
 	#[inline]
-	fn eval(&'input self, input: Any<'input>) -> Self::Output {
-		let node_name = std::any::type_name::<N>();
-		let output = |input| {
-			let result = self.node.eval(input);
-			async move { Box::new(result.await) as Any<'input> }
-		};
-		match dyn_any::downcast(input) {
-			Ok(input) => Box::pin(output(*input)),
-			Err(e) => panic!("DynAnyNode Input, {e} in:\n{node_name}"),
-		}
+	fn eval(&self, input: &AnyInput) -> Poll<Any> {
+		let input = input
+			.downcast_ref::<I>()
+			.unwrap_or_else(|| panic!("DynAnyNode Input: expected {} in:\n{}", std::any::type_name::<I>(), std::any::type_name::<N>()));
+		self.node.eval(input).map(|output| Box::new(output) as Any)
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
 		self.node.serialize()
 	}
 }
-impl<'input, I, O, N> DynAnyNode<I, O, N>
-where
-	I: 'input + StaticType,
-	O: 'input + StaticType,
-	N: 'input + Node<'input, I, Output = DynFuture<'input, O>>,
-{
+impl<I, O, N> DynAnyNode<I, O, N> {
 	pub const fn new(node: N) -> Self {
 		Self {
 			node,
@@ -266,9 +220,9 @@ where
 }
 pub struct PanicNode<I: WasmNotSend, O: WasmNotSend>(PhantomData<I>, PhantomData<O>);
 
-impl<'i, I: 'i + WasmNotSend, O: 'i + WasmNotSend> Node<'i, I> for PanicNode<I, O> {
+impl<I: WasmNotSend, O: WasmNotSend> Node<I> for PanicNode<I, O> {
 	type Output = O;
-	fn eval(&'i self, _: I) -> Self::Output {
+	fn eval(&self, _: &I) -> Poll<O> {
 		unimplemented!("This node should never be evaluated")
 	}
 }

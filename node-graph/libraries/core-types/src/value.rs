@@ -1,15 +1,15 @@
+use crate::Node;
 use crate::list::Item;
-use crate::registry::DynFuture;
-use crate::{Node, WasmNotSend};
+use crate::poll::Poll;
 
 #[derive(Clone, Copy)]
 pub struct ClonedNode<T: Clone>(pub T);
 
-impl<'i, T: Clone + 'i, I> Node<'i, I> for ClonedNode<T> {
+impl<T: Clone, I: ?Sized> Node<I> for ClonedNode<T> {
 	type Output = T;
 	#[inline(always)]
-	fn eval(&'i self, _input: I) -> Self::Output {
-		self.0.clone()
+	fn eval(&self, _input: &I) -> Poll<T> {
+		Poll::Final(self.0.clone())
 	}
 }
 
@@ -25,17 +25,16 @@ impl<T: Clone> From<T> for ClonedNode<T> {
 	}
 }
 
-/// Yields a precomputed `Item<T>` as a ready future, ignoring its input context.
+/// Yields a precomputed `Item<T>`, ignoring its input context.
 /// Generated list-content variants feed each already-evaluated content slot through this so the kernel's own
 /// context modifications become no-ops (the slot was evaluated once, up front, at the ambient footprint).
 pub struct PrecomputedItemNode<T>(pub Item<T>);
 
-impl<'i, T: Clone + WasmNotSend + 'i, I: 'i> Node<'i, I> for PrecomputedItemNode<T> {
-	type Output = DynFuture<'i, Item<T>>;
+impl<T: Clone, I: ?Sized> Node<I> for PrecomputedItemNode<T> {
+	type Output = Item<T>;
 	#[inline(always)]
-	fn eval(&'i self, _input: I) -> Self::Output {
-		let item = self.0.clone();
-		Box::pin(async move { item })
+	fn eval(&self, _input: &I) -> Poll<Item<T>> {
+		Poll::Final(self.0.clone())
 	}
 }
 

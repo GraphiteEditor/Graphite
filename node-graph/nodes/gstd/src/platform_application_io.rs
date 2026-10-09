@@ -41,7 +41,7 @@ fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 }
 
 /// Sends an HTTP GET request to a specified URL and optionally waits for the response (unless discarded) which is output as a string.
-#[node_macro::node(category("Web Request"))]
+#[node_macro::node(category("Web Request"), placeholder = pending_text)]
 async fn get_request(
 	_: impl Ctx,
 	_primary: (),
@@ -59,14 +59,7 @@ async fn get_request(
 	let request = reqwest::Client::new().get(url).headers(header_map);
 
 	if discard_result {
-		#[cfg(target_family = "wasm")]
-		wasm_bindgen_futures::spawn_local(async move {
-			let _ = request.send().await;
-		});
-		#[cfg(all(not(target_family = "wasm"), feature = "tokio"))]
-		tokio::spawn(async move {
-			let _ = request.send().await;
-		});
+		let _ = request.send().await;
 		return Item::default();
 	}
 
@@ -76,8 +69,12 @@ async fn get_request(
 	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
+fn pending_text(_primary: &(), _url: &Item<String>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
+	Item::default()
+}
+
 /// Sends an HTTP POST request to a specified URL with the provided binary data and optionally waits for the response (unless discarded) which is output as a string.
-#[node_macro::node(category("Web Request"))]
+#[node_macro::node(category("Web Request"), placeholder = pending_post_text)]
 async fn post_request(
 	_: impl Ctx,
 	_primary: (),
@@ -99,14 +96,7 @@ async fn post_request(
 	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
-		#[cfg(target_family = "wasm")]
-		wasm_bindgen_futures::spawn_local(async move {
-			let _ = request.send().await;
-		});
-		#[cfg(all(not(target_family = "wasm"), feature = "tokio"))]
-		tokio::spawn(async move {
-			let _ = request.send().await;
-		});
+		let _ = request.send().await;
 		return Item::default();
 	}
 
@@ -114,6 +104,10 @@ async fn post_request(
 		return Item::default();
 	};
 	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+}
+
+fn pending_post_text(_primary: &(), _url: &Item<String>, _body: &Item<Resource>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
+	Item::default()
 }
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
@@ -139,7 +133,7 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
-#[node_macro::node(category("Web Request"))]
+#[node_macro::node(category("Web Request"), placeholder = pending_resource)]
 async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
 	let url = url.into_element();
 	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
@@ -161,6 +155,10 @@ async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<Strin
 	}
 }
 
+fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
+	Item::new_from_element(Resource::empty())
+}
+
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
@@ -180,7 +178,7 @@ fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), placeholder = pending_raster)]
 async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, canvas: Item<CanvasHandle>) -> List<Raster<CPU>> {
 	let mut data = data;
 	let mut canvas = canvas.into_element();
@@ -239,12 +237,17 @@ async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>,
 	)
 }
 
+#[cfg(target_family = "wasm")]
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _canvas: &Item<CanvasHandle>) -> List<Raster<CPU>> {
+	List::new()
+}
+
 #[node_macro::node(category(""), inject_scope)]
 fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Arc<PlatformEditorApi>> {
 	editor_api
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), placeholder = pending_stored_resource)]
 async fn resource(
 	_: impl Ctx,
 	/// The scope-provided editor API giving access to the platform's resource storage.
@@ -268,6 +271,10 @@ async fn resource(
 	};
 
 	Item::new_from_element(resource)
+}
+
+fn pending_stored_resource(_editor_api: &Item<Arc<PlatformEditorApi>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
+	Item::new_from_element(Resource::empty())
 }
 
 #[node_macro::node(category(""), inject_scope)]

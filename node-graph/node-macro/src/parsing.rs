@@ -58,6 +58,10 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) memoize: bool,
 	/// Whether this node provides a scope
 	pub(crate) inject_scope: bool,
+	/// Fn producing an placeholder value used while node evaluation is pending
+	pub(crate) placeholder: Option<Path>,
+	/// Whether the node refuses placeholder data
+	pub(crate) no_partial: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -448,6 +452,8 @@ impl Parse for NodeFnAttributes {
 		let mut serialize = None;
 		let mut memoize = false;
 		let mut inject_scope = false;
+		let mut placeholder = None;
+		let mut no_partial = false;
 
 		let content = input;
 		// let content;
@@ -590,13 +596,37 @@ impl Parse for NodeFnAttributes {
 					}
 					inject_scope = true;
 				}
+				// The placeholder value used while a node's evaluation is pending.
+				//
+				// Example usage:
+				// #[node_macro::node(..., placeholder = get_placeholder, ...)]
+				"placeholder" => {
+					let meta = meta.require_name_value()?;
+					if placeholder.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'placeholder' attributes are not allowed"));
+					}
+					let parsed_path: Path =
+						syn::parse2(meta.value.to_token_stream()).map_err(|_| Error::new_spanned(meta, "Expected a fn path for 'placeholder', e.g., placeholder = get_placeholder"))?;
+					placeholder = Some(parsed_path);
+				}
+				// Maps `Partial` inputs to `Pending`, for nodes where placeholder data makes no sense.
+				//
+				// Example usage:
+				// #[node_macro::node(..., no_partial, ...)]
+				"no_partial" => {
+					let path = meta.require_path_only()?;
+					if no_partial {
+						return Err(Error::new_spanned(path, "Multiple 'no_partial' attributes are not allowed"));
+					}
+					no_partial = true;
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -630,6 +660,8 @@ impl Parse for NodeFnAttributes {
 			serialize,
 			memoize,
 			inject_scope,
+			placeholder,
+			no_partial,
 		})
 	}
 }
@@ -1164,7 +1196,7 @@ impl ParsedNodeFn {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
-			bounds.push(parse_quote!('n));
+			bounds.push(parse_quote!(Clone));
 			self.fn_generics.push(GenericParam::Type(TypeParam {
 				attrs: Default::default(),
 				ident: ident.clone(),
@@ -1348,6 +1380,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1422,6 +1456,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1513,6 +1549,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1583,6 +1621,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1665,6 +1705,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1750,6 +1792,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1820,6 +1864,8 @@ mod tests {
 				serialize: None,
 				memoize: false,
 				inject_scope: false,
+				placeholder: None,
+				no_partial: false,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

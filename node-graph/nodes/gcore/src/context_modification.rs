@@ -2,7 +2,7 @@ use core::f64;
 use core_types::context::{CloneVarArgs, Context, ContextModification, Ctx, ExtractAll};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
-use core_types::{Color, OwnedContextImpl};
+use core_types::{Color, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
@@ -11,7 +11,7 @@ use raster_types::{CPU, GPU, Raster};
 /// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
 #[node_macro::node(category(""))]
-async fn context_modification<T>(
+fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
@@ -46,10 +46,10 @@ async fn context_modification<T>(
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
 	modification: Item<ContextModification>,
-) -> T {
+) -> Result<T, Interrupt> {
 	let new_context = OwnedContextImpl::from_modification(ctx, modification.element());
 
-	value.eval(Some(new_context.into())).await
+	value.eval(Some(new_context.into()))
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
-use core_types::WasmNotSend;
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
+use core_types::{Interrupt, Poll, WasmNotSend};
 use std::hash::DefaultHasher;
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -10,7 +10,7 @@ use std::sync::Mutex;
 ///
 /// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
 #[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
-async fn memoize<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, content: impl Node<I, Output = T>, #[data] cache: Arc<Mutex<Option<(u64, T)>>>) -> T {
+fn memoize<I: CacheHash + Clone + Send, T: Clone + WasmNotSend>(input: I, content: impl Node<I, Output = T>, #[data] cache: Arc<Mutex<Option<(u64, Poll<T>)>>>) -> Poll<T> {
 	// Caches the output of a given node called with a specific input.
 	//
 	// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
@@ -27,25 +27,27 @@ async fn memoize<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, con
 		return data;
 	}
 
-	let value = content.eval(input).await;
-	*cache.lock().unwrap() = Some((hash, value.clone()));
-	value
+	let state = content.eval(&input);
+	if matches!(state, Poll::Final(_) | Poll::Partial(_)) {
+		*cache.lock().unwrap() = Some((hash, state.clone()));
+	}
+	state
 }
 
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
 #[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
-async fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
+fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 	input: I,
 	content: impl Node<I, Output = T>,
 	#[allow(clippy::type_complexity)]
 	#[data]
 	io: MonitorValue<I, T>,
-) -> T {
-	let output = content.eval(input.clone()).await;
+) -> Result<T, Interrupt> {
+	let output = content.eval(input.clone())?;
 	*io.lock().unwrap() = Some(Arc::new(IORecord { input, output: output.clone() }));
-	output
+	Ok(output)
 }
 
 fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(io: &MonitorValue<I, T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {

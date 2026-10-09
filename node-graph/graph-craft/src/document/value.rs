@@ -1,14 +1,13 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
-use crate::proto::{Any as DAny, FutureAny};
+use crate::proto::{Any as DAny, AnyInput};
 use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
 use core_types::transform::Footprint;
-use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, RuntimeHandle, SourceId, Type, TypeDescriptor};
-use dyn_any::DynAny;
+use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, Poll, RuntimeHandle, SourceId, Type, TypeDescriptor};
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::resource::ResourceHash;
@@ -161,9 +160,9 @@ macro_rules! tagged_value {
 			}
 		}
 
-		impl<'a> TaggedValue {
-			/// Converts to a Box<dyn DynAny>
-			pub fn to_dynany(self) -> DAny<'a> {
+		impl TaggedValue {
+			/// Converts to a `Box<dyn Any>`
+			pub fn to_dynany(self) -> DAny {
 				match self {
 					// ===============
 					// MANUAL VARIANTS
@@ -341,39 +340,38 @@ macro_rules! tagged_value {
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value
-			pub fn try_from_any(input: Box<dyn DynAny<'a> + 'a>) -> Result<Self, String> {
-				use dyn_any::downcast;
+			pub fn try_from_any(input: DAny) -> Result<Self, String> {
 				use std::any::TypeId;
 
-				match DynAny::type_id(input.as_ref()) {
+				match (*input).type_id() {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
 					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
-					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::Numbers(*downcast(input).unwrap())),
-					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::Numbers(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
-					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(downcast::<TransferCurve>(input).unwrap().points().to_vec())),
-					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(downcast::<Item<TransferCurve>>(input).unwrap().into_element().points().to_vec())),
-					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
-					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(downcast::<List<Stroke>>(input).unwrap().into_iter().map(Item::into_element).collect())),
-					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(downcast::<Item<BrushCache>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::Numbers(*input.downcast().unwrap())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::Numbers(input.downcast::<List<f64>>().unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast::<Item<DashPattern>>().unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast::<Item<BoxCorners>>().unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(input.downcast::<TransferCurve>().unwrap().points().to_vec())),
+					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(input.downcast::<Item<TransferCurve>>().unwrap().into_element().points().to_vec())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*input.downcast::<Gradient>().unwrap()))),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*input.downcast::<Item<Gradient>>().unwrap()))),
+					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast::<List<Stroke>>().unwrap().into_iter().map(Item::into_element).collect())),
+					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(input.downcast::<Item<BrushCache>>().unwrap().into_element())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
-					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(downcast::<Item<$ty>>(input).unwrap().into_element())), )*
+					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*input.downcast().unwrap())), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(input.downcast::<Item<$ty>>().unwrap().into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(downcast::<Item<RenderOutput>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(input.downcast::<Item<RenderOutput>>().unwrap().into_element())),
 
-					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
+					_ => Err(format!("Cannot convert {:?} to TaggedValue", (*input).type_id())),
 				}
 			}
 
@@ -878,12 +876,11 @@ impl Display for TaggedValue {
 pub struct UpcastNode {
 	value: MemoHash<TaggedValue>,
 }
-impl<'input> Node<'input, DAny<'input>> for UpcastNode {
-	type Output = FutureAny<'input>;
+impl Node<AnyInput> for UpcastNode {
+	type Output = DAny;
 
-	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		let memo_clone = MemoHash::clone(&self.value);
-		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
+	fn eval(&self, _: &AnyInput) -> Poll<DAny> {
+		Poll::Final((*self.value).clone().to_dynany())
 	}
 }
 impl UpcastNode {
@@ -965,7 +962,7 @@ mod typedefault_dispatch {
 				let expected_type_id = std::any::TypeId::of::<$type_default>();
 				let dyn_value = TaggedValue::TypeDefault(ty.clone()).to_dynany();
 				assert_eq!(
-					DynAny::type_id(&*dyn_value),
+					(*dyn_value).type_id(),
 					expected_type_id,
 					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — the type-default lists cover this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
 					std::any::type_name::<$type_default>(),

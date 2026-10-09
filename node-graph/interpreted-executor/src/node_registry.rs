@@ -168,9 +168,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::new(any) as TypeErasedBox
 				},
 				{
-					let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $ty> + Send>>>::new());
+					let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::PanicNode::<Context, $ty>::new());
 					let params = vec![fn_type_fut!(Context, $ty)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -181,18 +181,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				|mut args| {
 					let node = graphene_core::ops::IntoNode::new(
 						graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+						graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>),
 					);
 					let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
 					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::IntoNode::new(
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>)),
+						graphene_std::any::PanicNode::<Context, $from>::new(),
+						graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>),
 					);
 					let params = vec![fn_type_fut!(Context, $from)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -214,18 +214,18 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				|mut args| {
 					let node = graphene_core::ops::$node::new(
 						graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
+						graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>),
 					);
 					let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
 					Box::new(any) as TypeErasedBox
 				},
 				{
 					let node = graphene_core::ops::$node::new(
-						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
-						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>)),
+						graphene_std::any::PanicNode::<Context, $from>::new(),
+						graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>),
 					);
 					let params = vec![fn_type_fut!(Context, $from)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -242,12 +242,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::new(any) as TypeErasedBox
 				},
 				{
-					let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::PanicNode::<
-						Context,
-						core::pin::Pin<Box<dyn core::future::Future<Output = Item<$element>> + Send>>,
-					>::new());
+					let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::PanicNode::<Context, Item<$element>>::new());
 					let params = vec![fn_type_fut!(Context, Item<$element>)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -264,12 +261,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::new(any) as TypeErasedBox
 				},
 				{
-					let node = graphene_core::ops::BundleNode::new(graphene_std::any::PanicNode::<
-						Context,
-						core::pin::Pin<Box<dyn core::future::Future<Output = List<$element>> + Send>>,
-					>::new());
+					let node = graphene_core::ops::BundleNode::new(graphene_std::any::PanicNode::<Context, List<$element>>::new());
 					let params = vec![fn_type_fut!(Context, List<$element>)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -286,12 +280,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 					Box::new(any) as TypeErasedBox
 				},
 				{
-					let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::PanicNode::<
-						Context,
-						core::pin::Pin<Box<dyn core::future::Future<Output = Item<Bundle<$element>>> + Send>>,
-					>::new());
+					let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::PanicNode::<Context, Item<Bundle<$element>>>::new());
 					let params = vec![fn_type_fut!(Context, Item<Bundle<$element>>)];
-					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
 					node_io
 				},
 			)
@@ -645,10 +636,10 @@ mod node_registry_macros {
 				},
 				{
 					let node = <$path>::new($(
-						graphene_std::any::PanicNode::<$arg, core::pin::Pin<Box<dyn core::future::Future<Output = $type> + Send>>>::new()
+						graphene_std::any::PanicNode::<$arg, $type>::new()
 					),*);
 					let params = vec![$(fn_type_fut!($arg, $type)),*];
-					let mut node_io = NodeIO::<'_, $input>::to_async_node_io(&node, params);
+					let mut node_io = NodeIO::<$input>::to_async_node_io(&node, params);
 					node_io.call_argument = concrete!(<$input as StaticType>::Static);
 					node_io
 				},

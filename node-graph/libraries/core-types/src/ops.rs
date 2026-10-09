@@ -1,5 +1,6 @@
 use crate::Node;
 use crate::math::float_noise::round_away_float_noise;
+use crate::poll::Poll;
 use crate::transform::Footprint;
 use glam::{DAffine2, DVec2};
 use std::marker::PhantomData;
@@ -7,13 +8,13 @@ use std::marker::PhantomData;
 // Type
 // TODO: Document this
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct TypeNode<N: for<'a> Node<'a, I>, I, O>(pub N, pub PhantomData<(I, O)>);
-impl<'i, N, I: 'i, O: 'i> Node<'i, I> for TypeNode<N, I, O>
+pub struct TypeNode<N: Node<I>, I, O>(pub N, pub PhantomData<(I, O)>);
+impl<N, I, O> Node<I> for TypeNode<N, I, O>
 where
-	N: for<'n> Node<'n, I, Output = O>,
+	N: Node<I, Output = O>,
 {
 	type Output = O;
-	fn eval(&'i self, input: I) -> Self::Output {
+	fn eval(&self, input: &I) -> Poll<O> {
 		self.0.eval(input)
 	}
 
@@ -21,17 +22,17 @@ where
 		self.0.serialize()
 	}
 }
-impl<'i, N: for<'a> Node<'a, I>, I: 'i> TypeNode<N, I, <N as Node<'i, I>>::Output> {
+impl<N: Node<I>, I> TypeNode<N, I, <N as Node<I>>::Output> {
 	pub fn new(node: N) -> Self {
 		Self(node, PhantomData)
 	}
 }
-impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as Node<'i, I>>::Output> {
+impl<N: Node<I> + Clone, I> Clone for TypeNode<N, I, <N as Node<I>>::Output> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone(), self.1)
 	}
 }
-impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
+impl<N: Node<I> + Copy, I> Copy for TypeNode<N, I, <N as Node<I>>::Output> {}
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
 /// Because number casting is lossy, we cannot use the normal [`Into`] trait like we do for other types.

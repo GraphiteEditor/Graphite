@@ -1,3 +1,4 @@
+use crate::Node;
 use std::cell::Cell;
 use std::error::Error;
 use std::sync::Arc;
@@ -211,6 +212,34 @@ impl Status {
 		};
 		self.interrupt.set(Some(strongest));
 		interrupt
+	}
+}
+
+pub struct LazyInput<'a, N> {
+	node: &'a N,
+	status: &'a Status,
+	index: usize,
+}
+
+impl<N> Clone for LazyInput<'_, N> {
+	fn clone(&self) -> Self {
+		*self
+	}
+}
+
+impl<N> Copy for LazyInput<'_, N> {}
+
+impl<'a, N> LazyInput<'a, N> {
+	pub fn new(node: &'a N, status: &'a Status, index: usize) -> Self {
+		Self { node, status, index }
+	}
+
+	#[inline(always)]
+	pub fn eval<Input>(&self, input: Input) -> Result<N::Output, Interrupt>
+	where
+		N: Node<Input>,
+	{
+		self.status.record(self.index, self.node.eval(&input))
 	}
 }
 

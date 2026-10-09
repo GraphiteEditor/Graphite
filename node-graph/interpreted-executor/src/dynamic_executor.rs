@@ -1,11 +1,10 @@
 use crate::node_registry;
-use core_types::SourceId;
-use dyn_any::StaticType;
+use core_types::{Poll, SourceId, WasmNotSend};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, GraphError, LocalFuture, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
+use graph_craft::proto::{ConstructionArgs, GraphError, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -141,25 +140,18 @@ impl DynamicExecutor {
 	}
 }
 
-impl<I> Executor<I, TaggedValue> for &DynamicExecutor
+impl<I> Executor<I, Poll<TaggedValue>> for &DynamicExecutor
 where
-	I: StaticType + 'static + Send + Sync,
+	I: 'static + WasmNotSend,
 {
-	fn execute(&self, input: I) -> LocalFuture<'_, Result<TaggedValue, Box<dyn Error>>> {
-		Box::pin(async move {
-			use futures::FutureExt;
-
-			let result = self.tree.eval_tagged_value(self.output, input);
-			let wrapped_result = std::panic::AssertUnwindSafe(result).catch_unwind().await;
-
-			match wrapped_result {
-				Ok(result) => result.map_err(|e| e.into()),
-				Err(e) => {
-					Box::leak(e);
-					Err("Node graph execution panicked".into())
-				}
+	fn execute(&self, input: I) -> Result<Poll<TaggedValue>, Box<dyn Error>> {
+		match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.tree.eval_tagged_value(self.output, &input))) {
+			Ok(result) => result.map_err(|e| e.into()),
+			Err(e) => {
+				Box::leak(e);
+				Err("Node graph execution panicked".into())
 			}
-		})
+		}
 	}
 }
 pub struct InputMapping {}
@@ -255,24 +247,31 @@ impl BorrowTree {
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
-	pub async fn eval<'i, I, O>(&'i self, id: NodeId, input: I) -> Option<O>
+	pub fn eval<I, O>(&self, id: NodeId, input: &I) -> Option<O>
 	where
-		I: StaticType + 'i + Send + Sync,
-		O: StaticType + 'i,
+		I: 'static + WasmNotSend,
+		O: 'static,
 	{
-		let (node, _path) = self.nodes.get(&id).cloned()?;
-		let output = node.eval(Box::new(input));
-		dyn_any::downcast::<O>(output.await).ok().map(|o| *o)
+		let (node, _path) = self.nodes.get(&id)?;
+		node.eval(input).value().and_then(|output| output.downcast::<O>().ok().map(|o| *o))
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
-	pub async fn eval_tagged_value<I>(&self, id: NodeId, input: I) -> Result<TaggedValue, String>
+	pub fn eval_tagged_value<I>(&self, id: NodeId, input: &I) -> Result<Poll<TaggedValue>, String>
 	where
-		I: StaticType + 'static + Send + Sync,
+		I: 'static + WasmNotSend,
 	{
-		let (node, _path) = self.nodes.get(&id).cloned().ok_or("Output node not found in executor")?;
-		let output = node.eval(Box::new(input));
-		TaggedValue::try_from_any(output.await)
+		let (node, _path) = self.nodes.get(&id).ok_or("Output node not found in executor")?;
+		Ok(match node.eval(input) {
+			Poll::Pending => Poll::Pending,
+			Poll::Final(output) => Poll::Final(TaggedValue::try_from_any(output)?),
+			Poll::Partial(output) => Poll::Partial(TaggedValue::try_from_any(output)?),
+			Poll::Fallback(boxed) => {
+				let (output, error) = *boxed;
+				Poll::Fallback(Box::new((TaggedValue::try_from_any(output)?, error)))
+			}
+			Poll::Error(error) => Poll::Error(error),
+		})
 	}
 
 	/// Removes a node from the [`BorrowTree`] and returns its associated path.
