@@ -29,6 +29,16 @@ pub fn ellipse_path(corner1: DVec2, corner2: DVec2) -> BezPath {
 	path
 }
 
+/// A copy of a node from a layer's chain, which can be inserted into a chain in this or another document.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChainNodeCopy {
+	/// The node that was copied.
+	pub source: NodeId,
+	pub template: NodeTemplate,
+	/// The value of each input wired to another node, which the copy takes where that node is missing.
+	pub fallback_values: Vec<(usize, NodeInput)>,
+}
+
 #[derive(PartialEq)]
 pub enum FlowType {
 	/// Iterate over all upstream nodes (inclusive) from every input (the primary and all secondary).

@@ -103,6 +103,17 @@ pub enum DocumentMessage {
 	ReorderPropertiesSection {
 		node_id: NodeId,
 		insert_index: usize,
+		duplicate: bool,
+	},
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
+		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
+		insert_index: usize,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,

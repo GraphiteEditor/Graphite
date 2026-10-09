@@ -540,11 +540,12 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers.
-	fn reorder_properties_section(node_id: u64, insert_index: usize) -> Message {
+	/// Reorder a draggable Properties panel section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_properties_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
 		DocumentMessage::ReorderPropertiesSection {
 			node_id: NodeId(node_id),
 			insert_index,
+			duplicate,
 		}
 		.into()
 	}
