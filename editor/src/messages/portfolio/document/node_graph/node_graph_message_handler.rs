@@ -2684,11 +2684,29 @@ impl NodeGraphMessageHandler {
 					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
 
+				// A wire leads up from the chain's sections into the layer's section, when there's a chain below it
+				if node_properties.len() > 1
+					&& let Some(LayoutGroup::Section(layer_section)) = node_properties.first_mut()
+				{
+					let chain_input_type = context.network_interface.input_type(&InputConnector::layer_secondary_input(layer), context.selection_network_path);
+					layer_section.chain_wire = Some(SectionWire {
+						data_type: chain_input_type.displayed_type(),
+						is_list: chain_input_type.is_list(),
+					});
+				}
+
 				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
 				// A node without a primary input (e.g. a generator) is left non-draggable.
 				for chain_node_section in node_properties.iter_mut().skip(1) {
 					if let LayoutGroup::Section(section) = chain_node_section {
 						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
+
+						// A wire leads up from each chain node to the section above, which its output feeds
+						let output_type = context.network_interface.output_type(&OutputConnector::node(NodeId(section.id), 0), context.selection_network_path);
+						section.output_wire = Some(SectionWire {
+							data_type: output_type.displayed_type(),
+							is_list: output_type.is_list(),
+						});
 					}
 				}
 

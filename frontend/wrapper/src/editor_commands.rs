@@ -675,9 +675,9 @@ mod editor_commands {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel
-	fn toggle_node_properties_section_expanded(id: u64) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) }.into()
+	/// Collapse or expand a node's section in the Properties panel, or recursively every section in its layer's chain
+	fn toggle_node_properties_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id), recursive }.into()
 	}
 
 	/// Delete a layer or node given its node ID

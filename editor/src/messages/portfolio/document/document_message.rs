@@ -216,6 +216,7 @@ pub enum DocumentMessage {
 	},
 	ToggleNodePropertiesSectionExpanded {
 		node_id: NodeId,
+		recursive: bool,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,

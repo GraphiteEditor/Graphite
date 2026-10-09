@@ -1435,12 +1435,31 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
-				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
-					self.properties_panel_collapsed_sections.remove(index);
+			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
+				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
+
+				// Recursively, every section in the chain follows along, from its layer back to where another layer begins
+				let node_ids = if recursive {
+					let network_path = &self.selection_network_path;
+					let layer = self.network_interface.downstream_layer_for_chain_node(&node_id, network_path).unwrap_or(node_id);
+					self.network_interface
+						.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
+						.enumerate()
+						.take_while(|(index, chain_node_id)| *index == 0 || !self.network_interface.is_layer(chain_node_id, network_path))
+						.map(|(_, chain_node_id)| chain_node_id)
+						.collect::<Vec<_>>()
 				} else {
-					self.properties_panel_collapsed_sections.push(node_id);
+					vec![node_id]
+				};
+
+				for node_id in node_ids {
+					if expand {
+						self.properties_panel_collapsed_sections.retain(|id| *id != node_id);
+					} else if !self.properties_panel_collapsed_sections.contains(&node_id) {
+						self.properties_panel_collapsed_sections.push(node_id);
+					}
 				}
+
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
