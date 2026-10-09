@@ -323,15 +323,17 @@
 			{#each $nodeGraphWires.values() as map}
 				{#each map.values() as { pathString, centerPathString, dataType, thick, dashed }}
 					{#if thick}
-						<path
-							d={pathString}
-							style:--data-line-width="8px"
-							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-						/>
-						<!-- A thin inner line splits the layer-stack wire down the middle reaching past the ends into the cleaved connector slots -->
-						<path d={centerPathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+						<g class:dashed>
+							<path
+								d={pathString}
+								style:--data-line-width="8px"
+								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+							/>
+							<!-- A thin inner line splits the layer-stack wire down the middle reaching past the ends into the cleaved connector slots -->
+							<path d={centerPathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+						</g>
 					{/if}
 				{/each}
 			{/each}
@@ -690,25 +692,27 @@
 				{#each $nodeGraphWires.values() as map}
 					{#each map.values() as { pathString, dataType, thick, dashed, isList }}
 						{#if !thick}
-							{#if isList}
-								<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
-								<path
-									d={pathString}
-									style:--data-line-width="4px"
-									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-								/>
-								<path d={pathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
-							{:else}
-								<path
-									d={pathString}
-									style:--data-line-width="2px"
-									style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-									style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-									style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-								/>
-							{/if}
+							<g class:dashed>
+								{#if isList}
+									<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
+									<path
+										d={pathString}
+										style:--data-line-width="4px"
+										style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+										style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+										style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+									/>
+									<path d={pathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
+								{:else}
+									<path
+										d={pathString}
+										style:--data-line-width="2px"
+										style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+										style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+										style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+									/>
+								{/if}
+							</g>
 						{/if}
 					{/each}
 				{/each}
@@ -1051,6 +1055,11 @@
 					stroke: var(--data-color-dim);
 					stroke-width: var(--data-line-width);
 					stroke-dasharray: var(--data-dasharray);
+				}
+
+				// The previewed node's temporary wire stands out in the bright data color
+				.dashed path {
+					stroke: var(--data-color);
 				}
 			}
 		}

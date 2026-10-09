@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
+use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
@@ -410,6 +410,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::DisconnectRootNode => {
 				network_interface.start_previewing_without_restore(selection_network_path);
+			}
+			NodeGraphMessage::SetRootNodeToRestore { root_node_to_restore } => {
+				network_interface.set_root_node_to_restore(root_node_to_restore, selection_network_path);
 			}
 			NodeGraphMessage::DuplicateSelectedNodes => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -1557,6 +1560,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 				}
 
+				let previewing = network_interface.previewing(selection_network_path);
 				for selected_node in &all_selected_nodes {
 					// Handle inputs of selected node
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
@@ -1600,6 +1604,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Handle reconnection
 					// Find first non selected upstream node by primary flow
 					if let Some(first_deselected_upstream_output) = first_deselected_upstream_output {
+						// While previewing, the export's eventual return to this node is a connection too, so it moves upstream as well
+						if let Previewing::Yes {
+							root_node_to_restore: Some(root_node_to_restore),
+						} = previewing && root_node_to_restore.to_connector() == OutputConnector::primary_output(*selected_node)
+							&& let OutputConnector::Node { node_id, output_index } = first_deselected_upstream_output
+						{
+							responses.add(NodeGraphMessage::SetRootNodeToRestore {
+								root_node_to_restore: RootNode { node_id, output_index },
+							});
+						}
+
 						let Some(downstream_connections_to_first_output) = outward_wires.get(&OutputConnector::primary_output(*selected_node)).cloned() else {
 							log::error!("Could not get downstream_connections_to_first_output in shake node");
 							return;
