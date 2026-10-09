@@ -1,7 +1,7 @@
 use crate::consts::{COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
-use graphene_std::FallibleVec2Operations;
+use graphene_std::{FallibleAffine2Operations, FallibleVec2Operations};
 use std::f64::consts::FRAC_PI_2;
 
 #[derive(Clone, Default, Debug)]
@@ -28,12 +28,9 @@ impl CompassRose {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
-				if transform.matrix2.determinant().abs() <= f64::EPSILON {
-					return None;
-				}
 				document
 					.metadata()
-					.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
+					.bounding_box_with_transform(layer, transform.to_invertible().inverse() * document.metadata().transform_to_viewport(layer))
 			})
 			.reduce(graphene_std::renderer::Quad::combine_bounds);
 

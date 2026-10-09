@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::core_types::misc::format_f64;
@@ -244,32 +244,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 }
 
 pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
-	let mut transform = document
-		.network_interface
-		.selected_nodes()
-		.selected_visible_and_unlocked_layers(&document.network_interface)
-		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
-		.unwrap_or_default();
-
-	// Check if the matrix is not invertible
-	let mut transform_tampered = false;
-	if transform.matrix2.determinant() == 0. {
-		transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
-		transform_tampered = true;
-	}
-
-	let bounds = document
-		.network_interface
-		.selected_nodes()
-		.selected_visible_and_unlocked_layers(&document.network_interface)
-		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-		.filter_map(|layer| {
-			document
-				.metadata()
-				.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
-		})
-		.reduce(graphene_std::renderer::Quad::combine_bounds);
+	let (transform, bounds, transform_tampered) = crate::messages::tool::tool_messages::select_tool::calculate_selection_bounds(document);
 
 	if let Some(bounds) = bounds {
 		let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
