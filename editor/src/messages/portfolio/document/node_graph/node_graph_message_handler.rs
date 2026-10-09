@@ -2313,6 +2313,23 @@ impl NodeGraphMessageHandler {
 		for _ in selected_layers {}
 
 		let mut widgets = vec![
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
+				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
+				.disabled(!has_selection)
+				.widget_instance(),
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
+				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection || !selection_includes_layers)
+				.widget_instance(),
+			//
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			//
 			PopoverButton::new()
 				.icon("Node")
 				.tooltip_label("New Node")
@@ -2379,23 +2396,6 @@ impl NodeGraphMessageHandler {
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
-				.disabled(!has_selection)
-				.widget_instance(),
-			//
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			//
-			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
-				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
-				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-				.disabled(!has_selection || !selection_includes_layers)
-				.widget_instance(),
-			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
-				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
-				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
