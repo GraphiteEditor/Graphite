@@ -30,7 +30,7 @@ pub enum AnimationTimeMode {
 
 /// Evaluate the value of an animation curve
 #[node_macro::node(category("Animation"))]
-fn eval_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: Item<AnimationCurve>) -> Item<f64> {
+fn evaluate_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: Item<AnimationCurve>) -> Item<f64> {
 	let curve = curve.into_element();
 	let time = ctx.try_animation_time().unwrap_or_default();
 	Item::new_from_element(curve.evaluate(time))
@@ -167,13 +167,3 @@ async fn quantize_animation_time<T>(
 fn pointer_position(ctx: impl Ctx + ExtractPointerPosition) -> Item<DVec2> {
 	Item::new_from_element(ctx.try_pointer_position().unwrap_or_default())
 }
-
-// TODO: These nodes require more sophisticated algorithms for giving the correct result
-// #[node_macro::node(category("Animation"))]
-// fn month(ctx: impl Ctx + ExtractRealTime) -> f64 {
-// 	((ctx.try_real_time().unwrap_or_default() / DAY / 365.25 % 1.) * 12.).floor()
-// }
-// #[node_macro::node(category("Animation"))]
-// fn day(ctx: impl Ctx + ExtractRealTime) -> f64 {
-// 	(ctx.try_real_time().unwrap_or_default() / DAY
-// }
