@@ -4,11 +4,10 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
-	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
-	import { layersPanelControlBarLeftLayout, layersPanelControlBarRightLayout, layersPanelBottomBarLayout } from "/src/stores/portfolio";
+	import { layersPanelControlBarLeftLayout, layersPanelBottomBarLeftLayout, layersPanelBottomBarRightLayout } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { pasteFile } from "/src/utility-functions/files";
@@ -549,10 +548,6 @@
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
-		{#if $layersPanelControlBarLeftLayout?.length > 0 && $layersPanelControlBarRightLayout?.length > 0}
-			<Separator />
-		{/if}
-		<WidgetLayout layout={$layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -581,6 +576,18 @@
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
+					<IconButton
+						class="status-toggle"
+						classes={{ inherited: !listing.parentsVisible }}
+						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
+						size={24}
+						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
+						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
+						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
+						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						data-drag-toggle-group="layer-visibility"
+						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
+					/>
 					{#if listing.entry.childrenAllowed || listing.childrenPresent}
 						<button
 							class="expand-arrow"
@@ -615,7 +622,7 @@
 					{#if listing.entry.iconName}
 						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
-					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
+					<LayoutRow class="layer-name" classes={{ editing: listing.editingName }} on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-layer-name-input
 							type="text"
@@ -665,27 +672,17 @@
 							data-drag-toggle-state="unlocked"
 						/>
 					{/if}
-					<IconButton
-						class="status-toggle"
-						classes={{ inherited: !listing.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
-						size={24}
-						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
-						data-drag-toggle-group="layer-visibility"
-						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
-					/>
+					<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
 				</LayoutRow>
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
+			<div class="insert-mark" style:left={`${4 + 24 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active) }} scrollableX={true} data-layer-bottom-bar>
-		<WidgetLayout layout={$layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
+		<WidgetLayout layout={$layersPanelBottomBarLeftLayout} layoutTarget="LayersPanelBottomLeftBar" />
+		<WidgetLayout layout={$layersPanelBottomBarRightLayout} layoutTarget="LayersPanelBottomRightBar" />
 	</LayoutRow>
 </LayoutCol>
 
@@ -714,7 +711,7 @@
 			padding-top: 4px;
 			flex: 0 0 auto;
 			margin: 0 4px;
-			justify-content: flex-end;
+			justify-content: space-between;
 			border-top: 1px solid var(--color-2-mildblack);
 
 			.widget-span > * {
@@ -765,7 +762,6 @@
 				border-radius: 2px;
 				height: 32px;
 				margin: 0 4px;
-				padding-left: calc(var(--layer-indent-levels) * 16px);
 
 				// Dimming
 				&.selected {
@@ -838,6 +834,12 @@
 					margin-right: 4px;
 				}
 
+				// Indents the rest of the row by the layer's depth in the tree, after the visibility column
+				.expand-arrow,
+				.expand-arrow-none {
+					margin-left: calc(var(--layer-indent-levels) * 16px);
+				}
+
 				.clipped-arrow {
 					margin-left: 2px;
 					margin-right: 2px;
@@ -865,11 +867,32 @@
 					margin-right: -4px;
 				}
 
+				// Fills the rest of the row, where double-clicking also renames the layer like the name itself
+				.layer-name-spacer {
+					flex: 1 1 0;
+					align-self: stretch;
+				}
+
+				// Only as wide as its text, so the lock icon follows right after it, but shrinks to an ellipsis when space runs out
 				.layer-name {
-					flex: 1 1 100%;
+					flex: 0 1 auto;
 					margin: 0 8px;
 
+					// While renaming, the input stretches to fill the row
+					&.editing {
+						flex-grow: 1;
+
+						input {
+							width: 100%;
+						}
+
+						& ~ .layer-name-spacer {
+							flex-grow: 0;
+						}
+					}
+
 					input {
+						field-sizing: content;
 						color: inherit;
 						background: none;
 						border: none;
@@ -881,7 +904,6 @@
 						overflow: hidden;
 						border-radius: 2px;
 						height: 24px;
-						width: 100%;
 
 						&:disabled {
 							user-select: none;
@@ -914,14 +936,8 @@
 						background-image: var(--inheritance-stripes-background);
 					}
 
-					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted.
-					// Overlaid with absolute positioning so it doesn't shift the layer name's width.
+					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted
 					&.drag-toggle-placeholder {
-						position: absolute;
-						width: 24px;
-						right: 24px;
-						top: 0;
-						bottom: 0;
 						opacity: 0; // Not `visibility: hidden`, which would exclude it from hit-testing
 					}
 

@@ -364,15 +364,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					layout: Layout::default(),
 					layout_target: LayoutTarget::LayersPanelControlLeftBar,
 				});
-				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::default(),
-					layout_target: LayoutTarget::LayersPanelControlRightBar,
-				});
 
 				// Clear the bottom bar
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::default(),
-					layout_target: LayoutTarget::LayersPanelBottomBar,
+					layout_target: LayoutTarget::LayersPanelBottomLeftBar,
+				});
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::default(),
+					layout_target: LayoutTarget::LayersPanelBottomRightBar,
 				});
 			}
 			DocumentMessage::CreateEmptyFolder => {
@@ -3554,18 +3554,6 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
-		let has_selection = self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some();
-		let selection_all_visible = self
-			.network_interface
-			.selected_nodes()
-			.selected_layers(self.metadata())
-			.all(|layer| self.network_interface.is_visible(&layer.to_node(), &[]));
-		let selection_all_locked = self
-			.network_interface
-			.selected_nodes()
-			.selected_layers(self.metadata())
-			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
-
 		let widgets = vec![
 			DropdownInput::new(blend_mode_menu_entries)
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
@@ -3619,33 +3607,9 @@ impl DocumentMessageHandler {
 				.tooltip_label("Fill Opacity")
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::row(widgets)]);
-
-		let widgets = vec![
-			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
-				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
-				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-				.disabled(!has_selection)
-				.widget_instance(),
-			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
-				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
-				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
-				.disabled(!has_selection)
-				.widget_instance(),
-		];
-		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::row(widgets)]);
-
 		responses.add(LayoutMessage::SendLayout {
-			layout: layers_panel_control_bar_left,
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
 			layout_target: LayoutTarget::LayersPanelControlLeftBar,
-		});
-		responses.add(LayoutMessage::SendLayout {
-			layout: layers_panel_control_bar_right,
-			layout_target: LayoutTarget::LayersPanelControlRightBar,
 		});
 	}
 
@@ -3660,6 +3624,30 @@ impl DocumentMessageHandler {
 		let has_selection = selected_layer.is_some();
 		let has_multiple_selection = selected_layers.next().is_some();
 		for _ in selected_layers {}
+
+		let selection_all_visible = selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_visible(&layer.to_node(), &[]));
+		let selection_all_locked = selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
+
+		let widgets = vec![
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
+				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
+				.disabled(!has_selection)
+				.widget_instance(),
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
+				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection)
+				.widget_instance(),
+		];
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
+			layout_target: LayoutTarget::LayersPanelBottomLeftBar,
+		});
 
 		let widgets = vec![
 			PopoverButton::new()
@@ -3724,7 +3712,7 @@ impl DocumentMessageHandler {
 		];
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout(vec![LayoutGroup::row(widgets)]),
-			layout_target: LayoutTarget::LayersPanelBottomBar,
+			layout_target: LayoutTarget::LayersPanelBottomRightBar,
 		});
 	}
 
