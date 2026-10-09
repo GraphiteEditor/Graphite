@@ -394,6 +394,31 @@ async fn moving_a_chain_node_to_another_layer_closes_the_gap_it_leaves() {
 }
 
 #[tokio::test]
+async fn a_chain_node_reading_from_a_layer_cannot_join_its_chain() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	// The other layer feeds the near node's second input, so its chain taking the near node (or a copy) would close a cycle
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(other_layer), &InputConnector::node_at_index(near, 1), &[]);
+	let node_count = network_interface.document_network().nodes.len();
+
+	network_interface.move_chain_nodes(&[near], other_layer, 0, &[]);
+	assert_eq!(chain_of(network_interface, layer), vec![near, far, source], "A refused move should leave the node in its own chain");
+	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused move should leave the other chain as it was");
+
+	let copies = network_interface.duplicate_chain_nodes(&[near], Some((other_layer, 0)), &[]);
+	assert!(copies.is_empty(), "A refused duplicate should report no copies");
+	assert_eq!(network_interface.document_network().nodes.len(), node_count, "A refused duplicate should leave no copies behind");
+	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused duplicate should leave the other chain as it was");
+
+	assert_invariants(&editor, "after refusing chain edits that would close a cycle");
+}
+
+#[tokio::test]
 async fn move_layer_to_stack_builds_the_layer_stack() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;

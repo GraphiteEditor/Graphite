@@ -1459,18 +1459,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
 
 				// Recursively, every section in the chain follows along, from its layer back to where another layer begins
-				let node_ids = if recursive {
-					let network_path = &self.selection_network_path;
-					let layer = self.network_interface.downstream_layer_for_chain_node(&node_id, network_path).unwrap_or(node_id);
-					self.network_interface
-						.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
-						.enumerate()
-						.take_while(|(index, chain_node_id)| *index == 0 || !self.network_interface.is_layer(chain_node_id, network_path))
-						.map(|(_, chain_node_id)| chain_node_id)
-						.collect::<Vec<_>>()
-				} else {
-					vec![node_id]
-				};
+				let network_path = &self.selection_network_path;
+				let chain = recursive
+					.then(|| self.network_interface.downstream_layer_for_chain_node(&node_id, network_path))
+					.flatten()
+					.map(|layer| {
+						self.network_interface
+							.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
+							.enumerate()
+							.take_while(|(index, chain_node_id)| *index == 0 || !self.network_interface.is_layer(chain_node_id, network_path))
+							.map(|(_, chain_node_id)| chain_node_id)
+							.collect::<Vec<_>>()
+					})
+					// A node that only leads into a chain from the side, or into no layer at all, isn't part of one
+					.filter(|chain| chain.contains(&node_id));
+				let node_ids = chain.unwrap_or_else(|| vec![node_id]);
 
 				for node_id in node_ids {
 					if expand {
