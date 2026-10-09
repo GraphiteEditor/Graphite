@@ -10,6 +10,7 @@ impl Compiler {
 		network.generate_node_paths(&[]);
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		network.populate_dependants();
+		network.apply_node_visibility();
 		for id in node_ids {
 			network.flatten(id);
 		}
