@@ -2,8 +2,11 @@
 	import { getContext } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
+	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
+	import type { TooltipStore } from "/src/stores/tooltip";
+	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, LayoutTarget, WidgetSection as WidgetSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	export let widgetData: WidgetSectionData;
@@ -20,19 +23,54 @@
 	$: reorderable = layoutTarget === "PropertiesPanel" && widgetData.draggable;
 
 	const editor = getContext<EditorWrapper>("editor");
+	const tooltip = getContext<TooltipStore>("tooltip");
+
+	// Like the Layers panel's expand arrows, a modifier key applies the toggle to the whole chain
+	function toggleExpandedWithModifiers(e: MouseEvent) {
+		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
+		editor.toggleNodePropertiesSectionExpanded(widgetData.id, e.altKey || accel);
+	}
 </script>
 
 <!-- TODO: Implement collapsable sections with properties system -->
-<LayoutCol class={`widget-section ${className}`.trim()} {classes} data-properties-reorderable-section={reorderable ? "" : undefined} data-node-id={reorderable ? String(widgetData.id) : undefined}>
+<LayoutCol
+	class={`widget-section ${className}`.trim()}
+	classes={{
+		...classes,
+		"chain-wire": Boolean(widgetData.chainWire),
+		"chain-wire-list": Boolean(widgetData.chainWire?.isList),
+		"output-wire": Boolean(widgetData.outputWire),
+		"output-wire-list": Boolean(widgetData.outputWire?.isList),
+		collapsed: !expanded,
+	}}
+	styles={{
+		"--chain-wire-color": widgetData.chainWire && `var(--color-data-${widgetData.chainWire.dataType.toLowerCase()}-dim)`,
+		"--output-wire-color": widgetData.outputWire && `var(--color-data-${widgetData.outputWire.dataType.toLowerCase()}-dim)`,
+	}}
+	data-properties-reorderable-section={reorderable ? "" : undefined}
+	data-node-id={reorderable ? String(widgetData.id) : undefined}
+>
 	<button
 		class="header"
 		class:expanded
+		data-tooltip-label={widgetData.name}
+		data-tooltip-description={widgetData.description}
 		data-properties-reorder-handle={reorderable ? "" : undefined}
-		on:click|stopPropagation={() => editor.toggleNodePropertiesSectionExpanded(widgetData.id)}
+		on:click|stopPropagation={toggleExpandedWithModifiers}
 		tabindex="0"
 	>
-		<div class="expand-arrow"></div>
-		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
+		<div
+			class="expand-arrow"
+			data-tooltip-label={expanded ? "Collapse (All)" : "Expand (All)"}
+			data-tooltip-description={expanded
+				? "Hide this node's parameters. (To collapse every node in the chain, perform the shortcut shown.)"
+				: "Show this node's parameters. (To expand every node in the chain, perform the shortcut shown.)"}
+			data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
+		></div>
+		{#if widgetData.icon}
+			<IconLabel icon={widgetData.icon} />
+		{/if}
+		<TextLabel bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
 			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
@@ -85,6 +123,95 @@
 
 		+ .widget-section {
 			margin-top: 4px;
+		}
+
+		// A selected layer's own section, with a wire rising from its chain's sections below into its chain input (the first row)
+		&.chain-wire {
+			--chain-wire-corner-radius: 4px;
+			--chain-wire-width: 2px;
+			--chain-input-indent: 20px;
+			// The wire's centerline rises in line with the expand arrows, then turns into the indented chain input connector
+			--chain-wire-x: 12px;
+			--chain-wire-y: 44px;
+			--chain-wire-end: calc(8px + var(--chain-input-indent));
+			position: relative;
+
+			// Like in the graph, a list's wire is a 1px line, 2px gap, and 1px line
+			&.chain-wire-list {
+				--chain-wire-width: 4px;
+			}
+
+			> .body > .widget-span.row:first-child > .parameter-expose-button:first-child {
+				margin-left: var(--chain-input-indent);
+
+				// Shortened by the indent so the widgets after it stay aligned with other rows
+				+ .text-label {
+					flex-basis: calc(25% - var(--chain-input-indent));
+				}
+			}
+
+			// Without the body showing, the wire from below just meets the header
+			&.collapsed::before,
+			&.collapsed::after {
+				display: none;
+			}
+
+			// Outer and inner 1px lines, which touch as one solid line unless the wire is a list
+			&::before,
+			&::after {
+				content: "";
+				position: absolute;
+				box-sizing: border-box;
+				bottom: 0;
+				border-left: 1px solid var(--chain-wire-color);
+				border-top: 1px solid var(--chain-wire-color);
+				pointer-events: none;
+			}
+
+			&::after {
+				left: calc(var(--chain-wire-x) - var(--chain-wire-width) / 2);
+				top: calc(var(--chain-wire-y) - var(--chain-wire-width) / 2);
+				width: calc(var(--chain-wire-end) - var(--chain-wire-x) + var(--chain-wire-width) / 2);
+				border-top-left-radius: var(--chain-wire-corner-radius);
+			}
+
+			// Inset to stay concentric with the outer line around the corner
+			&::before {
+				left: calc(var(--chain-wire-x) + var(--chain-wire-width) / 2 - 1px);
+				top: calc(var(--chain-wire-y) + var(--chain-wire-width) / 2 - 1px);
+				width: calc(var(--chain-wire-end) - var(--chain-wire-x) - var(--chain-wire-width) / 2 + 1px);
+				border-top-left-radius: max(0px, var(--chain-wire-corner-radius) - var(--chain-wire-width) + 1px);
+			}
+		}
+
+		// A selected layer's chain section, with a wire rising across the gap to the section above, in line with the layer section's wire
+		&.output-wire {
+			--output-wire-width: 2px;
+			position: relative;
+
+			&.output-wire-list {
+				--output-wire-width: 4px;
+			}
+
+			// Two 1px lines, like the layer section's wire
+			&::before {
+				content: "";
+				position: absolute;
+				box-sizing: border-box;
+				left: calc(12px - var(--output-wire-width) / 2);
+				top: -4px;
+				width: var(--output-wire-width);
+				height: 4px;
+				border-left: 1px solid var(--output-wire-color);
+				border-right: 1px solid var(--output-wire-color);
+				pointer-events: none;
+			}
+		}
+
+		// A collapsed section keeps its header's bottom margin, which the wire from the section below crosses too
+		&.collapsed + .widget-section.output-wire::before {
+			top: calc(-4px - 4px);
+			height: calc(4px + 4px);
 		}
 
 		.header {
@@ -140,10 +267,18 @@
 				}
 			}
 
+			> .icon-label {
+				margin-left: 8px;
+			}
+
+			// As wide as the name, with the buttons pushed to the end
 			.text-label {
 				height: 18px;
 				margin-left: 8px;
-				flex: 1 1 100%;
+				margin-right: auto;
+				flex: 0 1 auto;
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 		}
 

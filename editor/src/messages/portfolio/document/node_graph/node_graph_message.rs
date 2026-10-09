@@ -97,9 +97,15 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
-	ReorderChainNode {
-		node_id: NodeId,
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
 		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		destination: Option<(NodeId, usize)>,
+		select_copies: bool,
 	},
 	ReorderPinnedNode {
 		node_id: NodeId,

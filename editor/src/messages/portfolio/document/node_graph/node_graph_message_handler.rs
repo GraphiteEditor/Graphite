@@ -734,8 +734,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
 				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
-			NodeGraphMessage::ReorderChainNode { node_id, insert_index } => {
-				network_interface.reorder_chain_node(node_id, insert_index, selection_network_path);
+			NodeGraphMessage::DuplicateChainNodes { node_ids, destination, select_copies } => {
+				let copies = network_interface.duplicate_chain_nodes(&node_ids, destination, selection_network_path);
+				if select_copies {
+					responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: copies });
+				}
+			}
+			NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index } => {
+				network_interface.move_chain_nodes(&node_ids, layer, insert_index, selection_network_path);
 			}
 			NodeGraphMessage::ReorderPinnedNode { node_id, insert_index } => {
 				network_interface.reorder_pinned_node(node_id, insert_index, selection_network_path);
@@ -2684,11 +2690,29 @@ impl NodeGraphMessageHandler {
 					.map(|node_id| node_properties::generate_node_properties(node_id, context))
 					.collect::<Vec<_>>();
 
+				// A wire leads up from the chain's sections into the layer's section, when there's a chain below it
+				if node_properties.len() > 1
+					&& let Some(LayoutGroup::Section(layer_section)) = node_properties.first_mut()
+				{
+					let chain_input_type = context.network_interface.input_type(&InputConnector::layer_secondary_input(layer), context.selection_network_path);
+					layer_section.chain_wire = Some(SectionWire {
+						data_type: chain_input_type.displayed_type(),
+						is_list: chain_input_type.is_list(),
+					});
+				}
+
 				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
 				// A node without a primary input (e.g. a generator) is left non-draggable.
 				for chain_node_section in node_properties.iter_mut().skip(1) {
 					if let LayoutGroup::Section(section) = chain_node_section {
 						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
+
+						// A wire leads up from each chain node to the section above, which its output feeds
+						let output_type = context.network_interface.output_type(&OutputConnector::node(NodeId(section.id), 0), context.selection_network_path);
+						section.output_wire = Some(SectionWire {
+							data_type: output_type.displayed_type(),
+							is_list: output_type.is_list(),
+						});
 					}
 				}
 

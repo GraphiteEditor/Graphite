@@ -744,7 +744,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				self.move_selected_layers_to(parent, insert_index, responses);
 			}
-			DocumentMessage::ReorderPropertiesSection { node_id, insert_index } => {
+			DocumentMessage::ReorderPropertiesSection { node_id, insert_index, duplicate } => {
 				// The Properties panel shows draggable sections in two cases, disambiguated by the current selection:
 				// a single selected layer (reorder within its node chain) or no selection (reorder the pinned nodes).
 				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path);
@@ -763,19 +763,39 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				layers.sort();
 				layers.dedup();
 
-				if layers.len() == 1 {
-					// Reorder a node within the selected layer's chain by rewiring the graph
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::ReorderChainNode { node_id, insert_index });
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(NodeGraphMessage::SendGraph);
-					responses.add(PropertiesPanelMessage::Refresh);
+				if let [layer] = *layers.as_slice() {
+					let node_ids = vec![node_id];
+					if duplicate {
+						responses.add(DocumentMessage::DuplicateChainNodes { node_ids, layer, insert_index });
+					} else {
+						responses.add(DocumentMessage::MoveChainNodes { node_ids, layer, insert_index });
+					}
 				} else if layers.is_empty() && nodes.is_empty() {
-					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed)
+					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed, and nothing to duplicate into)
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::ReorderPinnedNode { node_id, insert_index });
 					responses.add(PropertiesPanelMessage::Refresh);
 				}
+			}
+			DocumentMessage::MoveChainNodes { node_ids, layer, insert_index } => {
+				// Move nodes within their layer's chain, or into another layer's, by rewiring the graph
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::DuplicateChainNodes { node_ids, layer, insert_index } => {
+				// Insert copies of nodes into a layer's chain by rewiring the graph
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::DuplicateChainNodes {
+					node_ids,
+					destination: Some((layer, insert_index)),
+					select_copies: false,
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -1435,12 +1455,34 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
-				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
-					self.properties_panel_collapsed_sections.remove(index);
-				} else {
-					self.properties_panel_collapsed_sections.push(node_id);
+			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
+				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
+
+				// Recursively, every section in the chain follows along, from its layer back to where another layer begins
+				let network_path = &self.selection_network_path;
+				let chain = recursive
+					.then(|| self.network_interface.downstream_layer_for_chain_node(&node_id, network_path))
+					.flatten()
+					.map(|layer| {
+						self.network_interface
+							.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
+							.enumerate()
+							.take_while(|(index, chain_node_id)| *index == 0 || !self.network_interface.is_layer(chain_node_id, network_path))
+							.map(|(_, chain_node_id)| chain_node_id)
+							.collect::<Vec<_>>()
+					})
+					// A node that only leads into a chain from the side, or into no layer at all, isn't part of one
+					.filter(|chain| chain.contains(&node_id));
+				let node_ids = chain.unwrap_or_else(|| vec![node_id]);
+
+				for node_id in node_ids {
+					if expand {
+						self.properties_panel_collapsed_sections.retain(|id| *id != node_id);
+					} else if !self.properties_panel_collapsed_sections.contains(&node_id) {
+						self.properties_panel_collapsed_sections.push(node_id);
+					}
 				}
+
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),

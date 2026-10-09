@@ -1242,14 +1242,170 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Reorders a node within its layer's horizontal chain so it ends up at `insert_index` among the chain's nodes,
-	/// where index 0 is the node closest to the layer. The connection feeding the top (most-upstream end) of the chain
-	/// is preserved, as are each node's other (non-primary) inputs.
-	pub fn reorder_chain_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
-		let Some(layer) = self.downstream_layer_for_chain_node(&node_id, network_path) else {
-			log::error!("Could not find downstream layer for chain node {node_id} in reorder_chain_node");
+	/// Moves nodes within their layer's horizontal chain, keeping their relative order, so they end up together at the `insert_index`
+	/// gap among the chain's reorderable nodes, where gap 0 is beside the layer. The connection feeding the top (most-upstream end)
+	/// of the chain is preserved, as are each node's other (non-primary) inputs.
+	pub fn reorder_chain_nodes(&mut self, node_ids: &[NodeId], insert_index: usize, network_path: &[NodeId]) {
+		let Some((layer, reorderable, tail_input)) = self.reorderable_chain_nodes(node_ids, network_path) else {
 			return;
 		};
+
+		// The drop gap is measured against the reorderable nodes that still include the moving ones, so it shifts down by each moving node before it
+		let (moving, mut new_order): (Vec<NodeId>, Vec<NodeId>) = reorderable.iter().copied().partition(|id| node_ids.contains(id));
+		let to = reorderable[..insert_index.min(reorderable.len())].iter().filter(|id| !node_ids.contains(id)).count();
+		new_order.splice(to..to, moving);
+		if new_order == reorderable {
+			return;
+		}
+
+		self.rewire_chain(layer, &new_order, tail_input, network_path);
+	}
+
+	/// Moves nodes from their layer's horizontal chain into the given layer's chain (which may be the same one), keeping their relative order, so they end up
+	/// together at the `insert_index` gap among that chain's reorderable nodes, where gap 0 is beside the layer. Both chains keep what fed their upstream ends.
+	pub fn move_chain_nodes(&mut self, node_ids: &[NodeId], layer: NodeId, insert_index: usize, network_path: &[NodeId]) {
+		let Some((source_layer, source_reorderable, source_tail_input)) = self.reorderable_chain_nodes(node_ids, network_path) else {
+			return;
+		};
+		if source_layer == layer {
+			self.reorder_chain_nodes(node_ids, insert_index, network_path);
+			return;
+		}
+		let Some((target_reorderable, target_tail_input)) = self.layer_chain(layer, network_path) else {
+			return;
+		};
+
+		// Close the gap the nodes leave in their own chain
+		let (moving, remaining): (Vec<NodeId>, Vec<NodeId>) = source_reorderable.iter().copied().partition(|id| node_ids.contains(id));
+		for node_id in &moving {
+			self.disconnect_input(&InputConnector::primary_input(*node_id), network_path);
+		}
+		self.rewire_chain(source_layer, &remaining, source_tail_input.clone(), network_path);
+
+		// Then splice them into the other layer's chain, or restore both chains if that would close a cycle
+		let mut new_order = target_reorderable.clone();
+		let insert_index = insert_index.min(new_order.len());
+		new_order.splice(insert_index..insert_index, moving);
+		if !self.rewire_chain(layer, &new_order, target_tail_input.clone(), network_path) {
+			self.rewire_chain(layer, &target_reorderable, target_tail_input, network_path);
+			self.rewire_chain(source_layer, &source_reorderable, source_tail_input, network_path);
+		}
+	}
+
+	/// Duplicates nodes in their layer's horizontal chain, inserting the copies together (in the originals' relative order) beside the originals, or into the
+	/// `destination` layer's chain (which may be the same one) at the given gap among its reorderable nodes, where gap 0 is beside the layer. The copies keep the
+	/// originals' other (non-primary) inputs, including their connections. Returns the IDs of the copies.
+	pub fn duplicate_chain_nodes(&mut self, node_ids: &[NodeId], destination: Option<(NodeId, usize)>, network_path: &[NodeId]) -> Vec<NodeId> {
+		let Some((source_layer, reorderable, _)) = self.reorderable_chain_nodes(node_ids, network_path) else {
+			return Vec::new();
+		};
+		let (layer, insert_index) = destination.unwrap_or_else(|| (source_layer, reorderable.iter().position(|id| node_ids.contains(id)).unwrap_or_default()));
+
+		let copies = reorderable.iter().filter(|id| node_ids.contains(id)).filter_map(|id| self.copy_chain_node(id, network_path)).collect();
+		self.insert_into_chain(layer, copies, insert_index, network_path)
+	}
+
+	/// Copies a node from a layer's chain so it can be inserted into a chain here or in another document.
+	pub fn copy_chain_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<ChainNodeCopy> {
+		// Placed where its original is until the chain it's inserted into positions it
+		let mut template = self.create_node_template(node_id, network_path)?;
+		template.node_type_metadata = NodeTypePersistentMetadata::node(self.position(node_id, network_path).unwrap_or_default());
+
+		let fallback_values = template
+			.inputs
+			.iter()
+			.enumerate()
+			.filter(|(_, input)| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. }))
+			.map(|(index, _)| {
+				(
+					index,
+					NodeInput::value(self.tagged_value_from_input(&InputConnector::node_at_index(*node_id, index), network_path), true),
+				)
+			})
+			.collect();
+
+		Some(ChainNodeCopy {
+			source: *node_id,
+			template,
+			fallback_values,
+		})
+	}
+
+	/// Inserts copied nodes together (in their given order) into a layer's chain at the `insert_index` gap among its reorderable nodes, where gap 0 is beside
+	/// the layer. Each copy stays wired to whatever fed its other (non-primary) inputs where that exists here, or else takes their fallback values.
+	/// Returns the IDs of the new nodes, or none when inserting them would close a cycle.
+	fn insert_into_chain(&mut self, layer: NodeId, copies: Vec<ChainNodeCopy>, insert_index: usize, network_path: &[NodeId]) -> Vec<NodeId> {
+		let Some((reorderable, tail_input)) = self.layer_chain(layer, network_path) else {
+			return Vec::new();
+		};
+
+		let mut new_ids = Vec::new();
+		for ChainNodeCopy { mut template, fallback_values, .. } in copies {
+			// Wired inputs are inserted as values (as `insert_node` requires), then reconnected so the wire bookkeeping stays current
+			let mut reconnections = Vec::new();
+			for (index, fallback_value) in fallback_values {
+				let Some(input) = template.inputs.get_mut(index) else { continue };
+				let wired_input = std::mem::replace(input, fallback_value);
+
+				// The primary input is left for the chain rewiring below
+				let source_exists = match &wired_input {
+					NodeInput::Node { node_id, .. } => self.document_node(node_id, network_path).is_some(),
+					NodeInput::Import { import_index, .. } => *import_index < self.number_of_imports(network_path),
+					_ => false,
+				};
+				if index != 0 && source_exists {
+					reconnections.push((index, wired_input));
+				}
+			}
+			if template.inputs.iter().any(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. })) {
+				log::error!("A copied chain node is missing the fallback value for a wired input in insert_into_chain");
+				continue;
+			}
+
+			let new_id = NodeId::new();
+			self.insert_node(new_id, template, network_path);
+			for (index, input) in reconnections {
+				self.set_input(&InputConnector::node_at_index(new_id, index), input, network_path);
+			}
+			new_ids.push(new_id);
+		}
+
+		let mut new_order = reorderable.clone();
+		let insert_index = insert_index.min(new_order.len());
+		new_order.splice(insert_index..insert_index, new_ids.iter().copied());
+
+		// Copies that would close a cycle are removed, and the chain is put back as it was
+		if !self.rewire_chain(layer, &new_order, tail_input.clone(), network_path) {
+			self.rewire_chain(layer, &reorderable, tail_input, network_path);
+			self.delete_nodes(new_ids, false, network_path);
+			return Vec::new();
+		}
+
+		new_ids
+	}
+
+	/// The layer whose chain the given nodes belong to, along with what `layer_chain` gives for it. Fails unless every given node is a reorderable node of that chain.
+	fn reorderable_chain_nodes(&self, node_ids: &[NodeId], network_path: &[NodeId]) -> Option<(NodeId, Vec<NodeId>, NodeInput)> {
+		let first_node_id = node_ids.first()?;
+		let Some(layer) = self.downstream_layer_for_chain_node(first_node_id, network_path) else {
+			log::error!("Could not find downstream layer for chain node {first_node_id} in reorderable_chain_nodes");
+			return None;
+		};
+		let (reorderable, tail_input) = self.layer_chain(layer, network_path)?;
+
+		if let Some(node_id) = node_ids.iter().find(|node_id| !reorderable.contains(node_id)) {
+			log::error!("Node {node_id} is not a reorderable node in the same layer's chain in reorderable_chain_nodes");
+			return None;
+		}
+
+		Some((layer, reorderable, tail_input))
+	}
+
+	/// A layer chain's reorderable nodes (all but a source node fixed at its upstream end) ordered from the layer outward, and whatever feeds the chain's upstream end.
+	fn layer_chain(&self, layer: NodeId, network_path: &[NodeId]) -> Option<(Vec<NodeId>, NodeInput)> {
+		if !self.is_layer(&layer, network_path) {
+			return None;
+		}
 
 		// The nodes in the layer's chain, ordered from closest-to-layer outward, stopping at the next layer
 		let chain = self
@@ -1260,47 +1416,44 @@ impl NodeNetworkInterface {
 
 		// A source node (no primary input) stays pinned at the most-upstream end; only the nodes below it reorder
 		let pinned_source = chain.last().copied().filter(|last| !self.has_primary_input(last, network_path));
-		let reorderable = &chain[..chain.len() - pinned_source.is_some() as usize];
+		let reorderable = chain[..chain.len() - pinned_source.is_some() as usize].to_vec();
 
-		let Some(from) = reorderable.iter().position(|id| *id == node_id) else {
-			log::error!("Node {node_id} is not a reorderable node in its layer's chain in reorder_chain_node");
-			return;
+		// The most-upstream reorderable node connects up to the pinned source, or else whatever fed the top of the chain (or the layer, when the chain is empty)
+		let tail_input = match (pinned_source, chain.last()) {
+			(Some(source), _) => NodeInput::node(source, 0),
+			(None, Some(last)) => self.input_from_connector(&InputConnector::primary_input(*last), network_path)?.clone(),
+			(None, None) => self.input_from_connector(&InputConnector::layer_secondary_input(layer), network_path)?.clone(),
 		};
 
-		// The drop gap is measured against the reorderable nodes that still include the dragged node, so shift it down by one if the node is being removed from before the gap
-		let to = (if insert_index > from { insert_index - 1 } else { insert_index }).min(reorderable.len() - 1);
-		if to == from {
-			return;
-		}
+		Some((reorderable, tail_input))
+	}
 
-		let mut new_order = reorderable.to_vec();
-		new_order.remove(from);
-		new_order.insert(to, node_id);
+	/// Rewires a layer's chain to run through `new_order` from the layer outward, with the last node fed by `tail_input`.
+	/// Returns whether that took, since a connection that would close a cycle is refused.
+	fn rewire_chain(&mut self, layer: NodeId, new_order: &[NodeId], tail_input: NodeInput, network_path: &[NodeId]) -> bool {
+		let intended_chain = Some((new_order.to_vec(), tail_input.clone()));
 
-		// The most-upstream reorderable node connects up to the pinned source, or else whatever fed the top of the chain
-		let tail_input = if let Some(source) = pinned_source {
-			NodeInput::node(source, 0)
-		} else {
-			let Some(input) = self.input_from_connector(&InputConnector::primary_input(*chain.last().unwrap()), network_path).cloned() else {
-				log::error!("Could not get the upstream input of the chain in reorder_chain_node");
-				return;
-			};
-			input
+		// With no nodes left in the chain, the layer is fed directly by what fed its upstream end
+		let (Some(&first), Some(&last)) = (new_order.first(), new_order.last()) else {
+			self.set_input(&InputConnector::layer_secondary_input(layer), tail_input, network_path);
+			return self.layer_chain(layer, network_path) == intended_chain;
 		};
 
 		// Disconnect first so the rewiring can't transiently form a cycle (the pinned source keeps its wiring)
-		for &chain_node in reorderable {
+		for &chain_node in new_order {
 			self.disconnect_input(&InputConnector::primary_input(chain_node), network_path);
 		}
 
 		// Rewire in the new order: layer's secondary input -> new_order[0] -> ... -> new_order[last] -> tail input
-		self.set_input(&InputConnector::layer_secondary_input(layer), NodeInput::node(new_order[0], 0), network_path);
+		self.set_input(&InputConnector::layer_secondary_input(layer), NodeInput::node(first, 0), network_path);
 		for pair in new_order.windows(2) {
 			self.set_input(&InputConnector::primary_input(pair[0]), NodeInput::node(pair[1], 0), network_path);
 		}
-		self.set_input(&InputConnector::primary_input(*new_order.last().unwrap()), tail_input, network_path);
+		self.set_input(&InputConnector::primary_input(last), tail_input, network_path);
 
-		// Re-establish chain positioning for the reordered nodes
-		self.force_set_upstream_to_chain(&new_order[0], network_path);
+		// Re-establish chain positioning for the rewired nodes
+		self.force_set_upstream_to_chain(&first, network_path);
+
+		self.layer_chain(layer, network_path) == intended_chain
 	}
 }

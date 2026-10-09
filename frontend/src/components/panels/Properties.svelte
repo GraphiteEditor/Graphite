@@ -124,14 +124,18 @@
 		insertMarkerTop = toContentOffset(markerViewportY);
 	}
 
-	function draggingPointerUp() {
+	function draggingPointerUp(e: PointerEvent) {
 		if (dragState?.active) {
 			// Suppress the click that the browser fires after the drag release, so it doesn't toggle the dropped section
 			justFinishedDrag = true;
 
-			// Skip drops that don't actually move the node (into its own slot), or where the dragged section vanished from the DOM mid-drag (fromIndex of -1)
-			if (insertIndex !== undefined && fromIndex !== undefined && fromIndex !== -1 && insertIndex !== fromIndex && insertIndex !== fromIndex + 1) {
-				editor.reorderPropertiesSection(dragState.nodeId, insertIndex);
+			// Holding Alt drops a copy of a layer's chain node at the gap instead of moving the original
+			const duplicate = e.altKey;
+
+			// Skip drops that don't actually move the node (into its own slot, unless copying it), or where the dragged section vanished from the DOM mid-drag (fromIndex of -1)
+			if (insertIndex !== undefined && fromIndex !== undefined && fromIndex !== -1) {
+				const intoOwnSlot = insertIndex === fromIndex || insertIndex === fromIndex + 1;
+				if (duplicate || !intoOwnSlot) editor.reorderPropertiesSection(dragState.nodeId, insertIndex, duplicate);
 			}
 		}
 

@@ -1,4 +1,4 @@
-use super::{InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, OutputConnector, Previewing, RootNode, TransactionStatus};
+use super::{FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, OutputConnector, Previewing, RootNode, TransactionStatus};
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::NodeInput;
@@ -289,6 +289,133 @@ async fn chain_membership_follows_wiring() {
 	assert_eq!(network_interface.position(&node, &[]).map(|position| position.y), Some(chained_y));
 
 	assert_invariants(&editor, "after forming and breaking a chain");
+}
+
+fn fill_definition() -> DefinitionIdentifier {
+	DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER)
+}
+
+/// Builds a layer fed by the chain `near <- far <- source` (a generator fixed at the upstream end), with an outside node also wired into the near node's second input.
+async fn layer_with_chain(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId, NodeId, NodeId) {
+	let layer = editor.create_node_by_name_at(merge_definition(), 30, 10).await;
+	let near = editor.create_node_by_name_at(fill_definition(), 23, 10).await;
+	let far = editor.create_node_by_name_at(fill_definition(), 16, 10).await;
+	let source = editor.create_node_by_name_at(rectangle_definition(), 9, 10).await;
+	let outside = editor.create_node_by_name_at(rectangle_definition(), 16, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&layer, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(near), &InputConnector::layer_secondary_input(layer), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(far), &InputConnector::primary_input(near), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(source), &InputConnector::primary_input(far), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(outside), &InputConnector::node_at_index(near, 1), &[]);
+
+	(layer, near, far, source, outside)
+}
+
+fn chain_of(network_interface: &NodeNetworkInterface, layer: NodeId) -> Vec<NodeId> {
+	network_interface.upstream_flow_back_from_nodes(vec![layer], &[], FlowType::HorizontalFlow).skip(1).collect()
+}
+
+#[tokio::test]
+async fn reordering_chain_nodes_keeps_the_source_at_the_upstream_end() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+
+	// Gap 2 is upstream of both reorderable nodes, beside the fixed source
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.reorder_chain_nodes(&[near], 2, &[]);
+	assert_eq!(chain_of(network_interface, layer), vec![far, near, source]);
+
+	assert_invariants(&editor, "after reordering a chain node");
+}
+
+#[tokio::test]
+async fn duplicating_chain_nodes_inserts_copies_that_keep_their_other_wires() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, outside) = layer_with_chain(&mut editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.duplicate_chain_nodes(&[near], Some((layer, 2)), &[]);
+
+	let chain = chain_of(network_interface, layer);
+	assert_eq!(chain.len(), 4, "The copy should join the chain");
+	assert_eq!(
+		(chain[0], chain[1], chain[3]),
+		(near, far, source),
+		"The originals should keep their places, with the source still at the end"
+	);
+
+	let copy = chain[2];
+	assert!(network_interface.is_chain(&copy, &[]), "The copy should be positioned as a chain node");
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(copy, 1), &[]),
+		Some(&NodeInput::node(outside, 0)),
+		"The copy should keep its original's other wires"
+	);
+
+	assert_invariants(&editor, "after duplicating a chain node");
+}
+
+#[tokio::test]
+async fn duplicating_chain_nodes_in_place_one_at_a_time_interleaves_the_copies() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let near_copy = network_interface.duplicate_chain_nodes(&[near], None, &[]);
+	let far_copy = network_interface.duplicate_chain_nodes(&[far], None, &[]);
+	assert_eq!((near_copy.len(), far_copy.len()), (1, 1));
+
+	// Each copy lands just downstream of its own original
+	assert_eq!(chain_of(network_interface, layer), vec![near_copy[0], near, far_copy[0], far, source]);
+
+	assert_invariants(&editor, "after duplicating chain nodes in place");
+}
+
+#[tokio::test]
+async fn moving_a_chain_node_to_another_layer_closes_the_gap_it_leaves() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	network_interface.move_chain_nodes(&[near], other_layer, 0, &[]);
+
+	assert_eq!(chain_of(network_interface, layer), vec![far, source], "The source chain should close up around the moved node");
+	assert_eq!(chain_of(network_interface, other_layer), vec![near], "The moved node should form the other layer's chain");
+
+	assert_invariants(&editor, "after moving a chain node between layers");
+}
+
+#[tokio::test]
+async fn a_chain_node_reading_from_a_layer_cannot_join_its_chain() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	// The other layer feeds the near node's second input, so its chain taking the near node (or a copy) would close a cycle
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(other_layer), &InputConnector::node_at_index(near, 1), &[]);
+	let node_count = network_interface.document_network().nodes.len();
+
+	network_interface.move_chain_nodes(&[near], other_layer, 0, &[]);
+	assert_eq!(chain_of(network_interface, layer), vec![near, far, source], "A refused move should leave the node in its own chain");
+	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused move should leave the other chain as it was");
+
+	let copies = network_interface.duplicate_chain_nodes(&[near], Some((other_layer, 0)), &[]);
+	assert!(copies.is_empty(), "A refused duplicate should report no copies");
+	assert_eq!(network_interface.document_network().nodes.len(), node_count, "A refused duplicate should leave no copies behind");
+	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused duplicate should leave the other chain as it was");
+
+	assert_invariants(&editor, "after refusing chain edits that would close a cycle");
 }
 
 #[tokio::test]
