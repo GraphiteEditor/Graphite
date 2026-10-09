@@ -39,6 +39,15 @@ pub struct ChainNodeCopy {
 	pub fallback_values: Vec<(usize, NodeInput)>,
 }
 
+/// Where copied nodes go when inserted into a layer's chain.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ChainInsertionPoint {
+	/// Beside a node in a layer's chain, just downstream of it.
+	BesideNode(NodeId),
+	/// At the downstream end of a layer's chain, beside the layer.
+	BesideLayer(NodeId),
+}
+
 #[derive(PartialEq)]
 pub enum FlowType {
 	/// Iterate over all upstream nodes (inclusive) from every input (the primary and all secondary).

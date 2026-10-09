@@ -734,6 +734,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
 				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
+			NodeGraphMessage::PasteIntoChain { target, copies } => {
+				let new_nodes = network_interface.paste_into_chain(target, copies, selection_network_path);
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: new_nodes });
+			}
 			NodeGraphMessage::DuplicateChainNodes { node_ids, destination, select_copies } => {
 				let copies = network_interface.duplicate_chain_nodes(&node_ids, destination, selection_network_path);
 				if select_copies {

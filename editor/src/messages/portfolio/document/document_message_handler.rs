@@ -23,7 +23,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -835,6 +835,49 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					destination: Some((layer, insert_index)),
 					select_copies,
 				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::PasteChainNodes { copies } => {
+				// Layers and their chains live in the document network, not inside a nested one open in the graph
+				if !self.selection_network_path.is_empty() {
+					return;
+				}
+
+				let chain_nodes = self.selected_reorderable_chain_nodes();
+				let layers = self
+					.network_interface
+					.selected_nodes()
+					.selected_layers(self.metadata())
+					.map(|layer| layer.to_node())
+					.collect::<Vec<_>>();
+
+				// Selected chain nodes interleave with the copies: over the same selection that was copied, each node gets its own copy beside it (like duplicating),
+				// and over a different selection of the same size, the copies pair with those nodes in order. Otherwise, all the copies go beside every selected node.
+				let mut insertions = Vec::new();
+				let same_selection = chain_nodes.len() == copies.len() && copies.iter().all(|copy| chain_nodes.contains(&copy.source));
+				if same_selection {
+					insertions.extend(copies.iter().map(|copy| (ChainInsertionPoint::BesideNode(copy.source), vec![copy.clone()])));
+				} else if chain_nodes.len() == copies.len() {
+					insertions.extend(chain_nodes.iter().zip(&copies).map(|(node_id, copy)| (ChainInsertionPoint::BesideNode(*node_id), vec![copy.clone()])));
+				} else {
+					insertions.extend(chain_nodes.iter().map(|node_id| (ChainInsertionPoint::BesideNode(*node_id), copies.clone())));
+				}
+
+				// Each selected layer gets all the copies at the end of its chain
+				insertions.extend(layers.into_iter().map(|layer| (ChainInsertionPoint::BesideLayer(layer), copies.clone())));
+
+				if insertions.is_empty() {
+					return;
+				}
+
+				// The pasted copies become the selection
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+				for (target, copies) in insertions {
+					responses.add(NodeGraphMessage::PasteIntoChain { target, copies });
+				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(PropertiesPanelMessage::Refresh);
@@ -2687,7 +2730,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// The selected nodes that can be reordered in layers' chains, ordered by their layer's place in the Layers panel, then from the layer outward.
-	fn selected_reorderable_chain_nodes(&self) -> Vec<NodeId> {
+	pub fn selected_reorderable_chain_nodes(&self) -> Vec<NodeId> {
 		let selected_nodes = self.network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
 
 		// Only walk the layers' chains, in O(nodes in all chains), when something other than layers is selected

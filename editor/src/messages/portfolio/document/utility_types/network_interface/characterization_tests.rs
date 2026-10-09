@@ -1,4 +1,6 @@
-use super::{FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, OutputConnector, Previewing, RootNode, TransactionStatus};
+use super::{
+	ChainInsertionPoint, FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, OutputConnector, Previewing, RootNode, TransactionStatus,
+};
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::NodeInput;
@@ -313,6 +315,19 @@ async fn layer_with_chain(editor: &mut EditorTestUtils) -> (NodeId, NodeId, Node
 	(layer, near, far, source, outside)
 }
 
+/// The layer from `layer_with_chain` placed in an artboard, making it part of the layer structure that the Layers panel and clipboard act on.
+async fn layer_with_chain_in_artboard(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId, NodeId, NodeId) {
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let nodes = layer_with_chain(editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(nodes.0, network_interface), artboard_layer, 0, &[]);
+
+	nodes
+}
+
 fn chain_of(network_interface: &NodeNetworkInterface, layer: NodeId) -> Vec<NodeId> {
 	network_interface.upstream_flow_back_from_nodes(vec![layer], &[], FlowType::HorizontalFlow).skip(1).collect()
 }
@@ -377,6 +392,119 @@ async fn duplicating_chain_nodes_in_place_one_at_a_time_interleaves_the_copies()
 }
 
 #[tokio::test]
+async fn pasting_a_chain_node_at_another_layers_chain_end_keeps_only_wires_that_exist() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, near, _, _, outside) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	let copy = network_interface.copy_chain_node(&near, &[]).expect("The chain node should be copyable");
+
+	// Pasted while the outside node exists, the copy stays wired to it
+	let pasted = network_interface.paste_into_chain(ChainInsertionPoint::BesideLayer(other_layer), vec![copy.clone()], &[]);
+	assert_eq!(chain_of(network_interface, other_layer), pasted, "The copy should form the other layer's chain");
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(pasted[0], 1), &[]),
+		Some(&NodeInput::node(outside, 0))
+	);
+
+	// Pasted where the outside node is missing, the copy takes the value it had
+	network_interface.delete_nodes(vec![outside], false, &[]);
+	let pasted_again = network_interface.paste_into_chain(ChainInsertionPoint::BesideLayer(other_layer), vec![copy], &[]);
+	assert_eq!(
+		chain_of(network_interface, other_layer),
+		vec![pasted_again[0], pasted[0]],
+		"Pasting at the chain's end should go beside the layer"
+	);
+	assert!(
+		matches!(
+			network_interface.input_from_connector(&InputConnector::node_at_index(pasted_again[0], 1), &[]),
+			Some(NodeInput::Value { .. })
+		),
+		"A wire to a missing node should become its fallback value"
+	);
+
+	assert_invariants(&editor, "after pasting chain nodes");
+}
+
+#[tokio::test]
+async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, outside) = layer_with_chain_in_artboard(&mut editor).await;
+
+	// Cutting removes just the node, keeping the node that fed its second input
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
+	let clipboard = editor
+		.handle_message(ClipboardMessage::CutLayers)
+		.await
+		.into_iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+			_ => None,
+		})
+		.expect("Cutting a chain node should write it to the clipboard");
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(chain_of(network_interface, layer), vec![far, source], "Cutting should close the chain around the node");
+	assert!(network_interface.document_node(&outside, &[]).is_some(), "Cutting should keep what fed the node's other inputs");
+
+	// Pasting with the layer selected puts the node back beside the layer, wired as before
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }).await;
+	editor
+		.handle_message(ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(clipboard),
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	let chain = chain_of(network_interface, layer);
+	assert_eq!(chain.len(), 3, "The pasted node should join the chain");
+	assert_eq!(chain[1..], [far, source], "The pasted node should go beside the layer");
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(chain[0], 1), &[]),
+		Some(&NodeInput::node(outside, 0)),
+		"The pasted node should be wired to what fed it before"
+	);
+	assert_eq!(
+		network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>(),
+		vec![chain[0]],
+		"The pasted node should be selected"
+	);
+
+	assert_invariants(&editor, "after cutting and pasting a chain node");
+}
+
+#[tokio::test]
+async fn pasted_chain_nodes_go_beside_their_originals_or_pair_with_a_new_selection() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain_in_artboard(&mut editor).await;
+	let copy = editor.active_document().network_interface.copy_chain_node(&near, &[]).expect("The chain node should be copyable");
+
+	// Over the same selection that was copied, the copy goes beside its original
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
+	editor.handle_message(DocumentMessage::PasteChainNodes { copies: vec![copy.clone()] }).await;
+	let chain = chain_of(&editor.active_document().network_interface, layer);
+	let first_copy = chain[0];
+	assert_eq!(chain, vec![first_copy, near, far, source], "The copy should go beside the node it was copied from");
+
+	// Over a different selection of the same size, the copy pairs with that node instead
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![far] }).await;
+	editor.handle_message(DocumentMessage::PasteChainNodes { copies: vec![copy] }).await;
+	let chain = chain_of(&editor.active_document().network_interface, layer);
+	let second_copy = chain[2];
+	assert_eq!(chain, vec![first_copy, near, second_copy, far, source], "The copy should go beside the newly selected node");
+	assert_eq!(
+		editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>(),
+		vec![second_copy],
+		"The pasted copy should become the selection"
+	);
+
+	assert_invariants(&editor, "after pasting chain nodes over a selection");
+}
+
+#[tokio::test]
 async fn moving_a_chain_node_to_another_layer_closes_the_gap_it_leaves() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -394,28 +522,29 @@ async fn moving_a_chain_node_to_another_layer_closes_the_gap_it_leaves() {
 }
 
 #[tokio::test]
-async fn a_chain_node_reading_from_a_layer_cannot_join_its_chain() {
+async fn a_chain_node_reading_from_a_layer_joins_its_chain_only_as_an_unwired_copy() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
 	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
 
-	// The other layer feeds the near node's second input, so its chain taking the near node (or a copy) would close a cycle
+	// The other layer feeds the near node's second input, so its chain taking the near node with that wire would close a cycle
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.set_to_node_or_layer(&other_layer, &[], true);
 	network_interface.create_wire(&OutputConnector::primary_output(other_layer), &InputConnector::node_at_index(near, 1), &[]);
-	let node_count = network_interface.document_network().nodes.len();
 
 	network_interface.move_chain_nodes(&[near], other_layer, 0, &[]);
 	assert_eq!(chain_of(network_interface, layer), vec![near, far, source], "A refused move should leave the node in its own chain");
 	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused move should leave the other chain as it was");
 
 	let copies = network_interface.duplicate_chain_nodes(&[near], Some((other_layer, 0)), &[]);
-	assert!(copies.is_empty(), "A refused duplicate should report no copies");
-	assert_eq!(network_interface.document_network().nodes.len(), node_count, "A refused duplicate should leave no copies behind");
-	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused duplicate should leave the other chain as it was");
+	assert_eq!(chain_of(network_interface, other_layer), copies, "The copy should join the other chain");
+	assert!(
+		matches!(network_interface.input_from_connector(&InputConnector::node_at_index(copies[0], 1), &[]), Some(NodeInput::Value { .. })),
+		"The copy's wire from the layer it joined should fall back to a value"
+	);
 
-	assert_invariants(&editor, "after refusing chain edits that would close a cycle");
+	assert_invariants(&editor, "after chain edits that would close a cycle");
 }
 
 #[tokio::test]

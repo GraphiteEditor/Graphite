@@ -93,6 +93,19 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					return;
 				}
 
+				// With no layers selected, the selected nodes of layers' chains are copied instead
+				if active_document.network_interface.shallowest_unique_layers(&[]).next().is_none() {
+					let copies = active_document
+						.selected_reorderable_chain_nodes()
+						.iter()
+						.filter_map(|node_id| active_document.network_interface.copy_chain_node(node_id, &[]))
+						.collect::<Vec<_>>();
+					responses.add(ClipboardMessage::WriteItems {
+						items: vec![ClipboardItem::ChainNodes(copies)],
+					});
+					return;
+				}
+
 				let mut buffer = Vec::new();
 
 				let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
@@ -148,6 +161,25 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					return;
 				}
 
+				// With no layers selected, only the copied chain nodes are removed, keeping what feeds their other inputs so pasting can wire back to it
+				if let Some(active_document) = portfolio.active_document()
+					&& active_document.network_interface.shallowest_unique_layers(&[]).next().is_none()
+				{
+					let chain_nodes = active_document.selected_reorderable_chain_nodes();
+					responses.add(ClipboardMessage::CopyLayers);
+					if !chain_nodes.is_empty() {
+						responses.add(DocumentMessage::AddTransaction);
+						responses.add(NodeGraphMessage::DeleteNodes {
+							node_ids: chain_nodes,
+							delete_children: false,
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(NodeGraphMessage::SelectedNodesUpdated);
+						responses.add(NodeGraphMessage::SendGraph);
+					}
+					return;
+				}
+
 				responses.add(ClipboardMessage::CopyLayers);
 				responses.add(DocumentMessage::DeleteSelectedLayers);
 			}
@@ -155,6 +187,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let has_content = items.iter().any(|item| match item {
 					ClipboardItem::Layer(entry) => !entry.nodes.is_empty(),
 					ClipboardItem::Nodes(nodes) => !nodes.is_empty(),
+					ClipboardItem::ChainNodes(copies) => !copies.is_empty(),
 					ClipboardItem::Vector(vector) => !vector.is_empty(),
 					ClipboardItem::Resource(_) => true,
 				});
@@ -167,6 +200,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					match item {
 						ClipboardItem::Layer(entry) => entry.nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
 						ClipboardItem::Nodes(nodes) => nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
+						ClipboardItem::ChainNodes(copies) => copies.iter().for_each(|copy| network_interface::collect_template_resources(&copy.template, &mut resource_ids)),
 						ClipboardItem::Vector(_) | ClipboardItem::Resource(_) => {}
 					}
 				}
@@ -227,6 +261,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 				let mut layers = Vec::new();
 				let mut node_groups = Vec::new();
+				let mut chain_node_groups = Vec::new();
 				let mut vectors = Vec::new();
 				let mut resources = Vec::new();
 				for item in items {
@@ -243,6 +278,12 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 								template.normalize_stored_types();
 							}
 							node_groups.push(nodes);
+						}
+						ClipboardItem::ChainNodes(mut copies) => {
+							for copy in &mut copies {
+								copy.template.normalize_stored_types();
+							}
+							chain_node_groups.push(copies);
 						}
 						ClipboardItem::Vector(vector) => vectors.push(vector),
 						ClipboardItem::Resource(resource) => resources.push(resource),
@@ -280,6 +321,9 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				}
 				for nodes in node_groups {
 					responses.add(NodeGraphMessage::InsertNodes { nodes });
+				}
+				for copies in chain_node_groups {
+					responses.add(DocumentMessage::PasteChainNodes { copies });
 				}
 				for paths in vectors {
 					responses.add(ClipboardMessage::PasteVectors { paths });

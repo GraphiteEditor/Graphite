@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::document::utility_types::network_interface::ChainNodeCopy;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2, UVec2};
@@ -115,6 +116,9 @@ pub enum DocumentMessage {
 		layer: NodeId,
 		insert_index: usize,
 		select_copies: bool,
+	},
+	PasteChainNodes {
+		copies: Vec<ChainNodeCopy>,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
