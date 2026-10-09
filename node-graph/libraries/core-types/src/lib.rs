@@ -24,7 +24,7 @@ pub use color::Color;
 pub use context::*;
 pub use ctor;
 pub use dyn_any::{StaticTypeSized, WasmNotSend, WasmNotSync};
-pub use glam_ext::FallibleVec2Operations;
+pub use glam_ext::{FallibleAffine2Operations, FallibleVec2Operations};
 pub use graphene_hash;
 pub use graphene_hash::CacheHash;
 pub use list::{

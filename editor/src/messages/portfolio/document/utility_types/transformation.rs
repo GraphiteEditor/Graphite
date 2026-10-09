@@ -8,7 +8,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformationState;
 use crate::messages::tool::utility_types::ToolType;
-use glam::{DAffine2, DMat2, DVec2};
+use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
 use graphene_std::vector::{HandleExt, PointId, VectorModificationType};
@@ -540,17 +540,14 @@ impl<'a> Selected<'a> {
 	pub fn bounding_box(&mut self) -> Quad {
 		let metadata = self.network_interface.document_metadata();
 
-		let mut transform = self
+		let transform = self
 			.network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(self.network_interface)
 			.find(|layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
 			.map(|layer| metadata.transform_to_viewport(layer))
-			.unwrap_or(DAffine2::IDENTITY);
-
-		if transform.matrix2.determinant().abs() <= f64::EPSILON {
-			transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
-		}
+			.unwrap_or(DAffine2::IDENTITY)
+			.to_invertible();
 
 		let bounds = self
 			.selected
@@ -565,7 +562,7 @@ impl<'a> Selected<'a> {
 	fn transform_layer(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, original_transform: Option<&DAffine2>, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let Some(&original_transform) = original_transform else { return };
 		let to = document_metadata.downstream_transform_to_viewport(layer);
-		let new = to.inverse() * transformation * to * original_transform;
+		let new = to.to_invertible().inverse() * transformation * to * original_transform;
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
 			transform: new,

@@ -23,7 +23,6 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
-use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
@@ -716,14 +715,43 @@ fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentM
 /// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
 /// This uses some rather confusing logic to determine what transform that should be.
 pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
-	// Update bounds
 	document
 		.network_interface
 		.selected_nodes()
 		.selected_visible_and_unlocked_layers(&document.network_interface)
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+		.map(|layer| {
+			let transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			transform.to_invertible()
+		})
 		.unwrap_or_default()
+}
+
+pub fn calculate_selection_bounds(document: &DocumentMessageHandler) -> (DAffine2, Option<[DVec2; 2]>, bool) {
+	let transform = create_bounding_box_transform(document);
+	let transform_tampered = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.any(|layer| {
+			let layer_transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			layer_transform.is_singular()
+		});
+
+	let bounds = document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.filter_map(|layer| {
+			let layer_transform = document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface);
+			let relative_transform = transform.inverse() * layer_transform;
+			document.metadata().bounding_box_with_transform(layer, relative_transform)
+		})
+		.reduce(graphene_std::renderer::Quad::combine_bounds);
+
+	(transform, bounds, transform_tampered)
 }
 
 impl Fsm for SelectToolFsmState {
@@ -764,26 +792,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let mut transform = create_bounding_box_transform(document);
-
-				// Check if the matrix is not invertible
-				let mut transform_tampered = false;
-				if transform.matrix2.determinant() == 0. {
-					transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
-					transform_tampered = true;
-				}
-
-				let bounds = document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.filter_map(|layer| {
-						document
-							.metadata()
-							.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))
-					})
-					.reduce(graphene_std::renderer::Quad::combine_bounds);
+				let (transform, bounds, transform_tampered) = calculate_selection_bounds(document);
 
 				// When not in Drawing State
 				// Only highlight layers if the viewport is not being panned (middle mouse button is pressed)
