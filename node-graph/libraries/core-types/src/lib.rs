@@ -41,7 +41,7 @@ pub use no_std_types::choice_type;
 pub use no_std_types::color;
 pub use no_std_types::shaders;
 pub use num_traits;
-pub use runtime::{Generations, SourceId};
+pub use runtime::{Generations, RuntimeHandle, SourceId};
 use std::any::TypeId;
 use std::future::Future;
 use std::pin::Pin;
