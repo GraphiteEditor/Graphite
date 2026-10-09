@@ -650,7 +650,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 		narrow_shader_fields(&mut fields)?;
 	}
 	let output_type = parse_output(&input_fn.sig.output)?;
-	let output_element = peel_item(&output_type);
+	let output_element = peel_item(&output_payload(&output_type));
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let description = input_fn
@@ -1181,6 +1181,48 @@ impl ParsedNodeFn {
 		if self.input.pat_ident.ident == "_" {
 			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
+	}
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum NodeOutputTier {
+	/// `-> T`
+	Plain,
+	/// `-> Result<T, Interrupt>`
+	Interrupt,
+	/// `-> Result<T, (T, NodeError)>`
+	Fallback,
+	/// `-> Poll<T>`
+	Poll,
+}
+
+pub(crate) fn output_tier(output_type: &Type) -> NodeOutputTier {
+	let Type::Path(type_path) = output_type else { return NodeOutputTier::Plain };
+	let Some(segment) = type_path.path.segments.last() else { return NodeOutputTier::Plain };
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return NodeOutputTier::Plain;
+	};
+	match (segment.ident.to_string().as_str(), arguments.args.len()) {
+		("Poll", 1) => NodeOutputTier::Poll,
+		("Result", 2) => match arguments.args.last() {
+			Some(syn::GenericArgument::Type(Type::Tuple(_))) => NodeOutputTier::Fallback,
+			_ => NodeOutputTier::Interrupt,
+		},
+		_ => NodeOutputTier::Plain,
+	}
+}
+
+pub(crate) fn output_payload(output_type: &Type) -> Type {
+	if output_tier(output_type) == NodeOutputTier::Plain {
+		return output_type.clone();
+	}
+	let Type::Path(type_path) = output_type else { unreachable!() };
+	let syn::PathArguments::AngleBracketed(arguments) = &type_path.path.segments.last().unwrap().arguments else {
+		unreachable!()
+	};
+	match arguments.args.first() {
+		Some(syn::GenericArgument::Type(payload)) => payload.clone(),
+		_ => output_type.clone(),
 	}
 }
 
@@ -1953,5 +1995,20 @@ mod tests {
 			}
 		);
 		assert!(parse_node_fn(attr, declared_list).is_err(), "a uniform cannot carry a List");
+	}
+
+	#[test]
+	fn a_kernel_is_classified_by_its_declared_return_type() {
+		let payload: Type = parse_quote!(Item<u32>);
+		for (ty, tier) in [
+			(parse_quote!(Item<u32>), NodeOutputTier::Plain),
+			(parse_quote!(Result<Item<u32>, Interrupt>), NodeOutputTier::Interrupt),
+			(parse_quote!(Result<Item<u32>, (Item<u32>, NodeError)>), NodeOutputTier::Fallback),
+			(parse_quote!(Poll<Item<u32>>), NodeOutputTier::Poll),
+		] {
+			let ty: Type = ty;
+			assert_eq!(output_tier(&ty), tier);
+			assert_eq!(output_payload(&ty), payload);
+		}
 	}
 }
