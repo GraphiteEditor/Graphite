@@ -1334,7 +1334,7 @@
 					field-sizing: content;
 					// Stack above the absolutely-positioned grip/lock/visibility siblings, which can otherwise overlap the input's right edge and hijack clicks there.
 					position: relative;
-					z-index: 1;
+					z-index: 2;
 				}
 			}
 
@@ -1380,6 +1380,13 @@
 				margin: auto 0;
 				top: 0;
 				bottom: 0;
+			}
+
+			// Above layers drawn later whose chain area extends over this layer's right edge, so hovering still reaches them
+			.solo-drag-grip,
+			.lock,
+			.visibility {
+				z-index: 1;
 			}
 
 			.input.connectors .connector {
