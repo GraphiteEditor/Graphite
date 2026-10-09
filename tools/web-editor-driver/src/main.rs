@@ -719,13 +719,18 @@ fn install() -> Result<(), String> {
 		"Failed to install Playwright",
 	)?;
 
+	if let Some(provided) = paths::provided_browsers_directory() {
+		println!("Using the browsers already installed at {}", provided.display());
+		return Ok(());
+	}
+
 	// The full browser runs headless too, so the lighter headless shell is left out
 	let playwright = directory.join("node_modules").join("playwright-core").join("cli.js");
 	run_program(
 		std::process::Command::new("node")
 			.arg(playwright)
 			.args(["install", "--no-shell", "chromium"])
-			.env("PLAYWRIGHT_BROWSERS_PATH", paths::browsers_directory()),
+			.env(paths::BROWSERS_PATH_VARIABLE, paths::browsers_directory()),
 		"The browser failed to download",
 	)
 }

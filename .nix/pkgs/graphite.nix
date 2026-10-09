@@ -20,6 +20,7 @@ let
     pkgs.libGL
     pkgs.openssl
     pkgs.libraw
+    self.packages.${system}.graphite-cef
     # X11 Support
     pkgs.libxkbcommon
     pkgs.libXcursor
@@ -50,7 +51,7 @@ let
         pkgs.pkg-config
         pkgs.lld
       ];
-      env.CEF_PATH = self.packages.${system}.graphite-cef;
+      env.CEF_PATH = "${self.packages.${system}.graphite-cef}/lib";
       buildPhase =
         let
           profile = if dev then "dev" else "release";
@@ -99,7 +100,7 @@ deps.crane.lib.buildPackage (
       RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
       GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
       GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
-      CEF_PATH = self.packages.${system}.graphite-cef;
+      CEF_PATH = "${self.packages.${system}.graphite-cef}/lib";
     };
 
     postPatch = ''
@@ -148,7 +149,7 @@ deps.crane.lib.buildPackage (
       remove-references-to -t "${common.cargoVendorDir}" $out/bin/graphite
 
       patchelf \
-        --set-rpath "${pkgs.lib.makeLibraryPath libs}:${self.packages.${system}.graphite-cef}" \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs}" \
         --add-needed libGL.so \
         --add-needed libEGL.so \
         $out/bin/graphite
