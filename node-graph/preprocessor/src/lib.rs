@@ -138,7 +138,13 @@ impl Preprocessor {
 		for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 			let id = id.clone();
 
-			let NodeMetadata { fields, memoize, inject_scope, .. } = metadata;
+			let NodeMetadata {
+				fields,
+				memoize,
+				inject_scope,
+				asynchronous,
+				..
+			} = metadata;
 			context_dependencies.insert(id.clone(), ContextDependencies::from(metadata.context_features.as_slice()));
 
 			let Some(implementations) = node_registry.get(&id) else { continue };
@@ -253,7 +259,7 @@ impl Preprocessor {
 				})
 				.collect();
 
-			if generated_nodes == 0 && !memoize && !inject_scope {
+			if generated_nodes == 0 && !memoize && !inject_scope && !asynchronous {
 				continue;
 			}
 

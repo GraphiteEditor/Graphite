@@ -41,8 +41,21 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	let struct_name = format_ident!("{}Node", struct_name);
 
+	let async_hidden_fields = is_async.then(|| {
+		[
+			ParsedField::hidden(
+				"_runtime",
+				parse_quote!(#core_types::list::Item<#core_types::RuntimeHandle>),
+				ParsedValueSource::Scope(Box::new(parse_quote!("runtime"))),
+			),
+			ParsedField::hidden("_source", parse_quote!(#core_types::list::Item<#core_types::SourceId>), ParsedValueSource::SourceId),
+		]
+	});
+
+	let fields_iter = fields.iter().chain(async_hidden_fields.iter().flatten());
+
 	// Separate data fields from regular fields
-	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields.iter().partition(|f| f.is_data_field);
+	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields_iter.partition(|f| f.is_data_field);
 	// The primary's position among the regular fields, which `#[scope]` fields may precede (`#[data]` fields are already partitioned out)
 	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
@@ -195,6 +208,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						quote!(RegistryValueSource::Scope(#data.as_static_str()))
 					}
 				}
+				ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
 				_ => quote!(RegistryValueSource::None),
 			},
 			None => quote!(RegistryValueSource::None),
@@ -688,11 +702,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let mapped_struct_name = format_ident!("{}Mapped", struct_name);
 	let list_content_struct_name = format_ident!("{}ListContent", struct_name);
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &mapped_struct_name, &list_content_struct_name, &identifier)?;
+	let register_node_impl = generate_register_node_impl(parsed, &regular_fields, &field_names, &struct_name, &mapped_struct_name, &list_content_struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
+	let asynchronous_flag = parsed.is_async;
 	let inject_scope_flag = attributes.inject_scope;
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
@@ -908,6 +923,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
 					inject_scope: #inject_scope_flag,
+					asynchronous: #asynchronous_flag,
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -1052,6 +1068,9 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 
 /// Whether the element-wise node gets a mapped `List` wire variant: an eager primary is its own frame source, while a lazy primary (or a `()` generator) draws the frame from its ranked eager params, so it needs at least one.
 fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
+	if parsed.is_async {
+		return false;
+	}
 	// A `()` generator frames over its ranked params exactly like a lazy primary, but generating fresh content per slot instead of transforming an upstream item
 	if is_generator_frame(parsed) {
 		return true;
@@ -1099,6 +1118,7 @@ fn generates_list_content_variant(parsed: &ParsedNodeFn) -> bool {
 
 fn generate_register_node_impl(
 	parsed: &ParsedNodeFn,
+	regular_fields: &[&ParsedField],
 	field_names: &[&Ident],
 	struct_name: &Ident,
 	mapped_struct_name: &Ident,
@@ -1126,7 +1146,6 @@ fn generate_register_node_impl(
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(gcore::Context);
 
-	let regular_fields: Vec<_> = parsed.fields.iter().filter(|f| !f.is_data_field).collect();
 	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
 	let parameter_types: Vec<_> = regular_fields
@@ -1162,23 +1181,19 @@ fn generate_register_node_impl(
 
 	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
 
-	// Element-wise nodes register a variant per wire shape per implementations row; all other nodes register one
 	let gcore = quote!(gcore);
-	let variants: Vec<RegisterVariant> = if primary_item_element(parsed).is_some() {
-		let mut variants = vec![RegisterVariant::Item];
-		if generates_mapped_variant(parsed) {
-			variants.push(RegisterVariant::Mapped);
-		}
-		if generates_list_content_variant(parsed) {
-			variants.push(RegisterVariant::ListContent);
-		}
-		variants
-	} else if is_generator_frame(parsed) {
-		// A `()` generator registers an Item form (single generation) plus a mapped form framed over its ranked params
-		vec![RegisterVariant::Item, RegisterVariant::Mapped]
+	let mut variants = Vec::new();
+	if primary_item_element(parsed).is_some() || is_generator_frame(parsed) {
+		variants.push(RegisterVariant::Item);
 	} else {
-		vec![RegisterVariant::Plain]
+		variants.push(RegisterVariant::Plain);
 	};
+	if generates_mapped_variant(parsed) {
+		variants.push(RegisterVariant::Mapped);
+	}
+	if generates_list_content_variant(parsed) {
+		variants.push(RegisterVariant::ListContent);
+	}
 
 	for i in 0..max_implementations.unwrap_or(0) {
 		for &variant in &variants {

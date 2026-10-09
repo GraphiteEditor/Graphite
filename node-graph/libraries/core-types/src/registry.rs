@@ -17,6 +17,7 @@ pub struct NodeMetadata {
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
 	pub inject_scope: bool,
+	pub asynchronous: bool,
 }
 
 // Translation struct between macro and definition

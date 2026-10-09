@@ -66,6 +66,7 @@ pub enum ParsedValueSource {
 	None,
 	Default(TokenStream2),
 	Scope(Box<Expr>),
+	SourceId,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -125,6 +126,40 @@ pub struct ParsedField {
 }
 
 impl ParsedField {
+	pub(crate) fn hidden(name: &str, ty: Type, value_source: ParsedValueSource) -> Self {
+		Self {
+			pat_ident: PatIdent {
+				attrs: Vec::new(),
+				by_ref: None,
+				mutability: None,
+				ident: Ident::new(name, proc_macro2::Span::call_site()),
+				subpat: None,
+			},
+			name: None,
+			description: String::new(),
+			widget_override: ParsedWidgetOverride::None,
+			ty: ParsedFieldType::classify(RegularParsedField {
+				ty,
+				exposed: false,
+				value_source,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
+				number_mode_range: false,
+				implementations: Default::default(),
+				gpu_image: false,
+				narrowed_body_ty: None,
+			}),
+			number_display_decimal_places: None,
+			number_step: None,
+			unit: None,
+			multiline: false,
+			progression: false,
+			is_data_field: false,
+		}
+	}
+
 	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
 	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
 	pub(crate) fn is_environment(&self) -> bool {
@@ -132,7 +167,7 @@ impl ParsedField {
 			|| matches!(
 				self.ty.regular(),
 				Some(RegularParsedField {
-					value_source: ParsedValueSource::Scope(_),
+					value_source: ParsedValueSource::Scope(_) | ParsedValueSource::SourceId,
 					..
 				})
 			)
