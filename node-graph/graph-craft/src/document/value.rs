@@ -592,6 +592,10 @@ tagged_value! {
 	BooleanOperation(vector::misc::BooleanOperation),
 	TextAlign(text_nodes::TextAlign),
 	TextDenomination(text_nodes::TextDenomination),
+	TextPathSide(text_nodes::TextPathSide),
+	TextAnchor(text_nodes::TextAnchor),
+	TextPathMethod(text_nodes::TextPathMethod),
+	LengthAdjust(text_nodes::LengthAdjust),
 	ScaleType(core_types::transform::ScaleType),
 	// Legacy
 	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
