@@ -70,6 +70,16 @@ pub struct DocumentMessageContext<'a> {
 	pub fonts: &'a FontsMessageHandler,
 }
 
+/// The selection split by how it's duplicated and copied.
+pub struct SelectionParts {
+	/// The shallowest selected layers in the layer structure, which bring their content along.
+	pub layers: Vec<LayerNodeIdentifier>,
+	/// The selected reorderable nodes of other layers' chains, in the Layers panel's order.
+	pub chain_nodes: Vec<NodeId>,
+	/// Every other selected node, outside the content of the layers above.
+	pub other_nodes: Vec<NodeId>,
+}
+
 #[derive(derivative::Derivative, serde::Serialize, serde::Deserialize, ExtractField)]
 #[derivative(Clone, Debug)]
 #[serde(default)]
@@ -469,10 +479,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
-				let network_path = self.selection_network_path.clone();
-				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&network_path).unwrap_or_default();
-				let selected_nodes = selected_nodes.selected_nodes().copied().collect::<Vec<_>>();
-				if selected_nodes.is_empty() {
+				let SelectionParts { mut layers, chain_nodes, other_nodes } = self.partition_selection();
+				if layers.is_empty() && chain_nodes.is_empty() && other_nodes.is_empty() {
 					return;
 				}
 
@@ -480,13 +488,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Layers in the layer structure are copied with their content into the stack beside their originals
 				let mut new_dragging = Vec::new();
-				let mut layers = if network_path.is_empty() {
-					self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>()
-				} else {
-					Vec::new()
-				};
-				let structure_layers = layers.iter().map(|layer| layer.to_node()).collect::<Vec<_>>();
-
 				layers.sort_by_key(|layer| {
 					let Some(parent) = layer.parent(self.metadata()) else { return usize::MAX };
 					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
@@ -507,34 +508,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 
-				// Each other selected node is duplicated in place as if one at a time, leaving out what the layer copies already brought along
-				let other_nodes = selected_nodes.into_iter().filter(|node_id| !structure_layers.contains(node_id)).collect::<Vec<_>>();
+				// Each chain node goes beside itself in its chain, as if duplicated one at a time
+				for node_id in chain_nodes {
+					responses.add(NodeGraphMessage::DuplicateChainNodes {
+						node_ids: vec![node_id],
+						destination: None,
+						select_copies: true,
+					});
+				}
+
+				// The other nodes go into their primary flow, or loose when in none
 				if !other_nodes.is_empty() {
-					let layer_content = self
-						.network_interface
-						.upstream_flow_back_from_nodes(structure_layers, &[], FlowType::LayerChildrenUpstreamFlow)
-						.collect::<HashSet<_>>();
-					let other_nodes = other_nodes.into_iter().filter(|node_id| !layer_content.contains(node_id)).collect::<Vec<_>>();
-
-					// Chain nodes in the layer structure go beside themselves in their chain
-					let chain_nodes = if network_path.is_empty() {
-						self.selected_reorderable_chain_nodes().into_iter().filter(|node_id| other_nodes.contains(node_id)).collect()
-					} else {
-						Vec::new()
-					};
-					for node_id in &chain_nodes {
-						responses.add(NodeGraphMessage::DuplicateChainNodes {
-							node_ids: vec![*node_id],
-							destination: None,
-							select_copies: true,
-						});
-					}
-
-					// The rest go into their primary flow, or loose when in none
-					let flow_nodes = other_nodes.into_iter().filter(|node_id| !chain_nodes.contains(node_id)).collect::<Vec<_>>();
-					if !flow_nodes.is_empty() {
-						responses.add(NodeGraphMessage::DuplicateNodesInFlow { node_ids: flow_nodes });
-					}
+					responses.add(NodeGraphMessage::DuplicateNodesInFlow { node_ids: other_nodes });
 				}
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -905,10 +890,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::PasteNodes { nodes } => {
 				// Over the same selection they were copied from, nodes are duplicated into their flow, and otherwise they're pasted loose into the graph and shown there
+				let other_nodes = self.partition_selection().other_nodes;
 				let copied = nodes.iter().map(|(node_id, _)| *node_id).collect::<HashSet<_>>();
-				let selected = self.network_interface.upstream_chain_nodes(&self.selection_network_path).into_iter().collect::<HashSet<_>>();
+				let selected = self.with_layer_content(&other_nodes).into_iter().collect::<HashSet<_>>();
 				if !copied.is_empty() && copied == selected {
-					responses.add(DocumentMessage::DuplicateSelectedLayers);
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+					responses.add(NodeGraphMessage::DuplicateNodesInFlow { node_ids: other_nodes });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
 					return;
 				}
 
@@ -2777,6 +2767,52 @@ impl DocumentMessageHandler {
 		self.network_interface
 			.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
+	}
+
+	/// The selection split the way it's duplicated and copied. Inside a nested network open in the graph, every selected node counts among the other nodes.
+	pub fn partition_selection(&self) -> SelectionParts {
+		let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path).unwrap_or_default();
+		let selected_nodes = selected_nodes.selected_nodes().copied().collect::<Vec<_>>();
+		if !self.selection_network_path.is_empty() {
+			return SelectionParts {
+				layers: Vec::new(),
+				chain_nodes: Vec::new(),
+				other_nodes: selected_nodes,
+			};
+		}
+
+		let layers = self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+		let layer_nodes = layers.iter().map(|layer| layer.to_node()).collect::<Vec<_>>();
+		let mut other_nodes = selected_nodes.into_iter().filter(|node_id| !layer_nodes.contains(node_id)).collect::<Vec<_>>();
+
+		// Usually only layers are selected, which skips walking their content
+		let mut chain_nodes = Vec::new();
+		if !other_nodes.is_empty() {
+			let layer_content = self
+				.network_interface
+				.upstream_flow_back_from_nodes(layer_nodes, &[], FlowType::LayerChildrenUpstreamFlow)
+				.collect::<HashSet<_>>();
+			other_nodes.retain(|node_id| !layer_content.contains(node_id));
+
+			chain_nodes = self.selected_reorderable_chain_nodes().into_iter().filter(|node_id| other_nodes.contains(node_id)).collect();
+			other_nodes.retain(|node_id| !chain_nodes.contains(node_id));
+		}
+
+		SelectionParts { layers, chain_nodes, other_nodes }
+	}
+
+	/// The given nodes along with the content of any layers among them, in the network open in the graph.
+	pub fn with_layer_content(&self, node_ids: &[NodeId]) -> Vec<NodeId> {
+		let layers = node_ids
+			.iter()
+			.copied()
+			.filter(|node_id| self.network_interface.is_layer(node_id, &self.selection_network_path))
+			.collect();
+		let content = self
+			.network_interface
+			.upstream_flow_back_from_nodes(layers, &self.selection_network_path, FlowType::LayerChildrenUpstreamFlow);
+
+		node_ids.iter().copied().chain(content).collect::<HashSet<_>>().into_iter().collect()
 	}
 
 	/// The selected nodes that can be reordered in layers' chains, ordered by their layer's place in the Layers panel, then from the layer outward.

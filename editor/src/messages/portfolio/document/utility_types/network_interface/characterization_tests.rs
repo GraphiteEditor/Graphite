@@ -835,6 +835,39 @@ async fn pasting_chain_nodes_over_an_empty_selection_puts_loose_copies_in_the_gr
 }
 
 #[tokio::test]
+async fn a_copied_layer_pastes_the_same_whether_copied_in_the_graph_or_not() {
+	for copied_in_graph in [false, true] {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (layer, _, _, _, _) = layer_with_chain_in_artboard(&mut editor).await;
+
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: copied_in_graph }).await;
+		let clipboard = copy_in_graph(&mut editor, vec![layer]).await;
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: false }).await;
+		let pasted = paste(&mut editor, clipboard).await;
+		assert_eq!(pasted.len(), 1, "Only the pasted layer should be selected (copied in the graph: {copied_in_graph})");
+
+		// The copy goes on top of the stack its original is in, bringing its chain along
+		let network_interface = &editor.active_document().network_interface;
+		let metadata = network_interface.document_metadata();
+		let parent = LayerNodeIdentifier::new(layer, network_interface).parent(metadata);
+		assert!(parent.is_some(), "The original layer should be in the layer structure");
+		assert_eq!(
+			parent.and_then(|parent| parent.children(metadata).next()).map(|child| child.to_node()),
+			Some(pasted[0]),
+			"The pasted layer should go on top of the stack (copied in the graph: {copied_in_graph})"
+		);
+		assert_eq!(
+			chain_of(network_interface, pasted[0]).len(),
+			3,
+			"The pasted layer should bring its chain (copied in the graph: {copied_in_graph})"
+		);
+
+		assert_invariants(&editor, "after pasting a copied layer");
+	}
+}
+
+#[tokio::test]
 async fn move_layer_to_stack_builds_the_layer_stack() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;

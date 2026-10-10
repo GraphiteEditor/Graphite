@@ -1,7 +1,6 @@
 use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use crate::consts::GRID_SIZE;
-use crate::messages::clipboard::utility_types::ClipboardItem;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -251,16 +250,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
 			}
-			NodeGraphMessage::Copy => {
-				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
-				// Kept under their own IDs, so a paste can tell when it's over the same nodes
-				let new_ids = &all_selected_nodes.iter().map(|node_id| (*node_id, *node_id)).collect();
-				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
-
-				responses.add(ClipboardMessage::WriteItems {
-					items: vec![ClipboardItem::Nodes(copied_nodes)],
-				});
-			}
+			// Copies and cuts the same way as anywhere else
+			NodeGraphMessage::Copy => responses.add(ClipboardMessage::CopyLayers),
 			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
 				let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) else {
 					return;
@@ -367,10 +358,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input_connector,
 				});
 			}
-			NodeGraphMessage::Cut => {
-				responses.add(NodeGraphMessage::Copy);
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
-			}
+			NodeGraphMessage::Cut => responses.add(ClipboardMessage::CutLayers),
 			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
 				// Detect stroke/fill proto nodes among the doomed nodes before they're gone so the tool control bars can re-sync
 				let stroke = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
