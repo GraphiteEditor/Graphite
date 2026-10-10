@@ -3050,6 +3050,7 @@ impl NodeGraphMessageHandler {
 		hint_data.0.extend([
 			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Subgraph")]),
 			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node Output")]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::MmbDrag, "Pan Graph"), HintInfo::keys([Key::Alt], "Pan Artwork").prepend_plus()]),
 		]);
 		hint_data.send_layout(responses);
 	}
