@@ -340,6 +340,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::RemoveProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
+					responses.add(AppWindowMessage::PointerWrap { enabled: false });
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
@@ -385,6 +386,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::AddProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
+				responses.add(AppWindowMessage::PointerWrap { enabled: true });
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -472,6 +474,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::AddProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
+					responses.add(AppWindowMessage::PointerWrap { enabled: true });
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -511,6 +514,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::RemoveProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
+				responses.add(AppWindowMessage::PointerWrap { enabled: false });
 			}
 			TransformLayerMessage::ConstrainX => {
 				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::X, &mut selected, &self.state, document);

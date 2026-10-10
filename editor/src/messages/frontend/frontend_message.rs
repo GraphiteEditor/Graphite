@@ -357,6 +357,10 @@ pub enum FrontendMessage {
 		position: (f64, f64),
 	},
 	#[cfg(not(target_family = "wasm"))]
+	WindowPointerWrap {
+		enabled: bool,
+	},
+	#[cfg(not(target_family = "wasm"))]
 	WindowUpdateDirectInput {
 		enabled: bool,
 	},

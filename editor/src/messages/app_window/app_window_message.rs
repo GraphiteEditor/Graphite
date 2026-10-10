@@ -5,6 +5,7 @@ use crate::messages::prelude::*;
 pub enum AppWindowMessage {
 	PointerLock,
 	PointerLockMove { x: f64, y: f64 },
+	PointerWrap { enabled: bool },
 	DirectInput { enabled: bool },
 	Restart,
 	Close,

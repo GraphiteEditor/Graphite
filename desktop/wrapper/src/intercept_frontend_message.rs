@@ -106,6 +106,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
 		}
+		FrontendMessage::WindowPointerWrap { enabled } => {
+			dispatcher.respond(DesktopFrontendMessage::PointerWrap { enabled });
+		}
 		FrontendMessage::WindowUpdateDirectInput { enabled } => {
 			dispatcher.respond(DesktopFrontendMessage::WindowUpdateDirectInput { enabled });
 		}

@@ -188,6 +188,11 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
+				// A transform can outlive the tools that started it, so end it here
+				if self.transform_layer_handler.is_transforming() {
+					responses.add(TransformLayerMessage::CancelTransformOperation);
+				}
+
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
 				HintData::clear_layout(responses);

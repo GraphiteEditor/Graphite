@@ -186,14 +186,29 @@ impl Window {
 		self.winit_window.set_cursor(cursor);
 	}
 
-	pub(crate) fn start_pointer_lock(&self) {
-		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
-		self.winit_window.set_cursor_visible(false);
+	pub(crate) fn start_pointer_lock(&self) -> bool {
+		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
+		// Hide the cursor only when the grab took, so a refused lock still leaves the user a cursor
+		if locked {
+			self.winit_window.set_cursor_visible(false);
+		}
+		locked
 	}
 
 	pub(crate) fn end_pointer_lock(&self) {
 		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
 		self.winit_window.set_cursor_visible(true);
+	}
+
+	/// Moves the OS cursor, returning false when the platform refuses.
+	pub(crate) fn set_cursor_position(&self, position: winit::dpi::PhysicalPosition<f64>) -> bool {
+		match self.winit_window.set_cursor_position(position.into()) {
+			Ok(()) => true,
+			Err(e) => {
+				tracing::warn!("Failed to place the cursor: {e}");
+				false
+			}
+		}
 	}
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {
