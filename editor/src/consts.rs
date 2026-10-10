@@ -187,6 +187,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
+pub const DOUBLE_TAP_MILLISECONDS: u64 = 500;
 
 // UI
 pub const UI_SCALE_DEFAULT: f64 = 1.;
