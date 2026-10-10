@@ -521,6 +521,11 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Outline in the viewport the layer under the pointer in the Layers panel, or nothing once the pointer leaves it.
+	fn set_layers_panel_hovered_layer(id: Option<u64>) -> Message {
+		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
+	}
+
 	/// Select exactly the given nodes.
 	fn select_nodes(ids: Vec<u64>) -> Message {
 		NodeGraphMessage::SelectedNodesSet {

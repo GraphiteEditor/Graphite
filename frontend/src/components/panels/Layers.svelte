@@ -760,6 +760,8 @@
 					data-index={index}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
+					on:pointerenter={() => editor.setLayersPanelHoveredLayer(listing.entry.id)}
+					on:pointerleave={() => editor.setLayersPanelHoveredLayer(undefined)}
 				>
 					<IconButton
 						class="status-toggle"
