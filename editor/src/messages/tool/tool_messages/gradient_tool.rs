@@ -17,7 +17,7 @@ use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
-use graphene_std::vector::style::{FillChoice, Gradient, GradientForm, GradientInterpolation, GradientRamp, GradientSettings, GradientStop, build_transform_with_y_preservation};
+use graphene_std::vector::style::{FillChoice, Gradient, GradientFocalPoint, GradientForm, GradientInterpolation, GradientRamp, GradientSettings, GradientStop, build_transform_with_y_preservation};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -144,7 +144,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
 				let ramp = GradientRamp::from(&ramp);
 				self.options.settings = GradientSettings::from(&ramp);
-				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), self.options.settings);
+				apply_stops_update(&mut self.data, context, responses, Gradient::from(&ramp), self.options.settings, ramp.focal_point);
 			}
 			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
 				if self.data.color_picker_transaction_open {
@@ -360,6 +360,7 @@ fn resolve_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 					gradient_form: gradient.gradient_form,
 					settings: gradient.settings,
 					transform: gradient.transform,
+					focal_point: gradient.focal_point,
 				},
 				GradientSource::Direct,
 			));
@@ -378,6 +379,7 @@ struct GradientAppearance {
 	transform: DAffine2,
 	gradient_form: GradientForm,
 	settings: GradientSettings,
+	focal_point: Option<GradientFocalPoint>,
 }
 
 /// Resolve the gradient transform, form, and spread by walking the chain feeding the layer.
@@ -418,6 +420,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 		transform: composed_transform,
 		gradient_form: gradient_form.unwrap_or_default(),
 		settings: get_chain_source_gradient_settings(layer, network_interface).unwrap_or_default(),
+		focal_point: None,
 	}
 }
 
@@ -827,6 +830,7 @@ impl SelectedGradient {
 					gradient_form: self.appearance.gradient_form,
 					gradient_settings: self.appearance.settings,
 					transform: self.appearance.transform,
+					focal_point: self.appearance.focal_point,
 				});
 			}
 		}
@@ -1554,6 +1558,7 @@ impl Fsm for GradientToolFsmState {
 									transform: DAffine2::IDENTITY,
 									gradient_form: tool_options.gradient_form,
 									settings: tool_options.settings,
+									focal_point: None,
 								},
 								// A blank layer, or one holding only the other tool's paint, starts a whole-expanse gradient chain; a layer with content gets its Fill painted
 								if replaceable_paint_chain(layer, &document.network_interface).is_some() {
@@ -1909,6 +1914,7 @@ fn apply_gradient_update(
 					gradient_form: appearance.gradient_form,
 					gradient_settings: appearance.settings,
 					transform: appearance.transform,
+					focal_point: appearance.focal_point,
 				});
 			}
 		}
@@ -1931,7 +1937,14 @@ fn apply_gradient_update(
 /// Set new gradient stops on every selected layer's gradient. Unlike `apply_gradient_update`, this doesn't open its own
 /// transaction so it can be called repeatedly during a color picker drag and have all the changes coalesced into a
 /// single undo entry by the surrounding 'on_commit' callback.
-fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessageContext, responses: &mut VecDeque<Message>, new_gradient: Gradient, settings: GradientSettings) {
+fn apply_stops_update(
+	data: &mut GradientToolData,
+	context: &mut ToolActionMessageContext,
+	responses: &mut VecDeque<Message>,
+	new_gradient: Gradient,
+	settings: GradientSettings,
+	focal_point: Option<GradientFocalPoint>,
+) {
 	let selected_layers: Vec<_> = context
 		.document
 		.network_interface
@@ -1975,6 +1988,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 				gradient_form: appearance.gradient_form,
 				gradient_settings: settings,
 				transform: appearance.transform,
+				focal_point: focal_point.or(appearance.focal_point),
 			});
 			updated_any_layer = true;
 		}

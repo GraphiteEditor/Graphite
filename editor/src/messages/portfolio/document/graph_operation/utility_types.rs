@@ -15,7 +15,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
+use graphene_std::vector::style::{GradientFocalPoint, GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
 use kurbo::BezPath;
@@ -447,14 +447,14 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2, focal_point: Option<GradientFocalPoint>) {
 		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
 		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
 		};
 		let backup_input_connector = InputConnector::node(fill_node_id, graphene_std::vector::fill::BackupGradientInput);
 
-		let ramp = GradientRamp::from(gradient).with_settings(settings);
+		let ramp = GradientRamp::from(gradient).with_settings(settings).with_focal_point(focal_point);
 		self.set_input_with_refresh(backup_input_connector, NodeInput::value(TaggedValue::GradientRamp(ramp.clone()), false), true);
 
 		// Skip the rerender on all but the last input so the whole update triggers a single graph run

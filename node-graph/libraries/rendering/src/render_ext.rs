@@ -1,6 +1,6 @@
 use crate::renderer::{
-	ClearGuardPlacement, ItemRef, RenderParams, composite_paint_colors, faded_paint_color, format_transform_matrix, gradient_placement, gradient_settings_from_item, spread_adjusted_samples,
-	transform_is_invertible,
+	ClearGuardPlacement, ItemRef, RenderParams, composite_paint_colors, faded_paint_color, focal_attributes, format_transform_matrix, gradient_focal_point_from_item, gradient_placement,
+	gradient_settings_from_item, spread_adjusted_samples, transform_is_invertible,
 };
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
@@ -90,6 +90,7 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 	let item = item?;
 	let stops = item.element()?;
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let focal_point = gradient_focal_point_from_item(item);
 	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(item);
 
@@ -160,9 +161,11 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 			);
 		}
 		GradientForm::Radial => {
+			// The focal circle's `fr` is a fraction of the gradient's own radius, which is 1 in this user-space export.
+			let focal_attrs = focal_attributes(focal_point);
 			let _ = write!(
 				svg_defs,
-				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
+				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{focal_attrs}{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
 				gradient_id, stop
 			);
 		}
