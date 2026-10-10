@@ -45,6 +45,7 @@ pub mod session {
 		pub const RENDER_MODE: &str = "ui::render_mode";
 		pub const OVERLAYS: &str = "ui::overlays";
 		pub const RULERS_VISIBLE: &str = "ui::rulers_visible";
+		pub const GUIDE_LINES: &str = "ui::guide_lines";
 		pub const SNAPPING: &str = "ui::snapping";
 		pub const COLLAPSED: &str = "ui::collapsed";
 	}

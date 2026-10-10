@@ -70,6 +70,7 @@ pub async fn round_trip_through_gdd(document: &DocumentMessageHandler) -> RoundT
 		rulers_visible: document.rulers_visible,
 		snapping_state: &document.snapping_state,
 		collapsed: &document.collapsed,
+		guide_lines: &document.guide_lines_message_handler,
 	}
 	.to_view_map();
 	gdd.set_view_settings(view_settings).expect("set_view_settings");
