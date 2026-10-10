@@ -1508,6 +1508,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::ShowNodeInGraph { node_id } => {
+				// The node is in the document network, so the graph first leaves any nested network it's showing
+				if !self.breadcrumb_network_path.is_empty() {
+					responses.add(DocumentMessage::ExitNestedNetwork {
+						steps_back: self.breadcrumb_network_path.len(),
+					});
+				}
+
+				// Opens the graph on the node, centered at 100% zoom
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+				responses.add(DocumentMessage::GraphViewOverlay { open: true });
+				responses.add(NavigationMessage::FitViewportToSelection);
+				responses.add(DocumentMessage::ZoomCanvasTo100Percent);
+			}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
 				responses.add_front(DocumentMessage::CommitTransaction);

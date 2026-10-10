@@ -34,7 +34,7 @@
 		.join(" ");
 </script>
 
-<LayoutRow class={`icon-label ${iconSizeClass} ${nodeIconClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
+<LayoutRow class={`icon-label ${iconSizeClass} ${nodeIconClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltipLabel} {tooltipDescription} {tooltipShortcut} {...$$restProps}>
 	{@html ICON_SVG_STRINGS[icon] || "�"}
 </LayoutRow>
 

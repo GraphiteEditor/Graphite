@@ -223,6 +223,9 @@ pub enum DocumentMessage {
 	SetRenderMode {
 		render_mode: RenderMode,
 	},
+	ShowNodeInGraph {
+		node_id: NodeId,
+	},
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,

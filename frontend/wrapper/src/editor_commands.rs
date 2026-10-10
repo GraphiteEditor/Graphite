@@ -529,6 +529,11 @@ mod editor_commands {
 		.into()
 	}
 
+	/// Select a node in the document network and open the node graph centered on it.
+	fn show_node_in_graph(node_id: u64) -> Message {
+		DocumentMessage::ShowNodeInGraph { node_id: NodeId(node_id) }.into()
+	}
+
 	/// Modify the selection based on the node clicked in the chain feeding a layer, with the same <kbd>Ctrl</kbd> and <kbd>Shift</kbd> behavior as selecting layers.
 	fn select_chain_node(layer: u64, node_id: u64, ctrl: bool, shift: bool) -> Message {
 		DocumentMessage::SelectChainNode {
