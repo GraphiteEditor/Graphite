@@ -4,6 +4,7 @@ use glam::DVec2;
 pub use no_std_types::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
+use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 use std::panic::Location;
 use std::sync::Arc;
@@ -131,6 +132,22 @@ impl<T: Ctx + InjectPointerPosition + ExtractPointerPosition> ModifyPointerPosit
 impl<T: Ctx + InjectPosition + ExtractPosition> ModifyPosition for T {}
 impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
 impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
+
+// ====================
+// CONTEXT MODIFICATION
+// ====================
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, graphene_hash::CacheHash, dyn_any::DynAny)]
+pub struct ContextModification {
+	pub features: ContextFeatures,
+	pub sources: BTreeSet<SourceId>,
+}
+
+impl From<ContextFeatures> for ContextModification {
+	fn from(features: ContextFeatures) -> Self {
+		Self { features, sources: BTreeSet::new() }
+	}
+}
 
 // ================
 // CONTEXT FEATURES
@@ -624,6 +641,16 @@ impl OwnedContextImpl {
 			varargs: None,
 			generations: value.try_generations().cloned(),
 		}
+	}
+
+	#[track_caller]
+	pub fn from_modification<T: ExtractAll + CloneVarArgs>(value: T, modification: &ContextModification) -> Self {
+		let mut context = Self::from_flags(value, modification.features);
+		context.generations = context
+			.generations
+			.map(|generations| generations.iter().filter(|(source, _)| modification.sources.contains(source)).copied().collect::<Generations>())
+			.filter(|generations| !generations.is_empty());
+		context
 	}
 
 	pub const fn empty() -> Self {

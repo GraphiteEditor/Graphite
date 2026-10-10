@@ -195,6 +195,17 @@ impl<T: CacheHash> CacheHash for Vec<T> {
 }
 
 #[cfg(feature = "std")]
+impl<T: CacheHash> CacheHash for std::collections::BTreeSet<T> {
+	#[inline]
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&self.len(), state);
+		for item in self {
+			item.cache_hash(state);
+		}
+	}
+}
+
+#[cfg(feature = "std")]
 impl<T: CacheHash + ?Sized> CacheHash for Box<T> {
 	#[inline]
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {

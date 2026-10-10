@@ -1,5 +1,5 @@
 use core::f64;
-use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
+use core_types::context::{CloneVarArgs, Context, ContextModification, Ctx, ExtractAll};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
 use core_types::{Color, OwnedContextImpl};
@@ -45,9 +45,9 @@ async fn context_modification<T>(
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
-	features_to_keep: Item<ContextFeatures>,
+	modification: Item<ContextModification>,
 ) -> T {
-	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep.into_element());
+	let new_context = OwnedContextImpl::from_modification(ctx, modification.element());
 
 	value.eval(Some(new_context.into())).await
 }
@@ -55,6 +55,7 @@ async fn context_modification<T>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::context::ContextFeatures;
 	use core_types::graphene_hash::CacheHash;
 	use core_types::transform::Footprint;
 	use std::collections::hash_map::DefaultHasher;

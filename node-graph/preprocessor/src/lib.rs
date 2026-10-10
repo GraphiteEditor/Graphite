@@ -351,6 +351,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 					}
 				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
+				RegistryValueSource::SourceId => return NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::SourceId),
 			};
 
 			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Properties panel widgets

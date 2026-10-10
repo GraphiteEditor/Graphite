@@ -241,12 +241,14 @@ impl InlineRust {
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
+	SourceId,
 }
 
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
 			DocumentNodeMetadata::DocumentNodePath => item!(core_types::list::NodeIdPath),
+			DocumentNodeMetadata::SourceId => item!(core_types::SourceId),
 		}
 	}
 }
@@ -956,7 +958,11 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		};
-		debug_assert!(node.context_dependencies.is_none(), "Network {id} should not have context dependencies: {node:#?}");
+		debug_assert!(
+			node.context_dependencies.is_none(),
+			"Network {id} should not have context dependencies: {deps:#?}",
+			deps = node.context_dependencies
+		);
 
 		// Replace value and reflection imports with value nodes, added inside nested network
 		Self::replace_value_inputs_with_nodes(
@@ -1064,6 +1070,7 @@ impl NodeNetwork {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
 					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(core_types::list::NodeIdPath::from(path.to_vec())).into(), false),
+					DocumentNodeMetadata::SourceId => (TaggedValue::SourceId(core_types::SourceId::from_path(path)).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;

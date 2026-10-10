@@ -259,7 +259,7 @@ fn nullification_chain_network(value: TaggedValue) -> ProtoNetwork {
 	let mut memoize_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
 	memoize_node.identifier = graphene_core::memo::memoize::IDENTIFIER;
 
-	let features_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextFeatures(Default::default()).into()), vec![NodeId(2)]);
+	let features_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::ContextModification(Default::default()).into()), vec![NodeId(2)]);
 
 	let mut nullification_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1), NodeId(2)]), vec![NodeId(3)]);
 	nullification_node.identifier = graphene_core::context_modification::context_modification::IDENTIFIER;
