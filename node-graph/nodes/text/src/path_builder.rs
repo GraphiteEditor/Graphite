@@ -1,3 +1,5 @@
+use super::TypesettingConfig;
+use super::text_context::decoration_rects;
 use core_types::list::{Item, List};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
@@ -21,6 +23,12 @@ pub struct PathBuilder {
 	merged_click_target_baselines: Vec<f64>,
 	/// Per-glyph AABBs in glyph-local space (multi-item mode), widened in `finalize()` to fill gaps.
 	per_glyph_bboxes: Vec<Option<[DVec2; 2]>>,
+	/// The signed area of everything drawn into the merged item so far, whose sign is the glyphs' winding direction.
+	glyph_signed_area: f64,
+	/// Decoration rectangles held back while drawing, so they can be wound to match the glyphs once those are all in.
+	buffered_decorations: Vec<Rect>,
+	/// Decoration items held back while drawing in per-glyph mode, so glyph *i* stays item *i*.
+	buffered_decoration_items: Vec<Item<Vector>>,
 	/// Text frame size, stamped per item as `ATTR_EDITOR_TEXT_FRAME` relative to each item's origin.
 	text_frame_size: DVec2,
 	/// First glyph's baseline offset (pre-height-filter). Used for the empty placeholder item so
@@ -37,6 +45,9 @@ impl PathBuilder {
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
+			glyph_signed_area: 0.,
+			buffered_decorations: Vec::new(),
+			buffered_decoration_items: Vec::new(),
 			text_frame_size,
 			first_glyph_offset,
 			scale,
@@ -86,6 +97,8 @@ impl PathBuilder {
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
+			self.glyph_signed_area += self.glyph_bezpath.area();
+
 			// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
 			self.vector_list.element_mut(0).unwrap().append_bezpath(core::mem::take(&mut self.glyph_bezpath));
 
@@ -156,6 +169,25 @@ impl PathBuilder {
 		}
 	}
 
+	pub fn render_decoration_run(&mut self, glyph_run: &GlyphRun<'_, ()>, typesetting: TypesettingConfig, per_glyph_items: bool, x_offset: f32, space_extra: f32, run_spaces: usize) {
+		for rect in decoration_rects(glyph_run, x_offset, space_extra, run_spaces, typesetting) {
+			if per_glyph_items {
+				// Item-local geometry starts at the origin like a glyph's, so the layer-space offset rides only on the transform.
+				let scaled = Rect::new(0., 0., (rect.x1 - rect.x0) * self.scale, (rect.y1 - rect.y0) * self.scale);
+				let translation = DVec2::new(rect.x0, rect.y0);
+				let frame = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -translation);
+				self.buffered_decoration_items.push(
+					Item::new_from_element(Vector::from_bezpath(scaled.to_path(0.)))
+						.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(translation))
+						.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame),
+				);
+			} else {
+				self.buffered_decorations
+					.push(Rect::new(rect.x0 * self.scale, rect.y0 * self.scale, rect.x1 * self.scale, rect.y1 * self.scale));
+			}
+		}
+	}
+
 	pub fn finalize(mut self) -> List<Vector> {
 		// Empty list = all glyphs clipped by height. Create a placeholder with the same item-0
 		// transform a populated list would have so `local_transforms` stays stable mid-drag.
@@ -204,6 +236,25 @@ impl PathBuilder {
 				widened_bezpath.extend(rectangle_bezpath(*min, *max));
 			}
 			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_bezpath(widened_bezpath));
+		}
+
+		// The buffered decorations join the compound wound to match it, so under the nonzero fill rule they paint over
+		// the glyphs instead of cancelling out through them. A text with no glyphs has no winding to match.
+		if !self.buffered_decorations.is_empty() {
+			let glyph_sign = self.glyph_signed_area.signum();
+			let compound = self.vector_list.element_mut(0).unwrap();
+			for rect in core::mem::take(&mut self.buffered_decorations) {
+				let mut path = rect.to_path(0.);
+				if glyph_sign != 0. && path.area().signum() != glyph_sign {
+					path = path.reverse_subpaths();
+				}
+				compound.append_bezpath(path);
+			}
+		}
+
+		for item in core::mem::take(&mut self.buffered_decoration_items) {
+			self.vector_list.push(item);
+			self.per_glyph_bboxes.push(None);
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)
@@ -280,5 +331,127 @@ impl OutlinePen for PathBuilder {
 
 	fn close(&mut self) {
 		self.glyph_bezpath.close_path();
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The signed area of each closed subpath, so a test can tell whether two shapes wind the same way.
+	fn subpath_areas(path: &BezPath) -> Vec<f64> {
+		let mut areas = Vec::new();
+		let mut points = Vec::new();
+		for element in path.iter() {
+			match element {
+				vector_types::kurbo::PathEl::MoveTo(point) => {
+					if points.len() >= 3 {
+						areas.push(shoelace(&points));
+					}
+					points = vec![DVec2::new(point.x, point.y)];
+				}
+				vector_types::kurbo::PathEl::LineTo(point) => points.push(DVec2::new(point.x, point.y)),
+				vector_types::kurbo::PathEl::ClosePath => {
+					if points.len() >= 3 {
+						areas.push(shoelace(&points));
+					}
+					points.clear();
+				}
+				_ => {}
+			}
+		}
+		if points.len() >= 3 {
+			areas.push(shoelace(&points));
+		}
+		areas
+	}
+
+	fn shoelace(points: &[DVec2]) -> f64 {
+		points.iter().enumerate().fold(0., |sum, (index, &point)| {
+			let next = points[(index + 1) % points.len()];
+			sum + point.x * next.y - next.x * point.y
+		}) / 2.
+	}
+
+	/// A triangle wound counter-clockwise (positive area) or clockwise (negative area).
+	fn triangle(counter_clockwise: bool) -> BezPath {
+		let mut path = BezPath::new();
+		let (a, b, c) = (Point::new(0., 0.), Point::new(10., 0.), Point::new(0., 10.));
+		if counter_clockwise {
+			path.move_to(a);
+			path.line_to(b);
+			path.line_to(c);
+		} else {
+			path.move_to(a);
+			path.line_to(c);
+			path.line_to(b);
+		}
+		path.close_path();
+		path
+	}
+
+	fn finalized_with_glyph_and_decoration(glyph: BezPath) -> List<Vector> {
+		let mut builder = PathBuilder::new(false, 1., DVec2::ONE, DVec2::ZERO);
+		builder.glyph_signed_area += glyph.area();
+		builder.vector_list.element_mut(0).unwrap().append_bezpath(glyph);
+		builder.buffered_decorations.push(Rect::new(2., 4., 8., 5.));
+		builder.finalize()
+	}
+
+	fn output_subpath_areas(output: &List<Vector>) -> Vec<f64> {
+		let vector = output.element(0).expect("a merged text always has its compound item");
+		vector.stroke_bezpath_iter().flat_map(|path| subpath_areas(&path)).collect()
+	}
+
+	#[test]
+	fn a_decoration_winds_with_counter_clockwise_glyphs() {
+		let areas = output_subpath_areas(&finalized_with_glyph_and_decoration(triangle(true)));
+		assert_eq!(areas.len(), 2, "the glyph and its decoration should both be present");
+		assert!(areas.iter().all(|&area| area > 0.), "a counter-clockwise glyph must gain a counter-clockwise decoration, got {areas:?}");
+	}
+
+	#[test]
+	fn a_decoration_winds_with_clockwise_glyphs() {
+		let areas = output_subpath_areas(&finalized_with_glyph_and_decoration(triangle(false)));
+		assert_eq!(areas.len(), 2, "the glyph and its decoration should both be present");
+		assert!(areas.iter().all(|&area| area < 0.), "a clockwise glyph must gain a clockwise decoration, got {areas:?}");
+	}
+
+	#[test]
+	fn per_glyph_decoration_items_land_on_the_run() {
+		use crate::text_context::{TextContext, decoration_rects, for_each_styled_glyph_run};
+		use crate::{FALLBACK_FONT_RESOURCE, TypesettingConfig};
+
+		let typesetting = TypesettingConfig {
+			underline: true,
+			..TypesettingConfig::default()
+		};
+		let layout = TextContext::with_thread_local(|ctx| ctx.layout_text("Hi", &FALLBACK_FONT_RESOURCE, typesetting)).expect("layout should succeed");
+
+		let mut expected = Vec::new();
+		for_each_styled_glyph_run(&layout, "Hi", typesetting, |run, _, space_extra, run_spaces| {
+			expected.extend(decoration_rects(run, 50., space_extra, run_spaces, typesetting));
+		});
+		assert_eq!(expected.len(), 1, "the laid-out text should be one run");
+
+		let mut builder = PathBuilder::new(true, 1., DVec2::ONE, DVec2::ZERO);
+		// A nonzero x offset proves the item transform isn't applied on top of absolute geometry.
+		// Glyphs are drawn first, exactly like the per-glyph text pipeline does, so no empty placeholder appears.
+		for_each_styled_glyph_run(&layout, "Hi", typesetting, |run, _, space_extra, run_spaces| {
+			builder.render_glyph_run(run, 0., true, 50., space_extra);
+			builder.render_decoration_run(run, typesetting, true, 50., space_extra, run_spaces);
+		});
+		let output = builder.finalize();
+		assert_eq!(output.len(), 3, "two glyphs plus one decoration item, got {}", output.len());
+
+		let vector = output.element(2).expect("the decoration item should come after its glyphs");
+		let offset = output.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 2).translation;
+		let [min, max] = vector.bounding_box().expect("the decoration should have bounds");
+
+		// World rect = item offset + item-local geometry. Absolute geometry here would count the offset twice.
+		let world = [min + offset, max + offset];
+		let wanted = [DVec2::new(expected[0].x0, expected[0].y0), DVec2::new(expected[0].x1, expected[0].y1)];
+		assert!((world[0] - wanted[0]).length() < 1e-6, "got {world:?} for {wanted:?}");
+		assert!((world[1] - wanted[1]).length() < 1e-6, "got {world:?} for {wanted:?}");
 	}
 }

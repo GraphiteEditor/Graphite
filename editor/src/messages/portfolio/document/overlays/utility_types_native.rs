@@ -1089,6 +1089,9 @@ impl OverlayContextInternal {
 			max_width: None,
 			max_height: None,
 			align: TextAlign::AlignLeft,
+			underline: false,
+			overline: false,
+			strikethrough: false,
 		};
 
 		// Lay out the text once, taking its dimensions and vector paths from the same thread-local context pass

@@ -54,6 +54,8 @@ pub enum FrontendMessage {
 		align: String,
 		#[serde(rename = "alignLast")]
 		align_last: String,
+		#[serde(rename = "textDecoration")]
+		text_decoration: String,
 	},
 	DisplayEditableTextboxUpdateFontData {
 		#[serde(rename = "fontData")]

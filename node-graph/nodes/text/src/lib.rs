@@ -21,7 +21,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub use core_types as gcore;
 pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
-pub use text_context::{TextContext, for_each_styled_glyph_run};
+pub use text_context::{TextContext, decoration_rects, for_each_styled_glyph_run};
 pub use to_path::*;
 pub use vector_types;
 
@@ -101,6 +101,9 @@ pub struct TypesettingConfig {
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
 	pub align: TextAlign,
+	pub underline: bool,
+	pub overline: bool,
+	pub strikethrough: bool,
 }
 
 impl Default for TypesettingConfig {
@@ -113,6 +116,9 @@ impl Default for TypesettingConfig {
 			max_width: None,
 			max_height: None,
 			align: TextAlign::default(),
+			underline: false,
+			overline: false,
+			strikethrough: false,
 		}
 	}
 }
