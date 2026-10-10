@@ -1,7 +1,6 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use core_types::context::ContextDependencies;
 use core_types::uuid::NodeId;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -244,11 +243,6 @@ fn test_nested_network_flattening() {
 #[test]
 fn test_metadata_preservation() {
 	// Create a network with nodes that have non-default metadata
-	let context_features = ContextDependencies {
-		extract: core_types::context::ContextFeatures::FOOTPRINT | core_types::context::ContextFeatures::REAL_TIME,
-		..Default::default()
-	};
-
 	let network = NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: [
@@ -258,7 +252,6 @@ fn test_metadata_preservation() {
 					inputs: vec![NodeInput::import(concrete!(f64), 0), NodeInput::import(Type::Generic(Cow::Borrowed("T")), 1)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::NodeWithMetadata")),
 					call_argument: concrete!(String),
-					context_features,
 					visible: false,           // Non-default value
 					skip_deduplication: true, // Non-default value
 					..Default::default()
@@ -291,9 +284,6 @@ fn test_metadata_preservation() {
 	let orig_node_1 = network.nodes.get(&NodeId(1)).unwrap();
 	let conv_node_1 = converted.nodes.get(&NodeId(1)).unwrap();
 	assert_eq!(orig_node_1.call_argument, conv_node_1.call_argument, "call_argument for node 1 should be preserved");
-
-	// Verify context_features is preserved
-	assert_eq!(orig_node_0.context_features, conv_node_0.context_features, "context_features should be preserved");
 
 	// Verify visible is preserved
 	assert_eq!(orig_node_0.visible, conv_node_0.visible, "visible should be preserved");
@@ -351,11 +341,6 @@ fn test_demo_artwork_round_trip() {
 			assert_eq!(
 				orig_node.call_argument, conv_node.call_argument,
 				"{}: call_argument should be preserved for node {:?}",
-				artwork_name, node_id
-			);
-			assert_eq!(
-				orig_node.context_features, conv_node.context_features,
-				"{}: context_features should be preserved for node {:?}",
 				artwork_name, node_id
 			);
 			assert_eq!(orig_node.visible, conv_node.visible, "{}: visible should be preserved for node {:?}", artwork_name, node_id);

@@ -52,7 +52,6 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::Appearance;
-use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};

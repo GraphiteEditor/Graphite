@@ -193,21 +193,6 @@ impl NodeMut<'_> {
 		changed
 	}
 
-	/// The Extract and Inject annotations the node declares for the Context.
-	pub(crate) fn set_context_features(&mut self, context_features: ContextDependencies) -> bool {
-		let changed = self.node.context_features != context_features;
-		self.node.context_features = context_features;
-		if changed {
-			let delta = RuntimeDelta::SetContextFeatures {
-				network_path: self.deltas.network_path(),
-				node_id: self.deltas.node_id(),
-				context_features: self.node.context_features,
-			};
-			self.deltas.graph(delta);
-		}
-		changed
-	}
-
 	/// The user-chosen name for this instance, empty when it has none.
 	pub(crate) fn set_display_name(&mut self, display_name: String) -> bool {
 		let changed = self.metadata.display_name != display_name;

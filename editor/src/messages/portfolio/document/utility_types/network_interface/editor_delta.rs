@@ -209,17 +209,6 @@ impl EditorDelta {
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetContextFeatures {
-				network_path,
-				node_id,
-				context_features,
-			}) => {
-				ops.push(RegistryDelta::ChangeNodeAttribute {
-					id: context.resolver.node_id(network_path, *node_id),
-					delta: document_graph_storage::from_runtime::encode_context_features(context_features)?,
-				});
-			}
-
 			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
 				construct_metadata_snapshot(network_path, *node_id, metadata, batch, &context.resolver, ops)?;
 			}

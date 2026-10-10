@@ -73,16 +73,6 @@ impl NodeNetworkInterface {
 				}
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetContextFeatures {
-				network_path,
-				node_id,
-				context_features,
-			}) => {
-				if let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) {
-					node.set_context_features(*context_features);
-				}
-			}
-
 			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
 				if let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) {
 					node.replace_metadata((**metadata).clone());

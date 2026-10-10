@@ -13,10 +13,17 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+#[derive(Debug, Clone)]
+struct Substitution {
+	node: DocumentNode,
+	wrapped_node_id: NodeId,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Preprocessor {
-	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
+	substitutions: HashMap<ProtoNodeIdentifier, Substitution>,
 	inject_scopes: HashMap<ProtoNodeIdentifier, (DocumentNode, Type)>,
+	context_dependencies: HashMap<ProtoNodeIdentifier, ContextDependencies>,
 }
 
 impl Preprocessor {
@@ -94,7 +101,9 @@ impl Preprocessor {
 			match &mut node.implementation {
 				DocumentNodeImplementation::Network(node_network) => self.expand_network(node_network),
 				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-					if let Some(new_node) = self.substitutions.get(proto_node_identifier) {
+					let context_dependencies = node.context_dependencies.take().or_else(|| self.context_dependencies.get(proto_node_identifier).copied());
+
+					if let Some(Substitution { node: new_node, wrapped_node_id }) = self.substitutions.get(proto_node_identifier) {
 						// Reconcile the document node's inputs with what the current node definition expects,
 						// since the saved document may have fewer or more inputs than the current version
 						while node.inputs.len() < new_node.inputs.len() {
@@ -103,6 +112,15 @@ impl Preprocessor {
 						node.inputs.truncate(new_node.inputs.len());
 
 						node.implementation = new_node.implementation.clone();
+
+						// Move context dependencies to the wrapped node because networks are not allowed to have context dependencies so we need to
+						if let DocumentNodeImplementation::Network(network) = &mut node.implementation
+							&& let Some(wrapped_node) = network.nodes.get_mut(wrapped_node_id)
+						{
+							wrapped_node.context_dependencies = context_dependencies;
+						}
+					} else {
+						node.context_dependencies = context_dependencies;
 					}
 				}
 				DocumentNodeImplementation::Extract => (),
@@ -112,6 +130,7 @@ impl Preprocessor {
 
 	pub fn new() -> Self {
 		let mut substitutions = HashMap::new();
+		let mut context_dependencies = HashMap::new();
 		let mut inject_scopes = HashMap::new();
 		// We pre initialize the node registry here to avoid a deadlock
 		let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
@@ -120,6 +139,8 @@ impl Preprocessor {
 			let id = id.clone();
 
 			let NodeMetadata { fields, memoize, inject_scope, .. } = metadata;
+			context_dependencies.insert(id.clone(), ContextDependencies::from(metadata.context_features.as_slice()));
+
 			let Some(implementations) = node_registry.get(&id) else { continue };
 			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 			let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -242,17 +263,17 @@ impl Preprocessor {
 				implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 				visible: true,
 				skip_deduplication: false,
-				context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 				..Default::default()
 			};
 
-			nodes.insert(NodeId(input_count as u64), document_node);
+			let wrapped_node_id = NodeId(input_count as u64);
+			nodes.insert(wrapped_node_id, document_node);
 
 			// If memoize is requested, append a Memoize node after the main node and redirect the export through it
 			let export_node_id = if *memoize {
 				let memoize_node_id = NodeId(input_count as u64 + 1);
 				let memoize_node = DocumentNode {
-					inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
+					inputs: vec![NodeInput::node(wrapped_node_id, 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
 					visible: true,
 					..Default::default()
@@ -260,7 +281,7 @@ impl Preprocessor {
 				nodes.insert(memoize_node_id, memoize_node);
 				memoize_node_id
 			} else {
-				NodeId(input_count as u64)
+				wrapped_node_id
 			};
 
 			let node = DocumentNode {
@@ -280,7 +301,7 @@ impl Preprocessor {
 				..Default::default()
 			};
 
-			substitutions.insert(id.clone(), node);
+			substitutions.insert(id.clone(), Substitution { node, wrapped_node_id });
 
 			// If `inject_scope` is requested, prepare the proto node template and type info needed
 			if *inject_scope
@@ -292,14 +313,17 @@ impl Preprocessor {
 					call_argument: node_io.call_argument.clone(),
 					implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 					visible: true,
-					context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 					..Default::default()
 				};
 				inject_scopes.insert(id.clone(), (template, node_io.return_value.clone()));
 			}
 		}
 
-		Self { substitutions, inject_scopes }
+		Self {
+			substitutions,
+			context_dependencies,
+			inject_scopes,
+		}
 	}
 }
 
@@ -416,5 +440,52 @@ mod tests {
 			TaggedValue::Color(Color::BLACK),
 			"The paint input's `Color::BLACK` default should parse against its `Item<Graphic>` wire type"
 		);
+	}
+
+	#[test]
+	fn substitution_moves_context_dependencies_onto_the_wrapped_node() {
+		let identifier = graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER;
+		let context_dependencies = ContextDependencies {
+			extract: ContextFeatures::FOOTPRINT,
+			inject: ContextFeatures::INDEX,
+		};
+		let mut network = NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(identifier.clone()),
+					context_dependencies: Some(context_dependencies),
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		Preprocessor::new().expand_network(&mut network);
+
+		let node = &network.nodes[&NodeId(0)];
+		assert_eq!(
+			node.context_dependencies, None,
+			"The network node replacing the substituted node should not keep its context dependencies"
+		);
+		let DocumentNodeImplementation::Network(substitution) = &node.implementation else {
+			panic!("Boolean Operation is memoized, so it should be substituted with a network");
+		};
+
+		let wrapped_node = substitution
+			.nodes
+			.values()
+			.find(|inner| inner.implementation == DocumentNodeImplementation::ProtoNode(identifier.clone()))
+			.expect("The substitution network should contain the wrapped proto node");
+		assert_eq!(wrapped_node.context_dependencies, Some(context_dependencies), "The wrapped proto node should carry the override");
+
+		let NodeInput::Node { node_id: export_id, .. } = substitution.exports[0] else {
+			panic!("The substitution network should export a node");
+		};
+		let export = &substitution.nodes[&export_id];
+		assert_eq!(export.implementation, DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER));
+		assert_eq!(export.context_dependencies, None, "The memoize node should not take over the wrapped node's context dependencies");
 	}
 }

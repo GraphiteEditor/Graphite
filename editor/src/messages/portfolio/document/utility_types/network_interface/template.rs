@@ -23,8 +23,6 @@ pub struct NodeTemplate {
 	pub visible: bool,
 	/// Prevents identical proto nodes from being deduplicated during compilation, e.g. for monitor nodes.
 	pub skip_deduplication: bool,
-	/// List of Extract and Inject annotations for the Context.
-	pub context_features: ContextDependencies,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed in italics.
 	pub display_name: String,
 	/// Metadata to override the properties panel widgets for each input. Kept the same length as `inputs`.
@@ -58,7 +56,6 @@ impl Default for NodeTemplate {
 			implementation: NodeTemplateImplementation::default(),
 			visible: true,
 			skip_deduplication: false,
-			context_features: ContextDependencies::default(),
 			display_name: String::new(),
 			input_metadata: Vec::new(),
 			output_names: Vec::new(),
@@ -114,7 +111,7 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
+			context_dependencies: _,
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
@@ -159,7 +156,6 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
 			display_name,
 			input_metadata,
 			output_names,
@@ -177,7 +173,6 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
 			display_name,
 			mut input_metadata,
 			output_names,
@@ -197,7 +192,7 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
+			context_dependencies: None,
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {

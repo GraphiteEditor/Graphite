@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use core_types::Context;
-use core_types::context::ContextDependencies;
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
@@ -437,9 +436,6 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 		.set_if_not_default(node::CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
 		.map_err(map_serialization_error(node::CALL_ARGUMENT))?;
 	attributes
-		.set_if_not_default(node::CONTEXT_FEATURES, &doc_node.context_features, &ContextDependencies::default(), timestamp)
-		.map_err(map_serialization_error(node::CONTEXT_FEATURES))?;
-	attributes
 		.set_if_not_default(node::VISIBLE, &doc_node.visible, &true, timestamp)
 		.map_err(map_serialization_error(node::VISIBLE))?;
 	attributes
@@ -461,11 +457,6 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 /// `to_runtime` rehydrates an absent key from. For staging paths that encode this field alone.
 pub fn encode_call_argument(call_argument: &core_types::Type) -> Result<crate::AttributeDelta, ConversionError> {
 	encode_if_not_default(node::CALL_ARGUMENT, call_argument, &concrete!(Context))
-}
-
-/// The `context_features` attribute write, cleared at its default like [`encode_call_argument`].
-pub fn encode_context_features(context_features: &ContextDependencies) -> Result<crate::AttributeDelta, ConversionError> {
-	encode_if_not_default(node::CONTEXT_FEATURES, context_features, &ContextDependencies::default())
 }
 
 fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default: &T) -> Result<crate::AttributeDelta, ConversionError> {
