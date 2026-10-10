@@ -87,6 +87,7 @@ pub struct TransformLayerMessageHandler {
 	ptz: PTZ,
 	initial_transform: DAffine2,
 	operation_count: usize,
+	scaled_in_sequence: bool,
 	was_grabbing: bool,
 
 	// Pen tool (outgoing handle GRS manipulation)
@@ -311,9 +312,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::ApplyTransformOperation { final_transform } => {
 				selected.original_transforms.clear();
 				self.typing.clear();
+				let bake_scale = final_transform && self.scaled_in_sequence;
 				if final_transform {
 					self.transform_operation = TransformOperation::None;
 					self.operation_count = 0;
+					self.scaled_in_sequence = false;
 				}
 
 				if using_pen_tool {
@@ -324,6 +327,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					selected.responses.add(PenToolMessage::Confirm);
 				} else {
 					update_colinear_handles(&selected_layers, document, responses);
+					// A grab or rotate must not fold an existing scale into the generator
+					if bake_scale {
+						for &layer in &selected_layers {
+							responses.add(GraphOperationMessage::BakeShapeScale { layer });
+						}
+					}
 					responses.add(DocumentMessage::EndTransaction);
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -347,7 +356,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.transform_operation = match operation {
 					TransformType::Grab => TransformOperation::Grabbing(Default::default()),
 					TransformType::Rotate => TransformOperation::Rotating(Default::default()),
-					TransformType::Scale => TransformOperation::Scaling(Default::default()),
+					TransformType::Scale => {
+						self.scaled_in_sequence = true;
+						TransformOperation::Scaling(Default::default())
+					}
 				};
 				self.layer_bounding_box = selected.bounding_box();
 				let bounding_box = select_tool::create_bounding_box_transform(document);
@@ -483,6 +495,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::BeginRotate => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Rotate }),
 			TransformLayerMessage::BeginScale => responses.add_front(TransformLayerMessage::BeginGRS { operation: TransformType::Scale }),
 			TransformLayerMessage::CancelTransformOperation => {
+				self.scaled_in_sequence = false;
 				if using_path_tool {
 					self.ghost_outline.clear();
 					self.was_grabbing = false;
@@ -926,14 +939,15 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-
-		// Check scaling components have changed
-		let scale_diff_x = (final_transform.matrix2.x_axis.x - original_transform.matrix2.x_axis.x).abs();
-		let scale_diff_y = (final_transform.matrix2.y_axis.y - original_transform.matrix2.y_axis.y).abs();
+		let (width, height) = rectangle_size(&editor, layer);
 
 		assert!(
-			scale_diff_x > 0.1 || scale_diff_y > 0.1,
-			"Scaling should have changed the transform matrix. Diffs: x={scale_diff_x}, y={scale_diff_y}"
+			(width - 100.).abs() > 1. || (height - 100.).abs() > 1.,
+			"Scaling should change the rectangle size instead of leaving it at 100x100, got {width}x{height}"
+		);
+		assert!(
+			(final_transform.matrix2.x_axis.length() - original_transform.matrix2.x_axis.length()).abs() < 0.05,
+			"Scaling a rectangle should not leave the size change on the Transform node"
 		);
 	}
 
@@ -1030,9 +1044,14 @@ mod test_transform_layer {
 
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let (width, height) = rectangle_size(&editor, layer);
 
-		assert!(final_transform.abs_diff_eq(after_scale_transform, 1e-5), "Final transform should match the transform before committing");
-		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Final transform should be different from original transform");
+		assert!(width > 100. && height > 100., "Committed scale should be stored on the rectangle, got {width}x{height}");
+		assert!(
+			(final_transform.matrix2.x_axis.length() - 1.).abs() < 0.05,
+			"Committed rectangle scale should not stay on the Transform node"
+		);
+		assert!(!final_transform.abs_diff_eq(original_transform, 1e-5), "Rotation from the chained transform should remain");
 	}
 
 	#[tokio::test]
@@ -1053,12 +1072,14 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let (width, height) = rectangle_size(&editor, layer);
 
+		assert!((width - 200.).abs() < 1., "Panned 2x scale should set rectangle width to 200, got {width}");
+		assert!((height - 200.).abs() < 1., "Panned 2x scale should set rectangle height to 200, got {height}");
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
-
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
+		assert!((scale_x - 1.).abs() < 0.05, "Transform scale X should stay 1 after baking, got {scale_x}");
+		assert!((scale_y - 1.).abs() < 0.05, "Transform scale Y should stay 1 after baking, got {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1079,12 +1100,14 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		let (width, height) = rectangle_size(&editor, layer);
 
+		assert!((width - 200.).abs() < 1., "Zoomed 2x scale should set rectangle width to 200, got {width}");
+		assert!((height - 200.).abs() < 1., "Zoomed 2x scale should set rectangle height to 200, got {height}");
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
-
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
+		assert!((scale_x - 1.).abs() < 0.05, "Transform scale X should stay 1 after baking, got {scale_x}");
+		assert!((scale_y - 1.).abs() < 0.05, "Transform scale Y should stay 1 after baking, got {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1166,13 +1189,13 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let near_zero_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		// Verify scale is near zero.
-		let scale_x = near_zero_transform.matrix2.x_axis.length();
-		let scale_y = near_zero_transform.matrix2.y_axis.length();
-		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {scale_x}");
-		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {scale_y}");
-		assert!(scale_x > 0., "Scale factor X should not be exactly zero");
-		assert!(scale_y > 0., "Scale factor Y should not be exactly zero");
+		let (width, height) = rectangle_size(&editor, layer);
+		assert!(width.abs() < 0.2 && height.abs() < 0.2, "Near-zero scale should shrink the rectangle, got {width}x{height}");
+		assert!(width.abs() > 0. && height.abs() > 0., "Near-zero scale should not wipe the rectangle out");
+		assert!(
+			(near_zero_transform.matrix2.x_axis.length() - 1.).abs() < 0.05,
+			"The tiny size should live on the rectangle, not the Transform scale"
+		);
 
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
@@ -1236,10 +1259,6 @@ mod test_transform_layer {
 			})
 			.await;
 
-		// Get the group layer (should be the newest layer)
-		let document = editor.active_document();
-		let group_layer = document.metadata().all_layers().next().unwrap();
-
 		// Test 1: Transform single layer
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layers[0].to_node()] }).await;
 		let original_transform = get_layer_transform(&mut editor, layers[0]).await.unwrap();
@@ -1280,14 +1299,35 @@ mod test_transform_layer {
 			"Transform should change for second layer in multi-selection"
 		);
 
-		// Test 3: Transform group
+		// Test 3: Scaling a group keeps the scale on the group Transform.
+		// A group has no single rectangle or ellipse size, so the child generator numbers stay put.
+		let document = editor.active_document();
+		let group_layer = document
+			.metadata()
+			.all_layers()
+			.find(|layer| layer.has_children(document.metadata()))
+			.expect("Grouping two rectangles should produce a folder");
+		let child_sizes: Vec<(f64, f64)> = {
+			let document = editor.active_document();
+			group_layer.children(document.metadata()).filter_map(|layer| rectangle_size_if_present(&editor, layer)).collect()
+		};
+		assert_eq!(child_sizes.len(), 2, "The group should contain the two rectangles that were grouped");
+
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![group_layer.to_node()] }).await;
-		let original_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
 		editor.handle_message(TransformLayerMessage::BeginScale).await;
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
 		let final_group_transform = get_layer_transform(&mut editor, group_layer).await.unwrap();
-		assert!(!final_group_transform.abs_diff_eq(original_group_transform, 1e-5), "Transform should change for group");
+		let scale_x = final_group_transform.matrix2.x_axis.length();
+		let scale_y = final_group_transform.matrix2.y_axis.length();
+		assert!((scale_x - 2.).abs() < 0.05, "Group scale should stay on the Transform node, got {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.05, "Group scale should stay on the Transform node, got {scale_y}");
+		let scaled_child_sizes: Vec<(f64, f64)> = {
+			let document = editor.active_document();
+			group_layer.children(document.metadata()).filter_map(|layer| rectangle_size_if_present(&editor, layer)).collect()
+		};
+		assert_eq!(scaled_child_sizes, child_sizes, "Grouping must not bake the scale into the child rectangles");
 
 		// Test 4: Transform layers inside transformed group
 		let child_layer_id = {
@@ -1318,5 +1358,137 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
 		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
+	}
+
+	fn rectangle_size_if_present(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Option<(f64, f64)> {
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::vector::generator_nodes::rectangle;
+
+		let document = editor.active_document();
+		let node_id = NodeGraphLayer::new(layer, &document.network_interface).upstream_node_id_from_protonode(rectangle::IDENTIFIER)?;
+		let node = document.network_interface.document_network().nodes.get(&node_id)?;
+		let number = |input: Option<&graph_craft::document::NodeInput>| match input.and_then(|input| input.as_value()) {
+			Some(TaggedValue::Number(value)) => Some(*value),
+			_ => None,
+		};
+		Some((number(node.input(rectangle::WidthInput))?, number(node.input(rectangle::HeightInput))?))
+	}
+
+	fn rectangle_size(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> (f64, f64) {
+		rectangle_size_if_present(editor, layer).expect("rectangle size")
+	}
+
+	fn ellipse_radii(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> (f64, f64) {
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::vector::generator_nodes::ellipse;
+
+		let document = editor.active_document();
+		let node_id = NodeGraphLayer::new(layer, &document.network_interface)
+			.upstream_node_id_from_protonode(ellipse::IDENTIFIER)
+			.expect("ellipse node");
+		let node = document.network_interface.document_network().nodes.get(&node_id).expect("ellipse document node");
+		let number = |input: Option<&graph_craft::document::NodeInput>| match input.and_then(|input| input.as_value()) {
+			Some(TaggedValue::Number(value)) => *value,
+			other => panic!("expected a number, got {other:?}"),
+		};
+		(number(node.input(ellipse::RadiusXInput)), number(node.input(ellipse::RadiusYInput)))
+	}
+
+	#[tokio::test]
+	async fn test_scale_bakes_into_rectangle_and_ellipse_size() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rectangle_layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		editor
+			.handle_message(NodeGraphMessage::SetInput {
+				input_connector: {
+					use graphene_std::vector::generator_nodes::rectangle;
+					let node_id = NodeGraphLayer::new(rectangle_layer, &editor.active_document().network_interface)
+						.upstream_node_id_from_protonode(rectangle::IDENTIFIER)
+						.unwrap();
+					crate::messages::portfolio::document::utility_types::network_interface::InputConnector::node(node_id, rectangle::WidthInput)
+				},
+				input: graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::Number(40.), false),
+			})
+			.await;
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let (width, height) = rectangle_size(&editor, rectangle_layer);
+		let rectangle_transform = get_layer_transform(&mut editor, rectangle_layer).await.unwrap();
+		assert!((width - 80.).abs() < 1e-6, "Typed width of 40 scaled by 2 should be 80, got {width}");
+		assert!((height - 200.).abs() < 1e-6, "Drawn height of 100 scaled by 2 should be 200, got {height}");
+		assert!(
+			(rectangle_transform.matrix2.x_axis.length() - 1.).abs() < 1e-6,
+			"Rectangle transform scale should be 1 after the scale is baked"
+		);
+
+		editor.drag_tool(ToolType::Ellipse, 0., 0., 80., 40., ModifierKeys::empty()).await;
+		let ellipse_layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let (radius_x, radius_y) = ellipse_radii(&editor, ellipse_layer);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![ellipse_layer.to_node()] }).await;
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		let (scaled_radius_x, scaled_radius_y) = ellipse_radii(&editor, ellipse_layer);
+		let ellipse_transform = get_layer_transform(&mut editor, ellipse_layer).await.unwrap();
+		assert!((scaled_radius_x - radius_x * 2.).abs() < 1e-6, "Ellipse radius X should double, from {radius_x} to {scaled_radius_x}");
+		assert!((scaled_radius_y - radius_y * 2.).abs() < 1e-6, "Ellipse radius Y should double, from {radius_y} to {scaled_radius_y}");
+		assert!(
+			(ellipse_transform.matrix2.x_axis.length() - 1.).abs() < 1e-6,
+			"Ellipse transform scale should be 1 after the scale is baked"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_grab_does_not_bake_existing_scale() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_scale(glam::DVec2::splat(2.)),
+				transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let (width, height) = rectangle_size(&editor, layer);
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let (width_after_grab, height_after_grab) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert_eq!(width_after_grab, width, "Moving must not rewrite the rectangle width");
+		assert_eq!(height_after_grab, height, "Moving must not rewrite the rectangle height");
+		assert!((transform.matrix2.x_axis.length() - 2.).abs() < 1e-6, "An existing scale must stay on the Transform node after a move");
+	}
+
+	#[tokio::test]
+	async fn test_scale_then_grab_still_bakes() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let (width, height) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			(width - 200.).abs() < 1e-6 && (height - 200.).abs() < 1e-6,
+			"A scale chained into a move should still bake, got {width}x{height}"
+		);
+		assert!((transform.matrix2.x_axis.length() - 1.).abs() < 1e-6, "The chained scale should leave the Transform scale at 1");
 	}
 }

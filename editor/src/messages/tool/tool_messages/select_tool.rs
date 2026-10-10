@@ -1620,6 +1620,13 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+				if !drag_too_small && matches!(self, SelectToolFsmState::ResizingBounds) {
+					for &layer in &tool_data.layers_dragging {
+						if layer != LayerNodeIdentifier::ROOT_PARENT {
+							responses.add(GraphOperationMessage::BakeShapeScale { layer });
+						}
+					}
+				}
 
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
