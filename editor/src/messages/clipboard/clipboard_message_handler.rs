@@ -320,7 +320,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					responses.add(ClipboardMessage::PasteLayers { entries: layers });
 				}
 				for nodes in node_groups {
-					responses.add(NodeGraphMessage::InsertNodes { nodes });
+					responses.add(DocumentMessage::PasteNodes { nodes });
 				}
 				for copies in chain_node_groups {
 					responses.add(DocumentMessage::PasteChainNodes { copies });

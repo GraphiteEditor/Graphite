@@ -862,18 +862,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::PasteChainNodes { copies } => {
-				// Layers and their chains live in the document network, not inside a nested one open in the graph
-				if !self.selection_network_path.is_empty() {
-					return;
-				}
-
-				let chain_nodes = self.selected_reorderable_chain_nodes();
-				let layers = self
-					.network_interface
-					.selected_nodes()
-					.selected_layers(self.metadata())
-					.map(|layer| layer.to_node())
-					.collect::<Vec<_>>();
+				// Layers and their chains live in the document network, so a nested one open in the graph has no chain to paste into
+				let (chain_nodes, layers) = if self.selection_network_path.is_empty() {
+					let layers = self.network_interface.selected_nodes().selected_layers(self.metadata()).map(|layer| layer.to_node()).collect();
+					(self.selected_reorderable_chain_nodes(), layers)
+				} else {
+					(Vec::new(), Vec::new())
+				};
 
 				// Selected chain nodes interleave with the copies: over the same selection that was copied, each node gets its own copy beside it (like duplicating),
 				// and over a different selection of the same size, the copies pair with those nodes in order. Otherwise, all the copies go beside every selected node.
@@ -890,7 +885,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Each selected layer gets all the copies at the end of its chain
 				insertions.extend(layers.into_iter().map(|layer| (ChainInsertionPoint::BesideLayer(layer), copies.clone())));
 
+				// With no chain to go in, such as over an empty selection, the copies are pasted loose into the graph and shown there
 				if insertions.is_empty() {
+					let nodes = copies.into_iter().map(|copy| (copy.source, copy.into_loose_template())).collect();
+					responses.add(NodeGraphMessage::InsertNodes { nodes });
+					responses.add(DocumentMessage::ShowSelectionInGraph);
 					return;
 				}
 
@@ -903,6 +902,18 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::PasteNodes { nodes } => {
+				// Over the same selection they were copied from, nodes are duplicated into their flow, and otherwise they're pasted loose into the graph and shown there
+				let copied = nodes.iter().map(|(node_id, _)| *node_id).collect::<HashSet<_>>();
+				let selected = self.network_interface.upstream_chain_nodes(&self.selection_network_path).into_iter().collect::<HashSet<_>>();
+				if !copied.is_empty() && copied == selected {
+					responses.add(DocumentMessage::DuplicateSelectedLayers);
+					return;
+				}
+
+				responses.add(NodeGraphMessage::InsertNodes { nodes });
+				responses.add(DocumentMessage::ShowSelectionInGraph);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -1516,8 +1527,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 				}
 
-				// Opens the graph on the node, centered at 100% zoom
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+				responses.add(DocumentMessage::ShowSelectionInGraph);
+			}
+			DocumentMessage::ShowSelectionInGraph => {
+				// Opens the graph on the selection, centered at 100% zoom
 				responses.add(DocumentMessage::GraphViewOverlay { open: true });
 				responses.add(NavigationMessage::FitViewportToSelection);
 				responses.add(DocumentMessage::ZoomCanvasTo100Percent);

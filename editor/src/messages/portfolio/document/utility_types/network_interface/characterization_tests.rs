@@ -738,6 +738,102 @@ async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content
 	assert_invariants(&editor, "after duplicating a solo floating layer");
 }
 
+async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> String {
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+	editor
+		.handle_message(NodeGraphMessage::Copy)
+		.await
+		.into_iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+			_ => None,
+		})
+		.expect("Copying nodes should write them to the clipboard")
+}
+
+async fn paste(editor: &mut EditorTestUtils, clipboard: String) -> Vec<NodeId> {
+	editor
+		.handle_message(ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(clipboard),
+		})
+		.await;
+	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
+}
+
+#[tokio::test]
+async fn pasting_graph_nodes_over_their_copied_selection_duplicates_them_into_the_flow() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, middle, last) = floating_flow(&mut editor).await;
+
+	let clipboard = copy_in_graph(&mut editor, vec![middle]).await;
+	let pasted = paste(&mut editor, clipboard).await;
+	assert_eq!(pasted.len(), 1, "The pasted copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		primary_input_of(network_interface, pasted[0]),
+		Some(NodeInput::node(middle, 0)),
+		"The copy should be fed by the original"
+	);
+	assert_eq!(
+		primary_input_of(network_interface, last),
+		Some(NodeInput::node(pasted[0], 0)),
+		"The copy should feed what the original fed"
+	);
+
+	assert_invariants(&editor, "after pasting graph nodes over their copied selection");
+}
+
+#[tokio::test]
+async fn pasting_graph_nodes_over_an_empty_selection_puts_loose_copies_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, middle, last) = floating_flow(&mut editor).await;
+
+	let clipboard = copy_in_graph(&mut editor, vec![middle]).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() }).await;
+	let pasted = paste(&mut editor, clipboard).await;
+	assert_eq!(pasted.len(), 1, "The pasted copy should become the selection");
+
+	let document = editor.active_document();
+	assert!(
+		!matches!(primary_input_of(&document.network_interface, pasted[0]), Some(NodeInput::Node { .. })),
+		"The pasted copy should be outside any flow"
+	);
+	assert_eq!(
+		primary_input_of(&document.network_interface, last),
+		Some(NodeInput::node(middle, 0)),
+		"The flow should be left as it was"
+	);
+	assert!(document.graph_view_overlay_open(), "The graph should open to show the pasted copy");
+
+	assert_invariants(&editor, "after pasting graph nodes over an empty selection");
+}
+
+#[tokio::test]
+async fn pasting_chain_nodes_over_an_empty_selection_puts_loose_copies_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain_in_artboard(&mut editor).await;
+	let copy = editor.active_document().network_interface.copy_chain_node(&near, &[]).expect("The chain node should be copyable");
+
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() }).await;
+	editor.handle_message(DocumentMessage::PasteChainNodes { copies: vec![copy] }).await;
+
+	let document = editor.active_document();
+	let pasted = document.network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>();
+	assert_eq!(pasted.len(), 1, "The pasted copy should become the selection");
+	assert!(
+		!matches!(primary_input_of(&document.network_interface, pasted[0]), Some(NodeInput::Node { .. })),
+		"The pasted copy should be outside any flow"
+	);
+	assert_eq!(chain_of(&document.network_interface, layer), vec![near, far, source], "The chain should be left as it was");
+	assert!(document.graph_view_overlay_open(), "The graph should open to show the pasted copy");
+
+	assert_invariants(&editor, "after pasting chain nodes over an empty selection");
+}
+
 #[tokio::test]
 async fn move_layer_to_stack_builds_the_layer_stack() {
 	let mut editor = EditorTestUtils::create();

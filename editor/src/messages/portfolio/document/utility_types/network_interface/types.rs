@@ -39,6 +39,27 @@ pub struct ChainNodeCopy {
 	pub fallback_values: Vec<(usize, NodeInput)>,
 }
 
+impl ChainNodeCopy {
+	/// The copied node with each of its wired inputs taking its fallback value, placed offset from its original, for pasting outside any flow.
+	pub fn into_loose_template(self) -> NodeTemplate {
+		let mut template = self.template;
+		for (index, fallback_value) in self.fallback_values {
+			if let Some(input) = template.inputs.get_mut(index) {
+				*input = fallback_value;
+			}
+		}
+
+		if let NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+			position: NodePosition::Absolute(position),
+		}) = &mut template.node_type_metadata
+		{
+			*position += IVec2::new(2, 2);
+		}
+
+		template
+	}
+}
+
 /// Where copied nodes go when inserted into a layer's chain.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ChainInsertionPoint {

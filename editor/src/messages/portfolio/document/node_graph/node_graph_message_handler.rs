@@ -253,8 +253,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::Copy => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
-				// Collect the selected nodes
-				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
+				// Kept under their own IDs, so a paste can tell when it's over the same nodes
+				let new_ids = &all_selected_nodes.iter().map(|node_id| (*node_id, *node_id)).collect();
 				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
 
 				responses.add(ClipboardMessage::WriteItems {
