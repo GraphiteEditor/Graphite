@@ -134,8 +134,7 @@ pub(crate) mod menu {
 				// Return None for shortcuts that include mouse motion because we can't show them in native menu
 				return None;
 			};
-			// A double-tap shortcut repeats the same key twice and has no native menu accelerator equivalent:
-			// without this, only the last key would be kept and a single press would wrongly trigger it
+			// Native menu shortcuts allow only one non-modifier key, so a shortcut with more (like a double tap) would otherwise trigger on a single press of its last key
 			if key.is_some() && !matches!(labeled_key.key(), Key::Shift | Key::Control | Key::Alt | Key::Meta | Key::Command | Key::Accel) {
 				return None;
 			}
