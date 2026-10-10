@@ -188,7 +188,7 @@ impl Window {
 
 	pub(crate) fn start_pointer_lock(&self) -> bool {
 		let locked = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked).is_ok();
-		// Only hide the cursor if the grab actually took, otherwise a platform that refuses the lock leaves the app with no visible cursor
+		// Hide the cursor only when the grab took, since a platform that refuses the lock would otherwise leave the user without one
 		if locked {
 			self.winit_window.set_cursor_visible(false);
 		}
@@ -200,7 +200,7 @@ impl Window {
 		self.winit_window.set_cursor_visible(true);
 	}
 
-	/// Moves the OS cursor, returning whether the platform allowed it.
+	/// Moves the OS cursor, returning false when the platform refuses to move it.
 	pub(crate) fn set_cursor_position(&self, position: winit::dpi::PhysicalPosition<f64>) -> bool {
 		match self.winit_window.set_cursor_position(position.into()) {
 			Ok(()) => true,

@@ -188,7 +188,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
-				// A running transform can outlive the tools it started under, so end its pointer wrap with them
+				// A transform can outlive the tools that started it, so end it here, and its pointer wrap goes with it
 				if self.transform_layer_handler.is_transforming() {
 					responses.add(TransformLayerMessage::CancelTransformOperation);
 				}

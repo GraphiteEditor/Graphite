@@ -27,7 +27,6 @@ pub(crate) struct InputState {
 	pointer_position: PhysicalPosition<f64>,
 	pointer_state: PointerState,
 	pointer_wrap: Option<PointerWrap>,
-	pointer_wrap_requested: bool,
 	window_focused: bool,
 	pending_warp: Option<PhysicalPosition<f64>>,
 	click_tracker: ClickTracker,
@@ -44,7 +43,6 @@ impl InputState {
 			pointer_position: PhysicalPosition::default(),
 			pointer_state: PointerState::Hover { route: Route::Ui },
 			pointer_wrap: None,
-			pointer_wrap_requested: false,
 			window_focused: true,
 			pending_warp: None,
 			click_tracker: ClickTracker::default(),
@@ -61,25 +59,24 @@ impl InputState {
 	}
 
 	pub(crate) fn set_pointer_wrap(&mut self, enabled: bool) {
-		self.pointer_wrap_requested = enabled;
-		self.apply_pointer_wrap();
-	}
-
-	/// Suspends wrapping while the window is unfocused and resumes the editor's request when focus returns.
-	pub(crate) fn set_window_focused(&mut self, focused: bool) {
-		self.window_focused = focused;
-		self.apply_pointer_wrap();
-	}
-
-	fn apply_pointer_wrap(&mut self) {
-		self.pointer_wrap = (self.window_focused && self.pointer_wrap_requested).then_some(PointerWrap {
+		self.pointer_wrap = enabled.then_some(PointerWrap {
 			position: self.pointer_position,
-			last_reported: self.pointer_position,
+			last_reported: Some(self.pointer_position),
 		});
 		self.pending_warp = None;
 	}
 
-	/// The window position the OS cursor should be moved to, if the last pointer event wrapped it.
+	/// Pauses the wrap while the window is unfocused, since the cursor is free to move anywhere in the meantime.
+	pub(crate) fn set_window_focused(&mut self, focused: bool) {
+		self.window_focused = focused;
+		// The cursor may be somewhere else now, so the next report only sets a new baseline
+		if let Some(wrap) = &mut self.pointer_wrap {
+			wrap.last_reported = None;
+		}
+		self.pending_warp = None;
+	}
+
+	/// The window position to move the OS cursor to, when the last pointer event wrapped it.
 	pub(crate) fn take_pending_warp(&mut self) -> Option<PhysicalPosition<f64>> {
 		self.pending_warp.take()
 	}
@@ -120,26 +117,37 @@ impl InputState {
 		matches!(self.pointer_state, PointerState::Locked { .. })
 	}
 
-	/// Accumulates the reported window position into a continuous one while G/R/S wraps it around the viewport.
+	/// Accumulates the reported window position into a continuous one, which is what the editor receives during a G/R/S wrap.
 	fn wrapped_position(&mut self, reported: PhysicalPosition<f64>) -> PhysicalPosition<f64> {
 		let viewport = self.viewport_info;
 		let Some(wrap) = self.pointer_wrap.as_mut() else { return reported };
 
-		let dx = reported.x - wrap.last_reported.x;
-		let dy = reported.y - wrap.last_reported.y;
-		wrap.last_reported = reported;
+		// The cursor can end up anywhere while the window is unfocused, so the drag holds still until it comes back
+		if !self.window_focused {
+			return wrap.position;
+		}
+
+		// The report can still come from before the OS moved the cursor, so the movement is measured the short way around
+		let width = viewport.map_or(0., |viewport| viewport.width);
+		let height = viewport.map_or(0., |viewport| viewport.height);
+		let (dx, dy) = match wrap.last_reported {
+			Some(last) => (wrap_delta(reported.x - last.x, width), wrap_delta(reported.y - last.y, height)),
+			None => (0., 0.), // Nothing to measure from after a pause, so this report only sets the baseline
+		};
 		wrap.position.x += dx;
 		wrap.position.y += dy;
+		wrap.last_reported = Some(reported);
 
 		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(reported, viewport));
-		if let Some(wrapped) = warp_to {
-			// The next report is measured from the wrap target, but the tracked position stays continuous
-			wrap.last_reported = wrapped;
-		}
 
 		let position = wrap.position;
 		self.pending_warp = warp_to;
 		position
+	}
+
+	/// The position the editor has while a wrap runs, which stays continuous across the warp back to the other edge.
+	fn tracked_position(&self, reported: PhysicalPosition<f64>) -> PhysicalPosition<f64> {
+		self.pointer_wrap.as_ref().map_or(reported, |wrap| wrap.position)
 	}
 
 	pub(crate) fn modifiers(&self) -> ModifiersState {
@@ -183,16 +191,20 @@ impl InputState {
 				}
 			}
 			WindowEvent::PointerEntered { position, .. } => {
-				self.pointer_position = *position;
-				ui_callback(InputEvent::pointer().position(*position).entered().modifiers(self.modifiers).build())
+				let position = self.tracked_position(*position);
+				self.pointer_position = position;
+				ui_callback(InputEvent::pointer().position(position).entered().modifiers(self.modifiers).build())
 			}
 			WindowEvent::PointerLeft { position: Some(position), .. } => {
-				self.pointer_position = *position;
-				ui_callback(InputEvent::pointer().position(*position).exited().modifiers(self.modifiers).build())
+				let position = self.tracked_position(*position);
+				self.pointer_position = position;
+				ui_callback(InputEvent::pointer().position(position).exited().modifiers(self.modifiers).build())
 			}
 			WindowEvent::PointerLeft { position: None, .. } => ui_callback(InputEvent::pointer().exited().modifiers(self.modifiers).build()),
 			WindowEvent::PointerButton { state, button, position, .. } => {
-				self.pointer_position = *position;
+				// A wrap keeps the pointer continuous, so a click belongs where the editor's pointer is, not where the OS cursor is
+				let position = self.tracked_position(*position);
+				self.pointer_position = position;
 
 				let mouse_button = button.clone().mouse_button();
 				let keys = match mouse_button {
@@ -207,10 +219,10 @@ impl InputState {
 				let (pointer, route) = match self.pointer_state {
 					PointerState::Hover { route } => match (state.is_pressed(), keys.is_empty()) {
 						(true, false) => {
-							let route = self.route(*position);
+							let route = self.route(position);
 							(PointerState::Stroke { route, keys }, route)
 						}
-						(true, true) => (PointerState::Hover { route }, self.route(*position)),
+						(true, true) => (PointerState::Hover { route }, self.route(position)),
 						(false, _) => (PointerState::Hover { route }, route),
 					},
 					PointerState::Stroke { route, keys: mut held } => {
@@ -234,10 +246,10 @@ impl InputState {
 				};
 				self.pointer_state = pointer;
 
-				let count = mouse_button.map_or(1, |button| self.click_tracker.input(*position, button, *state));
+				let count = mouse_button.map_or(1, |button| self.click_tracker.input(position, button, *state));
 
 				let back_or_forward = matches!(mouse_button, Some(MouseButton::Back | MouseButton::Forward));
-				let pointer = InputEvent::pointer().position(*position);
+				let pointer = InputEvent::pointer().position(position);
 				let input = match state {
 					ElementState::Pressed => pointer.pressed(button.clone(), count),
 					ElementState::Released => pointer.released(button.clone(), count),
@@ -325,8 +337,7 @@ impl InputState {
 	}
 
 	fn route(&self, position: PhysicalPosition<f64>) -> Route {
-		// A G/R/S wrap keeps the tracked position continuous, so it may lie outside the viewport, but the editor
-		// still owns pointer routing for the duration of the transform.
+		// During a G/R/S wrap the tracked position stays continuous and can sit outside the viewport, but pointer routing still belongs to the editor.
 		if self.direct_input && self.pointer_wrap.is_some() {
 			return Route::Editor;
 		}
@@ -384,13 +395,14 @@ enum Route {
 	Editor,
 }
 
-/// Tracks the continuous pointer position, in physical window coordinates, while G/R/S wraps it around the viewport.
+/// Tracks the pointer position in physical window coordinates, accumulating across wraps so the editor never sees the jump back to the other edge.
 struct PointerWrap {
 	position: PhysicalPosition<f64>,
-	last_reported: PhysicalPosition<f64>,
+	/// The last position the OS reported, or `None` until a report arrives after the wrap pauses and resumes
+	last_reported: Option<PhysicalPosition<f64>>,
 }
 
-/// The viewport's bounds in physical window coordinates, and the window's scale factor.
+/// Where the viewport sits in the window, in physical coordinates, plus the window's scale factor.
 #[derive(Clone, Copy)]
 struct ViewportInfo {
 	x: f64,
@@ -406,7 +418,7 @@ impl ViewportInfo {
 	}
 }
 
-/// Wraps a window position into the viewport bounds, returning `None` when it is already inside.
+/// Wraps a window position back into the viewport, or returns `None` when it sits inside already.
 fn wrap_into_viewport(position: PhysicalPosition<f64>, viewport: ViewportInfo) -> Option<PhysicalPosition<f64>> {
 	if viewport.width <= 0. || viewport.height <= 0. {
 		return None;
@@ -416,6 +428,16 @@ fn wrap_into_viewport(position: PhysicalPosition<f64>, viewport: ViewportInfo) -
 	let wrapped = glam::DVec2::new(viewport.x, viewport.y) + relative.rem_euclid(glam::DVec2::new(viewport.width, viewport.height));
 	let wrapped = PhysicalPosition::new(wrapped.x, wrapped.y);
 	(wrapped != position).then_some(wrapped)
+}
+
+/// Takes a movement the short way around the viewport, so a report from before the OS moved the cursor adds the real movement instead of the wrap distance.
+/// shortcut: a single report that moves more than half the viewport is read as backwards. Upgrade if reports ever arrive that far apart.
+fn wrap_delta(delta: f64, size: f64) -> f64 {
+	if size <= 0. {
+		return delta;
+	}
+
+	(delta + size / 2.).rem_euclid(size) - size / 2.
 }
 
 #[derive(Default)]
@@ -549,128 +571,89 @@ mod test {
 		}
 	}
 
-	#[test]
-	fn wrap_into_viewport_wraps_past_the_edges() {
-		assert_eq!(wrap_into_viewport(PhysicalPosition::new(150., 80.), viewport()), None, "a position inside the viewport should stay put");
-		assert_eq!(
-			wrap_into_viewport(PhysicalPosition::new(310., 80.), viewport()),
-			Some(PhysicalPosition::new(110., 80.)),
-			"a position past the right edge should wrap to the left"
-		);
-		assert_eq!(
-			wrap_into_viewport(PhysicalPosition::new(90., 80.), viewport()),
-			Some(PhysicalPosition::new(290., 80.)),
-			"a position before the left edge should wrap to the right"
-		);
-		assert_eq!(
-			wrap_into_viewport(PhysicalPosition::new(150., 160.), viewport()),
-			Some(PhysicalPosition::new(150., 60.)),
-			"a position past the bottom edge should wrap to the top"
-		);
-		assert_eq!(
-			wrap_into_viewport(PhysicalPosition::new(150., 80.), ViewportInfo { width: 0., ..viewport() }),
-			None,
-			"a zero-sized viewport should not wrap"
-		);
-	}
-
-	#[test]
-	fn wrapped_position_stays_continuous_across_a_wrap() {
-		let mut input = InputState::new();
-		let viewport = viewport();
-		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
-		input.pointer_position = PhysicalPosition::new(299., 80.);
-		input.set_pointer_wrap(true);
-
-		assert_eq!(
-			input.wrapped_position(PhysicalPosition::new(299., 80.)),
-			PhysicalPosition::new(299., 80.),
-			"a move inside the viewport is reported as-is"
-		);
-
-		assert_eq!(
-			input.wrapped_position(PhysicalPosition::new(301., 80.)),
-			PhysicalPosition::new(301., 80.),
-			"crossing the right edge keeps the tracked position continuous so a transform doesn't jump"
-		);
-		assert_eq!(
-			input.take_pending_warp(),
-			Some(PhysicalPosition::new(101., 80.)),
-			"the OS cursor should still be moved to the opposite edge"
-		);
-	}
-
-	#[test]
-	fn wrapped_position_keeps_the_editor_routed_to_receive_moves() {
+	/// An input state with direct input and wrapping on, like the editor has during a G/R/S transform.
+	fn wrapping_input(position: PhysicalPosition<f64>) -> InputState {
 		let mut input = InputState::new();
 		let viewport = viewport();
 		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
 		input.set_direct_input(true);
-		input.pointer_position = PhysicalPosition::new(299., 80.);
+		input.pointer_position = position;
 		input.set_pointer_wrap(true);
+		input
+	}
+
+	#[test]
+	fn wrap_into_viewport_wraps_past_the_edges() {
+		assert_eq!(wrap_into_viewport(PhysicalPosition::new(150., 80.), viewport()), None, "a position inside the viewport stays put");
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(310., 80.), viewport()),
+			Some(PhysicalPosition::new(110., 80.)),
+			"past the right edge wraps to the left"
+		);
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(90., 80.), viewport()),
+			Some(PhysicalPosition::new(290., 80.)),
+			"past the left edge wraps to the right"
+		);
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(150., 160.), viewport()),
+			Some(PhysicalPosition::new(150., 60.)),
+			"past the bottom edge wraps to the top"
+		);
+		assert_eq!(
+			wrap_into_viewport(PhysicalPosition::new(150., 80.), ViewportInfo { width: 0., ..viewport() }),
+			None,
+			"a zero-sized viewport never wraps"
+		);
+	}
+
+	#[test]
+	fn wrap_crosses_the_edges_using_the_os_position() {
+		let mut input = wrapping_input(PhysicalPosition::new(299., 80.));
 
 		let position = input.wrapped_position(PhysicalPosition::new(301., 80.));
-		assert!(
-			matches!(input.route(position), Route::Editor),
-			"the editor must keep receiving moves once the pointer wraps outside the viewport"
+		assert_eq!(position, PhysicalPosition::new(301., 80.), "the tracked position stays continuous so a transform doesn't jump");
+		assert_eq!(
+			input.take_pending_warp(),
+			Some(PhysicalPosition::new(101., 80.)),
+			"crossing the right edge moves the OS cursor to the left edge"
 		);
+		assert!(matches!(input.route(position), Route::Editor), "the editor keeps receiving moves once the pointer wraps");
+
+		// The tracked position is back inside the viewport, but the OS cursor crossed the left edge, so warp it again
+		assert_eq!(input.wrapped_position(PhysicalPosition::new(99., 80.)), PhysicalPosition::new(299., 80.));
+		assert_eq!(input.take_pending_warp(), Some(PhysicalPosition::new(299., 80.)));
 
 		input.set_pointer_wrap(false);
 		assert!(matches!(input.route(position), Route::Ui), "without a wrap the UI captures an outside position again");
 	}
 
 	#[test]
-	fn wrap_uses_the_os_position_not_the_tracked_one() {
-		let mut input = InputState::new();
-		let viewport = viewport();
-		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
-		input.pointer_position = PhysicalPosition::new(299., 80.);
-		input.set_pointer_wrap(true);
+	fn pointer_wrap_pauses_while_the_window_is_unfocused() {
+		let mut input = wrapping_input(PhysicalPosition::new(299., 80.));
+		let tracked = input.wrapped_position(PhysicalPosition::new(301., 80.));
 
-		input.wrapped_position(PhysicalPosition::new(301., 80.));
-		assert_eq!(
-			input.take_pending_warp(),
-			Some(PhysicalPosition::new(101., 80.)),
-			"crossing the right edge moves the OS cursor to the left edge"
-		);
-
-		let position = input.wrapped_position(PhysicalPosition::new(99., 80.));
-		assert_eq!(
-			input.take_pending_warp(),
-			Some(PhysicalPosition::new(299., 80.)),
-			"the OS cursor must be warped again at the left edge even though the tracked position is back inside"
-		);
-		assert_eq!(position, PhysicalPosition::new(299., 80.));
-	}
-
-	#[test]
-	fn pointer_wrap_resumes_when_focus_returns() {
-		let mut input = InputState::new();
-		let viewport = viewport();
-		input.set_viewport_info(viewport.x, viewport.y, viewport.width, viewport.height, viewport.scale);
-		input.set_direct_input(true);
-		input.pointer_position = PhysicalPosition::new(299., 80.);
-		input.set_pointer_wrap(true);
-
+		// The cursor can end up anywhere while the app is unfocused, so the drag holds still instead of following it
 		input.set_window_focused(false);
-		assert!(input.pointer_wrap.is_none(), "losing focus suspends the wrap");
+		assert_eq!(input.wrapped_position(PhysicalPosition::new(150., 80.)), tracked, "an unfocused window ignores the cursor");
+		assert_eq!(
+			input.wrapped_position(PhysicalPosition::new(400., 80.)),
+			tracked,
+			"moves past the edge while unfocused don't wrap either"
+		);
+		assert_eq!(input.take_pending_warp(), None, "the cursor stays put while the window is unfocused");
 
+		// Focus returns wherever the cursor is now, so the first report only sets a new baseline
 		input.set_window_focused(true);
-		assert!(input.pointer_wrap.is_some(), "regaining focus resumes the wrap the editor asked for");
-
-		let position = input.wrapped_position(PhysicalPosition::new(301., 80.));
-		assert!(matches!(input.route(position), Route::Editor), "the resumed wrap still keeps the editor routed");
-	}
-
-	#[test]
-	fn pointer_wrap_stays_off_after_the_transform_ends() {
-		let mut input = InputState::new();
-		input.set_pointer_wrap(true);
-
-		input.set_window_focused(false);
-		input.set_pointer_wrap(false);
-		input.set_window_focused(true);
-
-		assert!(input.pointer_wrap.is_none(), "regaining focus must not restart a wrap the editor has ended");
+		assert_eq!(
+			input.wrapped_position(PhysicalPosition::new(170., 80.)),
+			tracked,
+			"the drag doesn't jump a viewport when the window comes back"
+		);
+		assert_eq!(
+			input.wrapped_position(PhysicalPosition::new(171., 80.)),
+			PhysicalPosition::new(302., 80.),
+			"movement after that counts as normal"
+		);
 	}
 }
