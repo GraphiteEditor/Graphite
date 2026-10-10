@@ -4690,4 +4690,33 @@ mod document_message_handler_tests {
 			.count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
 	}
+
+	#[tokio::test]
+	async fn converting_to_an_infinite_canvas_adds_a_locked_background_at_the_bottom() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewArtboard {
+				id: NodeId::new(),
+				location: DVec2::ZERO,
+				dimensions: DVec2::splat(200.),
+				background: Color::WHITE,
+				clip: true,
+			})
+			.await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		editor.handle_message(DocumentMessage::RemoveArtboards).await;
+
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let root_layers: Vec<_> = LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()).collect();
+		assert!(root_layers.iter().all(|layer| !network_interface.is_artboard(&layer.to_node(), &[])), "No artboards should remain");
+		assert_eq!(root_layers.len(), 2, "The artboard should become a plain layer above the background");
+		assert_eq!(root_layers[0].children(document.metadata()).count(), 1, "The artboard's content should stay in its replacement layer");
+
+		let background = root_layers[1].to_node();
+		assert_eq!(network_interface.display_name(&background, &[]), "Background");
+		assert!(network_interface.is_locked(&background, &[]), "The background should be locked");
+	}
 }

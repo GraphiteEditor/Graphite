@@ -227,6 +227,28 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, center: bool, id: N
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
+/// Create the locked, solid white "Background" layer that an infinite canvas document begins with, at the given index of the root stack.
+pub fn new_background_layer(insert_index: usize, responses: &mut VecDeque<Message>) {
+	let node_id = NodeId::new();
+
+	responses.add(GraphOperationMessage::NewColorFillLayer {
+		node_id,
+		color: Color::WHITE,
+		parent: LayerNodeIdentifier::ROOT_PARENT,
+		insert_index,
+	});
+	responses.add(NodeGraphMessage::SetDisplayNameImpl {
+		node_id,
+		network_path: Vec::new(),
+		alias: "Background".to_string(),
+	});
+	responses.add(NodeGraphMessage::SetLocked {
+		node_id,
+		network_path: Vec::new(),
+		locked: true,
+	});
+}
+
 pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: 0 });
 	responses.add(GraphOperationMessage::SetUpstreamToChain {
