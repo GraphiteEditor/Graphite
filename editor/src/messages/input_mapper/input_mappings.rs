@@ -354,8 +354,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
 		entry!(KeyDown(KeyS); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::SaveDocumentAs),
-		entry!(KeyDown(KeyD); modifiers=[Accel], canonical, action_dispatch=DocumentMessage::DuplicateSelectedLayers),
-		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyB); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::BlendSelectedLayers),
 		entry!(KeyDown(KeyM); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::MorphSelectedLayers), // Might get eaten by the GeForce Experience overlay for some Windows users
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
