@@ -176,6 +176,8 @@ impl<L: Layout> Gdd<L> {
 	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
+			// The annotation ticked the clock, which a reopen must not hand out again.
+			self.persist_session_state()?;
 		}
 		Ok(())
 	}
@@ -199,6 +201,9 @@ impl<L: Layout> Gdd<L> {
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
+			last_hot_sequence: self.session.last_hot_sequence(),
+			settled_marks: self.session.settled_marks().clone(),
+			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};

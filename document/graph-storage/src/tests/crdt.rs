@@ -40,6 +40,7 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 	let hot_op = HotOp {
 		op: remove_node_op(NodeId(99)),
 		timestamp: observed,
+		sequence: crate::HotSequence(1),
 	};
 
 	document
@@ -901,8 +902,66 @@ fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> Reg
 	RegistryDelta::ChangeNodeAttribute { id, delta }
 }
 
-fn hot_op(op: RegistryDelta, counter: u64, peer: u64) -> HotOp {
-	HotOp { op, timestamp: ts(counter, peer) }
+fn hot_op(op: RegistryDelta, counter: u64, peer: u64, sequence: u64) -> HotOp {
+	let sequence = crate::HotSequence(sequence);
+	HotOp {
+		op,
+		timestamp: ts(counter, peer),
+		sequence,
+	}
+}
+
+/// An op past a gap is covered without the gap, a filled gap joins the prefix, and absorbing is a union.
+#[test]
+fn settled_marks_keep_a_prefix_and_runs_past_gaps() {
+	let author = PeerId(1);
+	let id = |sequence: u64| crate::HotOpId {
+		peer: author,
+		sequence: crate::HotSequence(sequence),
+	};
+	let marks_of = |batches: &[&[u64]]| {
+		let mut marks = crate::SettledMarks::default();
+		batches.iter().for_each(|batch| marks.extend(batch.iter().map(|&sequence| id(sequence))));
+		marks
+	};
+	let after_a_lost_op: Vec<u64> = (2..=20).collect();
+	let one_by_one: Vec<&[u64]> = after_a_lost_op.chunks(1).collect();
+
+	/// Batches extended in order, batches of a peer's marks absorbed, expected prefix, expected runs past it.
+	type Case<'a> = (&'a [&'a [u64]], &'a [&'a [u64]], u64, Option<usize>);
+	let cases: [Case; 5] = [
+		(&[&[1, 2]], &[], 2, None),
+		(&[&[1, 2], &[4]], &[], 2, Some(1)),
+		(&[&[1, 2], &[4], &[3]], &[], 4, None),
+		(one_by_one.as_slice(), &[], 0, Some(1)),
+		(&[&[1, 4]], &[&[1, 2, 3, 5]], 5, None),
+	];
+	for (batches, absorbed, prefix, runs) in cases {
+		let mut marks = marks_of(batches);
+		marks.absorb(&marks_of(absorbed));
+		let up_to = marks.settled_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
+		assert_eq!(up_to, crate::HotSequence(prefix), "{batches:?}");
+		assert_eq!(marks.settled_runs.get(&author).map(Vec::len), runs, "{batches:?}");
+		for sequence in 1..=21 {
+			let retired = batches.iter().chain(absorbed).any(|batch| batch.contains(&sequence));
+			assert_eq!(marks.covers(id(sequence)), retired, "{batches:?}: sequence {sequence}");
+		}
+	}
+}
+
+/// A retirer that never received an author's earlier op still retires the later one, past the author's prefix.
+#[test]
+fn retiring_over_a_gap_lands_beyond_the_prefix() {
+	let mut host = Session::with_peer(PeerId(1));
+	// Sequence 1 was lost with the link that carried it.
+	let second = hot_op(set_document_attribute("late", 1), 9, 2, 2);
+	host.replay_hot_op(second.clone()).expect("apply");
+	host.retire(second.timestamp).expect("retire");
+
+	let marks = host.settled_marks();
+	assert_eq!(marks.settled_up_to.get(&PeerId(2)).copied().unwrap_or(crate::HotSequence::NONE), crate::HotSequence::NONE);
+	assert_eq!(marks.settled_runs.get(&PeerId(2)).map(Vec::len), Some(1));
+	assert!(marks.covers(second.id()));
 }
 
 /// So the snapshot and a replay keep the LWW winner the live view did, whether the straggler retires with it or after.
@@ -910,12 +969,12 @@ fn hot_op(op: RegistryDelta, counter: u64, peer: u64) -> HotOp {
 fn retirement_preserves_the_live_lww_winner() {
 	for straggler_retires_alone in [false, true] {
 		let mut host = Session::with_peer(PeerId(1));
-		let winner = hot_op(set_document_attribute("k", 1), 10, 2);
+		let winner = hot_op(set_document_attribute("k", 1), 10, 2, 1);
 		host.replay_hot_op(winner.clone()).expect("apply winner");
 		if straggler_retires_alone {
 			host.retire(winner.timestamp).expect("retire winner");
 		}
-		host.replay_hot_op(hot_op(set_document_attribute("k", 2), 5, 3)).expect("apply straggler");
+		host.replay_hot_op(hot_op(set_document_attribute("k", 2), 5, 3, 1)).expect("apply straggler");
 		host.retire(winner.timestamp).expect("retire");
 
 		let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
