@@ -1,6 +1,8 @@
 +++
 title = "Announcing Graphite alpha"
 date = 2022-02-12
+authors = ["Keavon Chambers"]
+description = "The Graphite open source team announces the alpha release of their next-generation graphics editor, a web-based SVG editor with vector-based tools. Future plans include a node-based procedural workflow, a raster graphics compositing engine, and a native desktop client."
 
 [extra]
 banner = "https://static.graphite.art/content/blog/2022-02-12-announcing-graphite-alpha.avif"
