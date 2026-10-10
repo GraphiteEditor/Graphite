@@ -2,7 +2,9 @@ use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
 use crate::application::generate_uuid;
+use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::prelude::*;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -58,12 +60,12 @@ define_layout_target!(
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
-	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
-	LayersPanelBottomBar,
+	/// Visibility and lock toggles for the selection at the bottom left of the Layers panel.
+	LayersPanelBottomLeftBar,
+	/// Controls for adding, grouping, and deleting layers at the bottom right of the Layers panel.
+	LayersPanelBottomRightBar,
 	/// Blending options at the top of the Layers panel.
 	LayersPanelControlLeftBar,
-	/// Selected layer status (locked/hidden) at the top of the Layers panel.
-	LayersPanelControlRightBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
@@ -388,12 +390,25 @@ pub struct WidgetTable {
 	pub unstyled: bool,
 }
 
+/// A wire drawn between Properties panel sections, styled like the graph's wire carrying the same data.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SectionWire {
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+	/// Whether the wire carries a list, drawn as two parallel lines.
+	#[serde(rename = "isList")]
+	pub is_list: bool,
+}
+
 /// A collapsible Properties panel section for a single node: a header with its name and pin, delete, and visibility controls, above its input parameter widgets.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetSection {
 	/// The node's name shown in the section header: its given alias with the implementation name in parentheses, or just the implementation name.
 	pub name: String,
+	/// The node definition's icon, shown before the name in the section header (none when it has no icon).
+	pub icon: Option<IconName>,
 	/// The node definition's description, shown as the header's tooltip (empty when it has none).
 	pub description: String,
 	/// Whether the node is visible rather than hidden (shown as the eye icon).
@@ -402,6 +417,12 @@ pub struct WidgetSection {
 	pub pinned: bool,
 	/// Whether this section can be dragged to reorder it within its layer's chain of nodes (true for a layer chain's nodes, but not its terminal layer node).
 	pub draggable: bool,
+	/// For a selected layer's own section, the wire drawn up into its chain input from its chain's sections below (none when it has no chain).
+	#[serde(rename = "chainWire")]
+	pub chain_wire: Option<SectionWire>,
+	/// For a section in a selected layer's chain, the wire drawn up to the section above, which its node's output feeds.
+	#[serde(rename = "outputWire")]
+	pub output_wire: Option<SectionWire>,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
 	/// The ID of the node whose properties this section displays.
@@ -441,13 +462,17 @@ impl LayoutGroup {
 		Self::Table(WidgetTable { rows, unstyled })
 	}
 
-	pub fn section(name: impl Into<String>, description: impl Into<String>, visible: bool, pinned: bool, expanded: bool, id: u64, layout: Layout) -> Self {
+	#[allow(clippy::too_many_arguments)]
+	pub fn section(name: impl Into<String>, icon: Option<IconName>, description: impl Into<String>, visible: bool, pinned: bool, expanded: bool, id: u64, layout: Layout) -> Self {
 		Self::Section(WidgetSection {
 			name: name.into(),
+			icon,
 			description: description.into(),
 			visible,
 			pinned,
 			draggable: false,
+			chain_wire: None,
+			output_wire: None,
 			expanded,
 			id,
 			layout,
@@ -544,20 +569,26 @@ impl Diffable for LayoutGroup {
 			(
 				Self::Section(WidgetSection {
 					name: current_name,
+					icon: current_icon,
 					description: current_description,
 					visible: current_visible,
 					pinned: current_pinned,
 					draggable: current_draggable,
+					chain_wire: current_chain_wire,
+					output_wire: current_output_wire,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
 				}),
 				Self::Section(WidgetSection {
 					name: new_name,
+					icon: new_icon,
 					description: new_description,
 					visible: new_visible,
 					pinned: new_pinned,
 					draggable: new_draggable,
+					chain_wire: new_chain_wire,
+					output_wire: new_output_wire,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -567,19 +598,25 @@ impl Diffable for LayoutGroup {
 				// TODO: Diff insersion and deletion of items
 				if current_layout.0.len() != new_layout.0.len()
 					|| *current_name != new_name
+					|| *current_icon != new_icon
 					|| *current_description != new_description
 					|| *current_visible != new_visible
 					|| *current_pinned != new_pinned
 					|| *current_draggable != new_draggable
+					|| *current_chain_wire != new_chain_wire
+					|| *current_output_wire != new_output_wire
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
 					// Update self to reflect new changes
 					current_name.clone_from(&new_name);
+					current_icon.clone_from(&new_icon);
 					current_description.clone_from(&new_description);
 					*current_visible = new_visible;
 					*current_pinned = new_pinned;
 					*current_draggable = new_draggable;
+					*current_chain_wire = new_chain_wire;
+					*current_output_wire = new_output_wire;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
@@ -587,10 +624,13 @@ impl Diffable for LayoutGroup {
 					// Push an update layout group to the diff
 					let new_value = Self::Section(WidgetSection {
 						name: new_name,
+						icon: new_icon,
 						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
 						draggable: new_draggable,
+						chain_wire: new_chain_wire,
+						output_wire: new_output_wire,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,

@@ -33,6 +33,10 @@ pub struct IconButton {
 	#[serde(rename = "tooltipShortcut")]
 	pub tooltip_shortcut: Option<ActionShortcut>,
 
+	// Drag and drop
+	#[serde(rename = "dragDropKinds")]
+	pub drag_drop_kinds: DragDropKinds,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
@@ -43,6 +47,19 @@ pub struct IconButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_drag_drop: WidgetCallback<IconButton>,
+}
+
+/// What can be dragged in the Layers panel and dropped onto an icon button to perform its `on_drag_drop` action.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DragDropKinds {
+	/// Nothing, so the button isn't a drop target.
+	#[default]
+	None,
+	/// Layers.
+	Layers,
+	/// Layers, or the nodes in a layer's chain.
+	LayersAndChainNodes,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

@@ -4,16 +4,15 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
-	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
-	import { layersPanelControlBarLeftLayout, layersPanelControlBarRightLayout, layersPanelBottomBarLayout } from "/src/stores/portfolio";
+	import { layersPanelControlBarLeftLayout, layersPanelBottomBarLeftLayout, layersPanelBottomBarRightLayout } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { EditorWrapper, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -48,6 +47,15 @@
 		startY: number;
 	};
 
+	type ChainDragState = {
+		active: boolean;
+		// The layer whose chain the nodes are being dragged from
+		layerId: bigint;
+		nodeIds: bigint[];
+		startX: number;
+		startY: number;
+	};
+
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
@@ -65,6 +73,15 @@
 	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
 	let dragDropTarget: HTMLElement | undefined = undefined;
+
+	// Interactive dragging of chain nodes within a layer's chain or into another layer's
+	let chainDragState: ChainDragState | undefined = undefined;
+	let chainDragActive = false;
+	// The layer row (by its index in the list) under the cursor, the gap among its reorderable chain nodes counted from the left, and where its marker sits within the row
+	let chainDropRowIndex: number | undefined = undefined;
+	let chainInsertIndex: number | undefined = undefined;
+	let chainInsertMarkerLeft: number | undefined = undefined;
+	let chainDragDropTarget: HTMLElement | undefined = undefined;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
@@ -233,6 +250,29 @@
 		editor.selectLayer(listing.entry.id, accel, shift);
 	}
 
+	function chainNodeClick(e: MouseEvent | undefined, listing: LayerListingInfo, nodeId: bigint) {
+		e?.stopPropagation();
+
+		// The click that follows releasing a drag shouldn't select anything
+		if (justFinishedDrag) return;
+
+		// Same modifier key handling as selecting layers
+		const [accel, oppositeAccel] = operatingSystem() === "Mac" ? [e?.metaKey, e?.ctrlKey] : [e?.ctrlKey, e?.metaKey];
+		if (oppositeAccel || e?.altKey) return;
+
+		editor.selectChainNode(listing.entry.id, nodeId, Boolean(accel), Boolean(e?.shiftKey));
+	}
+
+	// Double-clicking a chain node's icon, or the layer's own icon at the row's end, opens the graph centered on that node
+	function chainIconsDoubleClick(e: MouseEvent, listing: LayerListingInfo) {
+		const target = e.target instanceof Element ? e.target : undefined;
+		const chainNodeButton = target?.closest("[data-chain-node]");
+		const chainNode = chainNodeButton ? listing.entry.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))] : undefined;
+
+		if (chainNode) editor.showNodeInGraph(chainNode.id);
+		else if (target?.closest("[data-layer-icon]")) editor.showNodeInGraph(listing.entry.id);
+	}
+
 	async function deselectAllLayers() {
 		if (justFinishedDrag) {
 			justFinishedDrag = false;
@@ -329,6 +369,14 @@
 		// Only left click drags
 		if (e.button !== 0 || !draggable) return;
 
+		// Pressing one of the chain's node buttons drags that node within the chain, rather than dragging the whole layer
+		const chainNodeButton = (e.target instanceof Element && e.target.closest("[data-chain-node]")) || undefined;
+		if (chainNodeButton) {
+			const chainNode = listing.entry.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))];
+			if (chainNode) chainNodePointerDown(e, listing, chainNode);
+			return;
+		}
+
 		internalDragState = {
 			active: false,
 			layerId: listing.entry.id,
@@ -338,7 +386,130 @@
 		};
 	}
 
+	function chainNodePointerDown(e: PointerEvent, listing: LayerListingInfo, chainNode: LayerPanelChainNode) {
+		// A source node stays fixed at the chain's upstream end
+		if (!chainNode.reorderable) return;
+
+		// Dragging a selected node brings along the chain's other selected nodes, which all end up together at the drop
+		const nodeIds = chainNode.selected ? listing.entry.chainNodes.filter((node) => node.reorderable && node.selected).map((node) => node.id) : [chainNode.id];
+
+		chainDragState = { active: false, layerId: listing.entry.id, nodeIds, startX: e.clientX, startY: e.clientY };
+	}
+
+	function chainDraggingPointerMove(e: PointerEvent) {
+		if (!chainDragState) return;
+
+		if (!chainDragState.active) {
+			const distance = Math.hypot(e.clientX - chainDragState.startX, e.clientY - chainDragState.startY);
+			const DRAG_THRESHOLD = 5;
+			if (distance <= DRAG_THRESHOLD) return;
+
+			chainDragState.active = true;
+			chainDragActive = true;
+			dragInPanel = true;
+			layerToClipUponClick = undefined;
+		}
+
+		chainDropRowIndex = undefined;
+		chainInsertIndex = undefined;
+		chainInsertMarkerLeft = undefined;
+
+		// Over a bottom bar button accepting chain nodes, the drop goes to it instead, and elsewhere in the bottom bar it goes nowhere
+		const target = e.target instanceof Element ? e.target : undefined;
+		const droppable = target?.closest("[data-drag-droppable~=chain-nodes]");
+		chainDragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
+		if (chainDragDropTarget || target?.closest("[data-layer-bottom-bar]")) return;
+
+		// Otherwise the nodes drop into the chain of whichever layer is under the cursor
+		const row = target?.closest("[data-layer]");
+		if (row) calculateChainInsertIndex(row, e.clientX);
+	}
+
+	// The row's reorderable chain node buttons, in their left-to-right order
+	function reorderableChainNodeButtons(row: Element): Element[] {
+		return Array.from(row.querySelectorAll("[data-chain-node-reorderable]"));
+	}
+
+	function calculateChainInsertIndex(row: Element, clientX: number) {
+		const rects = reorderableChainNodeButtons(row).map((button) => button.getBoundingClientRect());
+
+		// The insertion index is the number of reorderable nodes whose horizontal midpoint sits left of the cursor
+		const firstRightOfCursor = rects.findIndex((rect) => clientX < (rect.left + rect.right) / 2);
+		const index = firstRightOfCursor === -1 ? rects.length : firstRightOfCursor;
+
+		// The marker sits on the boundary between the neighboring nodes, or at the outer edge of the node at either end.
+		// With nothing reorderable, the only gap is beside the layer, after a fixed source node or else just before the layer's icon.
+		let markerX: number | undefined;
+		if (rects.length === 0) {
+			const chainNodeButtons = row.querySelectorAll("[data-chain-node]");
+			const fixedSource = chainNodeButtons[chainNodeButtons.length - 1];
+			markerX = fixedSource ? fixedSource.getBoundingClientRect().right : row.querySelector("[data-layer-chain]")?.getBoundingClientRect().left;
+		} else if (index === 0) {
+			markerX = rects[0].left;
+		} else if (index === rects.length) {
+			markerX = rects[rects.length - 1].right;
+		} else {
+			markerX = (rects[index - 1].right + rects[index].left) / 2;
+		}
+		if (markerX === undefined) return;
+
+		chainDropRowIndex = Number(row.getAttribute("data-index"));
+		chainInsertIndex = index;
+		chainInsertMarkerLeft = markerX - row.getBoundingClientRect().left;
+	}
+
+	// Swallow the click fired by releasing a drag, without leaving the flag set to block a later click if none comes
+	function swallowReleaseClick() {
+		justFinishedDrag = true;
+		setTimeout(() => (justFinishedDrag = false), 0);
+	}
+
+	function chainDraggingPointerUp(e: PointerEvent) {
+		if (chainDragState?.active) swallowReleaseClick();
+
+		const row = chainDropRowIndex !== undefined ? list?.div()?.querySelector(`[data-layer][data-index="${chainDropRowIndex}"]`) : undefined;
+		const targetLayerId = chainDropRowIndex !== undefined ? layers[chainDropRowIndex]?.entry.id : undefined;
+		if (chainDragState?.active && chainDragDropTarget) {
+			// The button's action applies to the selection, so it becomes exactly the dragged nodes
+			editor.selectNodes(BigUint64Array.from(chainDragState.nodeIds));
+			chainDragDropTarget.dispatchEvent(new CustomEvent("dragdrop"));
+		} else if (chainDragState?.active && row && targetLayerId !== undefined && chainInsertIndex !== undefined) {
+			const reorderableIds = reorderableChainNodeButtons(row).map((button) => button.getAttribute("data-chain-node-reorderable"));
+
+			// Within the same layer, nodes already together beside the gap would stay put
+			const positions = chainDragState.nodeIds.map((id) => reorderableIds.indexOf(String(id))).sort((a, b) => a - b);
+			const [first, last] = [positions[0], positions[positions.length - 1]];
+			const sameLayer = targetLayerId === chainDragState.layerId;
+			const alreadyInPlace = sameLayer && first !== -1 && last - first + 1 === positions.length && chainInsertIndex >= first && chainInsertIndex <= last + 1;
+
+			// The backend counts gaps outward from the layer, the reverse of the left-to-right order shown here
+			const nodeIds = BigUint64Array.from(chainDragState.nodeIds);
+			const insertIndex = reorderableIds.length - chainInsertIndex;
+
+			// Holding Alt drops copies at the gap instead of moving the originals
+			if (e.altKey) editor.duplicateChainNodes(nodeIds, targetLayerId, insertIndex);
+			else if (!alreadyInPlace) editor.moveChainNodes(nodeIds, targetLayerId, insertIndex);
+		}
+
+		abortChainDrag();
+	}
+
+	function abortChainDrag() {
+		chainDragState = undefined;
+		chainDragActive = false;
+		chainDropRowIndex = undefined;
+		chainInsertIndex = undefined;
+		chainInsertMarkerLeft = undefined;
+		chainDragDropTarget = undefined;
+		dragInPanel = false;
+	}
+
 	function draggingPointerMove(e: PointerEvent) {
+		if (chainDragState) {
+			chainDraggingPointerMove(e);
+			return;
+		}
+
 		if (!internalDragState || !list) return;
 
 		// Calculate distance moved
@@ -362,7 +533,7 @@
 		if (internalDragState.active) {
 			// Check if the cursor is over any element flagged as a drag drop target
 			// (e.g. a bottom-bar action button whose backend widget has an `on_drag_drop` callback set)
-			const droppable = (e.target instanceof Element && e.target.closest("[data-drag-droppable]")) || undefined;
+			const droppable = (e.target instanceof Element && e.target.closest("[data-drag-droppable~=layers]")) || undefined;
 			dragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
 
 			// Hide the move-in-tree insert indicator whenever the cursor enters the bottom bar
@@ -383,6 +554,11 @@
 	}
 
 	function draggingPointerUp(e: PointerEvent) {
+		if (chainDragState) {
+			chainDraggingPointerUp(e);
+			return;
+		}
+
 		if (internalDragState?.active && dragDropTarget) {
 			// Ensure the dragged layer is part of the selection, matching the move-in-tree behavior
 			if (!$nodeGraph.selected.includes(internalDragState.layerId)) selectLayer(internalDragState.listing, false, false);
@@ -390,7 +566,7 @@
 			// Hand off to the button's backend `on_drag_drop` callback via the custom event
 			dragDropTarget.dispatchEvent(new CustomEvent("dragdrop"));
 
-			justFinishedDrag = true;
+			swallowReleaseClick();
 		} else if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
@@ -428,12 +604,20 @@
 			justFinishedDrag = true;
 			abortDrag();
 		}
+		if (e.button === 2 && chainDragState?.active) {
+			justFinishedDrag = true;
+			abortChainDrag();
+		}
 	}
 
 	function draggingKeyDown(e: KeyboardEvent) {
 		if (e.key === "Escape" && internalDragState?.active) {
 			justFinishedDrag = true;
 			abortDrag();
+		}
+		if (e.key === "Escape" && chainDragState?.active) {
+			justFinishedDrag = true;
+			abortChainDrag();
 		}
 	}
 
@@ -549,10 +733,6 @@
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
-		{#if $layersPanelControlBarLeftLayout?.length > 0 && $layersPanelControlBarRightLayout?.length > 0}
-			<Separator />
-		{/if}
-		<WidgetLayout layout={$layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -581,6 +761,18 @@
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
+					<IconButton
+						class="status-toggle"
+						classes={{ inherited: !listing.parentsVisible }}
+						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
+						size={24}
+						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
+						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
+						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
+						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						data-drag-toggle-group="layer-visibility"
+						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
+					/>
 					{#if listing.entry.childrenAllowed || listing.childrenPresent}
 						<button
 							class="expand-arrow"
@@ -612,10 +804,7 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.iconName}
-						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" tooltipLabel="Artboard" />
-					{/if}
-					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
+					<LayoutRow class="layer-name" classes={{ editing: listing.editingName }} on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-layer-name-input
 							type="text"
@@ -665,27 +854,39 @@
 							data-drag-toggle-state="unlocked"
 						/>
 					{/if}
-					<IconButton
-						class="status-toggle"
-						classes={{ inherited: !listing.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
-						size={24}
-						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
-						data-drag-toggle-group="layer-visibility"
-						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
-					/>
+					<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
+					<LayoutRow class="layer-chain-icons" on:dblclick={(e) => chainIconsDoubleClick(e, listing)} data-layer-chain>
+						{#each listing.entry.chainNodes as chainNode, chainNodeIndex}
+							<IconButton
+								icon={chainNode.icon}
+								size={24}
+								classes={{ selected: chainNode.selected, hidden: !chainNode.visible }}
+								action={(e) => chainNodeClick(e, listing, chainNode.id)}
+								tooltipLabel={chainNode.name}
+								data-chain-node={chainNodeIndex}
+								data-chain-node-reorderable={chainNode.reorderable ? String(chainNode.id) : undefined}
+							/>
+						{/each}
+						{#if listing.entry.chainNodes.length > 0}
+							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="chain-connector" style:fill={`var(--color-data-${listing.entry.chainDataType.toLowerCase()})`}>
+								<path d="M0,6.306L0,1.694C0,0.228 1.06,-0.41 2.356,0.276L7.028,2.752C8.324,3.438 8.324,4.562 7.028,5.248L2.356,7.723C1.06,8.41 0,7.771 0,6.306z" />
+							</svg>
+						{/if}
+						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" classes={{ hidden: !listing.entry.visible }} tooltipLabel={listing.entry.implementationName} data-layer-icon />
+					</LayoutRow>
+					{#if chainDropRowIndex === index && chainInsertMarkerLeft !== undefined}
+						<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>
+					{/if}
 				</LayoutRow>
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
+			<div class="insert-mark" style:left={`${4 + 24 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active) }} scrollableX={true} data-layer-bottom-bar>
-		<WidgetLayout layout={$layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
+	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active), "chain-node-drag-active": chainDragActive }} scrollableX={true} data-layer-bottom-bar>
+		<WidgetLayout layout={$layersPanelBottomBarLeftLayout} layoutTarget="LayersPanelBottomLeftBar" />
+		<WidgetLayout layout={$layersPanelBottomBarRightLayout} layoutTarget="LayersPanelBottomRightBar" />
 	</LayoutRow>
 </LayoutCol>
 
@@ -714,7 +915,7 @@
 			padding-top: 4px;
 			flex: 0 0 auto;
 			margin: 0 4px;
-			justify-content: flex-end;
+			justify-content: space-between;
 			border-top: 1px solid var(--color-2-mildblack);
 
 			.widget-span > * {
@@ -725,22 +926,34 @@
 				display: none;
 			}
 
-			&.layer-drag-active .icon-button,
-			&.layer-drag-active .popover-button {
-				&.drag-droppable:hover {
-					background: var(--color-e-nearwhite);
-
-					svg {
-						fill: var(--color-2-mildblack);
-					}
-				}
-
-				&:not(.drag-droppable) {
+			// While dragging, buttons are grayed out unless they accept the kind of item being dragged
+			&.layer-drag-active,
+			&.chain-node-drag-active {
+				.icon-button,
+				.popover-button {
 					pointer-events: none;
 					background: none;
 
 					svg {
 						fill: var(--color-8-uppergray);
+					}
+				}
+			}
+
+			// Dropped items become the selection before the button acts, so a button disabled for the current selection still accepts them
+			&.layer-drag-active .icon-button[data-drag-droppable~="layers"],
+			&.chain-node-drag-active .icon-button[data-drag-droppable~="chain-nodes"] {
+				pointer-events: auto;
+
+				svg {
+					fill: var(--color-e-nearwhite);
+				}
+
+				&:hover {
+					background: var(--color-e-nearwhite);
+
+					svg {
+						fill: var(--color-2-mildblack);
 					}
 				}
 			}
@@ -765,7 +978,6 @@
 				border-radius: 2px;
 				height: 32px;
 				margin: 0 4px;
-				padding-left: calc(var(--layer-indent-levels) * 16px);
 
 				// Dimming
 				&.selected {
@@ -838,6 +1050,12 @@
 					margin-right: 4px;
 				}
 
+				// Indents the rest of the row by the layer's depth in the tree, after the visibility column
+				.expand-arrow,
+				.expand-arrow-none {
+					margin-left: calc(var(--layer-indent-levels) * 16px);
+				}
+
 				.clipped-arrow {
 					margin-left: 2px;
 					margin-right: 2px;
@@ -860,16 +1078,99 @@
 					}
 				}
 
-				.layer-type-icon {
-					margin-left: 8px;
-					margin-right: -4px;
+				// Unrelated-width gap from the name (with its right margin), and the layer icon kept 4px from the row's end like the visibility icon at its start
+				.layer-chain-icons {
+					flex: 0 0 auto;
+					align-items: center;
+					margin-left: 4px;
+					margin-right: 2px;
+
+					.icon-button {
+						width: 20px;
+					}
+
+					.icon-button.selected {
+						background: var(--color-6-lowergray);
+						z-index: 1;
+					}
+
+					// A hidden node's icon is faded and struck through by a slash across its 16px icon's diagonal
+					.icon-button.hidden,
+					.layer-type-icon.hidden {
+						position: relative;
+
+						svg {
+							opacity: 0.5;
+						}
+
+						&::after {
+							content: "";
+							position: absolute;
+							left: 50%;
+							top: 50%;
+							width: calc(16px * sqrt(2) - 2px);
+							height: 1px;
+							background: var(--color-e-nearwhite);
+							transform: translate(-50%, -50%) rotate(-45deg);
+							pointer-events: none;
+						}
+					}
+
+					// Related-width gaps to the icons beside it
+					.chain-connector {
+						flex: 0 0 auto;
+						align-self: center;
+						width: 4px;
+						height: 4px;
+						margin: 0 2px;
+					}
+
+					// Takes the same 20px width as the chain buttons
+					.layer-type-icon {
+						margin: 0 2px;
+						align-self: center;
+					}
 				}
 
+				// The vertical counterpart of the insertion marker between layers, centered on the gap between chain nodes
+				.chain-insert-mark {
+					position: absolute;
+					top: 4px;
+					bottom: 4px;
+					width: 5px;
+					transform: translateX(-50%);
+					background: var(--color-e-nearwhite);
+					// Above the selected chain node's raised highlight
+					z-index: 2;
+					pointer-events: none;
+				}
+
+				// Pushes the chain icons to the row's end, and can also be double-clicked to rename the layer like the name itself
+				.layer-name-spacer {
+					flex: 1 1 0;
+					align-self: stretch;
+				}
+
+				// Only as wide as its text, so the lock icon follows right after it, but shrinks to an ellipsis when space runs out
 				.layer-name {
-					flex: 1 1 100%;
+					flex: 0 1 auto;
 					margin: 0 8px;
 
+					// While renaming, the input stretches to fill the row
+					&.editing {
+						flex-grow: 1;
+
+						input {
+							width: 100%;
+						}
+
+						& ~ .layer-name-spacer {
+							flex-grow: 0;
+						}
+					}
+
 					input {
+						field-sizing: content;
 						color: inherit;
 						background: none;
 						border: none;
@@ -881,7 +1182,6 @@
 						overflow: hidden;
 						border-radius: 2px;
 						height: 24px;
-						width: 100%;
 
 						&:disabled {
 							user-select: none;
@@ -914,14 +1214,8 @@
 						background-image: var(--inheritance-stripes-background);
 					}
 
-					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted.
-					// Overlaid with absolute positioning so it doesn't shift the layer name's width.
+					// Invisible placeholder rendered only during a lock drag-toggle gesture, so the drag can still land on rows whose lock icon is normally omitted
 					&.drag-toggle-placeholder {
-						position: absolute;
-						width: 24px;
-						right: 24px;
-						top: 0;
-						bottom: 0;
 						opacity: 0; // Not `visibility: hidden`, which would exclude it from hit-testing
 					}
 

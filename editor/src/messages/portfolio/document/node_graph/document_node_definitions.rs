@@ -3,6 +3,7 @@ mod document_node_derive;
 use super::node_properties::choice::enum_choice;
 use super::node_properties::{self, ParameterWidgetsInfo, SliderRange};
 use super::utility_types::{FrontendNodeType, InputTypeConstraint};
+use crate::messages::frontend::IconName;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	InputMetadata, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, Vec2InputSettings, WidgetOverride,
@@ -15,9 +16,7 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::{concrete, list};
-use graphene_std::extract_xy::XY;
-use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
-use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -130,6 +129,9 @@ pub struct DocumentNodeDefinition {
 	/// Definition specific data. In order for the editor to access this data, the reference will be used.
 	pub category: &'static str,
 
+	/// Name of the icon, from the frontend's icon registry, shown for this node in the node graph.
+	pub icon: Option<&'static str>,
+
 	/// User-facing description of the node's functionality.
 	pub description: Cow<'static, str>,
 
@@ -152,6 +154,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
 			category: "General",
+			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
 				..Default::default()
@@ -162,6 +165,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Merge",
 			category: "General",
+			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(5), 0)],
@@ -233,6 +237,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Artboard",
 			category: "General",
+			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(4), 0)],
@@ -340,6 +345,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Blend",
 			category: "Vector",
+			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(16), 0)],
@@ -514,6 +520,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
 			category: "Vector",
+			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(7), 0)],
@@ -593,6 +600,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Load Image",
 			category: "Web Request",
+			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -628,6 +636,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
+			icon: Some("NodeRasterize"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(2), 0)],
@@ -677,116 +686,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Split Channels",
-			category: "Raster: Channels",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![
-						NodeInput::value(TaggedValue::None, false),
-						NodeInput::node(NodeId(0), 0),
-						NodeInput::node(NodeId(1), 0),
-						NodeInput::node(NodeId(2), 0),
-						NodeInput::node(NodeId(3), 0),
-					],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Red), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Green), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Blue), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 4)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![
-								NodeInput::import(list!(Raster<CPU>), 0),
-								NodeInput::value(TaggedValue::RedGreenBlueAlpha(RedGreenBlueAlpha::Alpha), false),
-							],
-							implementation: NodeTemplateImplementation::ProtoNode(raster_nodes::adjustments::extract_channel::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 6)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::type_default(list!(Raster<CPU>), true)],
-				input_metadata: vec![("Image", "TODO").into()],
-				output_names: vec!["".to_string(), "Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
-			identifier: "Split Vec2",
-			category: "Math: Vec2",
-			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::value(TaggedValue::None, false), NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(1), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::X), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(item!(DVec2), 0), NodeInput::value(TaggedValue::XY(XY::Y), false)],
-							implementation: NodeTemplateImplementation::ProtoNode(extract_xy::extract_xy::IDENTIFIER),
-							call_argument: generic!(T),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
-				inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
-				input_metadata: vec![("Vec2", "TODO").into()],
-				output_names: vec!["".to_string(), "X".to_string(), "Y".to_string()],
-				..Default::default()
-			},
-			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a vec2.\n\
-				\n\
-				The inverse of this node is **Combine Vec2**, which composes a vec2 from its X and Y components.",
-			),
-			properties: None,
-		},
-		DocumentNodeDefinition {
 			identifier: "Extract",
 			category: "",
+			icon: None,
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Extract,
 				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
@@ -800,6 +702,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
 			category: "Text: Regex",
+			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![
@@ -872,6 +775,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Path",
 			category: "Vector",
+			icon: Some("NodePath"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(1), 0)],
@@ -1671,7 +1575,7 @@ impl InputTypeConstraint {
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !definition.category.is_empty())
+		.filter(|(_, definition)| !registry::is_hidden_category(definition.category))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
@@ -1696,6 +1600,13 @@ pub fn collect_node_descriptions() -> Vec<(String, String)> {
 				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
 			)
 		})
+		.collect()
+}
+
+pub fn collect_node_icons() -> Vec<(String, IconName)> {
+	DOCUMENT_NODE_TYPES
+		.iter()
+		.filter_map(|(identifier, definition)| Some((identifier.serialized(), definition.icon?.to_string())))
 		.collect()
 }
 

@@ -510,6 +510,13 @@ impl NodeNetworkInterface {
 		self.query(network_path, "reference", |view| view.reference(node_id)).flatten()
 	}
 
+	/// The icon of the node's definition, or the Custom Node icon when its definition has none or can't be found.
+	pub fn node_icon(&self, node_id: &NodeId, network_path: &[NodeId]) -> &'static str {
+		self.reference(node_id, network_path)
+			.and_then(|reference| resolve_document_node_type(&reference)?.icon)
+			.unwrap_or("NodeCustomNode")
+	}
+
 	pub fn implementation(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeImplementation> {
 		self.query(network_path, "implementation", |view| view.implementation(node_id))
 	}

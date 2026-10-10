@@ -22,7 +22,7 @@ pub struct Preprocessor {
 impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
 		self.insert_inject_scopes(network);
-		self.replace_resource_inputs(network, resolve_resource)?;
+		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
 		self.expand_network(network);
 		Ok(())
 	}
@@ -41,48 +41,63 @@ impl Preprocessor {
 		}
 	}
 
-	/// Replace every `TaggedValue::Resource(hash)` input with a reference to a freshly inserted `resource` proto node.
-	fn replace_resource_inputs(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
-		let mut hash_to_node_id: HashMap<graph_craft::application_io::resource::ResourceHash, NodeId> = HashMap::new();
-		let mut new_resource_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
+	/// Replace every `TaggedValue::Resource(hash)` and `TaggedValue::AnimationCurve(curve)` input with a reference to a freshly inserted `resource` / `evaluate_curve` proto node.
+	fn replace_inputs_with_producer_nodes(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
+		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
 		for node in network.nodes.values_mut() {
 			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
-				self.replace_resource_inputs(nested, resolve_resource)?;
-				continue;
-			}
-
-			if matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == platform_application_io::resource::IDENTIFIER) {
+				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
 				continue;
 			}
 
 			for input in node.inputs.iter_mut() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
-				let TaggedValue::Resource(resource_id) = **tagged_value else { continue };
 
-				let Some(hash) = resolve_resource(resource_id) else {
-					return Err(PreprocessorError::ResourceNotFound(resource_id));
+				let node_id = match &**tagged_value {
+					TaggedValue::Resource(resource_id) => {
+						let resource_id = *resource_id;
+						let Some(hash) = resolve_resource(resource_id) else {
+							return Err(PreprocessorError::ResourceNotFound(resource_id));
+						};
+
+						*hash_to_node_id.entry(hash).or_insert_with(|| {
+							let id = NodeId::new();
+							let resource_node = DocumentNode {
+								inputs: vec![
+									NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
+									NodeInput::value(TaggedValue::ResourceHash(hash), false),
+								],
+								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
+								..Default::default()
+							};
+							new_nodes.push((id, resource_node));
+							id
+						})
+					}
+					TaggedValue::AnimationCurve(curve) => {
+						let id = NodeId::new();
+						let curve_node = DocumentNode {
+							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
+							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::evaluate_curve::IDENTIFIER),
+							context_features: ContextDependencies {
+								extract: ContextFeatures::ANIMATION_TIME,
+								inject: ContextFeatures::empty(),
+							},
+							..Default::default()
+						};
+						new_nodes.push((id, curve_node));
+						id
+					}
+					_ => continue,
 				};
 
-				let resource_id = *hash_to_node_id.entry(hash).or_insert_with(|| {
-					let id = NodeId::new();
-					let resource_node = DocumentNode {
-						inputs: vec![
-							NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
-							NodeInput::value(TaggedValue::ResourceHash(hash), false),
-						],
-						implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
-						..Default::default()
-					};
-					new_resource_nodes.push((id, resource_node));
-					id
-				});
-
-				*input = NodeInput::node(resource_id, 0);
+				*input = NodeInput::node(node_id, 0);
 			}
 		}
 
-		for (id, node) in new_resource_nodes {
+		for (id, node) in new_nodes {
 			network.nodes.insert(id, node);
 		}
 
@@ -119,7 +134,13 @@ impl Preprocessor {
 		for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 			let id = id.clone();
 
-			let NodeMetadata { fields, memoize, inject_scope, .. } = metadata;
+			let NodeMetadata {
+				fields,
+				memoize,
+				inject_scope,
+				output_fields,
+				..
+			} = metadata;
 			let Some(implementations) = node_registry.get(&id) else { continue };
 			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 			let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -232,7 +253,23 @@ impl Preprocessor {
 				})
 				.collect();
 
-			if generated_nodes == 0 && !memoize && !inject_scope {
+			let output_fields = output_fields.as_ref();
+
+			// A multi-output node's outputs share one evaluation through a Memoize node
+			let memoize = *memoize || output_fields.is_some();
+			debug_assert!(
+				output_fields.is_none()
+					|| into_node_registry.get(&graphene_core::memo::memoize::IDENTIFIER).is_some_and(|memoize_implementations| {
+						implementations.iter().all(|(_, node_io)| {
+							let struct_type = node_io.return_value.nested_type();
+							memoize_implementations.keys().any(|memoize_io| memoize_io.return_value.nested_type() == struct_type)
+						})
+					}),
+				"The multi-output node {} has no Memoize implementation for the struct it returns",
+				id.as_str()
+			);
+
+			if generated_nodes == 0 && !memoize && !inject_scope && output_fields.is_none() {
 				continue;
 			}
 
@@ -249,7 +286,7 @@ impl Preprocessor {
 			nodes.insert(NodeId(input_count as u64), document_node);
 
 			// If memoize is requested, append a Memoize node after the main node and redirect the export through it
-			let export_node_id = if *memoize {
+			let export_node_id = if memoize {
 				let memoize_node_id = NodeId(input_count as u64 + 1);
 				let memoize_node = DocumentNode {
 					inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
@@ -263,14 +300,33 @@ impl Preprocessor {
 				NodeId(input_count as u64)
 			};
 
+			// A multi-output node exports each field through its generated extractor node, after the hidden primary output if it has one
+			let mut exports = Vec::new();
+			if output_fields.is_none_or(|output_fields| output_fields.hidden_primary_output()) {
+				exports.push(NodeInput::Node {
+					node_id: export_node_id,
+					output_index: 0,
+				});
+			}
+			if let Some(output_fields) = output_fields {
+				for (field_index, field) in output_fields.fields.iter().enumerate() {
+					let extractor_node_id = NodeId(export_node_id.0 + 1 + field_index as u64);
+					let extractor_node = DocumentNode {
+						inputs: vec![NodeInput::node(export_node_id, 0)],
+						implementation: DocumentNodeImplementation::ProtoNode(field.extractor.clone()),
+						visible: true,
+						..Default::default()
+					};
+					nodes.insert(extractor_node_id, extractor_node);
+					exports.push(NodeInput::node(extractor_node_id, 0));
+				}
+			}
+
 			let node = DocumentNode {
 				inputs,
 				call_argument: input_type.clone(),
 				implementation: DocumentNodeImplementation::Network(NodeNetwork {
-					exports: vec![NodeInput::Node {
-						node_id: export_node_id,
-						output_index: 0,
-					}],
+					exports,
 					nodes,
 					scope_injections: Default::default(),
 					generated: true,
@@ -348,6 +404,260 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 #[derive(Debug)]
 pub enum PreprocessorError {
 	ResourceNotFound(ResourceId),
+}
+
+#[cfg(test)]
+mod destructure_tests {
+	use super::*;
+	use core_types::list::{Item, List};
+	use core_types::registry::Destructure;
+	use glam::DVec2;
+	use graph_craft::graphene_compiler::Compiler;
+	use interpreted_executor::dynamic_executor::DynamicExecutor;
+
+	/// Test-only struct with a `#[primary]` field, exercising the primary-output layout.
+	#[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destructure)]
+	pub struct SumProduct {
+		/// The sum of the two inputs.
+		#[primary]
+		sum: Item<f64>,
+		/// The product of the two inputs.
+		product: Item<f64>,
+	}
+
+	#[node_macro::node(category(""))]
+	fn sum_product(_: impl core_types::Ctx, a: Item<f64>, b: Item<f64>) -> SumProduct {
+		let (a, b) = (a.into_element(), b.into_element());
+
+		SumProduct {
+			sum: Item::new_from_element(a + b),
+			product: Item::new_from_element(a * b),
+		}
+	}
+
+	/// Test-only struct of mixed ranks, returned by a whole-list node.
+	#[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destructure)]
+	pub struct DoubledAndCount {
+		/// Each input value doubled.
+		doubled: List<f64>,
+		/// How many values were given.
+		count: Item<f64>,
+	}
+
+	#[node_macro::node(category(""))]
+	fn doubled_and_count(_: impl core_types::Ctx, values: List<f64>) -> DoubledAndCount {
+		let count = Item::new_from_element(values.len() as f64);
+		let doubled = values
+			.into_iter()
+			.map(|value| {
+				let (value, attributes) = value.into_parts();
+				Item::from_parts(value * 2., attributes)
+			})
+			.collect();
+
+		DoubledAndCount { doubled, count }
+	}
+
+	/// A network where the outputs of the given multi-output node feed an Add node.
+	/// Includes a stub "editor-api" scope injection, which preprocessing requires and `wrap_network_in_scope` normally provides.
+	fn multi_output_into_add_network(node: DocumentNode, added_output_indices: [usize; 2]) -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [
+				(NodeId(0), node),
+				(
+					NodeId(1),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(0), added_output_indices[0]), NodeInput::node(NodeId(0), added_output_indices[1])],
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::add::IDENTIFIER),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(2),
+					DocumentNode {
+						inputs: vec![NodeInput::value(TaggedValue::EditorApi(std::sync::Arc::default()), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			scope_injections: [("editor-api".to_string(), (NodeId(2), concrete!(&graph_craft::application_io::PlatformEditorApi)))]
+				.into_iter()
+				.collect(),
+			..Default::default()
+		}
+	}
+
+	/// A network where a multi-output Vec2 to Numbers node's X and Y outputs (indices 1 and 2, after the hidden primary) feed an Add node.
+	fn vec2_to_numbers_network() -> NodeNetwork {
+		let vec2_to_numbers = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::new(3., 5.)), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER),
+			..Default::default()
+		};
+		multi_output_into_add_network(vec2_to_numbers, [1, 2])
+	}
+
+	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
+		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed");
+		let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).expect("The executor should type check and build");
+
+		let context: core_types::Context = None;
+		let result = futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), context)).expect("Execution should succeed");
+		assert_eq!(result, expected);
+	}
+
+	#[test]
+	fn multi_output_node_expands_into_generated_destructure_network() {
+		let vec2_to_numbers_identifier = graphene_std::math_nodes::vec_2_to_numbers::IDENTIFIER;
+		let destructure = registry::MULTI_OUTPUT_NODES
+			.get(&vec2_to_numbers_identifier)
+			.expect("Vec2 to Numbers should be registered as a multi-output node");
+		assert_eq!(destructure.fields.iter().map(|field| field.name).collect::<Vec<_>>(), vec!["X", "Y"]);
+		assert!(destructure.hidden_primary_output());
+
+		let mut network = vec2_to_numbers_network();
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+
+		// The multi-output node is substituted with a transient generated network: the struct as the hidden primary export,
+		// followed by one export per field, each pulled out of the struct by that field's extractor node
+		let node = network.nodes.get(&NodeId(0)).unwrap();
+		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+			panic!("The multi-output node should be substituted with a generated network")
+		};
+		assert!(generated.generated, "The substituted network must be marked as generated so it stays out of node paths");
+		assert_eq!(generated.exports.len(), destructure.number_of_outputs());
+
+		// The struct is computed once and shared through a Memoize node
+		let Some(NodeInput::Node { node_id: struct_source_id, .. }) = generated.exports.first() else {
+			panic!("Export 0 should come from a node")
+		};
+		let struct_source = generated.nodes.get(struct_source_id).unwrap();
+		assert_eq!(struct_source.implementation, DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER));
+
+		let Some(NodeInput::Node { node_id: main_node_id, .. }) = struct_source.inputs.first() else {
+			panic!("The Memoize node should pull from the struct-producing node")
+		};
+		let main_node = generated.nodes.get(main_node_id).unwrap();
+		assert_eq!(main_node.implementation, DocumentNodeImplementation::ProtoNode(vec2_to_numbers_identifier));
+
+		for (field, export) in destructure.fields.iter().zip(&generated.exports[1..]) {
+			let NodeInput::Node { node_id: extractor_id, .. } = export else {
+				panic!("Each field export should come from an extractor node")
+			};
+			let extractor = generated.nodes.get(extractor_id).unwrap();
+			assert_eq!(extractor.implementation, DocumentNodeImplementation::ProtoNode(field.extractor.clone()));
+			assert_eq!(extractor.inputs, vec![NodeInput::node(*struct_source_id, 0)], "Each extractor should share the memoized struct");
+		}
+	}
+
+	#[test]
+	fn multi_output_node_compiles_and_executes() {
+		let mut network = vec2_to_numbers_network();
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+
+		// X + Y of (3, 5) should be 8
+		assert_execution_result(network, TaggedValue::Number(8.));
+	}
+
+	#[test]
+	fn primary_field_becomes_the_primary_output() {
+		let identifier = sum_product::IDENTIFIER;
+		let destructure = registry::MULTI_OUTPUT_NODES.get(&identifier).expect("Sum Product should be registered as a multi-output node");
+		assert!(!destructure.hidden_primary_output());
+		assert_eq!(destructure.fields.iter().map(|field| field.name).collect::<Vec<_>>(), vec!["Sum", "Product"]);
+
+		let node = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::Number(3.), false), NodeInput::value(TaggedValue::Number(5.), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(identifier),
+			..Default::default()
+		};
+		let mut network = multi_output_into_add_network(node, [0, 1]);
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+
+		// With a `#[primary]` field there is no hidden primary output, so there's one export per field
+		let node = network.nodes.get(&NodeId(0)).unwrap();
+		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+			panic!("The multi-output node should be substituted with a generated network")
+		};
+		assert_eq!(generated.exports.len(), destructure.number_of_outputs());
+		for (field, export) in destructure.fields.iter().zip(&generated.exports) {
+			let NodeInput::Node { node_id: extractor_id, .. } = export else {
+				panic!("Each field export should come from an extractor node")
+			};
+			let extractor = generated.nodes.get(extractor_id).unwrap();
+			assert_eq!(extractor.implementation, DocumentNodeImplementation::ProtoNode(field.extractor.clone()));
+		}
+
+		// Sum + product of (3, 5) should be 8 + 15 = 23
+		assert_execution_result(network, TaggedValue::Number(23.));
+	}
+
+	#[test]
+	fn framed_multi_output_node_returns_the_mapped_struct() {
+		let destructure = registry::MULTI_OUTPUT_NODES
+			.get(&sum_product::IDENTIFIER)
+			.expect("Sum Product should be registered as a multi-output node");
+		assert_eq!(destructure.mapped_type, concrete!(SumProductMapped));
+		assert!(destructure.fields.iter().all(|field| field.ty == core_types::item!(f64) && field.mapped_ty == core_types::list!(f64)));
+
+		// The node registers a mapped variant returning the mapped struct alongside its single-item form
+		let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let rows = node_registry.get(&sum_product::IDENTIFIER).expect("Sum Product should have registered implementations");
+		assert!(rows.iter().any(|(_, node_io)| *node_io.return_value.nested_type() == concrete!(SumProduct)));
+		assert!(rows.iter().any(|(_, node_io)| *node_io.return_value.nested_type() == destructure.mapped_type));
+		drop(node_registry);
+
+		// A list on one connector frames the node, so the sums [11, 12, 13] and products [10, 20, 30] add to [21, 32, 43]
+		let node = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::Numbers(vec![1., 2., 3.]), false), NodeInput::value(TaggedValue::Number(10.), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(sum_product::IDENTIFIER),
+			..Default::default()
+		};
+		let mut network = multi_output_into_add_network(node, [0, 1]);
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+		assert_execution_result(network, TaggedValue::Numbers(vec![21., 32., 43.]));
+	}
+
+	#[test]
+	fn whole_list_multi_output_node_returns_fields_of_mixed_rank() {
+		let destructure = registry::MULTI_OUTPUT_NODES
+			.get(&doubled_and_count::IDENTIFIER)
+			.expect("Doubled And Count should be registered as a multi-output node");
+		assert_eq!(
+			destructure.fields.iter().map(|field| field.ty.clone()).collect::<Vec<_>>(),
+			vec![core_types::list!(f64), core_types::item!(f64)]
+		);
+
+		// The doubled list [2, 4, 6] and the count 3 add to [5, 7, 9]
+		let node = DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::Numbers(vec![1., 2., 3.]), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(doubled_and_count::IDENTIFIER),
+			..Default::default()
+		};
+		let mut network = multi_output_into_add_network(node, [1, 2]);
+		Preprocessor::new().preprocess(&mut network, &|_| None).expect("Preprocessing should succeed");
+		assert_execution_result(network, TaggedValue::Numbers(vec![5., 7., 9.]));
+	}
+
+	#[test]
+	fn pushing_into_the_mapped_struct_lifts_item_fields_and_concatenates_list_fields() {
+		let mut mapped = DoubledAndCount::mapped_with_capacity(2);
+		for count in [1., 2.] {
+			let doubled = [count, count].into_iter().map(Item::new_from_element).collect();
+			DoubledAndCount {
+				doubled,
+				count: Item::new_from_element(count),
+			}
+			.push_into(&mut mapped);
+		}
+
+		assert_eq!(mapped.doubled.iter_element_values().copied().collect::<Vec<_>>(), vec![1., 1., 2., 2.]);
+		assert_eq!(mapped.count.iter_element_values().copied().collect::<Vec<_>>(), vec![1., 2.]);
+	}
 }
 
 impl std::fmt::Display for PreprocessorError {

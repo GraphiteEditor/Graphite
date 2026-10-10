@@ -113,6 +113,7 @@
 			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
+			data-input-element
 		></textarea>
 	{/if}
 	{#if label}

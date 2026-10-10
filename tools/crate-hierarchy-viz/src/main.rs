@@ -180,6 +180,9 @@ fn main() -> Result<()> {
 	let dot_content = generate_dot(&crates);
 	let svg_content = dot_to_svg(&dot_content)?;
 
+	// Mark the graph's root element for the website's script to find
+	let svg_content = svg_content.replacen("<svg", "<svg data-crate-hierarchy-graph=\"\"", 1);
+
 	fs::create_dir_all(&output_dir).with_context(|| format!("Failed to create directory {:?}", output_dir))?;
 	fs::write(&output_path, &svg_content).with_context(|| format!("Failed to write to {:?}", output_path))?;
 

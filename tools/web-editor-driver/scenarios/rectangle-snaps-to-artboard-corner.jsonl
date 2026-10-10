@@ -1,0 +1,19 @@
+// A rectangle started near the artboard's corner snaps onto it
+
+{ "type": "resize", "size": [1600, 1000] }
+
+// Open a new document
+{ "type": "press", "key": "Control+KeyN" }
+{ "type": "waitIdle" }
+{ "type": "click", "at": [802, 588] }
+{ "type": "waitIdle" }
+
+// Start drawing 3 pixels from the artboard's corner, then check the size and center are measured from the corner itself
+{ "type": "press", "key": "KeyM" }
+{ "type": "drag", "from": [33, 106], "to": [330, 306], "space": "viewport" }
+{ "type": "waitIdle" }
+{ "type": "expect", "value": "500.26", "count": 1 }
+{ "type": "expect", "value": "338.51", "count": 1 }
+{ "type": "expect", "value": "250.13 px", "count": 1 }
+{ "type": "expect", "value": "169.25 px", "count": 1 }
+{ "type": "screenshot", "path": "scenarios/rectangle-snaps-to-artboard-corner.png", "clip": { "x": 49, "y": 105, "width": 400, "height": 300 } }

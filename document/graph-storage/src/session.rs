@@ -37,19 +37,7 @@ impl Session {
 	/// A session for device `peer` used by person `user`, whom its registration records.
 	pub fn with_identity(peer: PeerId, user: UserId) -> Self {
 		Self {
-			document: Document {
-				working_registry: Registry::default(),
-				retired_snapshot: Registry::default(),
-				history: History::new(),
-				hot_log: Vec::new(),
-				head: None,
-				redo_stack: Vec::new(),
-				clock: LamportClock::new(peer),
-				peer,
-				user,
-				last_broadcast_rev: None,
-				next_node_counter: 0,
-			},
+			document: Document::empty(peer, user),
 			remote_tips: HashMap::new(),
 		}
 	}
@@ -156,7 +144,7 @@ impl Session {
 	///
 	/// The peer's first contribution is preceded by a `RegisterPeer` op, so the device's
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
-	/// before any of its edits. A no-op batch doesn't register — registration rides a real edit.
+	/// before any of its edits. A no-op batch doesn't register, since registration rides a real edit.
 	pub(crate) fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
 		let mut pending: Vec<RegistryDelta> = ops.into_iter().collect();
 		if pending.is_empty() {
@@ -174,7 +162,7 @@ impl Session {
 				op,
 				timestamp: self.document.clock.tick(),
 			};
-			self.document.apply_hot_op(hot_op.clone())?;
+			self.document.stage_hot_op(hot_op.clone(), ApplyMode::Strict)?;
 			staged.push(hot_op);
 		}
 		Ok(staged)
@@ -182,19 +170,23 @@ impl Session {
 
 	/// Wrap each op as a `Delta`, apply it, and chain it onto the local history. One tick per op.
 	///
-	/// Operates on the *retired snapshot*: reverses are computed against and forward ops applied to it,
-	/// so each `reverse` captures the true pre-op value rather than the hot-polluted working state. The
-	/// working registry already reflects these ops (they were staged as hot ops before retirement, or
-	/// equal the snapshot when there are none), so it is left untouched.
+	/// Operates on the retired snapshot, so each `reverse` holds the true pre-op state; the working registry already
+	/// reflects the ops, staged before retirement or equal to the snapshot when nothing is hot.
 	///
 	/// `idempotent`: pass `true` when the snapshot already reflects the op (retirement of an already-
 	/// applied hot op) so duplicate structural inserts no-op rather than error.
 	fn commit_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
-		let target = RegistryTarget::Snapshot;
+		self.commit_ops_authored_at(ops.into_iter().map(|op| (op, None)), idempotent)
+	}
+
+	/// [`commit_ops`](Self::commit_ops) for ops paired with their authored stamp (`None` to mint one), which retirement keeps
+	/// so LWW resolves as it did live.
+	fn commit_ops_authored_at(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Option<TimeStamp>)>, idempotent: bool) -> Result<Vec<Rev>, CrdtError> {
+		let target = RegistryTarget::Retired;
 		let ops = ops.into_iter();
 		let mut produced = Vec::with_capacity(ops.size_hint().0);
 
-		for op in ops {
+		for (op, authored_at) in ops {
 			// A new edit abandons any undone-forward branch: those revs stay in the DAG but are no
 			// longer reachable via redo. (Mirrors the legacy editor clearing its redo history on
 			// commit.) Done on the first real op so a no-op commit doesn't silently disable redo.
@@ -203,9 +195,9 @@ impl Session {
 			}
 
 			let reverse = self.document.compute_reverse_delta(target, &op)?;
-			let timestamp = self.document.clock.tick();
+			let timestamp = authored_at.unwrap_or_else(|| self.document.clock.tick());
 			let parent = self.document.head;
-			let author = self.document.peer;
+			let author = timestamp.peer;
 
 			let delta = Delta::new(parent, author, timestamp, op, reverse);
 			let rev = delta.id;
@@ -216,7 +208,7 @@ impl Session {
 			{
 				return Err(CrdtError::NotFoundInHistory(parent));
 			}
-			let mode = if idempotent { ApplyMode::Idempotent } else { ApplyMode::Live };
+			let mode = if idempotent { ApplyMode::Idempotent } else { ApplyMode::Strict };
 			self.document.apply_op_with(target, delta.kind.clone(), delta.timestamp, mode)?;
 			self.document.history.push(delta);
 			self.document.head = Some(rev);
@@ -242,14 +234,11 @@ impl Session {
 				retired_snapshot: registry.clone(),
 				working_registry: registry,
 				history: History::from_ordered(history),
-				hot_log: Vec::new(),
 				head,
 				redo_stack,
 				clock,
-				peer,
-				user,
-				last_broadcast_rev: None,
 				next_node_counter,
+				..Document::empty(peer, user)
 			},
 			remote_tips: HashMap::new(),
 		}
@@ -271,11 +260,6 @@ impl Session {
 		// Pure retired-delta replay: no hot ops, so the working registry is fully retired.
 		session.document.retired_snapshot = session.document.working_registry.clone();
 		Ok(session)
-	}
-
-	/// Apply a hot op without going through the broadcast stream.
-	pub fn apply_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
-		self.document.apply_hot_op(hot_op)
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -316,25 +300,28 @@ impl Session {
 		Ok(Some(merge_rev))
 	}
 
-	/// Promote hot ops with timestamp `≤ up_to` into retired deltas, re-applied with fresh
-	/// retirement timestamps so LWW arms bump field timestamps to `T_retire`.
-	///
-	/// Today: one retired delta per hot op. Coarsening is a future step.
-	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
-		let mut drained = Vec::new();
-		let mut remaining = Vec::with_capacity(self.document.hot_log.len());
-		for hot_op in self.document.hot_log.drain(..) {
-			if hot_op.timestamp <= up_to {
-				drained.push(hot_op);
-			} else {
-				remaining.push(hot_op);
-			}
+	/// The retired snapshot as history alone gives it: the fold of `head`'s ancestry, leaving out undone deltas kept for redo.
+	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
+		let reachable = self.document.history.ancestors(self.document.head);
+		let mut scratch = Document::empty(self.document.peer, self.document.user);
+		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
+			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 		}
-		self.document.hot_log = remaining;
-
-		self.commit_ops(drained.into_iter().map(|hot_op| hot_op.op), true)
+		Ok(scratch.working_registry)
 	}
 
+	pub fn history_len(&self) -> usize {
+		self.document.history.len()
+	}
+
+	/// Promote every hot op stamped at or before `up_to` into retired deltas in hot-log order, each keeping its authored
+	/// stamp.
+	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, CrdtError> {
+		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| hot_op.timestamp <= up_to);
+		self.document.hot_log = kept;
+		let ops = drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
+		self.commit_ops_authored_at(ops, true)
+	}
 	/// Mark a retired delta as the end of a user interaction, so the undo cursor treats it as a checkpoint.
 	/// Called once per interaction by the editor-facing commit path (not by resource/internal commits).
 	pub fn mark_interaction_end(&mut self, rev: Rev) {
@@ -480,18 +467,10 @@ impl Session {
 	/// interaction's `AddResource` from the working registry, so a redoable (or re-undoable) interaction's
 	/// resources no longer appear in `registry().resources` even though redo still needs them. Resource GC
 	/// must keep this whole set alive, not just the current head's, or undo then redo loses declaration
-	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot.
+	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot and `SetResourceHash`.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
-
-		for delta in self.document.history.iter() {
-			match &delta.kind {
-				RegistryDelta::AddResource { entry, .. } => hashes.extend(entry.hash),
-				RegistryDelta::RemoveResource { snapshot, .. } => hashes.extend(snapshot.hash),
-				_ => {}
-			}
-		}
-
+		hashes.extend(self.document.history.resource_hashes());
 		hashes
 	}
 
@@ -557,7 +536,7 @@ impl Session {
 	}
 
 	/// Test-only: commit a single op as a retired delta on the local chain, returning the result so a
-	/// test can observe a resurrection failure (e.g. `NotFoundInHistory`).
+	/// test can observe a failure (e.g. `NotFoundInHistory`).
 	#[cfg(test)]
 	pub(crate) fn commit_op_for_test(&mut self, op: RegistryDelta) -> Result<(), CrdtError> {
 		self.commit_ops(std::iter::once(op), false).map(|_| ())
@@ -609,10 +588,6 @@ pub enum CrdtError {
 	ExportSlotOutOfBounds(u32),
 	#[error("Delta {0} not found in history")]
 	NotFoundInHistory(Rev),
-	#[error("No history entry resurrects node {0}")]
-	NodeNotInHistory(NodeId),
-	#[error("No history entry resurrects network {0}")]
-	NetworkNotInHistory(NetworkId),
 	#[error("Nothing to undo")]
 	NothingToUndo,
 	#[error("Nothing to redo")]

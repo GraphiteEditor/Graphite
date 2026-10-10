@@ -14,7 +14,7 @@ use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"), name("Remove at Index"))]
+#[node_macro::node(category("General"), icon("NodeRemoveAtIndex"), name("Remove at Index"))]
 pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
@@ -48,7 +48,7 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 
 /// Returns the item at the specified index in a list, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("General"), name("Item at Index"))]
+#[node_macro::node(category("General"), icon("NodeItemAtIndex"), name("Item at Index"))]
 pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to take the item from.
@@ -85,7 +85,7 @@ pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 }
 
 /// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* `Bool` list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeFilter"))]
 fn filter<T: Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to filter.
@@ -118,7 +118,7 @@ fn filter<T: Send + Sync + 'static>(
 }
 
 /// Reverses the order of the items in a list, so the last item comes first and the first comes last.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeReverse"))]
 fn reverse<T: Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to reverse.
@@ -143,7 +143,7 @@ fn reverse<T: Send + Sync + 'static>(
 }
 
 /// Shifts the items in a list by a number of positions. With wrapping, items pushed off one end reappear at the other. Otherwise they are dropped, shortening the list.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeShift"))]
 fn shift<T: Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to shift.
@@ -188,7 +188,7 @@ fn shift<T: Send + Sync + 'static>(
 }
 
 /// Randomly reorders the items in a list. The same seed always produces the same ordering.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeShuffle"))]
 fn shuffle<T: Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list to have its items randomly reordered.
@@ -222,7 +222,7 @@ fn shuffle<T: Send + Sync + 'static>(
 }
 
 /// Generates a list of evenly spaced numbers, starting at a value and progressing by a step (which may be positive, negative, or zero) for a given count.
-#[node_macro::node(category("General"), name("Number Sequence"))]
+#[node_macro::node(category("General"), icon("NodeNumberSequence"), name("Number Sequence"))]
 fn number_sequence(
 	_: impl Ctx,
 	_primary: (),
@@ -244,7 +244,7 @@ fn number_sequence(
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall these indices off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeListIndices"))]
 fn list_indices(
 	_: impl Ctx,
 	/// The list whose items are counted.
@@ -260,7 +260,7 @@ fn list_indices(
 /// Extracts a portion of a list, starting at "Start" and ending before "End".
 ///
 /// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeListSlice"))]
 fn list_slice<T: Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to take a portion of.
@@ -336,7 +336,7 @@ impl ElementOrder for Gradient {}
 impl ElementOrder for Artboard {}
 
 /// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeSort"))]
 fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to reorder.
@@ -382,7 +382,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	result
 }
 
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeMap"))]
 async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
@@ -431,7 +431,7 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	rows
 }
 
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeMirror"))]
 async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
@@ -515,7 +515,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeId
 /// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
 /// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted input adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
-#[node_macro::node(category("Attributes: Write"))]
+#[node_macro::node(category("Attributes: Write"), icon("NodeWriteAttribute"))]
 async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The list to set the named attribute on (one value per item).
@@ -556,7 +556,7 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 }
 
 /// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_vector(
 	_: impl Ctx,
 	content: ListDyn,
@@ -573,7 +573,7 @@ fn read_attribute_vector(
 }
 
 /// Reads a named `Number` or `Integer` attribute from the input list, outputting each value as an element of a new `Number[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_number(
 	_: impl Ctx,
 	content: ListDyn,
@@ -591,7 +591,7 @@ fn read_attribute_number(
 }
 
 /// Reads a named `Bool` attribute from the input list, outputting each value as an element of a new `Bool[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_bool(
 	_: impl Ctx,
 	content: ListDyn,
@@ -608,7 +608,7 @@ fn read_attribute_bool(
 }
 
 /// Reads a named `String` attribute from the input list, outputting each value as an element of a new `String[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_string(
 	_: impl Ctx,
 	content: ListDyn,
@@ -625,7 +625,7 @@ fn read_attribute_string(
 }
 
 /// Reads a named `Transform` attribute from the input list, outputting each value as an element of a new `Transform[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_transform(
 	_: impl Ctx,
 	content: ListDyn,
@@ -642,7 +642,7 @@ fn read_attribute_transform(
 }
 
 /// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `Color[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_color(
 	_: impl Ctx,
 	content: ListDyn,
@@ -659,7 +659,7 @@ fn read_attribute_color(
 }
 
 /// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `BlendMode[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_blend_mode(
 	_: impl Ctx,
 	content: ListDyn,
@@ -676,7 +676,7 @@ fn read_attribute_blend_mode(
 }
 
 /// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_form(
 	_: impl Ctx,
 	content: ListDyn,
@@ -693,7 +693,7 @@ fn read_attribute_gradient_form(
 }
 
 /// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_spread(
 	_: impl Ctx,
 	content: ListDyn,
@@ -710,7 +710,7 @@ fn read_attribute_gradient_spread(
 }
 
 /// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_space(
 	_: impl Ctx,
 	content: ListDyn,
@@ -727,7 +727,7 @@ fn read_attribute_gradient_space(
 }
 
 /// Reads a named `GradientInterpolation` attribute from the input list, outputting each value as an element of a new `GradientInterpolation[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_interpolation(
 	_: impl Ctx,
 	content: ListDyn,
@@ -744,7 +744,7 @@ fn read_attribute_gradient_interpolation(
 }
 
 /// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_hue_direction(
 	_: impl Ctx,
 	content: ListDyn,
@@ -761,7 +761,7 @@ fn read_attribute_gradient_hue_direction(
 }
 
 /// Reads a named `Gradient` attribute from the input list, outputting each value as an element of a new `Gradient[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_stops(
 	_: impl Ctx,
 	content: ListDyn,
@@ -778,7 +778,7 @@ fn read_attribute_gradient_stops(
 }
 
 /// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_artboard(
 	_: impl Ctx,
 	content: ListDyn,
@@ -795,7 +795,7 @@ fn read_attribute_artboard(
 }
 
 /// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
-#[node_macro::node(category("Attributes: Read"))]
+#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
 fn read_attribute_raster(
 	_: impl Ctx,
 	content: ListDyn,
@@ -812,7 +812,7 @@ fn read_attribute_raster(
 }
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeExtend"))]
 pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
@@ -889,7 +889,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeIntoGroup"))]
 pub async fn into_group<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
 	#[implementations(
@@ -911,13 +911,13 @@ pub async fn into_group<T: Into<Graphic> + 'n>(
 
 /// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeAsGraphic"))]
 pub async fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeFlattenGraphic"))]
 pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
@@ -962,7 +962,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 }
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
-#[node_macro::node(category("Vector"))]
+#[node_macro::node(category("Vector"), icon("NodeFlattenVector"))]
 pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	let mut output: List<Vector> = content.clone().into_flattened_list();
 
@@ -994,31 +994,31 @@ pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector>
 }
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster"), icon("NodeFlattenRaster"))]
 pub async fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeFlattenColor"))]
 pub async fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
-#[node_macro::node(category("General"))]
+#[node_macro::node(category("General"), icon("NodeFlattenGradient"))]
 pub async fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
 
 /// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
-#[node_macro::node(category("Gradient"), name("Colors to Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeColorsToGradient"), name("Colors to Gradient"))]
 fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Item<Gradient> {
 	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
 }
 
 /// Unwraps a gradient into a `Color[]` of its stops, keeping any `position` and `midpoint` attributes that place them along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
-#[node_macro::node(category("Gradient"), name("Gradient to Colors"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientToColors"), name("Gradient to Colors"))]
 fn gradient_to_colors(_: impl Ctx, gradient: Item<Gradient>) -> List<Color> {
 	gradient.into_element().into_color_list()
 }

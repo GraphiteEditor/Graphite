@@ -646,8 +646,9 @@ impl NodeNetworkInterface {
 	}
 
 	fn load_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
-		// The export keeps its own solid wire while previewing, since previewing does not rewire it
-		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, false, network_path) else {
+		// While previewing, the export's wire leads to the temporarily previewed node
+		let dashed = *input == InputConnector::Export(0) && matches!(self.previewing(network_path), Previewing::Yes { .. });
+		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, dashed, network_path) else {
 			log::error!("Could not load wire path from input");
 			return;
 		};
@@ -759,14 +760,15 @@ impl NodeNetworkInterface {
 
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
-		let input_type = self.input_type(&input, network_path);
-		let data_type = input_type.displayed_type();
-		let is_list = input_type.is_list();
+		// Styled by the root node's own output, since the export it leads to is connected to the previewed node instead
+		let output_type = self.output_type(&upstream_output, network_path);
+		let data_type = output_type.displayed_type();
+		let is_list = output_type.is_list();
 		let wire_path_update = Some(WirePath {
 			path_string,
 			data_type,
 			thick,
-			dashed: true,
+			dashed: false,
 			is_list,
 			center_path_string,
 		});

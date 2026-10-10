@@ -337,7 +337,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage
-		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
+		entry!(DoubleTap(Space); action_dispatch=DocumentMessage::GraphViewOverlayToggle),
 		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
@@ -354,8 +354,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
 		entry!(KeyDown(KeyS); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::SaveDocumentAs),
-		entry!(KeyDown(KeyD); modifiers=[Accel], canonical, action_dispatch=DocumentMessage::DuplicateSelectedLayers),
-		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyB); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::BlendSelectedLayers),
 		entry!(KeyDown(KeyM); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::MorphSelectedLayers), // Might get eaten by the GeForce Experience overlay for some Windows users
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
@@ -463,7 +462,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
 		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
-	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut double_tap, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by_key(|entry| std::cmp::Reverse(entry.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
@@ -474,6 +473,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 	}
 	// Sort the sublists of `double_click`
 	for sublist in &mut double_click {
+		sort(sublist)
+	}
+	// Sort the sublists of `double_tap`
+	for sublist in &mut double_tap {
 		sort(sublist)
 	}
 	// Sort `wheel_scroll`
@@ -489,6 +492,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		key_up_no_repeat,
 		key_down_no_repeat,
 		double_click,
+		double_tap,
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,

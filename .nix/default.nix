@@ -61,7 +61,9 @@ in
       graphite-bundle = (lib.call ./pkgs/graphite-bundle.nix) { };
       graphite-bundle-dev = (lib.call ./pkgs/graphite-bundle.nix) { graphite = graphite-dev; };
       graphite-flatpak-manifest = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { };
-      graphite-flatpak-manifest-dev = (lib.call ./pkgs/graphite-flatpak-manifest.nix) { graphite-bundle = graphite-bundle-dev; };
+      graphite-flatpak-manifest-dev = (lib.call ./pkgs/graphite-flatpak-manifest.nix) {
+        graphite-bundle = graphite-bundle-dev;
+      };
       graphite-cef = lib.call ./pkgs/graphite-cef.nix;
 
       # TODO: graphene-cli = lib.call ./pkgs/graphene-cli.nix;
@@ -70,8 +72,26 @@ in
 
   devShells = withArgs (
     { lib, ... }:
+    let
+      shell = lib.makeOverridable (lib.call ./dev.nix);
+    in
     {
-      default = lib.call ./dev.nix;
+      default = shell {
+        desktop = true;
+      };
+      full = shell {
+        desktop = true;
+        x11 = true;
+        playwright = true;
+      };
+      minimal = shell { };
+      x11 = shell {
+        desktop = true;
+        x11 = true;
+      };
+      playwright = shell {
+        playwright = true;
+      };
     }
   );
 

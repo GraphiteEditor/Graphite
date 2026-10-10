@@ -11,13 +11,12 @@ use graphene_std::animation::RealTimeMode;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::format_f64;
-use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
-	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha, RelativeAbsolute,
+	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RelativeAbsolute,
 	SelectiveColorChoice, TonalRange,
 };
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -40,6 +39,7 @@ use std::sync::Arc;
 #[derive(ExtractField)]
 pub struct DataPanelMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
+	pub selection_network_path: &'a [NodeId],
 	pub data_panel_open: bool,
 }
 
@@ -100,12 +100,17 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 
 impl DataPanelMessageHandler {
 	fn update_layout(&mut self, responses: &mut VecDeque<Message>, context: DataPanelMessageContext<'_>) {
-		let DataPanelMessageContext { network_interface, .. } = context;
+		let DataPanelMessageContext {
+			network_interface,
+			selection_network_path,
+			..
+		} = context;
 
 		let mut layout_data = LayoutData {
 			current_depth: 0,
 			desired_path: &mut self.element_path,
 			network_interface: &*network_interface,
+			selection_network_path,
 			node_lookup_network_path: Vec::new(),
 			gradient_settings: GradientSettings::default(),
 			breadcrumbs: Vec::new(),
@@ -176,6 +181,8 @@ struct LayoutData<'a> {
 	current_depth: usize,
 	desired_path: &'a mut Vec<PathStep>,
 	network_interface: &'a NodeNetworkInterface,
+	/// The network open in the graph, which is where selecting a node takes effect.
+	selection_network_path: &'a [NodeId],
 	/// The `network_path` to use when resolving a `NodeId` against the network interface.
 	/// Defaults to root (`&[]`); `List<NodeId>` rendering temporarily sets it to the path's prefix so nested
 	/// layers (e.g. inside a Ctrl+M-merged custom subgraph) resolve correctly.
@@ -238,13 +245,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<TextDenomination>,
 		List<DesaturateMethod>,
 		List<RedGreenBlue>,
-		List<RedGreenBlueAlpha>,
 		List<RelativeAbsolute>,
 		List<SelectiveColorChoice>,
 		List<TonalRange>,
 		List<AdjustmentChannel>,
 		List<HueSaturationRange>,
-		List<XY>,
 		List<ScaleType>,
 		List<ReferencePoint>,
 		List<CentroidType>,
@@ -294,13 +299,11 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<TextDenomination>,
 		Item<DesaturateMethod>,
 		Item<RedGreenBlue>,
-		Item<RedGreenBlueAlpha>,
 		Item<RelativeAbsolute>,
 		Item<SelectiveColorChoice>,
 		Item<TonalRange>,
 		Item<AdjustmentChannel>,
 		Item<HueSaturationRange>,
-		Item<XY>,
 		Item<ScaleType>,
 		Item<ReferencePoint>,
 		Item<CentroidType>,
@@ -1034,13 +1037,11 @@ impl_table_item_layout_for_choice_enum!(
 	TextDenomination,
 	DesaturateMethod,
 	RedGreenBlue,
-	RedGreenBlueAlpha,
 	RelativeAbsolute,
 	SelectiveColorChoice,
 	TonalRange,
 	AdjustmentChannel,
 	HueSaturationRange,
-	XY,
 	ScaleType,
 	CentroidType,
 	BooleanOperation,
@@ -1092,108 +1093,83 @@ impl TableItemLayout for NodeId {
 	fn identifier(&self) -> String {
 		format!("Node {self}")
 	}
-	// Override so the breadcrumb uses the same resolved display name as the value button, instead of the bare-ID fallback `identifier()` returns.
+	// Override so the breadcrumb uses the node's resolved display name instead of the bare-ID fallback `identifier()` returns
 	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		data.breadcrumbs.push(node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path));
 		self.value_page(data)
 	}
-	// The value's label resolves the node's display name via the network interface so the button reads as the name shown
-	// in the Node Graph / Layers panels. The lookup uses `data.node_lookup_network_path` (set by the enclosing
-	// `List<NodeId>` if rendering a path) so the resolution succeeds at any nesting depth. The button's icon
-	// signals layer-vs-node kind. Falls back to "Node {id}" with no icon if the lookup misses.
-	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
-		let label = node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path);
-		let mut button = TextButton::new(label)
-			.on_update(move |_| DataPanelMessage::PushToElementPath { step: target.clone() }.into())
-			.narrow(true);
-		if data.network_interface.node_metadata(self, &data.node_lookup_network_path).is_some() {
-			let icon = if data.network_interface.is_layer(self, &data.node_lookup_network_path) { "Layer" } else { "Node" };
-			button = button.icon(icon);
-		}
-		vec![button.widget_instance()]
-	}
-	// The value page shows the node's kind, name (editable), lock/visibility toggles, and a "Select Layer/Node" action button.
-	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+	// Shown inline as the node's icon, name, a button to select it, and visibility and lock toggles. The lookups use
+	// `data.node_lookup_network_path` (set by the enclosing `List<NodeId>` if rendering a path) so they resolve at any nesting depth.
+	fn value_widgets(&self, _target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
 		let node_id = *self;
+		let network_interface = data.network_interface;
 		let network_path = data.node_lookup_network_path.clone();
-		let known = data.network_interface.node_metadata(&node_id, &network_path).is_some();
-		let is_layer = known && data.network_interface.is_layer(&node_id, &network_path);
-		let name = if known {
-			data.network_interface.display_name(&node_id, &network_path)
-		} else {
-			"(node not found)".to_string()
-		};
-		let kind_widget = if known {
-			IconLabel::new(if is_layer { "Layer" } else { "Node" }).widget_instance()
-		} else {
-			TextLabel::new("-").widget_instance()
-		};
-		let name_widget = if known {
-			let path_for_rename = network_path.clone();
-			TextInput::new(name)
-				.tooltip_description(if is_layer { "Name of this layer." } else { "Name of this node." })
-				.on_update(move |text_input| {
-					NodeGraphMessage::SetDisplayName {
+
+		// An ID that no longer maps to a real node has nothing to show but itself
+		if network_interface.node_metadata(&node_id, &network_path).is_none() {
+			return vec![TextLabel::new(node_id_display_label(node_id, network_interface, &network_path)).widget_instance()];
+		}
+
+		let is_layer = network_interface.is_layer(&node_id, &network_path);
+		let is_locked = network_interface.is_locked(&node_id, &network_path);
+		let is_visible = network_interface.is_visible(&node_id, &network_path);
+		let icon = network_interface.node_icon(&node_id, &network_path);
+		let name = network_interface.display_name(&node_id, &network_path);
+		let in_open_network = network_path == data.selection_network_path;
+		let already_selected = network_interface.selected_nodes_in_nested_network(&network_path).is_some_and(|selected| selected.0 == [node_id]);
+
+		let path_for_visibility = network_path.clone();
+		let path_for_lock = network_path;
+
+		vec![
+			IconLabel::new(icon).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextLabel::new(name).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			IconButton::new("SelectAll", 24)
+				.disabled(!in_open_network || already_selected)
+				.tooltip_label(if is_layer { "Select Layer" } else { "Select Node" })
+				.tooltip_description(match (in_open_network, already_selected, is_layer) {
+					(false, _, true) => "This layer is not in the part of the graph currently open.",
+					(false, _, false) => "This node is not in the part of the graph currently open.",
+					(true, true, true) => "This is already the selected layer.",
+					(true, true, false) => "This is already the selected node.",
+					(true, false, _) => "",
+				})
+				// Starts from the root of the newly selected node's data, since the current drill-down path means nothing there
+				.on_update(move |_| Message::Batched {
+					messages: Box::new([DataPanelMessage::TruncateElementPath { len: 0 }.into(), NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into()]),
+				})
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			IconButton::new(if is_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(if is_visible { "EyeHide" } else { "EyeShow" })
+				.tooltip_label(if is_visible { "Hide" } else { "Show" })
+				.on_update(move |_| {
+					NodeGraphMessage::ToggleVisibility {
 						node_id,
-						network_path: path_for_rename.clone(),
-						alias: text_input.value.clone(),
-						skip_adding_history_step: false,
+						network_path: path_for_visibility.clone(),
 					}
 					.into()
 				})
-				.max_width(200)
-				.widget_instance()
-		} else {
-			TextLabel::new(name).widget_instance()
-		};
-
-		let mut header = vec![kind_widget, Separator::new(SeparatorStyle::Related).widget_instance(), name_widget];
-
-		if known {
-			let is_locked = data.network_interface.is_locked(&node_id, &network_path);
-			let is_visible = data.network_interface.is_visible(&node_id, &network_path);
-
-			let path_for_lock = network_path.clone();
-			let path_for_visibility = network_path.clone();
-
-			header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-			header.push(
-				IconButton::new(if is_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-					.hover_icon(if is_locked { "PadlockUnlocked" } else { "PadlockLocked" })
-					.tooltip_label(if is_locked { "Unlock" } else { "Lock" })
-					.on_update(move |_| {
-						NodeGraphMessage::ToggleLocked {
-							node_id,
-							network_path: path_for_lock.clone(),
-						}
-						.into()
-					})
-					.widget_instance(),
-			);
-			header.push(
-				IconButton::new(if is_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-					.hover_icon(if is_visible { "EyeHide" } else { "EyeShow" })
-					.tooltip_label(if is_visible { "Hide" } else { "Show" })
-					.on_update(move |_| {
-						NodeGraphMessage::ToggleVisibility {
-							node_id,
-							network_path: path_for_visibility.clone(),
-						}
-						.into()
-					})
-					.widget_instance(),
-			);
-		}
-
-		header.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		header.push(
-			TextButton::new(if is_layer { "Select Layer" } else { "Select Node" })
-				.tooltip_description(if is_layer { "Click to select this layer." } else { "Click to select this node." })
-				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into())
 				.widget_instance(),
-		);
-
-		vec![LayoutGroup::row(header)]
+			IconButton::new(if is_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(if is_locked { "PadlockUnlocked" } else { "PadlockLocked" })
+				.disabled(!is_layer)
+				.tooltip_label(if is_locked { "Unlock" } else { "Lock" })
+				.tooltip_description(if is_layer { "" } else { "Only layers can be locked." })
+				.on_update(move |_| {
+					NodeGraphMessage::ToggleLocked {
+						node_id,
+						network_path: path_for_lock.clone(),
+					}
+					.into()
+				})
+				.widget_instance(),
+		]
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), data))]
 	}
 }
 
@@ -1251,13 +1227,11 @@ macro_rules! known_item_types {
 			TextDenomination,
 			DesaturateMethod,
 			RedGreenBlue,
-			RedGreenBlueAlpha,
 			RelativeAbsolute,
 			SelectiveColorChoice,
 			TonalRange,
 			AdjustmentChannel,
 			HueSaturationRange,
-			XY,
 			ScaleType,
 			ReferencePoint,
 			CentroidType,

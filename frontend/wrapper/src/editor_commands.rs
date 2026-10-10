@@ -521,6 +521,30 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Select exactly the given nodes.
+	fn select_nodes(ids: Vec<u64>) -> Message {
+		NodeGraphMessage::SelectedNodesSet {
+			nodes: ids.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Select a node in the document network and open the node graph centered on it.
+	fn show_node_in_graph(node_id: u64) -> Message {
+		DocumentMessage::ShowNodeInGraph { node_id: NodeId(node_id) }.into()
+	}
+
+	/// Modify the selection based on the node clicked in the chain feeding a layer, with the same <kbd>Ctrl</kbd> and <kbd>Shift</kbd> behavior as selecting layers.
+	fn select_chain_node(layer: u64, node_id: u64, ctrl: bool, shift: bool) -> Message {
+		DocumentMessage::SelectChainNode {
+			layer: NodeId(layer),
+			node_id: NodeId(node_id),
+			ctrl,
+			shift,
+		}
+		.into()
+	}
+
 	/// Deselect all layers
 	fn deselect_all_layers() -> Message {
 		DocumentMessage::DeselectAllLayers.into()
@@ -540,11 +564,33 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers.
-	fn reorder_properties_section(node_id: u64, insert_index: usize) -> Message {
+	/// Move nodes together into a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn move_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::MoveChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+		}
+		.into()
+	}
+
+	/// Insert and select copies of nodes together in a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn duplicate_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::DuplicateChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+			select_copies: true,
+		}
+		.into()
+	}
+
+	/// Reorder a draggable Properties panel section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_properties_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
 		DocumentMessage::ReorderPropertiesSection {
 			node_id: NodeId(node_id),
 			insert_index,
+			duplicate,
 		}
 		.into()
 	}
@@ -675,9 +721,9 @@ mod editor_commands {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel
-	fn toggle_node_properties_section_expanded(id: u64) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) }.into()
+	/// Collapse or expand a node's section in the Properties panel, or recursively every section in its layer's chain
+	fn toggle_node_properties_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id), recursive }.into()
 	}
 
 	/// Delete a layer or node given its node ID

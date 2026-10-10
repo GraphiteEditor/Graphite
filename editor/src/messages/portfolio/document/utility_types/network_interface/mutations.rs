@@ -945,11 +945,19 @@ impl NodeNetworkInterface {
 
 	pub fn start_previewing_without_restore(&mut self, network_path: &[NodeId]) {
 		// Some logic will have to be performed to prevent the graph positions from being completely changed when the export changes to some previewed node
-		let Some(mut network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in start_previewing_without_restore");
-			return;
-		};
-		network.set_previewing(Previewing::Yes { root_node_to_restore: None });
+		self.set_previewing_state(Previewing::Yes { root_node_to_restore: None }, network_path);
+	}
+
+	/// While previewing, changes which node output the export is reconnected to once the preview ends.
+	pub fn set_root_node_to_restore(&mut self, root_node_to_restore: RootNode, network_path: &[NodeId]) {
+		if let Previewing::Yes { .. } = self.previewing(network_path) {
+			self.set_previewing_state(
+				Previewing::Yes {
+					root_node_to_restore: Some(root_node_to_restore),
+				},
+				network_path,
+			);
+		}
 	}
 
 	fn stop_previewing(&mut self, network_path: &[NodeId]) {
@@ -964,11 +972,18 @@ impl NodeNetworkInterface {
 			);
 		}
 
+		self.set_previewing_state(Previewing::No, network_path);
+	}
+
+	fn set_previewing_state(&mut self, previewing: Previewing, network_path: &[NodeId]) {
 		let Some(mut network) = self.network_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in stop_previewing");
+			log::error!("Could not get nested network_metadata in set_previewing_state");
 			return;
 		};
-		network.set_previewing(Previewing::No);
+		network.set_previewing(previewing);
+
+		// The export's wire is dashed only while previewing
+		self.unload_wire(&InputConnector::Export(0), network_path);
 	}
 
 	pub fn set_display_name(&mut self, node_id: &NodeId, display_name: String, network_path: &[NodeId]) {
@@ -983,6 +998,16 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 		self.invalidate_node_appearance(node_id, network_path);
+	}
+
+	/// Replaces the full list of output port names for a node. Used by document migrations that turn a single-output node
+	/// into a multi-output one, since the port labels are otherwise unnamed and fall back to the type name.
+	pub fn set_output_names(&mut self, node_id: &NodeId, output_names: Vec<String>, network_path: &[NodeId]) {
+		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+			log::error!("Could not get node {node_id} in set_output_names");
+			return;
+		};
+		node.set_output_names(output_names);
 	}
 
 	pub fn set_import_export_name(&mut self, name: String, index: ImportOrExport, network_path: &[NodeId]) {
@@ -1244,7 +1269,6 @@ impl NodeNetworkInterface {
 				self.disconnect_input(&InputConnector::Export(0), network_path);
 			}
 		}
-		let Some(mut network) = self.network_mut(network_path) else { return };
-		network.set_previewing(new_previewing_state);
+		self.set_previewing_state(new_previewing_state, network_path);
 	}
 }

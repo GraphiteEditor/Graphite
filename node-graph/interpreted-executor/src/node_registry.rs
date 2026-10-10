@@ -4,10 +4,10 @@ use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::application_io::resource::Resource;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
+use graphene_animation::AnimationCurve;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
-use graphene_std::extract_xy::XY;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
 #[cfg(target_family = "wasm")]
@@ -344,14 +344,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				TextDenomination,
 				DesaturateMethod,
 				RedGreenBlue,
-				RedGreenBlueAlpha,
 				RelativeAbsolute,
 				SelectiveColorChoice,
 				TonalRange,
 				AdjustmentChannel,
 				HueSaturationRange,
 				Stroke,
-				XY,
 				ScaleType,
 				ReferencePoint,
 				CentroidType,
@@ -371,6 +369,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				InterpolationDistribution,
 				RowsOrColumns,
 				Resource,
+				AnimationCurve,
 			)
 		};
 	}

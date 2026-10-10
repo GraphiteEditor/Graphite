@@ -2,7 +2,7 @@ use super::utility_types::Direction;
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector, RootNode};
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
@@ -61,6 +61,9 @@ pub enum NodeGraphMessage {
 		input_connector: InputConnector,
 	},
 	DisconnectRootNode,
+	SetRootNodeToRestore {
+		root_node_to_restore: RootNode,
+	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
@@ -94,9 +97,22 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
-	ReorderChainNode {
-		node_id: NodeId,
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
 		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		destination: Option<(NodeId, usize)>,
+		select_copies: bool,
+	},
+	DuplicateNodesInFlow {
+		node_ids: Vec<NodeId>,
+	},
+	PasteIntoChain {
+		target: ChainInsertionPoint,
+		copies: Vec<ChainNodeCopy>,
 	},
 	ReorderPinnedNode {
 		node_id: NodeId,

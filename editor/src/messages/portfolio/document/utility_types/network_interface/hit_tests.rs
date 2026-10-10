@@ -309,12 +309,11 @@ impl NodeNetworkInterface {
 			.reduce(Quad::combine_bounds)
 	}
 
-	pub fn selected_unlocked_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
-		self.selected_nodes()
-			.0
-			.iter()
-			.filter(|node| self.is_layer(node, &[]) && !self.is_locked(node, &[]))
-			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
+	pub fn selected_visible_and_unlocked_layers_bounding_box_viewport(&self) -> Option<[DVec2; 2]> {
+		let selected_nodes = self.selected_nodes();
+		selected_nodes
+			.selected_visible_and_unlocked_layers(self)
+			.filter_map(|layer| self.document_metadata.bounding_box_viewport(layer))
 			.reduce(Quad::combine_bounds)
 	}
 
