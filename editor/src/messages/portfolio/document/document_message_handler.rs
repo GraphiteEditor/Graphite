@@ -1299,7 +1299,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
-				if !self.overlays_visibility_settings.selection_outline() {
+				// In the graph, select every node of the network it shows
+				if self.graph_view_overlay_open {
+					let Some(network_metadata) = self.network_interface.network_metadata(&self.selection_network_path) else {
+						return;
+					};
+					let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect();
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 					return;
 				}
 
@@ -4389,6 +4395,37 @@ mod document_message_handler_tests {
 		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
 		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
 		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+	}
+
+	#[tokio::test]
+	async fn select_all_selects_every_node_in_the_graph_but_only_layers_outside_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+
+		let document = editor.active_document();
+		let all_nodes: HashSet<_> = document.network_interface.document_network().nodes.keys().copied().collect();
+		let selected: HashSet<_> = document.network_interface.selected_nodes().selected_nodes().copied().collect();
+		assert!(
+			all_nodes.iter().any(|node_id| !document.network_interface.is_layer(node_id, &[])),
+			"The rectangle should bring non-layer nodes"
+		);
+		assert_eq!(selected, all_nodes, "In the graph, Select All should select every node");
+
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: false }).await;
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+
+		let document = editor.active_document();
+		let selected: Vec<_> = document.network_interface.selected_nodes().selected_nodes().copied().collect();
+		assert!(!selected.is_empty(), "Outside the graph, Select All should select the layer");
+		assert!(
+			selected.iter().all(|node_id| document.network_interface.is_layer(node_id, &[])),
+			"Outside the graph, Select All should select only layers"
+		);
 	}
 
 	#[tokio::test]
