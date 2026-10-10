@@ -1757,20 +1757,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					log::error!("Ungrouping selected layers is only supported for the Document Network");
 					return;
 				}
+
+				// Artboards can't be ungrouped
+				let folders: Vec<_> = self
+					.network_interface
+					.folders_sorted_by_most_nested(&self.selection_network_path)
+					.into_iter()
+					.filter(|&folder| folder != LayerNodeIdentifier::ROOT_PARENT && !self.network_interface.is_artboard(&folder.to_node(), &self.selection_network_path))
+					.collect();
+				if folders.is_empty() {
+					return;
+				}
+
 				responses.add(DocumentMessage::AddTransaction);
 
-				let folder_paths = self.network_interface.folders_sorted_by_most_nested(&self.selection_network_path);
-				for folder in folder_paths {
-					if folder == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
-						continue;
-					}
-
-					// Cannot ungroup artboard
-					if self.network_interface.is_artboard(&folder.to_node(), &self.selection_network_path) {
-						return;
-					}
-
+				for folder in folders {
 					responses.add(DocumentMessage::UngroupLayer { layer: folder });
 				}
 

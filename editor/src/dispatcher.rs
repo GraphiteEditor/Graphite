@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
@@ -284,26 +285,45 @@ impl Dispatcher {
 						.active_document_id
 						.and_then(|document_id| self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id))
 					{
-						let selected_nodes = document.network_interface.selected_nodes();
-						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
+						let selected_nodes = document.network_interface.selected_nodes_in_nested_network(document.selection_network_path()).unwrap_or_default();
+						let network_interface = &document.network_interface;
+						let layer_metadata = document.metadata();
+						let metadata = &network_interface.document_network_metadata().persistent_metadata;
+
+						// Layers only exist in the document network, so a selection inside a subgraph has none
+						let in_document_network = document.selection_network_path().is_empty();
 
 						menu_bar_message_handler.has_active_document = true;
 						menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
 						menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
 						menu_bar_message_handler.rulers_visible = document.rulers_visible;
 						menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
+						menu_bar_message_handler.has_artboards = LayerNodeIdentifier::ROOT_PARENT
+							.children(layer_metadata)
+							.any(|layer| network_interface.is_artboard(&layer.to_node(), &[]));
 						menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
-						menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+						menu_bar_message_handler.has_selected_layers = in_document_network && selected_nodes.selected_layers(layer_metadata).next().is_some();
+						menu_bar_message_handler.has_selected_visible_layers = in_document_network && selected_nodes.selected_visible_layers(network_interface).next().is_some();
+						menu_bar_message_handler.has_selected_visible_and_unlocked_layers =
+							in_document_network && selected_nodes.selected_visible_and_unlocked_layers(network_interface).next().is_some();
+						menu_bar_message_handler.has_selected_groups = in_document_network
+							&& selected_nodes
+								.selected_layers(layer_metadata)
+								.any(|layer| layer.has_children(layer_metadata) && !network_interface.is_artboard(&layer.to_node(), &[]));
 						menu_bar_message_handler.has_selection_history = (!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty());
-						menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+						menu_bar_message_handler.make_path_editable_is_allowed = in_document_network && make_path_editable_is_allowed(&mut document.network_interface).is_some();
 					} else {
 						menu_bar_message_handler.has_active_document = false;
 						menu_bar_message_handler.canvas_tilted = false;
 						menu_bar_message_handler.canvas_flipped = false;
 						menu_bar_message_handler.rulers_visible = false;
 						menu_bar_message_handler.node_graph_open = false;
+						menu_bar_message_handler.has_artboards = false;
 						menu_bar_message_handler.has_selected_nodes = false;
 						menu_bar_message_handler.has_selected_layers = false;
+						menu_bar_message_handler.has_selected_visible_layers = false;
+						menu_bar_message_handler.has_selected_visible_and_unlocked_layers = false;
+						menu_bar_message_handler.has_selected_groups = false;
 						menu_bar_message_handler.has_selection_history = (false, false);
 						menu_bar_message_handler.make_path_editable_is_allowed = false;
 					}
