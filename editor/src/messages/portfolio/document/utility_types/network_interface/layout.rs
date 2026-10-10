@@ -1305,6 +1305,87 @@ impl NodeNetworkInterface {
 		self.insert_into_chain(layer, copies, insert_index, network_path)
 	}
 
+	/// Duplicates a node into its primary flow (wires into primary inputs, layers' chain inputs, and exports): a node feeding the flow gets its copy right after it,
+	/// taking over what it fed there, and a node only fed by the flow gets its copy appended to extend the chain. A layer's copy brings a copy of its content.
+	/// Returns the copy, or `None` for a node in no flow (a solo node, or a generator without a primary input), which is left to be duplicated loose.
+	pub fn duplicate_node_in_flow(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+		if !self.has_primary_input(node_id, network_path) {
+			return None;
+		}
+
+		let flow_outputs = self
+			.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)).cloned().unwrap_or_default())?
+			.into_iter()
+			.filter(|input| self.is_flow_input(input, network_path))
+			.collect::<Vec<_>>();
+		let fed_by_flow = matches!(
+			self.input_from_connector(&InputConnector::primary_input(*node_id), network_path),
+			Some(NodeInput::Node { .. } | NodeInput::Import { .. })
+		);
+		if flow_outputs.is_empty() && !fed_by_flow {
+			return None;
+		}
+
+		let (copy, reconnections) = if self.is_layer(node_id, network_path) {
+			(self.insert_layer_copy(node_id, network_path)?, Vec::new())
+		} else {
+			// Offset from the original like a loose copy, unless joining a chain or stack positions it
+			let mut node_copy = self.copy_chain_node(node_id, network_path)?;
+			node_copy.template.node_type_metadata = NodeTypePersistentMetadata::node(self.position(node_id, network_path).unwrap_or_default() + IVec2::new(2, 2));
+			self.insert_copy(node_copy, network_path)?
+		};
+
+		// The copy takes over what the original fed in the flow and is fed by the original, then gets back its other wires (refusing any that would close a cycle)
+		for input in &flow_outputs {
+			self.set_input(input, NodeInput::node(copy, 0), network_path);
+		}
+		self.set_input(&InputConnector::primary_input(copy), NodeInput::node(*node_id, 0), network_path);
+		for (input_connector, input) in reconnections {
+			self.set_input(&input_connector, input, network_path);
+		}
+
+		Some(copy)
+	}
+
+	/// Whether an input carries a node's primary flow onward: a primary input, a layer's chain input, or an export.
+	fn is_flow_input(&self, input: &InputConnector, network_path: &[NodeId]) -> bool {
+		match input {
+			InputConnector::Node { input_index: 0, .. } | InputConnector::Export(_) => true,
+			InputConnector::Node { node_id, input_index: 1 } => self.is_layer(node_id, network_path),
+			InputConnector::Node { .. } => false,
+		}
+	}
+
+	/// Inserts a copy of a layer along with its own copy of the layer's content, offset from the original. Returns the copy of the layer.
+	fn insert_layer_copy(&mut self, layer: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+		let mut copy_ids = HashMap::from([(*layer, NodeId(0))]);
+		for (index, node_id) in self.upstream_flow_back_from_nodes(vec![*layer], network_path, FlowType::LayerChildrenUpstreamFlow).enumerate() {
+			copy_ids.insert(node_id, NodeId(index as u64 + 1));
+		}
+
+		let nodes = self.copy_nodes(&copy_ids, network_path).collect::<Vec<_>>();
+		let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+		let copy = *new_ids.get(&NodeId(0))?;
+		self.insert_node_group(nodes, new_ids, network_path);
+
+		Some(copy)
+	}
+
+	/// Inserts copied nodes together (in their given order) into a layer's chain at the insertion point. Returns the IDs of the new nodes.
+	pub fn paste_into_chain(&mut self, target: ChainInsertionPoint, copies: Vec<ChainNodeCopy>, network_path: &[NodeId]) -> Vec<NodeId> {
+		let (layer, insert_index) = match target {
+			ChainInsertionPoint::BesideLayer(layer) => (layer, 0),
+			ChainInsertionPoint::BesideNode(node_id) => {
+				let Some((layer, reorderable, _)) = self.reorderable_chain_nodes(&[node_id], network_path) else {
+					return Vec::new();
+				};
+				(layer, reorderable.iter().position(|id| *id == node_id).unwrap_or_default())
+			}
+		};
+
+		self.insert_into_chain(layer, copies, insert_index, network_path)
+	}
+
 	/// Copies a node from a layer's chain so it can be inserted into a chain here or in another document.
 	pub fn copy_chain_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<ChainNodeCopy> {
 		// Placed where its original is until the chain it's inserted into positions it
@@ -1345,42 +1426,19 @@ impl NodeNetworkInterface {
 	}
 
 	/// Inserts copied nodes together (in their given order) into a layer's chain at the `insert_index` gap among its reorderable nodes, where gap 0 is beside
-	/// the layer. Each copy stays wired to whatever fed its other (non-primary) inputs where that exists here, or else takes their fallback values.
-	/// Returns the IDs of the new nodes, or none when inserting them would close a cycle.
+	/// the layer. Each copy stays wired to whatever fed its other (non-primary) inputs where that exists here without closing a cycle, or else takes their
+	/// fallback values. Returns the IDs of the new nodes, or none when they can't join the chain.
 	fn insert_into_chain(&mut self, layer: NodeId, copies: Vec<ChainNodeCopy>, insert_index: usize, network_path: &[NodeId]) -> Vec<NodeId> {
 		let Some((reorderable, tail_input)) = self.layer_chain(layer, network_path) else {
 			return Vec::new();
 		};
 
 		let mut new_ids = Vec::new();
-		for ChainNodeCopy { mut template, fallback_values, .. } in copies {
-			// Wired inputs are inserted as values (as `insert_node` requires), then reconnected so the wire bookkeeping stays current
-			let mut reconnections = Vec::new();
-			for (index, fallback_value) in fallback_values {
-				let Some(input) = template.inputs.get_mut(index) else { continue };
-				let wired_input = std::mem::replace(input, fallback_value);
-
-				// The primary input is left for the chain rewiring below
-				let source_exists = match &wired_input {
-					NodeInput::Node { node_id, .. } => self.document_node(node_id, network_path).is_some(),
-					NodeInput::Import { import_index, .. } => *import_index < self.number_of_imports(network_path),
-					_ => false,
-				};
-				if index != 0 && source_exists {
-					reconnections.push((index, wired_input));
-				}
-			}
-			if template.inputs.iter().any(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. })) {
-				log::error!("A copied chain node is missing the fallback value for a wired input in insert_into_chain");
-				continue;
-			}
-
-			let new_id = NodeId::new();
-			self.insert_node(new_id, template, network_path);
-			for (index, input) in reconnections {
-				self.set_input(&InputConnector::node_at_index(new_id, index), input, network_path);
-			}
+		let mut reconnections = Vec::new();
+		for copy in copies {
+			let Some((new_id, copy_reconnections)) = self.insert_copy(copy, network_path) else { continue };
 			new_ids.push(new_id);
+			reconnections.extend(copy_reconnections);
 		}
 
 		let mut new_order = reorderable.clone();
@@ -1394,7 +1452,46 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		}
 
+		// Reconnected only once the copies are in the chain, so a wire that would close a cycle through it is refused and leaves the fallback value
+		for (input_connector, input) in reconnections {
+			self.set_input(&input_connector, input, network_path);
+		}
+
 		new_ids
+	}
+
+	/// Inserts a copied node with its wired inputs set to their fallback values (as `insert_node` requires). Returns the new node along with the wires to
+	/// restore to its other (non-primary) inputs where their sources exist here, which the caller reconnects once the node is wired in so the bookkeeping
+	/// stays current and a wire that would close a cycle is refused.
+	fn insert_copy(&mut self, copy: ChainNodeCopy, network_path: &[NodeId]) -> Option<(NodeId, Vec<(InputConnector, NodeInput)>)> {
+		let ChainNodeCopy { mut template, fallback_values, .. } = copy;
+		let new_id = NodeId::new();
+
+		let mut reconnections = Vec::new();
+		for (index, fallback_value) in fallback_values {
+			let Some(input) = template.inputs.get_mut(index) else { continue };
+			let wired_input = std::mem::replace(input, fallback_value);
+			if index == 0 {
+				continue;
+			}
+
+			// A copy from another document names sources missing here, so they're looked up without logging an error
+			let source_exists = match &wired_input {
+				NodeInput::Node { node_id, .. } => self.nested_network(network_path).is_some_and(|network| network.nodes.contains_key(node_id)),
+				NodeInput::Import { import_index, .. } => *import_index < self.number_of_imports(network_path),
+				_ => false,
+			};
+			if source_exists {
+				reconnections.push((InputConnector::node_at_index(new_id, index), wired_input));
+			}
+		}
+		if template.inputs.iter().any(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. })) {
+			log::error!("A copied node is missing the fallback value for a wired input in insert_copy");
+			return None;
+		}
+
+		self.insert_node(new_id, template, network_path);
+		Some((new_id, reconnections))
 	}
 
 	/// The layer whose chain the given nodes belong to, along with what `layer_chain` gives for it. Fails unless every given node is a reorderable node of that chain.

@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
+use crate::messages::tool::common_functionality::graph_modification_utils::{get_clip_mode, new_background_layer};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -413,6 +413,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					return;
 				}
 
+				// Each artboard becomes one plain layer in its place, so the root stack keeps this many layers
+				let root_layer_count = LayerNodeIdentifier::ROOT_PARENT.children(network_interface.document_metadata()).count();
+
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::DeleteNodes {
 					node_ids: network_interface.all_artboards().iter().map(|layer_node| layer_node.to_node()).collect(),
@@ -489,6 +492,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						skip_rerender: false,
 					});
 				}
+
+				// Like a new infinite canvas document, the artwork sits on a white background instead of transparency
+				new_background_layer(root_layer_count, responses);
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);

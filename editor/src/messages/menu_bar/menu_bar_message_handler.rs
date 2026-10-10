@@ -12,8 +12,12 @@ pub struct MenuBarMessageHandler {
 	pub canvas_flipped: bool,
 	pub rulers_visible: bool,
 	pub node_graph_open: bool,
+	pub has_artboards: bool,
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
+	pub has_selected_visible_layers: bool,
+	pub has_selected_visible_and_unlocked_layers: bool,
+	pub has_selected_groups: bool,
 	pub has_selection_history: (bool, bool),
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
@@ -44,8 +48,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 	fn layout(&self) -> Layout {
 		let no_active_document = !self.has_active_document;
 		let node_graph_open = self.node_graph_open;
+		let has_artboards = self.has_artboards;
 		let has_selected_nodes = self.has_selected_nodes;
 		let has_selected_layers = self.has_selected_layers;
+		let has_selected_visible_layers = self.has_selected_visible_layers;
+		let has_selected_visible_and_unlocked_layers = self.has_selected_visible_and_unlocked_layers;
+		let has_selected_groups = self.has_selected_groups;
 		let has_selection_history = self.has_selection_history;
 		let message_logging_verbosity_off = self.message_logging_verbosity == MessageLoggingVerbosity::Off;
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
@@ -201,13 +209,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("Cut")
 							.tooltip_shortcut(action_shortcut!(ClipboardMessageDiscriminant::Cut))
 							.on_commit(|_| ClipboardMessage::Cut.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || !has_selected_nodes),
 						MenuListEntry::new("Copy")
 							.label("Copy")
 							.icon("Copy")
 							.tooltip_shortcut(action_shortcut!(ClipboardMessageDiscriminant::Copy))
 							.on_commit(|_| ClipboardMessage::Copy.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || !has_selected_nodes),
 						MenuListEntry::new("Paste")
 							.label("Paste")
 							.icon("Paste")
@@ -234,7 +242,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.label("Convert to Infinite Canvas")
 							.icon("Artboard")
 							.on_commit(|_| DocumentMessage::RemoveArtboards.into())
-							.disabled(no_active_document),
+							.disabled(no_active_document || !has_artboards),
 					],
 				])
 				.widget_instance(),
@@ -267,7 +275,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("FolderOpen")
 							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::UngroupSelectedLayers))
 							.on_commit(|_| DocumentMessage::UngroupSelectedLayers.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || !has_selected_groups),
 					],
 					vec![
 						MenuListEntry::new("Hide/Show")
@@ -275,7 +283,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("EyeHide")
 							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 							.on_commit(|_| DocumentMessage::ToggleSelectedVisibility.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || !has_selected_nodes),
 						MenuListEntry::new("Lock/Unlock")
 							.label("Lock/Unlock")
 							.icon("PadlockLocked")
@@ -289,19 +297,19 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("TransformationGrab")
 							.tooltip_shortcut(action_shortcut!(TransformLayerMessageDiscriminant::BeginGrab))
 							.on_commit(|_| TransformLayerMessage::BeginGrab.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || node_graph_open || !has_selected_visible_and_unlocked_layers),
 						MenuListEntry::new("Rotate")
 							.label("Rotate")
 							.icon("TransformationRotate")
 							.tooltip_shortcut(action_shortcut!(TransformLayerMessageDiscriminant::BeginRotate))
 							.on_commit(|_| TransformLayerMessage::BeginRotate.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || node_graph_open || !has_selected_visible_and_unlocked_layers),
 						MenuListEntry::new("Scale")
 							.label("Scale")
 							.icon("TransformationScale")
 							.tooltip_shortcut(action_shortcut!(TransformLayerMessageDiscriminant::BeginScale))
 							.on_commit(|_| TransformLayerMessage::BeginScale.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || node_graph_open || !has_selected_visible_and_unlocked_layers),
 					],
 					vec![
 						MenuListEntry::new("Arrange")
@@ -346,7 +354,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Align")
 							.label("Align")
 							.icon("AlignVerticalCenter")
-							.disabled(no_active_document || !has_selected_layers)
+							.disabled(no_active_document || !has_selected_visible_and_unlocked_layers)
 							.children(vec![
 								vec![
 									MenuListEntry::new("Align Left")
@@ -359,7 +367,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											}
 											.into()
 										})
-										.disabled(no_active_document || !has_selected_layers),
+										.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 									MenuListEntry::new("Align Horizontal Center")
 										.label("Align Horizontal Center")
 										.icon("AlignHorizontalCenter")
@@ -370,7 +378,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											}
 											.into()
 										})
-										.disabled(no_active_document || !has_selected_layers),
+										.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 									MenuListEntry::new("Align Right")
 										.label("Align Right")
 										.icon("AlignRight")
@@ -381,7 +389,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											}
 											.into()
 										})
-										.disabled(no_active_document || !has_selected_layers),
+										.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 								],
 								vec![
 									MenuListEntry::new("Align Top")
@@ -394,7 +402,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											}
 											.into()
 										})
-										.disabled(no_active_document || !has_selected_layers),
+										.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 									MenuListEntry::new("Align Vertical Center")
 										.label("Align Vertical Center")
 										.icon("AlignVerticalCenter")
@@ -405,7 +413,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 											}
 											.into()
 										})
-										.disabled(no_active_document || !has_selected_layers),
+										.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 									MenuListEntry::new("Align Bottom")
 										.label("Align Bottom")
 										.icon("AlignBottom")
@@ -416,40 +424,40 @@ impl LayoutHolder for MenuBarMessageHandler {
 											}
 											.into()
 										})
-										.disabled(no_active_document || !has_selected_layers),
+										.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 								],
 							]),
 						MenuListEntry::new("Flip")
 							.label("Flip")
 							.icon("FlipVertical")
-							.disabled(no_active_document || !has_selected_layers)
+							.disabled(no_active_document || !has_selected_visible_and_unlocked_layers)
 							.children(vec![vec![
 								MenuListEntry::new("Flip Horizontal")
 									.label("Flip Horizontal")
 									.icon("FlipHorizontal")
 									.on_commit(|_| DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X }.into())
-									.disabled(no_active_document || !has_selected_layers),
+									.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 								MenuListEntry::new("Flip Vertical")
 									.label("Flip Vertical")
 									.icon("FlipVertical")
 									.on_commit(|_| DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y }.into())
-									.disabled(no_active_document || !has_selected_layers),
+									.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 							]]),
 						MenuListEntry::new("Turn")
 							.label("Turn")
 							.icon("TurnPositive90")
-							.disabled(no_active_document || !has_selected_layers)
+							.disabled(no_active_document || !has_selected_visible_and_unlocked_layers)
 							.children(vec![vec![
 								MenuListEntry::new("Turn -90°")
 									.label("Turn -90°")
 									.icon("TurnNegative90")
 									.on_commit(|_| DocumentMessage::RotateSelectedLayers { degrees: -90. }.into())
-									.disabled(no_active_document || !has_selected_layers),
+									.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 								MenuListEntry::new("Turn 90°")
 									.label("Turn 90°")
 									.icon("TurnPositive90")
 									.on_commit(|_| DocumentMessage::RotateSelectedLayers { degrees: 90. }.into())
-									.disabled(no_active_document || !has_selected_layers),
+									.disabled(no_active_document || !has_selected_visible_and_unlocked_layers),
 							]]),
 						MenuListEntry::new("Boolean")
 							.label("Boolean")
@@ -546,7 +554,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("SelectParent")
 							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectParentLayer))
 							.on_commit(|_| DocumentMessage::SelectParentLayer.into())
-							.disabled(no_active_document || !has_selected_nodes),
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
 						MenuListEntry::new("Previous Selection")
@@ -600,7 +608,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("FrameSelected")
 							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::FitViewportToSelection))
 							.on_commit(|_| NavigationMessage::FitViewportToSelection.into())
-							.disabled(no_active_document || !has_selected_layers),
+							.disabled(no_active_document || if node_graph_open { !has_selected_nodes } else { !has_selected_visible_layers }),
 						MenuListEntry::new("Zoom to Fit")
 							.label("Zoom to Fit")
 							.icon("FrameAll")

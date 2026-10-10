@@ -263,6 +263,16 @@
 		editor.selectChainNode(listing.entry.id, nodeId, Boolean(accel), Boolean(e?.shiftKey));
 	}
 
+	// Double-clicking a chain node's icon, or the layer's own icon at the row's end, opens the graph centered on that node
+	function chainIconsDoubleClick(e: MouseEvent, listing: LayerListingInfo) {
+		const target = e.target instanceof Element ? e.target : undefined;
+		const chainNodeButton = target?.closest("[data-chain-node]");
+		const chainNode = chainNodeButton ? listing.entry.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))] : undefined;
+
+		if (chainNode) editor.showNodeInGraph(chainNode.id);
+		else if (target?.closest("[data-layer-icon]")) editor.showNodeInGraph(listing.entry.id);
+	}
+
 	async function deselectAllLayers() {
 		if (justFinishedDrag) {
 			justFinishedDrag = false;
@@ -845,7 +855,7 @@
 						/>
 					{/if}
 					<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
-					<LayoutRow class="layer-chain-icons" data-layer-chain>
+					<LayoutRow class="layer-chain-icons" on:dblclick={(e) => chainIconsDoubleClick(e, listing)} data-layer-chain>
 						{#each listing.entry.chainNodes as chainNode, chainNodeIndex}
 							<IconButton
 								icon={chainNode.icon}
@@ -862,7 +872,7 @@
 								<path d="M0,6.306L0,1.694C0,0.228 1.06,-0.41 2.356,0.276L7.028,2.752C8.324,3.438 8.324,4.562 7.028,5.248L2.356,7.723C1.06,8.41 0,7.771 0,6.306z" />
 							</svg>
 						{/if}
-						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" classes={{ hidden: !listing.entry.visible }} tooltipLabel={listing.entry.implementationName} />
+						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" classes={{ hidden: !listing.entry.visible }} tooltipLabel={listing.entry.implementationName} data-layer-icon />
 					</LayoutRow>
 					{#if chainDropRowIndex === index && chainInsertMarkerLeft !== undefined}
 						<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>

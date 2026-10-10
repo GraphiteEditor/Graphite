@@ -1,7 +1,6 @@
 use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use crate::consts::GRID_SIZE;
-use crate::messages::clipboard::utility_types::ClipboardItem;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -251,16 +250,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
 			}
-			NodeGraphMessage::Copy => {
-				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
-				// Collect the selected nodes
-				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
-				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
-
-				responses.add(ClipboardMessage::WriteItems {
-					items: vec![ClipboardItem::Nodes(copied_nodes)],
-				});
-			}
+			// Copies and cuts the same way as anywhere else
+			NodeGraphMessage::Copy => responses.add(ClipboardMessage::CopyLayers),
 			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
 				let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) else {
 					return;
@@ -367,10 +358,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input_connector,
 				});
 			}
-			NodeGraphMessage::Cut => {
-				responses.add(NodeGraphMessage::Copy);
-				responses.add(NodeGraphMessage::DeleteSelectedNodes { delete_children: true });
-			}
+			NodeGraphMessage::Cut => responses.add(ClipboardMessage::CutLayers),
 			NodeGraphMessage::DeleteNodes { node_ids, delete_children } => {
 				// Detect stroke/fill proto nodes among the doomed nodes before they're gone so the tool control bars can re-sync
 				let stroke = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
@@ -414,10 +402,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetRootNodeToRestore { root_node_to_restore } => {
 				network_interface.set_root_node_to_restore(root_node_to_restore, selection_network_path);
 			}
-			NodeGraphMessage::DuplicateSelectedNodes => {
-				responses.add(DocumentMessage::AddTransaction);
-				Self::duplicate_selected_nodes(network_interface, selection_network_path, responses);
-			}
+			// Duplicates in the flow like everywhere else
+			NodeGraphMessage::DuplicateSelectedNodes => responses.add(DocumentMessage::DuplicateSelectedLayers),
 			NodeGraphMessage::EnterNestedNetwork => {
 				// Do not enter the nested network if the node was dragged
 				if self.node_has_moved_in_drag {
@@ -734,11 +720,51 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::MoveNodeToChainStart { node_id, parent } => {
 				network_interface.move_node_to_chain_start(&node_id, parent, selection_network_path, false);
 			}
+			NodeGraphMessage::PasteIntoChain { target, copies } => {
+				let new_nodes = network_interface.paste_into_chain(target, copies, selection_network_path);
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: new_nodes });
+			}
 			NodeGraphMessage::DuplicateChainNodes { node_ids, destination, select_copies } => {
 				let copies = network_interface.duplicate_chain_nodes(&node_ids, destination, selection_network_path);
 				if select_copies {
 					responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: copies });
 				}
+			}
+			NodeGraphMessage::DuplicateNodesInFlow { node_ids } => {
+				let mut copies = Vec::new();
+				let mut loose_nodes = Vec::new();
+				for node_id in node_ids {
+					match network_interface.duplicate_node_in_flow(&node_id, selection_network_path) {
+						Some(copy) => copies.push(copy),
+						None => loose_nodes.push(node_id),
+					}
+				}
+
+				// Nodes in no flow get copies offset from their originals, keeping the wires among them, and a layer brings its content along
+				if !loose_nodes.is_empty() {
+					let loose_layers = loose_nodes
+						.iter()
+						.copied()
+						.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+						.collect::<Vec<_>>();
+					let layer_content = network_interface.upstream_flow_back_from_nodes(loose_layers, selection_network_path, FlowType::LayerChildrenUpstreamFlow);
+					let copy_ids = loose_nodes
+						.iter()
+						.copied()
+						.chain(layer_content)
+						.collect::<HashSet<_>>()
+						.into_iter()
+						.enumerate()
+						.map(|(index, node_id)| (node_id, NodeId(index as u64)))
+						.collect::<HashMap<_, _>>();
+
+					let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
+					let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+					copies.extend(loose_nodes.iter().filter_map(|node_id| new_ids.get(copy_ids.get(node_id)?)));
+					network_interface.insert_node_group(nodes, new_ids, selection_network_path);
+				}
+
+				responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: copies });
 			}
 			NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index } => {
 				network_interface.move_chain_nodes(&node_ids, layer, insert_index, selection_network_path);

@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::UVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -26,23 +26,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				if self.infinite {
 					// Infinite canvas: add a locked white background layer
-					let node_id = NodeId::new();
-					responses.add(GraphOperationMessage::NewColorFillLayer {
-						node_id,
-						color: Color::WHITE,
-						parent: LayerNodeIdentifier::ROOT_PARENT,
-						insert_index: 0,
-					});
-					responses.add(NodeGraphMessage::SetDisplayNameImpl {
-						node_id,
-						network_path: Vec::new(),
-						alias: "Background".to_string(),
-					});
-					responses.add(NodeGraphMessage::SetLocked {
-						node_id,
-						network_path: Vec::new(),
-						locked: true,
-					});
+					graph_modification_utils::new_background_layer(0, responses);
 				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
 					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
