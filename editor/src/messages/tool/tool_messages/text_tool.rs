@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -17,14 +17,22 @@ use crate::messages::tool::common_functionality::snapping::{self, SnapCandidateP
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::utility_types::ToolRefreshOptions;
-use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::resource::{Resource, ResourceHash, ResourceId};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::color::SRGBA8;
 use graphene_std::renderer::Quad;
-use graphene_std::text::{Font, TextAlign, TypesettingConfig, lines_clipping};
+use graphene_std::text::{Font, TextAlign, TypesettingConfig, bounding_box, lines_clipping};
 use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, NodeParameter};
+use rand::{Rng, SeedableRng};
+
+const DEFAULT_LOREM_IPSUM_WORD_COUNT: usize = 2;
+const MAX_LOREM_IPSUM_WORD_COUNT: usize = 10_000;
+const LOREM_IPSUM_SEED: u64 = 0;
+const AVERAGE_GLYPH_SAMPLE: &str = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ         ";
+const AVERAGE_CHARACTERS_PER_WORD: f64 = 6.5;
+const WORD_COUNT_FILL_MARGIN: f64 = 1.5;
 
 #[derive(Default, ExtractField)]
 pub struct TextTool {
@@ -367,6 +375,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				refresh_slot_working_color(&mut self.options.fill, context.global_tool_data.primary_color, context.document);
 			}
 		}
+		self.tool_data.last_lorem_ipsum_constraint = None;
 
 		self.send_layout(responses, LayoutTarget::ToolOptions, &context.fonts.font_catalog, context.document);
 	}
@@ -447,6 +456,14 @@ struct TextToolData {
 	layer: LayerNodeIdentifier,
 	editing_text: Option<EditingText>,
 	new_text: String,
+	is_lorem_ipsum: bool,
+	last_lorem_ipsum_constraint: Option<DVec2>,
+	last_lorem_ipsum_position: Option<DVec2>,
+	lorem_ipsum_preview: String,
+	lorem_ipsum_preview_word_count: usize,
+	lorem_ipsum_preview_font_hash: Option<ResourceHash>,
+	lorem_ipsum_preview_metric_typesetting: Option<(f64, f64)>,
+	lorem_ipsum_preview_average_advance: Option<f64>,
 	drag_start: DVec2,
 	drag_current: DVec2,
 	resize: Resize,
@@ -461,6 +478,9 @@ struct TextToolData {
 
 impl TextToolData {
 	fn delete_empty_layer(&mut self, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) -> TextToolFsmState {
+		self.is_lorem_ipsum = false;
+		self.reset_lorem_ipsum_preview();
+
 		// Remove the editable textbox UI first
 		self.set_editing(false, fonts, responses);
 
@@ -481,6 +501,7 @@ impl TextToolData {
 			let font_data = fonts.get_resource_or_queue_load(&editing_text.font, responses).as_ref().to_vec().into();
 			responses.add(FrontendMessage::DisplayEditableTextbox {
 				text: editing_text.text.clone(),
+				editable: true,
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.map_or("#000000".to_string(), |color| SRGBA8::from(color).to_css_hex()),
@@ -527,6 +548,8 @@ impl TextToolData {
 		}
 
 		self.layer = layer;
+		self.is_lorem_ipsum = false;
+		self.reset_lorem_ipsum_preview();
 		if self.load_layer_text_node(document, fonts).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
 
@@ -546,7 +569,7 @@ impl TextToolData {
 	}
 
 	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
-		self.new_text = String::new();
+		self.new_text.clone_from(&editing_text.text);
 		responses.add(DocumentMessage::AddTransaction);
 
 		self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
@@ -608,6 +631,31 @@ impl TextToolData {
 			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
 		}
 	}
+
+	fn lorem_ipsum_preview(&mut self, word_count: usize) -> String {
+		let generated_word_count = word_count
+			.max(DEFAULT_LOREM_IPSUM_WORD_COUNT)
+			.checked_next_power_of_two()
+			.unwrap_or(MAX_LOREM_IPSUM_WORD_COUNT)
+			.min(MAX_LOREM_IPSUM_WORD_COUNT);
+
+		if generated_word_count > self.lorem_ipsum_preview_word_count {
+			self.lorem_ipsum_preview = generate_lorem_ipsum(generated_word_count);
+			self.lorem_ipsum_preview_word_count = generated_word_count;
+		}
+
+		word_prefix(&self.lorem_ipsum_preview, word_count).to_owned()
+	}
+
+	fn reset_lorem_ipsum_preview(&mut self) {
+		self.last_lorem_ipsum_constraint = None;
+		self.last_lorem_ipsum_position = None;
+		self.lorem_ipsum_preview = String::new();
+		self.lorem_ipsum_preview_word_count = 0;
+		self.lorem_ipsum_preview_font_hash = None;
+		self.lorem_ipsum_preview_metric_typesetting = None;
+		self.lorem_ipsum_preview_average_advance = None;
+	}
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
@@ -667,19 +715,19 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Editing
 			}
-			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
-				if matches!(self, Self::Placing) {
-					// Get the updated selection box bounds
-					let quad = Quad::from_box(tool_data.cached_resize_bounds);
+			(TextToolFsmState::Placing, TextToolMessage::Overlays { context: mut overlay_context }) => {
+				// Get the updated selection box bounds
+				let quad = Quad::from_box(tool_data.cached_resize_bounds);
 
-					// Draw a bounding box on the layers to be selected
-					for layer in document.intersect_quad_no_artboards(quad, viewport) {
-						overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
-					}
-
-					overlay_context.quad(quad, None, Some(fill_color));
+				// Draw bounding boxes on the layers to be selected
+				for layer in document.intersect_quad_no_artboards(quad, viewport) {
+					overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
 				}
+				overlay_context.quad(quad, None, Some(fill_color));
 
+				self
+			}
+			(_, TextToolMessage::Overlays { context: mut overlay_context }) => {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
@@ -803,6 +851,57 @@ impl Fsm for TextToolFsmState {
 				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, viewport, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
+
+				if transition_data.preferences.lorem_ipsum_placeholder {
+					let [start, end] = tool_data.cached_resize_bounds;
+					let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
+					let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
+					let floor_constraint = constraint_size.map(|c| c.floor());
+					let position = start.min(end);
+					if tool_data.last_lorem_ipsum_constraint != floor_constraint {
+						tool_data.last_lorem_ipsum_constraint = floor_constraint;
+						tool_data.last_lorem_ipsum_position = Some(position);
+
+						let typesetting = new_text_typesetting(tool_options, constraint_size);
+						let mut font_data = Vec::new();
+						if constraint_size.is_some() {
+							let font_resource = fonts.get_resource_or_queue_load(&tool_options.font, responses);
+							let font_hash = font_resource.hash();
+							let font_changed = tool_data.lorem_ipsum_preview_font_hash != Some(font_hash);
+							let metric_typesetting = (typesetting.font_size, typesetting.letter_spacing);
+							if font_changed {
+								tool_data.lorem_ipsum_preview_font_hash = Some(font_hash);
+								font_data.extend_from_slice(font_resource.as_ref());
+							}
+							if font_changed || tool_data.lorem_ipsum_preview_metric_typesetting != Some(metric_typesetting) {
+								tool_data.lorem_ipsum_preview_metric_typesetting = Some(metric_typesetting);
+								tool_data.lorem_ipsum_preview_average_advance = average_glyph_advance(&font_resource, typesetting);
+							}
+						}
+						let word_count = lorem_ipsum_word_count(constraint_size, tool_data.lorem_ipsum_preview_average_advance, typesetting);
+						let text = tool_data.lorem_ipsum_preview(word_count);
+						let (align, align_last) = tool_options.align.css();
+
+						responses.add(FrontendMessage::DisplayEditableTextbox {
+							text,
+							editable: false,
+							line_height_ratio: typesetting.line_height_ratio,
+							font_size: tool_options.font_size,
+							color: tool_options.fill.active_color().map_or(COLOR_OVERLAY_BLACK.to_string(), |color| SRGBA8::from(color).to_css_hex()),
+							font_data: font_data.into(),
+							transform: window_aligned_transform(document, position, DVec2::ONE).to_cols_array(),
+							max_width: constraint_size.map(|size| size.x),
+							max_height: constraint_size.map(|size| size.y),
+							align: align.to_string(),
+							align_last: align_last.to_string(),
+						});
+					} else if tool_data.last_lorem_ipsum_position.is_some_and(|last_position| last_position != position) {
+						tool_data.last_lorem_ipsum_position = Some(position);
+						responses.add(FrontendMessage::DisplayEditableTextboxTransform {
+							transform: window_aligned_transform(document, position, DVec2::ONE).to_cols_array(),
+						});
+					}
+				}
 
 				// Auto-panning
 				let messages = [
@@ -965,18 +1064,24 @@ impl Fsm for TextToolFsmState {
 
 				// Otherwise create some new text. The window-aligned transform is in viewport space, so the editing overlay (a screen-space CSS matrix) carries the zoom.
 				let constraint_size = has_dragged.then_some((start - end).abs() / viewport_zoom(document));
+				let typesetting = new_text_typesetting(tool_options, constraint_size);
+				let text = if transition_data.preferences.lorem_ipsum_placeholder {
+					tool_data.is_lorem_ipsum = true;
+					let average_advance = constraint_size.and_then(|_| {
+						let font_resource = fonts.get_resource_or_queue_load(&tool_options.font, responses);
+						average_glyph_advance(&font_resource, typesetting)
+					});
+					let word_count = lorem_ipsum_word_count(constraint_size, average_advance, typesetting);
+					generate_lorem_ipsum(word_count)
+				} else {
+					tool_data.is_lorem_ipsum = false;
+					String::new()
+				};
+				tool_data.reset_lorem_ipsum_preview();
 				let editing_text = EditingText {
-					text: String::new(),
-					transform: window_aligned_transform(document, start, DVec2::ONE),
-					typesetting: TypesettingConfig {
-						font_size: tool_options.font_size,
-						letter_spacing: tool_options.letter_spacing,
-						letter_tilt: tool_options.letter_tilt,
-						max_width: constraint_size.map(|size| size.x),
-						max_height: constraint_size.map(|size| size.y),
-						align: tool_options.align,
-						..TypesettingConfig::default()
-					},
+					text,
+					transform: window_aligned_transform(document, start.min(end), DVec2::ONE),
+					typesetting,
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),
 				};
@@ -1015,6 +1120,11 @@ impl Fsm for TextToolFsmState {
 				tool_data.new_text = new_text;
 
 				if !is_left_or_right_click {
+					fit_lorem_ipsum_to_height(tool_data, fonts, responses);
+					if tool_data.is_lorem_ipsum && tool_data.new_text.is_empty() {
+						return tool_data.delete_empty_layer(fonts, responses);
+					}
+					tool_data.is_lorem_ipsum = false;
 					tool_data.set_editing(false, fonts, responses);
 
 					responses.add(NodeGraphMessage::SetInput {
@@ -1039,6 +1149,7 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Editing, TextToolMessage::UpdateBounds { new_text }) => {
 				tool_data.new_text = new_text;
+				tool_data.is_lorem_ipsum = false;
 				responses.add(OverlaysMessage::Draw);
 				TextToolFsmState::Editing
 			}
@@ -1069,6 +1180,10 @@ impl Fsm for TextToolFsmState {
 					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				}
 				tool_data.resize.cleanup(responses);
+				if state == TextToolFsmState::Placing {
+					responses.add(FrontendMessage::DisplayRemoveEditableTextbox);
+				}
+				tool_data.reset_lorem_ipsum_preview();
 
 				TextToolFsmState::Ready
 			}
@@ -1111,5 +1226,117 @@ impl Fsm for TextToolFsmState {
 			_ => MouseCursorIcon::Text,
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+	}
+}
+
+fn new_text_typesetting(tool_options: &TextOptions, constraint_size: Option<DVec2>) -> TypesettingConfig {
+	TypesettingConfig {
+		font_size: tool_options.font_size,
+		letter_spacing: tool_options.letter_spacing,
+		letter_tilt: tool_options.letter_tilt,
+		max_width: constraint_size.map(|size| size.x),
+		max_height: constraint_size.map(|size| size.y),
+		align: tool_options.align,
+		..TypesettingConfig::default()
+	}
+}
+
+fn average_glyph_advance(font_resource: &Resource, typesetting: TypesettingConfig) -> Option<f64> {
+	let measurement_typesetting = TypesettingConfig {
+		max_width: None,
+		max_height: None,
+		..typesetting
+	};
+	let sample_width = bounding_box(AVERAGE_GLYPH_SAMPLE, font_resource, measurement_typesetting, false).x;
+	let average_advance = if sample_width.is_finite() && sample_width > 0. {
+		sample_width / AVERAGE_GLYPH_SAMPLE.len() as f64
+	} else {
+		typesetting.font_size * 0.45
+	};
+	(average_advance.is_finite() && average_advance > 0.).then_some(average_advance)
+}
+
+fn lorem_ipsum_word_count(constraint_size: Option<DVec2>, average_advance: Option<f64>, typesetting: TypesettingConfig) -> usize {
+	let Some(size) = constraint_size else { return DEFAULT_LOREM_IPSUM_WORD_COUNT };
+	let Some(average_advance) = average_advance else { return DEFAULT_LOREM_IPSUM_WORD_COUNT };
+	if !size.is_finite() || size.x <= 0. || size.y <= 0. {
+		return DEFAULT_LOREM_IPSUM_WORD_COUNT;
+	}
+
+	let line_height = typesetting.font_size * typesetting.line_height_ratio;
+	if !line_height.is_finite() || line_height <= 0. {
+		return DEFAULT_LOREM_IPSUM_WORD_COUNT;
+	}
+
+	let chars_per_line = (size.x / average_advance).floor().max(1.);
+	let lines = (size.y / line_height).floor().max(1.);
+	// Overgenerate enough to cover uneven line endings, then trim precisely to the height constraint when committing.
+	let estimated_words = (chars_per_line * lines * WORD_COUNT_FILL_MARGIN / AVERAGE_CHARACTERS_PER_WORD).ceil();
+	estimated_words.clamp(DEFAULT_LOREM_IPSUM_WORD_COUNT as f64, MAX_LOREM_IPSUM_WORD_COUNT as f64) as usize
+}
+
+fn generate_lorem_ipsum(word_count: usize) -> String {
+	let word_count = word_count.clamp(1, MAX_LOREM_IPSUM_WORD_COUNT);
+	let mut rng = rand::rngs::StdRng::seed_from_u64(LOREM_IPSUM_SEED);
+	ipsum::generate(word_count, ipsum::Unit::Words, word_count, ipsum::Unit::Words, |length| rng.random_range(0..length))
+}
+
+fn word_prefix(text: &str, word_count: usize) -> &str {
+	if word_count == 0 {
+		return "";
+	}
+
+	let end = text
+		.char_indices()
+		.filter_map(|(index, character)| character.is_whitespace().then_some(index))
+		.nth(word_count - 1)
+		.unwrap_or(text.len());
+	&text[..end]
+}
+
+/// Fit generated placeholder text to its height constraint
+fn fit_lorem_ipsum_to_height(tool_data: &mut TextToolData, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
+	if tool_data.is_lorem_ipsum
+		&& let Some(editing_text) = tool_data.editing_text.as_ref()
+		&& let Some(max_height) = editing_text.typesetting.max_height
+	{
+		let font_resource = fonts.get_resource_or_queue_load(&editing_text.font, responses);
+		let mut word_ends = Vec::with_capacity(tool_data.new_text.split_whitespace().count());
+		let mut inside_word = false;
+		for (index, character) in tool_data.new_text.char_indices() {
+			if character.is_whitespace() {
+				if inside_word {
+					word_ends.push(index);
+					inside_word = false;
+				}
+			} else {
+				inside_word = true;
+			}
+		}
+		if inside_word {
+			word_ends.push(tool_data.new_text.len());
+		}
+
+		let mut low = 0;
+		let mut high = word_ends.len();
+		while low < high {
+			let middle = (low + high).div_ceil(2);
+			let text = &tool_data.new_text[..word_ends[middle - 1]];
+			if bounding_box(text, &font_resource, editing_text.typesetting, true).y <= max_height {
+				low = middle;
+			} else {
+				high = middle - 1;
+			}
+		}
+
+		while low > 0 {
+			let text = generate_lorem_ipsum(low);
+			if bounding_box(&text, &font_resource, editing_text.typesetting, true).y <= max_height {
+				tool_data.new_text = text;
+				return;
+			}
+			low -= 1;
+		}
+		tool_data.new_text.clear();
 	}
 }
