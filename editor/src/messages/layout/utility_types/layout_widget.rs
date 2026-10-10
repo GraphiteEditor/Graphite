@@ -60,12 +60,12 @@ define_layout_target!(
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
-	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
-	LayersPanelBottomBar,
+	/// Visibility and lock toggles for the selection at the bottom left of the Layers panel.
+	LayersPanelBottomLeftBar,
+	/// Controls for adding, grouping, and deleting layers at the bottom right of the Layers panel.
+	LayersPanelBottomRightBar,
 	/// Blending options at the top of the Layers panel.
 	LayersPanelControlLeftBar,
-	/// Selected layer status (locked/hidden) at the top of the Layers panel.
-	LayersPanelControlRightBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.

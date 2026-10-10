@@ -521,6 +521,25 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Select exactly the given nodes.
+	fn select_nodes(ids: Vec<u64>) -> Message {
+		NodeGraphMessage::SelectedNodesSet {
+			nodes: ids.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Modify the selection based on the node clicked in the chain feeding a layer, with the same <kbd>Ctrl</kbd> and <kbd>Shift</kbd> behavior as selecting layers.
+	fn select_chain_node(layer: u64, node_id: u64, ctrl: bool, shift: bool) -> Message {
+		DocumentMessage::SelectChainNode {
+			layer: NodeId(layer),
+			node_id: NodeId(node_id),
+			ctrl,
+			shift,
+		}
+		.into()
+	}
+
 	/// Deselect all layers
 	fn deselect_all_layers() -> Message {
 		DocumentMessage::DeselectAllLayers.into()
@@ -536,6 +555,27 @@ mod editor_commands {
 		DocumentMessage::MoveSelectedLayersTo {
 			parent,
 			insert_index: insert_index.unwrap_or_default(),
+		}
+		.into()
+	}
+
+	/// Move nodes together into a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn move_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::MoveChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+		}
+		.into()
+	}
+
+	/// Insert and select copies of nodes together in a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn duplicate_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::DuplicateChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+			select_copies: true,
 		}
 		.into()
 	}

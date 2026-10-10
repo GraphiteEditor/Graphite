@@ -114,6 +114,7 @@ pub enum DocumentMessage {
 		node_ids: Vec<NodeId>,
 		layer: NodeId,
 		insert_index: usize,
+		select_copies: bool,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
@@ -170,6 +171,12 @@ pub enum DocumentMessage {
 	},
 	SelectLayer {
 		id: NodeId,
+		ctrl: bool,
+		shift: bool,
+	},
+	SelectChainNode {
+		layer: NodeId,
+		node_id: NodeId,
 		ctrl: bool,
 		shift: bool,
 	},

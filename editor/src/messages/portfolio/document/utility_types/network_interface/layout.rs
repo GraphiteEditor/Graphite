@@ -1331,6 +1331,19 @@ impl NodeNetworkInterface {
 		})
 	}
 
+	/// The nodes of a layer's chain that can be reordered (all but a source node fixed at its upstream end), ordered from the layer outward.
+	pub fn reorderable_chain(&self, layer: NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
+		self.layer_chain(layer, network_path).map(|(reorderable, _)| reorderable).unwrap_or_default()
+	}
+
+	/// All nodes in a layer's chain, ordered from the layer outward, stopping where the next layer begins (since flow turns from horizontal to vertical there).
+	pub fn layer_chain_nodes(&self, layer: NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
+		self.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
+			.skip(1)
+			.take_while(|upstream_id| !self.is_layer(upstream_id, network_path))
+			.collect()
+	}
+
 	/// Inserts copied nodes together (in their given order) into a layer's chain at the `insert_index` gap among its reorderable nodes, where gap 0 is beside
 	/// the layer. Each copy stays wired to whatever fed its other (non-primary) inputs where that exists here, or else takes their fallback values.
 	/// Returns the IDs of the new nodes, or none when inserting them would close a cycle.
@@ -1407,12 +1420,7 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		// The nodes in the layer's chain, ordered from closest-to-layer outward, stopping at the next layer
-		let chain = self
-			.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
-			.skip(1)
-			.take_while(|upstream_id| !self.is_layer(upstream_id, network_path))
-			.collect::<Vec<_>>();
+		let chain = self.layer_chain_nodes(layer, network_path);
 
 		// A source node (no primary input) stays pinned at the most-upstream end; only the nodes below it reorder
 		let pinned_source = chain.last().copied().filter(|last| !self.has_primary_input(last, network_path));

@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from "svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import type { IconName, IconSize } from "/src/icons";
-	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, DragDropKinds } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	// Content
 	export let icon: IconName;
@@ -17,9 +17,12 @@
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
-	// Fired when a draggable item is dropped onto this button. Setting this also flags the button as a valid drop target
-	// (the consumer of the drag interaction looks for `[data-drag-droppable]` and dispatches a `dragdrop` event on it).
+	// Fired when a draggable item, of a kind given by `dragDropKinds`, is dropped onto this button. The button lists those kinds in its
+	// `data-drag-droppable` attribute, where the consumer of the drag interaction looks for them before dispatching a `dragdrop` event on it.
 	export let actionDragDrop: (() => void) | undefined = undefined;
+	export let dragDropKinds: DragDropKinds = "None";
+
+	$: droppableKinds = actionDragDrop ? { None: undefined, Layers: "layers", LayersAndChainNodes: "layers chain-nodes" }[dragDropKinds] : undefined;
 
 	let className = "";
 	export { className as class };
@@ -36,27 +39,36 @@
 	}
 	onMount(() => buttonElement?.addEventListener("dragdrop", handleDragDrop));
 	onDestroy(() => buttonElement?.removeEventListener("dragdrop", handleDragDrop));
+
+	// After a pointer click, the new state's icon replaces the hover icon until the pointer leaves and comes back
+	let hoverIconSuppressed = false;
+	$: showsHoverIcon = Boolean(hoverIcon) && !disabled && !hoverIconSuppressed;
+
+	function click(e: MouseEvent) {
+		if (e.detail > 0) hoverIconSuppressed = true;
+		action(e);
+	}
 </script>
 
 <button
 	class={`icon-button size-${size} ${className} ${extraClasses}`.trim()}
-	class:hover-icon={hoverIcon && !disabled}
+	class:hover-icon={showsHoverIcon}
 	class:disabled
 	class:emphasized
-	class:drag-droppable={Boolean(actionDragDrop)}
 	bind:this={buttonElement}
-	on:click={action}
+	on:click={click}
+	on:pointerleave={() => (hoverIconSuppressed = false)}
 	{disabled}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
-	data-drag-droppable={actionDragDrop ? "" : undefined}
+	data-drag-droppable={droppableKinds}
 	data-icon-button
 	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >
 	<IconLabel {icon} />
-	{#if hoverIcon && !disabled}
+	{#if hoverIcon && showsHoverIcon}
 		<IconLabel icon={hoverIcon} />
 	{/if}
 </button>
@@ -77,7 +89,7 @@
 			fill: var(--color-e-nearwhite);
 		}
 
-		// The `where` pseudo-class does not contribtue to specificity
+		// The `where` pseudo-class does not contribute to specificity
 		& + :where(.icon-button) {
 			margin-left: 0;
 		}
