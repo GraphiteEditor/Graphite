@@ -118,6 +118,7 @@ impl InputState {
 	}
 
 	/// Accumulates the reported window position into a continuous one, which is what the editor receives during a G/R/S wrap.
+	/// `reported` is a physical window position as the OS reports it, and the position returned is in that same space.
 	fn wrapped_position(&mut self, reported: PhysicalPosition<f64>) -> PhysicalPosition<f64> {
 		let viewport = self.viewport_info;
 		let Some(wrap) = self.pointer_wrap.as_mut() else { return reported };
@@ -128,14 +129,13 @@ impl InputState {
 		}
 
 		// The report can still come from before the OS moved the cursor, so the movement is measured the short way around
-		let width = viewport.map_or(0., |viewport| viewport.width);
-		let height = viewport.map_or(0., |viewport| viewport.height);
-		let (dx, dy) = match wrap.last_reported {
-			Some(last) => (wrap_delta(reported.x - last.x, width), wrap_delta(reported.y - last.y, height)),
-			None => (0., 0.), // Nothing to measure from after a pause, so this report only sets the baseline
+		let viewport_size = viewport.map_or(glam::DVec2::ZERO, |viewport| glam::DVec2::new(viewport.width, viewport.height));
+		let delta = match wrap.last_reported {
+			Some(last) => wrap_delta(to_dvec(reported) - to_dvec(last), viewport_size),
+			None => glam::DVec2::ZERO, // Nothing to measure from after a pause, so this report only sets the baseline
 		};
-		wrap.position.x += dx;
-		wrap.position.y += dy;
+		wrap.position.x += delta.x;
+		wrap.position.y += delta.y;
 		wrap.last_reported = Some(reported);
 
 		let warp_to = viewport.and_then(|viewport| wrap_into_viewport(reported, viewport));
@@ -420,7 +420,9 @@ impl ViewportInfo {
 
 /// Wraps a window position back into the viewport, or returns `None` when it sits inside already.
 fn wrap_into_viewport(position: PhysicalPosition<f64>, viewport: ViewportInfo) -> Option<PhysicalPosition<f64>> {
-	if viewport.width <= 0. || viewport.height <= 0. {
+	assert!(viewport.width >= 0. && viewport.height >= 0., "a viewport never has a negative size");
+	// A viewport without an area yet has nothing to wrap around
+	if viewport.width == 0. || viewport.height == 0. {
 		return None;
 	}
 
@@ -432,12 +434,18 @@ fn wrap_into_viewport(position: PhysicalPosition<f64>, viewport: ViewportInfo) -
 
 /// Takes a movement the short way around the viewport, so a report from before the OS moved the cursor adds the real movement instead of the wrap distance.
 /// shortcut: a single report that moves more than half the viewport is read as backwards. Upgrade if reports ever arrive that far apart.
-fn wrap_delta(delta: f64, size: f64) -> f64 {
-	if size <= 0. {
-		return delta;
+fn wrap_delta(delta: glam::DVec2, size: glam::DVec2) -> glam::DVec2 {
+	if size.min_element() <= 0. {
+		return delta; // Nothing to wrap around until the viewport has a size
 	}
 
-	(delta + size / 2.).rem_euclid(size) - size / 2.
+	let half = size / 2.;
+	(delta + half).rem_euclid(size) - half
+}
+
+/// The physical window position as a vector, so the wrap's maths stays component-wise free.
+fn to_dvec(position: PhysicalPosition<f64>) -> glam::DVec2 {
+	glam::DVec2::new(position.x, position.y)
 }
 
 #[derive(Default)]
