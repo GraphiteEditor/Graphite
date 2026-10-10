@@ -44,11 +44,13 @@ pub struct Tombstone<T> {
 
 impl Registry {
 	/// The node under `id`, live or as removed, for a reference to a node the runtime cannot hold.
+	#[cfg(any(feature = "conversion", test))]
 	pub(crate) fn node_or_removed(&self, id: NodeId) -> Option<&Node> {
 		self.node_instances.get(&id).or_else(|| self.removed_nodes.get(&id).map(|mark| &mark.content))
 	}
 
 	/// The network under `id`, live or as it was when removed.
+	#[cfg(any(feature = "conversion", test))]
 	pub(crate) fn network_or_removed(&self, id: NetworkId) -> Option<&Network> {
 		self.networks.get(&id).or_else(|| self.removed_networks.get(&id).map(|mark| &mark.content))
 	}
