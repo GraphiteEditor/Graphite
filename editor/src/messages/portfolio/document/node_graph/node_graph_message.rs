@@ -121,6 +121,8 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	/// Per-frame check of whether the node hovered by the wire in progress has rested long enough to expand.
+	WireHoverTick,
 	/// Begins dragging a wire out of an input connector shown in the Properties panel.
 	StartWireFromPropertiesPanel {
 		input_connector: InputConnector,

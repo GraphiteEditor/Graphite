@@ -1,6 +1,6 @@
 use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
-use crate::consts::GRID_SIZE;
+use crate::consts::{GRID_SIZE, WIRE_DRAG_AUTO_PAN_DELAY_MILLISECONDS, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::clipboard::utility_types::ClipboardItem;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -12,7 +12,9 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic, WireInProgressAnchor};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
+use crate::messages::portfolio::document::utility_types::network_interface::{
+	self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, type_feeds_connector,
+};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
@@ -89,6 +91,14 @@ pub struct NodeGraphMessageHandler {
 	wire_in_progress_properties_target: Option<(InputConnector, DVec2)>,
 	/// Whether the pointer dragging a wire is over the Properties panel, where graph connectors beneath it can't be hovered.
 	wire_in_progress_hovering_properties_panel: bool,
+	/// When the pointer dragging a wire last left the graph, in milliseconds, to delay auto-panning.
+	wire_left_viewport_time: Option<u64>,
+	/// The node hovered by a wire dragged from an output, with when the hover began in milliseconds, so it expands after a delay.
+	wire_hovered_node: Option<(NodeId, u64)>,
+	/// The node expanded for the wire in progress, with the indices of the hidden inputs it temporarily exposed.
+	wire_expanded_node: Option<(NodeId, Vec<usize>)>,
+	/// Whether [`NodeGraphMessage::WireHoverTick`] is subscribed to animation frames.
+	wire_hover_tick_subscribed: bool,
 	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
@@ -350,7 +360,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 				}
-				self.end_wire_in_progress(responses);
+				self.end_wire_in_progress(network_interface, selection_network_path, responses);
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
 				});
@@ -807,7 +817,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
-						self.end_wire_in_progress(responses);
+						self.end_wire_in_progress(network_interface, selection_network_path, responses);
 						responses.add(DocumentMessage::AbortTransaction);
 						return;
 					}
@@ -910,7 +920,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 				if self.context_menu.is_some() {
 					self.context_menu = None;
-					self.end_wire_in_progress(responses);
+					self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
@@ -1086,6 +1096,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
 				}
 
+				// Restart the wire's auto-panning delay whenever it comes back over the graph or onto the Properties panel
+				let pointer_in_viewport = ipp.mouse.position.cmpge(DVec2::ZERO).all() && ipp.mouse.position.cmple(viewport.size().into_dvec2()).all();
+				if pointer_in_viewport || self.wire_in_progress_hovering_properties_panel {
+					self.wire_left_viewport_time = None;
+				}
+
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
 					.persistent_metadata
@@ -1102,6 +1118,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						|output_connector: &OutputConnector| matches!(output_connector, OutputConnector::Node { node_id, .. } if network_interface.is_layer(node_id, selection_network_path));
 					let is_layer_stack_input =
 						|input_connector: &InputConnector| matches!(input_connector, InputConnector::Node { node_id, input_index: 0 } if network_interface.is_layer(node_id, selection_network_path));
+
+					// Only a wire dragged from an output expands the nodes it hovers
+					let mut wire_hovered_node = None;
 
 					// Wire endpoints ordered from output to input, plus whether each one is a layer stack connector
 					let wire_endpoints = match self.wire_in_progress_anchor {
@@ -1153,6 +1172,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								responses.add(NodeGraphMessage::SendGraph);
 							}
 
+							// The node under the wire, counting its connectors that stick out past its edge, but not the node the wire comes from
+							wire_hovered_node = (!self.wire_in_progress_hovering_properties_panel)
+								.then(|| {
+									let hovered_input_node = hovered_input.and_then(|input_connector| input_connector.node_id());
+									hovered_input_node.or_else(|| network_interface.node_from_click(viewport_location, selection_network_path))
+								})
+								.flatten()
+								.filter(|node_id| Some(*node_id) != output_connector.node_id());
+
 							let output_is_layer = is_layer_output(&output_connector);
 							let input_is_layer = properties_target_position.is_none() && hovered_input.as_ref().is_some_and(is_layer_stack_input);
 							self.wire_in_progress_from_connector
@@ -1174,6 +1202,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
+
+					self.set_wire_hovered_node(wire_hovered_node, ipp.time, network_interface, selection_network_path, responses);
 				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
 					if drag_start.start_x != point.x || drag_start.start_y != point.y {
 						*dragged = true;
@@ -1316,6 +1346,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						"[wire-drag] Released with anchor {anchor:?}, properties target {:?}, over graph {over_graph}, resolved {output_connector:?} -> {input_connector:?}",
 						self.wire_in_progress_properties_target
 					);
+
+					// Of the inputs revealed by an expanded node, only the one receiving the wire stays exposed
+					let connected_input = output_connector.and(input_connector);
+					self.collapse_wire_expanded_node(connected_input, network_interface, selection_network_path, responses);
+					self.set_wire_hovered_node(None, ipp.time, network_interface, selection_network_path, responses);
+
 					if let (Some(output_connector), Some(input_connector)) = (output_connector, input_connector) {
 						responses.add(NodeGraphMessage::CreateWire { output_connector, input_connector });
 						responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -1330,7 +1366,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().x() - 173. { -173. } else { 0. };
 						let appear_above_mouse = if ipp.mouse.position.y > viewport.size().y() - 34. { -34. } else { 0. };
-						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
+						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / node_graph_to_viewport.matrix2.x_axis.x;
 
 						// The node catalog filters by input type, so a wire from an input isn't filtered
 						let compatible_type = match anchor {
@@ -1513,7 +1549,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.duplicated_in_drag = false;
 				self.box_selection_start = None;
 
-				self.end_wire_in_progress(responses);
+				self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
 				self.reordering_export = None;
 				self.reordering_import = None;
@@ -1526,13 +1562,22 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				let wiring_over_graph = self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() && !self.wire_in_progress_hovering_properties_panel;
-				if self.drag_start.is_some() || self.box_selection_start.is_some() || wiring_over_graph {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() {
 					let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
+				} else if wiring_over_graph {
+					// A wire only pans once it lingers beyond the edge, so passing over to another panel doesn't pan
+					let left_viewport_time = *self.wire_left_viewport_time.get_or_insert(ipp.time);
+					if ipp.time.saturating_sub(left_viewport_time) >= WIRE_DRAG_AUTO_PAN_DELAY_MILLISECONDS {
+						let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
+					}
 				} else {
 					// Auto-panning
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 					self.auto_panning.stop(&messages, responses);
 				}
+			}
+			NodeGraphMessage::WireHoverTick => {
+				self.expand_wire_hovered_node_after_delay(ipp.time, network_interface, selection_network_path, responses);
 			}
 			NodeGraphMessage::StartWireFromPropertiesPanel { input_connector, editor_position } => {
 				if self.wire_in_progress_anchor.is_some() {
@@ -2306,11 +2351,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 }
 
 impl NodeGraphMessageHandler {
-	/// Ends the wire in progress, removing it from the frontend along with any Properties panel drop target highlights.
-	pub fn end_wire_in_progress(&mut self, responses: &mut VecDeque<Message>) {
+	/// Ends the wire in progress, removing it from the frontend along with any Properties panel drop target highlights and temporarily expanded node.
+	pub fn end_wire_in_progress(&mut self, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
 		if matches!(self.wire_in_progress_anchor, Some(WireInProgressAnchor::Output(_))) {
 			responses.add(PropertiesPanelMessage::Refresh);
 		}
+
+		self.set_wire_hovered_node(None, 0, network_interface, network_path, responses);
 
 		self.wire_in_progress_from_connector = None;
 		self.wire_in_progress_to_connector = None;
@@ -2318,8 +2365,100 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_anchor = None;
 		self.wire_in_progress_properties_target = None;
 		self.wire_in_progress_hovering_properties_panel = false;
+		self.wire_left_viewport_time = None;
 
 		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+	}
+
+	/// Tracks the node under a wire dragged from an output, collapsing a previously expanded node once the wire leaves it.
+	fn set_wire_hovered_node(&mut self, hovered_node: Option<NodeId>, time: u64, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		if self.wire_hovered_node.map(|(node_id, _)| node_id) == hovered_node {
+			return;
+		}
+
+		if self.wire_expanded_node.as_ref().is_some_and(|(node_id, _)| Some(*node_id) != hovered_node) {
+			self.collapse_wire_expanded_node(None, network_interface, network_path, responses);
+		}
+
+		self.wire_hovered_node = hovered_node.map(|node_id| (node_id, time));
+		self.set_wire_hover_tick_subscribed(hovered_node.is_some(), responses);
+	}
+
+	/// Expands the hovered node once the wire has rested over it long enough.
+	fn expand_wire_hovered_node_after_delay(&mut self, time: u64, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some((node_id, hover_start_time)) = self.wire_hovered_node else { return };
+		if time.saturating_sub(hover_start_time) < WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS {
+			return;
+		}
+		self.set_wire_hover_tick_subscribed(false, responses);
+
+		// Temporarily expose the hidden inputs the wire could feed
+		let output_types = self.wire_in_progress_output_types(network_interface, network_path);
+		let revealed_input_indices = (0..network_interface.number_of_inputs(&node_id, network_path))
+			.filter(|&input_index| {
+				let input_connector = InputConnector::node_at_index(node_id, input_index);
+				let hidden_value = matches!(network_interface.input_from_connector(&input_connector, network_path), Some(NodeInput::Value { exposed: false, .. }));
+
+				hidden_value
+					&& network_interface
+						.potential_valid_input_types(&input_connector, network_path)
+						.iter()
+						.any(|valid_type| output_types.iter().any(|output_type| type_feeds_connector(output_type, valid_type)))
+			})
+			.collect::<Vec<_>>();
+
+		for &input_index in &revealed_input_indices {
+			Self::set_value_input_exposed(InputConnector::node_at_index(node_id, input_index), true, network_interface, network_path);
+		}
+		if !revealed_input_indices.is_empty() {
+			responses.add(NodeGraphMessage::SendGraph);
+		}
+
+		self.wire_expanded_node = Some((node_id, revealed_input_indices));
+	}
+
+	/// Hides the inputs revealed by expanding a node for the wire in progress again, except the one the wire is being connected to.
+	fn collapse_wire_expanded_node(&mut self, connected_input: Option<InputConnector>, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some((node_id, revealed_input_indices)) = self.wire_expanded_node.take() else { return };
+
+		for &input_index in &revealed_input_indices {
+			let input_connector = InputConnector::node_at_index(node_id, input_index);
+			if Some(input_connector) != connected_input {
+				Self::set_value_input_exposed(input_connector, false, network_interface, network_path);
+			}
+		}
+		if !revealed_input_indices.is_empty() {
+			responses.add(NodeGraphMessage::SendGraph);
+		}
+	}
+
+	fn set_value_input_exposed(input_connector: InputConnector, exposed: bool, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId]) {
+		let Some(mut input) = network_interface.input_from_connector(&input_connector, network_path).cloned() else {
+			return;
+		};
+		let NodeInput::Value { exposed: input_exposed, .. } = &mut input else { return };
+
+		*input_exposed = exposed;
+		network_interface.set_input(&input_connector, input, network_path);
+	}
+
+	fn set_wire_hover_tick_subscribed(&mut self, subscribed: bool, responses: &mut VecDeque<Message>) {
+		if self.wire_hover_tick_subscribed == subscribed {
+			return;
+		}
+		self.wire_hover_tick_subscribed = subscribed;
+
+		let send = Box::new(NodeGraphMessage::WireHoverTick.into());
+		responses.add(match subscribed {
+			true => BroadcastMessage::SubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+			false => BroadcastMessage::UnsubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+		});
 	}
 
 	/// The types a wire being dragged from an output could carry, used by the Properties panel to mark compatible inputs as drop targets.
@@ -3065,6 +3204,10 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_anchor: None,
 			wire_in_progress_properties_target: None,
 			wire_in_progress_hovering_properties_panel: false,
+			wire_left_viewport_time: None,
+			wire_hovered_node: None,
+			wire_expanded_node: None,
+			wire_hover_tick_subscribed: false,
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),

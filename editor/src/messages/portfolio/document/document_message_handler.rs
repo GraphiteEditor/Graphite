@@ -583,7 +583,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				// Abort wire in progress of being connected
 				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
-					self.node_graph_handler.end_wire_in_progress(responses);
+					self.node_graph_handler.end_wire_in_progress(&mut self.network_interface, &self.selection_network_path, responses);
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 				// Close the context menu if it's open

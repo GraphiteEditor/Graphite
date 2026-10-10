@@ -37,6 +37,10 @@ pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
 pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
 pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
+/// How long a dragged wire must stay beyond the node graph's edge before auto-panning begins, so passing over to another panel doesn't pan.
+pub const WIRE_DRAG_AUTO_PAN_DELAY_MILLISECONDS: u64 = 400;
+/// How long a dragged wire must rest over a node before it expands to reveal the hidden inputs the wire could connect to.
+pub const WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS: u64 = 250;
 
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
