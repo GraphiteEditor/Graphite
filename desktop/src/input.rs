@@ -579,7 +579,6 @@ mod test {
 		}
 	}
 
-	/// An input state with direct input and wrapping on, like the editor has during a G/R/S transform.
 	fn wrapping_input(position: PhysicalPosition<f64>) -> InputState {
 		let mut input = InputState::new();
 		let viewport = viewport();
@@ -628,7 +627,6 @@ mod test {
 		);
 		assert!(matches!(input.route(position), Route::Editor), "the editor keeps receiving moves once the pointer wraps");
 
-		// The tracked position is back inside the viewport, but the OS cursor crossed the left edge, so warp it again
 		assert_eq!(input.wrapped_position(PhysicalPosition::new(99., 80.)), PhysicalPosition::new(299., 80.));
 		assert_eq!(input.take_pending_warp(), Some(PhysicalPosition::new(299., 80.)));
 
@@ -641,7 +639,6 @@ mod test {
 		let mut input = wrapping_input(PhysicalPosition::new(299., 80.));
 		let tracked = input.wrapped_position(PhysicalPosition::new(301., 80.));
 
-		// The cursor can end up anywhere while the app is unfocused, so the drag holds still instead of following it
 		input.set_window_focused(false);
 		assert_eq!(input.wrapped_position(PhysicalPosition::new(150., 80.)), tracked, "an unfocused window ignores the cursor");
 		assert_eq!(
@@ -651,7 +648,6 @@ mod test {
 		);
 		assert_eq!(input.take_pending_warp(), None, "the cursor stays put while the window is unfocused");
 
-		// Focus returns wherever the cursor is now, so the first report only sets a new baseline
 		input.set_window_focused(true);
 		assert_eq!(
 			input.wrapped_position(PhysicalPosition::new(170., 80.)),
