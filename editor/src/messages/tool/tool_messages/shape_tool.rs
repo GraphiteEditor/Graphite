@@ -18,6 +18,7 @@ use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::LineToolData;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
+use crate::messages::tool::common_functionality::shapes::qr_code_shape::QrCode;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, clicked_on_shape_endpoints, transform_cage_overlays};
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
@@ -212,6 +213,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
+		MenuListEntry::new("QR Code").label("QR Code").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::QrCode),
+			}
+			.into()
+		}),
 	]];
 	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_instance()
 }
@@ -325,6 +332,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 		(spiral::IDENTIFIER, ShapeType::Spiral),
 		(grid::IDENTIFIER, ShapeType::Grid),
 		(arrow::IDENTIFIER, ShapeType::Arrow),
+		(qr_code::IDENTIFIER, ShapeType::QrCode),
 	]
 	.into_iter()
 	.find_map(|(id, shape)| layer_view.upstream_node_id_from_name(&proto(id)).map(|_| shape)) else {
@@ -406,7 +414,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 				changed = true;
 			}
 		}
-		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle => {}
+		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle | ShapeType::QrCode => {}
 	}
 
 	changed
@@ -1087,7 +1095,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::QrCode => {
 						tool_data.data.start(document, input, viewport);
 					}
 					ShapeType::Arrow | ShapeType::Line => {
@@ -1113,6 +1121,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Line => Line::create_node(),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
+					ShapeType::QrCode => QrCode::create_node(),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
@@ -1121,7 +1130,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::QrCode => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -1188,6 +1197,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Line => Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::QrCode => QrCode::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
@@ -1453,6 +1463,10 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
+				ShapeType::QrCode => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw QR Code"),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 			};
 			HintData(hint_groups)
 		}
@@ -1475,6 +1489,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				]),
 				ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::QrCode => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 			};
 
 			if !tool_hint_group.0.is_empty() {
