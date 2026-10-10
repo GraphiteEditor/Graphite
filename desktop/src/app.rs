@@ -593,7 +593,7 @@ impl ApplicationHandler for App {
 
 		if let Some(position) = self.input_state.take_pending_warp() {
 			let moved = self.window.as_ref().is_some_and(|window| window.set_cursor_position(position));
-			// Wayland refuses to move the pointer, and then the wrap turns itself off
+			// Wayland refuses to move the pointer, so the wrap turns itself off
 			if !moved {
 				self.input_state.set_pointer_wrap(false);
 			}
