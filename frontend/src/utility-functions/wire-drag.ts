@@ -53,7 +53,8 @@ export function wireDragPointerMove(e: PointerEvent, editor: EditorWrapper, grap
 
 	// Find which Properties panel connector, if any, is under the pointer
 	const topmost = document.elementFromPoint(e.clientX, e.clientY);
-	const hoveringPanel = Boolean(topmost?.closest("[data-properties-panel]"));
+	// The whole panel counts, including its tab bar, so crossing the tabs doesn't pan the graph
+	const hoveringPanel = Boolean(topmost?.closest("[data-panel-body]")?.querySelector("[data-properties-panel]"));
 	const targetElement = topmost?.closest("[data-wire-drop-target]") || undefined;
 	const target = targetElement && connectorFromElement(targetElement);
 

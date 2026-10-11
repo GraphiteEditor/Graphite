@@ -1,6 +1,6 @@
 use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
-use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
+use crate::consts::{GRID_SIZE, WIRE_DRAG_AUTO_PAN_DELAY_MILLISECONDS, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -92,6 +92,8 @@ pub struct NodeGraphMessageHandler {
 	wire_in_progress_properties_target: Option<(InputConnector, DVec2)>,
 	/// Whether the pointer dragging a wire is over the Properties panel, where graph connectors beneath it can't be hovered.
 	wire_in_progress_hovering_properties_panel: bool,
+	/// When the pointer dragging a wire last left the graph, in milliseconds, to delay auto-panning.
+	wire_left_viewport_time: Option<u64>,
 	/// The node hovered by a wire dragged from an output and when the hover began, in milliseconds.
 	wire_hovered_node: Option<(NodeId, u64)>,
 	/// The node expanded for the wire in progress and the indices of the inputs it temporarily exposed.
@@ -1132,6 +1134,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
 				}
 
+				// Restart the wire's auto-panning delay whenever it comes back over the graph or onto the Properties panel
+				let pointer_in_viewport = ipp.mouse.position.cmpge(DVec2::ZERO).all() && ipp.mouse.position.cmple(viewport.size().into_dvec2()).all();
+				if pointer_in_viewport || self.wire_in_progress_hovering_properties_panel {
+					self.wire_left_viewport_time = None;
+				}
+
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
 					.persistent_metadata
@@ -1592,8 +1600,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				let wiring_over_graph = self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() && !self.wire_in_progress_hovering_properties_panel;
-				if self.drag_start.is_some() || self.box_selection_start.is_some() || wiring_over_graph {
+				if self.drag_start.is_some() || self.box_selection_start.is_some() {
 					let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
+				} else if wiring_over_graph {
+					// A wire only pans once it lingers beyond the edge, so passing over to another panel doesn't pan
+					let left_viewport_time = *self.wire_left_viewport_time.get_or_insert(ipp.time);
+					if ipp.time.saturating_sub(left_viewport_time) >= WIRE_DRAG_AUTO_PAN_DELAY_MILLISECONDS {
+						let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
+					}
 				} else {
 					// Auto-panning
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
@@ -2401,6 +2415,7 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_anchor = None;
 		self.wire_in_progress_properties_target = None;
 		self.wire_in_progress_hovering_properties_panel = false;
+		self.wire_left_viewport_time = None;
 
 		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 	}
@@ -3307,6 +3322,7 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_anchor: None,
 			wire_in_progress_properties_target: None,
 			wire_in_progress_hovering_properties_panel: false,
+			wire_left_viewport_time: None,
 			wire_hovered_node: None,
 			wire_expanded_node: None,
 			wire_hover_tick_subscribed: false,
