@@ -137,6 +137,8 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	/// Sent every frame while a dragged wire hovers a node, to expand it once the hover delay passes.
+	WireHoverTick,
 	ShakeNode,
 	UpdateNodeGraphWidth,
 	RemoveImport {

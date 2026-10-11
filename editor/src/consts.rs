@@ -37,6 +37,8 @@ pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
 pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
 pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
+/// How long a dragged wire must rest over a node before the node reveals its hidden inputs the wire could connect to.
+pub const WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS: u64 = 250;
 
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;

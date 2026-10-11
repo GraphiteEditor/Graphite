@@ -25,6 +25,7 @@ mod validation;
 mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
+pub use resolved_types::type_feeds_connector;
 use store::Guarded;
 pub use store::NodeLocator;
 pub use template::*;
