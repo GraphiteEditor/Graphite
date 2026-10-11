@@ -49,6 +49,13 @@ impl ToolMetadata for ArtboardTool {
 	}
 }
 
+impl ToolEditTarget for ArtboardTool {
+	fn edit_target(&self) -> EditTarget {
+		// An artboard layer is itself the Artboard node, which the chain lookup starts from
+		EditTarget::network_node("Artboard", Insertion::Never)
+	}
+}
+
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {

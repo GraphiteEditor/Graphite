@@ -857,22 +857,43 @@
 					<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
 					<LayoutRow class="layer-chain-icons" on:dblclick={(e) => chainIconsDoubleClick(e, listing)} data-layer-chain>
 						{#each listing.entry.chainNodes as chainNode, chainNodeIndex}
+							{#if listing.entry.toolTargetInsertion?.index === chainNodeIndex}
+								{@const insertion = listing.entry.toolTargetInsertion}
+								<IconLabel icon={insertion.icon} class="tool-target-insertion" tooltipLabel={insertion.name} tooltipDescription={insertion.description} />
+							{/if}
 							<IconButton
 								icon={chainNode.icon}
 								size={24}
-								classes={{ selected: chainNode.selected, hidden: !chainNode.visible }}
+								classes={{
+									selected: chainNode.selected,
+									hidden: !chainNode.visible,
+									"tool-target": Boolean(chainNode.toolTargetDescription),
+									"edit-in-progress": chainNode.editInProgress,
+								}}
 								action={(e) => chainNodeClick(e, listing, chainNode.id)}
 								tooltipLabel={chainNode.name}
+								tooltipDescription={chainNode.toolTargetDescription}
 								data-chain-node={chainNodeIndex}
 								data-chain-node-reorderable={chainNode.reorderable ? String(chainNode.id) : undefined}
 							/>
 						{/each}
-						{#if listing.entry.chainNodes.length > 0}
+						{#if listing.entry.toolTargetInsertion?.index === listing.entry.chainNodes.length}
+							{@const insertion = listing.entry.toolTargetInsertion}
+							<IconLabel icon={insertion.icon} class="tool-target-insertion" tooltipLabel={insertion.name} tooltipDescription={insertion.description} />
+						{/if}
+						{#if listing.entry.chainNodes.length > 0 || listing.entry.toolTargetInsertion}
 							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="chain-connector" style:fill={`var(--color-data-${listing.entry.chainDataType.toLowerCase()})`}>
 								<path d="M0,6.306L0,1.694C0,0.228 1.06,-0.41 2.356,0.276L7.028,2.752C8.324,3.438 8.324,4.562 7.028,5.248L2.356,7.723C1.06,8.41 0,7.771 0,6.306z" />
 							</svg>
 						{/if}
-						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" classes={{ hidden: !listing.entry.visible }} tooltipLabel={listing.entry.implementationName} data-layer-icon />
+						<IconLabel
+							icon={listing.entry.iconName}
+							class="layer-type-icon"
+							classes={{ hidden: !listing.entry.visible, "tool-target": Boolean(listing.entry.toolTargetDescription), "edit-in-progress": listing.entry.editInProgress }}
+							tooltipLabel={listing.entry.implementationName}
+							tooltipDescription={listing.entry.toolTargetDescription}
+							data-layer-icon
+						/>
 					</LayoutRow>
 					{#if chainDropRowIndex === index && chainInsertMarkerLeft !== undefined}
 						<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>
@@ -1129,6 +1150,34 @@
 					.layer-type-icon {
 						margin: 0 2px;
 						align-self: center;
+					}
+
+					// The node the active tool edits, or the ghost of one it would add, brightened while an edit in progress writes to it
+					.tool-target,
+					.tool-target-insertion,
+					.edit-in-progress {
+						outline: 1px solid var(--color-8-uppergray);
+						outline-offset: -1px;
+						border-radius: 2px;
+					}
+
+					.edit-in-progress {
+						outline-color: var(--color-e-nearwhite);
+					}
+
+					// Outside the bare 16px layer icon, rather than inside a 20px button
+					.layer-type-icon.tool-target,
+					.layer-type-icon.edit-in-progress {
+						outline-offset: 1px;
+					}
+
+					// Pads the 16px icon to the 20px by 24px of the chain buttons
+					.tool-target-insertion {
+						padding: 4px 2px;
+
+						svg {
+							opacity: 0.5;
+						}
 					}
 				}
 

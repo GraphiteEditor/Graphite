@@ -86,6 +86,12 @@ impl ToolMetadata for FreehandTool {
 	}
 }
 
+impl ToolEditTarget for FreehandTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
+	}
+}
+
 impl LayoutHolder for FreehandTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.drawing.fill.create_widgets(

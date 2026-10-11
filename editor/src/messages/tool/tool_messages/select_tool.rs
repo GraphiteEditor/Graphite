@@ -159,6 +159,12 @@ impl ToolMetadata for SelectTool {
 	}
 }
 
+impl ToolEditTarget for SelectTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::transform()
+	}
+}
+
 impl SelectTool {
 	fn deep_selection_widget(&self) -> WidgetInstance {
 		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]

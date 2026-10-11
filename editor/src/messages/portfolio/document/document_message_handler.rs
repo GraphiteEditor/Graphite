@@ -26,6 +26,7 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -61,6 +62,7 @@ pub struct DocumentMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
@@ -237,6 +239,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			executor,
 			viewport,
 			current_tool,
+			tool_edit_target,
 			preferences,
 			data_panel_open,
 			layers_panel_open,
@@ -309,6 +312,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						navigation_handler: &self.navigation_handler,
 						preferences,
 						layers_panel_open,
+						tool_edit_target,
 						viewport,
 					},
 				);

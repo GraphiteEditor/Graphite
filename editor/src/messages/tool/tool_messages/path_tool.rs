@@ -199,6 +199,12 @@ impl ToolMetadata for PathTool {
 	}
 }
 
+impl ToolEditTarget for PathTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
+	}
+}
+
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
 		let coordinates = self.tool_data.selection_status.as_one().as_ref().map(|point| point.coordinates);

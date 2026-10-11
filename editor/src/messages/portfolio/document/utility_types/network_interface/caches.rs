@@ -5,6 +5,8 @@ use super::*;
 impl NodeNetworkInterface {
 	pub fn start_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Started;
+		self.clear_transaction_edited_nodes();
+		self.transaction_edited_nodes_scanned = self.deltas.len();
 	}
 
 	pub fn transaction_modified(&mut self) {
@@ -15,6 +17,7 @@ impl NodeNetworkInterface {
 
 	pub fn finish_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Finished;
+		self.clear_transaction_edited_nodes();
 	}
 
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.

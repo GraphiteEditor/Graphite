@@ -33,6 +33,12 @@ impl ToolMetadata for NavigateTool {
 	}
 }
 
+impl ToolEditTarget for NavigateTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::Nothing
+	}
+}
+
 impl LayoutHolder for NavigateTool {
 	fn layout(&self) -> Layout {
 		Layout::default()
