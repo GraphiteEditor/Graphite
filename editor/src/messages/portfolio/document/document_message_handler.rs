@@ -1875,6 +1875,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
+					// The artwork behind the graph can be navigated too, so rerender it if its view changed
+					let artwork_transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+					if artwork_transform != self.network_interface.document_metadata().document_to_viewport {
+						self.network_interface.set_document_to_viewport_transform(artwork_transform);
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
 					};
