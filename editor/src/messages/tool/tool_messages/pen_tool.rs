@@ -2432,6 +2432,7 @@ impl Fsm for PenToolFsmState {
 mod test_pen_tool {
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::misc::ManipulatorPointId;
@@ -2562,6 +2563,39 @@ mod test_pen_tool {
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
 
+	#[tokio::test]
+	async fn merging_layers_in_group_with_offset() {
+		let mut editor = create_a_rectangle().await;
+
+		// Group rectangle into Group
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle (offset by the group transform)
+		click_pen(&mut editor, B + offset).await;
+
+		let expected_anchors = [A + offset, B + offset, C + offset, D + offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	}
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
 		let mut editor = EditorTestUtils::create();
