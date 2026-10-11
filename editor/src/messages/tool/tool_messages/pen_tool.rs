@@ -2437,6 +2437,21 @@ mod test_pen_tool {
 	use graphene_std::vector::misc::ManipulatorPointId;
 	use graphene_std::vector::{SegmentId, Vector};
 
+	fn assert_expected_anchors(editor: &EditorTestUtils, expected_anchors: &[DVec2]) {
+		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		let mut viewport_points: Vec<DVec2> = vector.point_domain.positions().iter().map(|&pos| layer_to_viewport.transform_point2(pos)).collect();
+
+		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
+			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
+				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
+			};
+			println!("Successfully found expected position {expected_position} (index {expected_index}) in viewport points as index {viewport_index}");
+			viewport_points.remove(viewport_index);
+		}
+		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
+	}
+
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
 	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, Vector)> {
 		let document = editor.active_document();
@@ -2523,19 +2538,7 @@ mod test_pen_tool {
 
 		// Validate that these anchors are the only ones that exist (TODO: improve code reuse)
 		let expected_anchors = [A, B, C, D, pen_start];
-		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
-		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
-		let mut viewport_points: Vec<DVec2> = vector.point_domain.positions().iter().map(|&pos| layer_to_viewport.transform_point2(pos)).collect();
-
-		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
-			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
-				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
-			};
-			println!("Successfully found expected position {expected_position} (index {expected_index}) in viewport points as index {viewport_index}");
-			// Remove so no other one matches
-			viewport_points.remove(viewport_index);
-		}
-		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
+		assert_expected_anchors(&editor, &expected_anchors);
 	}
 
 	#[tokio::test]
@@ -2556,19 +2559,10 @@ mod test_pen_tool {
 
 		// Validate that these anchors are the only ones that exist (TODO: improve code reuse)
 		let expected_anchors = [A, B, C];
-		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
-		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
-		let mut viewport_points: Vec<DVec2> = vector.point_domain.positions().iter().map(|&pos| layer_to_viewport.transform_point2(pos)).collect();
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
 
-		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
-			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
-				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
-			};
-			println!("Successfully found expected position {expected_position} (index {expected_index}) in viewport points as index {viewport_index}");
-			// Remove so no other one matches
-			viewport_points.remove(viewport_index);
 		}
-		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
 	}
 
 	#[tokio::test]
