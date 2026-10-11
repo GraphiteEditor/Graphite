@@ -2595,6 +2595,58 @@ mod test_pen_tool {
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
 
+	#[tokio::test]
+	async fn merging_layers_in_different_groups_with_offsets() {
+		let mut editor = create_a_rectangle().await;
+
+		// Group rectangle into Group 1
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset1 = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group1,
+				transform: DAffine2::from_translation(offset1),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Nest Group 1 inside Group 2 with a different offset
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group2 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset2 = DVec2::new(30., -20.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group2,
+				transform: DAffine2::from_translation(offset2),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let total_offset = offset1 + offset2;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle (offset by the nested group transforms)
+		click_pen(&mut editor, B + total_offset).await;
+
+		let expected_anchors = [A + total_offset, B + total_offset, C + total_offset, D + total_offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
 	}
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
