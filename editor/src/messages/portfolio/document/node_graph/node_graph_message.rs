@@ -262,7 +262,6 @@ pub enum NodeGraphMessage {
 		node_ids: Vec<NodeId>,
 		network_path: Vec<NodeId>,
 	},
-	UpdateEdges,
 	UpdateBoxSelection,
 	UpdateImportsExports,
 	UpdateLayerPanel,
