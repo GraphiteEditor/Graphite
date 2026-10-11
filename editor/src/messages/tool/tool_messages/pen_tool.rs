@@ -2562,9 +2562,6 @@ mod test_pen_tool {
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
 
-		}
-	}
-
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
 		let mut editor = EditorTestUtils::create();
