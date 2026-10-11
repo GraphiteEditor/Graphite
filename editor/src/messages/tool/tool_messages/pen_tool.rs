@@ -2647,6 +2647,90 @@ mod test_pen_tool {
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
 
+	#[tokio::test]
+	async fn merging_layers_in_artboard_with_offset() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let offset = DVec2::new(60., 70.);
+		editor.drag_tool(ToolType::Artboard, 0., 0., 500., 500., ModifierKeys::empty()).await;
+		let artboard = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x + offset.x, A.y + offset.y, C.x + offset.x, C.y + offset.y).await;
+
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		click_pen(&mut editor, B + offset).await;
+
+		let expected_anchors = [A + offset, B + offset, C + offset, D + offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_artboards_with_different_offsets() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create first artboard with offset
+		editor.drag_tool(ToolType::Artboard, 0., 0., 400., 400., ModifierKeys::empty()).await;
+		let artboard1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset1 = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard1,
+				transform: DAffine2::from_translation(offset1),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Draw rectangle in first artboard
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x + offset1.x, A.y + offset1.y, C.x + offset1.x, C.y + offset1.y).await;
+
+		// Create second artboard with different offset
+		let offset2 = DVec2::new(-30., 40.);
+		let artboard2_origin = DVec2::new(600., 600.);
+		editor
+			.drag_tool(
+				ToolType::Artboard,
+				artboard2_origin.x,
+				artboard2_origin.y,
+				artboard2_origin.x + 400.,
+				artboard2_origin.y + 400.,
+				ModifierKeys::empty(),
+			)
+			.await;
+		let artboard2 = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard2,
+				transform: DAffine2::from_translation(offset2),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Start pen in second artboard
+		let pen_start = artboard2_origin + offset2 + DVec2::new(50., 50.);
+		click_pen(&mut editor, pen_start).await;
+
+		// Connect to anchor B of the rectangle in the first artboard
+		click_pen(&mut editor, B + offset1).await;
+
+		let expected_anchors = [A + offset1, B + offset1, C + offset1, D + offset1, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
 	}
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
