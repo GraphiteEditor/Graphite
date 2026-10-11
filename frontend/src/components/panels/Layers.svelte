@@ -83,6 +83,10 @@
 	let chainInsertMarkerLeft: number | undefined = undefined;
 	let chainDragDropTarget: HTMLElement | undefined = undefined;
 
+	// Viewport hover outline, tracked by row index since rows get reused when the layers change beneath a still pointer
+	let hoveredRowIndex: number | undefined = undefined;
+	let hoveredLayerSent: bigint | undefined = undefined;
+
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
@@ -91,6 +95,7 @@
 	let activeDragToggleGroup: string | undefined = undefined;
 
 	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
+	$: sendHoveredLayer(layers, hoveredRowIndex);
 
 	onMount(() => {
 		createDragToggleManager(dragToggleListener);
@@ -118,7 +123,18 @@
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
+
+		// Closing the panel removes the hovered row without a `pointerleave`
+		if (hoveredLayerSent !== undefined) editor.setLayersPanelHoveredLayer(undefined);
 	});
+
+	function sendHoveredLayer(listings: LayerListingInfo[], rowIndex: number | undefined) {
+		const id = rowIndex === undefined ? undefined : listings.at(rowIndex)?.entry.id;
+		if (id === hoveredLayerSent) return;
+
+		hoveredLayerSent = id;
+		editor.setLayersPanelHoveredLayer(id);
+	}
 
 	function dragToggleListener(group: string | undefined) {
 		activeDragToggleGroup = group;
@@ -760,6 +776,8 @@
 					data-index={index}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
+					on:pointerenter={() => (hoveredRowIndex = index)}
+					on:pointerleave={() => (hoveredRowIndex = undefined)}
 				>
 					<IconButton
 						class="status-toggle"

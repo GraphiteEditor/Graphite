@@ -29,7 +29,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
-use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
+use crate::messages::tool::tool_messages::select_tool::{SelectToolPointerKeys, draw_layer_outline};
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -179,6 +179,9 @@ pub struct DocumentMessageHandler {
 	/// The ID of the chain node at the start of a range selection among a layer's chain node icons in the Layers panel, working like `layer_range_selection_reference`.
 	#[serde(skip)]
 	chain_node_range_selection_reference: Option<NodeId>,
+	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
+	#[serde(skip)]
+	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -225,6 +228,7 @@ impl Default for DocumentMessageHandler {
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
 			chain_node_range_selection_reference: None,
+			layers_panel_hovered_layer: None,
 			is_loaded: false,
 		}
 	}
@@ -760,6 +764,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::LayersPanelHoverOverlays { context: mut overlay_context } => {
+				let Some(layer) = self.layers_panel_hovered_layer else { return };
+				if !overlay_context.visibility_settings.hover_outline() {
+					return;
+				}
+
+				// Outlined like the Select tool's hover, with groups and artboards shown by their bounding box
+				if layer.has_children(self.metadata()) || self.network_interface.is_artboard(&layer.to_node(), &[]) {
+					if let Some(bounds) = self.metadata().bounding_box_viewport(layer) {
+						overlay_context.quad(Quad::from_box(bounds), None, None);
+					}
+				} else {
+					draw_layer_outline(&mut overlay_context, self, layer, None);
+				}
 			}
 			DocumentMessage::BlendSelectedLayers => {
 				self.group_selected_layers(GroupFolderType::Blend, responses);
@@ -1456,6 +1475,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetGraphFadeArtwork { percentage } => {
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
+			}
+			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
+				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
+				if layer != self.layers_panel_hovered_layer {
+					self.layers_panel_hovered_layer = layer;
+					responses.add(OverlaysMessage::Draw);
+				}
 			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);

@@ -709,7 +709,7 @@ impl SelectToolData {
 
 /// Draws the hover/selection outline for a layer. When a Path node is upstream, mirrors the Path tool's view
 /// (e.g. the pre-solidified centerline for a Solidify Stroke layer); otherwise uses the layer's recorded outlines.
-fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
+pub fn draw_layer_outline(overlay_context: &mut OverlayContext, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, color: Option<&str>) {
 	if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
 		let layer_to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		overlay_context.outline(targets.iter(), layer_to_viewport, color);

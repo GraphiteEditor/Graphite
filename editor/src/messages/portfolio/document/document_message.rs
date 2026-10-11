@@ -90,6 +90,9 @@ pub enum DocumentMessage {
 	GridVisibility {
 		visible: bool,
 	},
+	LayersPanelHoverOverlays {
+		context: OverlayContext,
+	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
 	ExpandFillStrokeOnSelectedLayers,
@@ -195,6 +198,9 @@ pub enum DocumentMessage {
 	},
 	SetGraphFadeArtwork {
 		percentage: f64,
+	},
+	SetLayersPanelHoveredLayer {
+		id: Option<NodeId>,
 	},
 	SetNodePinned {
 		node_id: NodeId,
