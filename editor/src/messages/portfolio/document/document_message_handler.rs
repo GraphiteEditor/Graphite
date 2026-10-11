@@ -17,7 +17,6 @@ use crate::messages::portfolio::document::graph_operation::utility_types::{Modif
 use crate::messages::portfolio::document::inspector::inspector_message_handler::InspectorMessageContext;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -642,11 +641,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				// Abort wire in progress of being connected
 				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
-					self.node_graph_handler.wire_in_progress_from_connector = None;
-					self.node_graph_handler.wire_in_progress_to_connector = None;
-					self.node_graph_handler.wire_in_progress_type = FrontendGraphDataType::General;
-
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+					self.node_graph_handler.end_wire_in_progress(&mut self.network_interface, &self.selection_network_path, responses);
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 				// Close the context menu if it's open

@@ -1,6 +1,6 @@
 use super::node_inspector;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
-use crate::consts::GRID_SIZE;
+use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -11,7 +11,9 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode};
+use crate::messages::portfolio::document::utility_types::network_interface::{
+	self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, type_feeds_connector,
+};
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
@@ -86,6 +88,12 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
+	/// The node hovered by the wire in progress and when the hover began, in milliseconds.
+	wire_hovered_node: Option<(NodeId, u64)>,
+	/// The node expanded for the wire in progress and the indices of the inputs it temporarily exposed.
+	wire_expanded_node: Option<(NodeId, Vec<usize>)>,
+	/// Whether [`NodeGraphMessage::WireHoverTick`] is subscribed to animation frames.
+	wire_hover_tick_subscribed: bool,
 	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
@@ -354,12 +362,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
 				}
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				self.end_wire_in_progress(network_interface, selection_network_path, responses);
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
 				});
@@ -860,12 +864,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
-						self.wire_in_progress_from_connector = None;
-						self.wire_in_progress_to_connector = None;
-						self.wire_in_progress_type = FrontendGraphDataType::General;
-
+						self.end_wire_in_progress(network_interface, selection_network_path, responses);
 						responses.add(DocumentMessage::AbortTransaction);
-						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 						return;
 					}
 
@@ -967,14 +967,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 				if self.context_menu.is_some() {
 					self.context_menu = None;
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
+					self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
 					});
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				}
 
 				// Toggle visibility of clicked node and return
@@ -1207,6 +1204,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
+
+					// Input connectors stick out past their node's edge, so hovering one counts as hovering its node
+					let wire_source_node = self
+						.wire_in_progress_output_connector(network_interface, selection_network_path)
+						.and_then(|output_connector| output_connector.node_id());
+					let wire_hovered_node = to_connector
+						.and_then(|input_connector| input_connector.node_id())
+						.or_else(|| network_interface.node_from_click(viewport_location, selection_network_path))
+						.filter(|node_id| Some(*node_id) != wire_source_node);
+					self.set_wire_hovered_node(wire_hovered_node.map(|node_id| (node_id, ipp.time)), network_interface, selection_network_path, responses);
 				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
 					if drag_start.start_x != point.x || drag_start.start_y != point.y {
 						*dragged = true;
@@ -1331,6 +1338,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
 					let output_connector = network_interface.output_connector_from_click(from_connector_viewport, selection_network_path);
 					let input_connector = network_interface.input_connector_from_click(to_connector_viewport, selection_network_path);
+
+					// Collapse now rather than when the wire ends, since the node creation menu can keep the wire alive
+					let connected_input = output_connector.and(input_connector);
+					self.collapse_wire_expanded_node(connected_input, network_interface, selection_network_path, responses);
+					self.set_wire_hovered_node(None, network_interface, selection_network_path, responses);
 
 					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
 						responses.add(NodeGraphMessage::CreateWire {
@@ -1535,15 +1547,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.duplicated_in_drag = false;
 				self.box_selection_start = None;
 
-				self.wire_in_progress_from_connector = None;
-				self.wire_in_progress_to_connector = None;
-				self.wire_in_progress_type = FrontendGraphDataType::General;
+				self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
 				self.reordering_export = None;
 				self.reordering_import = None;
 
 				responses.add(DocumentMessage::EndTransaction);
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });
 				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
 				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
@@ -1557,6 +1566,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 					self.auto_panning.stop(&messages, responses);
 				}
+			}
+			NodeGraphMessage::WireHoverTick => {
+				self.expand_wire_hovered_node_after_delay(ipp.time, network_interface, selection_network_path, responses);
 			}
 			NodeGraphMessage::ShakeNode => {
 				let Some((drag_start, _)) = &mut self.drag_start else {
@@ -2295,6 +2307,119 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 }
 
 impl NodeGraphMessageHandler {
+	/// Removes the wire in progress and collapses any node expanded for it.
+	pub fn end_wire_in_progress(&mut self, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		self.set_wire_hovered_node(None, network_interface, network_path, responses);
+
+		self.wire_in_progress_from_connector = None;
+		self.wire_in_progress_to_connector = None;
+		self.wire_in_progress_type = FrontendGraphDataType::General;
+
+		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+	}
+
+	/// The output the wire in progress is dragged from.
+	fn wire_in_progress_output_connector(&self, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<OutputConnector> {
+		let from_connector = self.wire_in_progress_from_connector?;
+		let node_graph_to_viewport = network_interface.network_metadata(network_path)?.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+
+		network_interface.output_connector_from_click(node_graph_to_viewport.transform_point2(from_connector), network_path)
+	}
+
+	/// Tracks the node under the wire in progress and when the hover began, collapsing the expanded node once the wire leaves it.
+	fn set_wire_hovered_node(&mut self, hover: Option<(NodeId, u64)>, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let hovered_node = hover.map(|(node_id, _)| node_id);
+		if self.wire_hovered_node.map(|(node_id, _)| node_id) == hovered_node {
+			return;
+		}
+
+		if self.wire_expanded_node.as_ref().is_some_and(|(node_id, _)| Some(*node_id) != hovered_node) {
+			self.collapse_wire_expanded_node(None, network_interface, network_path, responses);
+		}
+
+		self.wire_hovered_node = hover;
+		self.set_wire_hover_tick_subscribed(hover.is_some(), responses);
+	}
+
+	/// Expands the hovered node once the wire has rested over it for the hover delay.
+	fn expand_wire_hovered_node_after_delay(&mut self, time: u64, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some((node_id, hover_start_time)) = self.wire_hovered_node else { return };
+		if time.saturating_sub(hover_start_time) < WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS {
+			return;
+		}
+		self.set_wire_hover_tick_subscribed(false, responses);
+
+		let output_types = self
+			.wire_in_progress_output_connector(network_interface, network_path)
+			.map(|output_connector| network_interface.potential_output_types(&output_connector, network_path))
+			.unwrap_or_default();
+
+		let revealed_input_indices = (0..network_interface.number_of_inputs(&node_id, network_path))
+			.filter(|&input_index| {
+				let input_connector = InputConnector::node_at_index(node_id, input_index);
+				let hidden_value = matches!(network_interface.input_from_connector(&input_connector, network_path), Some(NodeInput::Value { exposed: false, .. }));
+
+				hidden_value
+					&& network_interface
+						.potential_valid_input_types(&input_connector, network_path)
+						.iter()
+						.any(|valid_type| output_types.iter().any(|output_type| type_feeds_connector(output_type, valid_type)))
+			})
+			.collect::<Vec<_>>();
+		if revealed_input_indices.is_empty() {
+			return;
+		}
+
+		for &input_index in &revealed_input_indices {
+			Self::set_value_input_exposed(InputConnector::node_at_index(node_id, input_index), true, network_interface, network_path);
+		}
+		responses.add(NodeGraphMessage::SendGraph);
+
+		self.wire_expanded_node = Some((node_id, revealed_input_indices));
+	}
+
+	/// Hides the inputs revealed by the expanded node again, except `connected_input`.
+	fn collapse_wire_expanded_node(&mut self, connected_input: Option<InputConnector>, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some((node_id, revealed_input_indices)) = self.wire_expanded_node.take() else { return };
+
+		for &input_index in &revealed_input_indices {
+			let input_connector = InputConnector::node_at_index(node_id, input_index);
+			if Some(input_connector) != connected_input {
+				Self::set_value_input_exposed(input_connector, false, network_interface, network_path);
+			}
+		}
+		responses.add(NodeGraphMessage::SendGraph);
+	}
+
+	fn set_value_input_exposed(input_connector: InputConnector, exposed: bool, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId]) {
+		let Some(mut input) = network_interface.input_from_connector(&input_connector, network_path).cloned() else {
+			return;
+		};
+		let NodeInput::Value { exposed: input_exposed, .. } = &mut input else { return };
+
+		*input_exposed = exposed;
+		network_interface.set_input(&input_connector, input, network_path);
+	}
+
+	fn set_wire_hover_tick_subscribed(&mut self, subscribed: bool, responses: &mut VecDeque<Message>) {
+		if self.wire_hover_tick_subscribed == subscribed {
+			return;
+		}
+		self.wire_hover_tick_subscribed = subscribed;
+
+		let send = Box::new(NodeGraphMessage::WireHoverTick.into());
+		responses.add(match subscribed {
+			true => BroadcastMessage::SubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+			false => BroadcastMessage::UnsubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+		});
+	}
+
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
 		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp, SendClickTargets, EndSendClickTargets);
@@ -2992,6 +3117,9 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			wire_in_progress_type: FrontendGraphDataType::General,
+			wire_hovered_node: None,
+			wire_expanded_node: None,
+			wire_hover_tick_subscribed: false,
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
