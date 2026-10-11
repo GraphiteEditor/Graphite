@@ -6,6 +6,7 @@ import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "/src/utility-functions/keyboard-entry";
 import { operatingSystem } from "/src/utility-functions/platform";
+import { wireDragPointerMove, wireDragPointerUp } from "/src/utility-functions/wire-drag";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const BUTTON_LEFT = 0;
@@ -121,13 +122,16 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 
 	if (isObserveOnly(e)) return;
 
+	// Wire dragging to and from the Properties panel must be resolved before the editor processes this movement
+	const graphViewOverlayOpen = get(documentStore).graphViewOverlayOpen;
+	if (wireDragPointerMove(e, editor, graphViewOverlayOpen, viewportPointerInteractionOngoing)) viewportPointerInteractionOngoing = true;
+
 	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
 	// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
 	// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
 	// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
-	const inGraphOverlay = get(documentStore).graphViewOverlayOpen;
-	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
+	if (!viewportPointerInteractionOngoing && (inFloatingMenu || graphViewOverlayOpen)) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
@@ -182,6 +186,8 @@ export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 	if (isObserveOnly(e) || textToolInteractiveInputElement) return;
+
+	wireDragPointerUp(e, editor);
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	editor.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers, ...pointerAttributes(e));

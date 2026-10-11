@@ -327,11 +327,19 @@ impl NodeNetworkInterface {
 
 		// Nodes outside the compiled graph, such as disconnected ones, have no resolved type
 		let OutputConnector::Node { node_id, output_index: 0 } = output_connector else {
+			log::debug!("[wire-drag] No registry fallback for {output_connector:?}");
 			return Vec::new();
 		};
 		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
+			log::debug!("[wire-drag] No registry fallback for non-proto node implementation {:?}", self.implementation(node_id, network_path));
 			return Vec::new();
 		};
+
+		let all_implementations = NODE_REGISTRY.get(proto_node_identifier).map(|implementations| implementations.keys().cloned().collect::<Vec<_>>());
+		let input_types = (0..self.number_of_inputs(node_id, network_path))
+			.map(|index| self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, index), network_path))
+			.collect::<Vec<_>>();
+		log::debug!("[wire-drag] Registry fallback for {proto_node_identifier:?} with input types {input_types:?} among implementations {all_implementations:?}");
 
 		self.implementations_matching_inputs(proto_node_identifier, node_id, None, network_path)
 			.map(|node_io| node_io.return_value.nested_type().clone())

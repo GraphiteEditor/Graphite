@@ -274,6 +274,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport });
 			}
 			DocumentMessage::PropertiesPanel(message) => {
+				let wire_in_progress_output_types = self.node_graph_handler.wire_in_progress_output_types(&self.network_interface, &self.selection_network_path);
 				let context = PropertiesPanelMessageContext {
 					executor,
 					document_id,
@@ -284,6 +285,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					fonts,
 					properties_panel_open,
 					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					wire_in_progress_output_types: &wire_in_progress_output_types,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
