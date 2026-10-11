@@ -2537,7 +2537,7 @@ mod test_pen_tool {
 		// Connect to the top right of the rectangle
 		click_pen(&mut editor, B).await;
 
-		// Validate that these anchors are the only ones that exist (TODO: improve code reuse)
+		// Validate that these anchors are the only ones that exist
 		let expected_anchors = [A, B, C, D, pen_start];
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
@@ -2558,7 +2558,7 @@ mod test_pen_tool {
 		click_pen(&mut editor, B).await;
 		click_pen(&mut editor, C).await;
 
-		// Validate that these anchors are the only ones that exist (TODO: improve code reuse)
+		// Validate that these anchors are the only ones that exist
 		let expected_anchors = [A, B, C];
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
@@ -2567,7 +2567,7 @@ mod test_pen_tool {
 	async fn merging_layers_in_group_with_offset() {
 		let mut editor = create_a_rectangle().await;
 
-		// Group rectangle into Group
+		// Group rectangle
 		editor
 			.handle_message(DocumentMessage::GroupSelectedLayers {
 				group_folder_type: GroupFolderType::Layer,
