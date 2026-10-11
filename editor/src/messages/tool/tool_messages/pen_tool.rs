@@ -2435,7 +2435,7 @@ mod test_pen_tool {
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
-	use graphene_std::vector::misc::ManipulatorPointId;
+	use graphene_std::vector::misc::{BooleanOperation, ManipulatorPointId};
 	use graphene_std::vector::{SegmentId, Vector};
 
 	fn assert_expected_anchors(editor: &EditorTestUtils, expected_anchors: &[DVec2]) {
@@ -2731,7 +2731,50 @@ mod test_pen_tool {
 		assert_expected_anchors(&editor, &expected_anchors);
 	}
 
+	async fn test_boolean_operation(operation: BooleanOperation) {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x, A.y, C.x, C.y).await;
+		editor.draw_rect(150., 150., 250., 250.).await;
+
+		// Select both rectangles and create boolean operation layer
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: layers.iter().map(|l| l.to_node()).collect(),
+			})
+			.await;
+
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::BooleanOperation(operation),
+			})
+			.await;
+
+		let bool_layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let bool_vector = editor.active_document().network_interface.compute_modified_vector(bool_layer).expect("Boolean layer vector");
+		let bool_to_viewport = editor.active_document().metadata().transform_to_viewport(bool_layer);
+		let mut expected_anchors: Vec<DVec2> = bool_vector.point_domain.positions().iter().map(|&pos| bool_to_viewport.transform_point2(pos)).collect();
+
+		// Connect pen to one of the anchors of the boolean operation
+		let connect_anchor = expected_anchors[0];
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		click_pen(&mut editor, connect_anchor).await;
+
+		expected_anchors.push(pen_start);
+		assert_expected_anchors(&editor, &expected_anchors);
 	}
+
+	#[tokio::test]
+	async fn merging_layers_with_different_boolean_outputs() {
+		for operation in [BooleanOperation::Union, BooleanOperation::SubtractFront, BooleanOperation::Intersect, BooleanOperation::Difference] {
+			test_boolean_operation(operation).await;
+		}
+	}
+
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
 		let mut editor = EditorTestUtils::create();
