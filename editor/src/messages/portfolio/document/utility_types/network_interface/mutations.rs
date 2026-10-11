@@ -402,6 +402,19 @@ impl NodeNetworkInterface {
 		let new_inputs = std::mem::take(&mut new_template.inputs);
 		let new_input_metadata = std::mem::take(&mut new_template.input_metadata);
 
+		// A chain losing its wire loses the layer it's positioned against, so it becomes absolute while that layer is still reachable
+		let disconnected_chain_nodes = self
+			.document_node(node_id, network_path)
+			.into_iter()
+			.flat_map(|node| node.inputs.iter().enumerate())
+			.filter(|(input_index, old_input)| new_inputs.get(*input_index) != Some(*old_input))
+			.filter_map(|(_, old_input)| old_input.as_node())
+			.filter(|upstream_node_id| self.is_chain(upstream_node_id, network_path))
+			.collect::<Vec<_>>();
+		for upstream_node_id in &disconnected_chain_nodes {
+			self.set_upstream_chain_to_absolute(upstream_node_id, network_path);
+		}
+
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;

@@ -3449,6 +3449,66 @@ mod tests {
 		}
 	}
 
+	// The retired "Paint Order" input is migrated by rebuilding the Stroke node's inputs and then reordering it with its Fill node
+	#[tokio::test]
+	async fn opening_a_stroke_with_a_retired_paint_order_keeps_the_layer_chain() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_paint_order;
+		use crate::test_utils::capture_logged_errors;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		// Each node of the layer's chain from the layer outward, with its offset from the layer if it is chain-positioned
+		let chain_layout = |document: &DocumentMessageHandler, layer: NodeId| {
+			let interface = &document.network_interface;
+			let layer_position = interface.position(&layer, &[]).unwrap_or_default();
+			interface
+				.layer_chain_nodes(layer, &[])
+				.into_iter()
+				.map(|node_id| {
+					let offset = interface.is_chain(&node_id, &[]).then(|| interface.position(&node_id, &[]).unwrap_or_default() - layer_position);
+					(interface.display_name(&node_id, &[]), offset)
+				})
+				.collect::<Vec<_>>()
+		};
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document_mut();
+		let layer = document.metadata().all_layers().next().unwrap().to_node();
+		let original = chain_layout(document, layer);
+
+		// Save the shape's Stroke node as an older editor did, with "Paint Order" set to draw the stroke below the fill
+		let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+		let stroke_node_id = document
+			.network_interface
+			.layer_chain_nodes(layer, &[])
+			.into_iter()
+			.find(|node_id| document.network_interface.reference(node_id, &[]).as_ref() == Some(&stroke_reference))
+			.expect("a fresh shape should have a Stroke node in its chain");
+		let mut inputs = document.network_interface.document_node(&stroke_node_id, &[]).unwrap().inputs.clone();
+		inputs.insert(7, NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeBelow), false));
+		let mut legacy_stroke = NodeTemplate { inputs, ..Default::default() };
+		legacy_stroke.normalize_input_metadata();
+		document.network_interface.replace_inputs(&stroke_node_id, &[], &mut legacy_stroke);
+		let serialized = document.serialize_document();
+
+		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), false));
+		let opened = opened.expect("the document should open");
+		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+
+		// The Fill and Stroke nodes trade places, and the chain keeps every slot
+		assert_eq!(get_stroke_paint_order(LayerNodeIdentifier::new_unchecked(layer), &opened.network_interface), PaintOrder::StrokeBelow);
+		let swap_name = |name: &str| match name {
+			"Fill" => "Stroke".to_string(),
+			"Stroke" => "Fill".to_string(),
+			other => other.to_string(),
+		};
+		let expected = original.iter().map(|(name, offset)| (swap_name(name), *offset)).collect::<Vec<_>>();
+		assert_eq!(chain_layout(&opened, layer), expected, "the migration should leave the layer's chain intact");
+	}
+
 	#[test]
 	fn null_floats_load_as_zero() {
 		use crate::messages::portfolio::document::utility_types::misc::PTZ;
