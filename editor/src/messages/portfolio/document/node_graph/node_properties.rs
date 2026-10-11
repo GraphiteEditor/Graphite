@@ -3237,7 +3237,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				_ => None,
 			};
 			let backup_stops = match document_node.input_value(BackupGradientInput) {
-				Some(TaggedValue::GradientRamp(ramp)) => ramp.clone(),
+				Some(TaggedValue::GradientRamp(ramp)) if !ramp.stops.is_empty() => ramp.clone(),
 				_ => GradientRamp::black_to_white(),
 			};
 			(backup_color, backup_stops)

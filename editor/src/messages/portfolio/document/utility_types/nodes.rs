@@ -38,6 +38,15 @@ pub struct LayerPanelEntry {
 	/// The data type flowing from the chain into the layer, which colors the connector between them.
 	#[serde(rename = "chainDataType")]
 	pub chain_data_type: FrontendGraphDataType,
+	/// How the active tool edits the layer node itself, if it does, for the tooltip of its outlined icon.
+	#[serde(rename = "toolTargetDescription")]
+	pub tool_target_description: Option<String>,
+	/// Whether an edit in progress, like a drag, has written to the layer node itself, which brightens its icon's outline.
+	#[serde(rename = "editInProgress")]
+	pub edit_in_progress: bool,
+	/// The node the active tool would add to the chain to edit this layer, shown ghosted where it would go.
+	#[serde(rename = "toolTargetInsertion")]
+	pub tool_target_insertion: Option<LayerPanelChainInsertion>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
@@ -64,6 +73,23 @@ pub struct LayerPanelChainNode {
 	/// Whether the node can be dragged to reorder it, unlike a source node (with no primary input) fixed at the chain's upstream end.
 	pub reorderable: bool,
 	pub visible: bool,
+	/// How the active tool edits this node, if it does, for the tooltip of its outlined icon.
+	#[serde(rename = "toolTargetDescription")]
+	pub tool_target_description: Option<String>,
+	/// Whether an edit in progress, like a drag, has written to this node, which brightens its outline.
+	#[serde(rename = "editInProgress")]
+	pub edit_in_progress: bool,
+}
+
+/// A node not yet in a layer's chain, which the active tool would add there.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct LayerPanelChainInsertion {
+	/// The position among the chain nodes, counted from the upstream end.
+	pub index: u32,
+	pub icon: IconName,
+	pub name: String,
+	pub description: String,
 }
 
 /// IMPORTANT: the same node may appear multiple times.

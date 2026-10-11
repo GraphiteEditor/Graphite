@@ -78,6 +78,12 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
+impl ToolEditTarget for GradientTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::FirstApplicable(vec![EditTarget::proto_node(graphene_std::math_nodes::gradient_value::IDENTIFIER, Insertion::Never), EditTarget::fill()])
+	}
+}
+
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {

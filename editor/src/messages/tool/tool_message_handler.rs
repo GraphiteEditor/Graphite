@@ -5,6 +5,7 @@ use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -30,11 +31,12 @@ pub struct ToolMessageHandler {
 	pub transform_layer_handler: TransformLayerMessageHandler,
 	pub shape_editor: ShapeState,
 	pub tool_is_active: bool,
+	/// What the active tool would edit in the selected layers, as last shown in the Layers panel.
+	pub edit_target: EditTarget,
 }
 
-#[message_handler_data]
-impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: ToolMessageContext) {
+impl ToolMessageHandler {
+	fn handle_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: ToolMessageContext) {
 		let ToolMessageContext {
 			document_id,
 			document,
@@ -346,6 +348,30 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				}
 			}
 		}
+	}
+
+	/// Updates the node the Layers panel outlines as edited by the active tool, which changes with the tool and its state.
+	fn refresh_edit_target(&mut self, responses: &mut VecDeque<Message>) {
+		// Tools are deactivated while the graph is open, so they edit nothing then
+		let edit_target = if self.tool_is_active {
+			self.tool_state.tool_data.active_tool().edit_target()
+		} else {
+			EditTarget::Nothing
+		};
+
+		if edit_target != self.edit_target {
+			self.edit_target = edit_target;
+			responses.add(NodeGraphMessage::UpdateLayerPanel);
+		}
+	}
+}
+
+#[message_handler_data]
+impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: ToolMessageContext) {
+		// Any message may switch the tool or change its state, so the refresh follows every one, even those handled with an early return
+		self.handle_message(message, responses, context);
+		self.refresh_edit_target(responses);
 	}
 
 	fn actions(&self) -> ActionList {

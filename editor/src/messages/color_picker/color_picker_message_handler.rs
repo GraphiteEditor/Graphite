@@ -107,7 +107,11 @@ impl MessageHandler<ColorPickerMessage, ()> for ColorPickerMessageHandler {
 						self.gradient_cyclic = ramp.gradient_cyclic;
 						self.gradient_hue_direction = ramp.gradient_hue_direction;
 						self.gradient_interpolation = ramp.gradient_interpolation;
-						let gradient = Gradient::from(ramp);
+						let mut gradient = Gradient::from(ramp);
+						// An empty gradient renders solid black, so it's edited as black to black, which looks the same but has stops to edit
+						if gradient.is_empty() {
+							gradient = Gradient::from(vec![Color::BLACK, Color::BLACK]);
+						}
 						let first_color = gradient.color(0).unwrap_or(Color::BLACK);
 						self.gradient = Some(gradient);
 						self.adopt_color(first_color);

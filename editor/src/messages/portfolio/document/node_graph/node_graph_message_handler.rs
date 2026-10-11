@@ -12,10 +12,11 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode};
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainNode, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::edit_target::{EditTarget, ResolvedEditTarget};
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
@@ -45,6 +46,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub navigation_handler: &'a NavigationMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub layers_panel_open: bool,
+	pub tool_edit_target: &'a EditTarget,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
@@ -119,6 +121,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			navigation_handler,
 			preferences,
 			layers_panel_open,
+			tool_edit_target,
 			viewport,
 		} = context;
 
@@ -2193,7 +2196,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, responses);
+				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, tool_edit_target, responses);
 			}
 			NodeGraphMessage::UpdateEdges => {
 				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
@@ -2896,10 +2899,17 @@ impl NodeGraphMessageHandler {
 		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, tool_edit_target: &EditTarget, responses: &mut VecDeque<Message>) {
 		if !layers_panel_open {
 			return;
 		}
+
+		// What the active tool would edit in each layer it can edit
+		let tool_targets = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.filter_map(|layer| Some((layer.to_node(), tool_edit_target.resolve(layer, network_interface)?)))
+			.collect::<HashMap<_, _>>();
 
 		let selected_layers = network_interface
 			.selected_nodes()
@@ -2907,6 +2917,7 @@ impl NodeGraphMessageHandler {
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
 		let selected_nodes = network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
+		let edited_nodes = network_interface.transaction_edited_nodes();
 
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
@@ -2936,6 +2947,18 @@ impl NodeGraphMessageHandler {
 
 				let clippable = layer.can_be_clipped(network_interface.document_metadata()) && network_interface.layer_hosts_blending_nodes(&node_id, &[]);
 
+				let tool_target = tool_targets.get(&node_id);
+				let description_if_outlined = |node: NodeId| tool_target.filter(|target| target.outlined_node() == Some(node)).map(|target| target.tooltip_description().to_string());
+				let tool_target_insertion = match tool_target {
+					Some(target @ ResolvedEditTarget::Inserted { definition, index }) => Some(LayerPanelChainInsertion {
+						index: *index as u32,
+						icon: resolve_document_node_type(definition).and_then(|definition| definition.icon).unwrap_or("NodeCustomNode").to_string(),
+						name: definition.implementation_name_from_identifier(),
+						description: target.tooltip_description().to_string(),
+					}),
+					_ => None,
+				};
+
 				// Listed left to right as in the graph
 				let chain_nodes = network_interface
 					.layer_chain_nodes(node_id, &[])
@@ -2948,11 +2971,13 @@ impl NodeGraphMessageHandler {
 						selected: selected_nodes.contains(&chain_node_id),
 						reorderable: network_interface.has_primary_input(&chain_node_id, &[]),
 						visible: network_interface.is_visible(&chain_node_id, &[]),
+						tool_target_description: description_if_outlined(chain_node_id),
+						edit_in_progress: edited_nodes.contains(&chain_node_id),
 					})
 					.collect::<Vec<_>>();
 
 				// Only colors the connector drawn beside a chain, so a layer without one skips resolving the type
-				let chain_data_type = if chain_nodes.is_empty() {
+				let chain_data_type = if chain_nodes.is_empty() && tool_target_insertion.is_none() {
 					FrontendGraphDataType::default()
 				} else {
 					network_interface.input_type(&InputConnector::layer_secondary_input(node_id), &[]).displayed_type()
@@ -2964,6 +2989,9 @@ impl NodeGraphMessageHandler {
 					icon_name: network_interface.node_icon(&node_id, &[]).to_string(),
 					chain_nodes,
 					chain_data_type,
+					tool_target_description: description_if_outlined(node_id),
+					edit_in_progress: edited_nodes.contains(&node_id),
+					tool_target_insertion,
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,

@@ -1,6 +1,7 @@
 pub mod auto_panning;
 pub mod color_selector;
 pub mod compass_rose;
+pub mod edit_target;
 pub mod gizmos;
 pub mod graph_modification_utils;
 pub mod layer_origin_cross;
