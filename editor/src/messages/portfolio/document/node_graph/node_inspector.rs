@@ -1693,9 +1693,9 @@ pub(crate) fn brightness_contrast_inspector(node_id: NodeId, context: &mut NodeI
 pub(crate) fn transfer_curves_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::curves::*;
 
-	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
-	channel_info.exposable = false;
-	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).inspector_row();
+	let channel = enum_choice::<AdjustmentChannel>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ChannelInput, true, context))
+		.inspector_row();
 
 	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
 		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
@@ -1716,9 +1716,9 @@ pub(crate) fn transfer_curves_inspector(node_id: NodeId, context: &mut NodeInspe
 pub(crate) fn levels_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::levels::*;
 
-	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
-	channel_info.exposable = false;
-	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).inspector_row();
+	let channel = enum_choice::<AdjustmentChannel>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ChannelInput, true, context))
+		.inspector_row();
 
 	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
 		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
@@ -2170,9 +2170,12 @@ pub(crate) fn hue_saturation_inspector(node_id: NodeId, context: &mut NodeInspec
 	let (saturation_min, saturation_default) = if colorize_value { (0., 25.) } else { (-100., 0.) };
 
 	// Colorize replaces the ranges, so while it is on the selector stays but grayed out and the selected range's edges hide
-	let mut range_info = ParameterWidgetsInfo::new(node_id, RangeInput, true, context);
-	range_info.exposable = false;
-	let mut layout = vec![enum_choice::<HueSaturationRange>().for_socket(range_info).disabled(colorize_value).inspector_row()];
+	let mut layout = vec![
+		enum_choice::<HueSaturationRange>()
+			.for_socket(ParameterWidgetsInfo::new(node_id, RangeInput, true, context))
+			.disabled(colorize_value)
+			.inspector_row(),
+	];
 
 	layout.extend([
 		gradient_slider_row(
@@ -2414,9 +2417,7 @@ pub(crate) fn vibrance_inspector(node_id: NodeId, context: &mut NodeInspectorCon
 pub(crate) fn color_balance_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::color_balance::*;
 
-	let mut tone_info = ParameterWidgetsInfo::new(node_id, ToneInput, true, context);
-	tone_info.exposable = false;
-	let tone = enum_choice::<TonalRange>().for_socket(tone_info).inspector_row();
+	let tone = enum_choice::<TonalRange>().for_socket(ParameterWidgetsInfo::new(node_id, ToneInput, true, context)).inspector_row();
 	let preserve_luminosity = bool_widget(ParameterWidgetsInfo::new(node_id, PreserveLuminosityInput, true, context), CheckboxInput::default());
 
 	let document_node = match get_document_node(node_id, context) {
@@ -2494,9 +2495,9 @@ pub(crate) fn channel_mixer_inspector(node_id: NodeId, context: &mut NodeInspect
 	use graphene_std::raster::channel_mixer::*;
 
 	let is_monochrome = bool_widget(ParameterWidgetsInfo::new(node_id, MonochromeInput, true, context), CheckboxInput::default());
-	let mut parameter_info = ParameterWidgetsInfo::new(node_id, OutputChannelInput, true, context);
-	parameter_info.exposable = false;
-	let output_channel = enum_choice::<RedGreenBlue>().for_socket(parameter_info).inspector_row();
+	let output_channel = enum_choice::<RedGreenBlue>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, OutputChannelInput, true, context))
+		.inspector_row();
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -2557,9 +2558,9 @@ pub(crate) fn channel_mixer_inspector(node_id: NodeId, context: &mut NodeInspect
 pub(crate) fn selective_color_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::selective_color::*;
 
-	let mut default_info = ParameterWidgetsInfo::new(node_id, ColorsInput, true, context);
-	default_info.exposable = false;
-	let colors = enum_choice::<SelectiveColorChoice>().for_socket(default_info).inspector_row();
+	let colors = enum_choice::<SelectiveColorChoice>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ColorsInput, true, context))
+		.inspector_row();
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
@@ -3657,6 +3658,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 		let chain_expanded = expanded_input_chain(&node_id, context.inspector_expanded_input_chains, context.network_interface, context.selection_network_path) == Some(index);
+		let exposable = !context.network_interface.is_internal_input(&node_id, index, context.selection_network_path);
 
 		ParameterWidgetsInfo {
 			document_id: context.document_id,
@@ -3671,7 +3673,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			description,
 			input_type,
 			blank_assist,
-			exposable: true,
+			exposable,
 			chain_expanded,
 		}
 	}

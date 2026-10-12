@@ -18,10 +18,10 @@ use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 pub async fn basic_brush<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
-	#[widget(ParsedWidgetOverride::Hidden)] cache: Item<BrushCache>,
+	#[widget(ParsedWidgetOverride::Hidden)] _cache: Item<BrushCache>,
 	#[scope(basic_brush_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> List<Raster<GPU>> {
-	let (cache, pipeline) = (cache.into_element(), pipeline.into_element());
+	let (cache, pipeline) = (_cache.into_element(), pipeline.into_element());
 	let mut stack = vec![strokes.into_iter()];
 	let mut strokes = Vec::new();
 	while let Some(top) = stack.last_mut() {

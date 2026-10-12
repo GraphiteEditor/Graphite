@@ -109,7 +109,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
-	let input_hidden = regular_field_names.iter().map(|name| name.to_string().starts_with('_')).collect::<Vec<_>>();
+	// The primary input is not a parameter, so generators can name their unused one `_primary` without it becoming internal
+	let input_internal = regular_field_names
+		.iter()
+		.enumerate()
+		.map(|(index, name)| index > 0 && name.to_string().starts_with('_'))
+		.collect::<Vec<_>>();
 
 	let input_descriptions: Vec<_> = regular_fields.iter().map(|f| &f.description).collect();
 
@@ -941,7 +946,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								name: #input_names,
 								widget_override: #widget_override,
 								description: #input_descriptions,
-								hidden: #input_hidden,
+								internal: #input_internal,
 								exposed: #exposed,
 								value_source: #value_sources,
 								default_colors: #default_colors,

@@ -2360,6 +2360,7 @@ impl NodeGraphMessageHandler {
 				let hidden_value = matches!(network_interface.input_from_connector(&input_connector, network_path), Some(NodeInput::Value { exposed: false, .. }));
 
 				hidden_value
+					&& !network_interface.is_internal_input(&node_id, input_index, network_path)
 					&& network_interface
 						.potential_valid_input_types(&input_connector, network_path)
 						.iter()
