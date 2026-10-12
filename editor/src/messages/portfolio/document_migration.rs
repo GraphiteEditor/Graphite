@@ -1139,6 +1139,37 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 	(out, hash_to_id)
 }
 
+/// Whether the node is a subgraph that feeds its first input through a Monitor into a Transform proto node and forwards the other four inputs unchanged, making it equivalent to a bare Transform node.
+fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
+	let DocumentNodeImplementation::Network(network) = &node.implementation else { return false };
+	if node.inputs.len() < 5 || network.nodes.len() != 2 {
+		return false;
+	}
+
+	let find_proto_node = |identifier: &ProtoNodeIdentifier| {
+		network.nodes.iter().find(|(_, inner_node)| match &inner_node.implementation {
+			DocumentNodeImplementation::ProtoNode(inner_identifier) => inner_identifier.as_str().split('<').next() == Some(identifier.as_str()),
+			_ => false,
+		})
+	};
+	let Some((monitor_id, monitor)) = find_proto_node(&graphene_std::memo::monitor::IDENTIFIER) else {
+		return false;
+	};
+	let Some((transform_id, transform)) = find_proto_node(&graphene_std::transform_nodes::transform::IDENTIFIER) else {
+		return false;
+	};
+
+	let is_import_at = |input: &NodeInput, expected_index: usize| matches!(input, NodeInput::Import { import_index, .. } if *import_index == expected_index);
+
+	let monitor_reads_first_import = matches!(monitor.inputs.as_slice(), [input] if is_import_at(input, 0));
+	let transform_reads_monitor_and_other_imports = transform.inputs.len() == 5
+		&& matches!(&transform.inputs[0], NodeInput::Node { node_id, output_index: 0 } if node_id == monitor_id)
+		&& transform.inputs.iter().enumerate().skip(1).all(|(index, input)| is_import_at(input, index));
+	let exports_transform = matches!(network.exports.as_slice(), [NodeInput::Node { node_id, output_index: 0 }] if node_id == transform_id);
+
+	monitor_reads_first_import && transform_reads_monitor_and_other_imports && exports_transform
+}
+
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 	document.network_interface.normalize_stored_types();
@@ -1172,13 +1203,17 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 
 	// The "Transform" wrapper network was replaced with the `transform` proto node directly. Convert old `Network("Transform")` instances to the proto node, forwarding the 5 user-facing inputs (Value, Translation, Rotation, Scale, Skew) and dropping the legacy migration sentinels (Origin Offset, Scale Appearance) at indices 5 and 6 if present.
+	// Some old documents store it as a Custom Node subgraph with no reference, where a Monitor feeds the Transform proto node. Those are converted the same way.
 	// Pre-pass for the same reason as the Brush migration above: replacing the outer Transform's network impl orphans its child paths.
 	let transform_layers: Vec<(NodeId, Vec<NodeId>, usize)> = document
 		.network_interface
 		.document_network()
 		.recursive_nodes()
 		.filter_map(|(node_id, node, path)| {
-			(document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Transform".into()))).then_some((*node_id, path, node.inputs.len()))
+			let reference = document.network_interface.reference(node_id, &path);
+			let is_transform_wrapper = reference == Some(DefinitionIdentifier::Network("Transform".into())) || (reference.is_none() && is_monitored_transform_subgraph(node));
+
+			is_transform_wrapper.then_some((*node_id, path, node.inputs.len()))
 		})
 		.collect();
 	for (node_id, network_path, old_inputs_count) in &transform_layers {
@@ -3458,6 +3493,42 @@ mod tests {
 			let mut document = load_demo(file_name);
 			migrate_with_context(&mut document, &format!("migrating {file_name}"));
 		}
+	}
+
+	// Old documents store Transform as a reference-less subgraph of a Monitor feeding the proto node, which becomes the bare proto node
+	#[test]
+	fn monitored_transform_subgraphs_become_bare_transform_nodes() {
+		use crate::messages::portfolio::document::storage_tests::test_support::load_demo;
+
+		let transform_identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
+		let monitored_transform_nodes = |document: &DocumentMessageHandler| {
+			document
+				.network_interface
+				.document_network()
+				.recursive_nodes()
+				.filter(|(_, node, _)| is_monitored_transform_subgraph(node))
+				.map(|(node_id, _, path)| (*node_id, path))
+				.collect::<Vec<_>>()
+		};
+
+		let mut document = load_demo("valley-of-spires.graphite");
+		let transform_node_id = NodeId(93);
+		let path = [];
+		assert!(monitored_transform_nodes(&document).contains(&(transform_node_id, Vec::new())));
+		assert_eq!(document.network_interface.document_node(&transform_node_id, &path).map(|node| node.inputs.len()), Some(7));
+
+		migrate(&mut document);
+
+		assert!(monitored_transform_nodes(&document).is_empty());
+		assert_eq!(
+			document.network_interface.reference(&transform_node_id, &path),
+			Some(DefinitionIdentifier::ProtoNode(transform_identifier))
+		);
+		assert_eq!(document.network_interface.document_node(&transform_node_id, &path).map(|node| node.inputs.len()), Some(5));
+		assert!(matches!(
+			document.network_interface.document_node(&transform_node_id, &path).and_then(|node| node.inputs.first()),
+			Some(NodeInput::Node { node_id, .. }) if *node_id == NodeId(94)
+		));
 	}
 
 	// The retired "Paint Order" input is migrated by rebuilding the Stroke node's inputs and then reordering it with its Fill node
