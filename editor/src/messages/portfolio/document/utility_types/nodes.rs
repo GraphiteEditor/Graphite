@@ -1,7 +1,6 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::frontend::IconName;
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -35,9 +34,9 @@ pub struct LayerPanelEntry {
 	/// The nodes in the chain feeding this layer, in the graph's left-to-right order.
 	#[serde(rename = "chainNodes")]
 	pub chain_nodes: Vec<LayerPanelChainNode>,
-	/// The data type flowing from the chain into the layer, which colors the connector between them.
-	#[serde(rename = "chainDataType")]
-	pub chain_data_type: FrontendGraphDataType,
+	/// Whether the chain is expanded into a row per node beneath the layer's row.
+	#[serde(rename = "chainExpanded")]
+	pub chain_expanded: bool,
 	/// How the active tool edits the layer node itself, if it does, for the tooltip of its outlined icon.
 	#[serde(rename = "toolTargetDescription")]
 	pub tool_target_description: Option<String>,
@@ -68,6 +67,9 @@ pub struct LayerPanelChainNode {
 	pub id: NodeId,
 	pub icon: IconName,
 	pub name: String,
+	/// The name shown in place of a custom one, as the placeholder while renaming.
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
 	/// Whether the node is selected, shown in every layer whose chain shares it.
 	pub selected: bool,
 	/// Whether the node can be dragged to reorder it, unlike a source node (with no primary input) fixed at the chain's upstream end.

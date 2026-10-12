@@ -405,7 +405,7 @@ pub struct SectionWire {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetSection {
-	/// The node's name shown in the section header: its given alias with the implementation name in parentheses, or just the implementation name.
+	/// The node's name shown in the section header: its implementation name, followed in parentheses by its given alias if it has one.
 	pub name: String,
 	/// The node definition's icon, shown before the name in the section header (none when it has no icon).
 	pub icon: Option<IconName>,

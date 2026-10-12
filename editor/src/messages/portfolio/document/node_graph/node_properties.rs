@@ -3137,10 +3137,9 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	let implementation_name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
 	let name = if let Some(display_name) = display_name
 		&& implementation_name != display_name
-		&& implementation_name != "Custom Node"
 		&& !display_name.is_empty()
 	{
-		format!("{display_name} ({implementation_name})")
+		format!("{implementation_name} ({display_name})")
 	} else {
 		implementation_name
 	};

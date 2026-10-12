@@ -116,6 +116,9 @@ pub struct DocumentMessageHandler {
 	/// The node IDs whose section is collapsed in the Properties panel.
 	#[serde(default)]
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
+	/// The layer node IDs whose chain is expanded into a row per node in the Layers panel.
+	#[serde(default)]
+	pub layers_panel_expanded_chains: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	#[serde(skip_deserializing, default)]
@@ -205,6 +208,7 @@ impl Default for DocumentMessageHandler {
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			properties_panel_collapsed_sections: Vec::new(),
+			layers_panel_expanded_chains: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -310,6 +314,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						document_id,
 						collapsed: &mut self.collapsed,
 						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
+						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
@@ -1676,6 +1681,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::ToggleLayerChainExpanded { layer_id } => {
+				if self.layers_panel_expanded_chains.contains(&layer_id) {
+					self.layers_panel_expanded_chains.retain(|id| *id != layer_id);
+				} else {
+					self.layers_panel_expanded_chains.push(layer_id);
+				}
+
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {

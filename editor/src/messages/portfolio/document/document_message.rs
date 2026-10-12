@@ -253,6 +253,9 @@ pub enum DocumentMessage {
 		node_id: NodeId,
 		recursive: bool,
 	},
+	ToggleLayerChainExpanded {
+		layer_id: NodeId,
+	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
 	ToggleGridVisibility,

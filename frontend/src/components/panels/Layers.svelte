@@ -62,9 +62,9 @@
 	// The run of a chain's slots, from `start` up to but not including `end`, that an ellipsis stands in for, and the gaps among the reorderable nodes at its two edges
 	type ChainEllipsis = { start: number; end: number; nodes: LayerPanelChainNode[]; gapBefore: number | undefined; gapAfter: number | undefined };
 
-	// The width of each chain slot (a node button, a ghost node, or the ellipsis), and of the connector and layer icon that end the chain, as styled below
+	// The width of each chain slot (a node button, a ghost node, or the ellipsis), and of the expand arrow and layer icon that end the chain, as styled below
 	const CHAIN_SLOT_WIDTH = 20;
-	const CHAIN_CONNECTOR_WIDTH = 8;
+	const CHAIN_EXPAND_ARROW_WIDTH = 12;
 	const LAYER_ICON_WIDTH = 20;
 
 	const editor = getContext<EditorWrapper>("editor");
@@ -88,10 +88,11 @@
 	// Interactive dragging of chain nodes within a layer's chain or into another layer's
 	let chainDragState: ChainDragState | undefined = undefined;
 	let chainDragActive = false;
-	// The layer row (by its index in the list) under the cursor, the gap among its reorderable chain nodes counted from the left, and where its marker sits within the row
+	// The layer (by row index) whose chain is under the cursor, the gap among its reorderable nodes counted from the left, and the marker's spot in its row or node rows
 	let chainDropRowIndex: number | undefined = undefined;
 	let chainInsertIndex: number | undefined = undefined;
 	let chainInsertMarkerLeft: number | undefined = undefined;
+	let chainRowInsertMarker: { nodeIndex: number; edge: "top" | "bottom" } | undefined = undefined;
 	let chainDragDropTarget: HTMLElement | undefined = undefined;
 
 	// Viewport hover outline, tracked by row index since rows get reused when the layers change beneath a still pointer
@@ -104,6 +105,9 @@
 
 	// Drag-toggle: tracked here so the template can render the invisible lock placeholder during a `layer-lock` gesture
 	let activeDragToggleGroup: string | undefined = undefined;
+
+	// The node being renamed in an expanded chain, by the row of the layer listing it, since a node shared by several chains is listed in each
+	let editingChainNodeName: { rowIndex: number; nodeId: bigint } | undefined = undefined;
 
 	// Each row's chain width, which the grid sets from the room the layer name leaves it, deciding which nodes the ellipsis stands in for
 	let chainWidths: number[] = [];
@@ -217,6 +221,39 @@
 		window.getSelection()?.removeAllRanges();
 	}
 
+	async function onEditChainNodeName(rowIndex: number, nodeId: bigint) {
+		draggable = false;
+		editingChainNodeName = { rowIndex, nodeId };
+
+		await tick();
+
+		const query = list?.div?.()?.querySelector("[data-chain-node-name-input]:enabled");
+		const textInput = (query instanceof HTMLInputElement && query) || undefined;
+		textInput?.select();
+	}
+
+	function onEditChainNodeNameChange(nodeId: bigint, e: Event) {
+		// Eliminate duplicate events
+		if (!editingChainNodeName) return;
+
+		draggable = true;
+		editingChainNodeName = undefined;
+
+		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
+		editor.setLayerName(nodeId, name);
+	}
+
+	function onEditChainNodeNameDeselect(chainNode: LayerPanelChainNode) {
+		draggable = true;
+		editingChainNodeName = undefined;
+
+		// Set it back to the original name if the user didn't enter a new name
+		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = chainNode.name;
+
+		// Deselect the text so it doesn't appear selected while the input field becomes disabled and styled to look like regular text
+		window.getSelection()?.removeAllRanges();
+	}
+
 	function selectLayerWithModifiers(e: MouseEvent, listing: LayerListingInfo) {
 		if (justFinishedDrag) {
 			justFinishedDrag = false;
@@ -302,14 +339,19 @@
 		editor.selectChainNode(listing.entry.id, nodeId, Boolean(accel), Boolean(e?.shiftKey));
 	}
 
-	// Double-clicking a chain node's icon, or the layer's own icon at the row's end, opens the graph centered on that node
+	// Double-clicking a chain node's icon, or the layer's own icon at the row's end (unless it expands the chain), opens the graph centered on that node
 	function chainIconsDoubleClick(e: MouseEvent, listing: LayerListingInfo) {
 		const target = e.target instanceof Element ? e.target : undefined;
 		const chainNodeButton = target?.closest("[data-chain-node]");
 		const chainNode = chainNodeButton ? listing.entry.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))] : undefined;
 
 		if (chainNode) editor.showNodeInGraph(chainNode.id);
-		else if (target?.closest("[data-layer-icon]")) editor.showNodeInGraph(listing.entry.id);
+		else if (target?.closest("[data-layer-icon]") && !target.closest("[data-chain-expandable]")) editor.showNodeInGraph(listing.entry.id);
+	}
+
+	// The kind of node it is, followed by its name if it's been renamed
+	function chainNodeTooltipLabel(node: LayerPanelChainNode): string {
+		return node.name === node.implementationName ? node.name : `${node.implementationName} (${node.name})`;
 	}
 
 	function observeChainWidth(element: HTMLElement) {
@@ -331,22 +373,21 @@
 		return slots;
 	}
 
-	// The chain's width with every slot shown, which it gets whenever the layer name leaves enough room
-	function chainFullWidth(slotCount: number): number {
-		if (slotCount === 0) return LAYER_ICON_WIDTH;
-		return slotCount * CHAIN_SLOT_WIDTH + CHAIN_CONNECTOR_WIDTH + LAYER_ICON_WIDTH;
+	// The chain's width with every inline slot shown, which it gets whenever the layer name leaves enough room
+	function chainFullWidth(slotCount: number, withArrow: boolean): number {
+		return slotCount * CHAIN_SLOT_WIDTH + (withArrow ? CHAIN_EXPAND_ARROW_WIDTH : 0) + LAYER_ICON_WIDTH;
 	}
 
-	// Narrower than the ellipsis alone (with the connector and layer icon after it), the chain shows nothing rather than a clipped part
-	function chainFits(slotCount: number, width: number | undefined): boolean {
-		return width === undefined || width >= chainFullWidth(Math.min(slotCount, 1));
+	// Narrower than the ellipsis alone (with the expand arrow and layer icon after it), the chain shows nothing rather than a clipped part
+	function chainFits(slotCount: number, withArrow: boolean, width: number | undefined): boolean {
+		return width === undefined || width >= chainFullWidth(Math.min(slotCount, 1), withArrow);
 	}
 
 	function chainEllipsis(slots: ChainSlot[], width: number | undefined): ChainEllipsis | undefined {
 		if (width === undefined) return undefined;
 
 		// Of the slots that fit, one goes to the ellipsis itself
-		const fittingCount = Math.floor((width - CHAIN_CONNECTOR_WIDTH - LAYER_ICON_WIDTH) / CHAIN_SLOT_WIDTH);
+		const fittingCount = Math.floor((width - CHAIN_EXPAND_ARROW_WIDTH - LAYER_ICON_WIDTH) / CHAIN_SLOT_WIDTH);
 		if (fittingCount >= slots.length) return undefined;
 		const shownCount = Math.max(fittingCount - 1, 0);
 		const hiddenCount = slots.length - shownCount;
@@ -405,7 +446,9 @@
 		if (layerPanel && treeChildren && treeOffset !== undefined) {
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 			Array.from(treeChildren).forEach((treeChild) => {
-				const indexAttribute = treeChild.getAttribute("data-index");
+				// A row of an expanded chain's nodes counts as the bottom of its layer's row
+				const chainRowOf = treeChild.getAttribute("data-chain-row-of");
+				const indexAttribute = treeChild.getAttribute("data-index") || chainRowOf;
 				if (!indexAttribute) return;
 				const listing = layers[parseInt(indexAttribute, 10)];
 
@@ -413,7 +456,11 @@
 				if (rect.top > clientY || rect.bottom < clientY) {
 					return;
 				}
-				const pointerPercentage = (clientY - rect.top) / rect.height;
+				const pointerPercentage = chainRowOf ? 1 : (clientY - rect.top) / rect.height;
+
+				// Dropping after the layer lands below its chain's node rows, if they're shown
+				const lastChainRow = Array.from(treeChildren).findLast((child) => child.getAttribute("data-chain-row-of") === indexAttribute);
+				const bottom = (lastChainRow || treeChild).getBoundingClientRect().bottom;
 				if (listing.entry.childrenAllowed || listing.childrenPresent) {
 					if (pointerPercentage < 0.25) {
 						insertParentId = listing.parentId;
@@ -430,7 +477,7 @@
 						insertParentId = listing.parentId;
 						insertDepth = listing.depth - 1;
 						insertIndex = listing.folderIndex + 1;
-						markerHeight = rect.bottom - layerPanelTop;
+						markerHeight = bottom - layerPanelTop;
 					}
 				} else {
 					if (pointerPercentage < 0.5) {
@@ -442,7 +489,7 @@
 						insertParentId = listing.parentId;
 						insertDepth = listing.depth - 1;
 						insertIndex = listing.folderIndex + 1;
-						markerHeight = rect.bottom - layerPanelTop;
+						markerHeight = bottom - layerPanelTop;
 					}
 				}
 			});
@@ -516,6 +563,7 @@
 		chainDropRowIndex = undefined;
 		chainInsertIndex = undefined;
 		chainInsertMarkerLeft = undefined;
+		chainRowInsertMarker = undefined;
 
 		// Over a bottom bar button accepting chain nodes, the drop goes to it instead, and elsewhere in the bottom bar it goes nowhere
 		const target = e.target instanceof Element ? e.target : undefined;
@@ -523,9 +571,19 @@
 		chainDragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
 		if (chainDragDropTarget || target?.closest("[data-layer-bottom-bar]")) return;
 
-		// Otherwise the nodes drop into the chain of whichever layer is under the cursor
+		// Otherwise the nodes drop into the chain of whichever layer is under the cursor, or whose expanded chain's node row is
+		const nodeRow = target?.closest("[data-chain-row-of]");
 		const row = target?.closest("[data-layer]");
-		if (row) calculateChainInsertIndex(row, e.clientX);
+		if (nodeRow) {
+			calculateChainRowInsertIndex(Number(nodeRow.getAttribute("data-chain-row-of")), e.clientY);
+		} else if (row) {
+			const rowIndex = Number(row.getAttribute("data-index"));
+			const entry = layers[rowIndex]?.entry;
+
+			// An expanded chain's nodes are in the rows beneath the layer, so the drop goes atop them, nearest the layer
+			if (entry?.chainExpanded && entry.chainNodes.length > 0) calculateChainRowInsertIndex(rowIndex, row.getBoundingClientRect().bottom);
+			else calculateChainInsertIndex(row, e.clientX);
+		}
 	}
 
 	function calculateChainInsertIndex(row: Element, clientX: number) {
@@ -557,6 +615,35 @@
 		chainDropRowIndex = Number(row.getAttribute("data-index"));
 		chainInsertIndex = index;
 		chainInsertMarkerLeft = markerX - row.getBoundingClientRect().left;
+	}
+
+	function calculateChainRowInsertIndex(rowIndex: number, clientY: number) {
+		const nodeRows = Array.from(list?.div()?.querySelectorAll(`[data-chain-row-of="${rowIndex}"]`) || []);
+		if (nodeRows.length === 0) return;
+
+		// Listed downstream first, a reorderable node's row has the gap after it on its top edge and the gap before it on its bottom edge
+		const edges = nodeRows.flatMap((nodeRow) => {
+			if (!nodeRow.hasAttribute("data-chain-gap-before")) return [];
+			const gapBefore = Number(nodeRow.getAttribute("data-chain-gap-before"));
+
+			const rect = nodeRow.getBoundingClientRect();
+			const nodeIndex = Number(nodeRow.getAttribute("data-chain-row-node"));
+			return [
+				{ y: rect.top, gap: gapBefore + 1, marker: { nodeIndex, edge: "top" as const } },
+				{ y: rect.bottom, gap: gapBefore, marker: { nodeIndex, edge: "bottom" as const } },
+			];
+		});
+
+		// As in the layer's row, the drop lands at the nearest edge, or with no reorderable node, atop the fixed source node's row
+		if (edges.length === 0) {
+			chainInsertIndex = 0;
+			chainRowInsertMarker = { nodeIndex: Number(nodeRows[0].getAttribute("data-chain-row-node")), edge: "top" };
+		} else {
+			const nearest = edges.reduce((best, edge) => (Math.abs(edge.y - clientY) < Math.abs(best.y - clientY) ? edge : best));
+			chainInsertIndex = nearest.gap;
+			chainRowInsertMarker = nearest.marker;
+		}
+		chainDropRowIndex = rowIndex;
 	}
 
 	// Swallow the click fired by releasing a drag, without leaving the flag set to block a later click if none comes
@@ -602,6 +689,7 @@
 		chainDropRowIndex = undefined;
 		chainInsertIndex = undefined;
 		chainInsertMarkerLeft = undefined;
+		chainRowInsertMarker = undefined;
 		chainDragDropTarget = undefined;
 		dragInPanel = false;
 	}
@@ -849,7 +937,8 @@
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
 				{@const slots = chainSlots(listing.entry)}
-				{@const ellipsis = chainEllipsis(slots, chainWidths[index])}
+				{@const inlineSlots = listing.entry.chainExpanded && listing.entry.chainNodes.length > 0 ? slots.filter((slot) => slot.kind === "insertion") : slots}
+				{@const ellipsis = chainEllipsis(inlineSlots, chainWidths[index])}
 				<LayoutRow
 					class="layer"
 					classes={{
@@ -911,9 +1000,10 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					<div class="layer-name-and-chain" class:editing={listing.editingName} style:--chain-width={`${chainFullWidth(slots.length)}px`}>
-						<LayoutRow class="layer-name" classes={{ editing: listing.editingName }} on:dblclick={() => onEditLayerName(listing)}>
+					<div class="layer-name-and-chain" class:editing={listing.editingName} style:--chain-width={`${chainFullWidth(inlineSlots.length, slots.length > 0)}px`}>
+						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 							<input
+								class="name-input"
 								data-layer-name-input
 								type="text"
 								value={listing.entry.alias}
@@ -962,10 +1052,11 @@
 								data-drag-toggle-state="unlocked"
 							/>
 						{/if}
-						<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
+						<LayoutRow class="layer-name-spacer" />
 						<div class="layer-chain-icons" data-layer-chain use:observeChainWidth>
-							{#if chainFits(slots.length, chainWidths[index])}
-								{#each slots as slot, slotIndex}
+							{#if chainFits(inlineSlots.length, slots.length > 0, chainWidths[index])}
+								<!-- An expanded chain lists its nodes in rows beneath the layer instead, keeping only a ghost node here -->
+								{#each inlineSlots as slot, slotIndex}
 									{#if ellipsis && slotIndex === ellipsis.start}
 										<LayoutRow
 											class="chain-ellipsis"
@@ -1001,7 +1092,7 @@
 													"edit-in-progress": chainNode.editInProgress,
 												}}
 												action={(e) => chainNodeClick(e, listing, chainNode.id)}
-												tooltipLabel={chainNode.name}
+												tooltipLabel={chainNodeTooltipLabel(chainNode)}
 												tooltipDescription={chainNode.toolTargetDescription}
 												data-chain-node={slot.nodeIndex}
 												data-chain-gap-before={slot.reorderablePosition}
@@ -1010,19 +1101,35 @@
 										{/if}
 									{/if}
 								{/each}
-								{#if slots.length > 0}
-									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="chain-connector" style:fill={`var(--color-data-${listing.entry.chainDataType.toLowerCase()})`}>
-										<path d="M0,6.306L0,1.694C0,0.228 1.06,-0.41 2.356,0.276L7.028,2.752C8.324,3.438 8.324,4.562 7.028,5.248L2.356,7.723C1.06,8.41 0,7.771 0,6.306z" />
-									</svg>
-								{/if}
-								<IconLabel
-									icon={listing.entry.iconName}
-									class="layer-type-icon"
-									classes={{ hidden: !listing.entry.visible, "tool-target": Boolean(listing.entry.toolTargetDescription), "edit-in-progress": listing.entry.editInProgress }}
-									tooltipLabel={listing.entry.implementationName}
-									tooltipDescription={listing.entry.toolTargetDescription}
-									data-layer-icon
-								/>
+								<button
+									class="chain-expand-button"
+									class:with-arrow={slots.length > 0}
+									class:expandable={listing.entry.chainNodes.length > 0}
+									data-chain-expandable={listing.entry.chainNodes.length > 0 ? "" : undefined}
+									class:expanded={listing.entry.chainExpanded && listing.entry.chainNodes.length > 0}
+									data-tooltip-label={listing.entry.chainNodes.length === 0 ? undefined : listing.entry.chainExpanded ? "Collapse Chain" : "Expand Chain"}
+									data-tooltip-description={listing.entry.chainNodes.length === 0
+										? undefined
+										: listing.entry.chainExpanded
+											? "Stop listing this layer's chain one node per row."
+											: "List this layer's chain one node per row, beneath the layer."}
+									on:click={(e) => {
+										// Without a chain to expand, a click selects the layer as it does elsewhere in the row
+										if (listing.entry.chainNodes.length === 0) return;
+										e.stopPropagation();
+										editor.toggleLayerChainExpanded(listing.entry.id);
+									}}
+									tabindex="0"
+								>
+									<IconLabel
+										icon={listing.entry.iconName}
+										class="layer-type-icon"
+										classes={{ hidden: !listing.entry.visible, "tool-target": Boolean(listing.entry.toolTargetDescription), "edit-in-progress": listing.entry.editInProgress }}
+										tooltipLabel={listing.entry.implementationName}
+										tooltipDescription={listing.entry.toolTargetDescription}
+										data-layer-icon
+									/>
+								</button>
 							{/if}
 						</div>
 					</div>
@@ -1030,6 +1137,70 @@
 						<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>
 					{/if}
 				</LayoutRow>
+				{#if listing.entry.chainExpanded}
+					<!-- Downstream first, so the node feeding the layer sits right beneath it -->
+					{#each slots.flatMap((slot) => (slot.kind === "node" ? [slot] : [])).reverse() as slot}
+						{@const chainNode = slot.node}
+						{@const editingName = editingChainNodeName?.rowIndex === index && editingChainNodeName.nodeId === chainNode.id}
+						<LayoutRow
+							class="chain-node-row"
+							classes={{ selected: chainNode.selected }}
+							styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
+							data-chain-row-of={index}
+							data-chain-row-node={slot.nodeIndex}
+							data-chain-gap-before={slot.reorderablePosition}
+							data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
+							on:pointerdown={(e) => {
+								if (e.button === 0 && draggable) chainNodePointerDown(e, listing, chainNode);
+							}}
+							on:click={(e) => chainNodeClick(e, listing, chainNode.id)}
+							on:dblclick={(e) => {
+								// Only the node's icon opens it in the graph
+								if (e.target instanceof Element && e.target.closest("[data-chain-node-row-icon]")) editor.showNodeInGraph(chainNode.id);
+							}}
+							on:pointerenter={() => (hoveredRowIndex = index)}
+							on:pointerleave={() => (hoveredRowIndex = undefined)}
+						>
+							<IconButton
+								class="chain-node-visibility"
+								action={(e) => (toggleNodeVisibilityLayerPanel(chainNode.id), e?.stopPropagation())}
+								size={24}
+								icon={chainNode.visible ? "EyeVisible" : "EyeHidden"}
+								hoverIcon={chainNode.visible ? "EyeHide" : "EyeShow"}
+								tooltipLabel={chainNode.visible ? "Hide" : "Show"}
+								data-drag-toggle-group="layer-visibility"
+								data-drag-toggle-state={chainNode.visible ? "visible" : "hidden"}
+							/>
+							<LayoutRow class="chain-node-name" on:dblclick={() => onEditChainNodeName(index, chainNode.id)}>
+								<input
+									class="name-input"
+									data-chain-node-name-input
+									type="text"
+									value={chainNode.name}
+									placeholder={chainNode.implementationName}
+									disabled={!editingName}
+									on:blur={() => onEditChainNodeNameDeselect(chainNode)}
+									on:keydown={(e) => {
+										if (e.key === "Escape") onEditChainNodeNameDeselect(chainNode);
+										else if (e.key === "Enter") onEditChainNodeNameChange(chainNode.id, e);
+									}}
+									on:change={(e) => onEditChainNodeNameChange(chainNode.id, e)}
+								/>
+							</LayoutRow>
+							<IconLabel
+								icon={chainNode.icon}
+								class="chain-node-icon"
+								classes={{ "tool-target": Boolean(chainNode.toolTargetDescription), "edit-in-progress": chainNode.editInProgress }}
+								tooltipLabel={chainNode.implementationName}
+								tooltipDescription={chainNode.toolTargetDescription}
+								data-chain-node-row-icon
+							/>
+							{#if chainDropRowIndex === index && chainRowInsertMarker?.nodeIndex === slot.nodeIndex}
+								<div class="chain-row-insert-mark" class:bottom={chainRowInsertMarker.edge === "bottom"}></div>
+							{/if}
+						</LayoutRow>
+					{/each}
+				{/if}
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
@@ -1241,7 +1412,7 @@
 					align-items: center;
 					margin-right: 2px;
 
-					// While renaming, the name fills the row and takes all the room its text needs, which the chain gives up until it disappears
+					// While renaming, the name takes all the room its text needs, which the chain gives up until it disappears
 					&.editing {
 						display: flex;
 
@@ -1268,6 +1439,45 @@
 
 				.layer-lock {
 					grid-column: 2;
+				}
+
+				// The layer icon, and with a chain, an arrow before it, which open the chain into a row per node beneath the layer, the arrow turning like the one that expands a layer's children
+				.chain-expand-button {
+					flex: 0 0 auto;
+					display: flex;
+					align-items: center;
+					height: 24px;
+					padding: 0;
+					margin: 0;
+					border: none;
+					border-radius: 2px;
+					background: none;
+
+					// Grayed out for a chain with only the ghost of a node, which has nothing to expand
+					&.with-arrow::before {
+						content: "";
+						flex: 0 0 auto;
+						width: 8px;
+						height: 8px;
+						margin: 0 2px;
+						background: var(--icon-expand-collapse-arrow-disabled);
+					}
+
+					&.expandable::before {
+						background: var(--icon-expand-collapse-arrow);
+					}
+
+					&.expanded::before {
+						transform: rotate(90deg);
+					}
+
+					&.expandable:hover {
+						background: var(--color-5-dullgray);
+
+						&::before {
+							background: var(--icon-expand-collapse-arrow-hover);
+						}
+					}
 				}
 
 				// Right-aligned, since its share of the row can be a little wider than the whole slots that fit
@@ -1323,15 +1533,6 @@
 						}
 					}
 
-					// Related-width gaps to the icons beside it
-					.chain-connector {
-						flex: 0 0 auto;
-						align-self: center;
-						width: 4px;
-						height: 4px;
-						margin: 0 2px;
-					}
-
 					// Takes the same 20px width as the chain buttons
 					.layer-type-icon {
 						margin: 0 2px;
@@ -1380,7 +1581,7 @@
 					pointer-events: none;
 				}
 
-				// Pushes the chain icons to the row's end, and can also be double-clicked to rename the layer like the name itself
+				// Pushes the chain icons to the row's end
 				.layer-name-spacer {
 					grid-column: 3;
 					align-self: stretch;
@@ -1390,46 +1591,6 @@
 				.layer-name {
 					grid-column: 1;
 					margin: 0 8px;
-
-					// While renaming, the input stretches to fill the row
-					&.editing input {
-						width: 100%;
-					}
-
-					input {
-						field-sizing: content;
-						color: inherit;
-						background: none;
-						border: none;
-						outline: none; // Ok for input element
-						margin: 0;
-						padding: 0;
-						text-overflow: ellipsis;
-						white-space: nowrap;
-						overflow: hidden;
-						border-radius: 2px;
-						height: 24px;
-
-						&:disabled {
-							user-select: none;
-							// Workaround for `user-select: none` not working on <input> elements
-							pointer-events: none;
-						}
-
-						&:focus {
-							background: var(--color-1-nearblack);
-							padding: 0 4px;
-
-							&::placeholder {
-								opacity: 0.5;
-							}
-						}
-
-						&::placeholder {
-							opacity: 1;
-							color: inherit;
-						}
-					}
 				}
 
 				.status-toggle {
@@ -1449,6 +1610,110 @@
 					.icon-button {
 						height: 100%;
 						width: calc(24px + 2 * 4px);
+					}
+				}
+			}
+
+			// The layer and node names, which look like plain text until renamed, and are only as wide as their text either way
+			.name-input {
+				field-sizing: content;
+				max-width: 100%;
+				color: inherit;
+				background: none;
+				border: none;
+				outline: none; // Ok for input element
+				margin: 0;
+				padding: 0;
+				text-overflow: ellipsis;
+				white-space: nowrap;
+				overflow: hidden;
+				border-radius: 2px;
+				height: 24px;
+
+				&:disabled {
+					user-select: none;
+					// Workaround for `user-select: none` not working on <input> elements
+					pointer-events: none;
+				}
+
+				// The padding grows leftward so the text stays where it was before renaming
+				&:focus {
+					background: var(--color-1-nearblack);
+					padding: 0 4px;
+					margin-left: -4px;
+					max-width: calc(100% + 4px);
+
+					&::placeholder {
+						opacity: 0.5;
+					}
+				}
+
+				&::placeholder {
+					opacity: 1;
+					color: inherit;
+				}
+			}
+
+			// A node of an expanded chain, in a skinnier row beneath its layer, with its name and icon in line with the layer's
+			.chain-node-row {
+				// The eye's start, lining its right edge up with the thumbnail's: past the visibility column, indent, expand arrow, and thumbnail, less its width
+				--chain-node-row-inset: calc(24px + var(--layer-indent-levels) * 16px + 16px + 4px + 36px - 20px);
+				flex: 0 0 auto;
+				align-items: center;
+				position: relative;
+				height: 24px;
+				margin: 0 4px;
+				border-bottom: 1px solid var(--color-2-mildblack);
+				border-radius: 2px;
+
+				&.selected {
+					background: var(--color-4-dimgray);
+				}
+
+				.chain-node-visibility {
+					width: 20px;
+					margin-left: var(--chain-node-row-inset);
+				}
+
+				// In line with the layer name, and only as wide as its text, so double-clicking beside it doesn't rename
+				.chain-node-name {
+					flex: 0 1 auto;
+					min-width: 0;
+					margin: 0 8px;
+				}
+
+				// At the row's end, past the layer icon's margin and the row's margin
+				.chain-node-icon {
+					margin-left: auto;
+					margin-right: calc(2px + 2px);
+
+					// Outlined like the layer icon when the active tool edits it
+					&.tool-target,
+					&.edit-in-progress {
+						outline: 1px solid var(--color-8-uppergray);
+						outline-offset: 1px;
+						border-radius: 2px;
+					}
+
+					&.edit-in-progress {
+						outline-color: var(--color-e-nearwhite);
+					}
+				}
+
+				// The horizontal counterpart of the marker in the layer's chain, centered on the border between rows, from the eye onward
+				.chain-row-insert-mark {
+					position: absolute;
+					left: var(--chain-node-row-inset);
+					right: 0;
+					top: -3px;
+					height: 5px;
+					background: var(--color-e-nearwhite);
+					z-index: 1;
+					pointer-events: none;
+
+					&.bottom {
+						top: auto;
+						bottom: -3px;
 					}
 				}
 			}
