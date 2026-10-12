@@ -40,6 +40,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
+	pub layers_panel_expanded_chains: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
@@ -115,6 +116,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			document_id,
 			collapsed,
 			properties_panel_collapsed_sections,
+			layers_panel_expanded_chains,
 			ipp,
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
@@ -201,6 +203,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Prune the Properties panel node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
 				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
 				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
+
+				// Likewise for the Layers panel's expanded layer chains
+				layers_panel_expanded_chains.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();
@@ -2195,7 +2200,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, tool_edit_target, responses);
+				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, tool_edit_target, layers_panel_expanded_chains, responses);
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -2895,7 +2900,14 @@ impl NodeGraphMessageHandler {
 		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, tool_edit_target: &EditTarget, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(
+		network_interface: &NodeNetworkInterface,
+		selection_network_path: &[NodeId],
+		layers_panel_open: bool,
+		tool_edit_target: &EditTarget,
+		expanded_chains: &[NodeId],
+		responses: &mut VecDeque<Message>,
+	) {
 		if !layers_panel_open {
 			return;
 		}
@@ -2964,6 +2976,7 @@ impl NodeGraphMessageHandler {
 						id: chain_node_id,
 						icon: network_interface.node_icon(&chain_node_id, &[]).to_string(),
 						name: network_interface.display_name(&chain_node_id, &[]),
+						implementation_name: network_interface.implementation_name(&chain_node_id, &[]),
 						selected: selected_nodes.contains(&chain_node_id),
 						reorderable: network_interface.has_primary_input(&chain_node_id, &[]),
 						visible: network_interface.is_visible(&chain_node_id, &[]),
@@ -2972,19 +2985,12 @@ impl NodeGraphMessageHandler {
 					})
 					.collect::<Vec<_>>();
 
-				// Only colors the connector drawn beside a chain, so a layer without one skips resolving the type
-				let chain_data_type = if chain_nodes.is_empty() && tool_target_insertion.is_none() {
-					FrontendGraphDataType::default()
-				} else {
-					network_interface.input_type(&InputConnector::layer_secondary_input(node_id), &[]).displayed_type()
-				};
-
 				let data = LayerPanelEntry {
 					id: node_id,
 					implementation_name: network_interface.implementation_name(&node_id, &[]),
 					icon_name: network_interface.node_icon(&node_id, &[]).to_string(),
 					chain_nodes,
-					chain_data_type,
+					chain_expanded: expanded_chains.contains(&node_id),
 					tool_target_description: description_if_outlined(node_id),
 					edit_in_progress: edited_nodes.contains(&node_id),
 					tool_target_insertion,

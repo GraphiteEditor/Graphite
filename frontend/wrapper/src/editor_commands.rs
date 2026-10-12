@@ -731,6 +731,11 @@ mod editor_commands {
 		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id), recursive }.into()
 	}
 
+	/// Expand or collapse a layer's chain into a row per node in the Layers panel
+	fn toggle_layer_chain_expanded(id: u64) -> Message {
+		DocumentMessage::ToggleLayerChainExpanded { layer_id: NodeId(id) }.into()
+	}
+
 	/// Delete a layer or node given its node ID
 	fn delete_node(id: u64) -> Message {
 		DocumentMessage::DeleteNode { node_id: NodeId(id) }.into()
