@@ -17,7 +17,7 @@ use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Parser)]
 #[clap(name = "graphene-cli", version)]
@@ -177,7 +177,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: Some(application_io_for_api),
 		editor_preferences: Box::new(preferences),
 	});
-	let runtime = AsyncRuntime::new(Arc::new(TokioSpawner));
+	let spawner = Arc::new(TokioSpawner::default());
+	let runtime = AsyncRuntime::new(spawner.clone());
 	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
 
 	match app.command {
@@ -211,7 +212,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Create executor
 			let executor = create_executor(proto_graph)?;
 			runtime.retain_sources(executor.sources());
-			let generations = runtime.snapshot();
 
 			if fps <= 0. {
 				return Err("Fps number must be positive".into());
@@ -220,9 +220,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Perform export based on file type
 			if file_type == export::FileType::Gif {
 				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation, generations).await?;
+				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation, &runtime, &spawner).await?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent, generations).await?;
+				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent, &runtime, &spawner).await?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
@@ -283,9 +283,22 @@ fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<d
 	Ok(executor)
 }
 
-struct TokioSpawner;
+#[derive(Default)]
+pub(crate) struct TokioSpawner(Mutex<Vec<tokio::task::JoinHandle<()>>>);
+
 impl Spawn for TokioSpawner {
 	fn spawn(&self, task: Task) {
-		tokio::spawn(task);
+		self.0.lock().unwrap().push(tokio::spawn(task));
+	}
+}
+
+impl TokioSpawner {
+	pub(crate) async fn join(&self) -> bool {
+		let tasks = std::mem::take(&mut *self.0.lock().unwrap());
+		let pending = !tasks.is_empty();
+		for task in tasks {
+			let _ = task.await;
+		}
+		pending
 	}
 }

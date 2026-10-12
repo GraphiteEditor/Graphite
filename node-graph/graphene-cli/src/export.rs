@@ -1,10 +1,11 @@
+use crate::TokioSpawner;
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
-use graphene_std::Generations;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::runtime::AsyncRuntime;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
 use std::io::Cursor;
@@ -38,7 +39,8 @@ pub async fn export_document(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	transparent: bool,
-	generations: Generations,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
@@ -60,10 +62,7 @@ pub async fn export_document(
 	}
 
 	// Execute the graph
-	let result = executor
-		.execute(render_config.into_context_with_generations(generations))?
-		.value()
-		.ok_or("The node graph produced no frame")?;
+	let result = execute_until_settled(executor, runtime, spawner, render_config).await?;
 
 	// Handle the result based on output type
 	match result {
@@ -155,6 +154,7 @@ impl AnimationParams {
 }
 
 /// Export an animated GIF by rendering multiple frames at different animation times
+#[allow(clippy::too_many_arguments)]
 pub async fn export_gif(
 	executor: &DynamicExecutor,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
@@ -162,7 +162,8 @@ pub async fn export_gif(
 	scale: f64,
 	(width, height): (Option<u32>, Option<u32>),
 	animation: AnimationParams,
-	generations: Generations,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
 	use image::codecs::gif::{GifEncoder, Repeat};
 	use image::{Frame, RgbaImage};
@@ -202,10 +203,7 @@ pub async fn export_gif(
 		}
 
 		// Execute the graph for this frame
-		let result = executor
-			.execute(render_config.into_context_with_generations(generations.clone()))?
-			.value()
-			.ok_or("The node graph produced no frame")?;
+		let result = execute_until_settled(executor, runtime, spawner, render_config).await?;
 
 		// Extract RGBA data from result
 		let (data, img_width, img_height) = match result {
@@ -237,4 +235,13 @@ pub async fn export_gif(
 
 	log::info!("Exported GIF to: {}", output_path.display());
 	Ok(())
+}
+
+async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
+	let mut frame = execute()?;
+	while spawner.join().await {
+		frame = execute()?;
+	}
+	frame.value().ok_or_else(|| "The node graph produced no frame".into())
 }
