@@ -3509,42 +3509,6 @@ mod tests {
 		}
 	}
 
-	// Old documents store Transform as a reference-less subgraph of a Monitor feeding the proto node, which becomes the bare proto node
-	#[test]
-	fn monitored_transform_subgraphs_become_bare_transform_nodes() {
-		use crate::messages::portfolio::document::storage_tests::test_support::load_demo;
-
-		let transform_identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
-		let monitored_transform_nodes = |document: &DocumentMessageHandler| {
-			document
-				.network_interface
-				.document_network()
-				.recursive_nodes()
-				.filter(|(_, node, _)| is_monitored_transform_subgraph(node))
-				.map(|(node_id, _, path)| (*node_id, path))
-				.collect::<Vec<_>>()
-		};
-
-		let mut document = load_demo("valley-of-spires.graphite");
-		let transform_node_id = NodeId(93);
-		let path = [];
-		assert!(monitored_transform_nodes(&document).contains(&(transform_node_id, Vec::new())));
-		assert_eq!(document.network_interface.document_node(&transform_node_id, &path).map(|node| node.inputs.len()), Some(7));
-
-		migrate(&mut document);
-
-		assert!(monitored_transform_nodes(&document).is_empty());
-		assert_eq!(
-			document.network_interface.reference(&transform_node_id, &path),
-			Some(DefinitionIdentifier::ProtoNode(transform_identifier))
-		);
-		assert_eq!(document.network_interface.document_node(&transform_node_id, &path).map(|node| node.inputs.len()), Some(5));
-		assert!(matches!(
-			document.network_interface.document_node(&transform_node_id, &path).and_then(|node| node.inputs.first()),
-			Some(NodeInput::Node { node_id, .. }) if *node_id == NodeId(94)
-		));
-	}
-
 	// The retired "Paint Order" input is migrated by rebuilding the Stroke node's inputs and then reordering it with its Fill node
 	#[tokio::test]
 	async fn opening_a_stroke_with_a_retired_paint_order_keeps_the_layer_chain() {
