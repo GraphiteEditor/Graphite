@@ -1368,7 +1368,9 @@ impl PenToolData {
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
 		let vector: Option<Vector> = document.network_interface.compute_modified_vector(layer);
-		let (handle_start, in_segment) = if let Some(vector) = &vector {
+		let (handle_start, in_segment) = if let Some(vector) = &vector
+			&& vector.connected_count(point) <= 1
+		{
 			vector
 				.segment_iter()
 				.find_map(|(segment_id, bezier, start, end)| {
