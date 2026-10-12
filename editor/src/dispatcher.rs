@@ -275,6 +275,7 @@ impl Dispatcher {
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
 					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
+					menu_bar_message_handler.palette_panel_open = layout.is_panel_present(PanelType::Palette);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;
