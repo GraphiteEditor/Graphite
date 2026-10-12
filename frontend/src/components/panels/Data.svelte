@@ -5,7 +5,7 @@
 </script>
 
 <LayoutCol class="data-panel">
-	<LayoutCol class="body" scrollableY={true}>
+	<LayoutCol class="body" scrollableX={true} scrollableY={true}>
 		<WidgetLayout layout={$dataPanelLayout} layoutTarget="DataPanel" />
 	</LayoutCol>
 </LayoutCol>
@@ -13,16 +13,25 @@
 <style lang="scss">
 	.data-panel {
 		flex-grow: 1;
-		padding: 4px;
-		padding-top: 0;
+		padding-bottom: 4px;
+
+		// Within the scrolling area, so the table's gutter can reach its edges without overflowing
+		.body {
+			padding: 0 4px;
+		}
 
 		table {
 			margin: -4px;
 			width: calc(100% + 2 * 4px);
 
-			// Buttons are one line tall, so their labels don't wrap
-			.text-label:not(.text-button *) {
-				white-space: wrap;
+			// Values stay on one line, cut off past a cap, and the panel scrolls sideways when the columns outgrow it
+			td > .widget-span > :is(.text-label, .text-button) {
+				max-width: 400px;
+			}
+
+			td > .widget-span > .text-label {
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 
 			&:not(:first-child) {
