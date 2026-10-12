@@ -294,4 +294,9 @@
 			max-height: 400px;
 		}
 	}
+
+	// The row stops clipping so the file drag outline, drawn outside the dropdown, shows in full
+	.widget-span.row:has(> .dropdown-input.file-drag-over) {
+		overflow: visible;
+	}
 </style>

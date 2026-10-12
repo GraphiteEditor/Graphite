@@ -64,7 +64,7 @@
 	$: watchOpen(open);
 	$: watchEntries(entries);
 	$: watchEntriesHash(entriesHash);
-	$: watchRemeasureWidth(reactiveEntries, drawIcon, self);
+	$: watchRemeasureWidth(reactiveEntries, drawIcon, self, measuresNaturalWidth, search);
 	$: watchHighlightedWithSearch(filteredEntries, open);
 	$: watchActiveEntry(activeEntry, entriesHash);
 
@@ -201,7 +201,7 @@
 		reactiveEntries = entries;
 	}
 
-	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean, ___: FloatingMenu | undefined) {
+	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean, ___: FloatingMenu | undefined, measuresNaturalWidth: boolean, search: string) {
 		if (!measuresNaturalWidth) return;
 
 		// Skip re-measurement for virtual scrolling menus since ResizeObserver handles their width

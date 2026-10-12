@@ -75,6 +75,8 @@
 	let wasOpen = open;
 	let measuringOngoing = false;
 	let measuringOngoingGuard = false;
+	// Spans the whole measurement, including the waits before the guard is raised, so calls can't overlap
+	let measurementInProgress = false;
 	let measureAgainAfterwards = false;
 	let minWidthParentWidth = 0;
 	let pointerStillDown = false;
@@ -334,10 +336,11 @@
 	// To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
 	export async function measureAndEmitNaturalWidth() {
 		// Content that changes during a measurement gets measured again once it's done
-		if (measuringOngoingGuard) {
+		if (measurementInProgress) {
 			measureAgainAfterwards = true;
 			return;
 		}
+		measurementInProgress = true;
 
 		// Wait for the changed content which fired the `afterUpdate()` Svelte event to be put into the DOM
 		await tick();
@@ -358,6 +361,7 @@
 		measuringOngoing = false;
 		await tick();
 		measuringOngoingGuard = false;
+		measurementInProgress = false;
 
 		// Notify the parent about the measured natural width
 		if (naturalWidth !== undefined && naturalWidth >= 0) {

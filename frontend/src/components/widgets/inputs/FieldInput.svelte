@@ -123,11 +123,11 @@
 	bind:this={self}
 	{...$$restProps}
 >
+	{#if label}
+		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+		<div class="after-label-spacer"></div>
+	{/if}
 	{#if !textarea}
-		{#if label}
-			<label for={`field-input-${id}`} on:pointerdown>{label}</label>
-			<div class="after-label-spacer"></div>
-		{/if}
 		<input
 			type="text"
 			class:has-label={label}
