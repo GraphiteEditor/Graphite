@@ -271,7 +271,8 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.set_chain_position(node_id, &[]);
 	}
 
-	pub fn insert_image_data(&mut self, data: Arc<[u8]>, layer: LayerNodeIdentifier) {
+	/// Inserts an Image node fed by an embedded resource, returning the ID of the Transform node at the chain start.
+	pub fn insert_image_data(&mut self, data: Arc<[u8]>, layer: LayerNodeIdentifier) -> NodeId {
 		let transform = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)
 			.expect("Transform node does not exist")
 			.default_node_template();
@@ -290,6 +291,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let transform_id = NodeId::new();
 		self.network_interface.insert_node(transform_id, transform, &[]);
 		self.network_interface.move_node_to_chain_start(&transform_id, layer, &[], self.import);
+
+		transform_id
 	}
 
 	fn get_output_layer(&self) -> Option<LayerNodeIdentifier> {
