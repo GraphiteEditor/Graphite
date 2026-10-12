@@ -1,5 +1,5 @@
 use super::document_diff::diff_networks;
-use super::node_graph::document_node_definitions;
+use super::node_graph::{document_node_definitions, node_properties};
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -26,9 +26,10 @@ use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, 
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
-use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
+use crate::messages::tool::tool_messages::select_tool::{SelectToolPointerKeys, draw_layer_outline};
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -61,6 +62,7 @@ pub struct DocumentMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
@@ -114,6 +116,12 @@ pub struct DocumentMessageHandler {
 	/// The node IDs whose section is collapsed in the Properties panel.
 	#[serde(default)]
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
+	/// The input (if any) whose feeding chain a node's Properties panel section shows within it, for each node where that differs from the default of a layer's chain input.
+	#[serde(default)]
+	pub properties_panel_expanded_input_chains: Vec<(NodeId, Option<usize>)>,
+	/// The layer node IDs whose chain is expanded into a row per node in the Layers panel.
+	#[serde(default)]
+	pub layers_panel_expanded_chains: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	#[serde(skip_deserializing, default)]
@@ -177,6 +185,9 @@ pub struct DocumentMessageHandler {
 	/// The ID of the chain node at the start of a range selection among a layer's chain node icons in the Layers panel, working like `layer_range_selection_reference`.
 	#[serde(skip)]
 	chain_node_range_selection_reference: Option<NodeId>,
+	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
+	#[serde(skip)]
+	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -200,6 +211,8 @@ impl Default for DocumentMessageHandler {
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			properties_panel_collapsed_sections: Vec::new(),
+			properties_panel_expanded_input_chains: Vec::new(),
+			layers_panel_expanded_chains: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -223,6 +236,7 @@ impl Default for DocumentMessageHandler {
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
 			chain_node_range_selection_reference: None,
+			layers_panel_hovered_layer: None,
 			is_loaded: false,
 		}
 	}
@@ -237,6 +251,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			executor,
 			viewport,
 			current_tool,
+			tool_edit_target,
 			preferences,
 			data_panel_open,
 			layers_panel_open,
@@ -274,10 +289,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
-					document_name: self.name.as_str(),
 					fonts,
 					properties_panel_open,
 					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					properties_panel_expanded_input_chains: &self.properties_panel_expanded_input_chains,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -303,12 +318,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						document_id,
 						collapsed: &mut self.collapsed,
 						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
+						properties_panel_expanded_input_chains: &mut self.properties_panel_expanded_input_chains,
+						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
 						preferences,
 						layers_panel_open,
+						tool_edit_target,
 						viewport,
 					},
 				);
@@ -733,7 +751,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
-					responses.add(NodeGraphMessage::UpdateEdges);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
@@ -756,6 +773,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::LayersPanelHoverOverlays { context: mut overlay_context } => {
+				let Some(layer) = self.layers_panel_hovered_layer else { return };
+				if !overlay_context.visibility_settings.hover_outline() {
+					return;
+				}
+
+				// Outlined like the Select tool's hover, with groups and artboards shown by their bounding box
+				if layer.has_children(self.metadata()) || self.network_interface.is_artboard(&layer.to_node(), &[]) {
+					if let Some(bounds) = self.metadata().bounding_box_viewport(layer) {
+						overlay_context.quad(Quad::from_box(bounds), None, None);
+					}
+				} else {
+					draw_layer_outline(&mut overlay_context, self, layer, None);
+				}
 			}
 			DocumentMessage::BlendSelectedLayers => {
 				self.group_selected_layers(GroupFolderType::Blend, responses);
@@ -1453,6 +1485,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
 			}
+			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
+				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
+				if layer != self.layers_panel_hovered_layer {
+					self.layers_panel_hovered_layer = layer;
+					responses.add(OverlaysMessage::Draw);
+				}
+			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
@@ -1628,15 +1667,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
 				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
 
-				// Recursively, every section in the chain follows along, from its layer back to where another layer begins
-				let network_path = &self.selection_network_path;
-				let chain = recursive
-					.then(|| self.network_interface.downstream_layer_for_chain_node(&node_id, network_path))
-					.flatten()
-					.map(|layer| std::iter::once(layer).chain(self.network_interface.layer_chain_nodes(layer, network_path)).collect::<Vec<_>>())
-					// A node that only leads into a chain from the side, or into no layer at all, isn't part of one
-					.filter(|chain| chain.contains(&node_id));
-				let node_ids = chain.unwrap_or_else(|| vec![node_id]);
+				// Recursively, every section nested within this one follows along
+				let node_ids = if recursive {
+					node_properties::nested_section_nodes(node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, &self.selection_network_path)
+				} else {
+					vec![node_id]
+				};
 
 				for node_id in node_ids {
 					if expand {
@@ -1647,6 +1683,29 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index } => {
+				// A section shows at most one input's chain, so showing this one hides any other
+				let network_path = &self.selection_network_path;
+				let default = node_properties::default_expanded_input_chain(&node_id, &self.network_interface, network_path);
+				let current = node_properties::expanded_input_chain(&node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, network_path);
+				let expanded = (current != Some(input_index)).then_some(input_index);
+
+				self.properties_panel_expanded_input_chains.retain(|(id, _)| *id != node_id);
+				if expanded != default {
+					self.properties_panel_expanded_input_chains.push((node_id, expanded));
+				}
+
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::ToggleLayerChainExpanded { layer_id } => {
+				if self.layers_panel_expanded_chains.contains(&layer_id) {
+					self.layers_panel_expanded_chains.retain(|id| *id != layer_id);
+				} else {
+					self.layers_panel_expanded_chains.push(layer_id);
+				}
+
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
@@ -1845,6 +1904,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
+					// The artwork behind the graph can be navigated too, so rerender it if its view changed
+					let artwork_transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+					if artwork_transform != self.network_interface.document_metadata().document_to_viewport {
+						self.network_interface.set_document_to_viewport_transform(artwork_transform);
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
 					};
@@ -1856,7 +1922,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
@@ -3795,7 +3860,7 @@ impl DocumentMessageHandler {
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 				.disabled(disabled)
 				.draw_icon(false)
-				.max_width(100)
+				.sizing(WidgetSizing::default().grow(false))
 				.tooltip_label("Blend Mode")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3817,7 +3882,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
-				.max_width(100)
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Opacity")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3839,7 +3904,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
-				.max_width(100)
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Fill Opacity")
 				.widget_instance(),
 		];
@@ -4249,6 +4314,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.min(0.000001)
 			.max(1000000.)
 			.tooltip_label(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
+			.sizing(WidgetSizing::default().min_width(80))
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,

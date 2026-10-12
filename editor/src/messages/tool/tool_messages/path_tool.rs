@@ -199,6 +199,12 @@ impl ToolMetadata for PathTool {
 	}
 }
 
+impl ToolEditTarget for PathTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
+	}
+}
+
 impl LayoutHolder for PathTool {
 	fn layout(&self) -> Layout {
 		let coordinates = self.tool_data.selection_status.as_one().as_ref().map(|point| point.coordinates);
@@ -210,7 +216,7 @@ impl LayoutHolder for PathTool {
 		let x_location = NumberInput::new(x)
 			.unit(" px")
 			.label("X")
-			.min_width(80)
+			.sizing(WidgetSizing::default().min_width(80))
 			.disabled(x.is_none())
 			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
@@ -226,7 +232,7 @@ impl LayoutHolder for PathTool {
 		let y_location = NumberInput::new(y)
 			.unit(" px")
 			.label("Y")
-			.min_width(80)
+			.sizing(WidgetSizing::default().min_width(80))
 			.disabled(y.is_none())
 			.min(-((1_u64 << f64::MANTISSA_DIGITS) as f64))
 			.max((1_u64 << f64::MANTISSA_DIGITS) as f64)

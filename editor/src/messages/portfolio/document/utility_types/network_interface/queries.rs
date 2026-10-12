@@ -65,6 +65,11 @@ impl NodeNetworkInterface {
 		self.transaction_status
 	}
 
+	/// The document network nodes the open transaction has written to, as of the last [`Self::update_transaction_edited_nodes`].
+	pub fn transaction_edited_nodes(&self) -> &HashSet<NodeId> {
+		&self.transaction_edited_nodes
+	}
+
 	pub fn selected_nodes(&self) -> SelectedNodes {
 		self.selected_nodes_in_nested_network(&[]).unwrap_or_default()
 	}

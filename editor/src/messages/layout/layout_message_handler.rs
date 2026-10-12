@@ -435,6 +435,14 @@ impl LayoutMessageHandler {
 					_ => {}
 				},
 			},
+			Widget::ParameterChainToggle(parameter_chain_toggle) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (parameter_chain_toggle.on_commit.callback)(&()),
+					WidgetValueAction::Update => (parameter_chain_toggle.on_update.callback)(parameter_chain_toggle),
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ParameterExposeButton(parameter_expose_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (parameter_expose_button.on_commit.callback)(&()),

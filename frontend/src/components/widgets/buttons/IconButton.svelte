@@ -67,7 +67,7 @@
 	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >
-	<IconLabel {icon} />
+	<IconLabel {icon} {disabled} />
 	{#if hoverIcon && showsHoverIcon}
 		<IconLabel icon={hoverIcon} />
 	{/if}
@@ -111,7 +111,8 @@
 		&.disabled {
 			background: none;
 
-			svg {
+			// Full-color node icons are left to fade by themselves
+			.icon-label:not(.node-icon) svg {
 				fill: var(--color-8-uppergray);
 			}
 		}

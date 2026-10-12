@@ -181,6 +181,7 @@
 		.sections {
 			flex: 1 1 100%;
 			position: relative;
+			padding-top: 4px;
 
 			// While dragging a section, disable pointer events (which inherit down to the sections) so the drop doesn't toggle a section's expansion, and prevent text selection
 			&.dragging {

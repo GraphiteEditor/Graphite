@@ -93,6 +93,12 @@ impl ToolMetadata for SplineTool {
 	}
 }
 
+impl ToolEditTarget for SplineTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
+	}
+}
+
 impl LayoutHolder for SplineTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.drawing.fill.create_widgets(

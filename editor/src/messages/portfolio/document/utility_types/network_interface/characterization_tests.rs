@@ -1,5 +1,6 @@
 use super::{
-	ChainInsertionPoint, FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, OutputConnector, Previewing, RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing,
+	RootNode, TransactionStatus,
 };
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::test_utils::test_prelude::*;
@@ -1084,6 +1085,71 @@ fn replacing_inputs_keeps_the_loaded_wire_cache_exact() {
 	// The wire returns at a new index, as a migration restores the inputs it keeps
 	network_interface.set_input(&InputConnector::node_at_index(node, 2), NodeInput::node(source, 0), &[]);
 	assert_interface_invariants(&network_interface, "after rewiring the source into the replaced node");
+}
+
+// A chain node is placed only by its link into the next node, so it leaves the chain only when replacing inputs drops that link
+#[test]
+fn replacing_inputs_breaks_a_chain_only_where_its_link_is_dropped() {
+	let (layer, chain_node, side_consumer) = (NodeId(1), NodeId(2), NodeId(3));
+	let mut network_interface = NodeNetworkInterface::default();
+	network_interface.insert_node(
+		layer,
+		NodeTemplate {
+			inputs: vec![value_input(); 2],
+			node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::ZERO),
+			..Default::default()
+		},
+		&[],
+	);
+	let two_exports = NodeNetworkTemplate {
+		exports: vec![NodeInput::value(TaggedValue::None, true), value_input()],
+		..Default::default()
+	};
+	network_interface.insert_node(
+		chain_node,
+		NodeTemplate {
+			inputs: vec![value_input()],
+			implementation: NodeTemplateImplementation::Network(two_exports),
+			output_names: vec![String::new(); 2],
+			node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
+			..Default::default()
+		},
+		&[],
+	);
+	network_interface.insert_node(
+		side_consumer,
+		NodeTemplate {
+			inputs: vec![value_input(); 2],
+			..Default::default()
+		},
+		&[],
+	);
+
+	// Only consumers of the primary output keep a node out of a chain, so one feeding a parameter from its second output still joins
+	network_interface.set_input(&InputConnector::node_at_index(side_consumer, 1), NodeInput::node(chain_node, 1), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(layer, 1), NodeInput::node(chain_node, 0), &[]);
+	assert!(network_interface.is_chain(&chain_node, &[]), "the node should join the layer's chain");
+	let chain_position = network_interface.position(&chain_node, &[]);
+
+	let replacement = || {
+		let mut template = NodeTemplate {
+			inputs: vec![value_input(); 2],
+			..Default::default()
+		};
+		template.normalize_input_metadata();
+		template
+	};
+
+	network_interface.replace_inputs(&side_consumer, &[], &mut replacement());
+	assert!(
+		network_interface.is_chain(&chain_node, &[]),
+		"dropping the wire from its second output should leave the node in the chain"
+	);
+
+	network_interface.replace_inputs(&layer, &[], &mut replacement());
+	assert!(!network_interface.is_chain(&chain_node, &[]), "dropping its link into the layer should take the node out of the chain");
+	assert_eq!(network_interface.position(&chain_node, &[]), chain_position, "the node should stay where the chain placed it");
+	assert_interface_invariants(&network_interface, "after replacing the inputs around a chain node");
 }
 
 #[test]

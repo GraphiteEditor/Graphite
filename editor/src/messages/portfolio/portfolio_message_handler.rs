@@ -18,6 +18,7 @@ use crate::messages::portfolio::document_storage_io::{
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -37,6 +38,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
@@ -71,6 +73,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			preferences,
 			animation,
 			current_tool,
+			tool_edit_target,
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
@@ -89,6 +92,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
+						tool_edit_target,
 						preferences,
 						viewport,
 						resource_storage,
@@ -96,7 +100,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 						properties_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace.panel_layout.focus_document,
 					};
-					document.process_message(message, responses, document_inputs)
+					document.process_message(message, responses, document_inputs);
+					refresh_transaction_edited_nodes(document, true, responses);
 				}
 			}
 			PortfolioMessage::PersistentState(message) => {
@@ -110,7 +115,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.failed_documents.process_message(message, responses, context);
 			}
 			PortfolioMessage::Fonts(message) => {
-				let context = FontsMessageContext { resource_storage };
+				let context = FontsMessageContext {
+					resource_storage,
+					current_time: ipp.time,
+				};
 				self.fonts.process_message(message, responses, context);
 			}
 			PortfolioMessage::Ingest(message) => {
@@ -181,6 +189,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
+						tool_edit_target,
 						preferences,
 						viewport,
 						resource_storage,
@@ -188,7 +197,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 						properties_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace.panel_layout.focus_document,
 					};
-					document.process_message(message, responses, document_inputs)
+					document.process_message(message, responses, document_inputs);
+					refresh_transaction_edited_nodes(document, self.active_document_id == Some(document_id), responses);
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
@@ -1266,6 +1276,13 @@ impl PortfolioMessageHandler {
 		let mut path = network_path.to_vec();
 		path.push(*node_id);
 		path
+	}
+}
+
+/// Lets the Layers panel brighten the nodes an edit in progress, like a drag, has written to so far.
+fn refresh_transaction_edited_nodes(document: &mut DocumentMessageHandler, is_active: bool, responses: &mut VecDeque<Message>) {
+	if document.network_interface.update_transaction_edited_nodes() && is_active {
+		responses.add(NodeGraphMessage::UpdateLayerPanel);
 	}
 }
 
