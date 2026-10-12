@@ -40,6 +40,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
+	pub properties_panel_expanded_input_chains: &'a mut Vec<(NodeId, Option<usize>)>,
 	pub layers_panel_expanded_chains: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
@@ -116,6 +117,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			document_id,
 			collapsed,
 			properties_panel_collapsed_sections,
+			properties_panel_expanded_input_chains,
 			layers_panel_expanded_chains,
 			ipp,
 			graph_view_overlay_open,
@@ -204,7 +206,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
 				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
 
-				// Likewise for the Layers panel's expanded layer chains
+				// Likewise for the Properties panel's expanded input chains and the Layers panel's expanded layer chains
+				properties_panel_expanded_input_chains.retain(|(node_id, _)| existing_nodes.contains(node_id));
 				layers_panel_expanded_chains.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
@@ -2588,48 +2591,11 @@ impl NodeGraphMessageHandler {
 			[] => {
 				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
-					let mut properties = Vec::new();
-
-					if let [node_id] = *nodes.as_slice() {
-						let network_path = context.selection_network_path.to_vec();
-						properties.push(LayoutGroup::row(vec![
-							Separator::new(SeparatorStyle::Related).widget_instance(),
-							IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
-							Separator::new(SeparatorStyle::Related).widget_instance(),
-							TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
-								.tooltip_description("Name of the selected node.")
-								.on_update(move |text_input| {
-									NodeGraphMessage::SetDisplayName {
-										node_id,
-										network_path: network_path.clone(),
-										alias: text_input.value.clone(),
-										skip_adding_history_step: false,
-									}
-									.into()
-								})
-								.widget_instance(),
-							Separator::new(SeparatorStyle::Related).widget_instance(),
-						]));
-					}
-
-					properties.extend(selected_nodes);
-
-					return properties;
+					return selected_nodes;
 				}
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
 				// This may require store a separate path for the Properties panel
-				let mut properties = vec![LayoutGroup::row(vec![
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					TextInput::new(context.document_name)
-						.tooltip_description("Name of the current document.")
-						.on_update(|text_input| PortfolioMessage::RenameDocument { new_name: text_input.value.clone() }.into())
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-				])];
-
 				// And if no nodes are selected, show properties for all pinned nodes (in the user's saved order, each draggable to reorder)
 				let mut pinned_node_properties = context
 					.network_interface
@@ -2643,8 +2609,19 @@ impl NodeGraphMessageHandler {
 					}
 				}
 
-				properties.extend(pinned_node_properties);
-				properties
+				// With nothing pinned either, explain what can appear here
+				if pinned_node_properties.is_empty() {
+					return vec![LayoutGroup::row(vec![
+						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+						TextLabel::new("Select layers or nodes to inspect their parameters. Pin them for quick access here when nothing is selected.")
+							.multiline(true)
+							.disabled(true)
+							.widget_instance(),
+						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					])];
+				}
+
+				pinned_node_properties
 			}
 			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
 			[layer] => {
@@ -2657,97 +2634,25 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
-				let layer_network_path = context.selection_network_path.to_vec();
-				let mut layer_properties = vec![LayoutGroup::row(vec![
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
-						.tooltip_description("Name of the selected layer.")
-						.on_update(move |text_input| {
-							NodeGraphMessage::SetDisplayName {
-								node_id: layer,
-								network_path: layer_network_path.clone(),
-								alias: text_input.value.clone(),
-								skip_adding_history_step: false,
-							}
-							.into()
-						})
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					PopoverButton::new()
-						.icon("Node")
-						.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
-						.popover_layout({
-							let compatible_type = context
-								.network_interface
-								.upstream_output_connector(&InputConnector::layer_secondary_input(layer), &[])
-								.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
+				// The layer's section, containing its chain's sections unless another input's chain is shown instead
+				let mut layer_section = node_properties::generate_node_properties(layer, context);
 
-							let mut node_chooser = NodeCatalog::new();
-							node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
-
-							let node_chooser = node_chooser
-								.on_update(move |node_type| {
-									NodeGraphMessage::CreateNodeInLayerWithTransaction {
-										node_type: node_type.clone(),
-										layer: LayerNodeIdentifier::new_unchecked(layer),
-									}
-									.into()
-								})
-								.widget_instance();
-							Layout(vec![LayoutGroup::row(vec![node_chooser])])
-						})
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-				])];
-
-				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				let mut node_properties = context
-					.network_interface
-					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
-					.enumerate()
-					.take_while(|(i, node_id)| {
-						if *i == 0 {
-							true
-						} else {
-							!context.network_interface.is_layer(node_id, context.selection_network_path)
-						}
-					})
-					.map(|(_, node_id)| node_id)
-					.collect::<Vec<_>>()
-					.into_iter()
-					.map(|node_id| node_properties::generate_node_properties(node_id, context))
-					.collect::<Vec<_>>();
-
-				// A wire leads up from the chain's sections into the layer's section, when there's a chain below it
-				if node_properties.len() > 1
-					&& let Some(LayoutGroup::Section(layer_section)) = node_properties.first_mut()
+				// The sections of the layer's own chain can be dragged to reorder it, except a node without a primary input (e.g. a generator)
+				let expanded_input_chain = node_properties::expanded_input_chain(&layer, context.properties_panel_expanded_input_chains, context.network_interface, context.selection_network_path);
+				if expanded_input_chain == Some(network_interface::LAYER_SECONDARY_INPUT_INDEX)
+					&& let LayoutGroup::Section(section) = &mut layer_section
 				{
-					let chain_input_type = context.network_interface.input_type(&InputConnector::layer_secondary_input(layer), context.selection_network_path);
-					layer_section.chain_wire = Some(SectionWire {
-						data_type: chain_input_type.displayed_type(),
-						is_list: chain_input_type.is_list(),
-					});
-				}
-
-				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
-				// A node without a primary input (e.g. a generator) is left non-draggable.
-				for chain_node_section in node_properties.iter_mut().skip(1) {
-					if let LayoutGroup::Section(section) = chain_node_section {
-						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
-
-						// A wire leads up from each chain node to the section above, which its output feeds
-						let output_type = context.network_interface.output_type(&OutputConnector::node(NodeId(section.id), 0), context.selection_network_path);
-						section.output_wire = Some(SectionWire {
-							data_type: output_type.displayed_type(),
-							is_list: output_type.is_list(),
-						});
+					for layout_group in section.layout.0.iter_mut() {
+						if let LayoutGroup::Section(chain_section) = layout_group
+							&& chain_section.output_wire.is_some()
+							&& !chain_section.node_reference
+						{
+							chain_section.draggable = context.network_interface.has_primary_input(&NodeId(chain_section.id), context.selection_network_path);
+						}
 					}
 				}
 
-				layer_properties.extend(node_properties);
-				layer_properties
+				vec![layer_section]
 			}
 			// If multiple layers and/or nodes are selected, show nothing
 			_ => Vec::new(),

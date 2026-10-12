@@ -81,7 +81,7 @@
 		on:click={onClick}
 	>
 		{#if icon}
-			<IconLabel {icon} />
+			<IconLabel {icon} {disabled} />
 			{#if hoverIcon && !disabled}
 				<IconLabel icon={hoverIcon} />
 			{/if}
@@ -184,10 +184,13 @@
 		}
 
 		.icon-label {
-			fill: var(--button-text-color);
-
 			+ .text-label {
 				margin-left: 8px;
+			}
+
+			// Full-color node icons keep their own colors, fading by themselves when disabled
+			&:not(.node-icon) {
+				fill: var(--button-text-color);
 			}
 		}
 

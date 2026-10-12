@@ -5,9 +5,10 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::math_expression::{MathExpressionTokens, math_expression_error, math_expression_error_ranges, math_expression_tokens};
 use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::data_panel::node_reference_button;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
@@ -112,18 +113,55 @@ pub fn add_blank_assist(widgets: &mut Vec<WidgetInstance>) {
 	]);
 }
 
-pub fn jump_to_source_widget(input: &NodeInput, network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId]) -> WidgetInstance {
-	match input {
-		NodeInput::Node { node_id: source_id, .. } => {
-			let source_id = *source_id;
-			let node_name = network_interface.implementation_name(&source_id, selection_network_path);
-			TextButton::new(format!("From Graph ({})", node_name))
-				.tooltip_description("Click to select the node producing this parameter's data.")
-				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![source_id] }.into())
-				.widget_instance()
+/// The input whose feeding chain a node's section shows unless toggled otherwise: a layer's chain input, or none for other nodes.
+pub(crate) fn default_expanded_input_chain(node_id: &NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<usize> {
+	network_interface.is_layer(node_id, network_path).then_some(LAYER_SECONDARY_INPUT_INDEX)
+}
+
+/// The input (if any) whose feeding chain a node's section shows, as last toggled by clicking its parameter names, or else by default.
+pub(crate) fn expanded_input_chain(node_id: &NodeId, expanded_input_chains: &[(NodeId, Option<usize>)], network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<usize> {
+	expanded_input_chains
+		.iter()
+		.find(|(id, _)| id == node_id)
+		.map_or_else(|| default_expanded_input_chain(node_id, network_interface, network_path), |(_, input_index)| *input_index)
+}
+
+/// The nodes of the chain feeding a node's input (if a node feeds it), from the one feeding it back to where a layer's stack feeds the chain from below rather than a generator, and that layer.
+pub(crate) fn input_chain(node_id: NodeId, input_index: usize, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<(Vec<NodeId>, Option<NodeId>)> {
+	let Some(&NodeInput::Node { node_id: source, .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(node_id, input_index), network_path) else {
+		return None;
+	};
+
+	let mut chain = Vec::new();
+	for chain_node_id in network_interface.upstream_flow_back_from_nodes(vec![source], network_path, FlowType::HorizontalFlow) {
+		if network_interface.is_layer(&chain_node_id, network_path) {
+			return Some((chain, Some(chain_node_id)));
 		}
-		_ => TextLabel::new("From Graph (Disconnected)")
-			.tooltip_description(
+		chain.push(chain_node_id);
+	}
+
+	Some((chain, None))
+}
+
+/// A node followed by the nodes of all the sections nested within its section, through the chain each one shows.
+pub(crate) fn nested_section_nodes(node_id: NodeId, expanded_input_chains: &[(NodeId, Option<usize>)], network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Vec<NodeId> {
+	let mut nodes = vec![node_id];
+
+	if let Some(input_index) = expanded_input_chain(&node_id, expanded_input_chains, network_interface, network_path)
+		&& let Some((chain, _)) = input_chain(node_id, input_index, network_interface, network_path)
+	{
+		for chain_node_id in chain {
+			nodes.extend(nested_section_nodes(chain_node_id, expanded_input_chains, network_interface, network_path));
+		}
+	}
+
+	nodes
+}
+
+/// In place of the value widget of an exposed parameter that no node feeds.
+pub fn disconnected_input_label() -> WidgetInstance {
+	TextLabel::new("From Graph (Disconnected)")
+		.tooltip_description(
 				"
 				This parameter is exposed as an input in the node graph, but not currently receiving data from any node.\n\
 				\n\
@@ -131,8 +169,7 @@ pub fn jump_to_source_widget(input: &NodeInput, network_interface: &NodeNetworkI
 				"
 				.trim(),
 			)
-			.widget_instance(),
-	}
+			.widget_instance()
 }
 
 pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<WidgetInstance> {
@@ -155,19 +192,35 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 			input.is_exposed(),
 		));
 	}
-	widgets.push(
-		TextLabel::new(parameter_widgets_info.name.clone())
-			.tooltip_description(parameter_widgets_info.description.clone())
-			.widget_instance(),
-	);
+
+	// Fed by a node, the parameter's name shows or hides the sections of the chain feeding it within this one
+	let fed_by_node = matches!(input, NodeInput::Node { .. });
+	if fed_by_node {
+		let node_id = parameter_widgets_info.node_id;
+		let input_index = parameter_widgets_info.index;
+
+		widgets.push(
+			ParameterChainToggle::new(parameter_widgets_info.name.clone())
+				.expanded(parameter_widgets_info.chain_expanded)
+				.tooltip_description(parameter_widgets_info.description.clone())
+				.on_update(move |_| DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index }.into())
+				.widget_instance(),
+		);
+	} else {
+		widgets.push(
+			TextLabel::new(parameter_widgets_info.name.clone())
+				.tooltip_description(parameter_widgets_info.description.clone())
+				.widget_instance(),
+		);
+	}
 
 	if parameter_widgets_info.blank_assist || input.is_exposed() {
 		add_blank_assist(&mut widgets);
 	}
 
-	if input.is_exposed() {
+	if input.is_exposed() && !fed_by_node {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_widget(input, parameter_widgets_info.network_interface, parameter_widgets_info.selection_network_path));
+		widgets.push(disconnected_input_label());
 	}
 
 	widgets
@@ -3156,7 +3209,62 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
 	let expanded = !context.properties_panel_collapsed_sections.contains(&node_id);
 
-	LayoutGroup::section(name, icon, description, visible, pinned, expanded, node_id.0, Layout(layout))
+	// An expanded section also contains the sections of the chain feeding one of its inputs, wired up into that input
+	let network_path = context.selection_network_path;
+	let mut chain_wire = None;
+	if expanded
+		&& let Some(input_index) = expanded_input_chain(&node_id, context.properties_panel_expanded_input_chains, context.network_interface, network_path)
+		&& let Some((chain, stack_layer)) = input_chain(node_id, input_index, context.network_interface, network_path)
+	{
+		let input_type = context.network_interface.input_type(&InputConnector::node_at_index(node_id, input_index), network_path);
+		chain_wire = Some(SectionWire {
+			data_type: input_type.displayed_type(),
+			is_list: input_type.is_list(),
+		});
+
+		for chain_node_id in chain {
+			let mut chain_section = generate_node_properties(chain_node_id, context);
+
+			if let LayoutGroup::Section(section) = &mut chain_section {
+				section.output_wire = Some(output_section_wire(chain_node_id, context));
+			}
+
+			layout.push(chain_section);
+		}
+
+		// That layer is only referred to, as in the Data panel, rather than shown with its own parameters and chain
+		if let Some(layer) = stack_layer {
+			let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
+				NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
+			});
+			let name = context.network_interface.display_name(&layer, network_path);
+			let visible = context.network_interface.is_visible(&layer, network_path);
+
+			let mut reference_section = LayoutGroup::section(name, None, "", visible, false, true, layer.0, Layout(vec![LayoutGroup::row(vec![button])]));
+			if let LayoutGroup::Section(section) = &mut reference_section {
+				section.node_reference = true;
+				section.output_wire = Some(output_section_wire(layer, context));
+			}
+
+			layout.push(reference_section);
+		}
+	}
+
+	let mut section = LayoutGroup::section(name, icon, description, visible, pinned, expanded, node_id.0, Layout(layout));
+	if let LayoutGroup::Section(widget_section) = &mut section {
+		widget_section.chain_wire = chain_wire;
+	}
+	section
+}
+
+/// The wire drawn up from a node's section in a chain to the section above, which its output feeds.
+fn output_section_wire(node_id: NodeId, context: &NodePropertiesContext) -> SectionWire {
+	let output_type = context.network_interface.output_type(&OutputConnector::node(node_id, 0), context.selection_network_path);
+
+	SectionWire {
+		data_type: output_type.displayed_type(),
+		is_list: output_type.is_list(),
+	}
 }
 
 /// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
@@ -3515,6 +3623,8 @@ pub struct ParameterWidgetsInfo<'a> {
 	input_type: FrontendGraphDataType,
 	blank_assist: bool,
 	exposable: bool,
+	/// Whether the node's section shows the chain feeding this parameter's input.
+	chain_expanded: bool,
 	fonts: &'a FontsMessageHandler,
 }
 
@@ -3547,6 +3657,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			.input_type_not_invalid(&InputConnector::node_at_index(node_id, index), context.selection_network_path)
 			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
+		let chain_expanded = expanded_input_chain(&node_id, context.properties_panel_expanded_input_chains, context.network_interface, context.selection_network_path) == Some(index);
 
 		ParameterWidgetsInfo {
 			document_id: context.document_id,
@@ -3562,6 +3673,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			input_type,
 			blank_assist,
 			exposable: true,
+			chain_expanded,
 		}
 	}
 
