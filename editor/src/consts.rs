@@ -190,6 +190,12 @@ pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
 /// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
 pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
 
+// FONTS
+/// How long a font catalog request may go unanswered before another can be sent.
+pub const FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS: u64 = 60_000;
+/// How long to wait after a failed font catalog request before sending another.
+pub const FONT_CATALOG_RETRY_DELAY_MILLISECONDS: u64 = 10_000;
+
 // UI
 pub const UI_SCALE_DEFAULT: f64 = 1.;
 pub const UI_SCALE_MIN: f64 = 0.5;

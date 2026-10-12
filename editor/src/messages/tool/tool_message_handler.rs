@@ -157,7 +157,7 @@ impl ToolMessageHandler {
 				send_abort_to_tool(old_tool, old_tool, false);
 
 				// Unsubscribe old tool from the broadcaster
-				tool_data.tools.get(&tool_type).unwrap().deactivate(responses);
+				tool_data.tools.get(&old_tool).unwrap().deactivate(responses);
 
 				// Store the new active tool
 				tool_data.active_tool_type = tool_type;
@@ -168,6 +168,12 @@ impl ToolMessageHandler {
 				// Re-add the artboard overlay provider when tools are reactivated
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
+				// Re-subscribe the transform layer to selection change events, which `DeactivateTools` also unsubscribes
+				responses.add(BroadcastMessage::SubscribeEvent {
+					on: EventMessage::SelectionChanged,
+					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
+				});
+
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
 				responses.add(EventMessage::SelectionChanged);
 
@@ -176,9 +182,6 @@ impl ToolMessageHandler {
 
 				// Send tool options to the frontend
 				responses.add(ToolMessage::RefreshToolOptions);
-
-				// Notify the frontend about the new active tool to be displayed
-				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;

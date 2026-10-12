@@ -741,7 +741,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
-					responses.add(NodeGraphMessage::UpdateEdges);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
@@ -1893,7 +1892,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 

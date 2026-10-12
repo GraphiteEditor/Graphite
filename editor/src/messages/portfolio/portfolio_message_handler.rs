@@ -115,7 +115,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.failed_documents.process_message(message, responses, context);
 			}
 			PortfolioMessage::Fonts(message) => {
-				let context = FontsMessageContext { resource_storage };
+				let context = FontsMessageContext {
+					resource_storage,
+					current_time: ipp.time,
+				};
 				self.fonts.process_message(message, responses, context);
 			}
 			PortfolioMessage::Ingest(message) => {
