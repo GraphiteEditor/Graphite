@@ -11,6 +11,7 @@ pub enum PanelType {
 	Layers,
 	Properties,
 	Data,
+	Palette,
 }
 
 impl From<String> for PanelType {
@@ -21,6 +22,8 @@ impl From<String> for PanelType {
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
 			"Data" => PanelType::Data,
+			// TODO: Determine why it is not producing space betwen color and Palette
+			"Palette" => PanelType::Palette,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}
@@ -28,7 +31,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Properties, PanelType::Data]
+		&[PanelType::Layers, PanelType::Properties, PanelType::Data, PanelType::Palette]
 	}
 }
 

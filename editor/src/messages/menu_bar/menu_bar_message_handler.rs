@@ -26,6 +26,7 @@ pub struct MenuBarMessageHandler {
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
+	pub palette_panel_open: bool,
 	pub focus_document: bool,
 }
 
@@ -680,6 +681,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleLayersPanelOpen))
 							.on_commit(|_| WorkspaceMessage::ToggleLayersPanelOpen.into())
+							.disabled(self.focus_document),
+						MenuListEntry::new("Palette")
+							.label("Palette")
+							.icon(if self.palette_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::TogglePalettePanelOpen))
+							.on_commit(|_| WorkspaceMessage::TogglePalettePanelOpen.into())
 							.disabled(self.focus_document),
 						MenuListEntry::new("Data")
 							.label("Data")
