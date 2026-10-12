@@ -302,7 +302,7 @@ where
 }
 
 /// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
-#[node_macro::node(category("Vector: Style"), icon("NodeFill"), path(graphene_core::vector), properties("fill_properties"))]
+#[node_macro::node(category("Vector: Style"), icon("NodeFill"), path(graphene_core::vector), inspector("fill_inspector"))]
 async fn fill<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the fill style to.
@@ -392,7 +392,7 @@ where
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
-#[node_macro::node(category("Vector: Style"), icon("NodeStroke"), path(graphene_core::vector), properties("stroke_properties"))]
+#[node_macro::node(category("Vector: Style"), icon("NodeStroke"), path(graphene_core::vector), inspector("stroke_inspector"))]
 async fn stroke<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
@@ -1494,7 +1494,7 @@ fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
 	if diagonal.is_finite() && diagonal > 0. { (diagonal * 1e-6).max(1e-12) } else { 1e-6 }
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeOffsetPath"), path(core_types::vector), properties("offset_path_properties"))]
+#[node_macro::node(category("Vector: Modifier"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"))]
 async fn offset_path<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -1814,7 +1814,7 @@ pub async fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> 
 }
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSamplePolyline"), path(core_types::vector), properties("sample_polyline_properties"), memoize)]
+#[node_macro::node(category("Vector: Modifier"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize)]
 async fn sample_polyline<V: MapVectorItems + 'n + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,

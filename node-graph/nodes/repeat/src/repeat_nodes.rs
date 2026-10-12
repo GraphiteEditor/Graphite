@@ -73,7 +73,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[unit(" px")]
 	#[default(100., 100.)]
-	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
+	// TODO: When using a custom Inspector layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Inspector. Investigation is needed.
 	direction: Item<DVec2>,
 	#[unit("°")]
 	#[range]

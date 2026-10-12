@@ -85,9 +85,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 /// Since we don't need to update the frontend multiple times per frame,
 /// we have a set of messages which we will buffer until the next frame is requested.
 const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
-		PropertiesPanelMessageDiscriminant::Refresh,
-	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Inspector(InspectorMessageDiscriminant::Refresh))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::UpdateDocumentWidgets),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
@@ -288,7 +286,7 @@ impl Dispatcher {
 					let layout = &self.message_handlers.portfolio_message_handler.workspace.panel_layout;
 					menu_bar_message_handler.data_panel_open = layout.is_panel_present(PanelType::Data);
 					menu_bar_message_handler.layers_panel_open = layout.is_panel_present(PanelType::Layers);
-					menu_bar_message_handler.properties_panel_open = layout.is_panel_present(PanelType::Properties);
+					menu_bar_message_handler.inspector_open = layout.is_panel_present(PanelType::Inspector);
 					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
 					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 					menu_bar_message_handler.show_storage_preferences = self.message_handlers.preferences_message_handler.show_storage_preferences;

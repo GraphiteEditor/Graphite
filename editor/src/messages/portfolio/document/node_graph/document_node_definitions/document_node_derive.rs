@@ -41,7 +41,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			icon,
 			fields,
 			description,
-			properties,
+			inspector,
 			context_features,
 			output_fields,
 			..
@@ -107,7 +107,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 				category,
 				icon: *icon,
 				description: Cow::Borrowed(description),
-				properties: *properties,
+				inspector: *inspector,
 			},
 		);
 	}

@@ -165,7 +165,7 @@ impl LayoutMessageHandler {
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.
-				LayoutGroup::Section(WidgetSection { layout, .. }) => {
+				LayoutGroup::NodeSection(NodeSection { layout, .. }) => {
 					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
 				LayoutGroup::Table(WidgetTable { rows, .. }) => {

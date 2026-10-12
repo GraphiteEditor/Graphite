@@ -422,7 +422,7 @@ pub struct OldDocumentNode {
 	#[serde(default)]
 	pub alias: String,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
-	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
+	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate Inspector layout.
 	#[serde(deserialize_with = "migrate_layer_to_merge")]
 	pub name: String,
 	/// The inputs to a node, which are either:

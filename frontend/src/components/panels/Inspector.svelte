@@ -2,14 +2,14 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import { propertiesPanelLayout } from "/src/stores/portfolio";
+	import { inspectorLayout } from "/src/stores/portfolio";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
 
 	let sectionsCol: LayoutCol | undefined;
 
-	// Interactive dragging to reorder Properties panel node sections (a selected layer's chain nodes, or pinned nodes)
+	// Interactive dragging to reorder Inspector node sections (a selected layer's chain nodes, or pinned nodes)
 	type DragState = { nodeId: bigint; startX: number; startY: number; active: boolean };
 	let dragState: DragState | undefined = undefined;
 	let dragging = false;
@@ -45,7 +45,7 @@
 	function reorderableSections(): Element[] {
 		const container = sectionsCol?.div();
 		if (!container) return [];
-		return Array.from(container.querySelectorAll("[data-properties-reorderable-section]"));
+		return Array.from(container.querySelectorAll("[data-inspector-reorderable-section]"));
 	}
 
 	function sectionPointerDown(e: PointerEvent) {
@@ -56,13 +56,13 @@
 		if (!target) return;
 
 		// The drag handle is the section header
-		const handle = target.closest("[data-properties-reorder-handle]");
+		const handle = target.closest("[data-inspector-reorder-handle]");
 		if (!handle) return;
 
 		// Don't begin a drag when pressing one of the header's own buttons (pin/delete/visibility); only the header itself grabs
 		if (target.closest("[data-icon-button]")) return;
 
-		const section = target.closest("[data-properties-reorderable-section]");
+		const section = target.closest("[data-inspector-reorderable-section]");
 		const nodeIdAttribute = section?.getAttribute("data-node-id");
 		if (!section || !nodeIdAttribute) return;
 
@@ -135,7 +135,7 @@
 			// Skip drops that don't actually move the node (into its own slot, unless copying it), or where the dragged section vanished from the DOM mid-drag (fromIndex of -1)
 			if (insertIndex !== undefined && fromIndex !== undefined && fromIndex !== -1) {
 				const intoOwnSlot = insertIndex === fromIndex || insertIndex === fromIndex + 1;
-				if (duplicate || !intoOwnSlot) editor.reorderPropertiesSection(dragState.nodeId, insertIndex, duplicate);
+				if (duplicate || !intoOwnSlot) editor.reorderInspectorSection(dragState.nodeId, insertIndex, duplicate);
 			}
 		}
 
@@ -164,9 +164,9 @@
 	}
 </script>
 
-<LayoutCol class="properties">
+<LayoutCol class="inspector">
 	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown}>
-		<WidgetLayout layout={$propertiesPanelLayout} layoutTarget="PropertiesPanel" />
+		<WidgetLayout layout={$inspectorLayout} layoutTarget="Inspector" />
 		{#if dragging && insertMarkerTop !== undefined}
 			<div class="insert-mark" style:top={`${insertMarkerTop}px`}></div>
 		{/if}
@@ -174,7 +174,7 @@
 </LayoutCol>
 
 <style lang="scss">
-	.properties {
+	.inspector {
 		height: 100%;
 		flex: 1 1 100%;
 

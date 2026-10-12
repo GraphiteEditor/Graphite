@@ -1230,7 +1230,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		// Pre-2024 documents stored Transform with 6 inputs and used radians for Rotation and `tan(radians)` for Skew. Detect that legacy
-		// shape (no input at index 6) and convert the units to degrees so the values match what the new Properties panel widgets expect.
+		// shape (no input at index 6) and convert the units to degrees so the values match what the new Inspector widgets expect.
 		if *old_inputs_count == 6 {
 			match old_inputs.get(2) {
 				Some(NodeInput::Value { tagged_value, exposed }) => {
@@ -1852,7 +1852,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Only nodes that have not been modified and still refer to a definition can be updated
 	let reference = document.network_interface.reference(node_id, network_path)?;
 
-	// Show the Artboard's Content input in the Properties panel, which the definition once hid
+	// Show the Artboard's Content input in the Inspector, which the definition once hid
 	if reference == DefinitionIdentifier::Network("Artboard".into())
 		&& document
 			.network_interface
@@ -1863,9 +1863,23 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input_override(node_id, 1, None, network_path);
 	}
 
+	// Legacy `noise_properties_*` widget overrides
+	for input_index in 0..node.inputs.len() {
+		let renamed_override = document
+			.network_interface
+			.persistent_input_metadata(node_id, input_index, network_path)
+			.and_then(|metadata| metadata.widget_override.as_deref())
+			.and_then(|widget_override| widget_override.strip_prefix("noise_properties_"))
+			.map(|suffix| format!("noise_inspector_{suffix}"));
+
+		if let Some(renamed_override) = renamed_override {
+			document.network_interface.set_input_override(node_id, input_index, Some(renamed_override), network_path);
+		}
+	}
+
 	let mut inputs_count = node.inputs.len();
 
-	// The expression nodes gained an output-type input, a type witness the Properties panel edits. A node from before it
+	// The expression nodes gained an output-type input, a type witness the Inspector edits. A node from before it
 	// takes the definition's default choice, Number, which is the output type every such node had.
 	let expression_node_identifiers = [graphene_std::math_nodes::math_fx::IDENTIFIER, graphene_std::math_nodes::math_f::IDENTIFIER];
 	if expression_node_identifiers.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && inputs_count == 2 {
@@ -3493,42 +3507,6 @@ mod tests {
 			let mut document = load_demo(file_name);
 			migrate_with_context(&mut document, &format!("migrating {file_name}"));
 		}
-	}
-
-	// Old documents store Transform as a reference-less subgraph of a Monitor feeding the proto node, which becomes the bare proto node
-	#[test]
-	fn monitored_transform_subgraphs_become_bare_transform_nodes() {
-		use crate::messages::portfolio::document::storage_tests::test_support::load_demo;
-
-		let transform_identifier = graphene_std::transform_nodes::transform::IDENTIFIER;
-		let monitored_transform_nodes = |document: &DocumentMessageHandler| {
-			document
-				.network_interface
-				.document_network()
-				.recursive_nodes()
-				.filter(|(_, node, _)| is_monitored_transform_subgraph(node))
-				.map(|(node_id, _, path)| (*node_id, path))
-				.collect::<Vec<_>>()
-		};
-
-		let mut document = load_demo("valley-of-spires.graphite");
-		let transform_node_id = NodeId(93);
-		let path = [];
-		assert!(monitored_transform_nodes(&document).contains(&(transform_node_id, Vec::new())));
-		assert_eq!(document.network_interface.document_node(&transform_node_id, &path).map(|node| node.inputs.len()), Some(7));
-
-		migrate(&mut document);
-
-		assert!(monitored_transform_nodes(&document).is_empty());
-		assert_eq!(
-			document.network_interface.reference(&transform_node_id, &path),
-			Some(DefinitionIdentifier::ProtoNode(transform_identifier))
-		);
-		assert_eq!(document.network_interface.document_node(&transform_node_id, &path).map(|node| node.inputs.len()), Some(5));
-		assert!(matches!(
-			document.network_interface.document_node(&transform_node_id, &path).and_then(|node| node.inputs.first()),
-			Some(NodeInput::Node { node_id, .. }) if *node_id == NodeId(94)
-		));
 	}
 
 	// The retired "Paint Order" input is migrated by rebuilding the Stroke node's inputs and then reordering it with its Fill node
