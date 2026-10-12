@@ -1212,7 +1212,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let wire_hovered_node = to_connector
 						.and_then(|input_connector| input_connector.node_id())
 						.or_else(|| network_interface.node_from_click(viewport_location, selection_network_path))
-						.filter(|node_id| Some(*node_id) != wire_source_node);
+						.filter(|node_id| Some(*node_id) != wire_source_node)
+						// Exposing a parameter of a layer would turn it into a node
+						.filter(|node_id| !network_interface.is_layer(node_id, selection_network_path));
 					self.set_wire_hovered_node(wire_hovered_node.map(|node_id| (node_id, ipp.time)), network_interface, selection_network_path, responses);
 				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
 					if drag_start.start_x != point.x || drag_start.start_y != point.y {
