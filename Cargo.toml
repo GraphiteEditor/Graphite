@@ -246,9 +246,8 @@ spin = "0.10"
 clap = "4.5"
 
 # Ensure these are kept in sync with .nix/deps/rust-gpu.nix
-# Git commit required for glam=0.33 support (TODO: use release when new version is published. Last publish was Apr 17)
-spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "2fff75a21a1909945ac85f5818843dd9960004d7", features = ["bytemuck"] }
-cargo-gpu-install = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "2fff75a21a1909945ac85f5818843dd9960004d7", default-features = false }
+spirv-std = { version = "0.10.0", features = ["bytemuck"] }
+cargo-gpu-install = { version = "0.10.0", default-features = false }
 
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
