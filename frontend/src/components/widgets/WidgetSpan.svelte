@@ -382,6 +382,7 @@
 	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
+		overflow: hidden;
 		min-height: var(--row-height);
 		--row-height: 32px;
 

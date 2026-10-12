@@ -5,7 +5,8 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { IconName } from "/src/icons";
-	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { styleText, widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 
@@ -27,8 +28,7 @@
 	export let emphasized = false;
 	export let flush = false;
 	export let narrow = false;
-	// Sizing
-	export let minWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -38,6 +38,7 @@
 	export let action: (() => void) | undefined;
 
 	$: menuListChildrenExists = (menuListChildren?.length ?? 0) > 0;
+	$: sizingStyle = styleText(widgetSizingStyles(sizing));
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
 	function onClick(e: MouseEvent) {
@@ -59,7 +60,7 @@
 	}
 </script>
 
-<ConditionalWrapper condition={menuListChildrenExists} wrapperClass="text-button-container">
+<ConditionalWrapper condition={menuListChildrenExists} wrapperClass="text-button-container" wrapperStyle={sizingStyle}>
 	<button
 		class="text-button"
 		class:open={self?.open}
@@ -68,7 +69,7 @@
 		class:disabled
 		class:narrow
 		class:flush
-		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+		style={menuListChildrenExists ? undefined : sizingStyle}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
 		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
@@ -107,15 +108,20 @@
 
 <style lang="scss">
 	.text-button-container {
-		display: flex;
 		position: relative;
+		display: flex;
+		flex: 0 1 auto;
+
+		> .text-button {
+			flex-grow: 1;
+		}
 	}
 
 	.text-button {
 		display: flex;
+		flex: 0 1 auto;
 		justify-content: center;
 		align-items: center;
-		flex: 0 0 auto;
 		white-space: nowrap;
 		height: var(--widget-height);
 		margin: 0;
@@ -196,6 +202,7 @@
 
 		.text-label {
 			overflow: hidden;
+			text-overflow: ellipsis;
 		}
 	}
 

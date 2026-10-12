@@ -387,7 +387,7 @@ impl<T: TableItemLayout> TableItemLayout for Item<T> {
 			let target = PathStep::Attribute { row: 0, key: key.clone() };
 			let cell = self.attributes().get_any(key).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
 				let text = self.attributes().display_value(key, display_value_override).unwrap_or_else(|| "-".to_string());
-				vec![TextLabel::new(text).narrow(true).widget_instance()]
+				vec![text_preview_label(text)]
 			});
 			values.push(cell);
 		}
@@ -451,7 +451,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 					let target = PathStep::Attribute { row: index, key: key.clone() };
 					let cell = self.attribute_any(key, index).and_then(|any| dispatch_value_widgets(any, target, data)).unwrap_or_else(|| {
 						let text = self.attribute_display_value(key, index, display_value_override).unwrap_or_else(|| "-".to_string());
-						vec![TextLabel::new(text).narrow(true).widget_instance()]
+						vec![text_preview_label(text)]
 					});
 					values.push(cell);
 				}
@@ -917,6 +917,14 @@ fn string_preview(value: &str) -> String {
 	}
 
 	first_line.chars().take(MAX_CHARACTERS - 1).chain(['…']).collect()
+}
+
+/// Shows text in a table cell as a string preview, with the full text as its tooltip when the preview cuts it short.
+fn text_preview_label(text: String) -> WidgetInstance {
+	let preview = string_preview(&text);
+	let tooltip = if preview == text { String::new() } else { text };
+
+	TextLabel::new(preview).narrow(true).tooltip_label(tooltip).widget_instance()
 }
 
 impl TableItemLayout for DVec2 {

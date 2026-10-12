@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, onDestroy } from "svelte";
 	import MenuList from "/src/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { openDropdownMenuCount } from "/src/stores/dropdown-menus";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const DASH_ENTRY: MenuListEntry = {
 		value: "",
@@ -34,13 +36,12 @@
 	export let entriesHash: bigint | undefined = undefined;
 	// Styling
 	export let narrow = false;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
+	export let sizedToSelection = false;
 	// Behavior
 	export let virtualScrolling = false;
 	export let interactive = true;
 	export let takesFileDrop = false;
-	// Sizing
-	export let minWidth = 0;
-	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -51,14 +52,37 @@
 	let initialSelectedIndex: number | undefined = undefined;
 	let open = false;
 	let fileDragOver = false;
+	// The width of the menu's widest entry, so the dropdown keeps one width whichever entry is chosen
+	let naturalWidth = 0;
+	let measuredWidth = 0;
+	// When sized to its selection instead, the width it had as a menu opened
+	let heldWidth: number | undefined = undefined;
+	let countedAsOpen = false;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchEntries(entries);
 	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
+	$: if ($openDropdownMenuCount === 0) naturalWidth = measuredWidth;
+	$: watchOpenDropdownMenuCount($openDropdownMenuCount);
+	$: width = sizedToSelection ? heldWidth : naturalWidth || undefined;
+
+	onDestroy(() => {
+		if (countedAsOpen) openDropdownMenuCount.update((count) => count - 1);
+	});
+
+	function watchOpenDropdownMenuCount(count: number) {
+		if (count === 0) heldWidth = undefined;
+		else if (sizedToSelection && heldWidth === undefined) heldWidth = self?.div?.()?.getBoundingClientRect().width;
+	}
 
 	function watchOpen(open: boolean) {
 		initialSelectedIndex = open ? selectedIndex : undefined;
+
+		if (open !== countedAsOpen) {
+			openDropdownMenuCount.update((count) => count + (open ? 1 : -1));
+			countedAsOpen = open;
+		}
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
@@ -154,8 +178,8 @@
 	class="dropdown-input"
 	classes={{ narrow, "file-drag-over": fileDragOver }}
 	styles={{
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+		...(width !== undefined ? { width: `${width}px` } : {}),
+		...widgetSizingStyles(sizing),
 	}}
 	on:dragover={fileDragOverWidget}
 	on:dragleave={fileDragLeaveWidget}
@@ -181,7 +205,8 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => (minWidth = detail)}
+		on:naturalWidth={({ detail }) => (measuredWidth = detail)}
+		measuresNaturalWidth={!sizedToSelection}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
 		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
 		on:hoverOutEntry={() => dispatchHoverOutEntry()}
@@ -201,6 +226,7 @@
 <style lang="scss">
 	.dropdown-input {
 		position: relative;
+		flex: 1 1 auto;
 		--widget-height: 24px;
 
 		&.narrow.narrow {
@@ -226,7 +252,9 @@
 			.dropdown-label {
 				margin: 0;
 				margin-left: 8px;
-				flex: 1 1 100%;
+				flex: 1 1 auto;
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 
 			.dropdown-icon {
@@ -265,5 +293,10 @@
 		.menu-list .floating-menu-container .floating-menu-content {
 			max-height: 400px;
 		}
+	}
+
+	// The row stops clipping so the file drag outline, drawn outside the dropdown, shows in full
+	.widget-span.row:has(> .dropdown-input.file-drag-over) {
+		overflow: visible;
 	}
 </style>

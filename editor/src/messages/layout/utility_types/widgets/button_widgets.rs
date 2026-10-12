@@ -181,10 +181,7 @@ pub struct TextButton {
 	pub emphasized: bool,
 	pub flush: bool,
 	pub narrow: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
+	pub sizing: WidgetSizing,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -251,14 +248,9 @@ pub struct ColorInput {
 	pub disabled: bool,
 	pub mixed: bool,
 
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
-
 	// Styling
 	pub narrow: bool,
+	pub sizing: WidgetSizing,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

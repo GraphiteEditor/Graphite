@@ -202,6 +202,7 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 		widgets.push(
 			ParameterChainToggle::new(parameter_widgets_info.name.clone())
 				.expanded(parameter_widgets_info.chain_expanded)
+				.tooltip_label(parameter_widgets_info.name.clone())
 				.tooltip_description(parameter_widgets_info.description.clone())
 				.on_update(move |_| DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index }.into())
 				.widget_instance(),
@@ -209,6 +210,7 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 	} else {
 		widgets.push(
 			TextLabel::new(parameter_widgets_info.name.clone())
+				.tooltip_label(parameter_widgets_info.name.clone())
 				.tooltip_description(parameter_widgets_info.description.clone())
 				.widget_instance(),
 		);
@@ -2039,8 +2041,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 				number_input
 					.clone()
 					.value(Some(current))
-					.min_width(60)
-					.max_width(60)
+					.sizing(WidgetSizing::fixed(60))
 					.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -2302,8 +2303,7 @@ fn slider_row(
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		number_props
 			.value(Some(current))
-			.min_width(60)
-			.max_width(60)
+			.sizing(WidgetSizing::fixed(60))
 			.on_update(update_value_at_index(move |x: &NumberInput| tagged_value(x.value.unwrap_or_default()), node_id, index))
 			.on_commit(commit_value)
 			.widget_instance(),
@@ -2371,8 +2371,7 @@ fn gradient_slider_row(
 		row.push(
 			number_input
 				.value(Some(current))
-				.min_width(60)
-				.max_width(60)
+				.sizing(WidgetSizing::fixed(60))
 				.display_decimal_places(0)
 				.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 				.on_commit(commit_value)
