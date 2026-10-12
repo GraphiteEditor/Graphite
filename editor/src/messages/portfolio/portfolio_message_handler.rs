@@ -792,6 +792,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
+				// The document we are leaving won't get the pointer up that ends a wire drag in its graph
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+				{
+					document.end_node_graph_wire_in_progress(responses);
+				}
+
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {

@@ -746,6 +746,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
+					// The closed graph won't get the pointer up that ends a wire drag, so abandon it as Escape would
+					if self.end_node_graph_wire_in_progress(responses) {
+						responses.add(DocumentMessage::AbortTransaction);
+					}
+
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
@@ -2796,6 +2801,16 @@ impl DocumentMessageHandler {
 
 	pub fn is_graph_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
+	}
+
+	/// Ends any wire being dragged in the node graph, collapsing a node expanded for it, and returns whether there was one.
+	pub fn end_node_graph_wire_in_progress(&mut self, responses: &mut VecDeque<Message>) -> bool {
+		if self.node_graph_handler.wire_in_progress_from_connector.is_none() {
+			return false;
+		}
+
+		self.node_graph_handler.end_wire_in_progress(&mut self.network_interface, &self.selection_network_path, responses);
+		true
 	}
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
