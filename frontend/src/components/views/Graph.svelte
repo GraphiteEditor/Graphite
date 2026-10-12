@@ -190,7 +190,7 @@
 	}
 
 	function nodeNameTooltipLabel(node: FrontendNode): string {
-		return node.displayName === node.implementationName ? node.displayName : `${node.displayName} (${node.implementationName})`;
+		return node.displayName === node.implementationName ? node.displayName : `${node.implementationName} (${node.displayName})`;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {

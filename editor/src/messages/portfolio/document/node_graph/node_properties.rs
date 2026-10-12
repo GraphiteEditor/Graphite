@@ -3140,7 +3140,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		&& implementation_name != "Custom Node"
 		&& !display_name.is_empty()
 	{
-		format!("{display_name} ({implementation_name})")
+		format!("{implementation_name} ({display_name})")
 	} else {
 		implementation_name
 	};
