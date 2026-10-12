@@ -337,7 +337,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage
-		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
+		entry!(DoubleTap(Space); action_dispatch=DocumentMessage::GraphViewOverlayToggle),
 		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
@@ -354,8 +354,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
 		entry!(KeyDown(KeyS); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::SaveDocumentAs),
-		entry!(KeyDown(KeyD); modifiers=[Accel], canonical, action_dispatch=DocumentMessage::DuplicateSelectedLayers),
-		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyB); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::BlendSelectedLayers),
 		entry!(KeyDown(KeyM); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::MorphSelectedLayers), // Might get eaten by the GeForce Experience overlay for some Windows users
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
@@ -416,23 +415,32 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
 		entry!(KeyDown(MouseLeft); modifiers=[Alt, Space], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
-		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control, Alt], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: true }),
+		entry!(KeyDown(MouseLeft); modifiers=[Control, Alt, Space], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: true }),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: false }),
+		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan { artwork_behind_graph: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan { artwork_behind_graph: false }),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		// `FakeKeyPlus` is a nonfunctional key mapping that must be accompanied by its real `Equal` key counterpart. This is used only to set the canonical key label so it shows "+" instead of "=" in the UI.
 		entry!(KeyDown(FakeKeyPlus); modifiers=[Accel], canonical, action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
-		entry!(WheelScroll; modifiers=[Control], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-		entry!(WheelScroll; modifiers=[Command], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-		entry!(WheelScroll; modifiers=[Shift], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; modifiers=[Control, Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Command, Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Control], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: false }),
+		entry!(WheelScroll; modifiers=[Command], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: false }),
+		entry!(WheelScroll; modifiers=[Shift, Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Shift], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true, artwork_behind_graph: false }),
+		entry!(WheelScroll; disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false, artwork_behind_graph: false }),
 		// On Mac, the OS already converts Shift+scroll into horizontal scrolling so we have to reverse the behavior from normal to produce the same outcome
-		entry!(WheelScroll; modifiers=[Control], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac }),
-		entry!(WheelScroll; modifiers=[Shift], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac }),
-		entry!(WheelScroll; disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Control, Alt], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Shift, Alt], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Alt], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Control], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac, artwork_behind_graph: false }),
+		entry!(WheelScroll; modifiers=[Shift], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac, artwork_behind_graph: false }),
+		entry!(WheelScroll; disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: false }),
 		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(1., 0.) }),
 		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(-1., 0.) }),
 		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(0., 1.) }),
@@ -463,7 +471,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
 		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
-	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut double_tap, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by_key(|entry| std::cmp::Reverse(entry.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
@@ -474,6 +482,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 	}
 	// Sort the sublists of `double_click`
 	for sublist in &mut double_click {
+		sort(sublist)
+	}
+	// Sort the sublists of `double_tap`
+	for sublist in &mut double_tap {
 		sort(sublist)
 	}
 	// Sort `wheel_scroll`
@@ -489,6 +501,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		key_up_no_repeat,
 		key_down_no_repeat,
 		double_click,
+		double_tap,
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,

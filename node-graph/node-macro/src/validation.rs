@@ -108,10 +108,12 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		);
 	}
 
-	if !outer_wrapper_is(&parsed.output_type, "Item") && !outer_wrapper_is(&parsed.output_type, "List") {
+	let output_type = &parsed.output_type;
+	let ranked = outer_wrapper_is(output_type, "Item") || outer_wrapper_is(output_type, "List");
+	if !ranked && (outer_wrapper_is(output_type, "ListDyn") || is_unit_type(output_type) || contains_generic_param(output_type, &parsed.fn_generics)) {
 		emit_error!(
-			parsed.output_type.span(),
-			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, or `List<U>` for an expander"
+			output_type.span(),
+			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, `List<U>` for an expander, or a struct deriving `Destructure`"
 		);
 	}
 }
@@ -127,7 +129,8 @@ fn validate_ranked_inputs(parsed: &ParsedNodeFn) {
 
 fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
 	let mut violations = Vec::new();
-	if parsed.attributes.skip_impl {
+	// A `Destructure` derive's extractor takes the struct itself rather than an `Item` or `List`
+	if parsed.attributes.skip_impl || parsed.attributes.destructure_extractor {
 		return violations;
 	}
 

@@ -42,7 +42,9 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 		timestamp: observed,
 	};
 
-	document.apply_hot_op(hot_op).expect("RemoveNode on absent node is a no-op, not an error");
+	document
+		.stage_hot_op(hot_op, crate::document::ApplyMode::Strict)
+		.expect("RemoveNode on absent node is a no-op, not an error");
 
 	assert!(
 		document.clock.counter >= observed.counter,
@@ -288,9 +290,9 @@ fn first_contribution_registers_the_peer() {
 	assert_eq!(fresh.registry().peer_users, peers_before, "a no-op batch must not add a registration");
 }
 
-/// A SetExport against a removed network must restore the network from history rather than error.
+/// A SetExport newer than a network's removal revives the network from its tombstone instead of erroring.
 #[test]
-fn set_export_resurrects_absent_network() {
+fn set_network_export_revives_a_removed_network() {
 	let mut document = fresh_document(PeerId(1));
 	let network_id = NetworkId(7);
 
@@ -308,7 +310,7 @@ fn set_export_resurrects_absent_network() {
 			snapshot: Network::default(),
 		},
 	);
-	assert!(!document.working_registry.networks.contains_key(&network_id), "network should be removed before the resurrection test");
+	assert!(!document.working_registry.networks.contains_key(&network_id), "network should be removed before the revival");
 
 	commit_op(
 		&mut document,
@@ -319,12 +321,12 @@ fn set_export_resurrects_absent_network() {
 		},
 	);
 
-	assert!(document.working_registry.networks.contains_key(&network_id), "SetExport should have resurrected the network");
+	assert!(document.working_registry.networks.contains_key(&network_id), "SetExport should have revived the network");
 }
 
-/// Cascading resurrection: bringing a node back must also restore its owning network when absent.
+/// An addition into a removed network is evidence the network exists, so it brings the network back.
 #[test]
-fn add_node_resurrects_owning_network() {
+fn add_node_revives_its_removed_network() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
@@ -349,18 +351,13 @@ fn add_node_resurrects_owning_network() {
 	let node = Node { network: network_id, ..Node::dummy() };
 	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node });
 
-	assert!(
-		document.working_registry.networks.contains_key(&network_id),
-		"AddNode should have cascaded a resurrection of the owning network"
-	);
+	assert!(document.working_registry.networks.contains_key(&network_id), "AddNode should have revived the owning network");
 	assert!(document.working_registry.node_instances.contains_key(&node_id), "the node itself should also be present");
 }
 
-/// Reverting the same removal twice (the moral equivalent of two peers concurrently resurrecting
-/// the same node) must not error on the second apply. Today the second revert hits
-/// `apply_op(AddNode, false)` against a present node and returns `NodeAlreadyExists`.
+/// Two peers reverting one removal: the second revival is not newer than the first, so it lands once.
 #[test]
-fn concurrent_resurrection_via_revert_is_idempotent() {
+fn the_same_revival_arriving_twice_lands_once() {
 	use crate::Node;
 
 	let mut document = fresh_document(PeerId(1));
@@ -377,40 +374,19 @@ fn concurrent_resurrection_via_revert_is_idempotent() {
 	let node = Node { network: network_id, ..Node::dummy() };
 	commit_op(&mut document, RegistryDelta::AddNode { id: node_id, node: node.clone() });
 	commit_op(&mut document, RegistryDelta::RemoveNode { id: node_id, snapshot: node });
-	assert!(!document.working_registry.node_instances.contains_key(&node_id), "node should be removed before the resurrection test");
+	assert!(!document.working_registry.node_instances.contains_key(&node_id), "node should be removed before the revival");
 
-	document.restore_node_from_history(RegistryTarget::Working, node_id).expect("first resurrection should succeed");
-	assert!(document.working_registry.node_instances.contains_key(&node_id), "first resurrection should bring the node back");
+	let revive = RegistryDelta::AddNode {
+		id: node_id,
+		node: Node { network: network_id, ..Node::dummy() },
+	};
+	let at = document.clock.tick();
+	document.apply_op_idempotent(revive.clone(), at).expect("first revival");
+	assert!(document.working_registry.node_instances.contains_key(&node_id), "the first revival brings the node back");
 
-	let second = document.restore_node_from_history(RegistryTarget::Working, node_id);
-	assert!(second.is_ok(), "second resurrection of an already-present node should be a no-op, got {second:?}");
-}
-
-/// History-based resurrection must work when the matching delta is the *root* commit. The history
-/// walk used to drop the root (its empty parent list short-circuited the iterator before yielding
-/// it), so a node removed by the very first commit could not be restored.
-#[test]
-fn restore_node_from_root_commit() {
-	use crate::Node;
-
-	let mut document = fresh_document(PeerId(1));
-	let node_id = NodeId(42);
-
-	let node = Node::dummy();
-
-	// Seed the working state so the root commit can remove the node (its reverse is the `AddNode` the
-	// resurrection looks for). This `RemoveNode` is the only commit, so the match sits at the root.
-	document.working_registry.networks.insert(ROOT_NETWORK, Network::default());
-	document.retired_snapshot.networks.insert(ROOT_NETWORK, Network::default());
-	document.working_registry.node_instances.insert(node_id, node.clone());
-	document.retired_snapshot.node_instances.insert(node_id, node.clone());
-	commit_op(&mut document, RegistryDelta::RemoveNode { id: node_id, snapshot: node });
-	assert!(!document.working_registry.node_instances.contains_key(&node_id), "node should be removed by the root commit");
-
-	document
-		.restore_node_from_history(RegistryTarget::Working, node_id)
-		.expect("resurrection from the root commit should succeed");
-	assert!(document.working_registry.node_instances.contains_key(&node_id), "node must be restored from the root commit");
+	let second = document.apply_op_idempotent(revive, at);
+	assert!(second.is_ok(), "the same revival again is a no-op, got {second:?}");
+	assert!(document.working_registry.node_instances.contains_key(&node_id));
 }
 
 /// Erroring ops still bump the clock: we observed the timestamp on the wire, the fact that the
@@ -567,7 +543,10 @@ fn remove_source_reverse_restores_prior() {
 	}
 
 	document.apply_op(RD::RemoveSource { id, key }, ts(5, 1)).unwrap();
-	assert!(document.working_registry.resources.get(&id).unwrap().sources.is_empty(), "source removed");
+	assert!(
+		document.working_registry.resources.get(&id).unwrap().live_sources().next().is_none(),
+		"source removed, a tombstone left"
+	);
 
 	// Applying the reverse restores the chain.
 	document.apply_op(reverse, ts(6, 1)).unwrap();
@@ -627,7 +606,16 @@ use crate::{ResourceEntry, ResourceStore, SourceValue};
 
 fn entry_with_source(priority: f64, peer: u64, body: Value, hash: Option<ResourceHash>) -> ResourceEntry {
 	ResourceEntry {
-		sources: vec![(source_key(priority, peer), SourceValue { source: body, timestamp: ts(1, peer) })],
+		presence: ts(1, peer),
+		sources: vec![(
+			source_key(priority, peer),
+			SourceValue {
+				source: body,
+				timestamp: ts(1, peer),
+				deleted: false,
+			},
+		)],
+		sources_timestamp: TimeStamp::ORIGIN,
 		hash,
 		hash_timestamp: ts(1, peer),
 	}
@@ -678,6 +666,7 @@ fn compute_deltas_diffs_resources_and_round_trips() {
 		SourceValue {
 			source: Value::Str("url".into()),
 			timestamp: ts(1, 1),
+			deleted: false,
 		},
 	);
 	to.insert(kept, kept_entry);
@@ -703,6 +692,8 @@ fn compute_deltas_diffs_resources_and_round_trips() {
 	// Apply the diff to a document seeded with `from`, then check it matches `to` by value.
 	let mut document = fresh_document(PeerId(1));
 	document.working_registry = registry_with_resources(from);
+	// A clock is past every stamp in the registry it edits, as a session's persisted clock is.
+	document.clock.observe(ts(1, 1));
 	for op in deltas {
 		let timestamp = document.clock.tick();
 		document.apply_op(op, timestamp).expect("apply resource delta");
@@ -750,6 +741,15 @@ fn all_referenced_resource_hashes_survives_undo() {
 		session.all_referenced_resource_hashes().contains(&hash),
 		"the undone interaction's resource must still be reported so GC keeps its bytes for redo"
 	);
+
+	// A later hash change, undone, keeps the new hash reported too: redo puts it back.
+	session.redo().expect("redo");
+	let changed = ResourceHash::from(&b"changed-bytes"[..]);
+	let hot_ops = session.stage_ops([crate::RegistryDelta::SetResourceHash { id, hash: Some(changed) }]).expect("stage hash change");
+	let revs = session.retire(hot_ops.last().expect("staged").timestamp).expect("retire");
+	session.mark_interaction_end(*revs.last().expect("one retired delta"));
+	session.undo().expect("undo the hash change");
+	assert!(session.all_referenced_resource_hashes().contains(&changed), "the undone hash change keeps its bytes for redo");
 }
 
 /// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
@@ -840,6 +840,9 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 		}];
 
 		Node {
+			presence: Default::default(),
+			network_timestamp: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: implementation.clone(),
 			implementation_timestamp: Default::default(),
 			inputs,
@@ -883,4 +886,440 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 	);
 
 	assert_eq!(delta_forward.id, delta_reversed.id, "Rev must not depend on attribute insertion order");
+}
+
+fn add_network(id: u64) -> RegistryDelta {
+	let network = Network::default();
+	RegistryDelta::AddNetwork { id: NetworkId(id), network }
+}
+
+fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
+	let delta = crate::AttributeDelta {
+		key: key.into(),
+		value: Some(Value::from(value)),
+	};
+	RegistryDelta::ChangeNodeAttribute { id, delta }
+}
+
+fn hot_op(op: RegistryDelta, counter: u64, peer: u64) -> HotOp {
+	HotOp { op, timestamp: ts(counter, peer) }
+}
+
+/// So the snapshot and a replay keep the LWW winner the live view did, whether the straggler retires with it or after.
+#[test]
+fn retirement_preserves_the_live_lww_winner() {
+	for straggler_retires_alone in [false, true] {
+		let mut host = Session::with_peer(PeerId(1));
+		let winner = hot_op(set_document_attribute("k", 1), 10, 2);
+		host.replay_hot_op(winner.clone()).expect("apply winner");
+		if straggler_retires_alone {
+			host.retire(winner.timestamp).expect("retire winner");
+		}
+		host.replay_hot_op(hot_op(set_document_attribute("k", 2), 5, 3)).expect("apply straggler");
+		host.retire(winner.timestamp).expect("retire");
+
+		let value = |registry: &crate::Registry| registry.attributes.get("k").map(|attribute| attribute.value.clone());
+		let replayed = host.snapshot_from_history().expect("refold");
+		let values = [value(host.registry()), value(host.retired_registry()), value(&replayed)];
+		assert_eq!(values, [(); 3].map(|_| Some(Value::from(serde_json::json!(1)))), "straggler retires alone: {straggler_retires_alone}");
+	}
+}
+
+/// Random ops over a few colliding ids fold to one registry in any order. Removal snapshots are constant or, as a remover
+/// sends them, a fold of some earlier ops.
+#[test]
+fn a_set_of_ops_folds_to_one_registry_in_any_order() {
+	use crate::{Implementation, Priority, ResourceEntry, SourceKey, SourceValue, UserId};
+	use graphene_resource::{ResourceHash, ResourceId};
+
+	struct Lcg(u64);
+	impl Lcg {
+		fn below(&mut self, bound: u64) -> u64 {
+			self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+			(self.0 >> 33) % bound
+		}
+	}
+
+	/// Folds the ops in order.
+	fn fold(ops: &[(RegistryDelta, TimeStamp)]) -> crate::Registry {
+		let mut document = fresh_document(PeerId(9));
+		for (op, at) in ops {
+			document.apply_op_idempotent(op.clone(), *at).unwrap_or_else(|error| panic!("{op:?} at {at:?}: {error}"));
+		}
+		document.working_registry
+	}
+
+	fn random_op(rng: &mut Lcg, at: TimeStamp, seen: &[(RegistryDelta, TimeStamp)], real_snapshots: bool) -> RegistryDelta {
+		let node_id = NodeId(1 + rng.below(4));
+		let network_id = NetworkId(1 + rng.below(3));
+		let resource_id = ResourceId::from(1 + rng.below(2));
+		let input = |rng: &mut Lcg| match rng.below(3) {
+			0 => crate::NodeInput::Node {
+				id: NodeId(1 + rng.below(4)),
+				index: 0,
+			},
+			_ => crate::NodeInput::Value {
+				value: Value::from(serde_json::json!(rng.below(100))),
+				exposed: false,
+			},
+		};
+		// A write, or a deletion one time in four.
+		let attribute = |rng: &mut Lcg, key: &str| crate::AttributeDelta {
+			key: key.into(),
+			value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(100)))),
+		};
+		let key = |rng: &mut Lcg| SourceKey {
+			priority: Priority::new(rng.below(2) as f64).expect("finite"),
+			peer: PeerId(1 + rng.below(2).min(at.peer.0)),
+		};
+		// What a remover saw: some of the ops before it. Two snapshots agreeing on a stamp then agree on the value,
+		// which a fabricated snapshot only does by being constant.
+		let saw = |rng: &mut Lcg| fold(&seen.iter().filter(|_| rng.below(2) == 0).cloned().collect::<Vec<_>>());
+		match rng.below(22) {
+			0 => {
+				// An export list of its own, so additions of different lengths meet.
+				let exports = (0..rng.below(3))
+					.map(|_| crate::ExportSlot {
+						target: Some(input(rng)),
+						timestamp: TimeStamp::ORIGIN,
+					})
+					.collect();
+				RegistryDelta::AddNetwork {
+					id: network_id,
+					network: Network { exports, ..Default::default() },
+				}
+			}
+			1 => {
+				let snapshot = if real_snapshots { saw(rng).networks.get(&network_id).cloned() } else { Some(Network::default()) };
+				snapshot.map_or(RegistryDelta::Other(Value::None), |snapshot| RegistryDelta::RemoveNetwork { id: network_id, snapshot })
+			}
+			2 | 3 => RegistryDelta::AddNode {
+				id: node_id,
+				node: Node::new(network_id, Implementation::ProtoNode(ResourceId::from(7)), 1 + rng.below(2) as usize),
+			},
+			4 => {
+				let fabricated = || Node::new(NetworkId(1), Implementation::ProtoNode(ResourceId::from(7)), 2);
+				let snapshot = if real_snapshots { saw(rng).node_instances.get(&node_id).cloned() } else { Some(fabricated()) };
+				snapshot.map_or(RegistryDelta::Other(Value::None), |snapshot| RegistryDelta::RemoveNode { id: node_id, snapshot })
+			}
+			5 | 6 => RegistryDelta::ChangeNodeInput {
+				id: node_id,
+				index: rng.below(3) as u32,
+				new_input: input(rng),
+			},
+			7 => RegistryDelta::SetNodeInputs {
+				id: node_id,
+				inputs: (0..1 + rng.below(3))
+					.map(|_| {
+						let mut slot = InputSlot {
+							input: input(rng),
+							timestamp: TimeStamp::ORIGIN,
+							attributes: Default::default(),
+						};
+						// Half the time a slot carries attributes over with earlier stamps, as an implementation swap does.
+						if rng.below(2) == 0 {
+							let floor = TimeStamp {
+								counter: 1 + rng.below(at.counter),
+								peer: PeerId(1 + rng.below(3)),
+							};
+							let label = TimeStamp {
+								counter: floor.counter + rng.below(at.counter - floor.counter + 1),
+								..floor
+							};
+							slot.attributes
+								.insert("label".into(), crate::AttributeValue::new(Value::from(serde_json::json!(rng.below(100))), label));
+							slot.attributes.set_floor(floor);
+						}
+						slot
+					})
+					.collect(),
+			},
+			8 => {
+				let key = ["name", "lock"][rng.below(2) as usize];
+				RegistryDelta::ChangeNodeAttribute {
+					id: node_id,
+					delta: attribute(rng, key),
+				}
+			}
+			9 => RegistryDelta::SetNodeImplementation {
+				id: node_id,
+				implementation: match rng.below(2) {
+					0 => Implementation::Network(network_id),
+					_ => Implementation::ProtoNode(ResourceId::from(rng.below(3))),
+				},
+			},
+			10 => RegistryDelta::SetNetworkExport {
+				id: network_id,
+				index: rng.below(2) as u32,
+				export: match rng.below(2) {
+					0 => None,
+					_ => Some(input(rng)),
+				},
+			},
+			11 => RegistryDelta::AddResource {
+				id: resource_id,
+				entry: ResourceEntry::default(),
+			},
+			12 => {
+				let snapshot = if real_snapshots {
+					saw(rng).resources.get(&resource_id).cloned()
+				} else {
+					Some(ResourceEntry::default())
+				};
+				snapshot.map_or(RegistryDelta::Other(Value::None), |snapshot| RegistryDelta::RemoveResource { id: resource_id, snapshot })
+			}
+			13 => RegistryDelta::SetResourceHash {
+				id: resource_id,
+				hash: Some(ResourceHash::from([rng.below(2) as u8; 32])),
+			},
+			14 => RegistryDelta::AddSource {
+				id: resource_id,
+				key: key(rng),
+				source: Value::from(serde_json::json!(rng.below(100))),
+			},
+			15 => RegistryDelta::ChangeNodeInputAttribute {
+				id: node_id,
+				index: rng.below(3) as u32,
+				delta: attribute(rng, "label"),
+			},
+			16 => RegistryDelta::ChangeNetworkAttribute {
+				id: network_id,
+				delta: attribute(rng, "name"),
+			},
+			17 => RegistryDelta::RemoveSource { id: resource_id, key: key(rng) },
+			18 => RegistryDelta::RegisterPeer {
+				peer: PeerId(1 + rng.below(2)),
+				user: UserId(rng.below(3)),
+			},
+			19 => RegistryDelta::ChangeDocumentAttribute { delta: attribute(rng, "doc") },
+			_ => {
+				// A resource added whole, with content.
+				let mut entry = ResourceEntry {
+					hash: Some(ResourceHash::from([rng.below(2) as u8; 32])),
+					..Default::default()
+				};
+				let source = SourceValue {
+					source: Value::from(serde_json::json!(rng.below(100))),
+					timestamp: TimeStamp::ORIGIN,
+					deleted: false,
+				};
+				entry.set_source(key(rng), source);
+				RegistryDelta::AddResource { id: resource_id, entry }
+			}
+		}
+	}
+
+	for real_snapshots in [false, true] {
+		for seed in 0..300u64 {
+			let mut rng = Lcg(seed);
+			let mut ops: Vec<(RegistryDelta, TimeStamp)> = Vec::new();
+			for i in 0..8 + rng.below(24) {
+				let at = TimeStamp {
+					counter: 1 + i,
+					peer: PeerId(1 + rng.below(3)),
+				};
+				let op = random_op(&mut rng, at, &ops, real_snapshots);
+				ops.push((op, at));
+			}
+
+			let reference = fold(&ops);
+			for _ in 0..6 {
+				let mut shuffled = ops.clone();
+				for i in (1..shuffled.len()).rev() {
+					shuffled.swap(i, rng.below(i as u64 + 1) as usize);
+				}
+				let order: Vec<u64> = shuffled.iter().map(|(_, at)| at.counter).collect();
+				assert_eq!(fold(&shuffled), reference, "seed {seed}, real snapshots {real_snapshots}: folded differently in the order {order:?}");
+			}
+		}
+	}
+}
+
+/// An entry stamped at its map's floor was written with it, so folding a removal's snapshot keeps it.
+#[test]
+fn a_removal_snapshot_keeps_the_attributes_the_addition_wrote() {
+	let mut document = fresh_document(PeerId(1));
+	let id = NodeId(4);
+	let mut node = Node::new(ROOT_NETWORK, crate::Implementation::ProtoNode(graphene_resource::ResourceId::from(7)), 1);
+	node.attributes.set("ui::name", Value::from(serde_json::json!("Layer")), TimeStamp::ORIGIN);
+	node.inputs[0].attributes.set("reflection_metadata", Value::from(serde_json::json!("meta")), TimeStamp::ORIGIN);
+	commit_op(&mut document, add_network(ROOT_NETWORK.0));
+	commit_op(&mut document, RegistryDelta::AddNode { id, node });
+
+	// A removal and a newer write, which revives the node from the tombstone.
+	let removal = RegistryDelta::RemoveNode {
+		id,
+		snapshot: document.working_registry.node_instances[&id].clone(),
+	};
+	let removed_at = document.clock.tick();
+	document.apply_op_idempotent(removal.clone(), removed_at).expect("removal");
+	let written_at = document.clock.tick();
+	document.apply_op_idempotent(change_node_attribute(id, "ui::lock", serde_json::json!(true)), written_at).expect("write");
+
+	let revived = &document.working_registry.node_instances[&id];
+	assert_eq!(revived.attributes.get_typed::<String>("ui::name").as_deref(), Some("Layer"));
+	assert_eq!(revived.inputs()[0].attributes.get_typed::<String>("reflection_metadata").as_deref(), Some("meta"));
+
+	// The same removal replayed into the live node is too old to land and changes nothing.
+	let mut replayed = document.clone();
+	replayed.apply_op_idempotent(removal, removed_at).expect("a replayed removal");
+	assert_eq!(replayed.working_registry, document.working_registry);
+}
+
+#[test]
+fn a_refused_replayed_op_changes_nothing() {
+	use crate::{Implementation, NodeInput};
+	let mut document = fresh_document(PeerId(1));
+	let node = Node::new(NetworkId(1), Implementation::Network(NetworkId(1)), 1);
+	for (op, counter) in [
+		(add_network(1), 1),
+		(RegistryDelta::AddNode { id: NodeId(1), node: node.clone() }, 2),
+		(RegistryDelta::AddNode { id: NodeId(2), node: node.clone() }, 3),
+		(RegistryDelta::RemoveNode { id: NodeId(2), snapshot: node }, 4),
+	] {
+		document.apply_op_idempotent(op, ts(counter, 5)).unwrap();
+	}
+	let before = document.working_registry.clone();
+
+	let out_of_bounds = RegistryDelta::ChangeNodeInput {
+		id: NodeId(1),
+		index: 1 << 20,
+		new_input: NodeInput::Node { id: NodeId(2), index: 0 },
+	};
+	assert!(document.apply_op_idempotent(out_of_bounds, ts(5, 5)).is_err());
+	assert_eq!(document.working_registry, before);
+}
+
+/// An implementation swap carries a slot's `ui::*` attributes over as the editor held them; a concurrent rename and a
+/// concurrent first-time attribute on that slot both survive it, whichever lands first.
+#[test]
+fn an_implementation_swap_keeps_concurrent_slot_attribute_writes() {
+	use crate::Implementation;
+	use graphene_resource::ResourceId;
+	let slot_attribute = |key: &str, value: &str| RegistryDelta::ChangeNodeInputAttribute {
+		id: NodeId(1),
+		index: 0,
+		delta: crate::AttributeDelta {
+			key: key.into(),
+			value: Some(Value::from(serde_json::json!(value))),
+		},
+	};
+	let mut base = fresh_document(PeerId(1));
+	commit_op(&mut base, add_network(1));
+	let node = Node::new(NetworkId(1), Implementation::ProtoNode(ResourceId::from(7)), 1);
+	commit_op(&mut base, RegistryDelta::AddNode { id: NodeId(1), node });
+	commit_op(&mut base, slot_attribute("ui::name", "a"));
+
+	// The swap as the editor builds it: the new slot with the held slot's `ui::*` attributes and floor carried over.
+	let held = base.working_registry.node_instances[&NodeId(1)].inputs()[0].clone();
+	let mut carried = InputSlot::unset(TimeStamp::ORIGIN);
+	carried.attributes.set_floor(held.attributes.floor());
+	carried.attributes.extend(held.attributes.into_iter().filter(|(key, value)| key.starts_with("ui::") && !value.deleted));
+	let swap = (RegistryDelta::SetNodeInputs { id: NodeId(1), inputs: vec![carried] }, ts(20, 1));
+	let rename = (slot_attribute("ui::name", "b"), ts(10, 2));
+	let describe = (slot_attribute("ui::description", "d"), ts(11, 2));
+
+	for order in [[&swap, &rename, &describe], [&rename, &describe, &swap]] {
+		let mut document = base.clone();
+		for (op, at) in order {
+			document.apply_op_idempotent(op.clone(), *at).expect("apply");
+		}
+		let slot = &document.working_registry.node_instances[&NodeId(1)].inputs()[0];
+		assert_eq!(
+			slot.attributes.get("ui::name").map(|value| value.value.clone()),
+			Some(Value::from(serde_json::json!("b"))),
+			"the rename survives"
+		);
+		assert!(slot.attributes.get("ui::description").is_some_and(|value| !value.deleted), "the first-time attribute survives");
+	}
+}
+
+/// Re-adding a removed network with a shorter export list drops the slots past its end, whichever lands first.
+#[test]
+fn a_network_re_added_shorter_keeps_only_its_own_exports() {
+	use crate::ExportSlot;
+	let export = |node: u64| ExportSlot {
+		target: Some(crate::NodeInput::Node { id: NodeId(node), index: 0 }),
+		timestamp: TimeStamp::ORIGIN,
+	};
+	let network = |exports: Vec<ExportSlot>| Network { exports, ..Default::default() };
+	let added = (
+		RegistryDelta::AddNetwork {
+			id: NetworkId(1),
+			network: network(vec![export(1), export(2)]),
+		},
+		ts(1, 1),
+	);
+	let removed = (
+		RegistryDelta::RemoveNetwork {
+			id: NetworkId(1),
+			snapshot: network(vec![export(1), export(2)]),
+		},
+		ts(2, 1),
+	);
+	let re_added = (
+		RegistryDelta::AddNetwork {
+			id: NetworkId(1),
+			network: network(vec![export(3)]),
+		},
+		ts(3, 2),
+	);
+	for order in [[&added, &removed, &re_added], [&re_added, &removed, &added]] {
+		let mut document = fresh_document(PeerId(9));
+		for (op, at) in order {
+			document.apply_op_idempotent(op.clone(), *at).expect("apply");
+		}
+		let exports = &document.working_registry.networks[&NetworkId(1)].exports;
+		assert_eq!(exports.iter().map(|slot| slot.target.clone()).collect::<Vec<_>>(), vec![export(3).target]);
+	}
+}
+
+/// Two registries ordering a removal differently against a write are not order-consistent, though their values agree.
+#[test]
+fn order_consistency_covers_removal_stamps() {
+	let with_removal_at = |counter: u64| {
+		let mut document = fresh_document(PeerId(1));
+		let node = Node::new(NetworkId(1), crate::Implementation::ProtoNode(graphene_resource::ResourceId::from(7)), 0);
+		document.apply_op_idempotent(RegistryDelta::AddNode { id: NodeId(2), node: node.clone() }, ts(3, 1)).expect("add");
+		document
+			.apply_op_idempotent(RegistryDelta::RemoveNode { id: NodeId(1), snapshot: node }, ts(counter, 1))
+			.expect("remove");
+		document.working_registry
+	};
+	let (earlier, later) = (with_removal_at(2), with_removal_at(4));
+	assert!(earlier.value_equal(&later));
+	assert!(!earlier.order_consistent(&later));
+}
+
+/// An input naming a node whose addition has not arrived renders as a dangling input, as one naming a removed node does,
+/// rather than failing the conversion: the placeholder knows nothing of the node's network.
+#[test]
+fn an_input_naming_a_node_not_yet_added_renders_dangling() {
+	use crate::Implementation;
+	let (nested, empty, owner, inner, unseen) = (NetworkId(5), NetworkId(6), NodeId(1), NodeId(2), NodeId(3));
+	let mut document = fresh_document(PeerId(1));
+	let ops = [
+		add_network(ROOT_NETWORK.0),
+		add_network(nested.0),
+		add_network(empty.0),
+		RegistryDelta::AddNode {
+			id: owner,
+			node: Node::new(ROOT_NETWORK, Implementation::Network(nested), 0),
+		},
+		RegistryDelta::AddNode {
+			id: inner,
+			node: Node::new(nested, Implementation::Network(empty), 1),
+		},
+		RegistryDelta::ChangeNodeInput {
+			id: inner,
+			index: 0,
+			new_input: crate::NodeInput::Node { id: unseen, index: 0 },
+		},
+	];
+	for (counter, op) in (1..).zip(ops) {
+		document.apply_op_idempotent(op, ts(counter, 2)).expect("apply");
+	}
+	assert!(document.working_registry.removed_nodes.get(&unseen).is_some_and(|mark| mark.placeholder));
+
+	document.working_registry.to_runtime_with_metadata(&crate::Declarations::new()).expect("converts with a dangling input");
 }

@@ -1,5 +1,6 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
+import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import type { MessageBody } from "/src/subscriptions-router";
 import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -19,6 +20,7 @@ type NodeGraphStoreState = {
 	nodes: Map<bigint, FrontendNode>;
 	wirePathInProgress: WirePath | undefined;
 	nodeDescriptions: Map<string, string>;
+	nodeIcons: Map<string, IconName>;
 	nodeTypes: FrontendNodeType[];
 	thumbnails: Map<bigint, string>;
 	selected: bigint[];
@@ -37,6 +39,7 @@ const initialState: NodeGraphStoreState = {
 	nodes: new Map(),
 	wirePathInProgress: undefined,
 	nodeDescriptions: new Map(),
+	nodeIcons: new Map(),
 	nodeTypes: [],
 	thumbnails: new Map(),
 	selected: [],
@@ -76,6 +79,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	subscriptions.subscribeFrontendMessage("SendUIMetadata", (data) => {
 		update((state) => {
 			state.nodeDescriptions = new Map(data.nodeDescriptions);
+			state.nodeIcons = new Map(data.nodeIcons);
 			state.nodeTypes = data.nodeTypes;
 			return state;
 		});

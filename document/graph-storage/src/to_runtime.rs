@@ -51,19 +51,7 @@ impl Registry {
 		let mut node_metadata = Some(Vec::new());
 		let mut network_metadata = Some(Vec::new());
 
-		// Group nodes by their owning network in one pass, so each `convert_network` call (one per
-		// network, including nested ones) takes its node list by lookup instead of rescanning the whole
-		// flat `node_instances` map, which would be quadratic on graphs with many networks.
-		let mut nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &Node)>> = FxHashMap::default();
-		for (&global_id, node) in &self.node_instances {
-			nodes_by_network.entry(node.network).or_default().push((global_id, node));
-		}
-
-		let context = ConversionContext {
-			registry: self,
-			declarations,
-			nodes_by_network,
-		};
+		let context = ConversionContext::new(self, declarations);
 
 		// Reject cycles up front so the recursive conversion below can assume the network reference
 		// graph is acyclic and never blow the stack on a self-referential `Implementation::Network`.
@@ -82,7 +70,7 @@ impl Registry {
 		let mut registry = graphene_resource::ResourceRegistry::new();
 
 		for (id, entry) in &self.resources {
-			for (_, source) in &entry.sources {
+			for (_, source) in entry.live_sources() {
 				let decoded: graphene_resource::DataSource = from_value(&source.source).map_err(|error| ConversionError::DeserializationError(error.to_string()))?;
 				registry.push_source_back(id, decoded);
 			}
@@ -102,6 +90,26 @@ struct ConversionContext<'a> {
 	registry: &'a Registry,
 	declarations: &'a Declarations,
 	nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &'a Node)>>,
+}
+
+impl<'a> ConversionContext<'a> {
+	fn new(registry: &'a Registry, declarations: &'a Declarations) -> Self {
+		let mut nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &Node)>> = FxHashMap::default();
+		for (&global_id, node) in &registry.node_instances {
+			nodes_by_network.entry(node.network).or_default().push((global_id, node));
+		}
+		Self {
+			registry,
+			declarations,
+			nodes_by_network,
+		}
+	}
+}
+
+/// The id the node had in the runtime it was converted from, kept as an attribute so a conversion back
+/// lands it under the id the editor's metadata is keyed by.
+fn runtime_node_id(global_id: NodeId, node: &Node) -> RuntimeNodeId {
+	RuntimeNodeId(node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0))
 }
 
 /// Converts a single network. Recurses through `Implementation::Network` owning nodes.
@@ -166,7 +174,7 @@ fn convert_network(
 	node_collector: &mut Option<Vec<NodeMetadataEntry>>,
 	network_collector: &mut Option<Vec<NetworkMetadataEntry>>,
 ) -> Result<NodeNetwork, ConversionError> {
-	let network = context.registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
+	let network = context.registry.network_or_removed(network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	if let Some(collector) = network_collector.as_mut() {
 		collector.push(extract_network_metadata(context.registry, &network.attributes, metadata_path, network_id));
@@ -174,8 +182,8 @@ fn convert_network(
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
-		let local_id = node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0);
-		let runtime_id = RuntimeNodeId(local_id);
+		let runtime_id = runtime_node_id(global_id, node);
+		let local_id = runtime_id.0;
 
 		if let Some(collector) = node_collector.as_mut() {
 			collector.push(extract_ui_metadata(node, global_id, metadata_path, runtime_id));
@@ -232,8 +240,7 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 				});
 			};
 
-			let local_id = referenced.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(storage_id.0);
-			Ok((key, (RuntimeNodeId(local_id), ty)))
+			Ok((key, (runtime_node_id(storage_id, referenced), ty)))
 		})
 		.collect()
 }
@@ -271,8 +278,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
 	let to_runtime_id = |storage_id: NodeId| {
 		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
-		let local_id = node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(storage_id.0);
-		Some(RuntimeNodeId(local_id))
+		Some(runtime_node_id(storage_id, node))
 	};
 
 	let pinned_order = attributes
@@ -293,7 +299,7 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 /// Reassembles `input_data` by scanning every attribute under `ui::input_data::` and stripping the prefix.
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
 	let input_data: HashMap<String, Value> = attributes
-		.iter()
+		.live()
 		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
 		.collect();
 
@@ -335,20 +341,22 @@ fn convert_node(
 fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
 		NodeInput::Node { id: node_id, index: output_index } => {
-			let referenced = registry.node_instances.get(node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
+			// A node removed concurrently keeps its id, as the editor holds a dangling input. So does one whose addition has not
+			// arrived yet, though its placeholder knows nothing of its network.
+			let referenced = registry.node_or_removed(*node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
+			let placeholder = registry.removed_nodes.get(node_id).is_some_and(|mark| mark.placeholder);
 
 			// Runtime references are local to one network. A cross-network reference would remap to a
 			// local ID that doesn't exist in the current runtime network, so reject it.
-			if referenced.network != network_id {
+			if !placeholder && referenced.network != network_id {
 				return Err(ConversionError::CrossNetworkReference {
 					network: network_id,
 					referenced: *node_id,
 				});
 			}
 
-			let local_id = referenced.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(node_id.0);
 			GraphCraftNodeInput::Node {
-				node_id: RuntimeNodeId(local_id),
+				node_id: runtime_node_id(*node_id, referenced),
 				output_index: *output_index as usize,
 			}
 		}

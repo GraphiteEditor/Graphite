@@ -54,6 +54,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, No
 use graphene_std::Appearance;
 use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
+use graphene_std::registry::MULTI_OUTPUT_NODES;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
 use graphene_std::vector::{Vector, VectorModificationType};
@@ -90,6 +91,15 @@ pub struct NodeNetworkInterface {
 	/// a set of changes.
 	#[serde(skip)]
 	deltas: Vec<EditorDelta>,
+	/// The document network nodes the open transaction has written to, read from `deltas`, for the Layers panel to highlight during an edit like a drag.
+	#[serde(skip)]
+	transaction_edited_nodes: HashSet<NodeId>,
+	/// How far into `deltas` the reading for `transaction_edited_nodes` has reached.
+	#[serde(skip)]
+	transaction_edited_nodes_scanned: usize,
+	/// Whether `transaction_edited_nodes` changed since `update_transaction_edited_nodes` last reported it.
+	#[serde(skip)]
+	transaction_edited_nodes_changed: bool,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -101,6 +111,9 @@ impl Clone for NodeNetworkInterface {
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
 			deltas: Vec::new(),
+			transaction_edited_nodes: HashSet::new(),
+			transaction_edited_nodes_scanned: 0,
+			transaction_edited_nodes_changed: false,
 		}
 	}
 }

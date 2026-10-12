@@ -1,9 +1,10 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, onDestroy, onMount } from "svelte";
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{
 		value: string;
@@ -25,17 +26,48 @@
 	export let monospace = false;
 	export let narrow = false;
 	export let textarea = false;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	export let hideContextMenu = false;
 
+	let self: LayoutRow | undefined;
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
 	let id = String(Math.random()).substring(2);
 	let macKeyboardLayout = operatingSystem() === "Mac";
 
+	// While editing, the field keeps its prior width since the label hides and the text no longer sizes it
+	let editing = false;
+	let unfocusedWidth: number | undefined = undefined;
+	let editingWidth: number | undefined = undefined;
+	const resizeObserver = new ResizeObserver(([entry]) => {
+		if (!editing) unfocusedWidth = entry.borderBoxSize[0].inlineSize;
+	});
+
 	$: dispatch("value", value);
+
+	onMount(() => {
+		const element = self?.div();
+		if (element) resizeObserver.observe(element);
+	});
+
+	onDestroy(() => resizeObserver.disconnect());
+
+	function onFocus() {
+		editing = true;
+		editingWidth = unfocusedWidth;
+
+		dispatch("textFocused");
+	}
+
+	function onBlur() {
+		editing = false;
+		editingWidth = undefined;
+
+		dispatch("textChanged");
+	}
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
@@ -76,7 +108,25 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, monospace, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut} {...$$restProps}>
+<LayoutRow
+	class={`field-input ${className}`}
+	classes={{ disabled, narrow, monospace, ...classes }}
+	style={styleName}
+	styles={{
+		...styles,
+		...widgetSizingStyles(sizing),
+		...(editingWidth !== undefined ? { width: `${editingWidth}px` } : {}),
+	}}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
+	bind:this={self}
+	{...$$restProps}
+>
+	{#if label}
+		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+		<div class="after-label-spacer"></div>
+	{/if}
 	{#if !textarea}
 		<input
 			type="text"
@@ -87,8 +137,8 @@
 			{placeholder}
 			bind:this={inputOrTextarea}
 			bind:value
-			on:focus={() => dispatch("textFocused")}
-			on:blur={() => dispatch("textChanged")}
+			on:focus={onFocus}
+			on:blur={onBlur}
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Escape" && cancel()}
@@ -106,29 +156,44 @@
 			{disabled}
 			bind:this={inputOrTextarea}
 			bind:value
-			on:focus={() => dispatch("textFocused")}
-			on:blur={() => dispatch("textChanged")}
+			on:focus={onFocus}
+			on:blur={onBlur}
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
+			data-input-element
 		></textarea>
-	{/if}
-	{#if label}
-		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
 	{/if}
 	<slot />
 </LayoutRow>
 
 <style lang="scss">
 	.field-input {
-		min-width: 80px;
 		height: auto;
 		position: relative;
+		overflow: hidden;
 		border-radius: 2px;
 		background: var(--color-1-nearblack);
-		flex-direction: row-reverse;
+
+		// Firefox before 152 (June 2026) and Safari before 26.2 (Dec 2025) lack this, so they assume the input text field is 30px wide, as set by `min-width: 30px` below
+		@supports (field-sizing: content) {
+			input[type="text"]:not(:focus) {
+				field-sizing: content;
+				flex: 1 1 auto;
+				width: auto;
+				min-width: auto;
+
+				&.has-label {
+					flex: 0 0 auto;
+				}
+			}
+
+			label {
+				flex: 1 1 0;
+			}
+		}
 
 		&.narrow.narrow {
 			--widget-height: 20px;
@@ -142,14 +207,20 @@
 		}
 
 		label {
-			flex: 0 0 auto;
+			flex: 1 1 auto;
 			line-height: calc(var(--widget-height) - 6px);
 			padding: 3px 0;
-			padding-right: 4px;
 			margin-left: 8px;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
+
+			// This keeps the label, when abbreviated by ellipsis, from touching the number value.
+			// This only shrinks after the label has shrunk to 0 (which is why this is a separate element, not margin or padding on the label or input).
+			+ .after-label-spacer {
+				width: 4px;
+				flex: 0 1 auto;
+			}
 		}
 
 		&:not(.disabled) label {
@@ -182,10 +253,13 @@
 
 			&:focus {
 				text-align: left;
+			}
+		}
 
-				& + label {
-					display: none;
-				}
+		&:has(input[type="text"]:focus) {
+			label,
+			.after-label-spacer {
+				display: none;
 			}
 		}
 

@@ -221,11 +221,13 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 			peer,
 		};
 		let body = to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
-		entry.set_source(
+		// Built rather than written: the chain is put in place as converted, floor and all at the origin.
+		entry.force_set_source(
 			key,
 			crate::SourceValue {
 				source: body,
 				timestamp: TimeStamp::ORIGIN,
+				deleted: false,
 			},
 		);
 	}
@@ -339,7 +341,15 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 	write_ui_network_attributes(&mut attributes, node_network, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 
-	registry.networks.insert(network_id, Network { exports, attributes });
+	registry.networks.insert(
+		network_id,
+		Network {
+			presence: TimeStamp::ORIGIN,
+			exports,
+			exports_timestamp: TimeStamp::ORIGIN,
+			attributes,
+		},
+	);
 	ctx.network_ids.insert(metadata_path.to_vec(), network_id);
 
 	Ok(())
@@ -411,6 +421,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	let mut inputs = Vec::with_capacity(doc_node.inputs.len());
 	for (input_index, input) in doc_node.inputs.iter().enumerate() {
 		let mut input_attrs = convert_input_attributes(input)?;
+		input_attrs.set_floor(timestamp);
 		write_ui_input_attributes(&mut input_attrs, ctx.metadata, metadata_path, runtime_node_id, input_index, timestamp)?;
 
 		inputs.push(InputSlot {
@@ -432,7 +443,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	let implementation = convert_implementation(&doc_node.implementation, &node_path, child_metadata_path, registry, ctx, recurse)?;
 
 	// Defaults match `DocumentNode::default()`; `to_runtime` rehydrates absent keys from the same defaults.
-	let mut attributes = crate::Attributes::new();
+	let mut attributes = crate::Attributes::empty_at(timestamp);
 	attributes
 		.set_if_not_default(node::CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
 		.map_err(map_serialization_error(node::CALL_ARGUMENT))?;
@@ -449,6 +460,9 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	write_ui_attributes(&mut attributes, ctx.metadata, metadata_path, runtime_node_id, timestamp)?;
 
 	Ok(Node {
+		presence: timestamp,
+		network_timestamp: timestamp,
+		inputs_timestamp: timestamp,
 		implementation,
 		implementation_timestamp: timestamp,
 		inputs,
@@ -812,7 +826,15 @@ impl<'m> ScopedConversion<'m> {
 		write_ui_network_attributes(&mut attributes, node_network, local_path, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 		write_scope_injections(&mut attributes, node_network, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 
-		registry.networks.insert(network_id, Network { exports, attributes });
+		registry.networks.insert(
+			network_id,
+			Network {
+				presence: TimeStamp::ORIGIN,
+				exports,
+				exports_timestamp: TimeStamp::ORIGIN,
+				attributes,
+			},
+		);
 		Ok(())
 	}
 

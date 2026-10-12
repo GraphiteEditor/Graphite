@@ -195,8 +195,15 @@ impl<L: Layout> Gdd<L> {
 		if options.include_registry {
 			// With history, the persisted snapshot is the retired registry and the hot log layers on top
 			// (mirrors `Session::load`); without history it must be the full working registry, since
-			// `bootstrap_from_registry` reconstructs the whole document from it alone.
-			let snapshot = if options.include_history { export_session.retired_registry() } else { export_session.registry() };
+			// `bootstrap_from_registry` reconstructs the whole document from it alone. That document starts a history of
+			// its own, so the tombstones go.
+			let live;
+			let snapshot = if options.include_history {
+				export_session.retired_registry()
+			} else {
+				live = export_session.registry().without_tombstones();
+				&live
+			};
 			sink.write_entry(&io::path_for(self.layout.registry_basename(), codecs.registry), &codecs.registry.write_single(snapshot)?)?;
 		}
 

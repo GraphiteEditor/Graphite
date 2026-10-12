@@ -1,5 +1,5 @@
 use super::document_diff::diff_networks;
-use super::node_graph::document_node_definitions;
+use super::node_graph::{document_node_definitions, node_properties};
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -23,12 +23,13 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
-use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
+use crate::messages::tool::tool_messages::select_tool::{SelectToolPointerKeys, draw_layer_outline};
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -37,7 +38,7 @@ use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::application_io::wgpu_available;
-use graph_craft::document::value::TaggedValue;
+use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
 use graphene_std::Cover;
@@ -61,6 +62,7 @@ pub struct DocumentMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
@@ -68,6 +70,16 @@ pub struct DocumentMessageContext<'a> {
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
+}
+
+/// The selection split by how it's duplicated and copied.
+pub struct SelectionParts {
+	/// The shallowest selected layers in the layer structure, which bring their content along.
+	pub layers: Vec<LayerNodeIdentifier>,
+	/// The selected reorderable nodes of other layers' chains, in the Layers panel's order.
+	pub chain_nodes: Vec<NodeId>,
+	/// Every other selected node, outside the content of the layers above.
+	pub other_nodes: Vec<NodeId>,
 }
 
 #[derive(derivative::Derivative, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -104,6 +116,12 @@ pub struct DocumentMessageHandler {
 	/// The node IDs whose section is collapsed in the Properties panel.
 	#[serde(default)]
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
+	/// The input (if any) whose feeding chain a node's Properties panel section shows within it, for each node where that differs from the default of a layer's chain input.
+	#[serde(default)]
+	pub properties_panel_expanded_input_chains: Vec<(NodeId, Option<usize>)>,
+	/// The layer node IDs whose chain is expanded into a row per node in the Layers panel.
+	#[serde(default)]
+	pub layers_panel_expanded_chains: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	#[serde(skip_deserializing, default)]
@@ -164,6 +182,12 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// The ID of the chain node at the start of a range selection among a layer's chain node icons in the Layers panel, working like `layer_range_selection_reference`.
+	#[serde(skip)]
+	chain_node_range_selection_reference: Option<NodeId>,
+	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
+	#[serde(skip)]
+	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -187,6 +211,8 @@ impl Default for DocumentMessageHandler {
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			properties_panel_collapsed_sections: Vec::new(),
+			properties_panel_expanded_input_chains: Vec::new(),
+			layers_panel_expanded_chains: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -209,6 +235,8 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+			chain_node_range_selection_reference: None,
+			layers_panel_hovered_layer: None,
 			is_loaded: false,
 		}
 	}
@@ -223,6 +251,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			executor,
 			viewport,
 			current_tool,
+			tool_edit_target,
 			preferences,
 			data_panel_open,
 			layers_panel_open,
@@ -260,10 +289,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
-					document_name: self.name.as_str(),
 					fonts,
 					properties_panel_open,
 					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					properties_panel_expanded_input_chains: &self.properties_panel_expanded_input_chains,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -273,6 +302,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses,
 					DataPanelMessageContext {
 						network_interface: &mut self.network_interface,
+						selection_network_path: &self.selection_network_path,
 						data_panel_open,
 					},
 				);
@@ -288,12 +318,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						document_id,
 						collapsed: &mut self.collapsed,
 						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
+						properties_panel_expanded_input_chains: &mut self.properties_panel_expanded_input_chains,
+						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
 						preferences,
 						layers_panel_open,
+						tool_edit_target,
 						viewport,
 					},
 				);
@@ -316,7 +349,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					AlignAxis::X => DVec2::X,
 					AlignAxis::Y => DVec2::Y,
 				};
-				let Some(combined_box) = self.network_interface.selected_layers_artwork_bounding_box_viewport() else {
+				// Locked layers stay put but still count toward the bounds the others align to
+				let selected_nodes = self.network_interface.selected_nodes();
+				let Some(combined_box) = selected_nodes
+					.selected_visible_layers(&self.network_interface)
+					.filter_map(|layer| self.metadata().bounding_box_viewport(layer))
+					.reduce(Quad::combine_bounds)
+				else {
 					return;
 				};
 
@@ -327,7 +366,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 
 				let mut added_transaction = false;
-				for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
+				for layer in selected_nodes.selected_visible_and_unlocked_layers(&self.network_interface) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
@@ -364,15 +403,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					layout: Layout::default(),
 					layout_target: LayoutTarget::LayersPanelControlLeftBar,
 				});
-				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::default(),
-					layout_target: LayoutTarget::LayersPanelControlRightBar,
-				});
 
 				// Clear the bottom bar
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout::default(),
-					layout_target: LayoutTarget::LayersPanelBottomBar,
+					layout_target: LayoutTarget::LayersPanelBottomLeftBar,
+				});
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::default(),
+					layout_target: LayoutTarget::LayersPanelBottomRightBar,
 				});
 			}
 			DocumentMessage::CreateEmptyFolder => {
@@ -412,6 +451,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DeselectAllLayers => {
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
+				self.chain_node_range_selection_reference = None;
 			}
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
@@ -464,11 +504,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::DuplicateSelectedLayers => {
+				let SelectionParts { mut layers, chain_nodes, other_nodes } = self.partition_selection();
+				if layers.is_empty() && chain_nodes.is_empty() && other_nodes.is_empty() {
+					return;
+				}
+
 				responses.add(DocumentMessage::AddTransaction);
 
+				// Layers in the layer structure are copied with their content into the stack beside their originals
 				let mut new_dragging = Vec::new();
-				let mut layers = self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
-
 				layers.sort_by_key(|layer| {
 					let Some(parent) = layer.parent(self.metadata()) else { return usize::MAX };
 					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
@@ -488,7 +532,24 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				let nodes = new_dragging.iter().map(|layer| layer.to_node()).collect();
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+
+				// Each chain node goes beside itself in its chain, as if duplicated one at a time
+				for node_id in chain_nodes {
+					responses.add(NodeGraphMessage::DuplicateChainNodes {
+						node_ids: vec![node_id],
+						destination: None,
+						select_copies: true,
+					});
+				}
+
+				// The other nodes go into their primary flow, or loose when in none
+				if !other_nodes.is_empty() {
+					responses.add(NodeGraphMessage::DuplicateNodesInFlow { node_ids: other_nodes });
+				}
+
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
@@ -623,11 +684,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					FlipAxis::X => DVec2::new(-1., 1.),
 					FlipAxis::Y => DVec2::new(1., -1.),
 				};
-				if let Some([min, max]) = self.network_interface.selected_unlocked_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.network_interface.selected_visible_and_unlocked_layers_bounding_box_viewport() {
 					let center = (max + min) / 2.;
 					let bbox_trans = DAffine2::from_translation(-center);
 					let mut added_transaction = false;
-					for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
+					for layer in self.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&self.network_interface) {
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -643,14 +704,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::RotateSelectedLayers { degrees } => {
 				// Get the bounding box of selected layers in viewport space
-				if let Some([min, max]) = self.network_interface.selected_unlocked_layers_bounding_box_viewport() {
+				if let Some([min, max]) = self.network_interface.selected_visible_and_unlocked_layers_bounding_box_viewport() {
 					// Calculate the center of the bounding box to use as rotation pivot
 					let center = (max + min) / 2.;
 					// Transform that moves pivot point to origin
 					let bbox_trans = DAffine2::from_translation(-center);
 
 					let mut added_transaction = false;
-					for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
+					for layer in self.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&self.network_interface) {
 						if !added_transaction {
 							responses.add(DocumentMessage::AddTransaction);
 							added_transaction = true;
@@ -690,7 +751,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
-					responses.add(NodeGraphMessage::UpdateEdges);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
@@ -713,6 +773,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::LayersPanelHoverOverlays { context: mut overlay_context } => {
+				let Some(layer) = self.layers_panel_hovered_layer else { return };
+				if !overlay_context.visibility_settings.hover_outline() {
+					return;
+				}
+
+				// Outlined like the Select tool's hover, with groups and artboards shown by their bounding box
+				if layer.has_children(self.metadata()) || self.network_interface.is_artboard(&layer.to_node(), &[]) {
+					if let Some(bounds) = self.metadata().bounding_box_viewport(layer) {
+						overlay_context.quad(Quad::from_box(bounds), None, None);
+					}
+				} else {
+					draw_layer_outline(&mut overlay_context, self, layer, None);
+				}
 			}
 			DocumentMessage::BlendSelectedLayers => {
 				self.group_selected_layers(GroupFolderType::Blend, responses);
@@ -744,7 +819,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				self.move_selected_layers_to(parent, insert_index, responses);
 			}
-			DocumentMessage::ReorderPropertiesSection { node_id, insert_index } => {
+			DocumentMessage::ReorderPropertiesSection { node_id, insert_index, duplicate } => {
 				// The Properties panel shows draggable sections in two cases, disambiguated by the current selection:
 				// a single selected layer (reorder within its node chain) or no selection (reorder the pinned nodes).
 				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path);
@@ -763,19 +838,111 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				layers.sort();
 				layers.dedup();
 
-				if layers.len() == 1 {
-					// Reorder a node within the selected layer's chain by rewiring the graph
-					responses.add(DocumentMessage::AddTransaction);
-					responses.add(NodeGraphMessage::ReorderChainNode { node_id, insert_index });
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(NodeGraphMessage::SendGraph);
-					responses.add(PropertiesPanelMessage::Refresh);
+				if let [layer] = *layers.as_slice() {
+					let node_ids = vec![node_id];
+					if duplicate {
+						responses.add(DocumentMessage::DuplicateChainNodes {
+							node_ids,
+							layer,
+							insert_index,
+							select_copies: false,
+						});
+					} else {
+						responses.add(DocumentMessage::MoveChainNodes { node_ids, layer, insert_index });
+					}
 				} else if layers.is_empty() && nodes.is_empty() {
-					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed)
+					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed, and nothing to duplicate into)
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::ReorderPinnedNode { node_id, insert_index });
 					responses.add(PropertiesPanelMessage::Refresh);
 				}
+			}
+			DocumentMessage::MoveChainNodes { node_ids, layer, insert_index } => {
+				// Move nodes within their layer's chain, or into another layer's, by rewiring the graph
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index });
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::DuplicateChainNodes {
+				node_ids,
+				layer,
+				insert_index,
+				select_copies,
+			} => {
+				// Insert copies of nodes into a layer's chain by rewiring the graph
+				responses.add(DocumentMessage::AddTransaction);
+				if select_copies {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+				}
+				responses.add(NodeGraphMessage::DuplicateChainNodes {
+					node_ids,
+					destination: Some((layer, insert_index)),
+					select_copies,
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::PasteChainNodes { copies } => {
+				// Layers and their chains live in the document network, so a nested one open in the graph has no chain to paste into
+				let (chain_nodes, layers) = if self.selection_network_path.is_empty() {
+					let layers = self.network_interface.selected_nodes().selected_layers(self.metadata()).map(|layer| layer.to_node()).collect();
+					(self.selected_reorderable_chain_nodes(), layers)
+				} else {
+					(Vec::new(), Vec::new())
+				};
+
+				// Selected chain nodes interleave with the copies: over the same selection that was copied, each node gets its own copy beside it (like duplicating),
+				// and over a different selection of the same size, the copies pair with those nodes in order. Otherwise, all the copies go beside every selected node.
+				let mut insertions = Vec::new();
+				let same_selection = chain_nodes.len() == copies.len() && copies.iter().all(|copy| chain_nodes.contains(&copy.source));
+				if same_selection {
+					insertions.extend(copies.iter().map(|copy| (ChainInsertionPoint::BesideNode(copy.source), vec![copy.clone()])));
+				} else if chain_nodes.len() == copies.len() {
+					insertions.extend(chain_nodes.iter().zip(&copies).map(|(node_id, copy)| (ChainInsertionPoint::BesideNode(*node_id), vec![copy.clone()])));
+				} else {
+					insertions.extend(chain_nodes.iter().map(|node_id| (ChainInsertionPoint::BesideNode(*node_id), copies.clone())));
+				}
+
+				// Each selected layer gets all the copies at the end of its chain
+				insertions.extend(layers.into_iter().map(|layer| (ChainInsertionPoint::BesideLayer(layer), copies.clone())));
+
+				// With no chain to go in, such as over an empty selection, the copies are pasted loose into the graph and shown there
+				if insertions.is_empty() {
+					let nodes = copies.into_iter().map(|copy| (copy.source, copy.into_loose_template())).collect();
+					responses.add(NodeGraphMessage::InsertNodes { nodes });
+					responses.add(DocumentMessage::ShowSelectionInGraph);
+					return;
+				}
+
+				// The pasted copies become the selection
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+				for (target, copies) in insertions {
+					responses.add(NodeGraphMessage::PasteIntoChain { target, copies });
+				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::PasteNodes { nodes } => {
+				// Over the same selection they were copied from, nodes are duplicated into their flow, and otherwise they're pasted loose into the graph and shown there
+				let other_nodes = self.partition_selection().other_nodes;
+				let copied = nodes.iter().map(|(node_id, _)| *node_id).collect::<HashSet<_>>();
+				let selected = self.with_layer_content(&other_nodes).into_iter().collect::<HashSet<_>>();
+				if !copied.is_empty() && copied == selected {
+					responses.add(DocumentMessage::AddTransaction);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() });
+					responses.add(NodeGraphMessage::DuplicateNodesInFlow { node_ids: other_nodes });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(NodeGraphMessage::SendGraph);
+					return;
+				}
+
+				responses.add(NodeGraphMessage::InsertNodes { nodes });
+				responses.add(DocumentMessage::ShowSelectionInGraph);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -1165,7 +1332,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
-				if !self.overlays_visibility_settings.selection_outline() {
+				// In the graph, select every node of the network it shows
+				if self.graph_view_overlay_open {
+					let Some(network_metadata) = self.network_interface.network_metadata(&self.selection_network_path) else {
+						return;
+					};
+					let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect();
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
 					return;
 				}
 
@@ -1255,6 +1428,38 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					}
 				}
 			}
+			DocumentMessage::SelectChainNode { layer, node_id, ctrl, shift } => {
+				// The layer's chain as listed beside it in the Layers panel, which a Shift-click range runs along
+				let chain = self.network_interface.layer_chain_nodes(layer, &[]);
+
+				let selected_nodes = self.network_interface.selected_nodes();
+				let range_start = self
+					.chain_node_range_selection_reference
+					.filter(|start| shift && selected_nodes.selected_nodes().any(|selected| selected == start))
+					.and_then(|start| chain.iter().position(|id| *id == start));
+				let clicked = chain.iter().position(|id| *id == node_id);
+
+				// Shift-clicking selects the range from the still-selected last clicked node in this chain, adding it with Ctrl
+				if let (Some(start), Some(end)) = (range_start, clicked) {
+					let nodes = chain[start.min(end)..=start.max(end)].to_vec();
+					if ctrl {
+						responses.add(NodeGraphMessage::SelectedNodesAdd { nodes });
+					} else {
+						responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
+					}
+					return;
+				}
+
+				// Otherwise, Ctrl-clicking toggles the node's selection while a plain click selects only it, either way starting a new range
+				if !ctrl {
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+				} else if self.network_interface.selected_nodes().selected_nodes().any(|selected| *selected == node_id) {
+					responses.add(NodeGraphMessage::SelectedNodesRemove { nodes: vec![node_id] });
+				} else {
+					responses.add(NodeGraphMessage::SelectedNodesAdd { nodes: vec![node_id] });
+				}
+				self.chain_node_range_selection_reference = Some(node_id);
+			}
 			DocumentMessage::SetActivePanel { active_panel } => {
 				match active_panel {
 					PanelType::Document => {
@@ -1279,6 +1484,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetGraphFadeArtwork { percentage } => {
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
+			}
+			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
+				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
+				if layer != self.layers_panel_hovered_layer {
+					self.layers_panel_hovered_layer = layer;
+					responses.add(OverlaysMessage::Draw);
+				}
 			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -1348,6 +1560,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetRenderMode { render_mode } => {
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
+			}
+			DocumentMessage::ShowNodeInGraph { node_id } => {
+				// The node is in the document network, so the graph first leaves any nested network it's showing
+				if !self.breadcrumb_network_path.is_empty() {
+					responses.add(DocumentMessage::ExitNestedNetwork {
+						steps_back: self.breadcrumb_network_path.len(),
+					});
+				}
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] });
+				responses.add(DocumentMessage::ShowSelectionInGraph);
+			}
+			DocumentMessage::ShowSelectionInGraph => {
+				// Opens the graph on the selection, centered at 100% zoom
+				responses.add(DocumentMessage::GraphViewOverlay { open: true });
+				responses.add(NavigationMessage::FitViewportToSelection);
+				responses.add(DocumentMessage::ZoomCanvasTo100Percent);
 			}
 			DocumentMessage::AddTransaction => {
 				// Reverse order since they are added to the front
@@ -1435,13 +1664,48 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id } => {
-				if let Some(index) = self.properties_panel_collapsed_sections.iter().position(|id| *id == node_id) {
-					self.properties_panel_collapsed_sections.remove(index);
+			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
+				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
+
+				// Recursively, every section nested within this one follows along
+				let node_ids = if recursive {
+					node_properties::nested_section_nodes(node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, &self.selection_network_path)
 				} else {
-					self.properties_panel_collapsed_sections.push(node_id);
+					vec![node_id]
+				};
+
+				for node_id in node_ids {
+					if expand {
+						self.properties_panel_collapsed_sections.retain(|id| *id != node_id);
+					} else if !self.properties_panel_collapsed_sections.contains(&node_id) {
+						self.properties_panel_collapsed_sections.push(node_id);
+					}
 				}
+
 				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index } => {
+				// A section shows at most one input's chain, so showing this one hides any other
+				let network_path = &self.selection_network_path;
+				let default = node_properties::default_expanded_input_chain(&node_id, &self.network_interface, network_path);
+				let current = node_properties::expanded_input_chain(&node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, network_path);
+				let expanded = (current != Some(input_index)).then_some(input_index);
+
+				self.properties_panel_expanded_input_chains.retain(|(id, _)| *id != node_id);
+				if expanded != default {
+					self.properties_panel_expanded_input_chains.push((node_id, expanded));
+				}
+
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::ToggleLayerChainExpanded { layer_id } => {
+				if self.layers_panel_expanded_chains.contains(&layer_id) {
+					self.layers_panel_expanded_chains.retain(|id| *id != layer_id);
+				} else {
+					self.layers_panel_expanded_chains.push(layer_id);
+				}
+
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
@@ -1565,20 +1829,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					log::error!("Ungrouping selected layers is only supported for the Document Network");
 					return;
 				}
+
+				// Artboards can't be ungrouped
+				let folders: Vec<_> = self
+					.network_interface
+					.folders_sorted_by_most_nested(&self.selection_network_path)
+					.into_iter()
+					.filter(|&folder| folder != LayerNodeIdentifier::ROOT_PARENT && !self.network_interface.is_artboard(&folder.to_node(), &self.selection_network_path))
+					.collect();
+				if folders.is_empty() {
+					return;
+				}
+
 				responses.add(DocumentMessage::AddTransaction);
 
-				let folder_paths = self.network_interface.folders_sorted_by_most_nested(&self.selection_network_path);
-				for folder in folder_paths {
-					if folder == LayerNodeIdentifier::ROOT_PARENT {
-						log::error!("ROOT_PARENT cannot be selected when ungrouping selected layers");
-						continue;
-					}
-
-					// Cannot ungroup artboard
-					if self.network_interface.is_artboard(&folder.to_node(), &self.selection_network_path) {
-						return;
-					}
-
+				for folder in folders {
 					responses.add(DocumentMessage::UngroupLayer { layer: folder });
 				}
 
@@ -1639,6 +1904,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
+					// The artwork behind the graph can be navigated too, so rerender it if its view changed
+					let artwork_transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+					if artwork_transform != self.network_interface.document_metadata().document_to_viewport {
+						self.network_interface.set_document_to_viewport_transform(artwork_transform);
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
 					};
@@ -1650,7 +1922,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
@@ -1776,11 +2047,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 		#[cfg(not(target_family = "wasm"))]
 		common.extend(actions!(DocumentMessageDiscriminant::SaveDocumentAs));
 
+		// Deleting, duplicating, and hiding apply to any selected nodes, not just layers, such as chain nodes selected in the Layers panel
+		if self.network_interface.selected_nodes().has_selected_nodes() {
+			common.extend(actions!(DocumentMessageDiscriminant;
+				DeleteSelectedLayers,
+				DuplicateSelectedLayers,
+			));
+			if !self.graph_view_overlay_open {
+				common.extend(actions!(DocumentMessageDiscriminant::ToggleSelectedVisibility));
+			}
+		}
+
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some() {
 			let mut select = actions!(DocumentMessageDiscriminant;
-				DeleteSelectedLayers,
-				DuplicateSelectedLayers,
 				GroupSelectedLayers,
 				BlendSelectedLayers,
 				MorphSelectedLayers,
@@ -1792,10 +2072,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				ToggleSelectedLocked
 			);
 			if !self.graph_view_overlay_open {
-				select.extend(actions!(DocumentMessageDiscriminant;
-					NudgeSelectedLayers,
-					ToggleSelectedVisibility,
-				));
+				select.extend(actions!(DocumentMessageDiscriminant::NudgeSelectedLayers));
 			}
 			common.extend(select);
 		}
@@ -2174,7 +2451,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
+		let document_message_handler = deserialize_replacing_null_floats_with_zero::<DocumentMessageHandler>(serialized_content)
 			.or_else(|e| {
 				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
@@ -2569,6 +2846,72 @@ impl DocumentMessageHandler {
 		self.network_interface
 			.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, include_self)
 			.unwrap_or_else(|| self.network_interface.all_artboards().iter().next().copied().unwrap_or(LayerNodeIdentifier::ROOT_PARENT))
+	}
+
+	/// The selection split the way it's duplicated and copied. Inside a nested network open in the graph, every selected node counts among the other nodes.
+	pub fn partition_selection(&self) -> SelectionParts {
+		let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path).unwrap_or_default();
+		let selected_nodes = selected_nodes.selected_nodes().copied().collect::<Vec<_>>();
+		if !self.selection_network_path.is_empty() {
+			return SelectionParts {
+				layers: Vec::new(),
+				chain_nodes: Vec::new(),
+				other_nodes: selected_nodes,
+			};
+		}
+
+		let layers = self.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+		let layer_nodes = layers.iter().map(|layer| layer.to_node()).collect::<Vec<_>>();
+		let mut other_nodes = selected_nodes.into_iter().filter(|node_id| !layer_nodes.contains(node_id)).collect::<Vec<_>>();
+
+		// Usually only layers are selected, which skips walking their content
+		let mut chain_nodes = Vec::new();
+		if !other_nodes.is_empty() {
+			let layer_content = self
+				.network_interface
+				.upstream_flow_back_from_nodes(layer_nodes, &[], FlowType::LayerChildrenUpstreamFlow)
+				.collect::<HashSet<_>>();
+			other_nodes.retain(|node_id| !layer_content.contains(node_id));
+
+			chain_nodes = self.selected_reorderable_chain_nodes().into_iter().filter(|node_id| other_nodes.contains(node_id)).collect();
+			other_nodes.retain(|node_id| !chain_nodes.contains(node_id));
+		}
+
+		SelectionParts { layers, chain_nodes, other_nodes }
+	}
+
+	/// The given nodes along with the content of any layers among them, in the network open in the graph.
+	pub fn with_layer_content(&self, node_ids: &[NodeId]) -> Vec<NodeId> {
+		let layers = node_ids
+			.iter()
+			.copied()
+			.filter(|node_id| self.network_interface.is_layer(node_id, &self.selection_network_path))
+			.collect();
+		let content = self
+			.network_interface
+			.upstream_flow_back_from_nodes(layers, &self.selection_network_path, FlowType::LayerChildrenUpstreamFlow);
+
+		node_ids.iter().copied().chain(content).collect::<HashSet<_>>().into_iter().collect()
+	}
+
+	/// The selected nodes that can be reordered in layers' chains, ordered by their layer's place in the Layers panel, then from the layer outward.
+	pub fn selected_reorderable_chain_nodes(&self) -> Vec<NodeId> {
+		let selected_nodes = self.network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
+
+		// Only walk the layers' chains, in O(nodes in all chains), when something other than layers is selected
+		if selected_nodes.iter().all(|node_id| self.network_interface.is_layer(node_id, &[])) {
+			return Vec::new();
+		}
+
+		let mut chain_nodes = Vec::new();
+		for layer in self.metadata().all_layers() {
+			for node_id in self.network_interface.reorderable_chain(layer.to_node(), &[]) {
+				if selected_nodes.contains(&node_id) && !chain_nodes.contains(&node_id) {
+					chain_nodes.push(node_id);
+				}
+			}
+		}
+		chain_nodes
 	}
 
 	pub fn get_calculated_insert_index(metadata: &DocumentMetadata, selected_nodes: &SelectedNodes, parent: LayerNodeIdentifier) -> usize {
@@ -3512,24 +3855,12 @@ impl DocumentMessageHandler {
 			})
 			.collect();
 
-		let has_selection = self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some();
-		let selection_all_visible = self
-			.network_interface
-			.selected_nodes()
-			.selected_layers(self.metadata())
-			.all(|layer| self.network_interface.is_visible(&layer.to_node(), &[]));
-		let selection_all_locked = self
-			.network_interface
-			.selected_nodes()
-			.selected_layers(self.metadata())
-			.all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
-
 		let widgets = vec![
 			DropdownInput::new(blend_mode_menu_entries)
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 				.disabled(disabled)
 				.draw_icon(false)
-				.max_width(100)
+				.sizing(WidgetSizing::default().grow(false))
 				.tooltip_label("Blend Mode")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3551,7 +3882,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
-				.max_width(100)
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Opacity")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3573,37 +3904,13 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
-				.max_width(100)
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Fill Opacity")
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::row(widgets)]);
-
-		let widgets = vec![
-			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
-				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
-				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
-				.disabled(!has_selection)
-				.widget_instance(),
-			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
-				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
-				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
-				.disabled(!has_selection)
-				.widget_instance(),
-		];
-		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::row(widgets)]);
-
 		responses.add(LayoutMessage::SendLayout {
-			layout: layers_panel_control_bar_left,
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
 			layout_target: LayoutTarget::LayersPanelControlLeftBar,
-		});
-		responses.add(LayoutMessage::SendLayout {
-			layout: layers_panel_control_bar_right,
-			layout_target: LayoutTarget::LayersPanelControlRightBar,
 		});
 	}
 
@@ -3618,6 +3925,31 @@ impl DocumentMessageHandler {
 		let has_selection = selected_layer.is_some();
 		let has_multiple_selection = selected_layers.next().is_some();
 		for _ in selected_layers {}
+
+		// Visibility applies to every selected node, layer or not, while locking applies to layers
+		let selection_all_visible = selected_nodes.selected_nodes().all(|node_id| self.network_interface.is_visible(node_id, &[]));
+		let selection_all_locked = selected_nodes.selected_layers(self.metadata()).all(|layer| self.network_interface.is_locked(&layer.to_node(), &[]));
+
+		let widgets = vec![
+			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
+				.hover_icon(if selection_all_visible { "EyeHide" } else { "EyeShow" })
+				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
+				.disabled(!selected_nodes.has_selected_nodes())
+				.widget_instance(),
+			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
+				.hover_icon(if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" })
+				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
+				.disabled(!has_selection)
+				.widget_instance(),
+		];
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
+			layout_target: LayoutTarget::LayersPanelBottomLeftBar,
+		});
 
 		let widgets = vec![
 			PopoverButton::new()
@@ -3664,6 +3996,7 @@ impl DocumentMessageHandler {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
+				.drag_drop_kinds(DragDropKinds::Layers)
 				.disabled(!has_selection)
 				.widget_instance(),
 			IconButton::new("NewLayer", 24)
@@ -3671,18 +4004,21 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.on_drag_drop(|_| DocumentMessage::DuplicateSelectedLayers.into())
+				.drag_drop_kinds(DragDropKinds::LayersAndChainNodes)
+				.disabled(!has_selection && selected_nodes.has_selected_nodes())
 				.widget_instance(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.on_drag_drop(|_| DocumentMessage::DeleteSelectedLayers.into())
-				.disabled(!has_selection)
+				.drag_drop_kinds(DragDropKinds::LayersAndChainNodes)
+				.disabled(!selected_nodes.has_selected_nodes())
 				.widget_instance(),
 		];
 		responses.add(LayoutMessage::SendLayout {
 			layout: Layout(vec![LayoutGroup::row(widgets)]),
-			layout_target: LayoutTarget::LayersPanelBottomBar,
+			layout_target: LayoutTarget::LayersPanelBottomRightBar,
 		});
 	}
 
@@ -3978,6 +4314,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.min(0.000001)
 			.max(1000000.)
 			.tooltip_label(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
+			.sizing(WidgetSizing::default().min_width(80))
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,
@@ -4125,6 +4462,37 @@ mod document_message_handler_tests {
 		assert!(!selected_nodes.selected_layers_contains(layers[0], document.metadata()));
 		assert!(!selected_nodes.selected_layers_contains(layers[1], document.metadata()));
 		assert!(selected_nodes.selected_layers_contains(layers[2], document.metadata()));
+	}
+
+	#[tokio::test]
+	async fn select_all_selects_every_node_in_the_graph_but_only_layers_outside_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+
+		let document = editor.active_document();
+		let all_nodes: HashSet<_> = document.network_interface.document_network().nodes.keys().copied().collect();
+		let selected: HashSet<_> = document.network_interface.selected_nodes().selected_nodes().copied().collect();
+		assert!(
+			all_nodes.iter().any(|node_id| !document.network_interface.is_layer(node_id, &[])),
+			"The rectangle should bring non-layer nodes"
+		);
+		assert_eq!(selected, all_nodes, "In the graph, Select All should select every node");
+
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: false }).await;
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+
+		let document = editor.active_document();
+		let selected: Vec<_> = document.network_interface.selected_nodes().selected_nodes().copied().collect();
+		assert!(!selected.is_empty(), "Outside the graph, Select All should select the layer");
+		assert!(
+			selected.iter().all(|node_id| document.network_interface.is_layer(node_id, &[])),
+			"Outside the graph, Select All should select only layers"
+		);
 	}
 
 	#[tokio::test]
@@ -4388,5 +4756,34 @@ mod document_message_handler_tests {
 			.filter(|graphic| matches!(graphic, graphene_std::Graphic::None(_)))
 			.count();
 		assert_eq!(phantom_count, 0, "No stacked element should be a phantom None graphic");
+	}
+
+	#[tokio::test]
+	async fn converting_to_an_infinite_canvas_adds_a_locked_background_at_the_bottom() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewArtboard {
+				id: NodeId::new(),
+				location: DVec2::ZERO,
+				dimensions: DVec2::splat(200.),
+				background: Color::WHITE,
+				clip: true,
+			})
+			.await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		editor.handle_message(DocumentMessage::RemoveArtboards).await;
+
+		let document = editor.active_document();
+		let network_interface = &document.network_interface;
+		let root_layers: Vec<_> = LayerNodeIdentifier::ROOT_PARENT.children(document.metadata()).collect();
+		assert!(root_layers.iter().all(|layer| !network_interface.is_artboard(&layer.to_node(), &[])), "No artboards should remain");
+		assert_eq!(root_layers.len(), 2, "The artboard should become a plain layer above the background");
+		assert_eq!(root_layers[0].children(document.metadata()).count(), 1, "The artboard's content should stay in its replacement layer");
+
+		let background = root_layers[1].to_node();
+		assert_eq!(network_interface.display_name(&background, &[]), "Background");
+		assert!(network_interface.is_locked(&background, &[]), "The background should be locked");
 	}
 }

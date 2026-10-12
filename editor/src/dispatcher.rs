@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
@@ -56,16 +57,29 @@ impl DispatcherMessageHandlers {
 	}
 }
 
-/// For optimization, these are messages guaranteed to be redundant when repeated.
-/// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
-/// In addition, these messages do not change any state in the backend (aside from caches).
+/// For optimization, these messages are deferred to the end of the outermost queue, where equal copies are dropped.
+/// Each must only refresh a cache, a layout, the frontend, or a render from the current state, so one run at the end matches running every copy.
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::UpdateLayerPanel,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendWires))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::UpdateVisibleNodes,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::SendSelectedNodes,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::UpdateGraphBarRight,
+	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitEyedropperPreviewRender),
+	MessageDiscriminant::MenuBar(MenuBarMessageDiscriminant::SendLayout),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
@@ -258,6 +272,7 @@ impl Dispatcher {
 							ipp: &self.message_handlers.input_preprocessor_message_handler,
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+							tool_edit_target: &self.message_handlers.tool_message_handler.edit_target,
 							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
@@ -284,26 +299,45 @@ impl Dispatcher {
 						.active_document_id
 						.and_then(|document_id| self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id))
 					{
-						let selected_nodes = document.network_interface.selected_nodes();
-						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
+						let selected_nodes = document.network_interface.selected_nodes_in_nested_network(document.selection_network_path()).unwrap_or_default();
+						let network_interface = &document.network_interface;
+						let layer_metadata = document.metadata();
+						let metadata = &network_interface.document_network_metadata().persistent_metadata;
+
+						// Layers only exist in the document network, so a selection inside a subgraph has none
+						let in_document_network = document.selection_network_path().is_empty();
 
 						menu_bar_message_handler.has_active_document = true;
 						menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
 						menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
 						menu_bar_message_handler.rulers_visible = document.rulers_visible;
 						menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
+						menu_bar_message_handler.has_artboards = LayerNodeIdentifier::ROOT_PARENT
+							.children(layer_metadata)
+							.any(|layer| network_interface.is_artboard(&layer.to_node(), &[]));
 						menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
-						menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+						menu_bar_message_handler.has_selected_layers = in_document_network && selected_nodes.selected_layers(layer_metadata).next().is_some();
+						menu_bar_message_handler.has_selected_visible_layers = in_document_network && selected_nodes.selected_visible_layers(network_interface).next().is_some();
+						menu_bar_message_handler.has_selected_visible_and_unlocked_layers =
+							in_document_network && selected_nodes.selected_visible_and_unlocked_layers(network_interface).next().is_some();
+						menu_bar_message_handler.has_selected_groups = in_document_network
+							&& selected_nodes
+								.selected_layers(layer_metadata)
+								.any(|layer| layer.has_children(layer_metadata) && !network_interface.is_artboard(&layer.to_node(), &[]));
 						menu_bar_message_handler.has_selection_history = (!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty());
-						menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+						menu_bar_message_handler.make_path_editable_is_allowed = in_document_network && make_path_editable_is_allowed(&mut document.network_interface).is_some();
 					} else {
 						menu_bar_message_handler.has_active_document = false;
 						menu_bar_message_handler.canvas_tilted = false;
 						menu_bar_message_handler.canvas_flipped = false;
 						menu_bar_message_handler.rulers_visible = false;
 						menu_bar_message_handler.node_graph_open = false;
+						menu_bar_message_handler.has_artboards = false;
 						menu_bar_message_handler.has_selected_nodes = false;
 						menu_bar_message_handler.has_selected_layers = false;
+						menu_bar_message_handler.has_selected_visible_layers = false;
+						menu_bar_message_handler.has_selected_visible_and_unlocked_layers = false;
+						menu_bar_message_handler.has_selected_groups = false;
 						menu_bar_message_handler.has_selection_history = (false, false);
 						menu_bar_message_handler.make_path_editable_is_allowed = false;
 					}
@@ -320,11 +354,13 @@ impl Dispatcher {
 				Message::Tool(message) => {
 					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
-						return;
+						self.cleanup_queues(false);
+						continue;
 					};
 					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
 						warn!("Called ToolMessage with an invalid active document.\nGot {message:?}");
-						return;
+						self.cleanup_queues(false);
+						continue;
 					};
 
 					let context = ToolMessageContext {
@@ -432,6 +468,33 @@ impl Dispatcher {
 mod test {
 	use crate::messages::portfolio::ingest::utility_types::IngestAction;
 	pub use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn switching_documents_and_tools_does_not_add_event_listeners() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let first_document = editor.portfolio_message_handler().active_document_id().unwrap();
+		editor.new_document().await;
+		let second_document = editor.portfolio_message_handler().active_document_id().unwrap();
+		editor.select_tool(ToolType::Select).await;
+
+		let listener_count = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.broadcast_message_handler.listener_count();
+		let initial_listener_count = listener_count(&editor);
+
+		for _ in 0..3 {
+			for document_id in [first_document, second_document] {
+				editor.handle_message(PortfolioMessage::SelectDocument { document_id }).await;
+			}
+			editor.select_tool(ToolType::Path).await;
+			editor.select_tool(ToolType::Select).await;
+
+			// Last, since a document switch would restore anything the graph's opening and closing drop
+			editor.handle_message(DocumentMessage::GraphViewOverlayToggle).await;
+			editor.handle_message(DocumentMessage::GraphViewOverlayToggle).await;
+		}
+
+		assert_eq!(listener_count(&editor), initial_listener_count);
+	}
 
 	#[tokio::test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.

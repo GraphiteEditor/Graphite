@@ -2,6 +2,7 @@ use core_types::list::{Item, List};
 use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphene_animation::AnimationCurve;
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -27,8 +28,16 @@ pub enum AnimationTimeMode {
 	FrameNumber,
 }
 
-/// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
+/// Evaluate the value of an animation curve
 #[node_macro::node(category("Animation"))]
+fn evaluate_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: Item<AnimationCurve>) -> Item<f64> {
+	let curve = curve.into_element();
+	let time = ctx.try_animation_time().unwrap_or_default();
+	Item::new_from_element(curve.evaluate(time))
+}
+
+/// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
+#[node_macro::node(category("Animation"), icon("NodeRealTime"))]
 fn real_time(
 	ctx: impl Ctx + ExtractRealTime,
 	_primary: (),
@@ -52,7 +61,7 @@ fn real_time(
 }
 
 /// Produces the time, in seconds on the timeline, since the beginning of animation playback.
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Animation"), icon("NodeAnimationTime"))]
 fn animation_time(
 	ctx: impl Ctx + ExtractAnimationTime,
 	_primary: (),
@@ -63,7 +72,7 @@ fn animation_time(
 	Item::new_from_element(ctx.try_animation_time().unwrap_or_default() * *rate.element())
 }
 
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category("Debug"), icon("NodeQuantizeRealTime"))]
 async fn quantize_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -109,7 +118,7 @@ async fn quantize_real_time<T>(
 	value.eval(Some(new_context.into())).await
 }
 
-#[node_macro::node(category("Debug"))]
+#[node_macro::node(category("Debug"), icon("NodeQuantizeAnimationTime"))]
 async fn quantize_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -154,17 +163,7 @@ async fn quantize_animation_time<T>(
 }
 
 /// Produces the current position of the user's pointer within the document canvas.
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Animation"), icon("NodePointerPosition"))]
 fn pointer_position(ctx: impl Ctx + ExtractPointerPosition) -> Item<DVec2> {
 	Item::new_from_element(ctx.try_pointer_position().unwrap_or_default())
 }
-
-// TODO: These nodes require more sophisticated algorithms for giving the correct result
-// #[node_macro::node(category("Animation"))]
-// fn month(ctx: impl Ctx + ExtractRealTime) -> f64 {
-// 	((ctx.try_real_time().unwrap_or_default() / DAY / 365.25 % 1.) * 12.).floor()
-// }
-// #[node_macro::node(category("Animation"))]
-// fn day(ctx: impl Ctx + ExtractRealTime) -> f64 {
-// 	(ctx.try_real_time().unwrap_or_default() / DAY
-// }

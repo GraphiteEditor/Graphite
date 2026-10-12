@@ -45,6 +45,13 @@ impl ToolMetadata for FillTool {
 	}
 }
 
+impl ToolEditTarget for FillTool {
+	fn edit_target(&self) -> EditTarget {
+		// Exact for a selected layer painted whole, which a click reaches through the selection, while geometry is filled on whichever layer is clicked
+		EditTarget::FirstApplicable(vec![EditTarget::proto_node(graphene_std::math_nodes::color_value::IDENTIFIER, Insertion::Never), EditTarget::fill()])
+	}
+}
+
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![

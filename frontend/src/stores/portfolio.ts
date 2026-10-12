@@ -38,8 +38,8 @@ export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsL
 export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
 export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
 export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
-export const layersPanelControlBarRightLayout = makeLayoutStore("layersPanelControlBarRightLayout");
-export const layersPanelBottomBarLayout = makeLayoutStore("layersPanelBottomBarLayout");
+export const layersPanelBottomBarLeftLayout = makeLayoutStore("layersPanelBottomBarLeftLayout");
+export const layersPanelBottomBarRightLayout = makeLayoutStore("layersPanelBottomBarRightLayout");
 
 // Each panel layout has its own dedicated store so a layout update only re-renders that panel's consumers.
 // Putting them at module scope (not inside the component) lets them survive a Svelte remount during a
@@ -150,14 +150,14 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(layersPanelControlBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelControlBarRightLayout, data);
+		patchLayoutStore(layersPanelBottomBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelBottomBarLayout, data);
+		patchLayoutStore(layersPanelBottomBarRightLayout, data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
@@ -193,8 +193,8 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 }

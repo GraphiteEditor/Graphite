@@ -281,6 +281,22 @@ pub enum VectorModificationType {
 	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
 }
 
+impl VectorModificationType {
+	/// Whether every position, handle, and delta carried by this modification is finite.
+	fn is_finite(&self) -> bool {
+		match self {
+			Self::InsertSegment { handles, .. } | Self::SetHandles { handles, .. } => handles.iter().flatten().all(|handle| handle.is_finite()),
+			Self::InsertPoint { position: value, .. }
+			| Self::SetPrimaryHandle { relative_position: value, .. }
+			| Self::SetEndHandle { relative_position: value, .. }
+			| Self::ApplyPointDelta { delta: value, .. }
+			| Self::ApplyPrimaryDelta { delta: value, .. }
+			| Self::ApplyEndDelta { delta: value, .. } => value.is_finite(),
+			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetStartPoint { .. } | Self::SetEndPoint { .. } => true,
+		}
+	}
+}
+
 /// Per-category `[added, removed, modified]` counts for a [`VectorModification`].
 struct ModificationCategoryCounts {
 	points: [usize; 3],
@@ -392,6 +408,12 @@ impl VectorModification {
 
 	/// Add a [`VectorModificationType`] to this modification.
 	pub fn modify(&mut self, vector_modification: &VectorModificationType) {
+		// Saving would write a non-finite value as `null`, which can't be read back when opening the document
+		if !vector_modification.is_finite() {
+			warn!("Ignoring a vector modification with a non-finite value: {vector_modification:?}");
+			return;
+		}
+
 		match vector_modification {
 			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles),
 			VectorModificationType::InsertPoint { id, position } => self.points.push(*id, *position),
@@ -782,5 +804,20 @@ mod tests {
 			vector.segment_iter().nth(9).unwrap().1,
 			PathSeg::Quad(QuadBez::new(Point::new(11., 0.), Point::new(16., 10.), Point::new(20., 0.)))
 		);
+	}
+
+	#[test]
+	fn non_finite_modifications_are_ignored() {
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::SetPrimaryHandle {
+			segment: SegmentId::generate(),
+			relative_position: DVec2::NAN,
+		});
+		modification.modify(&VectorModificationType::ApplyPointDelta {
+			point: PointId::generate(),
+			delta: DVec2::new(f64::INFINITY, 0.),
+		});
+
+		assert_eq!(modification, VectorModification::default());
 	}
 }

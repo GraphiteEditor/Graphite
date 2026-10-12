@@ -21,7 +21,7 @@ pub struct EditorTestUtils {
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
-		let _ = env_logger::builder().is_test(true).try_init();
+		init_test_logger();
 
 		let (mut editor, runtime) = Editor::new_local_executor();
 
@@ -372,6 +372,60 @@ impl FrontendMessageTestUtils for FrontendMessage {
 			panic!("error: {:?}", error);
 		}
 	}
+}
+
+thread_local! {
+	static CAPTURED_ERRORS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Prints like `env_logger`, and also records the errors logged on a thread while [`capture_logged_errors`] runs on it.
+struct TestLogger {
+	printer: env_logger::Logger,
+}
+
+impl log::Log for TestLogger {
+	fn enabled(&self, metadata: &log::Metadata) -> bool {
+		metadata.level() == log::Level::Error || self.printer.enabled(metadata)
+	}
+
+	fn log(&self, record: &log::Record) {
+		if record.level() == log::Level::Error {
+			CAPTURED_ERRORS.with_borrow_mut(|captured| {
+				if let Some(captured) = captured {
+					captured.push(record.args().to_string());
+				}
+			});
+		}
+
+		self.printer.log(record);
+	}
+
+	fn flush(&self) {
+		self.printer.flush();
+	}
+}
+
+/// Installs the logger shared by every test in the process, since only one can be installed.
+fn init_test_logger() {
+	static INSTALL: std::sync::Once = std::sync::Once::new();
+	INSTALL.call_once(|| {
+		let printer = env_logger::builder().is_test(true).build();
+		let max_level = printer.filter().max(log::LevelFilter::Error);
+		if log::set_boxed_logger(Box::new(TestLogger { printer })).is_ok() {
+			log::set_max_level(max_level);
+		}
+	});
+}
+
+/// Runs `operation`, returning its result along with the errors it logged.
+pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String>) {
+	init_test_logger();
+
+	CAPTURED_ERRORS.set(Some(Vec::new()));
+	let result = operation();
+	let errors = CAPTURED_ERRORS.take().unwrap_or_default();
+
+	(result, errors)
 }
 
 #[cfg(test)]

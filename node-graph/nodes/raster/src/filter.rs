@@ -85,7 +85,7 @@ fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Imag
 }
 
 /// Blurs the image with a Gaussian or box blur kernel filter.
-#[node_macro::node(category("Raster: Filter"))]
+#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"))]
 async fn blur(
 	_: impl Ctx,
 	/// The image to be blurred.
@@ -120,7 +120,7 @@ async fn blur(
 }
 
 /// Applies a median filter to reduce noise while preserving edges.
-#[node_macro::node(category("Raster: Filter"))]
+#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"))]
 async fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.

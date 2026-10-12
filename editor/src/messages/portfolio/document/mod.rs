@@ -19,4 +19,4 @@ pub(crate) use document_history::{CursorMoveError, DocumentHistory};
 #[doc(inline)]
 pub use document_message::{DocumentMessage, DocumentMessageDiscriminant};
 #[doc(inline)]
-pub use document_message_handler::{DocumentMessageContext, DocumentMessageHandler};
+pub use document_message_handler::{DocumentMessageContext, DocumentMessageHandler, SelectionParts};

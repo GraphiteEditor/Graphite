@@ -33,6 +33,10 @@ pub struct IconButton {
 	#[serde(rename = "tooltipShortcut")]
 	pub tooltip_shortcut: Option<ActionShortcut>,
 
+	// Drag and drop
+	#[serde(rename = "dragDropKinds")]
+	pub drag_drop_kinds: DragDropKinds,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
@@ -43,6 +47,19 @@ pub struct IconButton {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_drag_drop: WidgetCallback<IconButton>,
+}
+
+/// What can be dragged in the Layers panel and dropped onto an icon button to perform its `on_drag_drop` action.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum DragDropKinds {
+	/// Nothing, so the button isn't a drop target.
+	#[default]
+	None,
+	/// Layers.
+	Layers,
+	/// Layers, or the nodes in a layer's chain.
+	LayersAndChainNodes,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -113,6 +130,33 @@ pub struct ParameterExposeButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
+/// A parameter's name, for an input fed by a chain of nodes, that shows or hides that chain's sections within its node's Properties panel section.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
+#[derivative(Debug, PartialEq)]
+pub struct ParameterChainToggle {
+	// Content
+	#[widget_builder(constructor)]
+	pub name: String,
+	pub expanded: bool,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
+
+	// Callbacks
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_update: WidgetCallback<ParameterChainToggle>,
+	#[serde(skip)]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
+	pub on_commit: WidgetCallback<()>,
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
@@ -137,10 +181,7 @@ pub struct TextButton {
 	pub emphasized: bool,
 	pub flush: bool,
 	pub narrow: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
+	pub sizing: WidgetSizing,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -207,14 +248,9 @@ pub struct ColorInput {
 	pub disabled: bool,
 	pub mixed: bool,
 
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
-
 	// Styling
 	pub narrow: bool,
+	pub sizing: WidgetSizing,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

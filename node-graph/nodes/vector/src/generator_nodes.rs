@@ -11,7 +11,7 @@ use vector_types::vector::misc::{HandleId, SpiralType};
 use vector_types::vector::{PointId, SegmentId};
 
 /// Generates a circle shape with a chosen radius.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeCircle"))]
 fn circle(
 	_: impl Ctx,
 	_primary: (),
@@ -24,7 +24,7 @@ fn circle(
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeArc"))]
 fn arc(
 	_: impl Ctx,
 	_primary: (),
@@ -52,7 +52,7 @@ fn arc(
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
-#[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeSpiral"), properties("spiral_properties"))]
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
@@ -89,7 +89,7 @@ fn spiral(
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeEllipse"))]
 fn ellipse(
 	_: impl Ctx,
 	_primary: (),
@@ -117,7 +117,7 @@ fn ellipse(
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
-#[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeRectangle"), properties("rectangle_properties"))]
 fn rectangle(
 	_: impl Ctx,
 	_primary: (),
@@ -156,7 +156,7 @@ fn rectangle(
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeBoxCorners"))]
 fn box_corners(
 	_: impl Ctx,
 	/// The corner values, filling the four corners clockwise from the top-left. Give one value for all corners, two for opposite pairs, three for top-left, the two sides, then bottom-right, or four for each corner.
@@ -167,7 +167,7 @@ fn box_corners(
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeRegularPolygon"))]
 fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
@@ -183,7 +183,7 @@ fn regular_polygon(
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeStar"))]
 fn star(
 	_: impl Ctx,
 	_primary: (),
@@ -218,7 +218,7 @@ pub enum QRCodeErrorCorrectionLevel {
 }
 
 /// Generates a QR code from the input text.
-#[node_macro::node(category("Vector: Shape"), name("QR Code"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeQrCode"), name("QR Code"))]
 fn qr_code(
 	_: impl Ctx,
 	_primary: (),
@@ -274,7 +274,7 @@ fn qr_code(
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeArrow"))]
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
@@ -298,7 +298,7 @@ fn arrow(
 	Item::new_from_element(Vector::from_bezpath(shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length)))
 }
 
-#[node_macro::node(category("Vector: Shape"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeLine"))]
 fn line(
 	_: impl Ctx,
 	_primary: (),
@@ -324,7 +324,7 @@ impl GridSpacing for DVec2 {
 }
 
 /// Generates a rectangular or isometric grid with the chosen number of columns and rows. Line segments connect the points, forming a vector mesh.
-#[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeGrid"), properties("grid_properties"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),

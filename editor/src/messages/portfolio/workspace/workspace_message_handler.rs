@@ -388,7 +388,7 @@ impl WorkspaceMessageHandler {
 	fn destroy_panel_layouts(panel_type: PanelType, responses: &mut VecDeque<Message>) {
 		let targets: &[LayoutTarget] = match panel_type {
 			PanelType::Properties => &[LayoutTarget::PropertiesPanel],
-			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelControlRightBar, LayoutTarget::LayersPanelBottomBar],
+			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
 			PanelType::Data => &[LayoutTarget::DataPanel],
 			PanelType::Document | PanelType::Welcome => return,
 		};

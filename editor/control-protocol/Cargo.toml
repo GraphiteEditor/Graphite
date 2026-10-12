@@ -1,0 +1,21 @@
+[package]
+name = "graphite-editor-control-protocol"
+description = "The commands, results, and scenarios that scripts, QA, and agents use to operate the Graphite editor"
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# Workspace dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+glam = { workspace = true, features = ["serde"] }

@@ -105,6 +105,13 @@ impl ToolMetadata for BrushTool {
 	}
 }
 
+impl ToolEditTarget for BrushTool {
+	fn edit_target(&self) -> EditTarget {
+		// The outlined node is extended only when its stroke style matches, and otherwise the tool starts a new group
+		EditTarget::proto_node(brush_strokes::IDENTIFIER, Insertion::Never)
+	}
+}
+
 impl LayoutHolder for BrushTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![
