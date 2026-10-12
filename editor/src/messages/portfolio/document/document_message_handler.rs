@@ -289,7 +289,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
-					document_name: self.name.as_str(),
 					fonts,
 					properties_panel_open,
 					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
@@ -1668,15 +1667,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
 				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
 
-				// Recursively, every section in the chain follows along, from its layer back to where another layer begins
-				let network_path = &self.selection_network_path;
-				let chain = recursive
-					.then(|| self.network_interface.downstream_layer_for_chain_node(&node_id, network_path))
-					.flatten()
-					.map(|layer| std::iter::once(layer).chain(self.network_interface.layer_chain_nodes(layer, network_path)).collect::<Vec<_>>())
-					// A node that only leads into a chain from the side, or into no layer at all, isn't part of one
-					.filter(|chain| chain.contains(&node_id));
-				let node_ids = chain.unwrap_or_else(|| vec![node_id]);
+				// Recursively, every section nested within this one follows along
+				let node_ids = if recursive {
+					node_properties::nested_section_nodes(node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, &self.selection_network_path)
+				} else {
+					vec![node_id]
+				};
 
 				for node_id in node_ids {
 					if expand {

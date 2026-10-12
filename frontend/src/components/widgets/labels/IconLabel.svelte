@@ -45,6 +45,11 @@
 
 		&.disabled {
 			fill: var(--color-8-uppergray);
+
+			// Full-color node icons fade, since their shapes set their own colors that the gray fill can't reach
+			&.node-icon {
+				opacity: 0.5;
+			}
 		}
 
 		&.size-12 {

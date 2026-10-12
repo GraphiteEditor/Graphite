@@ -28,7 +28,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
-	// Like the Layers panel's expand arrows, a modifier key applies the toggle to the whole chain
+	// Like the Layers panel's expand arrows, a modifier key applies the toggle recursively to the sections nested within
 	function toggleExpandedWithModifiers(e: MouseEvent) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		editor.toggleNodePropertiesSectionExpanded(widgetData.id, e.altKey || accel);
@@ -44,6 +44,7 @@
 		"chain-wire-list": Boolean(widgetData.chainWire?.isList),
 		"output-wire": Boolean(widgetData.outputWire),
 		"output-wire-list": Boolean(widgetData.outputWire?.isList),
+		"node-reference": widgetData.nodeReference,
 		collapsed: !expanded,
 	}}
 	styles={{
@@ -53,75 +54,83 @@
 	data-properties-reorderable-section={reorderable ? "" : undefined}
 	data-node-id={reorderable ? String(widgetData.id) : undefined}
 >
-	<button
-		class="header"
-		class:expanded
-		data-tooltip-label={widgetData.name}
-		data-tooltip-description={widgetData.description}
-		data-properties-reorder-handle={reorderable ? "" : undefined}
-		on:click|stopPropagation={toggleExpandedWithModifiers}
-		tabindex="0"
-	>
-		<div
-			class="expand-arrow"
-			data-tooltip-label={expanded ? "Collapse (All)" : "Expand (All)"}
-			data-tooltip-description={expanded
-				? "Hide this node's parameters. (To collapse every node in the chain, perform the shortcut shown.)"
-				: "Show this node's parameters. (To expand every node in the chain, perform the shortcut shown.)"}
-			data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-		></div>
-		{#if widgetData.icon}
-			<IconLabel icon={widgetData.icon} />
-		{/if}
-		<TextLabel bold={true}>{widgetData.name}</TextLabel>
-		<IconButton
-			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
-			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
-			size={24}
-			action={(e) => {
-				editor.setNodePinned(widgetData.id, !widgetData.pinned);
-				e?.stopPropagation();
-			}}
-			class="show-only-on-hover"
-		/>
-		<IconButton
-			icon="Trash"
-			tooltipDescription="Delete this node from the layer chain."
-			size={24}
-			action={(e) => {
-				editor.deleteNode(widgetData.id);
-				e?.stopPropagation();
-			}}
-			class="show-only-on-hover"
-		/>
-		<IconButton
-			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
-			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
-			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
-			size={24}
-			action={(e) => {
-				editor.toggleNodeVisibilityLayerPanel(widgetData.id);
-				e?.stopPropagation();
-			}}
-			class={widgetData.visible ? "show-only-on-hover" : ""}
-		/>
-	</button>
-	{#if expanded}
-		<LayoutCol class="body" data-block-hover-transfer>
-			{#each widgetData.layout as layoutGroup}
-				{#if "Row" in layoutGroup}
-					<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
-				{:else if "Section" in layoutGroup && !layoutGroup.Section.outputWire}
-					<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
-				{/if}
-			{/each}
-		</LayoutCol>
-		{#if chainSections.length > 0}
-			<LayoutCol class="chain-sections">
-				{#each chainSections as chainSection}
-					<svelte:self widgetData={chainSection} {layoutTarget} />
+	{#if widgetData.nodeReference}
+		{#each widgetData.layout as layoutGroup}
+			{#if "Row" in layoutGroup}
+				<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
+			{/if}
+		{/each}
+	{:else}
+		<button
+			class="header"
+			class:expanded
+			data-tooltip-label={widgetData.name}
+			data-tooltip-description={widgetData.description}
+			data-properties-reorder-handle={reorderable ? "" : undefined}
+			on:click|stopPropagation={toggleExpandedWithModifiers}
+			tabindex="0"
+		>
+			<div
+				class="expand-arrow"
+				data-tooltip-label={expanded ? "Collapse (All)" : "Expand (All)"}
+				data-tooltip-description={expanded
+					? "Hide this node's parameters. (To also collapse every node nested within, perform the shortcut shown.)"
+					: "Show this node's parameters. (To also expand every node nested within, perform the shortcut shown.)"}
+				data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
+			></div>
+			{#if widgetData.icon}
+				<IconLabel icon={widgetData.icon} />
+			{/if}
+			<TextLabel bold={true}>{widgetData.name}</TextLabel>
+			<IconButton
+				icon="Trash"
+				tooltipDescription="Delete this node from the layer chain."
+				size={24}
+				action={(e) => {
+					editor.deleteNode(widgetData.id);
+					e?.stopPropagation();
+				}}
+				class="show-only-on-hover"
+			/>
+			<IconButton
+				icon={widgetData.pinned ? "PinActive" : "PinInactive"}
+				tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
+				size={24}
+				action={(e) => {
+					editor.setNodePinned(widgetData.id, !widgetData.pinned);
+					e?.stopPropagation();
+				}}
+				class={widgetData.pinned ? "" : "show-only-on-hover"}
+			/>
+			<IconButton
+				icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
+				hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
+				size={24}
+				action={(e) => {
+					editor.toggleNodeVisibilityLayerPanel(widgetData.id);
+					e?.stopPropagation();
+				}}
+				class={widgetData.visible ? "show-only-on-hover" : ""}
+			/>
+		</button>
+		{#if expanded}
+			<LayoutCol class="body" data-block-hover-transfer>
+				{#each widgetData.layout as layoutGroup}
+					{#if "Row" in layoutGroup}
+						<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
+					{:else if "Section" in layoutGroup && !layoutGroup.Section.outputWire}
+						<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
+					{/if}
 				{/each}
 			</LayoutCol>
+			{#if chainSections.length > 0}
+				<LayoutCol class="chain-sections">
+					{#each chainSections as chainSection}
+						<svelte:self widgetData={chainSection} {layoutTarget} />
+					{/each}
+				</LayoutCol>
+			{/if}
 		{/if}
 	{/if}
 </LayoutCol>
@@ -236,6 +245,20 @@
 		&.collapsed + .widget-section.output-wire::before {
 			top: calc(-4px - 4px);
 			height: calc(4px + 4px);
+		}
+
+		// The layer whose stack feeds the bottom of a chain, only referred to by a button like the Data panel's, its 16px icon centered on the wire reaching down to it
+		&.node-reference {
+			// As wide as its contents, unlike the Properties panel's buttons that share their row
+			.text-button {
+				flex-basis: auto;
+				padding-left: calc(12px - 16px / 2);
+			}
+
+			// Down to the 24px button centered in its 32px row
+			&::before {
+				height: calc(4px + (32px - 24px) / 2);
+			}
 		}
 
 		.header {

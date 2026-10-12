@@ -31,7 +31,6 @@ pub struct NodePropertiesContext<'a> {
 	pub resources: &'a ResourceMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
-	pub document_name: &'a str,
 	/// The node IDs whose Properties panel sections the user has collapsed.
 	pub properties_panel_collapsed_sections: &'a [NodeId],
 	/// The input (if any) whose feeding chain a node's section shows, for each node where that differs from the default.

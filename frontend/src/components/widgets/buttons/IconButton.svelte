@@ -67,7 +67,7 @@
 	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >
-	<IconLabel {icon} />
+	<IconLabel {icon} {disabled} />
 	{#if hoverIcon && showsHoverIcon}
 		<IconLabel icon={hoverIcon} />
 	{/if}

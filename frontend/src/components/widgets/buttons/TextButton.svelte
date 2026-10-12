@@ -81,7 +81,7 @@
 		on:click={onClick}
 	>
 		{#if icon}
-			<IconLabel {icon} />
+			<IconLabel {icon} {disabled} />
 			{#if hoverIcon && !disabled}
 				<IconLabel icon={hoverIcon} />
 			{/if}

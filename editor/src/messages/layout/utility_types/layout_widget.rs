@@ -423,6 +423,9 @@ pub struct WidgetSection {
 	/// For a section in the chain feeding another section's input, the wire drawn up to the section above, which its node's output feeds.
 	#[serde(rename = "outputWire")]
 	pub output_wire: Option<SectionWire>,
+	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for the layer whose stack feeds the bottom of a chain).
+	#[serde(rename = "nodeReference")]
+	pub node_reference: bool,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
 	/// The ID of the node whose properties this section displays.
@@ -473,6 +476,7 @@ impl LayoutGroup {
 			draggable: false,
 			chain_wire: None,
 			output_wire: None,
+			node_reference: false,
 			expanded,
 			id,
 			layout,
@@ -577,6 +581,7 @@ impl Diffable for LayoutGroup {
 					draggable: current_draggable,
 					chain_wire: current_chain_wire,
 					output_wire: current_output_wire,
+					node_reference: current_node_reference,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
@@ -590,6 +595,7 @@ impl Diffable for LayoutGroup {
 					draggable: new_draggable,
 					chain_wire: new_chain_wire,
 					output_wire: new_output_wire,
+					node_reference: new_node_reference,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -606,6 +612,7 @@ impl Diffable for LayoutGroup {
 					|| *current_draggable != new_draggable
 					|| *current_chain_wire != new_chain_wire
 					|| *current_output_wire != new_output_wire
+					|| *current_node_reference != new_node_reference
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
@@ -618,6 +625,7 @@ impl Diffable for LayoutGroup {
 					*current_draggable = new_draggable;
 					*current_chain_wire = new_chain_wire;
 					*current_output_wire = new_output_wire;
+					*current_node_reference = new_node_reference;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
@@ -632,6 +640,7 @@ impl Diffable for LayoutGroup {
 						draggable: new_draggable,
 						chain_wire: new_chain_wire,
 						output_wire: new_output_wire,
+						node_reference: new_node_reference,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,

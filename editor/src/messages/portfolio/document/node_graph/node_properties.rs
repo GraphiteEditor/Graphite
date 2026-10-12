@@ -5,6 +5,7 @@ use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::math_expression::{MathExpressionTokens, math_expression_error, math_expression_error_ranges, math_expression_tokens};
 use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::data_panel::node_reference_button;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector};
@@ -123,6 +124,38 @@ pub(crate) fn expanded_input_chain(node_id: &NodeId, expanded_input_chains: &[(N
 		.iter()
 		.find(|(id, _)| id == node_id)
 		.map_or_else(|| default_expanded_input_chain(node_id, network_interface, network_path), |(_, input_index)| *input_index)
+}
+
+/// The nodes of the chain feeding a node's input (if a node feeds it), from the one feeding it back to where a layer's stack feeds the chain from below rather than a generator, and that layer.
+pub(crate) fn input_chain(node_id: NodeId, input_index: usize, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<(Vec<NodeId>, Option<NodeId>)> {
+	let Some(&NodeInput::Node { node_id: source, .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(node_id, input_index), network_path) else {
+		return None;
+	};
+
+	let mut chain = Vec::new();
+	for chain_node_id in network_interface.upstream_flow_back_from_nodes(vec![source], network_path, FlowType::HorizontalFlow) {
+		if network_interface.is_layer(&chain_node_id, network_path) {
+			return Some((chain, Some(chain_node_id)));
+		}
+		chain.push(chain_node_id);
+	}
+
+	Some((chain, None))
+}
+
+/// A node followed by the nodes of all the sections nested within its section, through the chain each one shows.
+pub(crate) fn nested_section_nodes(node_id: NodeId, expanded_input_chains: &[(NodeId, Option<usize>)], network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Vec<NodeId> {
+	let mut nodes = vec![node_id];
+
+	if let Some(input_index) = expanded_input_chain(&node_id, expanded_input_chains, network_interface, network_path)
+		&& let Some((chain, _)) = input_chain(node_id, input_index, network_interface, network_path)
+	{
+		for chain_node_id in chain {
+			nodes.extend(nested_section_nodes(chain_node_id, expanded_input_chains, network_interface, network_path));
+		}
+	}
+
+	nodes
 }
 
 /// In place of the value widget of an exposed parameter that no node feeds.
@@ -3181,8 +3214,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	let mut chain_wire = None;
 	if expanded
 		&& let Some(input_index) = expanded_input_chain(&node_id, context.properties_panel_expanded_input_chains, context.network_interface, network_path)
-		&& let Some(input) = context.network_interface.input_from_connector(&InputConnector::node_at_index(node_id, input_index), network_path)
-		&& let NodeInput::Node { node_id: source, .. } = *input
+		&& let Some((chain, stack_layer)) = input_chain(node_id, input_index, context.network_interface, network_path)
 	{
 		let input_type = context.network_interface.input_type(&InputConnector::node_at_index(node_id, input_index), network_path);
 		chain_wire = Some(SectionWire {
@@ -3190,29 +3222,31 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 			is_list: input_type.is_list(),
 		});
 
-		// From the node feeding the input back to where a layer begins, or just the layer feeding it, whose own section shows its chain
-		let chain = if context.network_interface.is_layer(&source, network_path) {
-			vec![source]
-		} else {
-			context
-				.network_interface
-				.upstream_flow_back_from_nodes(vec![source], network_path, FlowType::HorizontalFlow)
-				.take_while(|chain_node_id| !context.network_interface.is_layer(chain_node_id, network_path))
-				.collect::<Vec<_>>()
-		};
-
 		for chain_node_id in chain {
 			let mut chain_section = generate_node_properties(chain_node_id, context);
 
 			if let LayoutGroup::Section(section) = &mut chain_section {
-				let output_type = context.network_interface.output_type(&OutputConnector::node(chain_node_id, 0), network_path);
-				section.output_wire = Some(SectionWire {
-					data_type: output_type.displayed_type(),
-					is_list: output_type.is_list(),
-				});
+				section.output_wire = Some(output_section_wire(chain_node_id, context));
 			}
 
 			layout.push(chain_section);
+		}
+
+		// That layer is only referred to, as in the Data panel, rather than shown with its own parameters and chain
+		if let Some(layer) = stack_layer {
+			let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
+				NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
+			});
+			let name = context.network_interface.display_name(&layer, network_path);
+			let visible = context.network_interface.is_visible(&layer, network_path);
+
+			let mut reference_section = LayoutGroup::section(name, None, "", visible, false, true, layer.0, Layout(vec![LayoutGroup::row(vec![button])]));
+			if let LayoutGroup::Section(section) = &mut reference_section {
+				section.node_reference = true;
+				section.output_wire = Some(output_section_wire(layer, context));
+			}
+
+			layout.push(reference_section);
 		}
 	}
 
@@ -3221,6 +3255,16 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		widget_section.chain_wire = chain_wire;
 	}
 	section
+}
+
+/// The wire drawn up from a node's section in a chain to the section above, which its output feeds.
+fn output_section_wire(node_id: NodeId, context: &NodePropertiesContext) -> SectionWire {
+	let output_type = context.network_interface.output_type(&OutputConnector::node(node_id, 0), context.selection_network_path);
+
+	SectionWire {
+		data_type: output_type.displayed_type(),
+		is_list: output_type.is_list(),
+	}
 }
 
 /// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure

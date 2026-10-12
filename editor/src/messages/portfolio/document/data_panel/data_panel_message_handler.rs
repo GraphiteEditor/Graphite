@@ -127,32 +127,13 @@ impl DataPanelMessageHandler {
 
 		let mut widgets = Vec::new();
 
-		// Selected layer/node name
+		// The selected layer or node, by its icon and name
 		if let Some((node_id, parent_path)) = self.introspected_node_path.split_last() {
-			let node_id = *node_id;
-			let is_layer = network_interface.is_layer(&node_id, parent_path);
-			let parent_path_owned = parent_path.to_vec();
-
 			widgets.extend([
-				if is_layer {
-					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance()
-				} else {
-					IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance()
-				},
+				IconLabel::new(network_interface.node_icon(node_id, parent_path)).widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
-				TextInput::new(network_interface.display_name(&node_id, parent_path))
-					.tooltip_description(if is_layer { "Name of the selected layer." } else { "Name of the selected node." })
-					.on_update(move |text_input| {
-						NodeGraphMessage::SetDisplayName {
-							node_id,
-							network_path: parent_path_owned.clone(),
-							alias: text_input.value.clone(),
-							skip_adding_history_step: false,
-						}
-						.into()
-					})
-					.max_width(200)
-					.widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				TextLabel::new(network_interface.display_name(node_id, parent_path)).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			]);
 		}
@@ -1086,6 +1067,35 @@ fn node_id_display_label(node_id: NodeId, network_interface: &NodeNetworkInterfa
 	}
 }
 
+/// A reference to a node, as a button with its icon and name that selects it with the message from `select`.
+pub fn node_reference_button(
+	node_id: NodeId,
+	network_interface: &NodeNetworkInterface,
+	network_path: &[NodeId],
+	selection_network_path: &[NodeId],
+	select: impl Fn() -> Message + Send + Sync + 'static,
+) -> WidgetInstance {
+	let is_layer = network_interface.is_layer(&node_id, network_path);
+	let icon = network_interface.node_icon(&node_id, network_path);
+	let name = network_interface.display_name(&node_id, network_path);
+	let in_open_network = network_path == selection_network_path;
+	let already_selected = network_interface.selected_nodes_in_nested_network(network_path).is_some_and(|selected| selected.0 == [node_id]);
+
+	TextButton::new(name)
+		.icon(icon)
+		.disabled(!in_open_network || already_selected)
+		.tooltip_label(if is_layer { "Select Layer" } else { "Select Node" })
+		.tooltip_description(match (in_open_network, already_selected, is_layer) {
+			(false, _, true) => "This layer is not in the part of the graph currently open.",
+			(false, _, false) => "This node is not in the part of the graph currently open.",
+			(true, true, true) => "This is already the selected layer.",
+			(true, true, false) => "This is already the selected node.",
+			(true, false, _) => "",
+		})
+		.on_update(move |_| select())
+		.widget_instance()
+}
+
 impl TableItemLayout for NodeId {
 	fn type_name() -> &'static str {
 		"NodeId"
@@ -1098,7 +1108,7 @@ impl TableItemLayout for NodeId {
 		data.breadcrumbs.push(node_id_display_label(*self, data.network_interface, &data.node_lookup_network_path));
 		self.value_page(data)
 	}
-	// Shown inline as the node's icon, name, a button to select it, and visibility and lock toggles. The lookups use
+	// Shown inline as a button with the node's icon and name that selects it. The lookups use
 	// `data.node_lookup_network_path` (set by the enclosing `List<NodeId>` if rendering a path) so they resolve at any nesting depth.
 	fn value_widgets(&self, _target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
 		let node_id = *self;
@@ -1110,63 +1120,14 @@ impl TableItemLayout for NodeId {
 			return vec![TextLabel::new(node_id_display_label(node_id, network_interface, &network_path)).widget_instance()];
 		}
 
-		let is_layer = network_interface.is_layer(&node_id, &network_path);
-		let is_locked = network_interface.is_locked(&node_id, &network_path);
-		let is_visible = network_interface.is_visible(&node_id, &network_path);
-		let icon = network_interface.node_icon(&node_id, &network_path);
-		let name = network_interface.display_name(&node_id, &network_path);
-		let in_open_network = network_path == data.selection_network_path;
-		let already_selected = network_interface.selected_nodes_in_nested_network(&network_path).is_some_and(|selected| selected.0 == [node_id]);
-
-		let path_for_visibility = network_path.clone();
-		let path_for_lock = network_path;
-
-		vec![
-			IconLabel::new(icon).widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			TextLabel::new(name).widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			IconButton::new("SelectAll", 24)
-				.disabled(!in_open_network || already_selected)
-				.tooltip_label(if is_layer { "Select Layer" } else { "Select Node" })
-				.tooltip_description(match (in_open_network, already_selected, is_layer) {
-					(false, _, true) => "This layer is not in the part of the graph currently open.",
-					(false, _, false) => "This node is not in the part of the graph currently open.",
-					(true, true, true) => "This is already the selected layer.",
-					(true, true, false) => "This is already the selected node.",
-					(true, false, _) => "",
-				})
-				// Starts from the root of the newly selected node's data, since the current drill-down path means nothing there
-				.on_update(move |_| Message::Batched {
-					messages: Box::new([DataPanelMessage::TruncateElementPath { len: 0 }.into(), NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into()]),
-				})
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			IconButton::new(if is_visible { "EyeVisible" } else { "EyeHidden" }, 24)
-				.hover_icon(if is_visible { "EyeHide" } else { "EyeShow" })
-				.tooltip_label(if is_visible { "Hide" } else { "Show" })
-				.on_update(move |_| {
-					NodeGraphMessage::ToggleVisibility {
-						node_id,
-						network_path: path_for_visibility.clone(),
-					}
-					.into()
-				})
-				.widget_instance(),
-			IconButton::new(if is_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
-				.hover_icon(if is_locked { "PadlockUnlocked" } else { "PadlockLocked" })
-				.disabled(!is_layer)
-				.tooltip_label(if is_locked { "Unlock" } else { "Lock" })
-				.tooltip_description(if is_layer { "" } else { "Only layers can be locked." })
-				.on_update(move |_| {
-					NodeGraphMessage::ToggleLocked {
-						node_id,
-						network_path: path_for_lock.clone(),
-					}
-					.into()
-				})
-				.widget_instance(),
-		]
+		// Selecting starts from the root of the newly selected node's data, since the current drill-down path means nothing there
+		let select = move || Message::Batched {
+			messages: Box::new([
+				DataPanelMessage::TruncateElementPath { len: 0 }.into(),
+				NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
+			]),
+		};
+		vec![node_reference_button(node_id, network_interface, &network_path, data.selection_network_path, select)]
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), data))]
