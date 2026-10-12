@@ -12,7 +12,7 @@
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { EditorWrapper, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
 		folderIndex: number;
@@ -56,6 +56,17 @@
 		startY: number;
 	};
 
+	// One place along a layer's chain: one of its nodes (with its place among the reorderable ones, if it is one), or the ghost of a node the active tool would add there
+	type ChainSlot = { kind: "node"; node: LayerPanelChainNode; nodeIndex: number; reorderablePosition: number | undefined } | { kind: "insertion"; insertion: LayerPanelChainInsertion };
+
+	// The run of a chain's slots, from `start` up to but not including `end`, that an ellipsis stands in for, and the gaps among the reorderable nodes at its two edges
+	type ChainEllipsis = { start: number; end: number; nodes: LayerPanelChainNode[]; gapBefore: number | undefined; gapAfter: number | undefined };
+
+	// The width of each chain slot (a node button, a ghost node, or the ellipsis), and of the connector and layer icon that end the chain, as styled below
+	const CHAIN_SLOT_WIDTH = 20;
+	const CHAIN_CONNECTOR_WIDTH = 8;
+	const LAYER_ICON_WIDTH = 20;
+
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
@@ -94,6 +105,16 @@
 	// Drag-toggle: tracked here so the template can render the invisible lock placeholder during a `layer-lock` gesture
 	let activeDragToggleGroup: string | undefined = undefined;
 
+	// Each row's chain width, which the grid sets from the room the layer name leaves it, deciding which nodes the ellipsis stands in for
+	let chainWidths: number[] = [];
+	const chainResizeObserver = new ResizeObserver((entries) => {
+		entries.forEach((entry) => {
+			const rowIndex = Number(entry.target.closest("[data-layer]")?.getAttribute("data-index"));
+			if (!Number.isNaN(rowIndex)) chainWidths[rowIndex] = entry.contentRect.width;
+		});
+		chainWidths = chainWidths;
+	});
+
 	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
 	$: sendHoveredLayer(layers, hoveredRowIndex);
 
@@ -123,6 +144,8 @@
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
+
+		chainResizeObserver.disconnect();
 
 		// Closing the panel removes the hovered row without a `pointerleave`
 		if (hoveredLayerSent !== undefined) editor.setLayersPanelHoveredLayer(undefined);
@@ -289,6 +312,70 @@
 		else if (target?.closest("[data-layer-icon]")) editor.showNodeInGraph(listing.entry.id);
 	}
 
+	function observeChainWidth(element: HTMLElement) {
+		chainResizeObserver.observe(element);
+		return { destroy: () => chainResizeObserver.unobserve(element) };
+	}
+
+	function chainSlots(entry: LayerPanelEntry): ChainSlot[] {
+		const insertion = entry.toolTargetInsertion;
+		const slots: ChainSlot[] = [];
+
+		let reorderableCount = 0;
+		entry.chainNodes.forEach((node, nodeIndex) => {
+			if (insertion?.index === nodeIndex) slots.push({ kind: "insertion", insertion });
+			slots.push({ kind: "node", node, nodeIndex, reorderablePosition: node.reorderable ? reorderableCount++ : undefined });
+		});
+		if (insertion?.index === entry.chainNodes.length) slots.push({ kind: "insertion", insertion });
+
+		return slots;
+	}
+
+	// The chain's width with every slot shown, which it gets whenever the layer name leaves enough room
+	function chainFullWidth(slotCount: number): number {
+		if (slotCount === 0) return LAYER_ICON_WIDTH;
+		return slotCount * CHAIN_SLOT_WIDTH + CHAIN_CONNECTOR_WIDTH + LAYER_ICON_WIDTH;
+	}
+
+	// Narrower than the ellipsis alone (with the connector and layer icon after it), the chain shows nothing rather than a clipped part
+	function chainFits(slotCount: number, width: number | undefined): boolean {
+		return width === undefined || width >= chainFullWidth(Math.min(slotCount, 1));
+	}
+
+	function chainEllipsis(slots: ChainSlot[], width: number | undefined): ChainEllipsis | undefined {
+		if (width === undefined) return undefined;
+
+		// Of the slots that fit, one goes to the ellipsis itself
+		const fittingCount = Math.floor((width - CHAIN_CONNECTOR_WIDTH - LAYER_ICON_WIDTH) / CHAIN_SLOT_WIDTH);
+		if (fittingCount >= slots.length) return undefined;
+		const shownCount = Math.max(fittingCount - 1, 0);
+		const hiddenCount = slots.length - shownCount;
+
+		// The hidden run starts at the middle, sparing both ends once two or more slots are shown
+		const middle = Math.ceil(shownCount / 2);
+		let start = middle;
+
+		// It slides off the node the active tool edits (or the ghost of one it adds) to whichever side keeps it nearer the middle, if either still spares both ends
+		const pinned = slots.findIndex((slot) => slot.kind === "insertion" || Boolean(slot.node.toolTargetDescription) || slot.node.editInProgress);
+		if (pinned >= start && pinned < start + hiddenCount) {
+			const candidates = [pinned + 1, pinned - hiddenCount].filter((candidate) => candidate >= 1 && candidate + hiddenCount <= slots.length - 1);
+			if (candidates.length > 0) start = candidates.reduce((best, candidate) => (Math.abs(candidate - middle) < Math.abs(best - middle) ? candidate : best));
+		}
+		const end = start + hiddenCount;
+
+		const hiddenNodes = slots.slice(start, end).flatMap((slot) => (slot.kind === "node" ? [slot] : []));
+		const reorderablePositions = hiddenNodes.flatMap((slot) => (slot.reorderablePosition === undefined ? [] : [slot.reorderablePosition]));
+		const lastReorderablePosition = reorderablePositions.at(-1);
+
+		return {
+			start,
+			end,
+			nodes: hiddenNodes.map((slot) => slot.node),
+			gapBefore: reorderablePositions.at(0),
+			gapAfter: lastReorderablePosition === undefined ? undefined : lastReorderablePosition + 1,
+		};
+	}
+
 	async function deselectAllLayers() {
 		if (justFinishedDrag) {
 			justFinishedDrag = false;
@@ -441,31 +528,29 @@
 		if (row) calculateChainInsertIndex(row, e.clientX);
 	}
 
-	// The row's reorderable chain node buttons, in their left-to-right order
-	function reorderableChainNodeButtons(row: Element): Element[] {
-		return Array.from(row.querySelectorAll("[data-chain-node-reorderable]"));
-	}
-
 	function calculateChainInsertIndex(row: Element, clientX: number) {
-		const rects = reorderableChainNodeButtons(row).map((button) => button.getBoundingClientRect());
+		// Each edge of a shown reorderable node, or of the ellipsis standing in for hidden ones, marks a gap among the chain's reorderable nodes
+		const edges = Array.from(row.querySelectorAll("[data-chain-gap-before]")).flatMap((element) => {
+			const rect = element.getBoundingClientRect();
+			return [
+				{ x: rect.left, gap: Number(element.getAttribute("data-chain-gap-before")) },
+				{ x: rect.right, gap: Number(element.getAttribute("data-chain-gap-after")) },
+			];
+		});
 
-		// The insertion index is the number of reorderable nodes whose horizontal midpoint sits left of the cursor
-		const firstRightOfCursor = rects.findIndex((rect) => clientX < (rect.left + rect.right) / 2);
-		const index = firstRightOfCursor === -1 ? rects.length : firstRightOfCursor;
-
-		// The marker sits on the boundary between the neighboring nodes, or at the outer edge of the node at either end.
-		// With nothing reorderable, the only gap is beside the layer, after a fixed source node or else just before the layer's icon.
+		// The drop lands at the edge nearest the cursor, where the marker sits.
+		// With no reorderable node shown, it goes beside the layer, after a fixed source node or else just before the layer's icon.
 		let markerX: number | undefined;
-		if (rects.length === 0) {
+		let index: number;
+		if (edges.length === 0) {
+			index = layers[Number(row.getAttribute("data-index"))]?.entry.chainNodes.filter((node) => node.reorderable).length || 0;
 			const chainNodeButtons = row.querySelectorAll("[data-chain-node]");
 			const fixedSource = chainNodeButtons[chainNodeButtons.length - 1];
 			markerX = fixedSource ? fixedSource.getBoundingClientRect().right : row.querySelector("[data-layer-chain]")?.getBoundingClientRect().left;
-		} else if (index === 0) {
-			markerX = rects[0].left;
-		} else if (index === rects.length) {
-			markerX = rects[rects.length - 1].right;
 		} else {
-			markerX = (rects[index - 1].right + rects[index].left) / 2;
+			const nearest = edges.reduce((best, edge) => (Math.abs(edge.x - clientX) < Math.abs(best.x - clientX) ? edge : best));
+			markerX = nearest.x;
+			index = nearest.gap;
 		}
 		if (markerX === undefined) return;
 
@@ -483,17 +568,18 @@
 	function chainDraggingPointerUp(e: PointerEvent) {
 		if (chainDragState?.active) swallowReleaseClick();
 
-		const row = chainDropRowIndex !== undefined ? list?.div()?.querySelector(`[data-layer][data-index="${chainDropRowIndex}"]`) : undefined;
-		const targetLayerId = chainDropRowIndex !== undefined ? layers[chainDropRowIndex]?.entry.id : undefined;
+		const targetEntry = chainDropRowIndex !== undefined ? layers[chainDropRowIndex]?.entry : undefined;
+		const targetLayerId = targetEntry?.id;
 		if (chainDragState?.active && chainDragDropTarget) {
 			// The button's action applies to the selection, so it becomes exactly the dragged nodes
 			editor.selectNodes(BigUint64Array.from(chainDragState.nodeIds));
 			chainDragDropTarget.dispatchEvent(new CustomEvent("dragdrop"));
-		} else if (chainDragState?.active && row && targetLayerId !== undefined && chainInsertIndex !== undefined) {
-			const reorderableIds = reorderableChainNodeButtons(row).map((button) => button.getAttribute("data-chain-node-reorderable"));
+		} else if (chainDragState?.active && targetEntry && targetLayerId !== undefined && chainInsertIndex !== undefined) {
+			// All the chain's reorderable nodes, including any the ellipsis stands in for
+			const reorderableIds = targetEntry.chainNodes.flatMap((node) => (node.reorderable ? [node.id] : []));
 
 			// Within the same layer, nodes already together beside the gap would stay put
-			const positions = chainDragState.nodeIds.map((id) => reorderableIds.indexOf(String(id))).sort((a, b) => a - b);
+			const positions = chainDragState.nodeIds.map((id) => reorderableIds.indexOf(id)).sort((a, b) => a - b);
 			const [first, last] = [positions[0], positions[positions.length - 1]];
 			const sameLayer = targetLayerId === chainDragState.layerId;
 			const alreadyInPlace = sameLayer && first !== -1 && last - first + 1 === positions.length && chainInsertIndex >= first && chainInsertIndex <= last + 1;
@@ -762,6 +848,8 @@
 		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
+				{@const slots = chainSlots(listing.entry)}
+				{@const ellipsis = chainEllipsis(slots, chainWidths[index])}
 				<LayoutRow
 					class="layer"
 					classes={{
@@ -776,6 +864,7 @@
 					data-index={index}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
+					on:dblclick={(e) => chainIconsDoubleClick(e, listing)}
 					on:pointerenter={() => (hoveredRowIndex = index)}
 					on:pointerleave={() => (hoveredRowIndex = undefined)}
 				>
@@ -822,97 +911,121 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					<LayoutRow class="layer-name" classes={{ editing: listing.editingName }} on:dblclick={() => onEditLayerName(listing)}>
-						<input
-							data-layer-name-input
-							type="text"
-							value={listing.entry.alias}
-							placeholder={listing.entry.implementationName}
-							disabled={!listing.editingName}
-							on:blur={() => onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => {
-								if (e.key === "Escape") {
-									onEditLayerNameDeselect(listing);
-								} else if (e.key === "Enter") {
-									onEditLayerNameChange(listing, e);
-								} else if (e.key === "Tab") {
-									e.preventDefault();
-									navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
-								} else if (e.key === "ArrowUp") {
-									e.preventDefault();
-									navigateToLayer(listing, "Up");
-								} else if (e.key === "ArrowDown") {
-									e.preventDefault();
-									navigateToLayer(listing, "Down");
-								}
-							}}
-							on:change={(e) => onEditLayerNameChange(listing, e)}
-						/>
-					</LayoutRow>
-					{#if !listing.entry.unlocked || !listing.parentsUnlocked}
-						<IconButton
-							class="status-toggle"
-							classes={{ inherited: !listing.parentsUnlocked }}
-							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
-							size={24}
-							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
-							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
-							tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
-							data-drag-toggle-group="layer-lock"
-							data-drag-toggle-state={listing.entry.unlocked ? "unlocked" : "locked"}
-						/>
-					{:else if activeDragToggleGroup === "layer-lock"}
-						<IconButton
-							class="status-toggle drag-toggle-placeholder"
-							action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
-							size={24}
-							icon="PadlockUnlocked"
-							data-drag-toggle-group="layer-lock"
-							data-drag-toggle-state="unlocked"
-						/>
-					{/if}
-					<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
-					<LayoutRow class="layer-chain-icons" on:dblclick={(e) => chainIconsDoubleClick(e, listing)} data-layer-chain>
-						{#each listing.entry.chainNodes as chainNode, chainNodeIndex}
-							{#if listing.entry.toolTargetInsertion?.index === chainNodeIndex}
-								{@const insertion = listing.entry.toolTargetInsertion}
-								<IconLabel icon={insertion.icon} class="tool-target-insertion" tooltipLabel={insertion.name} tooltipDescription={insertion.description} />
-							{/if}
-							<IconButton
-								icon={chainNode.icon}
-								size={24}
-								classes={{
-									selected: chainNode.selected,
-									hidden: !chainNode.visible,
-									"tool-target": Boolean(chainNode.toolTargetDescription),
-									"edit-in-progress": chainNode.editInProgress,
+					<div class="layer-name-and-chain" class:editing={listing.editingName} style:--chain-width={`${chainFullWidth(slots.length)}px`}>
+						<LayoutRow class="layer-name" classes={{ editing: listing.editingName }} on:dblclick={() => onEditLayerName(listing)}>
+							<input
+								data-layer-name-input
+								type="text"
+								value={listing.entry.alias}
+								placeholder={listing.entry.implementationName}
+								disabled={!listing.editingName}
+								on:blur={() => onEditLayerNameDeselect(listing)}
+								on:keydown={(e) => {
+									if (e.key === "Escape") {
+										onEditLayerNameDeselect(listing);
+									} else if (e.key === "Enter") {
+										onEditLayerNameChange(listing, e);
+									} else if (e.key === "Tab") {
+										e.preventDefault();
+										navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
+									} else if (e.key === "ArrowUp") {
+										e.preventDefault();
+										navigateToLayer(listing, "Up");
+									} else if (e.key === "ArrowDown") {
+										e.preventDefault();
+										navigateToLayer(listing, "Down");
+									}
 								}}
-								action={(e) => chainNodeClick(e, listing, chainNode.id)}
-								tooltipLabel={chainNode.name}
-								tooltipDescription={chainNode.toolTargetDescription}
-								data-chain-node={chainNodeIndex}
-								data-chain-node-reorderable={chainNode.reorderable ? String(chainNode.id) : undefined}
+								on:change={(e) => onEditLayerNameChange(listing, e)}
 							/>
-						{/each}
-						{#if listing.entry.toolTargetInsertion?.index === listing.entry.chainNodes.length}
-							{@const insertion = listing.entry.toolTargetInsertion}
-							<IconLabel icon={insertion.icon} class="tool-target-insertion" tooltipLabel={insertion.name} tooltipDescription={insertion.description} />
+						</LayoutRow>
+						{#if !listing.entry.unlocked || !listing.parentsUnlocked}
+							<IconButton
+								class="status-toggle layer-lock"
+								classes={{ inherited: !listing.parentsUnlocked }}
+								action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+								size={24}
+								icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
+								hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
+								tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
+								tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+								data-drag-toggle-group="layer-lock"
+								data-drag-toggle-state={listing.entry.unlocked ? "unlocked" : "locked"}
+							/>
+						{:else if activeDragToggleGroup === "layer-lock"}
+							<IconButton
+								class="status-toggle layer-lock drag-toggle-placeholder"
+								action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
+								size={24}
+								icon="PadlockUnlocked"
+								data-drag-toggle-group="layer-lock"
+								data-drag-toggle-state="unlocked"
+							/>
 						{/if}
-						{#if listing.entry.chainNodes.length > 0 || listing.entry.toolTargetInsertion}
-							<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="chain-connector" style:fill={`var(--color-data-${listing.entry.chainDataType.toLowerCase()})`}>
-								<path d="M0,6.306L0,1.694C0,0.228 1.06,-0.41 2.356,0.276L7.028,2.752C8.324,3.438 8.324,4.562 7.028,5.248L2.356,7.723C1.06,8.41 0,7.771 0,6.306z" />
-							</svg>
-						{/if}
-						<IconLabel
-							icon={listing.entry.iconName}
-							class="layer-type-icon"
-							classes={{ hidden: !listing.entry.visible, "tool-target": Boolean(listing.entry.toolTargetDescription), "edit-in-progress": listing.entry.editInProgress }}
-							tooltipLabel={listing.entry.implementationName}
-							tooltipDescription={listing.entry.toolTargetDescription}
-							data-layer-icon
-						/>
-					</LayoutRow>
+						<LayoutRow class="layer-name-spacer" on:dblclick={() => onEditLayerName(listing)} />
+						<div class="layer-chain-icons" data-layer-chain use:observeChainWidth>
+							{#if chainFits(slots.length, chainWidths[index])}
+								{#each slots as slot, slotIndex}
+									{#if ellipsis && slotIndex === ellipsis.start}
+										<LayoutRow
+											class="chain-ellipsis"
+											classes={{
+												selected: ellipsis.nodes.some((node) => node.selected),
+												"tool-target": ellipsis.nodes.some((node) => node.toolTargetDescription),
+												"edit-in-progress": ellipsis.nodes.some((node) => node.editInProgress),
+											}}
+											tooltipLabel={`${ellipsis.nodes.length} More Nodes`}
+											tooltipDescription={ellipsis.nodes.map((node) => node.name).join(", ")}
+											data-chain-gap-before={ellipsis.gapBefore}
+											data-chain-gap-after={ellipsis.gapAfter}
+										>
+											<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">
+												<circle cx="2" cy="11" r="1" />
+												<circle cx="6" cy="11" r="1" />
+												<circle cx="10" cy="11" r="1" />
+											</svg>
+										</LayoutRow>
+									{/if}
+									{#if !ellipsis || slotIndex < ellipsis.start || slotIndex >= ellipsis.end}
+										{#if slot.kind === "insertion"}
+											<IconLabel icon={slot.insertion.icon} class="tool-target-insertion" tooltipLabel={slot.insertion.name} tooltipDescription={slot.insertion.description} />
+										{:else}
+											{@const chainNode = slot.node}
+											<IconButton
+												icon={chainNode.icon}
+												size={24}
+												classes={{
+													selected: chainNode.selected,
+													hidden: !chainNode.visible,
+													"tool-target": Boolean(chainNode.toolTargetDescription),
+													"edit-in-progress": chainNode.editInProgress,
+												}}
+												action={(e) => chainNodeClick(e, listing, chainNode.id)}
+												tooltipLabel={chainNode.name}
+												tooltipDescription={chainNode.toolTargetDescription}
+												data-chain-node={slot.nodeIndex}
+												data-chain-gap-before={slot.reorderablePosition}
+												data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
+											/>
+										{/if}
+									{/if}
+								{/each}
+								{#if slots.length > 0}
+									<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="chain-connector" style:fill={`var(--color-data-${listing.entry.chainDataType.toLowerCase()})`}>
+										<path d="M0,6.306L0,1.694C0,0.228 1.06,-0.41 2.356,0.276L7.028,2.752C8.324,3.438 8.324,4.562 7.028,5.248L2.356,7.723C1.06,8.41 0,7.771 0,6.306z" />
+									</svg>
+								{/if}
+								<IconLabel
+									icon={listing.entry.iconName}
+									class="layer-type-icon"
+									classes={{ hidden: !listing.entry.visible, "tool-target": Boolean(listing.entry.toolTargetDescription), "edit-in-progress": listing.entry.editInProgress }}
+									tooltipLabel={listing.entry.implementationName}
+									tooltipDescription={listing.entry.toolTargetDescription}
+									data-layer-icon
+								/>
+							{/if}
+						</div>
+					</div>
 					{#if chainDropRowIndex === index && chainInsertMarkerLeft !== undefined}
 						<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>
 					{/if}
@@ -1117,20 +1230,75 @@
 					}
 				}
 
-				// Unrelated-width gap from the name (with its right margin), and the layer icon kept 4px from the row's end like the visibility icon at its start
-				.layer-chain-icons {
-					flex: 0 0 auto;
+				// The name (and lock) and the chain split the rest of the row evenly, except that either gives the other whatever share it doesn't need.
+				// Between them, the spacer keeps an unrelated-width gap. The right margin keeps the layer icon 4px from the row's end like the visibility icon at its start.
+				.layer-name-and-chain {
+					flex: 1 1 0;
+					min-width: 0;
+					align-self: stretch;
+					display: grid;
+					grid-template-columns: minmax(0, max-content) auto minmax(4px, 1fr) minmax(0, var(--chain-width));
 					align-items: center;
-					margin-left: 4px;
 					margin-right: 2px;
+
+					// While renaming, the name fills the row and takes all the room its text needs, which the chain gives up until it disappears
+					&.editing {
+						display: flex;
+
+						// Never narrower than its text, up to the whole row (less the lock beside it)
+						.layer-name {
+							flex: 1 0 auto;
+							max-width: calc(100% - 2 * 8px);
+						}
+
+						&:has(.layer-lock) .layer-name {
+							max-width: calc(100% - 2 * 8px - 24px);
+						}
+
+						.layer-name-spacer {
+							flex: 0 0 4px;
+						}
+
+						.layer-chain-icons {
+							flex: 0 1 var(--chain-width);
+							min-width: 0;
+						}
+					}
+				}
+
+				.layer-lock {
+					grid-column: 2;
+				}
+
+				// Right-aligned, since its share of the row can be a little wider than the whole slots that fit
+				.layer-chain-icons {
+					grid-column: 4;
+					display: flex;
+					align-items: center;
+					justify-content: flex-end;
+					overflow: hidden;
 
 					.icon-button {
 						width: 20px;
 					}
 
-					.icon-button.selected {
+					.icon-button.selected,
+					.chain-ellipsis.selected {
 						background: var(--color-6-lowergray);
 						z-index: 1;
+					}
+
+					// Stands in for the chain's middle nodes that don't fit, as wide as a chain button, with its dots at the bottom like a typographic ellipsis rather than centered like an icon
+					.chain-ellipsis {
+						flex: 0 0 auto;
+						padding: 6px 4px;
+						border-radius: 2px;
+
+						svg {
+							width: 12px;
+							height: 12px;
+							fill: var(--color-e-nearwhite);
+						}
 					}
 
 					// A hidden node's icon is faded and struck through by a slash across its 16px icon's diagonal
@@ -1214,26 +1382,18 @@
 
 				// Pushes the chain icons to the row's end, and can also be double-clicked to rename the layer like the name itself
 				.layer-name-spacer {
-					flex: 1 1 0;
+					grid-column: 3;
 					align-self: stretch;
 				}
 
 				// Only as wide as its text, so the lock icon follows right after it, but shrinks to an ellipsis when space runs out
 				.layer-name {
-					flex: 0 1 auto;
+					grid-column: 1;
 					margin: 0 8px;
 
 					// While renaming, the input stretches to fill the row
-					&.editing {
-						flex-grow: 1;
-
-						input {
-							width: 100%;
-						}
-
-						& ~ .layer-name-spacer {
-							flex-grow: 0;
-						}
+					&.editing input {
+						width: 100%;
 					}
 
 					input {
