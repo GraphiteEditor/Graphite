@@ -37,6 +37,7 @@
 	// Styling
 	export let narrow = false;
 	export let sizing: Partial<WidgetSizing> | undefined = undefined;
+	export let sizedToSelection = false;
 	// Behavior
 	export let virtualScrolling = false;
 	export let interactive = true;
@@ -54,6 +55,8 @@
 	// The width of the menu's widest entry, so the dropdown keeps one width whichever entry is chosen
 	let naturalWidth = 0;
 	let measuredWidth = 0;
+	// When sized to its selection instead, the width it had as a menu opened
+	let heldWidth: number | undefined = undefined;
 	let countedAsOpen = false;
 
 	$: watchSelectedIndex(selectedIndex);
@@ -61,10 +64,17 @@
 	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
 	$: if ($openDropdownMenuCount === 0) naturalWidth = measuredWidth;
+	$: watchOpenDropdownMenuCount($openDropdownMenuCount);
+	$: width = sizedToSelection ? heldWidth : naturalWidth || undefined;
 
 	onDestroy(() => {
 		if (countedAsOpen) openDropdownMenuCount.update((count) => count - 1);
 	});
+
+	function watchOpenDropdownMenuCount(count: number) {
+		if (count === 0) heldWidth = undefined;
+		else if (sizedToSelection && heldWidth === undefined) heldWidth = self?.div?.()?.getBoundingClientRect().width;
+	}
 
 	function watchOpen(open: boolean) {
 		initialSelectedIndex = open ? selectedIndex : undefined;
@@ -168,7 +178,7 @@
 	class="dropdown-input"
 	classes={{ narrow, "file-drag-over": fileDragOver }}
 	styles={{
-		...(naturalWidth > 0 ? { width: `${naturalWidth}px` } : {}),
+		...(width !== undefined ? { width: `${width}px` } : {}),
 		...widgetSizingStyles(sizing),
 	}}
 	on:dragover={fileDragOverWidget}
@@ -196,7 +206,7 @@
 	</LayoutRow>
 	<MenuList
 		on:naturalWidth={({ detail }) => (measuredWidth = detail)}
-		measuresNaturalWidth={true}
+		measuresNaturalWidth={!sizedToSelection}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
 		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
 		on:hoverOutEntry={() => dispatchHoverOutEntry()}

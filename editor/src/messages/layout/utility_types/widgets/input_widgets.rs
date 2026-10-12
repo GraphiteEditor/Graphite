@@ -78,6 +78,9 @@ pub struct DropdownInput {
 	// Styling
 	pub narrow: bool,
 	pub sizing: WidgetSizing,
+	// Sized to the selected entry, rather than the widest, so its width changes with the selection
+	#[serde(rename = "sizedToSelection")]
+	pub sized_to_selection: bool,
 
 	// Behavior
 	#[serde(rename = "virtualScrolling")]
