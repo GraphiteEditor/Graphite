@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, type_feeds_connector,
+	self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -90,8 +90,8 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_type: FrontendGraphDataType,
 	/// The node hovered by the wire in progress and when the hover began, in milliseconds.
 	wire_hovered_node: Option<(NodeId, u64)>,
-	/// The node expanded for the wire in progress and the indices of the inputs it temporarily exposed.
-	wire_expanded_node: Option<(NodeId, Vec<usize>)>,
+	/// The node expanded for the wire in progress, the indices of the inputs it temporarily exposed, and the prior transaction state.
+	wire_expanded_node: Option<(NodeId, Vec<usize>, TransactionCheckpoint)>,
 	/// Whether [`NodeGraphMessage::WireHoverTick`] is subscribed to animation frames.
 	wire_hover_tick_subscribed: bool,
 	/// State for the context menus.
@@ -2335,7 +2335,7 @@ impl NodeGraphMessageHandler {
 			return;
 		}
 
-		if self.wire_expanded_node.as_ref().is_some_and(|(node_id, _)| Some(*node_id) != hovered_node) {
+		if self.wire_expanded_node.as_ref().is_some_and(|(node_id, _, _)| Some(*node_id) != hovered_node) {
 			self.collapse_wire_expanded_node(None, network_interface, network_path, responses);
 		}
 
@@ -2373,25 +2373,36 @@ impl NodeGraphMessageHandler {
 			return;
 		}
 
+		let transaction_checkpoint = network_interface.transaction_checkpoint();
 		for &input_index in &revealed_input_indices {
 			Self::set_value_input_exposed(InputConnector::node_at_index(node_id, input_index), true, network_interface, network_path);
 		}
 		responses.add(NodeGraphMessage::SendGraph);
 
-		self.wire_expanded_node = Some((node_id, revealed_input_indices));
+		self.wire_expanded_node = Some((node_id, revealed_input_indices, transaction_checkpoint));
 	}
 
 	/// Hides the inputs revealed by the expanded node again, except `connected_input`.
 	fn collapse_wire_expanded_node(&mut self, connected_input: Option<InputConnector>, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
-		let Some((node_id, revealed_input_indices)) = self.wire_expanded_node.take() else { return };
+		let Some((node_id, revealed_input_indices, transaction_checkpoint)) = self.wire_expanded_node.take() else {
+			return;
+		};
 
+		let mut connecting_revealed_input = false;
 		for &input_index in &revealed_input_indices {
 			let input_connector = InputConnector::node_at_index(node_id, input_index);
-			if Some(input_connector) != connected_input {
+			if Some(input_connector) == connected_input {
+				connecting_revealed_input = true;
+			} else {
 				Self::set_value_input_exposed(input_connector, false, network_interface, network_path);
 			}
 		}
 		responses.add(NodeGraphMessage::SendGraph);
+
+		// Unless the wire connects to one of them, the reveal was only a preview and isn't an edit
+		if !connecting_revealed_input {
+			network_interface.restore_transaction_checkpoint(transaction_checkpoint);
+		}
 	}
 
 	fn set_value_input_exposed(input_connector: InputConnector, exposed: bool, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId]) {
