@@ -253,6 +253,10 @@ pub enum DocumentMessage {
 		node_id: NodeId,
 		recursive: bool,
 	},
+	ToggleNodePropertiesInputChain {
+		node_id: NodeId,
+		input_index: usize,
+	},
 	ToggleLayerChainExpanded {
 		layer_id: NodeId,
 	},

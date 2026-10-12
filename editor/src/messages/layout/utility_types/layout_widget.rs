@@ -417,17 +417,17 @@ pub struct WidgetSection {
 	pub pinned: bool,
 	/// Whether this section can be dragged to reorder it within its layer's chain of nodes (true for a layer chain's nodes, but not its terminal layer node).
 	pub draggable: bool,
-	/// For a selected layer's own section, the wire drawn up into its chain input from its chain's sections below (none when it has no chain).
+	/// For a section showing the chain feeding one of its inputs, the wire drawn up into that input from the chain's sections within it (none when it shows no chain).
 	#[serde(rename = "chainWire")]
 	pub chain_wire: Option<SectionWire>,
-	/// For a section in a selected layer's chain, the wire drawn up to the section above, which its node's output feeds.
+	/// For a section in the chain feeding another section's input, the wire drawn up to the section above, which its node's output feeds.
 	#[serde(rename = "outputWire")]
 	pub output_wire: Option<SectionWire>,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
 	/// The ID of the node whose properties this section displays.
 	pub id: u64,
-	/// The node's properties content, rendered as the section's body when expanded.
+	/// The node's properties content, rendered as the section's body when expanded, followed by the sections of any chain it shows (those with an `output_wire`).
 	pub layout: Layout,
 }
 
@@ -498,6 +498,7 @@ impl LayoutGroup {
 				Widget::ImageLabel(x) => &mut x.tooltip_description,
 				Widget::MathExpressionInput(x) => &mut x.tooltip_description,
 				Widget::NumberInput(x) => &mut x.tooltip_description,
+				Widget::ParameterChainToggle(x) => &mut x.tooltip_description,
 				Widget::PopoverButton(x) => &mut x.tooltip_description,
 				Widget::TextAreaInput(x) => &mut x.tooltip_description,
 				Widget::TextButton(x) => &mut x.tooltip_description,
@@ -877,6 +878,7 @@ pub enum Widget {
 	ShortcutLabel(ShortcutLabel),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
+	ParameterChainToggle(ParameterChainToggle),
 	ParameterExposeButton(ParameterExposeButton),
 	ReferencePointInput(ReferencePointInput),
 	PopoverButton(PopoverButton),
@@ -930,6 +932,7 @@ impl DiffUpdate {
 				Widget::DropdownInput(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::IconButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::NumberInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ParameterChainToggle(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::ParameterExposeButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::PopoverButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::TextButton(widget) => widget.tooltip_shortcut.as_mut(),

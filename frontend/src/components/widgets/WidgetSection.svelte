@@ -19,6 +19,9 @@
 	// Whether the section is expanded is owned by the backend (persisted per node), so just reflect it here
 	$: expanded = widgetData.expanded;
 
+	// The sections of the chain feeding one of this node's inputs, which follow its own rows and are shown beneath them
+	$: chainSections = widgetData.layout.flatMap((layoutGroup) => ("Section" in layoutGroup && layoutGroup.Section.outputWire ? [layoutGroup.Section] : []));
+
 	// A reorderable section is a Properties panel node section the user can drag to reorder (a layer chain's node, or a pinned node)
 	$: reorderable = layoutTarget === "PropertiesPanel" && widgetData.draggable;
 
@@ -108,11 +111,18 @@
 			{#each widgetData.layout as layoutGroup}
 				{#if "Row" in layoutGroup}
 					<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
-				{:else if "Section" in layoutGroup}
+				{:else if "Section" in layoutGroup && !layoutGroup.Section.outputWire}
 					<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
 				{/if}
 			{/each}
 		</LayoutCol>
+		{#if chainSections.length > 0}
+			<LayoutCol class="chain-sections">
+				{#each chainSections as chainSection}
+					<svelte:self widgetData={chainSection} {layoutTarget} />
+				{/each}
+			</LayoutCol>
+		{/if}
 	{/if}
 </LayoutCol>
 
@@ -125,67 +135,80 @@
 			margin-top: 4px;
 		}
 
-		// A selected layer's own section, with a wire rising from its chain's sections below into its chain input (the first row)
+		// A section showing the chain feeding one of its inputs, which it frames below its rows, with a wire rising from them through its body into that input
 		&.chain-wire {
 			--chain-wire-corner-radius: 4px;
 			--chain-wire-width: 2px;
-			--chain-input-indent: 20px;
-			// The wire's centerline rises in line with the expand arrows, then turns into the indented chain input connector
-			--chain-wire-x: 12px;
-			--chain-wire-y: 44px;
-			--chain-wire-end: calc(8px + var(--chain-input-indent));
-			position: relative;
+			--chain-section-indent: 8px;
+			// Within the body's border, the wire's centerline rises in line with the indented chain sections' expand arrows
+			--chain-wire-x: calc(var(--chain-section-indent) + 12px - 1px);
 
 			// Like in the graph, a list's wire is a 1px line, 2px gap, and 1px line
 			&.chain-wire-list {
 				--chain-wire-width: 4px;
 			}
 
-			// Every row is indented, keeping clear of the wire as it rises past them to the first
-			> .body > .widget-span.row > .parameter-expose-button:first-child {
-				margin-left: var(--chain-input-indent);
+			// The body continues down into the frame around the chain's sections
+			> .body {
+				position: relative;
+				border-bottom: none;
+				border-radius: 0;
+				anchor-scope: --chain-input;
 
-				// Shortened by the indent so the widgets after it stay aligned with other rows
-				+ .text-label {
-					flex-basis: calc(25% - var(--chain-input-indent));
+				// The connector of the input whose chain is shown, which the wire turns into
+				> .widget-span.row:has(> .parameter-chain-toggle.expanded) > .parameter-expose-button {
+					anchor-name: --chain-input;
 				}
 			}
 
-			// Without the body showing, the wire from below just meets the header
-			&.collapsed::before,
-			&.collapsed::after {
-				display: none;
+			// The chain's sections, indented on the left and sharing the right edge, with the wire to the body crossing the gap atop the first
+			> .chain-sections {
+				padding: 4px 0 calc(var(--chain-section-indent) - 1px) calc(var(--chain-section-indent) - 1px);
+				background: var(--color-3-darkgray);
+				border: 1px solid var(--color-2-mildblack);
+				border-top: none;
+				border-radius: 0 0 4px 4px;
+
+				// Over the frame's right border, so the shared edge is one line
+				> .widget-section {
+					margin-left: 0;
+					margin-right: -1px;
+				}
+
+				// Keeps the frame below as thick as beside
+				> .widget-section.collapsed:last-child > .header {
+					margin-bottom: 0;
+				}
 			}
 
-			// Outer and inner 1px lines, which touch as one solid line unless the wire is a list
-			&::before,
-			&::after {
+			// Outer and inner 1px lines, which touch as one solid line unless the wire is a list, rising from the body's bottom and turning at the connector's middle to end at its left
+			> .body::before,
+			> .body::after {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
+				right: anchor(--chain-input left);
 				bottom: 0;
 				border-left: 1px solid var(--chain-wire-color);
 				border-top: 1px solid var(--chain-wire-color);
 				pointer-events: none;
 			}
 
-			&::after {
+			> .body::after {
 				left: calc(var(--chain-wire-x) - var(--chain-wire-width) / 2);
-				top: calc(var(--chain-wire-y) - var(--chain-wire-width) / 2);
-				width: calc(var(--chain-wire-end) - var(--chain-wire-x) + var(--chain-wire-width) / 2);
+				top: calc(anchor(--chain-input center) - var(--chain-wire-width) / 2);
 				border-top-left-radius: var(--chain-wire-corner-radius);
 			}
 
 			// Inset to stay concentric with the outer line around the corner
-			&::before {
+			> .body::before {
 				left: calc(var(--chain-wire-x) + var(--chain-wire-width) / 2 - 1px);
-				top: calc(var(--chain-wire-y) + var(--chain-wire-width) / 2 - 1px);
-				width: calc(var(--chain-wire-end) - var(--chain-wire-x) - var(--chain-wire-width) / 2 + 1px);
+				top: calc(anchor(--chain-input center) + var(--chain-wire-width) / 2 - 1px);
 				border-top-left-radius: max(0px, var(--chain-wire-corner-radius) - var(--chain-wire-width) + 1px);
 			}
 		}
 
-		// A selected layer's chain section, with a wire rising across the gap to the section above, in line with the layer section's wire
+		// A section in such a chain, with a wire rising across the gap to the section above, in line with the containing section's wire
 		&.output-wire {
 			--output-wire-width: 2px;
 			position: relative;
@@ -243,8 +266,9 @@
 					background: var(--icon-expand-collapse-arrow-hover);
 				}
 
-				+ .body {
-					border: 1px solid var(--color-4-dimgray);
+				+ .body,
+				~ .chain-sections {
+					border-color: var(--color-4-dimgray);
 				}
 			}
 
@@ -283,7 +307,9 @@
 			}
 		}
 
-		&:not(:hover) .header .show-only-on-hover {
+		// Hovering the chain sections within doesn't count
+		&:not(:hover) > .header .show-only-on-hover,
+		&:has(> .chain-sections:hover) > .header .show-only-on-hover {
 			display: none;
 		}
 
@@ -312,6 +338,23 @@
 				> .text-label:first-of-type {
 					flex: 0 0 25%;
 					margin-left: 16px;
+				}
+
+				// Indented to leave room for the wire that rises past to the connector of an input whose chain is shown
+				> .parameter-expose-button:first-child {
+					margin-left: 20px;
+
+					// Shortened by the indent so the widgets after it stay aligned with other rows
+					+ .text-label {
+						flex-basis: calc(25% - 20px);
+					}
+				}
+
+				// With no value widget after it, a chain toggle takes the rest of the row, only shrinking once that runs out
+				> .text-label.parameter-chain-toggle:first-of-type {
+					flex-grow: 1;
+					flex-shrink: 1;
+					min-width: 0;
 				}
 
 				> .parameter-expose-button + .text-label:first-of-type {

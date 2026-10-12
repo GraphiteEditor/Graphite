@@ -40,6 +40,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
 	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
+	pub properties_panel_expanded_input_chains: &'a mut Vec<(NodeId, Option<usize>)>,
 	pub layers_panel_expanded_chains: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
@@ -116,6 +117,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			document_id,
 			collapsed,
 			properties_panel_collapsed_sections,
+			properties_panel_expanded_input_chains,
 			layers_panel_expanded_chains,
 			ipp,
 			graph_view_overlay_open,
@@ -204,7 +206,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
 				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
 
-				// Likewise for the Layers panel's expanded layer chains
+				// Likewise for the Properties panel's expanded input chains and the Layers panel's expanded layer chains
+				properties_panel_expanded_input_chains.retain(|(node_id, _)| existing_nodes.contains(node_id));
 				layers_panel_expanded_chains.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
@@ -2702,51 +2705,24 @@ impl NodeGraphMessageHandler {
 					Separator::new(SeparatorStyle::Related).widget_instance(),
 				])];
 
-				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				let mut node_properties = context
-					.network_interface
-					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
-					.enumerate()
-					.take_while(|(i, node_id)| {
-						if *i == 0 {
-							true
-						} else {
-							!context.network_interface.is_layer(node_id, context.selection_network_path)
-						}
-					})
-					.map(|(_, node_id)| node_id)
-					.collect::<Vec<_>>()
-					.into_iter()
-					.map(|node_id| node_properties::generate_node_properties(node_id, context))
-					.collect::<Vec<_>>();
+				// The layer's section, containing its chain's sections unless another input's chain is shown instead
+				let mut layer_section = node_properties::generate_node_properties(layer, context);
 
-				// A wire leads up from the chain's sections into the layer's section, when there's a chain below it
-				if node_properties.len() > 1
-					&& let Some(LayoutGroup::Section(layer_section)) = node_properties.first_mut()
+				// The sections of the layer's own chain can be dragged to reorder it, except a node without a primary input (e.g. a generator)
+				let expanded_input_chain = node_properties::expanded_input_chain(&layer, context.properties_panel_expanded_input_chains, context.network_interface, context.selection_network_path);
+				if expanded_input_chain == Some(network_interface::LAYER_SECONDARY_INPUT_INDEX)
+					&& let LayoutGroup::Section(section) = &mut layer_section
 				{
-					let chain_input_type = context.network_interface.input_type(&InputConnector::layer_secondary_input(layer), context.selection_network_path);
-					layer_section.chain_wire = Some(SectionWire {
-						data_type: chain_input_type.displayed_type(),
-						is_list: chain_input_type.is_list(),
-					});
-				}
-
-				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
-				// A node without a primary input (e.g. a generator) is left non-draggable.
-				for chain_node_section in node_properties.iter_mut().skip(1) {
-					if let LayoutGroup::Section(section) = chain_node_section {
-						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
-
-						// A wire leads up from each chain node to the section above, which its output feeds
-						let output_type = context.network_interface.output_type(&OutputConnector::node(NodeId(section.id), 0), context.selection_network_path);
-						section.output_wire = Some(SectionWire {
-							data_type: output_type.displayed_type(),
-							is_list: output_type.is_list(),
-						});
+					for layout_group in section.layout.0.iter_mut() {
+						if let LayoutGroup::Section(chain_section) = layout_group
+							&& chain_section.output_wire.is_some()
+						{
+							chain_section.draggable = context.network_interface.has_primary_input(&NodeId(chain_section.id), context.selection_network_path);
+						}
 					}
 				}
 
-				layer_properties.extend(node_properties);
+				layer_properties.push(layer_section);
 				layer_properties
 			}
 			// If multiple layers and/or nodes are selected, show nothing

@@ -1,5 +1,5 @@
 use super::document_diff::diff_networks;
-use super::node_graph::document_node_definitions;
+use super::node_graph::{document_node_definitions, node_properties};
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -116,6 +116,9 @@ pub struct DocumentMessageHandler {
 	/// The node IDs whose section is collapsed in the Properties panel.
 	#[serde(default)]
 	pub properties_panel_collapsed_sections: Vec<NodeId>,
+	/// The input (if any) whose feeding chain a node's Properties panel section shows within it, for each node where that differs from the default of a layer's chain input.
+	#[serde(default)]
+	pub properties_panel_expanded_input_chains: Vec<(NodeId, Option<usize>)>,
 	/// The layer node IDs whose chain is expanded into a row per node in the Layers panel.
 	#[serde(default)]
 	pub layers_panel_expanded_chains: Vec<NodeId>,
@@ -208,6 +211,7 @@ impl Default for DocumentMessageHandler {
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
 			properties_panel_collapsed_sections: Vec::new(),
+			properties_panel_expanded_input_chains: Vec::new(),
 			layers_panel_expanded_chains: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -289,6 +293,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					fonts,
 					properties_panel_open,
 					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					properties_panel_expanded_input_chains: &self.properties_panel_expanded_input_chains,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}
@@ -314,6 +319,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						document_id,
 						collapsed: &mut self.collapsed,
 						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
+						properties_panel_expanded_input_chains: &mut self.properties_panel_expanded_input_chains,
 						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
@@ -1678,6 +1684,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					} else if !self.properties_panel_collapsed_sections.contains(&node_id) {
 						self.properties_panel_collapsed_sections.push(node_id);
 					}
+				}
+
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index } => {
+				// A section shows at most one input's chain, so showing this one hides any other
+				let network_path = &self.selection_network_path;
+				let default = node_properties::default_expanded_input_chain(&node_id, &self.network_interface, network_path);
+				let current = node_properties::expanded_input_chain(&node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, network_path);
+				let expanded = (current != Some(input_index)).then_some(input_index);
+
+				self.properties_panel_expanded_input_chains.retain(|(id, _)| *id != node_id);
+				if expanded != default {
+					self.properties_panel_expanded_input_chains.push((node_id, expanded));
 				}
 
 				responses.add(PropertiesPanelMessage::Refresh);

@@ -34,6 +34,8 @@ pub struct NodePropertiesContext<'a> {
 	pub document_name: &'a str,
 	/// The node IDs whose Properties panel sections the user has collapsed.
 	pub properties_panel_collapsed_sections: &'a [NodeId],
+	/// The input (if any) whose feeding chain a node's section shows, for each node where that differs from the default.
+	pub properties_panel_expanded_input_chains: &'a [(NodeId, Option<usize>)],
 }
 
 impl NodePropertiesContext<'_> {
