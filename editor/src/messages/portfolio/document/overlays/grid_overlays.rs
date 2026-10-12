@@ -231,7 +231,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::row(vec![TextLabel::new("Grid").bold(true).widget_instance()]));
 
 	widgets.push(LayoutGroup::row(vec![
-		TextLabel::new("Type").min_width(60).max_width(60).table_align(true).widget_instance(),
+		TextLabel::new("Type").sizing(WidgetSizing::fixed(60)).table_align(true).widget_instance(),
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		RadioInput::new(vec![
 			RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
@@ -253,7 +253,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				};
 			})),
 		])
-		.min_width(200)
+		.sizing(WidgetSizing::default().min_width(200))
 		.selected_index(Some(match grid.grid_type {
 			GridType::Rectangular { .. } => 0,
 			GridType::Isometric { .. } => 1,
@@ -262,7 +262,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	]));
 
 	let mut color_widgets = vec![
-		TextLabel::new("Display").min_width(60).max_width(60).table_align(true).widget_instance(),
+		TextLabel::new("Display").sizing(WidgetSizing::fixed(60)).table_align(true).widget_instance(),
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 	];
 	color_widgets.extend([
@@ -287,32 +287,32 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::row(color_widgets));
 
 	widgets.push(LayoutGroup::row(vec![
-		TextLabel::new("Origin").min_width(60).max_width(60).table_align(true).widget_instance(),
+		TextLabel::new("Origin").sizing(WidgetSizing::fixed(60)).table_align(true).widget_instance(),
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		NumberInput::new(Some(grid.origin.x))
 			.label("X")
 			.unit(" px")
-			.min_width(98)
+			.sizing(WidgetSizing::default().min_width(98))
 			.on_update(update_origin(grid, |grid| Some(&mut grid.origin.x)))
 			.widget_instance(),
 		Separator::new(SeparatorStyle::Related).widget_instance(),
 		NumberInput::new(Some(grid.origin.y))
 			.label("Y")
 			.unit(" px")
-			.min_width(98)
+			.sizing(WidgetSizing::default().min_width(98))
 			.on_update(update_origin(grid, |grid| Some(&mut grid.origin.y)))
 			.widget_instance(),
 	]));
 
 	match grid.grid_type {
 		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::row(vec![
-			TextLabel::new("Spacing").min_width(60).max_width(60).table_align(true).widget_instance(),
+			TextLabel::new("Spacing").sizing(WidgetSizing::fixed(60)).table_align(true).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(spacing.x))
 				.label("X")
 				.unit(" px")
 				.min(0.)
-				.min_width(98)
+				.sizing(WidgetSizing::default().min_width(98))
 				.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -320,33 +320,33 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				.label("Y")
 				.unit(" px")
 				.min(0.)
-				.min_width(98)
+				.sizing(WidgetSizing::default().min_width(98))
 				.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
 				.widget_instance(),
 		])),
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
 			widgets.push(LayoutGroup::row(vec![
-				TextLabel::new("Y Spacing").min_width(60).max_width(60).table_align(true).widget_instance(),
+				TextLabel::new("Y Spacing").sizing(WidgetSizing::fixed(60)).table_align(true).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(y_axis_spacing))
 					.unit(" px")
 					.min(0.)
-					.min_width(200)
+					.sizing(WidgetSizing::default().min_width(200))
 					.on_update(update_origin(grid, |grid| grid.grid_type.isometric_y_spacing()))
 					.widget_instance(),
 			]));
 			widgets.push(LayoutGroup::row(vec![
-				TextLabel::new("Angles").min_width(60).max_width(60).table_align(true).widget_instance(),
+				TextLabel::new("Angles").sizing(WidgetSizing::fixed(60)).table_align(true).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(angle_a))
 					.unit("°")
-					.min_width(98)
+					.sizing(WidgetSizing::default().min_width(98))
 					.on_update(update_origin(grid, |grid| grid.grid_type.angle_a()))
 					.widget_instance(),
 				Separator::new(SeparatorStyle::Related).widget_instance(),
 				NumberInput::new(Some(angle_b))
 					.unit("°")
-					.min_width(98)
+					.sizing(WidgetSizing::default().min_width(98))
 					.on_update(update_origin(grid, |grid| grid.grid_type.angle_b()))
 					.widget_instance(),
 			]));

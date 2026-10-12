@@ -703,6 +703,31 @@ impl ToolMetadata for ShapeTool {
 	}
 }
 
+impl ToolEditTarget for ShapeTool {
+	fn edit_target(&self) -> EditTarget {
+		let gizmo_shapes = || {
+			[
+				graphene_std::vector_nodes::star::IDENTIFIER,
+				graphene_std::vector_nodes::regular_polygon::IDENTIFIER,
+				graphene_std::vector_nodes::arc::IDENTIFIER,
+				graphene_std::vector_nodes::circle::IDENTIFIER,
+				graphene_std::vector::generator_nodes::grid::IDENTIFIER,
+				graphene_std::vector_nodes::spiral::IDENTIFIER,
+			]
+			.map(|identifier| EditTarget::proto_node(identifier, Insertion::Never))
+		};
+		let endpoint_shapes = || [graphene_std::vector_nodes::line::IDENTIFIER, graphene_std::vector_nodes::arrow::IDENTIFIER].map(|identifier| EditTarget::proto_node(identifier, Insertion::Never));
+
+		match self.fsm_state {
+			ShapeToolFsmState::ModifyingGizmo => EditTarget::FirstApplicable(gizmo_shapes().into()),
+			ShapeToolFsmState::DraggingLineEndpoints => EditTarget::FirstApplicable(endpoint_shapes().into()),
+			ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::RotatingBounds | ShapeToolFsmState::SkewingBounds { .. } => EditTarget::transform(),
+			// A shape node with a gizmo or endpoints takes the shape-specific edits, while any other layer only has its transform cage
+			ShapeToolFsmState::Ready(_) | ShapeToolFsmState::Drawing(_) => EditTarget::FirstApplicable(gizmo_shapes().into_iter().chain(endpoint_shapes()).chain([EditTarget::transform()]).collect()),
+		}
+	}
+}
+
 impl ToolTransition for ShapeTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {

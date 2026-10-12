@@ -90,6 +90,9 @@ pub enum DocumentMessage {
 	GridVisibility {
 		visible: bool,
 	},
+	LayersPanelHoverOverlays {
+		context: OverlayContext,
+	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
 	ExpandFillStrokeOnSelectedLayers,
@@ -196,6 +199,9 @@ pub enum DocumentMessage {
 	SetGraphFadeArtwork {
 		percentage: f64,
 	},
+	SetLayersPanelHoveredLayer {
+		id: Option<NodeId>,
+	},
 	SetNodePinned {
 		node_id: NodeId,
 		pinned: bool,
@@ -246,6 +252,13 @@ pub enum DocumentMessage {
 	ToggleNodePropertiesSectionExpanded {
 		node_id: NodeId,
 		recursive: bool,
+	},
+	ToggleNodePropertiesInputChain {
+		node_id: NodeId,
+		input_index: usize,
+	},
+	ToggleLayerChainExpanded {
+		layer_id: NodeId,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,

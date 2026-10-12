@@ -770,6 +770,11 @@
 				min-width: 40px;
 			}
 
+			// Keeps fields from shifting their neighbors as their values change length
+			> .widget-span > .field-input {
+				min-width: 80px;
+			}
+
 			&.for-graph {
 				justify-content: space-between;
 			}

@@ -1108,7 +1108,7 @@
 						<NumberInput
 							exact={constant.text}
 							digit={constant.digit}
-							minWidth={Math.max(120, constant.text.length * 8 + 64)}
+							sizing={{ minWidth: Math.max(120, constant.text.length * 8 + 64) }}
 							on:exactValue={({ detail }) => adjustConstant(detail)}
 							on:commitText={({ detail }) => evaluateConstant(detail)}
 							on:digit={({ detail }) => constant && (constant = { ...constant, digit: detail })}

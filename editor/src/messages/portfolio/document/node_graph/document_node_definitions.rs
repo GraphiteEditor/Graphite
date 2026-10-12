@@ -31,9 +31,10 @@ pub struct NodePropertiesContext<'a> {
 	pub resources: &'a ResourceMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
-	pub document_name: &'a str,
 	/// The node IDs whose Properties panel sections the user has collapsed.
 	pub properties_panel_collapsed_sections: &'a [NodeId],
+	/// The input (if any) whose feeding chain a node's section shows, for each node where that differs from the default.
+	pub properties_panel_expanded_input_chains: &'a [(NodeId, Option<usize>)],
 }
 
 impl NodePropertiesContext<'_> {
@@ -309,7 +310,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				],
 				input_metadata: vec![
 					("Base", "TODO").into(),
-					InputMetadata::with_name_description_override("Content", "TODO", WidgetOverride::Hidden),
+					("Content", "TODO").into(),
 					InputMetadata::with_name_description_override(
 						"Location",
 						"TODO",

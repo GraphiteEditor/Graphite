@@ -148,6 +148,12 @@ impl ToolMetadata for PenTool {
 	}
 }
 
+impl ToolEditTarget for PenTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
+	}
+}
+
 impl LayoutHolder for PenTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.drawing.fill.create_widgets(

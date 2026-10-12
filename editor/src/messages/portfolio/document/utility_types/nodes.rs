@@ -1,7 +1,6 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::frontend::IconName;
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -35,9 +34,18 @@ pub struct LayerPanelEntry {
 	/// The nodes in the chain feeding this layer, in the graph's left-to-right order.
 	#[serde(rename = "chainNodes")]
 	pub chain_nodes: Vec<LayerPanelChainNode>,
-	/// The data type flowing from the chain into the layer, which colors the connector between them.
-	#[serde(rename = "chainDataType")]
-	pub chain_data_type: FrontendGraphDataType,
+	/// Whether the chain is expanded into a row per node beneath the layer's row.
+	#[serde(rename = "chainExpanded")]
+	pub chain_expanded: bool,
+	/// How the active tool edits the layer node itself, if it does, for the tooltip of its outlined icon.
+	#[serde(rename = "toolTargetDescription")]
+	pub tool_target_description: Option<String>,
+	/// Whether an edit in progress, like a drag, has written to the layer node itself, which brightens its icon's outline.
+	#[serde(rename = "editInProgress")]
+	pub edit_in_progress: bool,
+	/// The node the active tool would add to the chain to edit this layer, shown ghosted where it would go.
+	#[serde(rename = "toolTargetInsertion")]
+	pub tool_target_insertion: Option<LayerPanelChainInsertion>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
@@ -59,11 +67,31 @@ pub struct LayerPanelChainNode {
 	pub id: NodeId,
 	pub icon: IconName,
 	pub name: String,
+	/// The name shown in place of a custom one, as the placeholder while renaming.
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
 	/// Whether the node is selected, shown in every layer whose chain shares it.
 	pub selected: bool,
 	/// Whether the node can be dragged to reorder it, unlike a source node (with no primary input) fixed at the chain's upstream end.
 	pub reorderable: bool,
 	pub visible: bool,
+	/// How the active tool edits this node, if it does, for the tooltip of its outlined icon.
+	#[serde(rename = "toolTargetDescription")]
+	pub tool_target_description: Option<String>,
+	/// Whether an edit in progress, like a drag, has written to this node, which brightens its outline.
+	#[serde(rename = "editInProgress")]
+	pub edit_in_progress: bool,
+}
+
+/// A node not yet in a layer's chain, which the active tool would add there.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct LayerPanelChainInsertion {
+	/// The position among the chain nodes, counted from the upstream end.
+	pub index: u32,
+	pub icon: IconName,
+	pub name: String,
+	pub description: String,
 }
 
 /// IMPORTANT: the same node may appear multiple times.

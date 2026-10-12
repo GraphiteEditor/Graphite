@@ -100,8 +100,7 @@ impl ToolColorOptions {
 			Separator::new(SeparatorStyle::Related).widget_instance(),
 			ColorInput::new(widget_value)
 				.mixed(mixed_color)
-				.min_width(48)
-				.max_width(48)
+				.sizing(WidgetSizing::fixed(48))
 				.narrow(true)
 				.on_update(color_callback)
 				.widget_instance(),

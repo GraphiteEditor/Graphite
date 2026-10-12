@@ -51,7 +51,13 @@ impl LayoutHolder for DemoArtworkDialog {
 
 				let buttons = chunk
 					.iter()
-					.map(|(name, _, filename)| TextButton::new(*name).min_width(256).flush(true).on_update(|_| make_dialog(name, filename)).widget_instance())
+					.map(|(name, _, filename)| {
+						TextButton::new(*name)
+							.sizing(WidgetSizing::default().min_width(256))
+							.flush(true)
+							.on_update(|_| make_dialog(name, filename))
+							.widget_instance()
+					})
 					.collect();
 
 				vec![LayoutGroup::row(images), LayoutGroup::row(buttons), LayoutGroup::row(vec![])]

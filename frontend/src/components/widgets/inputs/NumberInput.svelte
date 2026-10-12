@@ -7,7 +7,7 @@
 	import type { Decimal, Digit } from "/src/utility-functions/decimal";
 	import { roundAwayFloatNoise } from "/src/utility-functions/numbers";
 	import { browserVersion } from "/src/utility-functions/platform";
-	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { ActionShortcut, EditorWrapper, NumberInputIncrementBehavior, NumberInputMode, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTONS_LEFT = 0b0000_0001;
 	const BUTTONS_RIGHT = 0b0000_0010;
@@ -32,6 +32,7 @@
 	export let disabled = false;
 	// Styling
 	export let narrow = false;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	// Behavior
 	/// Mode behavior
 	/// "Increment" shows arrows and allows dragging left/right to change the value.
@@ -62,9 +63,6 @@
 	/// digit with `digit`.
 	export let digit: Digit = { part: "mantissa", place: 0 };
 
-	// Sizing
-	export let minWidth = 0;
-	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -126,11 +124,6 @@
 	// A number of only one digit, like `0` or `-1`, has no other digit to move the underline to, so it isn't shown
 	$: markedDigit = exact !== undefined && writtenDigits(text).length > 1 ? digitIndex(text, markDragDigit || steppingDigit || clampedDigit(text, digit)) : undefined;
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
-	$: styles = {
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
-		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
-	};
 
 	// Keep track of the Shift and Ctrl key being held down.
 	const trackShiftAndCtrl = (e: KeyboardEvent | MouseEvent) => {
@@ -980,7 +973,10 @@
 	{tooltipLabel}
 	{tooltipDescription}
 	{tooltipShortcut}
-	{styles}
+	styles={{
+		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
+	}}
+	{sizing}
 	hideContextMenu={true}
 	spellcheck={false}
 	bind:this={self}

@@ -13,10 +13,10 @@ pub struct PropertiesPanelMessageContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub resources: &'a ResourceMessageHandler,
 	pub selection_network_path: &'a [NodeId],
-	pub document_name: &'a str,
 	pub fonts: &'a FontsMessageHandler,
 	pub properties_panel_open: bool,
 	pub properties_panel_collapsed_sections: &'a [NodeId],
+	pub properties_panel_expanded_input_chains: &'a [(NodeId, Option<usize>)],
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -31,10 +31,10 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 			network_interface,
 			resources,
 			selection_network_path,
-			document_name,
 			fonts,
 			properties_panel_open,
 			properties_panel_collapsed_sections,
+			properties_panel_expanded_input_chains,
 		} = context;
 
 		match message {
@@ -57,9 +57,9 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					network_interface,
 					resources,
 					selection_network_path,
-					document_name,
 					fonts,
 					properties_panel_collapsed_sections,
+					properties_panel_expanded_input_chains,
 				};
 				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
 

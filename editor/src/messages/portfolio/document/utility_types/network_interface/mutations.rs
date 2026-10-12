@@ -402,6 +402,25 @@ impl NodeNetworkInterface {
 		let new_inputs = std::mem::take(&mut new_template.inputs);
 		let new_input_metadata = std::mem::take(&mut new_template.input_metadata);
 
+		// A chain whose link into this node is dropped loses the layer it's positioned against, so it becomes absolute while that layer is still reachable
+		let chain_input_index = if self.is_layer(node_id, network_path) { LAYER_SECONDARY_INPUT_INDEX } else { PRIMARY_INPUT_INDEX };
+		let disconnected_chain_node = self
+			.document_node(node_id, network_path)
+			.and_then(|node| node.inputs.get(chain_input_index))
+			.filter(|old_input| new_inputs.get(chain_input_index) != Some(*old_input))
+			.and_then(|old_input| match old_input {
+				NodeInput::Node {
+					node_id: upstream_node_id,
+					output_index: PRIMARY_OUTPUT_INDEX,
+					..
+				} => Some(*upstream_node_id),
+				_ => None,
+			})
+			.filter(|upstream_node_id| self.is_chain(upstream_node_id, network_path));
+		if let Some(upstream_node_id) = disconnected_chain_node {
+			self.set_upstream_chain_to_absolute(&upstream_node_id, network_path);
+		}
+
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;

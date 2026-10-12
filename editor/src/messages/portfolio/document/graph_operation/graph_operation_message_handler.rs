@@ -1112,6 +1112,52 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn stroke_order_set_keeps_the_layer_chain_in_place() {
+		use crate::test_utils::test_prelude::*;
+		use graphene_std::vector::style::PaintOrder;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Each node of the layer's chain from the layer outward, with its offset from the layer if it is chain-positioned
+		let chain_layout = |editor: &EditorTestUtils| {
+			let interface = &editor.active_document().network_interface;
+			let layer_position = interface.position(&layer.to_node(), &[]).unwrap_or_default();
+			interface
+				.layer_chain_nodes(layer.to_node(), &[])
+				.into_iter()
+				.map(|node_id| {
+					let offset = interface.is_chain(&node_id, &[]).then(|| interface.position(&node_id, &[]).unwrap_or_default() - layer_position);
+					(interface.display_name(&node_id, &[]), offset)
+				})
+				.collect::<Vec<_>>()
+		};
+		let original = chain_layout(&editor);
+		assert!(
+			original.iter().all(|(_, offset)| offset.is_some()),
+			"a fresh shape's nodes should all be chain-positioned: {original:?}"
+		);
+
+		editor
+			.handle_message(GraphOperationMessage::StrokeOrderSet {
+				layer,
+				paint_order: PaintOrder::StrokeBelow,
+			})
+			.await;
+
+		// Only the Fill and Stroke nodes trade places, so the chain keeps every slot
+		let swap_name = |name: &str| match name {
+			"Fill" => "Stroke".to_string(),
+			"Stroke" => "Fill".to_string(),
+			other => other.to_string(),
+		};
+		let expected = original.iter().map(|(name, offset)| (swap_name(name), *offset)).collect::<Vec<_>>();
+		assert_eq!(chain_layout(&editor), expected, "the swap should leave the layer's chain intact");
+	}
+
+	#[tokio::test]
 	async fn a_node_inserted_between_the_fill_and_stroke_makes_the_order_swap_inapplicable() {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 		use crate::messages::tool::common_functionality::graph_modification_utils::stroke_paint_order_applicable;

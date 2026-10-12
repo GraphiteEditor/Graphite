@@ -57,16 +57,29 @@ impl DispatcherMessageHandlers {
 	}
 }
 
-/// For optimization, these are messages guaranteed to be redundant when repeated.
-/// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
-/// In addition, these messages do not change any state in the backend (aside from caches).
+/// For optimization, these messages are deferred to the end of the outermost queue, where equal copies are dropped.
+/// Each must only refresh a cache, a layout, the frontend, or a render from the current state, so one run at the end matches running every copy.
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::UpdateLayerPanel,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendWires))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::UpdateVisibleNodes,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::SendSelectedNodes,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
+		NodeGraphMessageDiscriminant::UpdateGraphBarRight,
+	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitEyedropperPreviewRender),
+	MessageDiscriminant::MenuBar(MenuBarMessageDiscriminant::SendLayout),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
@@ -259,6 +272,7 @@ impl Dispatcher {
 							ipp: &self.message_handlers.input_preprocessor_message_handler,
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+							tool_edit_target: &self.message_handlers.tool_message_handler.edit_target,
 							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,
@@ -340,11 +354,13 @@ impl Dispatcher {
 				Message::Tool(message) => {
 					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
 						warn!("Called ToolMessage without an active document.\nGot {message:?}");
-						return;
+						self.cleanup_queues(false);
+						continue;
 					};
 					let Some(document) = self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id) else {
 						warn!("Called ToolMessage with an invalid active document.\nGot {message:?}");
-						return;
+						self.cleanup_queues(false);
+						continue;
 					};
 
 					let context = ToolMessageContext {
@@ -452,6 +468,33 @@ impl Dispatcher {
 mod test {
 	use crate::messages::portfolio::ingest::utility_types::IngestAction;
 	pub use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn switching_documents_and_tools_does_not_add_event_listeners() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let first_document = editor.portfolio_message_handler().active_document_id().unwrap();
+		editor.new_document().await;
+		let second_document = editor.portfolio_message_handler().active_document_id().unwrap();
+		editor.select_tool(ToolType::Select).await;
+
+		let listener_count = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.broadcast_message_handler.listener_count();
+		let initial_listener_count = listener_count(&editor);
+
+		for _ in 0..3 {
+			for document_id in [first_document, second_document] {
+				editor.handle_message(PortfolioMessage::SelectDocument { document_id }).await;
+			}
+			editor.select_tool(ToolType::Path).await;
+			editor.select_tool(ToolType::Select).await;
+
+			// Last, since a document switch would restore anything the graph's opening and closing drop
+			editor.handle_message(DocumentMessage::GraphViewOverlayToggle).await;
+			editor.handle_message(DocumentMessage::GraphViewOverlayToggle).await;
+		}
+
+		assert_eq!(listener_count(&editor), initial_listener_count);
+	}
 
 	#[tokio::test]
 	/// This test will fail when you make changes to the underlying serialization format for a document.
