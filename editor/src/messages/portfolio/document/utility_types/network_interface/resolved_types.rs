@@ -8,25 +8,68 @@ use graphene_std::NodeIOTypes;
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
+use once_cell::sync::Lazy;
 
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 
-/// Whether a `source` type can feed a `connector` type, directly or through the `input_adapter` node the compiler inserts to convert elements (such as `Color` into `Graphic`).
-pub fn type_feeds_connector(source: &Type, connector: &Type) -> bool {
-	let source = source.nested_type();
-	let connector = connector.nested_type();
-	if source == connector {
-		return true;
+/// The source types an `input_adapter` converts into each destination type, keyed by destination.
+type AdapterConversions = HashMap<Type, HashSet<Type>>;
+
+/// The conversions of every `input_adapter` in the registry.
+static ADAPTER_CONVERSIONS: Lazy<HashMap<ProtoNodeIdentifier, AdapterConversions>> = Lazy::new(|| {
+	let mut adapter_conversions: HashMap<ProtoNodeIdentifier, AdapterConversions> = HashMap::new();
+
+	for (identifier, implementations) in NODE_REGISTRY.iter().filter(|(identifier, _)| identifier.as_str().starts_with("input_adapter<")) {
+		let conversions = adapter_conversions.entry(identifier.clone()).or_default();
+		for node_io in implementations.keys() {
+			if let Some(source) = node_io.inputs.first() {
+				conversions.entry(node_io.return_value.nested_type().clone()).or_default().insert(source.nested_type().clone());
+			}
+		}
 	}
 
-	let (Type::Item(element) | Type::List(element)) = connector else { return false };
-	let adapter = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{}>", element.identifier_name()));
-	NODE_REGISTRY.get(&adapter).is_some_and(|implementations| {
-		implementations
-			.keys()
-			.any(|node_io| node_io.return_value.nested_type() == connector && node_io.inputs.first().is_some_and(|input| input.nested_type() == source))
-	})
+	adapter_conversions
+});
+
+/// For each input of each proto node, the conversions of the `input_adapter` the compiler places ahead of it, or `None` where wires pass through unconverted.
+static INPUT_CONVERSIONS: Lazy<HashMap<ProtoNodeIdentifier, Vec<Option<&'static AdapterConversions>>>> = Lazy::new(|| {
+	// Initialized before the registry locks below, since its own initialization takes them
+	let adapter_conversions = &*ADAPTER_CONVERSIONS;
+	let (Ok(node_registry), Ok(node_metadata)) = (graphene_std::registry::NODE_REGISTRY.lock(), graphene_std::registry::NODE_METADATA.lock()) else {
+		log::error!("Could not lock the node registry to read the input adapter of each input");
+		return HashMap::new();
+	};
+
+	// O(nodes * inputs * implementations), once
+	node_metadata
+		.keys()
+		.filter_map(|identifier| {
+			let implementations = node_registry.get(identifier)?;
+			let number_of_inputs = implementations.iter().map(|(_, node_io)| node_io.inputs.len()).max().unwrap_or_default();
+
+			let conversions = (0..number_of_inputs)
+				.map(|index| {
+					let input_types = implementations.iter().filter_map(|(_, node_io)| node_io.inputs.get(index).cloned()).collect();
+					preprocessor::input_adapter_identifier(&input_types, &NODE_REGISTRY).and_then(|adapter| adapter_conversions.get(&adapter))
+				})
+				.collect();
+
+			Some((identifier.clone(), conversions))
+		})
+		.collect()
+});
+
+/// The conversions ahead of each input of a proto node, indexed by input.
+fn input_conversions(proto_node_identifier: &ProtoNodeIdentifier) -> &'static [Option<&'static AdapterConversions>] {
+	INPUT_CONVERSIONS.get(proto_node_identifier).map(Vec::as_slice).unwrap_or_default()
+}
+
+/// Whether a `source` type can feed an input registered as `connector`, directly or through the `conversions` the compiler places ahead of that input.
+fn type_feeds_input(source: &Type, connector: &Type, conversions: Option<&AdapterConversions>) -> bool {
+	let (source, connector) = (source.nested_type(), connector.nested_type());
+
+	source == connector || conversions.and_then(|conversions| conversions.get(connector)).is_some_and(|sources| sources.contains(source))
 }
 
 // This file contains utility methods for interfacing with the resolved types returned from the compiler
@@ -319,6 +362,34 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Whether a wire of `source_type` can feed the input given the node's other inputs, directly or through a conversion the compiler places ahead of it.
+	pub fn input_accepts_type(&self, input_connector: &InputConnector, source_type: &Type, network_path: &[NodeId]) -> bool {
+		let InputConnector::Node { node_id, input_index } = input_connector else {
+			// An export can have any type connected to it
+			return true;
+		};
+
+		match self.implementation(node_id, network_path) {
+			Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) => {
+				let conversions = input_conversions(proto_node_identifier).get(*input_index).copied().flatten();
+				self.implementations_matching_inputs(proto_node_identifier, node_id, Some(*input_index), network_path)
+					.filter_map(|node_io| node_io.inputs.get(*input_index))
+					.any(|connector| type_feeds_input(source_type, connector, conversions))
+			}
+			// The wire reaches every interior input fed by the import, so each of them has to accept it
+			Some(DocumentNodeImplementation::Network(_)) => {
+				let nested_path = [network_path, &[*node_id]].concat();
+				let interior_inputs = self
+					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
+					.flatten()
+					.unwrap_or_default();
+
+				!interior_inputs.is_empty() && interior_inputs.iter().all(|interior_input| self.input_accepts_type(interior_input, source_type, &nested_path))
+			}
+			_ => false,
+		}
+	}
+
 	/// The types an output could produce: its compiled type, or else what [`Self::possible_output_types`] finds.
 	pub fn potential_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		if let Some(compiled_type) = self.output_type(output_connector, network_path).compiled_nested_type() {
@@ -381,13 +452,14 @@ impl NodeNetworkInterface {
 		}
 
 		let number_of_inputs = self.number_of_inputs(node_id, network_path);
+		let conversions = input_conversions(proto_node_identifier);
 		implementations.into_iter().flat_map(|implementations| implementations.keys()).filter(move |node_io| {
 			(0..number_of_inputs).filter(|index| Some(*index) != disregarded_input_index).all(|index| {
 				let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, index), network_path);
 				// TODO: Fix type checking for different call arguments
 				// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
 				match (input_type.compiled_nested_type(), node_io.inputs.get(index)) {
-					(Some(source), Some(connector)) => type_feeds_connector(source, connector),
+					(Some(source), Some(connector)) => type_feeds_input(source, connector, conversions.get(index).copied().flatten()),
 					(None, None) => true,
 					_ => false,
 				}
@@ -541,22 +613,26 @@ impl NodeNetworkInterface {
 
 #[cfg(test)]
 mod tests {
-	use super::type_feeds_connector;
+	use super::{input_conversions, type_feeds_input};
 	use graph_craft::item;
-	use graphene_std::vector::style::DashPattern;
-	use graphene_std::{Color, Graphic};
+	use graphene_std::vector::fill::{ContentInput, PaintInput};
+	use graphene_std::{Color, Graphic, NodeParameter};
 
 	#[test]
-	fn input_adapter_conversions_feed_connectors() {
-		assert!(type_feeds_connector(&item!(f64), &item!(f64)), "identical types should match directly");
+	fn only_inputs_with_an_input_adapter_convert() {
+		let fill_conversions = input_conversions(&PaintInput::NODE_IDENTIFIER);
+		let paint_conversions = fill_conversions.get(PaintInput::INDEX).copied().flatten();
+		let content_conversions = fill_conversions.get(ContentInput::INDEX).copied().flatten();
+
+		assert!(type_feeds_input(&item!(f64), &item!(f64), None), "identical types should match without an input adapter");
 		assert!(
-			type_feeds_connector(&item!(Color), &item!(Graphic)),
-			"a color paint should feed a graphic paint connector through its input adapter"
+			type_feeds_input(&item!(Color), &item!(Graphic), paint_conversions),
+			"a color should feed Fill's paint input, registered with one type, through its input adapter"
 		);
 		assert!(
-			type_feeds_connector(&item!(f64), &item!(DashPattern)),
-			"a number should feed a dash pattern connector through its input adapter"
+			!type_feeds_input(&item!(Color), &item!(Graphic), content_conversions),
+			"Fill's content input is registered with several types, so it gets no input adapter to convert a color"
 		);
-		assert!(!type_feeds_connector(&item!(f64), &item!(Graphic)), "a number has no conversion into a graphic");
+		assert!(!type_feeds_input(&item!(f64), &item!(Graphic), paint_conversions), "a number has no conversion into a graphic");
 	}
 }
