@@ -88,10 +88,11 @@
 	// Interactive dragging of chain nodes within a layer's chain or into another layer's
 	let chainDragState: ChainDragState | undefined = undefined;
 	let chainDragActive = false;
-	// The layer row (by its index in the list) under the cursor, the gap among its reorderable chain nodes counted from the left, and where its marker sits within the row
+	// The layer (by row index) whose chain is under the cursor, the gap among its reorderable nodes counted from the left, and the marker's spot in its row or node rows
 	let chainDropRowIndex: number | undefined = undefined;
 	let chainInsertIndex: number | undefined = undefined;
 	let chainInsertMarkerLeft: number | undefined = undefined;
+	let chainRowInsertMarker: { nodeIndex: number; edge: "top" | "bottom" } | undefined = undefined;
 	let chainDragDropTarget: HTMLElement | undefined = undefined;
 
 	// Viewport hover outline, tracked by row index since rows get reused when the layers change beneath a still pointer
@@ -562,6 +563,7 @@
 		chainDropRowIndex = undefined;
 		chainInsertIndex = undefined;
 		chainInsertMarkerLeft = undefined;
+		chainRowInsertMarker = undefined;
 
 		// Over a bottom bar button accepting chain nodes, the drop goes to it instead, and elsewhere in the bottom bar it goes nowhere
 		const target = e.target instanceof Element ? e.target : undefined;
@@ -569,9 +571,19 @@
 		chainDragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
 		if (chainDragDropTarget || target?.closest("[data-layer-bottom-bar]")) return;
 
-		// Otherwise the nodes drop into the chain of whichever layer is under the cursor
+		// Otherwise the nodes drop into the chain of whichever layer is under the cursor, or whose expanded chain's node row is
+		const nodeRow = target?.closest("[data-chain-row-of]");
 		const row = target?.closest("[data-layer]");
-		if (row) calculateChainInsertIndex(row, e.clientX);
+		if (nodeRow) {
+			calculateChainRowInsertIndex(Number(nodeRow.getAttribute("data-chain-row-of")), e.clientY);
+		} else if (row) {
+			const rowIndex = Number(row.getAttribute("data-index"));
+			const entry = layers[rowIndex]?.entry;
+
+			// An expanded chain's nodes are in the rows beneath the layer, so the drop goes atop them, nearest the layer
+			if (entry?.chainExpanded && entry.chainNodes.length > 0) calculateChainRowInsertIndex(rowIndex, row.getBoundingClientRect().bottom);
+			else calculateChainInsertIndex(row, e.clientX);
+		}
 	}
 
 	function calculateChainInsertIndex(row: Element, clientX: number) {
@@ -603,6 +615,35 @@
 		chainDropRowIndex = Number(row.getAttribute("data-index"));
 		chainInsertIndex = index;
 		chainInsertMarkerLeft = markerX - row.getBoundingClientRect().left;
+	}
+
+	function calculateChainRowInsertIndex(rowIndex: number, clientY: number) {
+		const nodeRows = Array.from(list?.div()?.querySelectorAll(`[data-chain-row-of="${rowIndex}"]`) || []);
+		if (nodeRows.length === 0) return;
+
+		// Listed downstream first, a reorderable node's row has the gap after it on its top edge and the gap before it on its bottom edge
+		const edges = nodeRows.flatMap((nodeRow) => {
+			if (!nodeRow.hasAttribute("data-chain-gap-before")) return [];
+			const gapBefore = Number(nodeRow.getAttribute("data-chain-gap-before"));
+
+			const rect = nodeRow.getBoundingClientRect();
+			const nodeIndex = Number(nodeRow.getAttribute("data-chain-row-node"));
+			return [
+				{ y: rect.top, gap: gapBefore + 1, marker: { nodeIndex, edge: "top" as const } },
+				{ y: rect.bottom, gap: gapBefore, marker: { nodeIndex, edge: "bottom" as const } },
+			];
+		});
+
+		// As in the layer's row, the drop lands at the nearest edge, or with no reorderable node, atop the fixed source node's row
+		if (edges.length === 0) {
+			chainInsertIndex = 0;
+			chainRowInsertMarker = { nodeIndex: Number(nodeRows[0].getAttribute("data-chain-row-node")), edge: "top" };
+		} else {
+			const nearest = edges.reduce((best, edge) => (Math.abs(edge.y - clientY) < Math.abs(best.y - clientY) ? edge : best));
+			chainInsertIndex = nearest.gap;
+			chainRowInsertMarker = nearest.marker;
+		}
+		chainDropRowIndex = rowIndex;
 	}
 
 	// Swallow the click fired by releasing a drag, without leaving the flag set to block a later click if none comes
@@ -648,6 +689,7 @@
 		chainDropRowIndex = undefined;
 		chainInsertIndex = undefined;
 		chainInsertMarkerLeft = undefined;
+		chainRowInsertMarker = undefined;
 		chainDragDropTarget = undefined;
 		dragInPanel = false;
 	}
@@ -1097,13 +1139,20 @@
 				</LayoutRow>
 				{#if listing.entry.chainExpanded}
 					<!-- Downstream first, so the node feeding the layer sits right beneath it -->
-					{#each [...listing.entry.chainNodes].reverse() as chainNode}
+					{#each slots.flatMap((slot) => (slot.kind === "node" ? [slot] : [])).reverse() as slot}
+						{@const chainNode = slot.node}
 						{@const editingName = editingChainNodeName?.rowIndex === index && editingChainNodeName.nodeId === chainNode.id}
 						<LayoutRow
 							class="chain-node-row"
 							classes={{ selected: chainNode.selected }}
 							styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
 							data-chain-row-of={index}
+							data-chain-row-node={slot.nodeIndex}
+							data-chain-gap-before={slot.reorderablePosition}
+							data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
+							on:pointerdown={(e) => {
+								if (e.button === 0 && draggable) chainNodePointerDown(e, listing, chainNode);
+							}}
 							on:click={(e) => chainNodeClick(e, listing, chainNode.id)}
 							on:dblclick={(e) => {
 								// Only the node's icon opens it in the graph
@@ -1138,7 +1187,17 @@
 									on:change={(e) => onEditChainNodeNameChange(chainNode.id, e)}
 								/>
 							</LayoutRow>
-							<IconLabel icon={chainNode.icon} class="chain-node-icon" tooltipLabel={chainNode.implementationName} data-chain-node-row-icon />
+							<IconLabel
+								icon={chainNode.icon}
+								class="chain-node-icon"
+								classes={{ "tool-target": Boolean(chainNode.toolTargetDescription), "edit-in-progress": chainNode.editInProgress }}
+								tooltipLabel={chainNode.implementationName}
+								tooltipDescription={chainNode.toolTargetDescription}
+								data-chain-node-row-icon
+							/>
+							{#if chainDropRowIndex === index && chainRowInsertMarker?.nodeIndex === slot.nodeIndex}
+								<div class="chain-row-insert-mark" class:bottom={chainRowInsertMarker.edge === "bottom"}></div>
+							{/if}
 						</LayoutRow>
 					{/each}
 				{/if}
@@ -1597,8 +1656,11 @@
 
 			// A node of an expanded chain, in a skinnier row beneath its layer, with its name and icon in line with the layer's
 			.chain-node-row {
+				// The eye's start, lining its right edge up with the thumbnail's: past the visibility column, indent, expand arrow, and thumbnail, less its width
+				--chain-node-row-inset: calc(24px + var(--layer-indent-levels) * 16px + 16px + 4px + 36px - 20px);
 				flex: 0 0 auto;
 				align-items: center;
+				position: relative;
 				height: 24px;
 				margin: 0 4px;
 				border-bottom: 1px solid var(--color-2-mildblack);
@@ -1608,10 +1670,9 @@
 					background: var(--color-4-dimgray);
 				}
 
-				// Its right edge lines up with the layer's thumbnail, past the visibility column, indent, expand arrow, and thumbnail less its own width
 				.chain-node-visibility {
 					width: 20px;
-					margin-left: calc(24px + var(--layer-indent-levels) * 16px + 16px + 4px + 36px - 20px);
+					margin-left: var(--chain-node-row-inset);
 				}
 
 				// In line with the layer name, and only as wide as its text, so double-clicking beside it doesn't rename
@@ -1625,6 +1686,35 @@
 				.chain-node-icon {
 					margin-left: auto;
 					margin-right: calc(2px + 2px);
+
+					// Outlined like the layer icon when the active tool edits it
+					&.tool-target,
+					&.edit-in-progress {
+						outline: 1px solid var(--color-8-uppergray);
+						outline-offset: 1px;
+						border-radius: 2px;
+					}
+
+					&.edit-in-progress {
+						outline-color: var(--color-e-nearwhite);
+					}
+				}
+
+				// The horizontal counterpart of the marker in the layer's chain, centered on the border between rows, from the eye onward
+				.chain-row-insert-mark {
+					position: absolute;
+					left: var(--chain-node-row-inset);
+					right: 0;
+					top: -3px;
+					height: 5px;
+					background: var(--color-e-nearwhite);
+					z-index: 1;
+					pointer-events: none;
+
+					&.bottom {
+						top: auto;
+						bottom: -3px;
+					}
 				}
 			}
 
