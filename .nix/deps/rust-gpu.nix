@@ -31,13 +31,12 @@ let
     }).buildRustPackage
       (finalAttrs: {
         pname = "rustc_codegen_spirv";
-        version = "0.10.0-alpha.1";
-        src = pkgs.fetchgit {
-          url = "https://github.com/Rust-GPU/rust-gpu";
-          rev = "2fff75a21a1909945ac85f5818843dd9960004d7";
-          sha256 = "sha256-clUt4jUh4D9EmoXZFgur1RrMYob4X5jti2e2hvBnAx8=";
+        version = "0.10.0";
+        src = pkgs.fetchCrate {
+          inherit (finalAttrs) pname version;
+          sha256 = "sha256-QluNI2TdJI0j2CBOeAbB9DfOv+8LqzWk7siZyT1WWLU=";
         };
-        cargoHash = "sha256-9dGb+RDYpJKaIhkMPkZAx1M1VGE3gMfCD2T84i1VtV8=";
+        cargoHash = "sha256-vvviUccnip+j60Ml1vqLNJ49KyEF40VLUoV1TMALHMs=";
         cargoBuildFlags = [
           "-p"
           "rustc_codegen_spirv"
