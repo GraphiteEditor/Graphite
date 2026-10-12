@@ -131,7 +131,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()))
 	}
 
-	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
+	/// The uneditable name in the Inspector which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId) -> String {
 		self.reference(node_id)
 			.ok()

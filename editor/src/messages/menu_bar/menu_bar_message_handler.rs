@@ -25,7 +25,7 @@ pub struct MenuBarMessageHandler {
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
-	pub properties_panel_open: bool,
+	pub inspector_open: bool,
 	pub focus_document: bool,
 }
 
@@ -669,11 +669,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| WorkspaceMessage::ResetWorkspaceLayout.into()),
 					],
 					vec![
-						MenuListEntry::new("Properties")
-							.label("Properties")
-							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::TogglePropertiesPanelOpen))
-							.on_commit(|_| WorkspaceMessage::TogglePropertiesPanelOpen.into())
+						MenuListEntry::new("Inspector")
+							.label("Inspector")
+							.icon(if self.inspector_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.tooltip_shortcut(action_shortcut!(WorkspaceMessageDiscriminant::ToggleInspectorOpen))
+							.on_commit(|_| WorkspaceMessage::ToggleInspectorOpen.into())
 							.disabled(self.focus_document),
 						MenuListEntry::new("Layers")
 							.label("Layers")

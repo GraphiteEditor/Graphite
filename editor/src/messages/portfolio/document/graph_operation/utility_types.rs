@@ -752,7 +752,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		transform_utils::update_transform(self.network_interface, &transform_node_id, last_transform_value);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -959,7 +959,7 @@ impl<'a> ModifyInputsContext<'a> {
 		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
 
 		// Refresh the render and editor UI
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
@@ -970,7 +970,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		self.network_interface.vector_modify(&path_node_id, modification_type);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -1002,10 +1002,10 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
+	/// Set the input, refresh the Inspector, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
 		self.network_interface.set_input(&input_connector, input, &[]);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}

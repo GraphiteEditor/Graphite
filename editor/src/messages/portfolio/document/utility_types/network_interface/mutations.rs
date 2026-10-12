@@ -1064,7 +1064,7 @@ impl NodeNetworkInterface {
 		self.transaction_modified();
 	}
 
-	/// Reorders a pinned node within its network's Properties panel display order so it ends up at `insert_index` among the
+	/// Reorders a pinned node within its network's Inspector display order so it ends up at `insert_index` among the
 	/// pinned nodes (0 being the topmost). Rebuilds the order from the list as currently shown, which also drops stale entries.
 	pub fn reorder_pinned_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
 		let shown = self.ordered_pinned_nodes(network_path);

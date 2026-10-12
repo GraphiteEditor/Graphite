@@ -130,7 +130,7 @@ pub struct ParameterExposeButton {
 	pub on_commit: WidgetCallback<()>,
 }
 
-/// A parameter's name, for an input fed by a chain of nodes, that shows or hides that chain's sections within its node's Properties panel section.
+/// A parameter's name, for an input fed by a chain of nodes, that shows or hides that chain's sections within its node's Inspector section.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]

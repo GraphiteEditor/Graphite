@@ -1,4 +1,4 @@
-use super::node_properties;
+use super::node_inspector;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{
-	DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
+	DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
 };
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -39,8 +39,8 @@ pub struct NodeGraphMessageContext<'a> {
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
-	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
-	pub properties_panel_expanded_input_chains: &'a mut Vec<(NodeId, Option<usize>)>,
+	pub inspector_collapsed_sections: &'a mut Vec<NodeId>,
+	pub inspector_expanded_input_chains: &'a mut Vec<(NodeId, Option<usize>)>,
 	pub layers_panel_expanded_chains: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
@@ -116,8 +116,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			breadcrumb_network_path,
 			document_id,
 			collapsed,
-			properties_panel_collapsed_sections,
-			properties_panel_expanded_input_chains,
+			inspector_collapsed_sections,
+			inspector_expanded_input_chains,
 			layers_panel_expanded_chains,
 			ipp,
 			graph_view_overlay_open,
@@ -202,12 +202,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Prune the Layers panel collapsed state for any layer tree paths whose nodes no longer exist, so it doesn't accumulate across loads
 				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
 
-				// Prune the Properties panel node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
+				// Prune the Inspector node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
 				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
-				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
+				inspector_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
 
-				// Likewise for the Properties panel's expanded input chains and the Layers panel's expanded layer chains
-				properties_panel_expanded_input_chains.retain(|(node_id, _)| existing_nodes.contains(node_id));
+				// Likewise for the Inspector's expanded input chains and the Layers panel's expanded layer chains
+				inspector_expanded_input_chains.retain(|(node_id, _)| existing_nodes.contains(node_id));
 				layers_panel_expanded_chains.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
@@ -219,7 +219,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(DocumentMessage::DocumentStructureChanged);
@@ -272,7 +272,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type, layer } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer });
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu {
@@ -493,7 +493,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Update the graph UI and re-render
 				if graph_view_overlay_open {
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 					responses.add(NodeGraphMessage::SendGraph);
 				} else {
 					responses.add(DocumentMessage::GraphViewOverlay { open: true });
@@ -1793,7 +1793,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SendGraph => {
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(DocumentMessage::DocumentStructureChanged);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(EventMessage::GraphChanged);
 				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
@@ -1833,7 +1833,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input_connector: InputConnector::node_at_index(node_id, input_index),
 					input,
 				});
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				if is_fill_input {
 					responses.add(OverlaysMessage::Draw);
 				}
@@ -2099,7 +2099,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::SendGraph);
 
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
@@ -2555,17 +2555,17 @@ impl NodeGraphMessageHandler {
 		self.widgets[1] = LayoutGroup::row(widgets);
 	}
 
-	/// Collate the Properties panel sections for a node graph
-	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	/// Collate the Inspector sections for a node graph
+	pub fn collate_inspector_sections(context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(selected_nodes) = context.network_interface.selected_nodes_in_nested_network(context.selection_network_path) else {
-			warn!("No selected nodes in collate_properties");
+			warn!("No selected nodes in collate_inspector_sections");
 			return Vec::new();
 		};
 
 		// We want:
-		// - If only nodes (no layers) are selected: display each node's properties
-		// - If one layer is selected, and zero or more of its (primary flow) upstream nodes: display the properties for the layer and all its upstream nodes
+		// - If only nodes (no layers) are selected: display each node's Inspector section
+		// - If one layer is selected, and zero or more of its (primary flow) upstream nodes: display the Inspector sections for the layer and all its upstream nodes
 		// - If multiple layers are selected, or one node plus other non-upstream nodes: display nothing
 		// - If nothing is selected, display any pinned nodes/layers
 
@@ -2587,30 +2587,30 @@ impl NodeGraphMessageHandler {
 
 		// Next, we decide what to display based on the number of layers and nodes selected
 		match *layers.as_slice() {
-			// If no layers are selected, show properties for all selected nodes
+			// If no layers are selected, show Inspector sections for all selected nodes
 			[] => {
-				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
+				let selected_nodes = nodes.iter().map(|node_id| node_inspector::generate_node_inspector(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
 					return selected_nodes;
 				}
 
-				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
-				// This may require store a separate path for the Properties panel
-				// And if no nodes are selected, show properties for all pinned nodes (in the user's saved order, each draggable to reorder)
-				let mut pinned_node_properties = context
+				// TODO: Display Inspector sections for encapsulating node when no nodes are selected in a nested network
+				// This may require store a separate path for the Inspector
+				// And if no nodes are selected, show Inspector sections for all pinned nodes (in the user's saved order, each draggable to reorder)
+				let mut pinned_node_inspector = context
 					.network_interface
 					.ordered_pinned_nodes(context.selection_network_path)
 					.into_iter()
-					.map(|node_id| node_properties::generate_node_properties(node_id, context))
+					.map(|node_id| node_inspector::generate_node_inspector(node_id, context))
 					.collect::<Vec<_>>();
-				for pinned_section in pinned_node_properties.iter_mut() {
-					if let LayoutGroup::Section(section) = pinned_section {
+				for pinned_section in pinned_node_inspector.iter_mut() {
+					if let LayoutGroup::NodeSection(section) = pinned_section {
 						section.draggable = true;
 					}
 				}
 
 				// With nothing pinned either, explain what can appear here
-				if pinned_node_properties.is_empty() {
+				if pinned_node_inspector.is_empty() {
 					return vec![LayoutGroup::row(vec![
 						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 						TextLabel::new("Select layers or nodes to inspect their parameters. Pin them for quick access here when nothing is selected.")
@@ -2621,9 +2621,9 @@ impl NodeGraphMessageHandler {
 					])];
 				}
 
-				pinned_node_properties
+				pinned_node_inspector
 			}
-			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
+			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show the Inspector section for the layer. Otherwise, show nothing.
 			[layer] => {
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
 					!context
@@ -2635,15 +2635,15 @@ impl NodeGraphMessageHandler {
 				}
 
 				// The layer's section, containing its chain's sections unless another input's chain is shown instead
-				let mut layer_section = node_properties::generate_node_properties(layer, context);
+				let mut layer_section = node_inspector::generate_node_inspector(layer, context);
 
 				// The sections of the layer's own chain can be dragged to reorder it, except a node without a primary input (e.g. a generator)
-				let expanded_input_chain = node_properties::expanded_input_chain(&layer, context.properties_panel_expanded_input_chains, context.network_interface, context.selection_network_path);
+				let expanded_input_chain = node_inspector::expanded_input_chain(&layer, context.inspector_expanded_input_chains, context.network_interface, context.selection_network_path);
 				if expanded_input_chain == Some(network_interface::LAYER_SECONDARY_INPUT_INDEX)
-					&& let LayoutGroup::Section(section) = &mut layer_section
+					&& let LayoutGroup::NodeSection(section) = &mut layer_section
 				{
 					for layout_group in section.layout.0.iter_mut() {
-						if let LayoutGroup::Section(chain_section) = layout_group
+						if let LayoutGroup::NodeSection(chain_section) = layout_group
 							&& chain_section.output_wire.is_some()
 							&& !chain_section.node_reference
 						{

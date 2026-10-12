@@ -556,7 +556,7 @@ impl NodeNetworkInterface {
 			.unwrap_or_else(|| "Custom Node".to_string())
 	}
 
-	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
+	/// The uneditable name in the Inspector which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.query(network_path, "implementation_name", |view| Ok(view.implementation_name(node_id)))
 			.unwrap_or_else(|| "Custom Node".to_string())

@@ -274,7 +274,7 @@ impl NodeMut<'_> {
 		changed
 	}
 
-	/// The identifier of the widget override the properties panel uses for this input, or `None` for the
+	/// The identifier of the widget override the Inspector uses for this input, or `None` for the
 	/// widget generated from its type.
 	pub(crate) fn set_widget_override(&mut self, input_index: usize, widget_override: Option<String>) -> bool {
 		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
@@ -447,7 +447,7 @@ impl NetworkMut<'_> {
 		changed
 	}
 
-	/// The display order of pinned nodes in the Properties panel.
+	/// The display order of pinned nodes in the Inspector.
 	pub(crate) fn set_pinned_order(&mut self, pinned_node_order: Vec<NodeId>) -> bool {
 		let changed = self.metadata.pinned_node_order != pinned_node_order;
 		self.metadata.pinned_node_order = pinned_node_order;

@@ -14,7 +14,7 @@ pub struct NodeMetadata {
 	pub icon: Option<&'static str>,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
-	pub properties: Option<&'static str>,
+	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
 	pub inject_scope: bool,

@@ -164,7 +164,7 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
+	/// Returns the input name to display in the Inspector. If the name is empty then the type is used.
 	pub fn displayed_input_name_and_description(&self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
 		let Some(input_metadata) = self.persistent_input_metadata(node_id, input_index, network_path) else {
 			log::warn!("input metadata not found in displayed_input_name_and_description");

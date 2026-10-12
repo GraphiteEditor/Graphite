@@ -1,8 +1,8 @@
 use crate::messages::prelude::*;
 
-#[impl_message(Message, DocumentMessage, PropertiesPanel)]
+#[impl_message(Message, DocumentMessage, Inspector)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub enum PropertiesPanelMessage {
+pub enum InspectorMessage {
 	// Messages
 	Clear,
 	Refresh,

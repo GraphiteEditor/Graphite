@@ -1230,7 +1230,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		// Pre-2024 documents stored Transform with 6 inputs and used radians for Rotation and `tan(radians)` for Skew. Detect that legacy
-		// shape (no input at index 6) and convert the units to degrees so the values match what the new Properties panel widgets expect.
+		// shape (no input at index 6) and convert the units to degrees so the values match what the new Inspector widgets expect.
 		if *old_inputs_count == 6 {
 			match old_inputs.get(2) {
 				Some(NodeInput::Value { tagged_value, exposed }) => {
@@ -1852,7 +1852,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Only nodes that have not been modified and still refer to a definition can be updated
 	let reference = document.network_interface.reference(node_id, network_path)?;
 
-	// Show the Artboard's Content input in the Properties panel, which the definition once hid
+	// Show the Artboard's Content input in the Inspector, which the definition once hid
 	if reference == DefinitionIdentifier::Network("Artboard".into())
 		&& document
 			.network_interface
@@ -1863,9 +1863,23 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input_override(node_id, 1, None, network_path);
 	}
 
+	// Legacy `noise_properties_*` widget overrides
+	for input_index in 0..node.inputs.len() {
+		let renamed_override = document
+			.network_interface
+			.persistent_input_metadata(node_id, input_index, network_path)
+			.and_then(|metadata| metadata.widget_override.as_deref())
+			.and_then(|widget_override| widget_override.strip_prefix("noise_properties_"))
+			.map(|suffix| format!("noise_inspector_{suffix}"));
+
+		if let Some(renamed_override) = renamed_override {
+			document.network_interface.set_input_override(node_id, input_index, Some(renamed_override), network_path);
+		}
+	}
+
 	let mut inputs_count = node.inputs.len();
 
-	// The expression nodes gained an output-type input, a type witness the Properties panel edits. A node from before it
+	// The expression nodes gained an output-type input, a type witness the Inspector edits. A node from before it
 	// takes the definition's default choice, Number, which is the output type every such node had.
 	let expression_node_identifiers = [graphene_std::math_nodes::math_fx::IDENTIFIER, graphene_std::math_nodes::math_f::IDENTIFIER];
 	if expression_node_identifiers.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && inputs_count == 2 {

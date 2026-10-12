@@ -119,7 +119,7 @@ The **Window menu** lists actions related to the visibility of workspace panels 
 
 | | |
 |-|-|
-| **Properties** | <p>Toggles visibility of the **Properties panel** on the upper-right side of the workspace. It is used to inspect and edit the values of graphics operation (node) parameters. Selected layers or nodes display their parametric controls in this panel.</p> |
+| **Inspector** | <p>Toggles visibility of the **Inspector** on the upper-right side of the workspace. It is used to inspect and edit the values of graphics operation (node) parameters. Selected layers or nodes display their parametric controls in this panel.</p> |
 | **Layers** | <p>Toggles visibility of the **Layers panel** on the lower-right side of the workspace. It is used to organize and select the artboards and layers that form the structure of a document.</p> |
 | **Data** | <p>Toggles visibility of the **Data panel** on the lower-left side of the workspace. It is used to introspect data flow from the output of a selected node for technical debugging of content generated within the node graph.</p> |
 

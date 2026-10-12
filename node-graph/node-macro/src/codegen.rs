@@ -704,7 +704,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &mapped_struct_name, &list_content_struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
-	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+	let inspector = &attributes.inspector_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let icon = &attributes.icon.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
 	let inject_scope_flag = attributes.inject_scope;
@@ -930,7 +930,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					category: #category,
 					icon: #icon,
 					description: #description,
-					properties: #properties,
+					inspector: #inspector,
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
 					inject_scope: #inject_scope_flag,

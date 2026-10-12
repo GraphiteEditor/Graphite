@@ -34,7 +34,7 @@ pub enum DocumentMessage {
 	#[child]
 	Overlays(OverlaysMessage),
 	#[child]
-	PropertiesPanel(PropertiesPanelMessage),
+	Inspector(InspectorMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
 	#[child]
@@ -104,7 +104,7 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	ReorderPropertiesSection {
+	ReorderInspectorSection {
 		node_id: NodeId,
 		insert_index: usize,
 		duplicate: bool,
@@ -249,11 +249,11 @@ pub enum DocumentMessage {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
-	ToggleNodePropertiesSectionExpanded {
+	ToggleNodeInspectorSectionExpanded {
 		node_id: NodeId,
 		recursive: bool,
 	},
-	ToggleNodePropertiesInputChain {
+	ToggleNodeInspectorInputChain {
 		node_id: NodeId,
 		input_index: usize,
 	},

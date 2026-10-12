@@ -98,7 +98,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						resource_storage,
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
-						properties_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace.panel_layout.focus_document,
+						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs);
 					refresh_transaction_edited_nodes(document, true, responses);
@@ -195,7 +195,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						resource_storage,
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
-						properties_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace.panel_layout.focus_document,
+						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs);
 					refresh_transaction_edited_nodes(document, self.active_document_id == Some(document_id), responses);
@@ -250,7 +250,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(ToolMessage::DeactivateTools);
 
 					// Clear relevant UI layouts if there are no documents
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
 					HintData::clear_layout(responses);
@@ -274,13 +274,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Is this the last document?
 				if self.document_ids.len() == 1 && self.document_ids[0] == document_id {
 					// Clear UI layouts that assume the existence of a document
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
 					HintData::clear_layout(responses);
 				}
 
-				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
+				// Actually delete the document (delay to delete document is required to let the document and Inspector messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
 				responses.add(remove_stored_document(self.document_store.clone(), document_id));
 
@@ -849,7 +849,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.is_loaded = true;
 					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 				}
 			}
 			PortfolioMessage::RenameDocument { new_name } => {

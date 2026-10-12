@@ -138,7 +138,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					return;
 				};
 				if set_stroke_paint_order(network_interface, &[], stroke_node_id, paint_order) {
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					responses.add(NodeGraphMessage::SendGraph);
 				}
