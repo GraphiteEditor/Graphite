@@ -275,32 +275,32 @@ pub fn noise_pattern(
 	_primary: (),
 	#[default(true)] clip: Item<bool>,
 	#[hard(0..)] seed: Item<i64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_scale")]
 	#[default(10.)]
 	scale: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: Item<NoiseType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_noise_type")] noise_type: Item<NoiseType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_amplitude")]
 	#[default(100.)]
 	domain_warp_amplitude: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: Item<FractalType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_type")] fractal_type: Item<FractalType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_octaves")]
 	#[default(3)]
 	#[hard(1..10)]
 	fractal_octaves: Item<i64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_lacunarity")]
 	#[default(2.)]
 	fractal_lacunarity: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_gain")]
 	#[default(0.5)]
 	fractal_gain: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_ping_pong_strength")]
 	#[default(2.)]
 	fractal_ping_pong_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: Item<f64>,
 ) -> Item<Raster<CPU>> {

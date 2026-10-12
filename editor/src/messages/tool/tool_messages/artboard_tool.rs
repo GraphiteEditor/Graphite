@@ -171,7 +171,7 @@ impl ArtboardToolData {
 		} else {
 			self.selected_artboard = None;
 
-			responses.add(PropertiesPanelMessage::Clear);
+			responses.add(InspectorMessage::Clear);
 
 			false
 		}

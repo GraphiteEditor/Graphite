@@ -385,7 +385,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
 			};
 
-			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Properties panel widgets
+			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Inspector widgets
 			if let Type::Item(element) = &ty
 				&& let Some(type_default) = TaggedValue::from_type(element)
 			{

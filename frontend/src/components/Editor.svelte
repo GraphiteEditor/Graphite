@@ -313,7 +313,7 @@
 	.menu-list,
 	.menu-list-button .entry,
 	.layer-tree .expand-arrow,
-	.widget-section .header {
+	.node-section .header {
 		&:focus-visible {
 			outline: 1px dashed var(--color-e-nearwhite);
 			outline-offset: -1px;

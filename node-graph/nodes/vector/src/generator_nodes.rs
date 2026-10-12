@@ -52,7 +52,7 @@ fn arc(
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
-#[node_macro::node(category("Vector: Shape"), icon("NodeSpiral"), properties("spiral_properties"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeSpiral"), inspector("spiral_inspector"))]
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
@@ -117,7 +117,7 @@ fn ellipse(
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
-#[node_macro::node(category("Vector: Shape"), icon("NodeRectangle"), properties("rectangle_properties"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeRectangle"), inspector("rectangle_inspector"))]
 fn rectangle(
 	_: impl Ctx,
 	_primary: (),
@@ -324,7 +324,7 @@ impl GridSpacing for DVec2 {
 }
 
 /// Generates a rectangular or isometric grid with the chosen number of columns and rows. Line segments connect the points, forming a vector mesh.
-#[node_macro::node(category("Vector: Shape"), icon("NodeGrid"), properties("grid_properties"))]
+#[node_macro::node(category("Vector: Shape"), icon("NodeGrid"), inspector("grid_inspector"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),

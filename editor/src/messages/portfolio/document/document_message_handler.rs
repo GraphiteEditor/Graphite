@@ -1,5 +1,5 @@
 use super::document_diff::diff_networks;
-use super::node_graph::{document_node_definitions, node_properties};
+use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -15,12 +15,12 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+use crate::messages::portfolio::document::inspector::inspector_message_handler::InspectorMessageContext;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
-use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
@@ -66,7 +66,7 @@ pub struct DocumentMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
-	pub properties_panel_open: bool,
+	pub inspector_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
@@ -97,7 +97,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
-	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
+	pub inspector_message_handler: InspectorMessageHandler,
 	#[serde(skip)]
 	pub data_panel_message_handler: DataPanelMessageHandler,
 
@@ -113,12 +113,12 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
-	/// The node IDs whose section is collapsed in the Properties panel.
+	/// The node IDs whose section is collapsed in the Inspector.
+	#[serde(default, alias = "properties_panel_collapsed_sections")]
+	pub inspector_collapsed_sections: Vec<NodeId>,
+	/// The input (if any) whose feeding chain a node's Inspector section shows within it, for each node where that differs from the default of a layer's chain input.
 	#[serde(default)]
-	pub properties_panel_collapsed_sections: Vec<NodeId>,
-	/// The input (if any) whose feeding chain a node's Properties panel section shows within it, for each node where that differs from the default of a layer's chain input.
-	#[serde(default)]
-	pub properties_panel_expanded_input_chains: Vec<(NodeId, Option<usize>)>,
+	pub inspector_expanded_input_chains: Vec<(NodeId, Option<usize>)>,
 	/// The layer node IDs whose chain is expanded into a row per node in the Layers panel.
 	#[serde(default)]
 	pub layers_panel_expanded_chains: Vec<NodeId>,
@@ -202,7 +202,7 @@ impl Default for DocumentMessageHandler {
 			navigation_handler: NavigationMessageHandler::default(),
 			node_graph_handler: NodeGraphMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
-			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			inspector_message_handler: InspectorMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
@@ -210,8 +210,8 @@ impl Default for DocumentMessageHandler {
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
-			properties_panel_collapsed_sections: Vec::new(),
-			properties_panel_expanded_input_chains: Vec::new(),
+			inspector_collapsed_sections: Vec::new(),
+			inspector_expanded_input_chains: Vec::new(),
 			layers_panel_expanded_chains: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
@@ -255,7 +255,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			preferences,
 			data_panel_open,
 			layers_panel_open,
-			properties_panel_open,
+			inspector_open,
 			resource_storage,
 			fonts,
 		} = context;
@@ -282,19 +282,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.overlays_message_handler
 					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport });
 			}
-			DocumentMessage::PropertiesPanel(message) => {
-				let context = PropertiesPanelMessageContext {
+			DocumentMessage::Inspector(message) => {
+				let context = InspectorMessageContext {
 					executor,
 					document_id,
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
 					fonts,
-					properties_panel_open,
-					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
-					properties_panel_expanded_input_chains: &self.properties_panel_expanded_input_chains,
+					inspector_open,
+					inspector_collapsed_sections: &self.inspector_collapsed_sections,
+					inspector_expanded_input_chains: &self.inspector_expanded_input_chains,
 				};
-				self.properties_panel_message_handler.process_message(message, responses, context);
+				self.inspector_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::DataPanel(message) => {
 				self.data_panel_message_handler.process_message(
@@ -317,8 +317,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
 						collapsed: &mut self.collapsed,
-						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
-						properties_panel_expanded_input_chains: &mut self.properties_panel_expanded_input_chains,
+						inspector_collapsed_sections: &mut self.inspector_collapsed_sections,
+						inspector_expanded_input_chains: &mut self.inspector_expanded_input_chains,
 						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
@@ -549,7 +549,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
@@ -819,8 +819,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				self.move_selected_layers_to(parent, insert_index, responses);
 			}
-			DocumentMessage::ReorderPropertiesSection { node_id, insert_index, duplicate } => {
-				// The Properties panel shows draggable sections in two cases, disambiguated by the current selection:
+			DocumentMessage::ReorderInspectorSection { node_id, insert_index, duplicate } => {
+				// The Inspector shows draggable sections in two cases, disambiguated by the current selection:
 				// a single selected layer (reorder within its node chain) or no selection (reorder the pinned nodes).
 				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path);
 				let Some(selected_nodes) = selected_nodes else { return };
@@ -851,10 +851,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(DocumentMessage::MoveChainNodes { node_ids, layer, insert_index });
 					}
 				} else if layers.is_empty() && nodes.is_empty() {
-					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed, and nothing to duplicate into)
+					// Reorder a pinned node, which is purely a Inspector display order (no graph rerender needed, and nothing to duplicate into)
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::ReorderPinnedNode { node_id, insert_index });
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 				}
 			}
 			DocumentMessage::MoveChainNodes { node_ids, layer, insert_index } => {
@@ -863,7 +863,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::DuplicateChainNodes {
 				node_ids,
@@ -883,7 +883,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::PasteChainNodes { copies } => {
 				// Layers and their chains live in the document network, so a nested one open in the graph has no chain to paste into
@@ -925,7 +925,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::PasteNodes { nodes } => {
 				// Over the same selection they were copied from, nodes are duplicated into their flow, and otherwise they're pasted loose into the graph and shown there
@@ -1472,7 +1472,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					PanelType::Layers => self.selection_network_path = vec![],
 					_ => {}
 				}
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
 			}
@@ -1664,39 +1664,39 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
-				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
+			DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id, recursive } => {
+				let expand = self.inspector_collapsed_sections.contains(&node_id);
 
 				// Recursively, every section nested within this one follows along
 				let node_ids = if recursive {
-					node_properties::nested_section_nodes(node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, &self.selection_network_path)
+					node_inspector::nested_section_nodes(node_id, &self.inspector_expanded_input_chains, &self.network_interface, &self.selection_network_path)
 				} else {
 					vec![node_id]
 				};
 
 				for node_id in node_ids {
 					if expand {
-						self.properties_panel_collapsed_sections.retain(|id| *id != node_id);
-					} else if !self.properties_panel_collapsed_sections.contains(&node_id) {
-						self.properties_panel_collapsed_sections.push(node_id);
+						self.inspector_collapsed_sections.retain(|id| *id != node_id);
+					} else if !self.inspector_collapsed_sections.contains(&node_id) {
+						self.inspector_collapsed_sections.push(node_id);
 					}
 				}
 
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
-			DocumentMessage::ToggleNodePropertiesInputChain { node_id, input_index } => {
+			DocumentMessage::ToggleNodeInspectorInputChain { node_id, input_index } => {
 				// A section shows at most one input's chain, so showing this one hides any other
 				let network_path = &self.selection_network_path;
-				let default = node_properties::default_expanded_input_chain(&node_id, &self.network_interface, network_path);
-				let current = node_properties::expanded_input_chain(&node_id, &self.properties_panel_expanded_input_chains, &self.network_interface, network_path);
+				let default = node_inspector::default_expanded_input_chain(&node_id, &self.network_interface, network_path);
+				let current = node_inspector::expanded_input_chain(&node_id, &self.inspector_expanded_input_chains, &self.network_interface, network_path);
 				let expanded = (current != Some(input_index)).then_some(input_index);
 
-				self.properties_panel_expanded_input_chains.retain(|(id, _)| *id != node_id);
+				self.inspector_expanded_input_chains.retain(|(id, _)| *id != node_id);
 				if expanded != default {
-					self.properties_panel_expanded_input_chains.push((node_id, expanded));
+					self.inspector_expanded_input_chains.push((node_id, expanded));
 				}
 
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::ToggleLayerChainExpanded { layer_id } => {
 				if self.layers_panel_expanded_chains.contains(&layer_id) {

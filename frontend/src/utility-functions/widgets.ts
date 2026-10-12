@@ -39,7 +39,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 			if (targetLayout && "Column" in targetLayout) return targetLayout.Column.columnWidgets[i];
 			if (targetLayout && "Row" in targetLayout) return targetLayout.Row.rowWidgets[i];
 			if (targetLayout && "Table" in targetLayout) return targetLayout.Table.tableWidgets[i];
-			if (targetLayout && "Section" in targetLayout) return targetLayout.Section.layout[i];
+			if (targetLayout && "NodeSection" in targetLayout) return targetLayout.NodeSection.layout[i];
 			if (targetLayout && "widget" in targetLayout && "widgetId" in targetLayout) {
 				if ("PopoverButton" in targetLayout.widget && targetLayout.widget.PopoverButton.popoverLayout) {
 					return targetLayout.widget.PopoverButton.popoverLayout[i];

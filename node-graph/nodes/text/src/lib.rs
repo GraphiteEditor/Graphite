@@ -336,7 +336,7 @@ fn string_truncate(
 }
 
 /// Formats a number as a string with control over decimal places, decimal separator, and thousands grouping.
-#[node_macro::node(category("Text"), icon("NodeFormatNumber"), properties("format_number_properties"))]
+#[node_macro::node(category("Text"), icon("NodeFormatNumber"), inspector("format_number_inspector"))]
 fn format_number(
 	_: impl Ctx,
 	/// The number to format as a string.
@@ -797,7 +797,7 @@ fn string_occurrences(
 }
 
 /// Converts a string's capitalization style to another of the common upper and lower case patterns, optionally joining words with a chosen separator.
-#[node_macro::node(category("Text"), icon("NodeStringCapitalization"), properties("string_capitalization_properties"))]
+#[node_macro::node(category("Text"), icon("NodeStringCapitalization"), inspector("string_capitalization_inspector"))]
 fn string_capitalization(
 	_: impl Ctx,
 	/// The string to have its letter capitalization converted.

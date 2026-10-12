@@ -29,17 +29,17 @@ pub struct DocumentNodeDefinition {
 	pub node_template: NodeTemplate,
 	pub category: &'static str,
 	pub description: Cow<'static, str>,
-	pub properties: Option<&'static str>,
+	pub inspector: Option<&'static str>,
 }
 ```
 
 Only the definitions of nodes built from a nested network, such as the empty "Custom Node", are written by hand in that file. A node implemented as a single proto-node has its definition generated from the metadata the `node` macro records about its function signature (see [Creating a new node](#creating-a-new-node)), keyed by the proto-node identifier, which for the Opacity node is `graphene_std::blending_nodes::opacity::IDENTIFIER`.
 
-## Properties panel
+## Inspector
 
-Each input of a node is a `NodeInput`: either a wire from another node or a constant `TaggedValue` (a dynamically typed value that serializes with serde) paired with an exposed flag, which is whether the input is shown as a connector in the node graph by default. Both come from the function signature. A parameter's type picks the `TaggedValue` variant, `#[default(...)]` sets the value a new node starts with and the value an input falls back to when its wire is disconnected, and `#[expose]` shows a secondary input's connector, while the primary input always has one. In the Opacity node, `content` is the primary input while `opacity` and `fill` appear only in the Properties panel by default, keeping the graph uncluttered.
+Each input of a node is a `NodeInput`: either a wire from another node or a constant `TaggedValue` (a dynamically typed value that serializes with serde) paired with an exposed flag, which is whether the input is shown as a connector in the node graph by default. Both come from the function signature. A parameter's type picks the `TaggedValue` variant, `#[default(...)]` sets the value a new node starts with and the value an input falls back to when its wire is disconnected, and `#[expose]` shows a secondary input's connector, while the primary input always has one. In the Opacity node, `content` is the primary input while `opacity` and `fill` appear only in the Inspector by default, keeping the graph uncluttered.
 
-The Properties panel is generated from the same signature, which can be seen by selecting the Opacity node in the graph. A number parameter becomes a number input whose bounds and slider come from `#[soft]`, `#[hard]`, and `#[range]` (see [Additional Macro Options](#additional-macro-options)), and `#[unit(...)]` sets the `%` suffix here. A `bool` becomes a checkbox and a `ChoiceType` enum becomes a dropdown. When the generated widget isn't right, `#[widget(ParsedWidgetOverride::Hidden)]` hides it and `#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]` names a hand-written widget function in `node_properties.rs`, which is how the Opacity node pairs each percentage with the checkbox that enables it.
+The Inspector is generated from the same signature, which can be seen by selecting the Opacity node in the graph. A number parameter becomes a number input whose bounds and slider come from `#[soft]`, `#[hard]`, and `#[range]` (see [Additional Macro Options](#additional-macro-options)), and `#[unit(...)]` sets the `%` suffix here. A `bool` becomes a checkbox and a `ChoiceType` enum becomes a dropdown. When the generated widget isn't right, `#[widget(ParsedWidgetOverride::Hidden)]` hides it and `#[widget(ParsedWidgetOverride::Custom = "optional_percentage")]` names a hand-written widget function in `node_inspector.rs`, which is how the Opacity node pairs each percentage with the checkbox that enables it.
 
 ## Graphene (proto node executor)
 
@@ -83,7 +83,7 @@ The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `1
 
 ## Creating a new node
 
-Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which is applied to a function like `opacity`. This generates the struct, its `Node` implementation, the node registry entries, the document node definition, and the Properties panel entries. The first parameter is the evaluation context and the second is the primary input, and each parameter rides its wire as an `Item<T>` (one value with its attributes) or a `List<T>` (a whole list). Doc comments on the function and its parameters become the tooltips shown in the editor (omitted here). This is the Opacity node as it exists in `node-graph/nodes/blending/src/lib.rs`:
+Instead of manually implementing the `Node` trait with complex generics, one can use the `node` macro, which is applied to a function like `opacity`. This generates the struct, its `Node` implementation, the node registry entries, the document node definition, and the Inspector entries. The first parameter is the evaluation context and the second is the primary input, and each parameter rides its wire as an `Item<T>` (one value with its attributes) or a `List<T>` (a whole list). Doc comments on the function and its parameters become the tooltips shown in the editor (omitted here). This is the Opacity node as it exists in `node-graph/nodes/blending/src/lib.rs`:
 
 ```rs
 #[node_macro::node(category("Blending"))]
@@ -128,7 +128,7 @@ fn opacity<T>(
 
 ## Additional Macro Options
 
-The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `soft`, `hard`, `range`, `unit`, `multiline`, and `progression` attributes to influence how the properties are generated. The `#[unit("...")]` attribute appends a suffix like `%` or ` px` to a number's widget, while `#[multiline]` gives a `String` the text area widget and `#[progression]` splits a number into its whole and fractional parts. The `#[soft(a..b)]` and `#[hard(a..b)]` attributes set the slider's suggested extent and its enforced clamp, respectively (either endpoint may be omitted, e.g. `0..` or `..100`; both endpoints are inclusive, so there is no `..=` form), and `#[range]` renders the input as a draggable slider. Values typed into the input may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` is only meaningful together with `#[range]`.
+The macro invocation can be extended with additional attributes. The currently supported attributes are (`name`, `path`, `skip_impl`, `category`). When using generics the `#[implementations()]` attribute can be used to automatically populate the node_registry for you. You can also use the `default`, `expose`, `soft`, `hard`, `range`, `unit`, `multiline`, and `progression` attributes to influence how the Inspector widgets are generated. The `#[unit("...")]` attribute appends a suffix like `%` or ` px` to a number's widget, while `#[multiline]` gives a `String` the text area widget and `#[progression]` splits a number into its whole and fractional parts. The `#[soft(a..b)]` and `#[hard(a..b)]` attributes set the slider's suggested extent and its enforced clamp, respectively (either endpoint may be omitted, e.g. `0..` or `..100`; both endpoints are inclusive, so there is no `..=` form), and `#[range]` renders the input as a draggable slider. Values typed into the input may exceed the soft extent but are clamped to the hard bounds, so `#[soft]` is only meaningful together with `#[range]`.
 
 ## Executing a document `NodeNetwork`
 
