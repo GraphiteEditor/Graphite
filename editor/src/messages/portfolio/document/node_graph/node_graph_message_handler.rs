@@ -1206,13 +1206,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					// Input connectors stick out past their node's edge, so hovering one counts as hovering its node
-					let wire_source_node = self
-						.wire_in_progress_output_connector(network_interface, selection_network_path)
-						.and_then(|output_connector| output_connector.node_id());
 					let wire_hovered_node = to_connector
 						.and_then(|input_connector| input_connector.node_id())
 						.or_else(|| network_interface.node_from_click(viewport_location, selection_network_path))
-						.filter(|node_id| Some(*node_id) != wire_source_node)
 						// Exposing a parameter of a layer would turn it into a node
 						.filter(|node_id| !network_interface.is_layer(node_id, selection_network_path));
 					self.set_wire_hovered_node(wire_hovered_node.map(|node_id| (node_id, ipp.time)), network_interface, selection_network_path, responses);
@@ -2351,10 +2347,20 @@ impl NodeGraphMessageHandler {
 		}
 		self.set_wire_hover_tick_subscribed(false, responses);
 
-		let output_types = self
-			.wire_in_progress_output_connector(network_interface, network_path)
-			.map(|output_connector| network_interface.potential_output_types(&output_connector, network_path))
-			.unwrap_or_default();
+		let Some(output_connector) = self.wire_in_progress_output_connector(network_interface, network_path) else {
+			return;
+		};
+
+		// Connecting the wire to its source node, or to any node upstream of it, would form a cycle
+		if let OutputConnector::Node { node_id: source_node_id, .. } = output_connector
+			&& network_interface
+				.upstream_flow_back_from_nodes(vec![source_node_id], network_path, FlowType::UpstreamFlow)
+				.any(|upstream_node_id| upstream_node_id == node_id)
+		{
+			return;
+		}
+
+		let output_types = network_interface.potential_output_types(&output_connector, network_path);
 
 		let revealed_input_indices = (0..network_interface.number_of_inputs(&node_id, network_path))
 			.filter(|&input_index| {
