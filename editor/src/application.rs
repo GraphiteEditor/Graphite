@@ -24,10 +24,10 @@ impl Editor {
 
 		let task_executor = TaskExecutor::new();
 		let mut dispatcher = Dispatcher::new(resource_storage, document_store);
-		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), wake);
+		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), wake.clone());
 		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
 		crate::node_graph_executor::replace_application_io(application_io);
-		crate::node_graph_executor::replace_task_executor(task_executor.handle());
+		crate::node_graph_executor::replace_task_executor(task_executor.handle(), wake);
 
 		Self { dispatcher }
 	}
@@ -46,7 +46,7 @@ impl Editor {
 		let mut application_io = PlatformApplicationIo::default();
 		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_storage_message_handler.resources());
 		runtime.replace_application_io(application_io);
-		runtime.replace_task_executor(task_executor.handle());
+		runtime.replace_task_executor(task_executor.handle(), Arc::new(|| {}));
 
 		(editor, runtime)
 	}

@@ -50,6 +50,7 @@ pub struct CompilationResponse {
 pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
+	TaskCompleted,
 	EyedropperPreview(Raster<CPU>),
 }
 
@@ -460,6 +461,7 @@ impl NodeGraphExecutor {
 						node_graph_errors,
 					});
 				}
+				NodeGraphUpdate::TaskCompleted => responses.add(PortfolioMessage::SubmitActiveGraphRender),
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });

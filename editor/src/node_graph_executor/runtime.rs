@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::task::TaskExecutorHandle;
+use crate::task::{Spawn, Task, TaskExecutorHandle};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -587,10 +587,10 @@ pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
 		node_runtime.replace_application_io(application_io);
 	}
 }
-pub(crate) fn replace_task_executor(handle: TaskExecutorHandle) {
+pub(crate) fn replace_task_executor(handle: TaskExecutorHandle, wake: Wake) {
 	let mut node_runtime = NODE_RUNTIME.lock();
 	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.replace_task_executor(handle);
+		node_runtime.replace_task_executor(handle, wake);
 	}
 }
 
@@ -603,12 +603,35 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, handle: TaskExecutorHandle) {
-		self.async_runtime = Some(AsyncRuntime::new(Arc::new(handle)));
+	pub(crate) fn replace_task_executor(&mut self, handle: TaskExecutorHandle, wake: Wake) {
+		let spawn = NodeTaskExecutor {
+			handle,
+			sender: self.sender.clone(),
+			wake,
+		};
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
 	}
 
 	fn async_runtime(&self) -> &AsyncRuntime {
 		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
+	}
+}
+
+struct NodeTaskExecutor {
+	handle: TaskExecutorHandle,
+	sender: Sender<NodeGraphUpdate>,
+	wake: Wake,
+}
+
+impl Spawn for NodeTaskExecutor {
+	fn spawn(&self, task: Task) {
+		let sender = self.sender.clone();
+		let wake = self.wake.clone();
+		self.handle.spawn(Box::pin(async move {
+			task.await;
+			let _ = sender.send(NodeGraphUpdate::TaskCompleted);
+			wake();
+		}));
 	}
 }
 
