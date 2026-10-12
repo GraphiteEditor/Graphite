@@ -13,10 +13,9 @@
 	export let action: () => void;
 </script>
 
-<!-- Only the name is underlined, not the marker of whether its input's chain is shown -->
 <TextLabel class="parameter-chain-toggle" classes={{ expanded }} {tooltipLabel} {tooltipDescription} {tooltipShortcut} on:click={action}>
 	<span class="name">{name}</span>
-	<span class="marker">{expanded ? " [+]" : " [−]"}</span>
+	<span class="marker">{expanded ? " [−]" : " [+]"}</span>
 </TextLabel>
 
 <style lang="scss">
@@ -32,7 +31,6 @@
 			text-decoration: underline;
 		}
 
-		// Keeping its leading space
 		.marker {
 			flex: 0 0 auto;
 			white-space: pre;
