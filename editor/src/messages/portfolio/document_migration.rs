@@ -1817,6 +1817,17 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Only nodes that have not been modified and still refer to a definition can be updated
 	let reference = document.network_interface.reference(node_id, network_path)?;
 
+	// Show the Artboard's Content input in the Properties panel, which the definition once hid
+	if reference == DefinitionIdentifier::Network("Artboard".into())
+		&& document
+			.network_interface
+			.persistent_input_metadata(node_id, 1, network_path)
+			.and_then(|metadata| metadata.widget_override.as_deref())
+			== Some("hidden")
+	{
+		document.network_interface.set_input_override(node_id, 1, None, network_path);
+	}
+
 	let mut inputs_count = node.inputs.len();
 
 	// The expression nodes gained an output-type input, a type witness the Properties panel edits. A node from before it

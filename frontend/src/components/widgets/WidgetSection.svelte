@@ -141,7 +141,8 @@
 				--chain-wire-width: 4px;
 			}
 
-			> .body > .widget-span.row:first-child > .parameter-expose-button:first-child {
+			// Every row is indented, keeping clear of the wire as it rises past them to the first
+			> .body > .widget-span.row > .parameter-expose-button:first-child {
 				margin-left: var(--chain-input-indent);
 
 				// Shortened by the indent so the widgets after it stay aligned with other rows

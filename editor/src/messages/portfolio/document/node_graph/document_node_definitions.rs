@@ -309,7 +309,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				],
 				input_metadata: vec![
 					("Base", "TODO").into(),
-					InputMetadata::with_name_description_override("Content", "TODO", WidgetOverride::Hidden),
+					("Content", "TODO").into(),
 					InputMetadata::with_name_description_override(
 						"Location",
 						"TODO",
