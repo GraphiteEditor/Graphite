@@ -196,20 +196,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} * -VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 			}
-			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in CanvasTiltResetAndZoomTo100Percent");
-					return;
-				};
-				ptz.set_tilt(0.);
-				ptz.set_zoom(1.);
-				if graph_view_overlay_open {
-					responses.add(NodeGraphMessage::UpdateGraphBarRight);
-				} else {
-					responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				}
-				responses.add(DocumentMessage::PTZUpdate);
-			}
 			NavigationMessage::CanvasTiltSet { angle_radians } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get mutable PTZ in CanvasTiltSet");
