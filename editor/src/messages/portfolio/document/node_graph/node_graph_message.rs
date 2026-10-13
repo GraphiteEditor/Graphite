@@ -19,8 +19,12 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
-	AddPrimaryImport,
-	AddSecondaryImport,
+	/// Adds the import at `import_index` wired to `input_connector`, from a wire dragged out of a dimmed connector for adding one.
+	/// Index 0 fills the empty primary, and any other is the next secondary import.
+	AddImportAndConnect {
+		import_index: usize,
+		input_connector: InputConnector,
+	},
 	/// Inserts a Passthrough node beside the import that takes over the wires it fed, so nodes can be placed in front of all of them at once.
 	AddImportPassthrough {
 		import_index: usize,

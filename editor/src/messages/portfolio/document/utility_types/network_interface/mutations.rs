@@ -645,14 +645,14 @@ impl NodeNetworkInterface {
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 
-			// A wire to or from the imports appeared or vanished
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. })
+			// A wire to or from the imports changed
+			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. } | NodeInput::Import { .. }, NodeInput::Import { .. })
 			| (NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_wire(input_connector, network_path);
 			}
 
 			// A node was disconnected
-			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. } | NodeInput::Import { .. }) => {
 				self.unload_wire(input_connector, network_path);
 
 				if let Some((old_upstream_node_id, previous_position)) = disconnected_upstream

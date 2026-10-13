@@ -88,6 +88,8 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
+	/// The import a wire dragged from a dimmed connector for adding one would add, which only happens once it connects to something.
+	wire_in_progress_from_new_import: Option<usize>,
 	/// The node hovered by the wire in progress and when the hover began, in milliseconds.
 	wire_hovered_node: Option<(NodeId, u64)>,
 	/// The node expanded for the wire in progress, the indices of the inputs it temporarily exposed, and the prior transaction state.
@@ -161,22 +163,43 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.add_import(graph_craft::document::value::TaggedValue::None, true, -1, "", "", breadcrumb_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::AddPrimaryImport => {
-				if network_interface.number_of_imports(breadcrumb_network_path) == 0 {
-					responses.add(NodeGraphMessage::AddImport);
-				} else {
-					responses.add(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: true });
-				}
-			}
-			NodeGraphMessage::AddSecondaryImport => {
-				// If necessary, add a hidden primary import before the secondary import
-				if network_interface.number_of_imports(breadcrumb_network_path) == 0 {
-					responses.add(NodeGraphMessage::AddImport);
-					responses.add(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: false });
-				}
+			NodeGraphMessage::AddImportAndConnect { import_index, input_connector } => {
+				// The import takes over the value its wire displaces, or else the one a disconnect would leave, so it has the type the input accepts
+				let import_value = match network_interface.input_from_connector(&input_connector, breadcrumb_network_path) {
+					Some(NodeInput::Value { tagged_value, .. }) => (**tagged_value).clone(),
+					Some(_) => network_interface.tagged_value_from_input(&input_connector, breadcrumb_network_path),
+					None => {
+						log::error!("Could not get the input {input_connector:?} to connect a new import to");
+						return;
+					}
+				};
 
-				// Add the secondary import
-				responses.add(NodeGraphMessage::AddImport);
+				let import_count = network_interface.number_of_imports(breadcrumb_network_path);
+				let wired_import_index = if import_index == 0 && import_count > 0 {
+					// The empty primary is a hidden input, so it's shown
+					if let Some((node_id, encapsulating_path)) = breadcrumb_network_path.split_last() {
+						let primary_input = InputConnector::primary_input(*node_id);
+						if let Some(NodeInput::Value { exposed: false, .. }) = network_interface.input_from_connector(&primary_input, encapsulating_path) {
+							network_interface.set_input(&primary_input, NodeInput::value(import_value, true), encapsulating_path);
+						}
+					}
+					0
+				} else {
+					// A secondary import follows an empty primary added first when there are no imports yet
+					if import_index > 0 && import_count == 0 {
+						network_interface.add_import(TaggedValue::None, false, -1, "", "", breadcrumb_network_path);
+					}
+					network_interface.add_import(import_value, true, -1, "", "", breadcrumb_network_path);
+					network_interface.number_of_imports(breadcrumb_network_path).saturating_sub(1)
+				};
+
+				responses.add(NodeGraphMessage::CreateWire {
+					output_connector: OutputConnector::Import(wired_import_index),
+					input_connector,
+				});
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::AddImportPassthrough { import_index } => {
 				let import = OutputConnector::Import(import_index);
@@ -229,7 +252,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::AddSecondaryExport => {
-				// If necessary, add a hidden primary import before the secondary import
+				// If necessary, add a hidden primary export before the secondary export
 				if network_interface.number_of_exports(breadcrumb_network_path) == 0 {
 					responses.add(NodeGraphMessage::AddExport);
 					responses.add(NodeGraphMessage::ExposePrimaryExport { exposed: false });
@@ -1045,6 +1068,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				}
 
+				// Drag a wire out of a dimmed connector for adding an import, which adds it once the wire connects to something
+				if let Some((import_index, connector_position)) = network_interface.empty_import_export_connector_at(node_graph_point, true, selection_network_path) {
+					responses.add(DocumentMessage::StartTransaction);
+					self.initial_disconnecting = false;
+					self.wire_in_progress_from_connector = Some(connector_position);
+					self.wire_in_progress_type = FrontendGraphDataType::General;
+					self.wire_in_progress_from_new_import = Some(import_index);
+
+					self.update_node_graph_hints(responses);
+					return;
+				}
+
 				self.selection_before_pointer_down = network_interface
 					.selected_nodes_in_nested_network(selection_network_path)
 					.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect())
@@ -1211,6 +1246,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							return;
 						};
 						self.wire_in_progress_to_connector = Some(input_position);
+					}
+					// Snap to a dimmed connector for adding an export, which a wire dropped on adds
+					else if let Some((_, empty_export_position)) = network_interface.empty_import_export_connector_at(point, false, selection_network_path) {
+						self.wire_in_progress_to_connector = Some(empty_export_position);
 					}
 					// Not hovering over a node input or node output, update with the mouse position.
 					else {
@@ -1386,17 +1425,35 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.collapse_wire_expanded_node(connected_input, network_interface, selection_network_path, responses);
 					self.set_wire_hovered_node(None, network_interface, selection_network_path, responses);
 
-					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
-						responses.add(NodeGraphMessage::CreateWire {
-							input_connector: *input_connector,
-							output_connector: *output_connector,
+					// Dropped on a dimmed connector for adding an export, it's added for the wire to connect to
+					let new_export_index = input_connector
+						.is_none()
+						.then(|| network_interface.empty_import_export_connector_at(wire_in_progress_to_connector, false, selection_network_path))
+						.flatten()
+						.map(|(export_index, _)| export_index);
+					let drop_target = input_connector.or(new_export_index.map(InputConnector::Export));
+					if let Some(export_index) = new_export_index
+						&& (self.wire_in_progress_from_new_import.is_some() || output_connector.is_some())
+					{
+						responses.add(if export_index == 0 {
+							NodeGraphMessage::AddPrimaryExport
+						} else {
+							NodeGraphMessage::AddSecondaryExport
 						});
+					}
 
+					// A wire from a dimmed import connector adds its import only once it connects to something
+					if let Some(import_index) = self.wire_in_progress_from_new_import {
+						if let Some(input_connector) = drop_target {
+							responses.add(NodeGraphMessage::AddImportAndConnect { import_index, input_connector });
+						}
+					} else if let Some(output_connector) = output_connector
+						&& let Some(input_connector) = drop_target
+					{
+						responses.add(NodeGraphMessage::CreateWire { output_connector, input_connector });
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-
 						responses.add(NodeGraphMessage::SendGraph);
 					} else if !self.initial_disconnecting
-						&& input_connector.is_none()
 						&& let Some(output_connector) = output_connector
 					{
 						// If the add node menu is already open, we don't want to open it again
@@ -2410,6 +2467,7 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_from_connector = None;
 		self.wire_in_progress_to_connector = None;
 		self.wire_in_progress_type = FrontendGraphDataType::General;
+		self.wire_in_progress_from_new_import = None;
 
 		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 	}
@@ -3254,6 +3312,7 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			wire_in_progress_type: FrontendGraphDataType::General,
+			wire_in_progress_from_new_import: None,
 			wire_hovered_node: None,
 			wire_expanded_node: None,
 			wire_hover_tick_subscribed: false,
@@ -3284,6 +3343,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.select_if_not_dragged == other.select_if_not_dragged
 			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector
 			&& self.wire_in_progress_to_connector == other.wire_in_progress_to_connector
+			&& self.wire_in_progress_from_new_import == other.wire_in_progress_from_new_import
 			&& self.context_menu == other.context_menu
 	}
 }

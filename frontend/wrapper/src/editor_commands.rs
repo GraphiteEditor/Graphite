@@ -55,30 +55,6 @@ mod editor_commands {
 		PortfolioMessage::AutoSaveAllDocuments.into()
 	}
 
-	fn add_primary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryImport.into()]),
-		}
-	}
-
-	fn add_secondary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryImport.into()]),
-		}
-	}
-
-	fn add_primary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryExport.into()]),
-		}
-	}
-
-	fn add_secondary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryExport.into()]),
-		}
-	}
-
 	fn app_window_direct_input(enabled: bool) -> Message {
 		AppWindowMessage::DirectInput { enabled }.into()
 	}

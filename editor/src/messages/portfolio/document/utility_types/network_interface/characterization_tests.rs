@@ -3,9 +3,10 @@ use super::{
 	Previewing, RootNode, TransactionStatus,
 };
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNodeImplementation, NodeInput};
 use graphene_std::uuid::NodeId;
 
 fn assert_invariants(editor: &EditorTestUtils, context: &str) {
@@ -1186,6 +1187,94 @@ async fn editing_import_and_export_descriptions_stores_them_on_the_subgraph_node
 	assert_eq!(network_interface.output_description(&merge, 0, &[]), "The combined result.");
 
 	assert_invariants(&editor, "after editing import and export descriptions");
+}
+
+#[tokio::test]
+async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let import_count = editor.active_document().network_interface.number_of_imports(&path);
+
+	// With a primary, the only one is past the last import
+	let network_interface = &editor.active_document().network_interface;
+	let empty_connectors = network_interface.empty_import_export_connectors(true, &path);
+	assert_eq!(empty_connectors.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![import_count]);
+
+	// The attribute name given to Merge's interior Write Attribute node
+	let write_attribute = network_interface
+		.nested_network(&path)
+		.and_then(|network| {
+			network
+				.nodes
+				.iter()
+				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::graphic::write_attribute::IDENTIFIER))
+		})
+		.map(|(node_id, _)| *node_id)
+		.expect("Merge should contain a Write Attribute node");
+	let value_input = InputConnector::node_at_index(write_attribute, 1);
+	let Some(NodeInput::Value { tagged_value, .. }) = network_interface.input_from_connector(&value_input, &path) else {
+		panic!("Merge's Write Attribute node should be given its attribute name as a value");
+	};
+	let displaced_value = (**tagged_value).clone();
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::AddImportAndConnect {
+			import_index: import_count,
+			input_connector: value_input,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "the next import should be added");
+	assert!(
+		fed_inputs(&editor, &OutputConnector::Import(import_count), &path).contains(&value_input),
+		"the new import should be wired to the input"
+	);
+	let network_interface = &editor.active_document().network_interface;
+	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(merge, import_count), &[]);
+	assert!(
+		matches!(new_input, Some(NodeInput::Value { tagged_value, exposed: true }) if **tagged_value == displaced_value),
+		"the new import should take over the value its wire displaced, found {new_input:?}"
+	);
+	assert_eq!(
+		network_interface.displayed_import_name(import_count, &path),
+		displaced_value.ty().nested_type().to_string(),
+		"an import without a name should be shown by the type it took over"
+	);
+
+	// Emptying the primary adds a connector in its place, which fills it again from an input that's already wired
+	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: false }).await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.empty_import_export_connectors(true, &path).iter().any(|(index, _)| *index == 0));
+
+	// The content given to Merge's interior Write Attribute node by its Into Group node
+	let wired_input = InputConnector::node_at_index(write_attribute, 0);
+	assert!(
+		matches!(network_interface.input_from_connector(&wired_input, &path), Some(NodeInput::Node { .. })),
+		"Merge's Write Attribute node should be wired its content from another node"
+	);
+	editor
+		.handle_message(NodeGraphMessage::AddImportAndConnect {
+			import_index: 0,
+			input_connector: wired_input,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(!network_interface.hidden_primary_import(&path), "the empty primary should be filled");
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "filling the empty primary shouldn't add another import");
+
+	let drawn_wire = network_interface
+		.network_metadata(&path)
+		.and_then(|network_metadata| network_metadata.transient_metadata.wires.borrow().get(&wired_input).cloned())
+		.and_then(|wire| wire.wire_path_update);
+	let current_wire = network_interface.wire_path_from_input(&wired_input, GraphWireStyle::default(), false, &path);
+	assert_eq!(drawn_wire, current_wire, "the input's wire should be redrawn from its new import");
+
+	assert_invariants(&editor, "after adding imports from the empty connectors");
 }
 
 #[tokio::test]

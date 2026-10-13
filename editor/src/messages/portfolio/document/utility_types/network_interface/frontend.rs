@@ -1,6 +1,7 @@
 //! The shapes the node graph frontend is sent: one entry per visible port, carrying its type, its
 //! name and whether it's connected. Read-only projections of the graph, rather than a source of truth.
 
+use super::resolved_types::TypeSource;
 use super::*;
 
 impl NodeNetworkInterface {
@@ -47,14 +48,7 @@ impl NodeNetworkInterface {
 
 		let (name, description) = match input_connector {
 			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
-			InputConnector::Export(export_index) => {
-				let export_description = self
-					.encapsulating_node_metadata(network_path)
-					.and_then(|metadata| metadata.persistent_metadata.output_descriptions.get(*export_index).cloned())
-					.unwrap_or_default();
-
-				(self.displayed_export_name(*export_index, network_path), export_description)
-			}
+			InputConnector::Export(export_index) => (self.displayed_export_name(*export_index, network_path), self.export_description(*export_index, network_path)),
 		};
 
 		let valid_types = match input_connector {
@@ -95,21 +89,16 @@ impl NodeNetworkInterface {
 				(output_name, self.output_description(node_id, *output_index, network_path))
 			}
 			OutputConnector::Import(import_index) => {
-				// Get the import name from the encapsulating node input metadata
-				let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
-					// Return None if it is an import in the document network
+				// Return None if it is an import in the document network
+				if network_path.is_empty() {
 					return None;
-				};
+				}
 				// Return None if the primary input is hidden and this is the primary import
 				if *import_index == 0 && self.hidden_primary_import(network_path) {
 					return None;
 				};
-				let description = self
-					.persistent_input_metadata(encapsulating_node_id, *import_index, encapsulating_path)
-					.map(|metadata| metadata.input_description.clone())
-					.unwrap_or_default();
 
-				(self.displayed_import_name(*import_index, network_path), description)
+				(self.displayed_import_name(*import_index, network_path), self.import_description(*import_index, network_path))
 			}
 		};
 		let data_type = output_type.displayed_type();
@@ -150,15 +139,27 @@ impl NodeNetworkInterface {
 			return String::new();
 		};
 
-		let (import_name, _) = self.displayed_input_name_and_description(encapsulating_node_id, import_index, encapsulating_path);
+		let import_name = self
+			.persistent_input_metadata(encapsulating_node_id, import_index, encapsulating_path)
+			.map(|metadata| metadata.input_name.clone())
+			.unwrap_or_default();
 		if !import_name.is_empty() {
 			return import_name;
 		}
 
-		match self.output_type(&OutputConnector::Import(import_index), network_path).compiled_nested_type() {
-			Some(import_type) => import_type.to_string(),
-			None => format!("Import #{import_index}"),
-		}
+		// Never left blank, which would look like a dimmed connector for adding an import
+		established_type_name(&self.output_type(&OutputConnector::Import(import_index), network_path)).unwrap_or_else(|| format!("Import #{import_index}"))
+	}
+
+	/// The description of a subgraph's import, which its encapsulating node stores for the input.
+	pub fn import_description(&self, import_index: usize, network_path: &[NodeId]) -> String {
+		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
+			return String::new();
+		};
+
+		self.persistent_input_metadata(encapsulating_node_id, import_index, encapsulating_path)
+			.map(|metadata| metadata.input_description.clone())
+			.unwrap_or_default()
 	}
 
 	/// The name a network's export is shown with: its encapsulating node's output name, or else its type, or else its number.
@@ -176,11 +177,26 @@ impl NodeNetworkInterface {
 			return export_name;
 		}
 
-		match self.input_type(&InputConnector::Export(export_index), network_path).compiled_nested_type() {
-			Some(export_type) => export_type.to_string(),
-			None => format!("Export #{export_index}"),
-		}
+		// Never left blank, which would look like a dimmed connector for adding an export
+		established_type_name(&self.input_type(&InputConnector::Export(export_index), network_path)).unwrap_or_else(|| format!("Export #{export_index}"))
 	}
+
+	/// The description of a network's export, which its encapsulating node stores for the output.
+	pub fn export_description(&self, export_index: usize, network_path: &[NodeId]) -> String {
+		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
+			return String::new();
+		};
+
+		self.output_description(encapsulating_node_id, export_index, encapsulating_path)
+	}
+}
+
+/// The displayed name of the type a connector carries, unless it's unknown or the empty type of a value input yet to be given a value.
+fn established_type_name(type_source: &TypeSource) -> Option<String> {
+	type_source
+		.compiled_nested_type()
+		.filter(|nested_type| **nested_type != graph_craft::concrete!(()))
+		.map(ToString::to_string)
 }
 
 /// The displayed names of `types` in order, leaving out repeats where distinct types share a name.

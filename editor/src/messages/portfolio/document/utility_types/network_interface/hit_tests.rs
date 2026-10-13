@@ -190,6 +190,16 @@ impl NodeNetworkInterface {
 			.next()
 	}
 
+	/// The dimmed connector for adding an import (or else export) under `point`, given in node graph space, as the index it adds with its center.
+	pub fn empty_import_export_connector_at(&self, point: DVec2, is_import: bool, network_path: &[NodeId]) -> Option<(usize, DVec2)> {
+		// The same reach as an import or export port's click target
+		const CONNECTOR_RADIUS: f64 = 8.;
+
+		self.empty_import_export_connectors(is_import, network_path)
+			.into_iter()
+			.find(|(_, center)| center.distance(point) <= CONNECTOR_RADIUS)
+	}
+
 	/// The import or export with its name under `point`, given in node graph space.
 	pub fn import_export_name_from_point(&self, point: DVec2, network_path: &[NodeId]) -> Option<ImportOrExport> {
 		self.import_export_name_bounds(network_path)

@@ -536,10 +536,19 @@
 							</p>
 						{/if}
 					</div>
-				{:else}
-					<div class="plus" style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 12) / 24} style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 12) / 24}>
-						<IconButton size={24} icon="Add" action={() => editor.addPrimaryImport()} />
-					</div>
+				{:else if $nodeGraphImportsExports.addImportExport}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="connector"
+						data-connector="output"
+						data-tooltip-label="Add Primary Import"
+						data-tooltip-description="Drag a wire from here and connect it to an input."
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+					>
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+					</svg>
 				{/if}
 			{/each}
 
@@ -596,28 +605,48 @@
 							</p>
 						{/if}
 					</div>
-				{:else}
-					<div class="plus" style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 12) / 24} style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 12) / 24}>
-						<IconButton size={24} icon="Add" action={() => editor.addPrimaryExport()} />
-					</div>
+				{:else if $nodeGraphImportsExports.addImportExport}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="connector"
+						data-connector="input"
+						data-tooltip-label="Add Primary Export"
+						data-tooltip-description="Drop a wire here from an output to connect it."
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+					>
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+					</svg>
 				{/if}
 			{/each}
 
+			<!-- Connectors for adding an import or export, an extra grid cell below the last so they aren't mistaken for unnamed ones -->
 			{#if $nodeGraphImportsExports.addImportExport}
-				<div
-					class="plus"
-					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 12) / 24}
-					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 12) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length)}
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 8 8"
+					class="connector"
+					data-connector="output"
+					data-tooltip-label="Add Import"
+					data-tooltip-description="Drag a wire from here and connect it to an input."
+					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
+					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length) + 1}
 				>
-					<IconButton size={24} icon="Add" action={() => editor.addSecondaryImport()} />
-				</div>
-				<div
-					class="plus"
-					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 12) / 24}
-					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 12) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length)}
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+				</svg>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 8 8"
+					class="connector"
+					data-connector="input"
+					data-tooltip-label="Add Export"
+					data-tooltip-description="Drop a wire here from an output to connect it."
+					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
+					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length) + 1}
 				>
-					<IconButton size={24} icon="Add" action={() => editor.addSecondaryExport()} />
-				</div>
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+				</svg>
 			{/if}
 
 			{#if $nodeGraph.reorderImportIndex !== undefined}
@@ -1227,12 +1256,6 @@
 				width: 50px;
 				height: 2px;
 				background: white;
-			}
-
-			.plus {
-				position: absolute;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
 			}
 
 			.edit-import-export {

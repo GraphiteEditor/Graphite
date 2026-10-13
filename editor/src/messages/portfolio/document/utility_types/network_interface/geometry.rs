@@ -223,6 +223,33 @@ impl NodeNetworkInterface {
 		Some(import_export_ports)
 	}
 
+	/// The dimmed connectors a subgraph shows for adding an import (or else export), as the index each one adds with its center. One fills the primary's place
+	/// while it's empty, and one sits an extra grid cell below the last row so it isn't mistaken for an unnamed one.
+	pub fn empty_import_export_connectors(&self, is_import: bool, network_path: &[NodeId]) -> Vec<(usize, DVec2)> {
+		if network_path.is_empty() {
+			return Vec::new();
+		}
+		let Some((import_position, export_position)) = self.import_export_position(network_path) else {
+			return Vec::new();
+		};
+		let first_row_center = if is_import { import_position } else { export_position }.as_dvec2();
+
+		let count = if is_import { self.number_of_imports(network_path) } else { self.number_of_exports(network_path) };
+		let primary_hidden = if is_import {
+			self.hidden_primary_import(network_path)
+		} else {
+			self.hidden_primary_export(network_path)
+		};
+
+		let mut connectors = Vec::new();
+		if count == 0 || primary_hidden {
+			connectors.push((0, first_row_center));
+		}
+		let next_index = count.max(1);
+		connectors.push((next_index, first_row_center + DVec2::new(0., import_export_row_offset(next_index) + GRID_SIZE as f64)));
+		connectors
+	}
+
 	/// Where an import (or else an export) dragged to height `y` in node graph space would be dropped, as the index it's moved before.
 	/// Index 0 takes the primary's place.
 	pub fn import_export_drop_position(&self, y: f64, is_import: bool, network_path: &[NodeId]) -> Option<usize> {
