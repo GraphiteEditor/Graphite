@@ -903,6 +903,7 @@ dependencies = [
  "color",
  "ctor",
  "dyn-any",
+ "futures",
  "glam 0.33.10",
  "graphene-hash",
  "image",

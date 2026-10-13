@@ -145,8 +145,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	if tier == NodeOutputTier::Poll && (mapped_variant || list_content_variant) {
 		return Err(Error::new_spanned(fn_name, "An element-wise node cannot return `Poll`"));
 	}
-	let slot_field = parsed.is_async.then(|| quote! { pub(super) slot: #core_types::runtime::MemoTable<#output> });
-	let struct_fields: Vec<_> = data_field_defs.chain(regular_field_defs).chain(slot_field).collect();
+	let slots_field = parsed.is_async.then(|| quote! { pub(super) slots: #core_types::runtime::Slots<#output> });
+	let struct_fields: Vec<_> = data_field_defs.chain(regular_field_defs).chain(slots_field).collect();
 
 	// Data fields get passed as references to the underlying function
 	let data_field_idents: Vec<_> = data_fields.iter().map(|f| &f.pat_ident).collect();
@@ -512,8 +512,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let regular_inits = regular_field_names.iter().map(|name| {
 		quote! { #name }
 	});
-	let slot_init = parsed.is_async.then(|| quote! { slot: Default::default() });
-	let all_field_inits: Vec<_> = data_inits.chain(regular_inits).chain(slot_init).collect();
+	let slots_init = parsed.is_async.then(|| quote! { slots: Default::default() });
+	let all_field_inits: Vec<_> = data_inits.chain(regular_inits).chain(slots_init).collect();
 
 	let async_keyword = is_async.then(|| quote!(async));
 
@@ -624,7 +624,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __runtime = _runtime.element().clone();
 				let __context = __input.clone();
 				#(#data_clones)*
-				let __state = self.slot.resolve(__key, &__runtime, __source, __placeholder, move || async move {
+				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move {
 					#core_types::Poll::Final(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await)
 				});
 				__cell.merge(__state)

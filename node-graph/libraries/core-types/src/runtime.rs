@@ -1,6 +1,7 @@
 use crate::poll::Poll;
 use crate::uuid::NodeId;
 use dyn_any::WasmNotSend;
+use futures::future::{AbortHandle, Abortable};
 use std::collections::HashMap;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -112,59 +113,77 @@ impl RuntimeInner {
 	}
 }
 
-pub struct MemoTable<T>(Arc<Mutex<HashMap<u64, Option<Poll<T>>>>>);
+pub struct Slots<T>(Arc<Mutex<HashMap<u64, Slot<T>>>>);
 
-impl<T> Default for MemoTable<T> {
+enum Slot<T> {
+	Ready(Poll<T>),
+	Pending(AbortHandle),
+}
+
+impl<T> Drop for Slot<T> {
+	fn drop(&mut self) {
+		if let Slot::Pending(task) = self {
+			task.abort();
+		}
+	}
+}
+
+impl<T> Default for Slots<T> {
 	fn default() -> Self {
 		Self(Arc::default())
 	}
 }
 
-impl<T> Clone for MemoTable<T> {
+impl<T> Clone for Slots<T> {
 	fn clone(&self) -> Self {
 		Self(Arc::clone(&self.0))
 	}
 }
 
-impl<T> std::fmt::Debug for MemoTable<T> {
+impl<T> std::fmt::Debug for Slots<T> {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("MemoTable").finish_non_exhaustive()
+		f.debug_struct("Slots").finish_non_exhaustive()
 	}
 }
 
-impl<T: Clone + WasmNotSend + 'static> MemoTable<T> {
+impl<T: Clone + WasmNotSend + 'static> Slots<T> {
 	pub fn resolve<F>(&self, key: u64, runtime: &dyn Runtime, source: SourceId, placeholder: Option<T>, future: impl FnOnce() -> F) -> Poll<T>
 	where
 		F: Future<Output = Poll<T>> + WasmNotSend + 'static,
 	{
-		{
-			let mut table = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-			match table.get(&key) {
-				Some(Some(landed)) => return landed.clone(),
-				Some(None) => return placeholder.map_or(Poll::Pending, Poll::Partial),
-				None => table.insert(key, None),
-			};
+		match self.0.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
+			Some(Slot::Ready(landed)) => return landed.clone(),
+			Some(Slot::Pending(_)) => return placeholder.map_or(Poll::Pending, Poll::Partial),
+			None => {}
 		}
 
 		// Fast path for futures that are ready immediately
 		// TODO(Timon): check if this would ever cause a problem; running a future on the graph executor thread might also be a bit wierd
 		let mut future = Box::pin(future());
 		if let std::task::Poll::Ready(state) = future.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
-			self.0.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Some(state.clone()));
+			self.0.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Slot::Ready(state.clone()));
 			return state;
 		}
 
-		let slots = Arc::clone(&self.0);
+		let (handle, registration) = AbortHandle::new_pair();
+		let slots = Arc::downgrade(&self.0);
 		runtime.spawn(
 			source,
 			Box::pin(async move {
-				let state = future.await;
-				slots.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Some(state));
+				if let Ok(state) = Abortable::new(future, registration).await
+					&& let Some(slots) = slots.upgrade()
+				{
+					slots.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Slot::Ready(state));
+				}
 			}),
 		);
-		match self.0.lock().unwrap_or_else(PoisonError::into_inner).get(&key) {
-			Some(Some(resolved)) => resolved.clone(),
-			_ => placeholder.map_or(Poll::Pending, Poll::Partial),
+		let mut slots = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+		match slots.get(&key) {
+			Some(Slot::Ready(landed)) => landed.clone(),
+			_ => {
+				slots.insert(key, Slot::Pending(handle));
+				placeholder.map_or(Poll::Pending, Poll::Partial)
+			}
 		}
 	}
 }
@@ -172,6 +191,7 @@ impl<T: Clone + WasmNotSend + 'static> MemoTable<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::sync::atomic::{AtomicBool, Ordering};
 
 	fn poll_once(task: &mut Task) -> bool {
 		task.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_ready()
@@ -240,7 +260,7 @@ mod tests {
 		let runtime = AsyncRuntime::new(spawner.clone());
 		runtime.retain_sources(&[SOURCE]);
 
-		let slots = MemoTable::default();
+		let slots = Slots::default();
 		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, || async { Poll::Final(1u32) }), Poll::Final(1));
 		assert_eq!(spawner.drain(), 0);
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 0)]);
@@ -256,7 +276,7 @@ mod tests {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
 		runtime.retain_sources(&[SOURCE]);
-		let slots = MemoTable::default();
+		let slots = Slots::default();
 		let fetch = || async {
 			YieldOnce(false).await;
 			Poll::Final(42u32)
@@ -273,7 +293,7 @@ mod tests {
 	fn a_blocking_spawner_lands_the_slot_in_the_same_resolve() {
 		let runtime = AsyncRuntime::new(Arc::new(BlockingSpawner));
 		runtime.retain_sources(&[SOURCE]);
-		let slots = MemoTable::default();
+		let slots = Slots::default();
 		let fetch = || async {
 			YieldOnce(false).await;
 			Poll::Final(42u32)
@@ -281,5 +301,43 @@ mod tests {
 
 		assert_eq!(slots.resolve(1, &runtime, SOURCE, Some(0), fetch), Poll::Final(42));
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 1)]);
+	}
+
+	#[test]
+	fn a_clone_keeps_the_task_running() {
+		let spawner = Arc::new(CollectSpawner::default());
+		let runtime = AsyncRuntime::new(spawner.clone());
+		let slots = Slots::default();
+		let fetch = || async {
+			YieldOnce(false).await;
+			Poll::Final(42u32)
+		};
+
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, fetch), Poll::Pending);
+		let clone = slots.clone();
+		drop(slots);
+		assert_eq!(spawner.drain(), 1);
+		assert_eq!(clone.resolve(1, &runtime, SOURCE, None, fetch), Poll::Final(42));
+	}
+
+	#[test]
+	fn dropping_the_last_clone_aborts_the_task() {
+		let spawner = Arc::new(CollectSpawner::default());
+		let runtime = AsyncRuntime::new(spawner.clone());
+		let slots = Slots::default();
+		let finished = Arc::new(AtomicBool::new(false));
+		let fetch = || {
+			let finished = Arc::clone(&finished);
+			async move {
+				YieldOnce(false).await;
+				finished.store(true, Ordering::Relaxed);
+				Poll::Final(42u32)
+			}
+		};
+
+		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, fetch), Poll::Pending);
+		drop(slots);
+		assert_eq!(spawner.drain(), 1);
+		assert!(!finished.load(Ordering::Relaxed));
 	}
 }
