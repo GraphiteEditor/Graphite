@@ -60,6 +60,20 @@ static INPUT_CONVERSIONS: Lazy<HashMap<ProtoNodeIdentifier, Vec<Option<&'static 
 		.collect()
 });
 
+/// Proto nodes whose every implementation returns its one input's type unchanged (like Monitor and Memoize), so a wire through one is constrained by what it feeds.
+static TYPE_PRESERVING_NODES: Lazy<HashSet<ProtoNodeIdentifier>> = Lazy::new(|| {
+	NODE_REGISTRY
+		.iter()
+		.filter(|(_, implementations)| {
+			!implementations.is_empty()
+				&& implementations
+					.keys()
+					.all(|node_io| matches!(node_io.inputs.as_slice(), [input] if input.nested_type() == node_io.return_value.nested_type()))
+		})
+		.map(|(identifier, _)| identifier.clone())
+		.collect()
+});
+
 /// The conversions ahead of each input of a proto node, indexed by input.
 fn input_conversions(proto_node_identifier: &ProtoNodeIdentifier) -> &'static [Option<&'static AdapterConversions>] {
 	INPUT_CONVERSIONS.get(proto_node_identifier).map(Vec::as_slice).unwrap_or_default()
@@ -346,16 +360,7 @@ impl NodeNetworkInterface {
 					return Vec::new();
 				};
 
-				let intersection: HashSet<Type> = inputs_from_import
-					.iter()
-					.map(|input_connector| self.potential_valid_input_types(input_connector, &nested_path).into_iter().collect::<HashSet<_>>())
-					.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
-						Some(acc_set) => Some(acc_set.intersection(&set).cloned().collect()),
-						None => Some(set),
-					})
-					.unwrap_or_default();
-
-				intersection.into_iter().collect::<Vec<_>>()
+				self.types_accepted_by_all(&inputs_from_import, &nested_path)
 			}
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => self
 				.implementations_matching_inputs(proto_node_identifier, node_id, Some(*input_index), network_path)
@@ -390,10 +395,90 @@ impl NodeNetworkInterface {
 					.flatten()
 					.unwrap_or_default();
 
-				!interior_inputs.is_empty() && interior_inputs.iter().all(|interior_input| self.input_accepts_type(interior_input, source_type, &nested_path))
+				!interior_inputs.is_empty() && interior_inputs.iter().all(|interior_input| self.type_acceptor(interior_input, &nested_path)(source_type))
 			}
 			_ => false,
 		}
+	}
+
+	/// A check of which wire types an input accepts, built once so testing many types searches the node's matching implementations only once.
+	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Monitor) also needs the inputs it feeds to accept the type.
+	fn type_acceptor(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Box<dyn Fn(&Type) -> bool> {
+		let accepts_here: Box<dyn Fn(&Type) -> bool> = match input_connector {
+			// An export can have any type connected to it
+			InputConnector::Export(_) => Box::new(|_| true),
+			InputConnector::Node { node_id, input_index } => match self.implementation(node_id, network_path) {
+				Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) => {
+					let conversions = input_conversions(proto_node_identifier).get(*input_index).copied().flatten();
+					let connectors = self
+						.implementations_matching_inputs(proto_node_identifier, node_id, Some(*input_index), network_path)
+						.filter_map(|node_io| node_io.inputs.get(*input_index))
+						.collect::<Vec<_>>();
+
+					Box::new(move |source_type| connectors.iter().any(|connector| type_feeds_input(source_type, connector, conversions)))
+				}
+				// The wire reaches every interior input fed by the import, so each of them has to accept it
+				Some(DocumentNodeImplementation::Network(_)) => {
+					let nested_path = [network_path, &[*node_id]].concat();
+					let interior_inputs = self
+						.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
+						.flatten()
+						.unwrap_or_default();
+					let interior_acceptors = interior_inputs.iter().map(|interior_input| self.type_acceptor(interior_input, &nested_path)).collect::<Vec<_>>();
+
+					Box::new(move |source_type| !interior_acceptors.is_empty() && interior_acceptors.iter().all(|accepts| accepts(source_type)))
+				}
+				_ => Box::new(|_| false),
+			},
+		};
+
+		let Some(fed_inputs) = self.inputs_fed_by_type_preserving_node(input_connector, network_path) else {
+			return accepts_here;
+		};
+		let fed_acceptors = fed_inputs.iter().map(|fed_input| self.type_acceptor(fed_input, network_path)).collect::<Vec<_>>();
+		Box::new(move |source_type| accepts_here(source_type) && fed_acceptors.iter().all(|accepts| accepts(source_type)))
+	}
+
+	/// The inputs fed by the node of `input_connector`, if that node passes its input's type through unchanged, since those constrain a wire through it more
+	/// than the node's own broad set of types. Exports are left out because they accept anything.
+	fn inputs_fed_by_type_preserving_node(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<Vec<InputConnector>> {
+		let InputConnector::Node { node_id, .. } = input_connector else { return None };
+		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
+			return None;
+		};
+		if !TYPE_PRESERVING_NODES.contains(proto_node_identifier) {
+			return None;
+		}
+
+		let fed_inputs = self
+			.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)).cloned())
+			.flatten()
+			.unwrap_or_default();
+		Some(fed_inputs.into_iter().filter(|fed_input| matches!(fed_input, InputConnector::Node { .. })).collect())
+	}
+
+	/// The types that every one of `input_connectors` accepts, which is what a single wire feeding all of them can carry.
+	fn types_accepted_by_all(&self, input_connectors: &[InputConnector], network_path: &[NodeId]) -> Vec<Type> {
+		input_connectors
+			.iter()
+			.map(|input_connector| {
+				let valid_types = self.potential_valid_input_types(input_connector, network_path).into_iter();
+				match self.inputs_fed_by_type_preserving_node(input_connector, network_path) {
+					// A node passing its input's type through unchanged accepts only what the inputs it feeds accept
+					Some(fed_inputs) => {
+						let fed_acceptors = fed_inputs.iter().map(|fed_input| self.type_acceptor(fed_input, network_path)).collect::<Vec<_>>();
+						valid_types.filter(|valid_type| fed_acceptors.iter().all(|accepts| accepts(valid_type))).collect::<HashSet<_>>()
+					}
+					None => valid_types.collect(),
+				}
+			})
+			.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
+				Some(acc_set) => Some(acc_set.intersection(&set).cloned().collect()),
+				None => Some(set),
+			})
+			.unwrap_or_default()
+			.into_iter()
+			.collect()
 	}
 
 	/// The types an output could produce: its compiled type, or else what [`Self::possible_output_types`] finds.
@@ -604,16 +689,7 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		};
 
-		let intersection = inputs_from_import
-			.iter()
-			.map(|input_connector| self.potential_valid_input_types(input_connector, network_path).into_iter().collect::<HashSet<_>>())
-			.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
-				Some(acc_set) => Some(acc_set.intersection(&set).cloned().collect()),
-				None => Some(set),
-			})
-			.unwrap_or_default();
-
-		intersection.into_iter().collect::<Vec<_>>()
+		self.types_accepted_by_all(&inputs_from_import, network_path)
 	}
 }
 
@@ -652,5 +728,30 @@ mod tests {
 			"a color should feed Fill's list paint input by converting through its input adapter and then being raised to a list"
 		);
 		assert!(!type_feeds_input(&list!(f64), &item!(f64), None), "a list has no promotion down to an item");
+	}
+
+	#[tokio::test]
+	async fn subgraph_inputs_look_through_type_preserving_nodes() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let path_node_id = editor.create_node_by_name(DefinitionIdentifier::Network("Path".into())).await;
+
+		// The Path subgraph's content goes through a Monitor node, which accepts most types, before the node that needs a vector
+		let content_types = editor
+			.active_document()
+			.network_interface
+			.potential_valid_input_types(&InputConnector::node_at_index(path_node_id, 0), &[])
+			.iter()
+			.map(ToString::to_string)
+			.collect::<Vec<_>>();
+		assert!(content_types.iter().any(|ty| ty == "Vector"), "Path's content should accept a vector, found {content_types:?}");
+		assert!(
+			!content_types.iter().any(|ty| ty == "Color"),
+			"Path's content should not accept a color just because its Monitor does, found {content_types:?}"
+		);
 	}
 }
