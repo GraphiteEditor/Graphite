@@ -2041,6 +2041,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.set_display_name(&node_id, alias, &network_path);
 			}
 			NodeGraphMessage::SetImportExportName { name, index } => {
+				// A name of only whitespace is left empty, so its type is shown instead
+				let name = name.trim().to_string();
+
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetImportExportNameImpl { name, index });
 				responses.add(DocumentMessage::EndTransaction);

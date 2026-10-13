@@ -38,50 +38,39 @@
 
 	let inputElement: HTMLInputElement;
 
-	let editingNameImportIndex: number | undefined = undefined;
-	let editingNameExportIndex: number | undefined = undefined;
-	let editingNameNodeId: bigint | undefined = undefined;
+	// The import, export, or layer with its name being edited in place, and the name the field started with
+	type NameTarget = { kind: "Import" | "Export"; index: number } | { kind: "Layer"; nodeId: bigint };
+	let editingName: (NameTarget & { initialText: string }) | undefined = undefined;
 	let editingNameText = "";
 
-	function setEditingImportNameIndex(index: number, currentName: string) {
-		focusInput(currentName);
-		editingNameImportIndex = index;
-	}
-
-	function setEditingExportNameIndex(index: number, currentName: string) {
-		focusInput(currentName);
-		editingNameExportIndex = index;
-	}
-
-	async function focusInput(currentName: string) {
+	async function startEditingName(target: NameTarget, currentName: string) {
+		editingName = { ...target, initialText: currentName };
 		editingNameText = currentName;
+
 		await tick();
 		inputElement?.focus();
+		inputElement?.select();
 	}
 
-	function setEditingImportName(event: Event) {
-		if (editingNameImportIndex !== undefined) {
-			if (!(event.target instanceof HTMLInputElement)) return;
-			let text = event.target.value;
-			editor.setImportName(editingNameImportIndex, text);
-			editingNameImportIndex = undefined;
-		}
+	// An unchanged name isn't saved, since the field starts with what's displayed, which may be a fallback like the type
+	function commitEditingName() {
+		const target = editingName;
+		editingName = undefined;
+		if (!target || editingNameText === target.initialText) return;
+
+		if (target.kind === "Layer") editor.setLayerName(target.nodeId, editingNameText);
+		else if (target.kind === "Import") editor.setImportName(target.index, editingNameText);
+		else editor.setExportName(target.index, editingNameText);
 	}
 
-	function setEditingExportName(event: Event) {
-		if (editingNameExportIndex !== undefined) {
-			if (!(event.target instanceof HTMLInputElement)) return;
-			let text = event.target.value;
-			editor.setExportName(editingNameExportIndex, text);
-			editingNameExportIndex = undefined;
-		}
-	}
+	// The name fields stop propagation of the keys they handle so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
+	// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
+	function onNameInputKeyDown(e: KeyboardEvent) {
+		if (e.key === "Enter") commitEditingName();
+		else if (e.key === "Escape") editingName = undefined;
+		else return;
 
-	function commitEditingNodeName(event: Event) {
-		if (editingNameNodeId === undefined || !(event.target instanceof HTMLInputElement)) return;
-
-		editor.setLayerName(editingNameNodeId, event.target.value);
-		editingNameNodeId = undefined;
+		e.stopPropagation();
 	}
 
 	// The import or export with its description open for editing in a popover pointing at `anchor`, in graph space
@@ -127,17 +116,9 @@
 
 	onMount(() => {
 		// Backend dispatches this when the user double-clicks a layer's name area
-		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", async (data) => {
+		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", (data) => {
 			const node = $nodeGraph.nodes.get(data.nodeId);
-			if (!node) return;
-
-			editingNameText = node.displayName;
-			editingNameNodeId = data.nodeId;
-
-			await tick();
-
-			inputElement?.focus();
-			inputElement?.select();
+			if (node) startEditingName({ kind: "Layer", nodeId: data.nodeId }, node.displayName);
 		});
 	});
 
@@ -324,8 +305,8 @@
 					<TextButton
 						label="Rename"
 						action={() => {
-							if (isImport) setEditingImportNameIndex(index, $nodeGraphImportsExports?.imports[index]?.name || "");
-							else setEditingExportNameIndex(index, $nodeGraphImportsExports?.exports[index]?.name || "");
+							const currentName = (isImport ? $nodeGraphImportsExports?.imports[index]?.name : $nodeGraphImportsExports?.exports[index]?.name) || "";
+							startEditingName({ kind: isImport ? "Import" : "Export", index }, currentName);
 							closeContextMenu();
 						}}
 						flush={true}
@@ -513,18 +494,24 @@
 						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + index}
 					>
-						{#if editingNameImportIndex === index}
+						{#if editingName?.kind === "Import" && editingName.index === index}
 							<input
-								class="import-text-input"
+								class="name-input"
 								type="text"
 								bind:this={inputElement}
 								bind:value={editingNameText}
 								on:pointerdown|stopPropagation
-								on:blur={setEditingImportName}
-								on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+								on:dblclick|stopPropagation
+								on:blur={commitEditingName}
+								on:keydown={onNameInputKeyDown}
 							/>
 						{:else}
-							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>
+							<p
+								class="import-text"
+								data-tooltip-label={frontendOutput.name}
+								data-tooltip-description={frontendOutput.description}
+								on:dblclick={() => startEditingName({ kind: "Import", index }, frontendOutput.name)}
+							>
 								{frontendOutput.name}
 							</p>
 						{/if}
@@ -564,17 +551,27 @@
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
-						{#if editingNameExportIndex === index}
+						{#if editingName?.kind === "Export" && editingName.index === index}
 							<input
+								class="name-input"
 								type="text"
 								bind:this={inputElement}
 								bind:value={editingNameText}
 								on:pointerdown|stopPropagation
-								on:blur={setEditingExportName}
-								on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+								on:dblclick|stopPropagation
+								on:blur={commitEditingName}
+								on:keydown={onNameInputKeyDown}
 							/>
 						{:else}
-							<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, frontendInput.name)}>
+							<!-- Only a subgraph's exports have names to edit, unlike the document's Canvas export -->
+							<p
+								class="export-text"
+								data-tooltip-label={frontendInput.name}
+								data-tooltip-description={frontendInput.description}
+								on:dblclick={() => {
+									if ($nodeGraphImportsExports?.addImportExport) startEditingName({ kind: "Export", index }, frontendInput.name);
+								}}
+							>
 								{frontendInput.name}
 							</p>
 						{/if}
@@ -729,26 +726,16 @@
 					</div>
 				{/if}
 				<div class="details">
-					{#if editingNameNodeId === node.id}
+					{#if editingName?.kind === "Layer" && editingName.nodeId === node.id}
 						<input
-							class="layer-name-input"
+							class="name-input"
 							type="text"
 							bind:this={inputElement}
 							bind:value={editingNameText}
 							on:pointerdown|stopPropagation
 							on:dblclick|stopPropagation
-							on:blur={commitEditingNodeName}
-							on:keydown={(e) => {
-								// Stop propagation when we handle the key ourselves so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
-								// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
-								if (e.key === "Enter") {
-									commitEditingNodeName(e);
-									e.stopPropagation();
-								} else if (e.key === "Escape") {
-									editingNameNodeId = undefined;
-									e.stopPropagation();
-								}
-							}}
+							on:blur={commitEditingName}
+							on:keydown={onNameInputKeyDown}
 						/>
 					{:else}
 						<TextLabel>{node.displayName}</TextLabel>
@@ -1021,6 +1008,19 @@
 			margin-left: 8px;
 		}
 
+		// The field for renaming a layer, import or export in place, with padding that grows outward so the text stays where it was
+		.name-input {
+			color: inherit;
+			background: var(--color-1-nearblack);
+			border: none;
+			outline: none; // Ok for input element
+			margin: 0 -4px;
+			padding: 0 4px;
+			height: 24px;
+			border-radius: 2px;
+			field-sizing: content;
+		}
+
 		.context-menu {
 			width: max-content;
 
@@ -1257,14 +1257,6 @@
 				.export-text {
 					text-wrap: nowrap;
 				}
-
-				input {
-					field-sizing: content;
-				}
-
-				.import-text-input {
-					text-align: right;
-				}
 			}
 		}
 
@@ -1431,16 +1423,7 @@
 					line-height: 48px;
 				}
 
-				.layer-name-input {
-					color: inherit;
-					background: var(--color-1-nearblack);
-					border: none;
-					outline: none;
-					margin: 0 -4px;
-					padding: 0 4px;
-					height: 24px;
-					border-radius: 2px;
-					field-sizing: content;
+				.name-input {
 					// Stack above the absolutely-positioned grip/lock/visibility siblings, which can otherwise overlap the input's right edge and hijack clicks there.
 					position: relative;
 					z-index: 2;
