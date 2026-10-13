@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
-use graph_craft::proto::{GraphErrorType, GraphErrors};
+use graph_craft::proto::{GraphErrorType, GraphErrors, Promotion};
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use graphene_std::NodeIOTypes;
 use graphene_std::uuid::NodeId;
@@ -65,11 +65,17 @@ fn input_conversions(proto_node_identifier: &ProtoNodeIdentifier) -> &'static [O
 	INPUT_CONVERSIONS.get(proto_node_identifier).map(Vec::as_slice).unwrap_or_default()
 }
 
-/// Whether a `source` type can feed an input registered as `connector`, directly or through the `conversions` the compiler places ahead of that input.
+/// Whether a `source` type can feed an input registered as `connector`, through the `conversions` the compiler places ahead of that input
+/// and any rank promotion (such as raising an item onto a list input) that type resolution inserts after them.
 fn type_feeds_input(source: &Type, connector: &Type, conversions: Option<&AdapterConversions>) -> bool {
 	let (source, connector) = (source.nested_type(), connector.nested_type());
 
-	source == connector || conversions.and_then(|conversions| conversions.get(connector)).is_some_and(|sources| sources.contains(source))
+	// The types the wire can leave the input adapter as: unchanged, or converted into any destination accepting it
+	let converted = conversions.into_iter().flatten().filter(|(_, sources)| sources.contains(source)).map(|(destination, _)| destination);
+
+	std::iter::once(source)
+		.chain(converted)
+		.any(|adapted| adapted == connector || Promotion::exists_between(adapted, connector))
 }
 
 // This file contains utility methods for interfacing with the resolved types returned from the compiler
@@ -362,7 +368,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Whether a wire of `source_type` can feed the input given the node's other inputs, directly or through a conversion the compiler places ahead of it.
+	/// Whether a wire of `source_type` can feed the input given the node's other inputs, directly or through what the compiler converts and promotes.
 	pub fn input_accepts_type(&self, input_connector: &InputConnector, source_type: &Type, network_path: &[NodeId]) -> bool {
 		let InputConnector::Node { node_id, input_index } = input_connector else {
 			// An export can have any type connected to it
@@ -614,7 +620,7 @@ impl NodeNetworkInterface {
 #[cfg(test)]
 mod tests {
 	use super::{input_conversions, type_feeds_input};
-	use graph_craft::item;
+	use graph_craft::{item, list};
 	use graphene_std::vector::fill::{ContentInput, PaintInput};
 	use graphene_std::{Color, Graphic, NodeParameter};
 
@@ -634,5 +640,17 @@ mod tests {
 			"Fill's content input is registered with several types, so it gets no input adapter to convert a color"
 		);
 		assert!(!type_feeds_input(&item!(f64), &item!(Graphic), paint_conversions), "a number has no conversion into a graphic");
+	}
+
+	#[test]
+	fn items_promote_onto_list_inputs() {
+		let paint_conversions = input_conversions(&PaintInput::NODE_IDENTIFIER).get(PaintInput::INDEX).copied().flatten();
+
+		assert!(type_feeds_input(&item!(f64), &list!(f64), None), "a number should be raised onto a list input as a one-element list");
+		assert!(
+			type_feeds_input(&item!(Color), &list!(Graphic), paint_conversions),
+			"a color should feed Fill's list paint input by converting through its input adapter and then being raised to a list"
+		);
+		assert!(!type_feeds_input(&list!(f64), &item!(f64), None), "a list has no promotion down to an item");
 	}
 }
