@@ -100,6 +100,13 @@
 
 			.tooltip-description {
 				color: var(--color-b-lightgray);
+
+				hr {
+					margin: 8px 0;
+					border: none;
+					height: 1px;
+					background: var(--color-5-dullgray);
+				}
 			}
 		}
 	}

@@ -1,5 +1,5 @@
 //! The shapes the node graph frontend is sent: one entry per visible port, carrying its type, its
-//! name and what it connects to. Read-only projections of the graph, never a source of truth.
+//! name and whether it's connected. Read-only projections of the graph, rather than a source of truth.
 
 use super::*;
 
@@ -43,16 +43,7 @@ impl NodeNetworkInterface {
 		let data_type = input_type.displayed_type();
 		let resolved_type = input_type.resolved_type_node_string();
 
-		let connected_to = self
-			.upstream_output_connector(input_connector, network_path)
-			.map(|output_connector| match output_connector {
-				OutputConnector::Node { node_id, output_index } => {
-					let name = self.display_name(&node_id, network_path);
-					format!("Connected to output #{output_index} of \"{name}\", ID: {node_id}.")
-				}
-				OutputConnector::Import(import_index) => format!("Connected to import #{import_index}."),
-			})
-			.unwrap_or("Connected to nothing.".to_string());
+		let connected = self.upstream_output_connector(input_connector, network_path).is_some();
 
 		let (name, description) = match input_connector {
 			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
@@ -79,12 +70,16 @@ impl NodeNetworkInterface {
 			}
 		};
 
-		let valid_types = self.potential_valid_input_types(input_connector, network_path).iter().map(ToString::to_string).collect::<Vec<_>>();
-		let valid_types = {
-			// Dedupe while preserving order
-			let mut found = HashSet::new();
-			valid_types.into_iter().filter(|s| found.insert(s.clone())).collect::<Vec<_>>()
+		let valid_types = match input_connector {
+			InputConnector::Node { .. } => self.potential_valid_input_types(input_connector, network_path),
+			// An export takes any type itself, so it's limited only by what its subgraph node's output feeds, or at the document's root, what can be rendered
+			InputConnector::Export(_) => self
+				.complete_valid_input_types(input_connector, network_path)
+				.into_iter()
+				.filter(|valid_type| !valid_type.nested_type().is_generic())
+				.collect(),
 		};
+		let valid_types = distinct_type_names(&valid_types);
 
 		Some(FrontendGraphInput {
 			data_type,
@@ -92,7 +87,7 @@ impl NodeNetworkInterface {
 			name,
 			description,
 			valid_types,
-			connected_to,
+			connected,
 		})
 	}
 
@@ -137,30 +132,18 @@ impl NodeNetworkInterface {
 		};
 		let data_type = output_type.displayed_type();
 		let resolved_type = output_type.resolved_type_node_string();
-		let mut connected_to = self
-			.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned())
-			.flatten()
-			.unwrap_or_default()
-			.iter()
-			.map(|input| match input {
-				&InputConnector::Node { node_id, input_index } => {
-					let name = self.display_name(&node_id, network_path);
-					format!("Connected to input #{input_index} of \"{name}\", ID: {node_id}.")
-				}
-				InputConnector::Export(export_index) => format!("Connected to export #{export_index}."),
-			})
-			.collect::<Vec<_>>();
-
-		if connected_to.is_empty() {
-			connected_to.push("Connected to nothing.".to_string());
-		}
+		let possible_types = distinct_type_names(&self.possible_output_types(output_connector, network_path));
+		let connected = self
+			.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).is_some_and(|inputs| !inputs.is_empty()))
+			.unwrap_or_default();
 
 		Some(FrontendGraphOutput {
 			data_type,
 			resolved_type,
 			name,
 			description,
-			connected_to,
+			possible_types,
+			connected,
 		})
 	}
 
@@ -178,4 +161,10 @@ impl NodeNetworkInterface {
 		};
 		(name, description)
 	}
+}
+
+/// The displayed names of `types` in order, leaving out repeats where distinct types share a name.
+fn distinct_type_names(types: &[Type]) -> Vec<String> {
+	let mut found = HashSet::new();
+	types.iter().map(ToString::to_string).filter(|name| found.insert(name.clone())).collect()
 }

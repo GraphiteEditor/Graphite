@@ -193,17 +193,34 @@
 		return node.displayName === node.implementationName ? node.displayName : `${node.implementationName} (${node.displayName})`;
 	}
 
-	function validTypesText(value: FrontendGraphInput): string {
-		const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
-		return `Valid Types:\n${validTypes}`;
+	function codeList(types: string[]): string {
+		return types.map((type) => `\`${type}\``).join("\n");
 	}
 
-	function outputConnectedToText(output: FrontendGraphOutput): string {
-		return editor.inDevelopmentMode() ? output.connectedTo.join("\n") : "";
+	function connectorTooltipLabel(connector: FrontendGraphInput | FrontendGraphOutput): string {
+		return connector.name || connector.resolvedType;
 	}
 
-	function inputConnectedToText(input: FrontendGraphInput): string {
-		return editor.inDevelopmentMode() ? input.connectedTo : "";
+	// The connector's description, then below a divider, the type of its wire (when it has one) and the types it could have
+	function connectorTooltipDescription(connector: FrontendGraphInput | FrontendGraphOutput, possibleTypes?: string[]): string {
+		const wiredType = connector.connected ? `Wired Type:\n\`${connector.resolvedType}\`` : "";
+		const possibleTypesText = possibleTypes ? `Possible Types:\n${possibleTypes.length > 0 ? codeList(possibleTypes) : "None"}` : "";
+		const types = [wiredType, possibleTypesText].filter(Boolean).join("\n\n");
+
+		return [connector.description.trim(), types].filter(Boolean).join("\n---\n");
+	}
+
+	function inputTooltipDescription(input: FrontendGraphInput): string {
+		return connectorTooltipDescription(input, input.validTypes);
+	}
+
+	// Unlike a node input's, the possible types of an export or output are left out where they aren't known
+	function exportTooltipDescription(exportConnector: FrontendGraphInput): string {
+		return connectorTooltipDescription(exportConnector, exportConnector.validTypes.length > 0 ? exportConnector.validTypes : undefined);
+	}
+
+	function outputTooltipDescription(output: FrontendGraphOutput): string {
+		return connectorTooltipDescription(output, output.possibleTypes.length > 0 ? output.possibleTypes : undefined);
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
@@ -350,15 +367,15 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="output"
-						data-tooltip-label={frontendOutput.resolvedType}
-						data-tooltip-description={outputConnectedToText(frontendOutput)}
+						data-tooltip-label={connectorTooltipLabel(frontendOutput)}
+						data-tooltip-description={outputTooltipDescription(frontendOutput)}
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + index}
 					>
-						{#if frontendOutput.connectedTo.length > 0}
+						{#if frontendOutput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -419,15 +436,15 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="input"
-						data-tooltip-label={frontendInput.resolvedType}
-						data-tooltip-description={inputConnectedToText(frontendInput)}
+						data-tooltip-label={connectorTooltipLabel(frontendInput)}
+						data-tooltip-description={exportTooltipDescription(frontendInput)}
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
-						{#if frontendInput.connectedTo !== "Connected to nothing."}
+						{#if frontendInput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -541,9 +558,7 @@
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
-				data-tooltip-description={`
-					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\n*ID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).*` : ""}
-					`.trim()}
+				data-tooltip-description={(description || "").trim()}
 				data-node={node.id}
 			>
 				<div class="thumbnail">
@@ -557,13 +572,13 @@
 							viewBox="0 0 8 12"
 							class="connector top"
 							data-connector="output"
-							data-tooltip-label={node.primaryOutput.resolvedType}
-							data-tooltip-description={outputConnectedToText(node.primaryOutput)}
+							data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
+							data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							{#if node.primaryOutput.connectedTo.length > 0}
+							{#if node.primaryOutput.connected}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if node.primaryOutputConnectedToLayer}
 									<path
@@ -582,13 +597,13 @@
 						viewBox="0 0 8 12"
 						class="connector bottom"
 						data-connector="input"
-						data-tooltip-label={node.primaryInput ? node.primaryInput.resolvedType : ""}
-						data-tooltip-description={node.primaryInput ? `${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}` : ""}
+						data-tooltip-label={node.primaryInput ? connectorTooltipLabel(node.primaryInput) : ""}
+						data-tooltip-description={node.primaryInput ? inputTooltipDescription(node.primaryInput) : ""}
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 					>
-						{#if node.primaryInput?.connectedTo !== "Connected to nothing."}
+						{#if node.primaryInput?.connected}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if node.primaryInputConnectedToLayer}
 								<path
@@ -608,14 +623,14 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector"
-							data-tooltip-label={stackDataInput.resolvedType}
-							data-tooltip-description={`${validTypesText(stackDataInput).trim()}\n\n${inputConnectedToText(stackDataInput)}`}
+							data-tooltip-label={connectorTooltipLabel(stackDataInput)}
+							data-tooltip-description={inputTooltipDescription(stackDataInput)}
 							data-connector="input"
 							data-datatype={stackDataInput.dataType}
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 						>
-							{#if stackDataInput.connectedTo !== undefined}
+							{#if stackDataInput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -747,9 +762,7 @@
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
-				data-tooltip-description={`
-					${(description || "").trim()}${editor.inDevelopmentMode() ? `\n\n*ID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).*` : ""}
-					`.trim()}
+				data-tooltip-description={(description || "").trim()}
 				data-node={node.id}
 			>
 				<!-- Primary row -->
@@ -778,13 +791,13 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="input"
-							data-tooltip-label={node.primaryInput.resolvedType}
-							data-tooltip-description={`${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}`}
+							data-tooltip-label={connectorTooltipLabel(node.primaryInput)}
+							data-tooltip-description={inputTooltipDescription(node.primaryInput)}
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 						>
-							{#if node.primaryInput.connectedTo !== undefined}
+							{#if node.primaryInput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -798,13 +811,13 @@
 								viewBox="0 0 8 8"
 								class="connector"
 								data-connector="input"
-								data-tooltip-label={secondary.resolvedType}
-								data-tooltip-description={`${validTypesText(secondary).trim()}\n\n${inputConnectedToText(secondary)}`}
+								data-tooltip-label={connectorTooltipLabel(secondary)}
+								data-tooltip-description={inputTooltipDescription(secondary)}
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							>
-								{#if secondary.connectedTo !== undefined}
+								{#if secondary.connected}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -821,13 +834,13 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="output"
-							data-tooltip-label={node.primaryOutput.resolvedType}
-							data-tooltip-description={`${outputConnectedToText(node.primaryOutput)}`}
+							data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
+							data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							{#if node.primaryOutput.connectedTo !== undefined}
+							{#if node.primaryOutput.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -840,13 +853,13 @@
 							viewBox="0 0 8 8"
 							class="connector"
 							data-connector="output"
-							data-tooltip-label={secondary.resolvedType}
-							data-tooltip-description={`${outputConnectedToText(secondary)}`}
+							data-tooltip-label={connectorTooltipLabel(secondary)}
+							data-tooltip-description={outputTooltipDescription(secondary)}
 							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 						>
-							{#if secondary.connectedTo !== undefined}
+							{#if secondary.connected}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />

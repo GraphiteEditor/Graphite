@@ -51,9 +51,8 @@ pub struct FrontendGraphInput {
 	pub resolved_type: String,
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
-	#[serde(rename = "connectedTo")]
-	/// Either "nothing", "import #{index}", or "{node name} #{output_index}".
-	pub connected_to: String,
+	/// Whether a wire feeds this input.
+	pub connected: bool,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -65,10 +64,11 @@ pub struct FrontendGraphOutput {
 	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
-	/// If connected to an export, it is "export index {index}".
-	/// If connected to a node, it is "{node name} input {input_index}".
-	#[serde(rename = "connectedTo")]
-	pub connected_to: Vec<String>,
+	/// Every type this output could produce given its node's current inputs, or empty where that isn't known.
+	#[serde(rename = "possibleTypes")]
+	pub possible_types: Vec<String>,
+	/// Whether this output feeds at least one wire.
+	pub connected: bool,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

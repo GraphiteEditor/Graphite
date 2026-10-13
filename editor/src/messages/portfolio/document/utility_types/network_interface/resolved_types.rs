@@ -319,23 +319,41 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// The types an output could produce: its compiled type, or else the return types of the registry implementations matching its node's inputs.
+	/// The types an output could produce: its compiled type, or else what [`Self::possible_output_types`] finds.
 	pub fn potential_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
 		if let Some(compiled_type) = self.output_type(output_connector, network_path).compiled_nested_type() {
 			return vec![compiled_type.clone()];
 		}
 
 		// Nodes outside the compiled graph, such as disconnected ones, have no resolved type
-		let OutputConnector::Node { node_id, output_index: 0 } = output_connector else {
-			return Vec::new();
-		};
-		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
-			return Vec::new();
-		};
+		self.possible_output_types(output_connector, network_path)
+	}
 
-		self.implementations_matching_inputs(proto_node_identifier, node_id, None, network_path)
-			.map(|node_io| node_io.return_value.nested_type().clone())
-			.collect()
+	/// Every type an output could produce given its node's current inputs, regardless of the one it was compiled with. An import can carry whatever its
+	/// subgraph node's input accepts. Only the primary output of a proto node is known, since a node's other outputs are fields of its return value.
+	pub fn possible_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
+		match output_connector {
+			OutputConnector::Import(import_index) => {
+				let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
+					return Vec::new();
+				};
+				self.potential_valid_input_types(&InputConnector::node_at_index(*encapsulating_node_id, *import_index), encapsulating_path)
+			}
+			OutputConnector::Node { node_id, output_index } => match self.implementation(node_id, network_path) {
+				Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) if *output_index == 0 => self
+					.implementations_matching_inputs(proto_node_identifier, node_id, None, network_path)
+					.map(|node_io| node_io.return_value.nested_type().clone())
+					.collect(),
+				// A subgraph's output carries whatever feeds its export
+				Some(DocumentNodeImplementation::Network(_)) => {
+					let nested_path = [network_path, &[*node_id]].concat();
+					self.upstream_output_connector(&InputConnector::Export(*output_index), &nested_path)
+						.map(|upstream_output| self.possible_output_types(&upstream_output, &nested_path))
+						.unwrap_or_default()
+				}
+				_ => Vec::new(),
+			},
+		}
 	}
 
 	/// The registry implementations of a proto node whose inputs accept the node's current input types, ignoring `disregarded_input_index`.
@@ -411,12 +429,12 @@ impl NodeNetworkInterface {
 					Some((encapsulating_node, encapsulating_path)) => self.valid_output_types(&OutputConnector::node(*encapsulating_node, *export_index), encapsulating_path),
 					None => {
 						// Valid types for the export are all types that can be fed into the render node
-						let render_node = graphene_std::render_node::render::IDENTIFIER;
+						let render_node = graphene_std::render_node::render_intermediate::IDENTIFIER;
 						let Some(implementations) = NODE_REGISTRY.get(&render_node) else {
 							log::error!("Protonode {render_node:?} not found in registry");
 							return Vec::new();
 						};
-						implementations.keys().map(|types| types.inputs[1].clone()).collect()
+						implementations.keys().filter_map(|types| types.inputs.first().cloned()).collect()
 					}
 				}
 			}
