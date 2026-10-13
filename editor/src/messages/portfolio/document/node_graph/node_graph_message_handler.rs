@@ -2937,14 +2937,18 @@ impl NodeGraphMessageHandler {
 
 				// With nothing pinned either, explain what can appear here
 				if pinned_node_inspector.is_empty() {
-					return vec![LayoutGroup::row(vec![
-						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-						TextLabel::new("Select layers or nodes to inspect their parameters. Pin them for quick access here when nothing is selected.")
-							.multiline(true)
-							.disabled(true)
-							.widget_instance(),
-						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					])];
+					return vec![
+						LayoutGroup::row(vec![]),
+						LayoutGroup::row(vec![
+							Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+							TextLabel::new("Select layers or nodes to inspect their parameters.\nPin them for quick access here when nothing is selected.")
+								.multiline(true)
+								.center_align(true)
+								.disabled(true)
+								.widget_instance(),
+							Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+						]),
+					];
 				}
 
 				pinned_node_inspector
