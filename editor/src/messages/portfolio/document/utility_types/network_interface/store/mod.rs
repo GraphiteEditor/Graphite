@@ -110,7 +110,7 @@ impl NodeNetworkInterface {
 
 			// A missing description is empty, so only a non-empty one past the end needs the gap filled
 			let output_descriptions = &mut persistent_metadata.output_descriptions;
-			descriptions_changed = !output_description.is_empty() || index < described_length(output_descriptions);
+			descriptions_changed = !output_description.is_empty() || has_description(output_descriptions);
 			if index <= output_descriptions.len() {
 				output_descriptions.insert(index, output_description);
 			} else if !output_description.is_empty() {
@@ -143,7 +143,7 @@ impl NodeNetworkInterface {
 			if index < persistent_metadata.output_names.len() {
 				persistent_metadata.output_names.remove(index);
 			}
-			descriptions_changed = index < described_length(&persistent_metadata.output_descriptions);
+			descriptions_changed = has_description(&persistent_metadata.output_descriptions);
 			if index < persistent_metadata.output_descriptions.len() {
 				persistent_metadata.output_descriptions.remove(index);
 			}
@@ -155,8 +155,8 @@ impl NodeNetworkInterface {
 	/// Records every export slot from `index` on, plus a clear for `vacated` when the list shrank.
 	///
 	/// Export slots are addressed by index, so inserting or removing one changes the meaning of every
-	/// later slot and each has to be restated. The encapsulating node's names, and its descriptions when
-	/// they shifted, ride along as whole-array metadata writes.
+	/// later slot and each has to be restated. The encapsulating node's names, and its descriptions unless
+	/// they're all empty, ride along as whole-array metadata writes.
 	fn emit_exports_from(&mut self, network_path: &[NodeId], index: usize, vacated: Option<usize>, descriptions_changed: bool) {
 		let Some(network) = self.network.network().nested_network(network_path) else { return };
 		let exports: Vec<_> = network.exports.iter().skip(index).cloned().collect();
@@ -430,9 +430,9 @@ impl NodeNetworkInterface {
 	}
 }
 
-/// How many of `descriptions` say anything, leaving out the trailing empty ones that a shorter list implies.
-fn described_length(descriptions: &[String]) -> usize {
-	descriptions.iter().rposition(|description| !description.is_empty()).map_or(0, |index| index + 1)
+/// Whether any of `descriptions` says anything, since storage keeps the whole list then, but not a list that's all empty.
+fn has_description(descriptions: &[String]) -> bool {
+	descriptions.iter().any(|description| !description.is_empty())
 }
 
 /// The slot `connector` addresses, whether it is a node's input or one of the network's exports.

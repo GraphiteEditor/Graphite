@@ -688,12 +688,17 @@ async fn output_descriptions_follow_their_exports() {
 	assert_same_stored_effect(&working, constructed, diffed, "moved output descriptions");
 }
 
-/// Adding or removing an export past the last described one leaves every description where it was, so no description write is recorded.
+/// A subgraph whose output descriptions are all empty stores none, so adding or removing an export leaves nothing to write for them.
 #[tokio::test]
-async fn exports_past_the_described_ones_emit_no_description_write() {
+async fn exports_of_a_subgraph_without_descriptions_emit_no_description_write() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let merge = editor.create_node_by_name(merge_definition()).await;
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		let mut node = network_interface.node_mut(super::NodeLocator::new(merge, &[])).expect("Merge should exist");
+		node.set_output_descriptions(Vec::new());
+	}
 	editor.active_document_mut().network_interface.discard_deltas();
 
 	{
@@ -716,5 +721,23 @@ async fn exports_past_the_described_ones_emit_no_description_write() {
 			)
 		})
 		.count();
-	assert_eq!(description_writes, 0, "no description moved, so none should be written: {emitted:#?}");
+	assert_eq!(description_writes, 0, "no descriptions are stored, so none should be written: {emitted:#?}");
+}
+
+/// Storage keeps a subgraph's whole description list once any entry says something, so an export added past the described ones still changes what's stored.
+#[tokio::test]
+async fn adding_an_export_past_the_described_ones_matches_the_diff() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let merge = editor.create_node_by_name(merge_definition()).await;
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	editor.active_document_mut().network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "an export added past the described ones");
 }
