@@ -594,6 +594,7 @@ struct PathToolData {
 	temporary_colinear_handles: bool,
 	molding_info: Option<(DVec2, DVec2)>,
 	molding_segment: bool,
+	molding_snap_origin: Option<DVec2>,
 	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	frontier_handles_info: Option<HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 	adjacent_anchor_offset: Option<DVec2>,
@@ -1986,7 +1987,7 @@ impl Fsm for PathToolFsmState {
 						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
-							let origin = tool_data.drag_start_pos;
+							let origin = tool_data.molding_snap_origin.unwrap_or(tool_data.drag_start_pos);
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							match axis {
@@ -2123,16 +2124,38 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					let mouse_position = if snap_angle_state {
+						let transform = document.metadata().transform_to_viewport_if_feeds(segment.layer(), &document.network_interface);
+						let parametric_bezier_mid = point_to_dvec2(segment.pathseg().eval(0.5));
+						let mid = transform.transform_point2(parametric_bezier_mid);
+						
+						tool_data.molding_snap_origin = Some(mid);
+						let drag_start = tool_data.drag_start_pos;
+
+						let delta = input.mouse.position - drag_start;
+						tool_data.snapping_axis = Some(if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y });
+						match tool_data.snapping_axis {
+							Some(Axis::X) => DVec2::new(input.mouse.position.x, drag_start.y),
+							Some(Axis::Y) => DVec2::new(drag_start.x, input.mouse.position.y),
+							_ => input.mouse.position,
+						}
+					} else {
+						tool_data.snapping_axis = None;
+						tool_data.molding_snap_origin = None;
+						input.mouse.position
+					};
+
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2166,7 +2189,6 @@ impl Fsm for PathToolFsmState {
 				let toggle_colinear_state = input.keyboard.get(toggle_colinear as usize);
 				let equidistant_state = input.keyboard.get(equidistant as usize);
 				let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				if !lock_angle_state {
 					tool_data.angle_locked = false;
