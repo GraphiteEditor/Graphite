@@ -28,11 +28,11 @@
 
 	type Axis = { sign: number; vec: [number, number] };
 
-	$: axes = computeAxes(tilt);
+	$: axes = computeAxes(tilt, flip);
 	$: isHorizontal = direction === "Horizontal";
 	$: trackedAxis = isHorizontal ? axes.horiz : axes.vert;
 	$: otherAxis = isHorizontal ? axes.vert : axes.horiz;
-	$: crossAxisDirection = flipVector(otherAxis.vec, flip);
+	$: crossAxisDirection = otherAxis.vec;
 	$: stretchFactor = 1 / Math.max(Math.abs(isHorizontal ? trackedAxis.vec[0] : trackedAxis.vec[1]), 1e-10);
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
 	$: effectiveOrigin = projectOntoRuler(direction, originX, originY, crossAxisDirection);
@@ -41,24 +41,24 @@
 	$: cursorIndicatorPath = computeCursorIndicator(direction, cursorPosition, crossAxisDirection);
 	$: selectionExtent = computeSelectionExtent(direction, selectionQuad, crossAxisDirection);
 
-	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
-		const normTilt = ((tilt % TAU) + TAU) % TAU;
+	function computeAxes(tilt: number, flip: boolean): { horiz: Axis; vert: Axis } {
+		// A flipped view lies along the same lines as the unflipped view tilted the other way, but with document X running backwards
+		const angle = flip ? -tilt : tilt;
+		const xSign = flip ? -1 : 1;
+
+		const normTilt = ((angle % TAU) + TAU) % TAU;
 		const octant = Math.floor((normTilt + Math.PI / 4) / (Math.PI / 2)) % 4;
 
-		const [c, s] = [Math.cos(tilt), Math.sin(tilt)];
-		const posX: Axis = { sign: 1, vec: [c, s] };
+		const [c, s] = [Math.cos(angle), Math.sin(angle)];
+		const posX: Axis = { sign: xSign, vec: [c, s] };
 		const posY: Axis = { sign: 1, vec: [-s, c] };
-		const negX: Axis = { sign: -1, vec: [-c, -s] };
+		const negX: Axis = { sign: -xSign, vec: [-c, -s] };
 		const negY: Axis = { sign: -1, vec: [s, -c] };
 
 		if (octant === 0) return { horiz: posX, vert: posY };
 		if (octant === 1) return { horiz: negY, vert: posX };
 		if (octant === 2) return { horiz: negX, vert: negY };
 		return { horiz: posY, vert: negX };
-	}
-
-	function flipVector(vec: [number, number], flipped: boolean): [number, number] {
-		return flipped ? [-vec[0], vec[1]] : vec;
 	}
 
 	function projectOntoRuler(direction: RulerDirection, x: number, y: number, vec: [number, number]): number {
