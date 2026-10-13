@@ -117,11 +117,10 @@
 		editingDescription = undefined;
 	}
 
-	// Ctrl/Cmd+Enter in the description field commits it there, and here it also closes the popover
-	function onWindowKeyDown(e: KeyboardEvent) {
-		const inDescriptionPopover = e.target instanceof Element && e.target.closest("[data-description-popover]");
+	// Ctrl/Cmd+Enter commits the description like in any text area, and here it also closes the popover
+	function onDescriptionKeyDown(e: KeyboardEvent) {
 		const commandKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
-		if (editingDescription && inDescriptionPopover && commandKey && e.key === "Enter") closeDescriptionPopover();
+		if (commandKey && e.key === "Enter") closeDescriptionPopover();
 	}
 
 	onMount(() => {
@@ -242,8 +241,6 @@
 		return result;
 	}
 </script>
-
-<svelte:window on:keydown={onWindowKeyDown} />
 
 <div class="graph" data-node-graph>
 	<div
@@ -397,7 +394,6 @@
 	<!-- Popover for editing the description of an import or export, kept mounted so opening it attaches its listeners for closing -->
 	<FloatingMenu
 		class="description-popover"
-		data-description-popover
 		styles={editingDescription
 			? {
 					left: `${editingDescription.anchor[0] * $nodeGraphTransform.scale + $nodeGraphTransform.x}px`,
@@ -419,6 +415,7 @@
 					if (editingDescription) editingDescription.text = detail;
 				}}
 				on:commitText={commitDescription}
+				on:keydown={onDescriptionKeyDown}
 				bind:this={descriptionInput}
 			/>
 		{/if}

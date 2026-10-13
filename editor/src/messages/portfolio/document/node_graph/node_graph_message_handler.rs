@@ -2941,7 +2941,7 @@ impl NodeGraphMessageHandler {
 						LayoutGroup::row(vec![]),
 						LayoutGroup::row(vec![
 							Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-							TextLabel::new("Select layers or nodes to inspect their parameters.\nPin them for quick access here when nothing is selected.")
+							TextLabel::new("Select layers or nodes to inspect their parameters.\nPin them for quick access when nothing is selected.")
 								.multiline(true)
 								.center_align(true)
 								.disabled(true)
