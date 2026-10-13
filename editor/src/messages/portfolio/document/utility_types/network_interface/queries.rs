@@ -542,6 +542,19 @@ impl NodeNetworkInterface {
 		self.view(network_path).ok().and_then(|view| view.persistent_input_metadata(node_id, index).ok())
 	}
 
+	/// Whether the input is internal state of its proto node (named with a leading `_`), which is never exposed to the graph.
+	pub fn is_internal_input(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> bool {
+		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
+			return false;
+		};
+		let Ok(node_metadata) = graphene_std::registry::NODE_METADATA.lock() else { return false };
+
+		node_metadata
+			.get(proto_node_identifier)
+			.and_then(|metadata| metadata.fields.get(index))
+			.is_some_and(|field| field.internal)
+	}
+
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_input_override");

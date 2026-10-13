@@ -866,7 +866,14 @@ static INPUT_OVERRIDES: once_cell::sync::Lazy<InputInspector> = once_cell::sync:
 /// Defines the logic for inputs to display a custom Inspector widget.
 fn static_input_inspector() -> InputInspector {
 	let mut map: InputInspector = HashMap::new();
-	map.insert("hidden".to_string(), Box::new(|_node_id, _index, _context| Ok(Vec::new())));
+	map.insert(
+		"hidden".to_string(),
+		Box::new(|node_id, index, context| {
+			Ok(node_inspector::exposed_parameter_row(&ParameterWidgetsInfo::at_index(node_id, index, true, context))
+				.into_iter()
+				.collect())
+		}),
+	);
 	map.insert(
 		"string".to_string(),
 		Box::new(|node_id, index, context| {
