@@ -164,47 +164,12 @@ impl NodeNetworkInterface {
 		Some(document_node_click_targets)
 	}
 
-	/// The remove buttons that sit beside each import and export port.
-	pub(super) fn compute_modify_import_export(&self, network_path: &[NodeId]) -> Option<ModifyImportExportClickTarget> {
-		let mut remove_imports_exports = Ports::new();
-
-		if !network_path.is_empty() {
-			let ports_built = self.with_import_export_ports(network_path, |import_exports| {
-				for (import_index, import_click_target) in import_exports.output_ports() {
-					let Some(import_bounding_box) = import_click_target.bounding_box() else {
-						log::error!("Could not get export bounding box in compute_modify_import_export");
-						continue;
-					};
-					let remove_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-16., 0.);
-					let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-				}
-
-				for (export_index, export_click_target) in import_exports.input_ports() {
-					let Some(export_bounding_box) = export_click_target.bounding_box() else {
-						log::error!("Could not get export bounding box in compute_modify_import_export");
-						continue;
-					};
-					let remove_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(16., 0.);
-					let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-				}
-			});
-			if ports_built.is_none() {
-				log::error!("Could not get import_export_ports in compute_modify_import_export");
-				return None;
-			}
-		}
-
-		Some(ModifyImportExportClickTarget { remove_imports_exports })
-	}
-
-	/// The areas covered by the names beside each import and export port, which can be dragged to reorder them.
-	/// Laid out as the frontend draws them while hovered, past the connector and the remove button.
+	/// The areas covered by the names beside each import and export port, which can be dragged to reorder them or right-clicked for a menu.
+	/// Laid out as the frontend draws them, just past the connector.
 	pub fn import_export_name_bounds(&self, network_path: &[NodeId]) -> Vec<(ImportOrExport, [DVec2; 2])> {
-		// Past the port's center, the connector and the remove button with its margin come before the name
-		const IMPORT_NAME_INSET: f64 = 27.;
-		const EXPORT_NAME_INSET: f64 = 28.;
+		// How far past the port's center the name begins
+		const IMPORT_NAME_INSET: f64 = 8.;
+		const EXPORT_NAME_INSET: f64 = 9.;
 		const FONT_SIZE: f64 = 14.;
 
 		if network_path.is_empty() {

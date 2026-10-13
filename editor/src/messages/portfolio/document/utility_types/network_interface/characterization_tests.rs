@@ -1,6 +1,6 @@
 use super::{
-	ChainInsertionPoint, FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing,
-	RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector,
+	Previewing, RootNode, TransactionStatus,
 };
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::test_utils::test_prelude::*;
@@ -1022,6 +1022,99 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 	);
 
 	assert_invariants(&editor, "after reordering a parameter to be the primary import");
+}
+
+/// The inputs fed by `output_connector` in the network at `network_path`, in no particular order.
+fn fed_inputs(editor: &EditorTestUtils, output_connector: &OutputConnector, network_path: &[NodeId]) -> HashSet<InputConnector> {
+	let network_interface = &editor.active_document().network_interface;
+	network_interface
+		.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned())
+		.flatten()
+		.unwrap_or_default()
+		.into_iter()
+		.collect()
+}
+
+#[tokio::test]
+async fn adding_an_import_passthrough_takes_over_the_wires_the_import_fed() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let content_import = OutputConnector::Import(1);
+	let fed_before = fed_inputs(&editor, &content_import, &path);
+	assert!(!fed_before.is_empty(), "Merge's content import should feed its subgraph: fixture is wrong");
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::AddImportPassthrough { import_index: 1 }).await;
+
+	let fed_after = fed_inputs(&editor, &content_import, &path);
+	let [InputConnector::Node { node_id: passthrough, input_index: 0 }] = fed_after.into_iter().collect::<Vec<_>>()[..] else {
+		panic!("the import should feed only the Passthrough's primary input");
+	};
+	assert_eq!(
+		fed_inputs(&editor, &OutputConnector::primary_output(passthrough), &path),
+		fed_before,
+		"the Passthrough should feed what the import fed"
+	);
+
+	assert_invariants(&editor, "after adding an import passthrough");
+}
+
+#[tokio::test]
+async fn editing_import_and_export_descriptions_stores_them_on_the_subgraph_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::SetImportExportDescription {
+			description: "The artwork to add.".to_string(),
+			index: ImportOrExport::Import(1),
+		})
+		.await;
+	editor
+		.handle_message(NodeGraphMessage::SetImportExportDescription {
+			description: "The combined result.".to_string(),
+			index: ImportOrExport::Export(0),
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let import_description = network_interface.persistent_input_metadata(&merge, 1, &[]).map(|metadata| metadata.input_description.as_str());
+	assert_eq!(import_description, Some("The artwork to add."));
+	assert_eq!(network_interface.output_description(&merge, 0, &[]), "The combined result.");
+
+	assert_invariants(&editor, "after editing import and export descriptions");
+}
+
+#[tokio::test]
+async fn showing_a_secondary_import_in_the_inspector_keeps_its_wires_in_the_subgraph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let content_import = OutputConnector::Import(1);
+	let fed_before = fed_inputs(&editor, &content_import, &path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 1, exposed: false }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let content_input = network_interface
+		.input_from_connector(&InputConnector::node_at_index(merge, 1), &[])
+		.expect("Merge should have a content input");
+	assert!(!content_input.is_exposed(), "the subgraph node should show the input as a parameter instead of a connector");
+	assert_eq!(
+		fed_inputs(&editor, &content_import, &path),
+		fed_before,
+		"the import should still feed the same inputs within the subgraph"
+	);
+
+	assert_invariants(&editor, "after showing a secondary import in the Inspector");
 }
 
 #[tokio::test]

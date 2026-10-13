@@ -161,6 +161,16 @@ pub enum ContextMenuData {
 		#[serde(rename = "compatibleType")]
 		compatible_type: Option<String>,
 	},
+	/// An import or export of the viewed subgraph, by its index among the imports or the exports.
+	ModifyImportExport {
+		#[serde(rename = "isImport")]
+		is_import: bool,
+		index: u32,
+		/// For an import, whether the subgraph node shows its input as a connector rather than as a parameter in the Inspector.
+		exposed: bool,
+		/// Whether any wire is attached to it within the subgraph.
+		connected: bool,
+	},
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -196,8 +206,8 @@ pub struct FrontendClickTargets {
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
-	#[serde(rename = "modifyImportExport")]
-	pub modify_import_export: Vec<String>,
+	#[serde(rename = "importExportNames")]
+	pub import_export_names: Vec<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

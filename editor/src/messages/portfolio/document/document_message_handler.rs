@@ -649,12 +649,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.abort_import_export_reorder(responses);
 				}
 				// Close the context menu if it's open
-				else if self
-					.node_graph_handler
-					.context_menu
-					.as_ref()
-					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
-				{
+				else if self.node_graph_handler.context_menu.is_some() {
 					self.node_graph_handler.context_menu = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 				}

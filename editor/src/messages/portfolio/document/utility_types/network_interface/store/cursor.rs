@@ -323,6 +323,26 @@ impl NodeMut<'_> {
 		changed
 	}
 
+	pub(crate) fn set_output_description(&mut self, output_index: usize, output_description: String) -> bool {
+		if output_index >= self.metadata.output_names.len() {
+			return false;
+		}
+
+		let output_descriptions = &mut self.metadata.output_descriptions;
+		if output_descriptions.get(output_index).map_or("", String::as_str) == output_description {
+			return false;
+		}
+
+		if output_index >= output_descriptions.len() {
+			output_descriptions.resize(output_index + 1, String::new());
+		}
+		output_descriptions[output_index] = output_description;
+
+		let change = NodeMetadataChange::OutputDescriptions(output_descriptions.clone());
+		self.deltas.metadata(change);
+		true
+	}
+
 	/// The encapsulating node's descriptions for the network's exports, replaced together since they are stored as one array.
 	pub(crate) fn set_output_descriptions(&mut self, output_descriptions: Vec<String>) -> bool {
 		let changed = self.metadata.output_descriptions != output_descriptions;

@@ -337,39 +337,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
-		self.load_modify_import_export(network_path);
-
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in modify_import_export");
-			return None;
-		};
-		let Some(click_targets) = transient.modify_import_export.get_loaded_mut() else {
-			log::error!("Could not load modify import export in modify_import_export");
-			return None;
-		};
-		Some(click_targets)
-	}
-
-	pub fn load_modify_import_export(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in load_modify_import_export");
-			return;
-		};
-		network_metadata
-			.transient_metadata
-			.modify_import_export
-			.ensure_loaded(|| self.compute_modify_import_export(network_path));
-	}
-
-	pub(crate) fn unload_modify_import_export(&mut self, network_path: &[NodeId]) {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_modify_import_export");
-			return;
-		};
-		transient.modify_import_export.unload();
-	}
-
 	/// Reads the owned nodes of a layer through &self if they are loaded.
 	pub(crate) fn with_owned_nodes_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
 		let layer_node = self.node_metadata(node_id, network_path)?;
@@ -851,14 +818,6 @@ impl NodeNetworkInterface {
 			.transient_metadata
 			.click_targets
 			.with_loaded_or(|| self.compute_node_click_targets(node_id, network_path), read)
-	}
-
-	/// Reads the modify import/export click targets through &self, loading them first if needed.
-	pub(crate) fn with_modify_import_export<R>(&self, network_path: &[NodeId], read: impl FnOnce(&ModifyImportExportClickTarget) -> R) -> Option<R> {
-		self.network_metadata(network_path)?
-			.transient_metadata
-			.modify_import_export
-			.with_loaded_or(|| self.compute_modify_import_export(network_path), read)
 	}
 
 	/// Reads the node click targets through &self if they are already loaded.

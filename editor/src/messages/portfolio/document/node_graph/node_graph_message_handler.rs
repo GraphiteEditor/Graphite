@@ -166,18 +166,57 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if network_interface.number_of_imports(breadcrumb_network_path) == 0 {
 					responses.add(NodeGraphMessage::AddImport);
 				} else {
-					responses.add(NodeGraphMessage::ExposeEncapsulatingPrimaryInput { exposed: true });
+					responses.add(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: true });
 				}
 			}
 			NodeGraphMessage::AddSecondaryImport => {
 				// If necessary, add a hidden primary import before the secondary import
 				if network_interface.number_of_imports(breadcrumb_network_path) == 0 {
 					responses.add(NodeGraphMessage::AddImport);
-					responses.add(NodeGraphMessage::ExposeEncapsulatingPrimaryInput { exposed: false });
+					responses.add(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: false });
 				}
 
 				// Add the secondary import
 				responses.add(NodeGraphMessage::AddImport);
+			}
+			NodeGraphMessage::AddImportPassthrough { import_index } => {
+				let import = OutputConnector::Import(import_index);
+				let Some(import_position) = network_interface.output_position(&import, breadcrumb_network_path) else {
+					log::error!("Could not get the position of import {import_index} in AddImportPassthrough");
+					return;
+				};
+				let Some(passthrough_definition) = resolve_proto_node_type(graphene_core::ops::passthrough::IDENTIFIER) else {
+					log::error!("Could not resolve the Passthrough node in AddImportPassthrough");
+					return;
+				};
+				let fed_inputs = network_interface
+					.outward_wires(breadcrumb_network_path)
+					.and_then(|outward_wires| outward_wires.get(&import).cloned())
+					.unwrap_or_default();
+
+				// Two grid cells right of the import, with the node's primary input (a row below its top) level with it
+				let node_id = NodeId::new();
+				let node_template = Box::new(passthrough_definition.default_node_template());
+				responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
+				responses.add(NodeGraphMessage::ShiftNodePosition {
+					node_id,
+					x: (import_position.x / GRID_SIZE as f64).round() as i32 + 2,
+					y: (import_position.y / GRID_SIZE as f64).round() as i32 - 1,
+				});
+
+				responses.add(NodeGraphMessage::CreateWire {
+					output_connector: import,
+					input_connector: InputConnector::primary_input(node_id),
+				});
+				for fed_input in fed_inputs {
+					responses.add(NodeGraphMessage::CreateWire {
+						output_connector: OutputConnector::primary_output(node_id),
+						input_connector: fed_input,
+					});
+				}
+
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::AddExport => {
 				network_interface.add_export(graph_craft::document::value::TaggedValue::None, -1, "", breadcrumb_network_path);
@@ -418,6 +457,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::DisconnectInput { input_connector } => {
 				network_interface.disconnect_input(&input_connector, selection_network_path);
 			}
+			NodeGraphMessage::DisconnectImportExport { index } => {
+				match index {
+					ImportOrExport::Import(import_index) => {
+						network_interface.disconnect_import_wires(import_index, breadcrumb_network_path);
+					}
+					// While previewing, drop the wire the preview would restore, as dragging it off does
+					ImportOrExport::Export(0) if matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { root_node_to_restore: Some(_) }) => {
+						network_interface.start_previewing_without_restore(breadcrumb_network_path);
+					}
+					ImportOrExport::Export(export_index) => network_interface.disconnect_input(&InputConnector::Export(export_index), breadcrumb_network_path),
+				}
+
+				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+			}
 			NodeGraphMessage::DisconnectRootNode => {
 				network_interface.start_previewing_without_restore(selection_network_path);
 			}
@@ -512,12 +566,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(DocumentMessage::ZoomCanvasTo100Percent);
 				}
 			}
-			NodeGraphMessage::ExposeEncapsulatingPrimaryInput { exposed } => {
+			NodeGraphMessage::ExposeEncapsulatingInput { input_index, exposed } => {
 				let Some((node_id, network_path)) = breadcrumb_network_path.split_last() else {
 					return;
 				};
 
-				let encapsulating_connector = InputConnector::primary_input(*node_id);
+				let encapsulating_connector = InputConnector::node_at_index(*node_id, input_index);
 				if !exposed {
 					network_interface.disconnect_input(&encapsulating_connector, network_path);
 				}
@@ -532,11 +586,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				network_interface.set_input(&encapsulating_connector, input, network_path);
 
-				// Disconnect all connections fed by the hidden import in the nested network
-				network_interface.disconnect_import_wires(0, breadcrumb_network_path);
+				// Disconnect all connections fed by the hidden primary import in the nested network
+				if input_index == 0 && !exposed {
+					network_interface.disconnect_import_wires(0, breadcrumb_network_path);
+				}
 
 				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendWires);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::ExposePrimaryExport { exposed } => {
 				let export_connector: InputConnector = InputConnector::Export(0);
@@ -875,7 +932,41 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						return;
 					}
 
-					let context_menu_data = if let Some(node_id) = clicked_id {
+					// A subgraph's import or export, by its name or its connector
+					let clicked_import_export = network_interface
+						.import_export_name_from_point(node_graph_point, selection_network_path)
+						.or(match (clicked_input, clicked_output) {
+							(Some(InputConnector::Export(export_index)), _) if !selection_network_path.is_empty() => Some(ImportOrExport::Export(export_index)),
+							(_, Some(OutputConnector::Import(import_index))) => Some(ImportOrExport::Import(import_index)),
+							_ => None,
+						});
+
+					let context_menu_data = if let Some(import_or_export) = clicked_import_export {
+						let (is_import, index, exposed, connected) = match import_or_export {
+							ImportOrExport::Import(import_index) => {
+								let exposed = selection_network_path.split_last().is_some_and(|(encapsulating_node, encapsulating_path)| {
+									let encapsulating_input = InputConnector::node_at_index(*encapsulating_node, import_index);
+									network_interface.input_from_connector(&encapsulating_input, encapsulating_path).is_some_and(|input| input.is_exposed())
+								});
+								let connected = network_interface
+									.with_outward_wires(selection_network_path, |outward_wires| {
+										outward_wires.get(&OutputConnector::Import(import_index)).is_some_and(|fed_inputs| !fed_inputs.is_empty())
+									})
+									.unwrap_or_default();
+								(true, import_index, exposed, connected)
+							}
+							ImportOrExport::Export(export_index) => {
+								let connected = network_interface.upstream_output_connector(&InputConnector::Export(export_index), selection_network_path).is_some();
+								(false, export_index, true, connected)
+							}
+						};
+						ContextMenuData::ModifyImportExport {
+							is_import,
+							index: index as u32,
+							exposed,
+							connected,
+						}
+					} else if let Some(node_id) = clicked_id {
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
 						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
 
@@ -934,28 +1025,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				}
 
-				let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
-					log::error!("Could not get modify import export in PointerDown");
-					return;
-				};
+				// Since the user is clicking elsewhere in the graph, ensure the context menu is closed
+				if self.context_menu.is_some() {
+					self.context_menu = None;
+					self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
-				if let Some(remove_import_index) = modify_import_export.remove_imports_exports.clicked_output_port_from_point(node_graph_point) {
-					responses.add(DocumentMessage::AddTransaction);
-					if remove_import_index == 0 {
-						responses.add(NodeGraphMessage::ExposeEncapsulatingPrimaryInput { exposed: false })
-					} else {
-						responses.add(NodeGraphMessage::RemoveImport { import_index: remove_import_index });
-					}
-					return;
-				} else if let Some(remove_export_index) = modify_import_export.remove_imports_exports.clicked_input_port_from_point(node_graph_point) {
-					responses.add(DocumentMessage::AddTransaction);
-					if remove_export_index == 0 {
-						responses.add(NodeGraphMessage::ExposePrimaryExport { exposed: false })
-					} else {
-						responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
-					}
-					return;
-				} else if let Some(dragged_name) = network_interface.import_export_name_from_point(node_graph_point, selection_network_path) {
+					responses.add(FrontendMessage::UpdateContextMenuInformation {
+						context_menu_information: self.context_menu.clone(),
+					});
+				}
+
+				if let Some(dragged_name) = network_interface.import_export_name_from_point(node_graph_point, selection_network_path) {
 					responses.add(DocumentMessage::StartTransaction);
 					match dragged_name {
 						ImportOrExport::Import(import_index) => self.reordering_import = Some(import_index),
@@ -970,16 +1050,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.selected_nodes_in_nested_network(selection_network_path)
 					.map(|selected_nodes| selected_nodes.selected_nodes().cloned().collect())
 					.unwrap_or_default();
-
-				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
-				if self.context_menu.is_some() {
-					self.context_menu = None;
-					self.end_wire_in_progress(network_interface, selection_network_path, responses);
-
-					responses.add(FrontendMessage::UpdateContextMenuInformation {
-						context_menu_information: self.context_menu.clone(),
-					});
-				}
 
 				// Toggle visibility of clicked node and return
 				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
@@ -1702,6 +1772,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
+			NodeGraphMessage::RemoveImportExport { index } => responses.add(match index {
+				ImportOrExport::Import(0) => NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: false },
+				ImportOrExport::Export(0) => NodeGraphMessage::ExposePrimaryExport { exposed: false },
+				ImportOrExport::Import(import_index) => NodeGraphMessage::RemoveImport { import_index },
+				ImportOrExport::Export(export_index) => NodeGraphMessage::RemoveExport { export_index },
+			}),
 			NodeGraphMessage::ReorderImport { start_index, end_index } => {
 				network_interface.reorder_import(start_index, end_index, selection_network_path);
 				responses.add(NodeGraphMessage::SendGraph);
@@ -1971,6 +2047,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateImportsExports);
 			}
 			NodeGraphMessage::SetImportExportNameImpl { name, index } => network_interface.set_import_export_name(name, index, breadcrumb_network_path),
+			NodeGraphMessage::SetImportExportDescription { description, index } => {
+				let description = description.trim().to_string();
+
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::SetImportExportDescriptionImpl { description, index });
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+				responses.add(NodeGraphMessage::SendGraph);
+			}
+			NodeGraphMessage::SetImportExportDescriptionImpl { description, index } => network_interface.set_import_export_description(description, index, breadcrumb_network_path),
 			NodeGraphMessage::TogglePreview { node_id } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::TogglePreviewImpl { node_id });

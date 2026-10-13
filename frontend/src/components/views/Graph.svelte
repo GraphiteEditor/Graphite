@@ -7,12 +7,14 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
+	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { DocumentStore } from "/src/stores/document";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
 	import { closeContextMenu } from "/src/stores/node-graph";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const GRID_COLLAPSE_SPACING = 10;
@@ -35,8 +37,6 @@
 	$: if (!$documentState.graphViewOverlayOpen) closeContextMenu();
 
 	let inputElement: HTMLInputElement;
-	let hoveringImportIndex: number | undefined = undefined;
-	let hoveringExportIndex: number | undefined = undefined;
 
 	let editingNameImportIndex: number | undefined = undefined;
 	let editingNameExportIndex: number | undefined = undefined;
@@ -82,6 +82,47 @@
 
 		editor.setLayerName(editingNameNodeId, event.target.value);
 		editingNameNodeId = undefined;
+	}
+
+	// The import or export with its description open for editing in a popover pointing at `anchor`, in graph space
+	let editingDescription: { isImport: boolean; index: number; anchor: [number, number]; text: string; committedText: string } | undefined = undefined;
+	let descriptionInput: TextAreaInput | undefined;
+
+	async function editDescription(isImport: boolean, index: number) {
+		const importsExports = $nodeGraphImportsExports;
+		if (!importsExports) return;
+
+		const connector = isImport ? importsExports.imports[index] : importsExports.exports[index];
+		const description = connector?.description || "";
+
+		// Just beside the connector, on the side facing into the graph
+		const [x, y] = isImport ? importsExports.importPosition : importsExports.exportPosition;
+		const anchor: [number, number] = [Number(x) + (isImport ? 7 : -5), Number(y) + index * GRID_SIZE];
+
+		editingDescription = { isImport, index, anchor, text: description, committedText: description };
+
+		await tick();
+		descriptionInput?.focus();
+	}
+
+	function commitDescription() {
+		if (!editingDescription || editingDescription.text === editingDescription.committedText) return;
+
+		if (editingDescription.isImport) editor.setImportDescription(editingDescription.index, editingDescription.text);
+		else editor.setExportDescription(editingDescription.index, editingDescription.text);
+		editingDescription.committedText = editingDescription.text;
+	}
+
+	function closeDescriptionPopover() {
+		commitDescription();
+		editingDescription = undefined;
+	}
+
+	// Ctrl/Cmd+Enter in the description field commits it there, and here it also closes the popover
+	function onWindowKeyDown(e: KeyboardEvent) {
+		const inDescriptionPopover = e.target instanceof Element && e.target.closest("[data-description-popover]");
+		const commandKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
+		if (editingDescription && inDescriptionPopover && commandKey && e.key === "Enter") closeDescriptionPopover();
 	}
 
 	onMount(() => {
@@ -211,6 +252,8 @@
 	}
 </script>
 
+<svelte:window on:keydown={onWindowKeyDown} />
+
 <div class="graph" data-node-graph>
 	<div
 		class="grid-background"
@@ -273,9 +316,112 @@
 						/>
 					{/if}
 				</LayoutCol>
+			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type === "ModifyImportExport"}
+				{@const isImport = $nodeGraph.contextMenuInformation.contextMenuData.data.isImport}
+				{@const index = $nodeGraph.contextMenuInformation.contextMenuData.data.index}
+				{@const exposed = $nodeGraph.contextMenuInformation.contextMenuData.data.exposed}
+				<LayoutCol class="modify-node-menu">
+					<TextButton
+						label="Rename"
+						action={() => {
+							if (isImport) setEditingImportNameIndex(index, $nodeGraphImportsExports?.imports[index]?.name || "");
+							else setEditingExportNameIndex(index, $nodeGraphImportsExports?.exports[index]?.name || "");
+							closeContextMenu();
+						}}
+						flush={true}
+					/>
+					<TextButton
+						label="Edit Description"
+						action={() => {
+							editDescription(isImport, index);
+							closeContextMenu();
+						}}
+						flush={true}
+					/>
+					{#if index > 0}
+						<TextButton
+							label="Make Primary"
+							action={() => {
+								if (isImport) editor.makeImportPrimary(index);
+								else editor.makeExportPrimary(index);
+								closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
+					{#if isImport && index > 0}
+						<TextButton
+							label={exposed ? "Unexpose in Graph" : "Expose in Graph"}
+							action={() => {
+								editor.setImportExposed(index, !exposed);
+								closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
+					{#if isImport}
+						<TextButton
+							label="Add Passthrough"
+							action={() => {
+								editor.addImportPassthrough(index);
+								closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
+					<TextButton
+						label="Disconnect"
+						action={() => {
+							if (isImport) editor.disconnectImport(index);
+							else editor.disconnectExport(index);
+							closeContextMenu();
+						}}
+						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.connected}
+						flush={true}
+					/>
+					<TextButton
+						label="Remove"
+						action={() => {
+							if (isImport) editor.removeImport(index);
+							else editor.removeExport(index);
+							closeContextMenu();
+						}}
+						flush={true}
+					/>
+				</LayoutCol>
 			{/if}
 		</FloatingMenu>
 	{/if}
+
+	<!-- Popover for editing the description of an import or export, kept mounted so opening it attaches its listeners for closing -->
+	<FloatingMenu
+		class="description-popover"
+		data-description-popover
+		styles={editingDescription
+			? {
+					left: `${editingDescription.anchor[0] * $nodeGraphTransform.scale + $nodeGraphTransform.x}px`,
+					top: `${editingDescription.anchor[1] * $nodeGraphTransform.scale + $nodeGraphTransform.y}px`,
+				}
+			: {}}
+		open={editingDescription !== undefined}
+		on:open={({ detail }) => {
+			if (!detail) closeDescriptionPopover();
+		}}
+		type="Popover"
+		direction={editingDescription?.isImport ? "Right" : "Left"}
+		strayCloses={false}
+	>
+		{#if editingDescription}
+			<TextAreaInput
+				value={editingDescription.committedText}
+				on:value={({ detail }) => {
+					if (editingDescription) editingDescription.text = detail;
+				}}
+				on:commitText={commitDescription}
+				bind:this={descriptionInput}
+			/>
+		{/if}
+	</FloatingMenu>
 
 	{#if $nodeGraph.error}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
@@ -305,8 +451,8 @@
 					<path class="visibility" d={pathString} />
 				{/each}
 				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
-				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
-					<path class="modify-import-export" d={pathString} />
+				{#each $nodeGraph.clickTargets.importExportNames as pathString}
+					<path class="import-export-name" d={pathString} />
 				{/each}
 			</svg>
 		</div>
@@ -361,8 +507,6 @@
 					</svg>
 
 					<div
-						on:pointerenter={() => (hoveringImportIndex = index)}
-						on:pointerleave={() => (hoveringImportIndex = undefined)}
 						class="edit-import-export import"
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
@@ -383,16 +527,6 @@
 							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>
 								{frontendOutput.name}
 							</p>
-						{/if}
-						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraphImportsExports.addImportExport}
-							<IconButton
-								size={16}
-								icon="Remove"
-								class="remove-button-import"
-								action={() => {
-									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-								}}
-							/>
 						{/if}
 					</div>
 				{:else}
@@ -424,24 +558,12 @@
 						{/if}
 					</svg>
 					<div
-						on:pointerenter={() => (hoveringExportIndex = index)}
-						on:pointerleave={() => (hoveringExportIndex = undefined)}
 						class="edit-import-export export"
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
-						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraphImportsExports.addImportExport}
-							<IconButton
-								size={16}
-								icon="Remove"
-								class="remove-button-export"
-								action={() => {
-									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-								}}
-							/>
-						{/if}
 						{#if editingNameExportIndex === index}
 							<input
 								type="text"
@@ -915,6 +1037,16 @@
 			}
 		}
 
+		.description-popover {
+			.text-area-input {
+				width: 300px;
+
+				textarea {
+					height: 200px;
+				}
+			}
+		}
+
 		.node-error-container {
 			position: absolute;
 			z-index: 1;
@@ -1014,7 +1146,7 @@
 					stroke: purple;
 				}
 
-				.modify-import-export {
+				.import-export-name {
 					stroke: orange;
 				}
 			}
@@ -1132,14 +1264,6 @@
 
 				.import-text-input {
 					text-align: right;
-				}
-
-				.remove-button-import {
-					margin-left: 3px;
-				}
-
-				.remove-button-export {
-					margin-right: 3px;
 				}
 			}
 		}

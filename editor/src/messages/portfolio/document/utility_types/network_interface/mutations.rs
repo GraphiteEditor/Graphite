@@ -1100,6 +1100,27 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn set_import_export_description(&mut self, description: String, index: ImportOrExport, network_path: &[NodeId]) {
+		let Some((encapsulating_node_id, encapsulating_network_path)) = network_path.split_last() else {
+			log::error!("Could not get encapsulating network in set_import_export_description");
+			return;
+		};
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+			log::error!("Could not get encapsulating node in set_import_export_description");
+			return;
+		};
+
+		let description_changed = match index {
+			ImportOrExport::Import(import_index) => node.set_input_description(import_index, description),
+			ImportOrExport::Export(export_index) => node.set_output_description(export_index, description),
+		};
+
+		if description_changed {
+			self.transaction_modified();
+		}
+	}
+
 	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_pinned");

@@ -527,19 +527,11 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
-	/// Click targets for removing import/export ports
-	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
 	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModifyImportExportClickTarget {
-	// Subtract icon that appears when hovering over an import/export
-	pub remove_imports_exports: Ports,
 }
 
 #[derive(Debug, Clone)]
