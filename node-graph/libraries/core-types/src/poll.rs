@@ -243,6 +243,32 @@ impl<'a, N> LazyInput<'a, N> {
 	}
 }
 
+pub struct PollInput<'a, N> {
+	node: &'a N,
+	index: usize,
+}
+
+impl<'a, N> PollInput<'a, N> {
+	pub fn new(node: &'a N, index: usize) -> Self {
+		Self { node, index }
+	}
+}
+
+impl<I: ?Sized, N: Node<I>> Node<I> for PollInput<'_, N> {
+	type Output = N::Output;
+
+	#[inline(always)]
+	fn eval(&self, input: &I) -> Poll<N::Output> {
+		let mut state = self.node.eval(input);
+		match &mut state {
+			Poll::Fallback(boxed) => boxed.1.trace.push(self.index),
+			Poll::Error(error) => error.trace.push(self.index),
+			Poll::Pending | Poll::Final(_) | Poll::Partial(_) => {}
+		}
+		state
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

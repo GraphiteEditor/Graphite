@@ -54,3 +54,24 @@ fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send
 	let io = io.lock().unwrap();
 	io.as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::Node;
+
+	struct Fail;
+
+	impl Node<()> for Fail {
+		type Output = u32;
+		fn eval(&self, _: &()) -> Poll<u32> {
+			Poll::error("error")
+		}
+	}
+
+	#[test]
+	fn an_error_records_the_index_of_the_memoized_input() {
+		let Poll::Error(error) = MemoizeNode::new(Fail).eval(&()) else { unreachable!() };
+		assert_eq!(error.trace(), [0]);
+	}
+}

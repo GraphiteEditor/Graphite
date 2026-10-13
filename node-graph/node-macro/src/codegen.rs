@@ -335,7 +335,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let name = &field.pat_ident.ident;
 		match &field.ty {
 			ParsedFieldType::Node { .. } => match tier {
-				NodeOutputTier::Poll => quote! { let #name = &self.#name; },
+				NodeOutputTier::Poll => quote! { let #name = &#core_types::PollInput::new(&self.#name, #index); },
 				_ => quote! { let #name = #core_types::LazyInput::new(&self.#name, __cell, #index); },
 			},
 			_ => quote! { let #name = __cell.record(#index, self.#name.eval(__input)); },
