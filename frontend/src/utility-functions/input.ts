@@ -91,8 +91,11 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 		return;
 	}
 
+	// Escape closing a menu or canceling an edit in the dialog, which marks the dialog once every listener has run, leaves it open
 	if (get(dialogStore).visible && key === "Escape") {
-		editor.onDialogDismiss();
+		setTimeout(() => {
+			if (!window.document.querySelector("[data-dialog] [data-escape-does-not-close]")) editor.onDialogDismiss();
+		}, 0);
 	}
 }
 

@@ -392,8 +392,6 @@
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
 		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
-			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
-			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 			dispatch("open", false);
 		}
 

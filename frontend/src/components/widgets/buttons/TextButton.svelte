@@ -5,6 +5,7 @@
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { IconName } from "/src/icons";
+	import { menuBarKeyboardLeads } from "/src/stores/dropdown-menus";
 	import { styleText, widgetSizingStyles } from "/src/utility-functions/widgets";
 	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -41,7 +42,7 @@
 	$: sizingStyle = styleText(widgetSizingStyles(sizing));
 
 	// Handles either a button click or, if applicable, the opening of the menu list floating menu
-	function onClick(e: MouseEvent) {
+	function onClick() {
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
@@ -50,9 +51,6 @@
 			// Exit early so we don't continue on and try to open the menu
 			return;
 		}
-
-		// Focus the target so that keyboard inputs are sent to the dropdown
-		if (e.target instanceof HTMLElement) e.target.focus();
 
 		// Open the menu list floating menu
 		if (self) self.open = true;
@@ -64,6 +62,7 @@
 	<button
 		class="text-button"
 		class:open={self?.open}
+		class:keyboard-leads={menuListChildrenExists && $menuBarKeyboardLeads}
 		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
 		class:disabled
@@ -101,6 +100,7 @@
 			direction="Bottom"
 			minWidth={240}
 			drawIcon={true}
+			arrowKeysOpenNeighborMenus={true}
 			bind:this={self}
 		/>
 	{/if}
@@ -139,7 +139,8 @@
 			--widget-height: 20px;
 		}
 
-		&:hover,
+		// Off while keys lead the menu bar, via `:where()` so the variants still win
+		&:hover:where(:not(.keyboard-leads)),
 		&.open {
 			--button-background-color: var(--color-6-lowergray);
 			--button-text-color: var(--color-f-white);
@@ -164,7 +165,7 @@
 			--button-background-color: var(--color-e-nearwhite);
 			--button-text-color: var(--color-2-mildblack);
 
-			&:hover,
+			&:hover:where(:not(.keyboard-leads)),
 			&.open {
 				--button-background-color: var(--color-f-white);
 			}
@@ -178,7 +179,7 @@
 			--button-background-color: none;
 			--button-text-color: var(--color-e-nearwhite);
 
-			&:hover,
+			&:hover:where(:not(.keyboard-leads)),
 			&.open {
 				--button-background-color: var(--color-5-dullgray);
 			}
