@@ -5,7 +5,7 @@ export function escapeHtml(text: string): string {
 	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
 
-// Renders the tooltip subset of Markdown: `code` spans, fenced code blocks, **bold**, and *italic*, where a backslash makes a following
+// Renders the tooltip subset of Markdown: `code` spans, fenced code blocks, **bold**, *italic*, and --- dividers, where a backslash makes a following
 // backslash, asterisk, or backtick literal. The text is HTML-escaped before anything else and code is never formatted, so no text yields other markup.
 export function parseMarkdown(markdown: string | undefined): string | undefined {
 	if (!markdown) return undefined;
@@ -21,6 +21,18 @@ export function parseMarkdown(markdown: string | undefined): string | undefined 
 			text += `&#${escaped.charCodeAt(index + 1)};`;
 			index += 2;
 			continue;
+		}
+
+		// A line of three or more hyphens alone is a divider, which takes the line breaks on both sides as its edges like a code block does
+		if (escaped[index] === "-" && (index === 0 || escaped[index - 1] === "\n")) {
+			const lineEnd = escaped.includes("\n", index) ? escaped.indexOf("\n", index) : escaped.length;
+			if (/^-{3,}[ \t]*$/.test(escaped.slice(index, lineEnd))) {
+				if (text.endsWith("\n")) text = text.slice(0, -1);
+
+				text += "<hr>";
+				index = Math.min(lineEnd + 1, escaped.length);
+				continue;
+			}
 		}
 
 		if (escaped[index] === "`") {

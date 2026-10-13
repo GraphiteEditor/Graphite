@@ -38,14 +38,7 @@
 	}
 	// Reactive array of resolved sizes (merging backend defaults with local overrides)
 	$: resolvedSizes = subdivision && "Split" in subdivision ? subdivision.Split.children.map((child, index) => sizeOverrides[index] ?? child.size) : [];
-	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => {
-		const name = doc.name;
-		const unsaved = !doc.is_saved;
-		if (!editor.inDevelopmentMode()) return { name, unsaved };
-
-		const tooltipDescription = `Document ID: ${doc.id}`;
-		return { name, unsaved, tooltipLabel: name, tooltipDescription };
-	});
+	$: documentTabLabels = $portfolio.documents.map((doc: DocumentInfo) => ({ name: doc.name, unsaved: !doc.is_saved }));
 
 	onDestroy(() => {
 		activeResizeCleanup?.();

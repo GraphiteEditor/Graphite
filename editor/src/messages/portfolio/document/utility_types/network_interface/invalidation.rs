@@ -20,11 +20,9 @@ impl NodeNetworkInterface {
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 
-	/// Unloads the network's import and export strip: the ports themselves and the handles beside them
-	/// for adding, removing and reordering.
+	/// Unloads the network's import and export ports.
 	pub(crate) fn invalidate_import_export(&mut self, network_path: &[NodeId]) {
 		self.unload_import_export_ports(network_path);
-		self.unload_modify_import_export(network_path);
 	}
 
 	/// Unloads what a node's name or lock state feeds: a layer's width, and the geometry sized from it.

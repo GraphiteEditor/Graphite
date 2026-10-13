@@ -164,63 +164,39 @@ impl NodeNetworkInterface {
 		Some(document_node_click_targets)
 	}
 
-	/// The add, remove and reorder handles that sit beside each import and export port.
-	pub(super) fn compute_modify_import_export(&self, network_path: &[NodeId]) -> Option<ModifyImportExportClickTarget> {
-		let mut reorder_imports_exports = Ports::new();
-		let mut remove_imports_exports = Ports::new();
+	/// The areas covered by the names beside each import and export port, which can be dragged to reorder them or right-clicked for a menu.
+	/// Laid out as the frontend draws them, just past the connector.
+	pub fn import_export_name_bounds(&self, network_path: &[NodeId]) -> Vec<(ImportOrExport, [DVec2; 2])> {
+		// How far past the port's center the name begins
+		const IMPORT_NAME_INSET: f64 = 8.;
+		const EXPORT_NAME_INSET: f64 = 9.;
+		const FONT_SIZE: f64 = 14.;
 
-		if !network_path.is_empty() {
-			let ports_built = self.with_import_export_ports(network_path, |import_exports| {
-				for (import_index, import_click_target) in import_exports.output_ports() {
-					let Some(import_bounding_box) = import_click_target.bounding_box() else {
-						log::error!("Could not get export bounding box in compute_modify_import_export");
-						continue;
-					};
-					let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
-
-					if *import_index == 0 {
-						let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
-						let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-					} else {
-						let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
-						let reorder_import = ClickTarget::new_with_path(rectangle_path(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-						let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-						reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
-						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-					}
-				}
-
-				for (export_index, export_click_target) in import_exports.input_ports() {
-					let Some(export_bounding_box) = export_click_target.bounding_box() else {
-						log::error!("Could not get export bounding box in compute_modify_import_export");
-						continue;
-					};
-					let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
-
-					if *export_index == 0 {
-						let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
-						let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-					} else {
-						let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
-						let reorder_export = ClickTarget::new_with_path(rectangle_path(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-						let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-						reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
-						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-					}
-				}
-			});
-			if ports_built.is_none() {
-				log::error!("Could not get import_export_ports in compute_modify_import_export");
-				return None;
-			}
+		if network_path.is_empty() {
+			return Vec::new();
 		}
 
-		Some(ModifyImportExportClickTarget {
-			remove_imports_exports,
-			reorder_imports_exports,
-		})
+		let port_center = |click_target: &ClickTarget| click_target.bounding_box().map(|[min, max]| (min + max) / 2.);
+		let Some((import_centers, export_centers)) = self.with_import_export_ports(network_path, |import_exports| {
+			let import_centers: Vec<_> = import_exports.output_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
+			let export_centers: Vec<_> = import_exports.input_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
+			(import_centers, export_centers)
+		}) else {
+			return Vec::new();
+		};
+
+		let half_row = DVec2::new(0., HALF_GRID_SIZE as f64);
+		let imports = import_centers.into_iter().map(|(import_index, center)| {
+			let name_width = text_width(&self.displayed_import_name(import_index, network_path), FONT_SIZE);
+			let name_right = center - DVec2::new(IMPORT_NAME_INSET, 0.);
+			(ImportOrExport::Import(import_index), [name_right - DVec2::new(name_width, 0.) - half_row, name_right + half_row])
+		});
+		let exports = export_centers.into_iter().map(|(export_index, center)| {
+			let name_width = text_width(&self.displayed_export_name(export_index, network_path), FONT_SIZE);
+			let name_left = center + DVec2::new(EXPORT_NAME_INSET, 0.);
+			(ImportOrExport::Export(export_index), [name_left - half_row, name_left + DVec2::new(name_width, 0.) + half_row])
+		});
+		imports.chain(exports).collect()
 	}
 
 	/// A port for each import and export of the network, placed down the left and right edges.
@@ -235,16 +211,58 @@ impl NodeNetworkInterface {
 		if !network_path.is_empty() {
 			let import_start_index = if self.hidden_primary_import(network_path) { 1 } else { 0 };
 			for import_index in import_start_index..self.number_of_imports(network_path) {
-				import_export_ports.insert_output_port_at_center(import_index, import_export_position.0.as_dvec2() + DVec2::new(0., import_index as f64 * 24.));
+				import_export_ports.insert_output_port_at_center(import_index, import_export_position.0.as_dvec2() + DVec2::new(0., import_export_row_offset(import_index)));
 			}
 		}
 
 		let export_start_index = if self.hidden_primary_export(network_path) { 1 } else { 0 };
 		for export_index in export_start_index..network.exports.len() {
-			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., export_index as f64 * 24.));
+			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., import_export_row_offset(export_index)));
 		}
 
 		Some(import_export_ports)
+	}
+
+	/// The dimmed connectors a subgraph shows for adding an import (or else export), as the index each one adds with its center. One fills the primary's place
+	/// while it's empty, and one sits an extra grid cell below the last row so it isn't mistaken for an unnamed one.
+	pub fn empty_import_export_connectors(&self, is_import: bool, network_path: &[NodeId]) -> Vec<(usize, DVec2)> {
+		if network_path.is_empty() {
+			return Vec::new();
+		}
+		let Some((import_position, export_position)) = self.import_export_position(network_path) else {
+			return Vec::new();
+		};
+		let first_row_center = if is_import { import_position } else { export_position }.as_dvec2();
+
+		let count = if is_import { self.number_of_imports(network_path) } else { self.number_of_exports(network_path) };
+		let primary_hidden = if is_import {
+			self.hidden_primary_import(network_path)
+		} else {
+			self.hidden_primary_export(network_path)
+		};
+
+		let mut connectors = Vec::new();
+		if count == 0 || primary_hidden {
+			connectors.push((0, first_row_center));
+		}
+		let next_index = count.max(1);
+		connectors.push((next_index, first_row_center + DVec2::new(0., import_export_row_offset(next_index) + GRID_SIZE as f64)));
+		connectors
+	}
+
+	/// Where an import (or else an export) dragged to height `y` in node graph space would be dropped, as the index it's moved before.
+	/// Index 0 takes the primary's place.
+	pub fn import_export_drop_position(&self, y: f64, is_import: bool, network_path: &[NodeId]) -> Option<usize> {
+		let (import_position, export_position) = self.import_export_position(network_path)?;
+		let first_row_center = if is_import { import_position.y } else { export_position.y } as f64;
+		let row_count = if is_import { self.number_of_imports(network_path) } else { self.number_of_exports(network_path) };
+
+		// Above the separator, centered in the gap under the first row, it takes the primary's place.
+		// Below it, it goes before the first secondary row below the pointer, or after the last.
+		if y < first_row_center + GRID_SIZE as f64 {
+			return Some(0);
+		}
+		Some((1..row_count).find(|&row| first_row_center + import_export_row_offset(row) > y).unwrap_or(row_count))
 	}
 
 	/// The width of a layer in grid units, which covers its thumbnail, its name and its icons. Cached
@@ -342,4 +360,10 @@ impl NodeNetworkInterface {
 
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
 	}
+}
+
+/// How far below the first import or export the one at `index` sits, with a grid cell of space separating the primary from the secondary ones.
+fn import_export_row_offset(index: usize) -> f64 {
+	let rows = if index == 0 { 0 } else { index + 1 };
+	(rows * GRID_SIZE as usize) as f64
 }

@@ -2868,7 +2868,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Add the "Depth" parameter to the "Read Index" node
+	// Add the "Loop Level" parameter to the "Read Index" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_index::IDENTIFIER) && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -2877,8 +2877,15 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);
 
+		let loop_level_description = node_template
+			.input_metadata
+			.get(1)
+			.map(|metadata| metadata.persistent_metadata.input_description.clone())
+			.unwrap_or_default();
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
-		document.network_interface.add_import(TaggedValue::Integer(0), false, 1, "Loop Level", "TODO", &node_path);
+		document
+			.network_interface
+			.add_import(TaggedValue::Integer(0), false, 1, "Loop Level", &loop_level_description, &node_path);
 	}
 
 	// Drop the placeholder primary input the "Read Vector" node used to carry, since it reads its value from the context
