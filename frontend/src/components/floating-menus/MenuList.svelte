@@ -18,8 +18,15 @@
 
 	// What a menu tells the menu it's nested in about a key that needs more than this menu to handle
 	type KeyOutcome = "Handled" | "Unhandled" | "CloseSubmenu" | "NextMenu" | "PreviousMenu";
+	type Point = { x: number; y: number };
 
 	const ENTRY_HEIGHT = 20;
+	// How long the pointer must rest on an entry it crossed while heading into the open submenu before that entry takes over
+	const SUBMENU_AIM_DELAY_MS = 300;
+	// How far beyond the open submenu's top and bottom the pointer may aim and still be heading into it
+	const SUBMENU_AIM_TOLERANCE = 20;
+	// How many recent pointer positions give the direction it's moving in, which a single step is too small to show
+	const POINTER_TRAIL_LENGTH = 4;
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
@@ -71,7 +78,8 @@
 	let lastPreviewedValue: string | undefined = undefined;
 	let lastActiveEntry: { value: string | undefined; entriesHash: bigint } = { value: activeEntry?.value, entriesHash };
 	let wasOpen = false;
-	let lastPointerPosition: { x: number; y: number } | undefined = undefined;
+	let pointerTrail: Point[] = [];
+	let aimTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 	// Whether the wheel scrolled the menu since the last key press, so the entries it scrolls under the resting pointer take the hover
 	let wheelScrolled = false;
 	let virtualScrollingEntriesStart = 0;
@@ -99,6 +107,7 @@
 	onDestroy(() => {
 		listenWhileOpen(false);
 		resizeObserver?.disconnect();
+		clearTimeout(aimTimeout);
 	});
 
 	function watchOpen(open: boolean) {
@@ -120,6 +129,8 @@
 			maxMenuWidth = 0;
 		}
 
+		clearTimeout(aimTimeout);
+		pointerTrail = [];
 		highlighted = activeEntry;
 		hovered = undefined;
 		pointerLed = false;
@@ -282,64 +293,98 @@
 	// Pointer input
 
 	function onPointerMove(e: PointerEvent) {
-		lastPointerPosition = { x: e.clientX, y: e.clientY };
+		const position = { x: e.clientX, y: e.clientY };
+		pointerTrail = [...pointerTrail, position].slice(-POINTER_TRAIL_LENGTH);
 
 		// Entries passing under the resting pointer, as when the arrow keys scroll the menu, leave the hover where the pointer last put it
 		if (e.movementX === 0 && e.movementY === 0) return;
 
 		if (arrowKeysOpenNeighborMenus) menuBarKeyboardLeads.set(false);
-		hoverAtPointer(e.target || undefined);
+		hoverAtPointer(e.target || undefined, pointerTrail[0], position);
 	}
 
 	function onWheel(e: WheelEvent) {
 		if (!(e.target instanceof Node) || !self?.div()?.contains(e.target)) return;
 
-		lastPointerPosition = { x: e.clientX, y: e.clientY };
+		pointerTrail = [{ x: e.clientX, y: e.clientY }];
 		wheelScrolled = true;
 	}
 
 	// The entries the wheel scrolls under the resting pointer take the hover, as moving the pointer onto them would
 	function onScrollWhileOpen(e: Event) {
-		if (!wheelScrolled || !lastPointerPosition || !(e.target instanceof Node) || !self?.div()?.contains(e.target)) return;
+		const position = pointerTrail.at(-1);
+		if (!wheelScrolled || !position || !(e.target instanceof Node) || !self?.div()?.contains(e.target)) return;
 
-		hoverAtPointer(document.elementFromPoint(lastPointerPosition.x, lastPointerPosition.y) || undefined);
+		hoverAtPointer(document.elementFromPoint(position.x, position.y) || undefined, position, position);
 	}
 
-	function hoverAtPointer(target: EventTarget | undefined) {
+	function hoverAtPointer(target: EventTarget | undefined, from: Point, to: Point) {
 		const element = target instanceof Element ? target : undefined;
 
 		// The pointer moving within the menu takes over from the arrow keys, whose highlight in a menu of actions would otherwise misstate what Enter picks
-		if (pointerOver(element) && !holdsValue) clearHighlights();
+		if (pointerOver(element, from, to) && !holdsValue) clearHighlights();
 	}
 
-	/// Updates this menu, then its open submenu, for the pointer having moved onto the given element, returning whether it moved within either.
-	export function pointerOver(target: Element | undefined): boolean {
+	/// Updates this menu, then its open submenu, for the pointer having moved between two points onto the given element, returning whether it moved within either.
+	export function pointerOver(target: Element | undefined, from: Point, to: Point): boolean {
 		const content = contentElement();
 		const inThisMenu = content !== undefined && target?.closest("[data-floating-menu-content]") === content;
 		const row = inThisMenu ? target?.closest("[data-menu-list-row]") : undefined;
 		const entry = row && content?.contains(row) ? filteredEntries.flat().find((candidate) => candidate.value === row.getAttribute("data-menu-list-row")) : undefined;
 		const pickable = entry && !entry.disabled ? entry : undefined;
 
+		clearTimeout(aimTimeout);
+
 		if (!inThisMenu) {
 			hovered = undefined;
 
 			// A highlight following the active entry, like a list of suggestions has, goes back to it once the pointer leaves
 			if (highlightFollowsActiveEntry && !highlighted) highlighted = activeEntry;
-		} else if (pickable) {
-			// Reassigning it redraws every row, so it's left alone while the pointer stays on the same one
-			if (hovered?.value !== pickable.value) hovered = pickable;
+		} else if (pickable && openChildValue !== undefined && pickable.value !== openChildValue && headingIntoSubmenu(from, to)) {
+			// Crossing other entries on the way into the open submenu leaves it open, unless the pointer rests on one
 			pointerLed = true;
-
-			// The submenu of the entry under the pointer opens without the keyboard moving into it, and any other closes
-			openChildValue = pickable.children?.length ? pickable.value : undefined;
+			aimTimeout = setTimeout(() => hoverEntry(pickable), SUBMENU_AIM_DELAY_MS);
+		} else if (pickable) {
+			hoverEntry(pickable);
 		} else if (hovered) {
 			// Elsewhere in the menu, like on a separator, a disabled entry, or the padding, the hover stays on the entry the pointer came from
 			pointerLed = true;
 		}
 
 		const movedHere = inThisMenu && hovered !== undefined;
-		const movedInSubmenu = currentChild()?.pointerOver(target) || false;
+		const movedInSubmenu = currentChild()?.pointerOver(target, from, to) || false;
 		return movedHere || movedInSubmenu;
+	}
+
+	function hoverEntry(entry: MenuListEntry) {
+		// Reassigning it redraws every row, so it's left alone while the pointer stays on the same one
+		if (hovered?.value !== entry.value) hovered = entry;
+		pointerLed = true;
+
+		// The submenu of the entry under the pointer opens without the keyboard moving into it, and any other closes
+		openChildValue = entry.children?.length ? entry.value : undefined;
+	}
+
+	// Whether the pointer moved toward the open submenu, within the triangle from where it was to the corners of the submenu's facing side
+	function headingIntoSubmenu(from: Point, to: Point): boolean {
+		const bounds = currentChild()?.contentBounds();
+		if (!bounds) return false;
+
+		let edge;
+		if (to.x < bounds.left) edge = bounds.left;
+		else if (to.x > bounds.right) edge = bounds.right;
+		else return false;
+		if (Math.abs(edge - to.x) >= Math.abs(edge - from.x)) return false;
+
+		const top = { x: edge, y: bounds.top - SUBMENU_AIM_TOLERANCE };
+		const bottom = { x: edge, y: bounds.bottom + SUBMENU_AIM_TOLERANCE };
+		const side = (a: Point, b: Point) => (b.x - a.x) * (to.y - a.y) - (b.y - a.y) * (to.x - a.x);
+		const sides = [side(from, top), side(top, bottom), side(bottom, from)];
+		return sides.every((value) => value >= 0) || sides.every((value) => value <= 0);
+	}
+
+	export function contentBounds(): DOMRect | undefined {
+		return contentElement()?.getBoundingClientRect();
 	}
 
 	export function clearHighlights() {
@@ -397,6 +442,9 @@
 
 	/// Handles a key in the open submenu if the keyboard or pointer has moved into it, or else in this menu.
 	export function routeKey(e: KeyboardEvent): KeyOutcome {
+		// The keys take over from an entry the pointer was about to hover
+		clearTimeout(aimTimeout);
+
 		const child = currentChild();
 		if (child?.hasPosition()) {
 			const outcome = child.routeKey(e);
