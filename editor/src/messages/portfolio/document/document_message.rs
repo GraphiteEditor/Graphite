@@ -34,7 +34,7 @@ pub enum DocumentMessage {
 	#[child]
 	Overlays(OverlaysMessage),
 	#[child]
-	PropertiesPanel(PropertiesPanelMessage),
+	Inspector(InspectorMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
 	#[child]
@@ -90,6 +90,9 @@ pub enum DocumentMessage {
 	GridVisibility {
 		visible: bool,
 	},
+	LayersPanelHoverOverlays {
+		context: OverlayContext,
+	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
 	ExpandFillStrokeOnSelectedLayers,
@@ -101,7 +104,7 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	ReorderPropertiesSection {
+	ReorderInspectorSection {
 		node_id: NodeId,
 		insert_index: usize,
 		duplicate: bool,
@@ -196,6 +199,9 @@ pub enum DocumentMessage {
 	SetGraphFadeArtwork {
 		percentage: f64,
 	},
+	SetLayersPanelHoveredLayer {
+		id: Option<NodeId>,
+	},
 	SetNodePinned {
 		node_id: NodeId,
 		pinned: bool,
@@ -243,9 +249,16 @@ pub enum DocumentMessage {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
-	ToggleNodePropertiesSectionExpanded {
+	ToggleNodeInspectorSectionExpanded {
 		node_id: NodeId,
 		recursive: bool,
+	},
+	ToggleNodeInspectorInputChain {
+		node_id: NodeId,
+		input_index: usize,
+	},
+	ToggleLayerChainExpanded {
+		layer_id: NodeId,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,

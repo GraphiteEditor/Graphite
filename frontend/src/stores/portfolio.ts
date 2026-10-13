@@ -35,7 +35,7 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
-export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
+export const inspectorLayout = makeLayoutStore("inspectorLayout");
 export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
 export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
 export const layersPanelBottomBarLeftLayout = makeLayoutStore("layersPanelBottomBarLeftLayout");
@@ -135,9 +135,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(welcomeScreenButtonsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("PropertiesPanel", async (data) => {
+	subscriptions.subscribeLayoutUpdate("Inspector", async (data) => {
 		await tick();
-		patchLayoutStore(propertiesPanelLayout, data);
+		patchLayoutStore(inspectorLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
@@ -190,7 +190,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
-	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+	subscriptions.unsubscribeLayoutUpdate("Inspector");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");

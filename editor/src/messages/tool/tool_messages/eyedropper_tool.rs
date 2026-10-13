@@ -39,6 +39,12 @@ impl ToolMetadata for EyedropperTool {
 	}
 }
 
+impl ToolEditTarget for EyedropperTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::Nothing
+	}
+}
+
 impl LayoutHolder for EyedropperTool {
 	fn layout(&self) -> Layout {
 		Layout::default()

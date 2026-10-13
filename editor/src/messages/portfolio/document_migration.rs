@@ -1139,6 +1139,37 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 	(out, hash_to_id)
 }
 
+/// Whether the node is a subgraph that feeds its first input through a Monitor into a Transform proto node and forwards the other four inputs unchanged, making it equivalent to a bare Transform node.
+fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
+	let DocumentNodeImplementation::Network(network) = &node.implementation else { return false };
+	if node.inputs.len() < 5 || network.nodes.len() != 2 {
+		return false;
+	}
+
+	let find_proto_node = |identifier: &ProtoNodeIdentifier| {
+		network.nodes.iter().find(|(_, inner_node)| match &inner_node.implementation {
+			DocumentNodeImplementation::ProtoNode(inner_identifier) => inner_identifier.as_str().split('<').next() == Some(identifier.as_str()),
+			_ => false,
+		})
+	};
+	let Some((monitor_id, monitor)) = find_proto_node(&graphene_std::memo::monitor::IDENTIFIER) else {
+		return false;
+	};
+	let Some((transform_id, transform)) = find_proto_node(&graphene_std::transform_nodes::transform::IDENTIFIER) else {
+		return false;
+	};
+
+	let is_import_at = |input: &NodeInput, expected_index: usize| matches!(input, NodeInput::Import { import_index, .. } if *import_index == expected_index);
+
+	let monitor_reads_first_import = matches!(monitor.inputs.as_slice(), [input] if is_import_at(input, 0));
+	let transform_reads_monitor_and_other_imports = transform.inputs.len() == 5
+		&& matches!(&transform.inputs[0], NodeInput::Node { node_id, output_index: 0 } if node_id == monitor_id)
+		&& transform.inputs.iter().enumerate().skip(1).all(|(index, input)| is_import_at(input, index));
+	let exports_transform = matches!(network.exports.as_slice(), [NodeInput::Node { node_id, output_index: 0 }] if node_id == transform_id);
+
+	monitor_reads_first_import && transform_reads_monitor_and_other_imports && exports_transform
+}
+
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 	document.network_interface.normalize_stored_types();
@@ -1172,13 +1203,17 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 
 	// The "Transform" wrapper network was replaced with the `transform` proto node directly. Convert old `Network("Transform")` instances to the proto node, forwarding the 5 user-facing inputs (Value, Translation, Rotation, Scale, Skew) and dropping the legacy migration sentinels (Origin Offset, Scale Appearance) at indices 5 and 6 if present.
+	// Some old documents store it as a Custom Node subgraph with no reference, where a Monitor feeds the Transform proto node. Those are converted the same way.
 	// Pre-pass for the same reason as the Brush migration above: replacing the outer Transform's network impl orphans its child paths.
 	let transform_layers: Vec<(NodeId, Vec<NodeId>, usize)> = document
 		.network_interface
 		.document_network()
 		.recursive_nodes()
 		.filter_map(|(node_id, node, path)| {
-			(document.network_interface.reference(node_id, &path) == Some(DefinitionIdentifier::Network("Transform".into()))).then_some((*node_id, path, node.inputs.len()))
+			let reference = document.network_interface.reference(node_id, &path);
+			let is_transform_wrapper = reference == Some(DefinitionIdentifier::Network("Transform".into())) || (reference.is_none() && is_monitored_transform_subgraph(node));
+
+			is_transform_wrapper.then_some((*node_id, path, node.inputs.len()))
 		})
 		.collect();
 	for (node_id, network_path, old_inputs_count) in &transform_layers {
@@ -1195,7 +1230,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 
 		// Pre-2024 documents stored Transform with 6 inputs and used radians for Rotation and `tan(radians)` for Skew. Detect that legacy
-		// shape (no input at index 6) and convert the units to degrees so the values match what the new Properties panel widgets expect.
+		// shape (no input at index 6) and convert the units to degrees so the values match what the new Inspector widgets expect.
 		if *old_inputs_count == 6 {
 			match old_inputs.get(2) {
 				Some(NodeInput::Value { tagged_value, exposed }) => {
@@ -1817,9 +1852,34 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Only nodes that have not been modified and still refer to a definition can be updated
 	let reference = document.network_interface.reference(node_id, network_path)?;
 
+	// Show the Artboard's Content input in the Inspector, which the definition once hid
+	if reference == DefinitionIdentifier::Network("Artboard".into())
+		&& document
+			.network_interface
+			.persistent_input_metadata(node_id, 1, network_path)
+			.and_then(|metadata| metadata.widget_override.as_deref())
+			== Some("hidden")
+	{
+		document.network_interface.set_input_override(node_id, 1, None, network_path);
+	}
+
+	// Legacy `noise_properties_*` widget overrides
+	for input_index in 0..node.inputs.len() {
+		let renamed_override = document
+			.network_interface
+			.persistent_input_metadata(node_id, input_index, network_path)
+			.and_then(|metadata| metadata.widget_override.as_deref())
+			.and_then(|widget_override| widget_override.strip_prefix("noise_properties_"))
+			.map(|suffix| format!("noise_inspector_{suffix}"));
+
+		if let Some(renamed_override) = renamed_override {
+			document.network_interface.set_input_override(node_id, input_index, Some(renamed_override), network_path);
+		}
+	}
+
 	let mut inputs_count = node.inputs.len();
 
-	// The expression nodes gained an output-type input, a type witness the Properties panel edits. A node from before it
+	// The expression nodes gained an output-type input, a type witness the Inspector edits. A node from before it
 	// takes the definition's default choice, Number, which is the output type every such node had.
 	let expression_node_identifiers = [graphene_std::math_nodes::math_fx::IDENTIFIER, graphene_std::math_nodes::math_f::IDENTIFIER];
 	if expression_node_identifiers.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && inputs_count == 2 {
@@ -3447,6 +3507,66 @@ mod tests {
 			let mut document = load_demo(file_name);
 			migrate_with_context(&mut document, &format!("migrating {file_name}"));
 		}
+	}
+
+	// The retired "Paint Order" input is migrated by rebuilding the Stroke node's inputs and then reordering it with its Fill node
+	#[tokio::test]
+	async fn opening_a_stroke_with_a_retired_paint_order_keeps_the_layer_chain() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_stroke_paint_order;
+		use crate::test_utils::capture_logged_errors;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		// Each node of the layer's chain from the layer outward, with its offset from the layer if it is chain-positioned
+		let chain_layout = |document: &DocumentMessageHandler, layer: NodeId| {
+			let interface = &document.network_interface;
+			let layer_position = interface.position(&layer, &[]).unwrap_or_default();
+			interface
+				.layer_chain_nodes(layer, &[])
+				.into_iter()
+				.map(|node_id| {
+					let offset = interface.is_chain(&node_id, &[]).then(|| interface.position(&node_id, &[]).unwrap_or_default() - layer_position);
+					(interface.display_name(&node_id, &[]), offset)
+				})
+				.collect::<Vec<_>>()
+		};
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let document = editor.active_document_mut();
+		let layer = document.metadata().all_layers().next().unwrap().to_node();
+		let original = chain_layout(document, layer);
+
+		// Save the shape's Stroke node as an older editor did, with "Paint Order" set to draw the stroke below the fill
+		let stroke_reference = DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER);
+		let stroke_node_id = document
+			.network_interface
+			.layer_chain_nodes(layer, &[])
+			.into_iter()
+			.find(|node_id| document.network_interface.reference(node_id, &[]).as_ref() == Some(&stroke_reference))
+			.expect("a fresh shape should have a Stroke node in its chain");
+		let mut inputs = document.network_interface.document_node(&stroke_node_id, &[]).unwrap().inputs.clone();
+		inputs.insert(7, NodeInput::value(TaggedValue::PaintOrder(PaintOrder::StrokeBelow), false));
+		let mut legacy_stroke = NodeTemplate { inputs, ..Default::default() };
+		legacy_stroke.normalize_input_metadata();
+		document.network_interface.replace_inputs(&stroke_node_id, &[], &mut legacy_stroke);
+		let serialized = document.serialize_document();
+
+		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), false));
+		let opened = opened.expect("the document should open");
+		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+
+		// The Fill and Stroke nodes trade places, and the chain keeps every slot
+		assert_eq!(get_stroke_paint_order(LayerNodeIdentifier::new_unchecked(layer), &opened.network_interface), PaintOrder::StrokeBelow);
+		let swap_name = |name: &str| match name {
+			"Fill" => "Stroke".to_string(),
+			"Stroke" => "Fill".to_string(),
+			other => other.to_string(),
+		};
+		let expected = original.iter().map(|(name, offset)| (swap_name(name), *offset)).collect::<Vec<_>>();
+		assert_eq!(chain_layout(&opened, layer), expected, "the migration should leave the layer's chain intact");
 	}
 
 	#[test]

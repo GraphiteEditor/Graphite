@@ -1,13 +1,14 @@
 #![allow(clippy::too_many_arguments)]
 
-use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
+use super::document_node_definitions::{NODE_OVERRIDES, NodeInspectorContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::math_expression::{MathExpressionTokens, math_expression_error, math_expression_error_ranges, math_expression_tokens};
 use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::data_panel::node_reference_button;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, LAYER_SECONDARY_INPUT_INDEX, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::fonts::utility_types::FontCatalogStyle;
 use crate::messages::portfolio::ingest::utility_types::{IngestAction, TypeFilter};
 use crate::messages::prelude::*;
@@ -44,7 +45,7 @@ use graphene_std::{NodeParameter, ParameterRef};
 use math_parser::parser::{MessagePart, ParseError};
 use std::path::PathBuf;
 
-pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
+pub(crate) fn string_inspector(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
 	vec![LayoutGroup::row(vec![widget])]
 }
@@ -105,25 +106,62 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 // TODO: Remove this when we have proper entry row formatting that includes room for Assists.
 pub fn add_blank_assist(widgets: &mut Vec<WidgetInstance>) {
 	widgets.extend_from_slice(&[
-		// Custom CSS specific to the Properties panel converts this Section separator into the width of an assist (24px).
+		// Custom CSS specific to the Inspector converts this Section separator into the width of an assist (24px).
 		Separator::new(SeparatorStyle::Section).widget_instance(),
 		// This last one is the separator after the 24px assist.
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 	]);
 }
 
-pub fn jump_to_source_widget(input: &NodeInput, network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId]) -> WidgetInstance {
-	match input {
-		NodeInput::Node { node_id: source_id, .. } => {
-			let source_id = *source_id;
-			let node_name = network_interface.implementation_name(&source_id, selection_network_path);
-			TextButton::new(format!("From Graph ({})", node_name))
-				.tooltip_description("Click to select the node producing this parameter's data.")
-				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![source_id] }.into())
-				.widget_instance()
+/// The input whose feeding chain a node's section shows unless toggled otherwise: a layer's chain input, or none for other nodes.
+pub(crate) fn default_expanded_input_chain(node_id: &NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<usize> {
+	network_interface.is_layer(node_id, network_path).then_some(LAYER_SECONDARY_INPUT_INDEX)
+}
+
+/// The input (if any) whose feeding chain a node's section shows, as last toggled by clicking its parameter names, or else by default.
+pub(crate) fn expanded_input_chain(node_id: &NodeId, expanded_input_chains: &[(NodeId, Option<usize>)], network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<usize> {
+	expanded_input_chains
+		.iter()
+		.find(|(id, _)| id == node_id)
+		.map_or_else(|| default_expanded_input_chain(node_id, network_interface, network_path), |(_, input_index)| *input_index)
+}
+
+/// The nodes of the chain feeding a node's input (if a node feeds it), from the one feeding it back to where a layer's stack feeds the chain from below rather than a generator, and that layer.
+pub(crate) fn input_chain(node_id: NodeId, input_index: usize, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<(Vec<NodeId>, Option<NodeId>)> {
+	let Some(&NodeInput::Node { node_id: source, .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(node_id, input_index), network_path) else {
+		return None;
+	};
+
+	let mut chain = Vec::new();
+	for chain_node_id in network_interface.upstream_flow_back_from_nodes(vec![source], network_path, FlowType::HorizontalFlow) {
+		if network_interface.is_layer(&chain_node_id, network_path) {
+			return Some((chain, Some(chain_node_id)));
 		}
-		_ => TextLabel::new("From Graph (Disconnected)")
-			.tooltip_description(
+		chain.push(chain_node_id);
+	}
+
+	Some((chain, None))
+}
+
+/// A node followed by the nodes of all the sections nested within its section, through the chain each one shows.
+pub(crate) fn nested_section_nodes(node_id: NodeId, expanded_input_chains: &[(NodeId, Option<usize>)], network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Vec<NodeId> {
+	let mut nodes = vec![node_id];
+
+	if let Some(input_index) = expanded_input_chain(&node_id, expanded_input_chains, network_interface, network_path)
+		&& let Some((chain, _)) = input_chain(node_id, input_index, network_interface, network_path)
+	{
+		for chain_node_id in chain {
+			nodes.extend(nested_section_nodes(chain_node_id, expanded_input_chains, network_interface, network_path));
+		}
+	}
+
+	nodes
+}
+
+/// In place of the value widget of an exposed parameter that no node feeds.
+pub fn disconnected_input_label() -> WidgetInstance {
+	TextLabel::new("From Graph (Disconnected)")
+		.tooltip_description(
 				"
 				This parameter is exposed as an input in the node graph, but not currently receiving data from any node.\n\
 				\n\
@@ -131,8 +169,12 @@ pub fn jump_to_source_widget(input: &NodeInput, network_interface: &NodeNetworkI
 				"
 				.trim(),
 			)
-			.widget_instance(),
-	}
+			.widget_instance()
+}
+
+/// The standard exposed row of a parameter that otherwise has no row of its own, or none while it is unexposed.
+pub fn exposed_parameter_row(parameter_widgets_info: &ParameterWidgetsInfo) -> Option<LayoutGroup> {
+	parameter_widgets_info.is_exposed().then(|| LayoutGroup::row(start_widgets(parameter_widgets_info)))
 }
 
 pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<WidgetInstance> {
@@ -155,19 +197,37 @@ pub fn start_widgets(parameter_widgets_info: &ParameterWidgetsInfo) -> Vec<Widge
 			input.is_exposed(),
 		));
 	}
-	widgets.push(
-		TextLabel::new(parameter_widgets_info.name.clone())
-			.tooltip_description(parameter_widgets_info.description.clone())
-			.widget_instance(),
-	);
+
+	// Fed by a node, the parameter's name shows or hides the sections of the chain feeding it within this one
+	let fed_by_node = matches!(input, NodeInput::Node { .. });
+	if fed_by_node {
+		let node_id = parameter_widgets_info.node_id;
+		let input_index = parameter_widgets_info.index;
+
+		widgets.push(
+			ParameterChainToggle::new(parameter_widgets_info.name.clone())
+				.expanded(parameter_widgets_info.chain_expanded)
+				.tooltip_label(parameter_widgets_info.name.clone())
+				.tooltip_description(parameter_widgets_info.description.clone())
+				.on_update(move |_| DocumentMessage::ToggleNodeInspectorInputChain { node_id, input_index }.into())
+				.widget_instance(),
+		);
+	} else {
+		widgets.push(
+			TextLabel::new(parameter_widgets_info.name.clone())
+				.tooltip_label(parameter_widgets_info.name.clone())
+				.tooltip_description(parameter_widgets_info.description.clone())
+				.widget_instance(),
+		);
+	}
 
 	if parameter_widgets_info.blank_assist || input.is_exposed() {
 		add_blank_assist(&mut widgets);
 	}
 
-	if input.is_exposed() {
+	if input.is_exposed() && !fed_by_node {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_widget(input, parameter_widgets_info.network_interface, parameter_widgets_info.selection_network_path));
+		widgets.push(disconnected_input_label());
 	}
 
 	widgets
@@ -219,7 +279,7 @@ fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> O
 	}
 }
 
-pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, options: ParameterOptions, context: &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
+pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, options: ParameterOptions, context: &mut NodeInspectorContext) -> Result<Vec<LayoutGroup>, Vec<LayoutGroup>> {
 	let ParameterOptions {
 		soft_min,
 		soft_max,
@@ -341,54 +401,54 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, optio
 				// =========================
 				// AUTO-GENERATED ENUM TYPES
 				// =========================
-				Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<TextDenomination>(x) => enum_choice::<TextDenomination>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).property_row(),
-				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).property_row(),
-				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).property_row(),
+				Some(x) if id_is::<GradientForm>(x) => enum_choice::<GradientForm>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GradientSpread>(x) => enum_choice::<GradientSpread>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GradientSpace>(x) => enum_choice::<GradientSpace>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GradientHueDirection>(x) => enum_choice::<GradientHueDirection>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GradientInterpolation>(x) => enum_choice::<GradientInterpolation>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<RealTimeMode>(x) => enum_choice::<RealTimeMode>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<RedGreenBlue>(x) => enum_choice::<RedGreenBlue>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<StringCapitalization>(x) => enum_choice::<StringCapitalization>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<TextDenomination>(x) => enum_choice::<TextDenomination>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<NoiseType>(x) => enum_choice::<NoiseType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<FractalType>(x) => enum_choice::<FractalType>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<CellularDistanceFunction>(x) => enum_choice::<CellularDistanceFunction>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<CellularReturnType>(x) => enum_choice::<CellularReturnType>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<DomainWarpType>(x) => enum_choice::<DomainWarpType>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<RelativeAbsolute>(x) => enum_choice::<RelativeAbsolute>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<TonalRange>(x) => enum_choice::<TonalRange>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).inspector_row(),
+				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).inspector_row(),
 				// =====
 				// OTHER
 				// =====
 				_ => return Err(unsupported_widgets(default_info, concrete_type.to_string())),
 			}
 		}
-		Type::Item(element) => return property_from_type(node_id, index, element, options, context),
+		Type::Item(element) => return inspector_row_from_type(node_id, index, element, options, context),
 		Type::List(element) => match element.as_ref() {
 			Type::Concrete(element_type) if element_type.name == std::any::type_name::<f64>() => array_of_number_widget(default_info, TextInput::default()).into(),
 			_ => return Err(unsupported_widgets(default_info, ty.to_string())),
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
-		Type::Fn(_, out) => return property_from_type(node_id, index, out, options, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, options, context),
+		Type::Fn(_, out) => return inspector_row_from_type(node_id, index, out, options, context),
+		Type::Future(out) => return inspector_row_from_type(node_id, index, out, options, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -1096,19 +1156,8 @@ pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_in
 		None => number_widget(parameter_widgets_info, number_props),
 	};
 
-	if let Some(enabled) = enabled
-		&& !exposed
-	{
-		let checkbox = [
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			CheckboxInput::new(enabled)
-				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
-				.on_commit(commit_value)
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-		];
-		widgets.splice(label_count..label_count, checkbox);
+	if !exposed {
+		widgets.splice(label_count..label_count, optional_parameter_assist(enabled, node_id, bool_input_index));
 	}
 
 	widgets
@@ -1130,22 +1179,30 @@ pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_
 	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
 		return LayoutGroup::row(Vec::new());
 	};
-	if let Some(enabled) = enabled
-		&& !exposed
-	{
-		let checkbox = [
-			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-			CheckboxInput::new(enabled)
-				.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
-				.on_commit(commit_value)
-				.widget_instance(),
-			Separator::new(SeparatorStyle::Related).widget_instance(),
-		];
-		row.widgets.splice(label_count..label_count, checkbox);
+	if !exposed {
+		row.widgets.splice(label_count..label_count, optional_parameter_assist(enabled, node_id, bool_input_index));
 	}
 
 	LayoutGroup::Row(row)
+}
+
+/// The assist slot of an optional parameter's row: the checkbox of its gating bool input, or a blank while that bool is exposed with a row of its own.
+fn optional_parameter_assist(enabled: Option<bool>, node_id: NodeId, bool_input_index: usize) -> Vec<WidgetInstance> {
+	let Some(enabled) = enabled else {
+		let mut blank_assist = Vec::new();
+		add_blank_assist(&mut blank_assist);
+		return blank_assist;
+	};
+
+	vec![
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		CheckboxInput::new(enabled)
+			.on_update(update_value_at_index(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
+			.on_commit(commit_value)
+			.widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+	]
 }
 
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
@@ -1314,7 +1371,7 @@ fn type_choice_sections(offered: &[Type]) -> Vec<Vec<Type>> {
 pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: ColorInput) -> LayoutGroup {
 	let mut widgets = start_widgets(&parameter_widgets_info);
 
-	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Properties panel
+	// Return early with just the label if the input is exposed to the graph, meaning we don't want to show the color picker widget in the Inspector
 	let Some(NodeInput::Value { tagged_value, exposed: false }) = parameter_widgets_info.input() else {
 		return LayoutGroup::row(widgets);
 	};
@@ -1515,7 +1572,7 @@ pub fn resource_widget(parameter_widgets_info: ParameterWidgetsInfo, filters: Ve
 	widgets
 }
 
-pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext<'a>) -> Result<&'a DocumentNode, String> {
+pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodeInspectorContext<'a>) -> Result<&'a DocumentNode, String> {
 	let network = context
 		.network_interface
 		.nested_network(context.selection_network_path)
@@ -1523,14 +1580,14 @@ pub fn get_document_node<'a>(node_id: NodeId, context: &'a NodePropertiesContext
 	network.nodes.get(&node_id).ok_or(format!("node {node_id} not found in get_document_node"))
 }
 
-pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, context: &'a mut NodePropertiesContext<'a>) -> Result<(&'a DocumentNode, String, String), String> {
+pub fn query_node_and_input_info<'a>(node_id: NodeId, input_index: usize, context: &'a mut NodeInspectorContext<'a>) -> Result<(&'a DocumentNode, String, String), String> {
 	let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, input_index, context.selection_network_path);
 	let document_node = get_document_node(node_id, context)?;
 
 	Ok((document_node, name, description))
 }
 
-pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
+pub fn query_noise_pattern_state(node_id: NodeId, context: &NodeInspectorContext) -> Result<(bool, bool, bool, bool, bool, bool), String> {
 	let document_node = get_document_node(node_id, context)?;
 	let current_noise_type = document_node.inputs.iter().find_map(|input| match input.as_value() {
 		Some(&TaggedValue::NoiseType(noise_type)) => Some(noise_type),
@@ -1562,7 +1619,7 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodePropertiesContex
 	))
 }
 
-pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesContext) -> Result<bool, String> {
+pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodeInspectorContext) -> Result<bool, String> {
 	use graphene_std::vector::assign_colors::*;
 
 	let document_node = get_document_node(node_id, context)?;
@@ -1583,7 +1640,7 @@ fn color_track(color: Color) -> Gradient {
 	Gradient::from(vec![Color::BLACK, color, Color::WHITE])
 }
 
-pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn brightness_contrast_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::brightness_contrast::*;
 
 	// Use Classic toggle changes the brightness range
@@ -1635,12 +1692,12 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 	layout
 }
 
-pub(crate) fn transfer_curves_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn transfer_curves_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::curves::*;
 
-	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
-	channel_info.exposable = false;
-	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).property_row();
+	let channel = enum_choice::<AdjustmentChannel>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ChannelInput, true, context))
+		.inspector_row();
 
 	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
 		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
@@ -1658,12 +1715,12 @@ pub(crate) fn transfer_curves_properties(node_id: NodeId, context: &mut NodeProp
 	vec![channel, transfer_curve]
 }
 
-pub(crate) fn levels_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn levels_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::levels::*;
 
-	let mut channel_info = ParameterWidgetsInfo::new(node_id, ChannelInput, true, context);
-	channel_info.exposable = false;
-	let channel = enum_choice::<AdjustmentChannel>().for_socket(channel_info).property_row();
+	let channel = enum_choice::<AdjustmentChannel>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ChannelInput, true, context))
+		.inspector_row();
 
 	let channel_value = match get_document_node(node_id, context).ok().and_then(|document_node| document_node.input_value(ChannelInput).cloned()) {
 		Some(TaggedValue::AdjustmentChannel(channel)) => channel,
@@ -1819,7 +1876,7 @@ impl SliderSectionParam {
 /// Append a section of related parameters as rows: a shared slider over `track` (with one marker per non-exposed parameter) sits on the first non-exposed row
 /// alongside its 60px number input, and the remaining non-exposed rows show only their 60px number input. Exposed parameters render as the standard exposed-row display.
 /// Marker positions are clamped to non-decreasing display order so they never visually cross even if the underlying values do.
-fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesContext, track: &Gradient, params: &[SliderSectionParam], layout: &mut Vec<LayoutGroup>) {
+fn build_shared_slider_section(node_id: NodeId, context: &mut NodeInspectorContext, track: &Gradient, params: &[SliderSectionParam], layout: &mut Vec<LayoutGroup>) {
 	// Snapshot exposure and values before the mutable-borrow loop
 	let exposure_and_value: Vec<(bool, f64)> = match get_document_node(node_id, context) {
 		Ok(document_node) => params
@@ -1986,8 +2043,7 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 				number_input
 					.clone()
 					.value(Some(current))
-					.min_width(60)
-					.max_width(60)
+					.sizing(WidgetSizing::fixed(60))
 					.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -1997,13 +2053,13 @@ fn build_shared_slider_section(node_id: NodeId, context: &mut NodePropertiesCont
 	}
 }
 
-pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn hue_saturation_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::hue_saturation::*;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in hue_saturation_properties: {err}");
+			log::error!("Could not get document node in hue_saturation_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2116,9 +2172,12 @@ pub(crate) fn hue_saturation_properties(node_id: NodeId, context: &mut NodePrope
 	let (saturation_min, saturation_default) = if colorize_value { (0., 25.) } else { (-100., 0.) };
 
 	// Colorize replaces the ranges, so while it is on the selector stays but grayed out and the selected range's edges hide
-	let mut range_info = ParameterWidgetsInfo::new(node_id, RangeInput, true, context);
-	range_info.exposable = false;
-	let mut layout = vec![enum_choice::<HueSaturationRange>().for_socket(range_info).disabled(colorize_value).property_row()];
+	let mut layout = vec![
+		enum_choice::<HueSaturationRange>()
+			.for_socket(ParameterWidgetsInfo::new(node_id, RangeInput, true, context))
+			.disabled(colorize_value)
+			.inspector_row(),
+	];
 
 	layout.extend([
 		gradient_slider_row(
@@ -2249,8 +2308,7 @@ fn slider_row(
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		number_props
 			.value(Some(current))
-			.min_width(60)
-			.max_width(60)
+			.sizing(WidgetSizing::fixed(60))
 			.on_update(update_value_at_index(move |x: &NumberInput| tagged_value(x.value.unwrap_or_default()), node_id, index))
 			.on_commit(commit_value)
 			.widget_instance(),
@@ -2273,7 +2331,7 @@ pub(crate) fn range_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, 
 /// Build a row with a single-marker `SliderInput` over `track` and a 60px `NumberInput`. The marker maps `value_min..value_max` to position 0..1, and double-click resets to `default_value`.
 fn gradient_slider_row(
 	node_id: NodeId,
-	context: &mut NodePropertiesContext,
+	context: &mut NodeInspectorContext,
 	parameter: impl Into<ParameterRef>,
 	track: Gradient,
 	handle_color: Color,
@@ -2318,8 +2376,7 @@ fn gradient_slider_row(
 		row.push(
 			number_input
 				.value(Some(current))
-				.min_width(60)
-				.max_width(60)
+				.sizing(WidgetSizing::fixed(60))
 				.display_decimal_places(0)
 				.on_update(update_value_at_index(move |widget: &NumberInput| TaggedValue::Number(widget.value.unwrap_or(0.)), node_id, input_index))
 				.on_commit(commit_value)
@@ -2330,7 +2387,7 @@ fn gradient_slider_row(
 	LayoutGroup::row(row)
 }
 
-pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn threshold_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::threshold::*;
 
 	let params = [
@@ -2344,7 +2401,7 @@ pub(crate) fn threshold_properties(node_id: NodeId, context: &mut NodeProperties
 	layout
 }
 
-pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn vibrance_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::vibrance::*;
 
 	let number_input = NumberInput::default().mode_increment().unit("%").min(-100.).max(100.);
@@ -2359,25 +2416,23 @@ pub(crate) fn vibrance_properties(node_id: NodeId, context: &mut NodePropertiesC
 	vec![LayoutGroup::row(vibrance), LayoutGroup::row(saturation)]
 }
 
-pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn color_balance_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::color_balance::*;
 
-	let mut tone_info = ParameterWidgetsInfo::new(node_id, ToneInput, true, context);
-	tone_info.exposable = false;
-	let tone = enum_choice::<TonalRange>().for_socket(tone_info).property_row();
+	let tone = enum_choice::<TonalRange>().for_socket(ParameterWidgetsInfo::new(node_id, ToneInput, true, context)).inspector_row();
 	let preserve_luminosity = bool_widget(ParameterWidgetsInfo::new(node_id, PreserveLuminosityInput, true, context), CheckboxInput::default());
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in color_balance_properties: {err}");
+			log::error!("Could not get document node in color_balance_inspector: {err}");
 			return Vec::new();
 		}
 	};
 	let tone_choice = match document_node.input_value(ToneInput) {
 		Some(TaggedValue::TonalRange(choice)) => *choice,
 		_ => {
-			warn!("Color Balance node properties panel could not be displayed.");
+			warn!("Color Balance node Inspector could not be displayed.");
 			return vec![];
 		}
 	};
@@ -2404,15 +2459,18 @@ pub(crate) fn color_balance_properties(node_id: NodeId, context: &mut NodeProper
 	layout
 }
 
-pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn black_and_white_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::black_and_white::*;
 
 	let number_input = NumberInput::default().mode_increment().unit("%").min(-200.).max(300.);
 
 	let use_tint: ParameterRef = UseTintInput.into();
+	let use_tint_row = exposed_parameter_row(&ParameterWidgetsInfo::new(node_id, UseTintInput, true, context));
 	let tint = optional_color_widget(ParameterWidgetsInfo::new(node_id, TintInput, false, context), use_tint.input_index, ColorInput::default());
 
-	let mut layout = vec![tint];
+	let mut layout = Vec::new();
+	layout.extend(use_tint_row);
+	layout.push(tint);
 	let params: &[(ParameterRef, Color, f64)] = &[
 		(RedsInput.into(), Color::RED, 40.),
 		(YellowsInput.into(), Color::YELLOW, 60.),
@@ -2438,18 +2496,18 @@ pub(crate) fn black_and_white_properties(node_id: NodeId, context: &mut NodeProp
 	layout
 }
 
-pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn channel_mixer_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::channel_mixer::*;
 
 	let is_monochrome = bool_widget(ParameterWidgetsInfo::new(node_id, MonochromeInput, true, context), CheckboxInput::default());
-	let mut parameter_info = ParameterWidgetsInfo::new(node_id, OutputChannelInput, true, context);
-	parameter_info.exposable = false;
-	let output_channel = enum_choice::<RedGreenBlue>().for_socket(parameter_info).property_row();
+	let output_channel = enum_choice::<RedGreenBlue>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, OutputChannelInput, true, context))
+		.inspector_row();
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in channel_mixer_properties: {err}");
+			log::error!("Could not get document node in channel_mixer_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2462,7 +2520,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	let output_channel_value = match &document_node.input_value(OutputChannelInput) {
 		Some(TaggedValue::RedGreenBlue(choice)) => choice,
 		_ => {
-			warn!("Channel Mixer node properties panel could not be displayed.");
+			warn!("Channel Mixer node Inspector could not be displayed.");
 			return vec![];
 		}
 	};
@@ -2502,17 +2560,17 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 	layout
 }
 
-pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn selective_color_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::selective_color::*;
 
-	let mut default_info = ParameterWidgetsInfo::new(node_id, ColorsInput, true, context);
-	default_info.exposable = false;
-	let colors = enum_choice::<SelectiveColorChoice>().for_socket(default_info).property_row();
+	let colors = enum_choice::<SelectiveColorChoice>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ColorsInput, true, context))
+		.inspector_row();
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in selective_color_properties: {err}");
+			log::error!("Could not get document node in selective_color_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2520,7 +2578,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	let colors_choice = match &document_node.input_value(ColorsInput) {
 		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
 		_ => {
-			warn!("Selective Color node properties panel could not be displayed.");
+			warn!("Selective Color node Inspector could not be displayed.");
 			return vec![];
 		}
 	};
@@ -2543,7 +2601,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	// Mode
 	let mode = enum_choice::<RelativeAbsolute>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, ModeInput, true, context))
-		.property_row();
+		.inspector_row();
 
 	let mut layout = vec![colors];
 	for (i, parameter) in parameters.into_iter().enumerate() {
@@ -2554,17 +2612,17 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	layout
 }
 
-pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput, true, context)).property_row();
+	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput, true, context)).inspector_row();
 
 	let mut widgets = vec![grid_type];
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in grid_properties: {err}");
+			log::error!("Could not get document node in grid_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2599,12 +2657,12 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets
 }
 
-pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn spiral_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::spiral::*;
 
 	let spiral_type = enum_choice::<SpiralType>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput, true, context))
-		.property_row();
+		.inspector_row();
 	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput, true, context), NumberInput::default().min(0.1));
 	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput, true, context), NumberInput::default().unit("°"));
 
@@ -2613,7 +2671,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in exposure_properties: {err}");
+			log::error!("Could not get document node in exposure_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2667,13 +2725,13 @@ pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET: &str = "Exclude some 
 pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last point.";
 pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
 
-pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn sample_polyline_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::sample_polyline::*;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in sample_polyline_properties: {err}");
+			log::error!("Could not get document node in sample_polyline_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2683,7 +2741,7 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 
 	let spacing = enum_choice::<PointSpacingType>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context))
-		.property_row();
+		.inspector_row();
 	let separation = number_widget(ParameterWidgetsInfo::new(node_id, SeparationInput, true, context), NumberInput::default().min(0.).unit(" px"));
 	let quantity = number_widget(ParameterWidgetsInfo::new(node_id, QuantityInput, true, context), NumberInput::default().min(2.).int());
 	let start_offset = number_widget(ParameterWidgetsInfo::new(node_id, StartOffsetInput, true, context), NumberInput::default().min(0.).unit(" px"));
@@ -2703,7 +2761,7 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 	]
 }
 
-pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn exposure_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::exposure::*;
 
 	let exposure = range_slider_widget(
@@ -2736,7 +2794,7 @@ pub(crate) fn exposure_properties(node_id: NodeId, context: &mut NodePropertiesC
 	vec![LayoutGroup::row(exposure), LayoutGroup::row(offset), LayoutGroup::row(gamma_correction)]
 }
 
-pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn format_number_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::text_nodes::format_number::{DecimalPlacesInput, DecimalSeparatorInput, FixedDecimalsInput, StartAt10000Input, ThousandsSeparatorInput, UseThousandsSeparatorInput};
 
 	// Read current values before borrowing context mutably for widgets
@@ -2762,7 +2820,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 			(decimal_places == 0, decimal_sep, use_thousands, thousands_sep)
 		}
 		Err(err) => {
-			log::error!("Could not get document node in format_number_properties: {err}");
+			log::error!("Could not get document node in format_number_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2815,7 +2873,7 @@ pub(crate) fn format_number_properties(node_id: NodeId, context: &mut NodeProper
 	]
 }
 
-pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn string_capitalization_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::text_nodes::string_capitalization::*;
 
 	// Read the current values before borrowing context mutably for widgets
@@ -2840,7 +2898,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 			(is_simple, use_joiner, joiner)
 		}
 		Err(err) => {
-			log::error!("Could not get document node in string_capitalization_properties: {err}");
+			log::error!("Could not get document node in string_capitalization_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -2850,7 +2908,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 
 	let capitalization = enum_choice::<StringCapitalization>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, CapitalizationInput, true, context))
-		.property_row();
+		.inspector_row();
 
 	// Joiner row: the UseJoiner checkbox is drawn in the assist area, followed by the Joiner text input
 	let mut joiner_widgets = start_widgets(&ParameterWidgetsInfo::new(node_id, JoinerInput, false, context));
@@ -2914,7 +2972,7 @@ pub(crate) fn string_capitalization_properties(node_id: NodeId, context: &mut No
 	vec![capitalization, LayoutGroup::row(joiner_widgets), LayoutGroup::row(joiner_preset_buttons)]
 }
 
-pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn rectangle_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::rectangle::*;
 
 	// Corner Radius
@@ -2928,7 +2986,7 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in rectangle_properties: {err}");
+			log::error!("Could not get document node in rectangle_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -3029,27 +3087,27 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 	]
 }
 
-pub(crate) fn node_no_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn node_no_inspector_content(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
 		"Layer has no parameters"
 	} else {
 		"Node has no parameters"
 	};
-	string_properties(text)
+	string_inspector(text)
 }
 
-pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> LayoutGroup {
+pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
-	if let Some(properties_override) = context
+	if let Some(inspector_override) = context
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
 		.as_ref()
 		.and_then(|identifier| resolve_document_node_type(identifier))
-		.and_then(|definition| definition.properties)
-		.and_then(|properties| NODE_OVERRIDES.get(properties))
+		.and_then(|definition| definition.inspector)
+		.and_then(|inspector| NODE_OVERRIDES.get(inspector))
 	{
-		layout = properties_override(node_id, context);
+		layout = inspector_override(node_id, context);
 	} else {
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 		for input_index in 1..number_of_inputs {
@@ -3119,7 +3177,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 						.unwrap_or(concrete!(())),
 				};
 
-				property_from_type(node_id, input_index, &input_type, options, context).unwrap_or_else(|value| value)
+				inspector_row_from_type(node_id, input_index, &input_type, options, context).unwrap_or_else(|value| value)
 			});
 
 			layout.extend(row);
@@ -3127,7 +3185,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	}
 
 	if layout.is_empty() {
-		layout = node_no_properties(node_id, context);
+		layout = node_no_inspector_content(node_id, context);
 	}
 
 	let display_name = context
@@ -3137,10 +3195,9 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	let implementation_name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
 	let name = if let Some(display_name) = display_name
 		&& implementation_name != display_name
-		&& implementation_name != "Custom Node"
 		&& !display_name.is_empty()
 	{
-		format!("{display_name} ({implementation_name})")
+		format!("{implementation_name} ({display_name})")
 	} else {
 		implementation_name
 	};
@@ -3155,14 +3212,69 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-	let expanded = !context.properties_panel_collapsed_sections.contains(&node_id);
+	let expanded = !context.inspector_collapsed_sections.contains(&node_id);
 
-	LayoutGroup::section(name, icon, description, visible, pinned, expanded, node_id.0, Layout(layout))
+	// An expanded section also contains the sections of the chain feeding one of its inputs, wired up into that input
+	let network_path = context.selection_network_path;
+	let mut chain_wire = None;
+	if expanded
+		&& let Some(input_index) = expanded_input_chain(&node_id, context.inspector_expanded_input_chains, context.network_interface, network_path)
+		&& let Some((chain, stack_layer)) = input_chain(node_id, input_index, context.network_interface, network_path)
+	{
+		let input_type = context.network_interface.input_type(&InputConnector::node_at_index(node_id, input_index), network_path);
+		chain_wire = Some(SectionWire {
+			data_type: input_type.displayed_type(),
+			is_list: input_type.is_list(),
+		});
+
+		for chain_node_id in chain {
+			let mut chain_section = generate_node_inspector(chain_node_id, context);
+
+			if let LayoutGroup::NodeSection(section) = &mut chain_section {
+				section.output_wire = Some(output_section_wire(chain_node_id, context));
+			}
+
+			layout.push(chain_section);
+		}
+
+		// That layer is only referred to, as in the Data panel, rather than shown with its own parameters and chain
+		if let Some(layer) = stack_layer {
+			let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
+				NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
+			});
+			let name = context.network_interface.display_name(&layer, network_path);
+			let visible = context.network_interface.is_visible(&layer, network_path);
+
+			let mut reference_section = LayoutGroup::section(name, None, "", visible, false, true, layer.0, Layout(vec![LayoutGroup::row(vec![button])]));
+			if let LayoutGroup::NodeSection(section) = &mut reference_section {
+				section.node_reference = true;
+				section.output_wire = Some(output_section_wire(layer, context));
+			}
+
+			layout.push(reference_section);
+		}
+	}
+
+	let mut section = LayoutGroup::section(name, icon, description, visible, pinned, expanded, node_id.0, Layout(layout));
+	if let LayoutGroup::NodeSection(node_section) = &mut section {
+		node_section.chain_wire = chain_wire;
+	}
+	section
+}
+
+/// The wire drawn up from a node's section in a chain to the section above, which its output feeds.
+fn output_section_wire(node_id: NodeId, context: &NodeInspectorContext) -> SectionWire {
+	let output_type = context.network_interface.output_type(&OutputConnector::node(node_id, 0), context.selection_network_path);
+
+	SectionWire {
+		data_type: output_type.displayed_type(),
+		is_list: output_type.is_list(),
+	}
 }
 
 /// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
 /// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
-fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
+fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodeInspectorContext) -> Option<LayerNodeIdentifier> {
 	if !context.selection_network_path.is_empty() {
 		return None;
 	}
@@ -3172,14 +3284,14 @@ fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContex
 
 /// Resolve the viewport-space orientation of a Fill node's gradient by walking downstream to its owning layer
 /// and reusing the same helper the Gradient tool uses, so canvas tilt and layer transforms behave identically.
-fn gradient_orientation_in_fill_node(node_id: NodeId, gradient_transform: DAffine2, context: &mut NodePropertiesContext) -> Option<bool> {
+fn gradient_orientation_in_fill_node(node_id: NodeId, gradient_transform: DAffine2, context: &mut NodeInspectorContext) -> Option<bool> {
 	let layer = root_layer_for_chain_node(node_id, context)?;
 	let transform = graph_modification_utils::gradient_to_viewport_transform(layer, context.network_interface);
 	Some(graph_modification_utils::gradient_orientation_rightward(transform * gradient_transform))
 }
 
 /// Fill Node Widgets LayoutGroup
-pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub(crate) fn fill_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::fill::*;
 
 	#[derive(Debug, Clone)]
@@ -3237,7 +3349,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 				_ => None,
 			};
 			let backup_stops = match document_node.input_value(BackupGradientInput) {
-				Some(TaggedValue::GradientRamp(ramp)) => ramp.clone(),
+				Some(TaggedValue::GradientRamp(ramp)) if !ramp.stops.is_empty() => ramp.clone(),
 				_ => GradientRamp::black_to_white(),
 			};
 			(backup_color, backup_stops)
@@ -3425,13 +3537,13 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets
 }
 
-pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn stroke_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::stroke::*;
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in stroke_properties: {err}");
+			log::error!("Could not get document node in stroke_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -3451,9 +3563,9 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
 	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput, true, context), NumberInput::default().unit(" px").min(0.));
-	let align = enum_choice::<StrokeAlign>().for_socket(ParameterWidgetsInfo::new(node_id, AlignInput, true, context)).property_row();
-	let cap = enum_choice::<StrokeCap>().for_socket(ParameterWidgetsInfo::new(node_id, CapInput, true, context)).property_row();
-	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).property_row();
+	let align = enum_choice::<StrokeAlign>().for_socket(ParameterWidgetsInfo::new(node_id, AlignInput, true, context)).inspector_row();
+	let cap = enum_choice::<StrokeCap>().for_socket(ParameterWidgetsInfo::new(node_id, CapInput, true, context)).inspector_row();
+	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).inspector_row();
 
 	let miter_limit = number_widget(
 		ParameterWidgetsInfo::new(node_id, MiterLimitInput, true, context),
@@ -3476,18 +3588,18 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 	]
 }
 
-pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+pub fn offset_path_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::offset_path::*;
 
 	let number_input = NumberInput::default().unit(" px");
 	let distance = number_widget(ParameterWidgetsInfo::new(node_id, DistanceInput, true, context), number_input);
 
-	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).property_row();
+	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).inspector_row();
 
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
-			log::error!("Could not get document node in offset_path_properties: {err}");
+			log::error!("Could not get document node in offset_path_inspector: {err}");
 			return Vec::new();
 		}
 	};
@@ -3516,12 +3628,14 @@ pub struct ParameterWidgetsInfo<'a> {
 	input_type: FrontendGraphDataType,
 	blank_assist: bool,
 	exposable: bool,
+	/// Whether the node's section shows the chain feeding this parameter's input.
+	chain_expanded: bool,
 	fonts: &'a FontsMessageHandler,
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
 	/// Reference the parameter by its symbol, e.g. `ParameterWidgetsInfo::new(node_id, brightness_contrast::BrightnessInput, true, context)`, or by an erased [`ParameterRef`] chosen at runtime.
-	pub fn new(node_id: NodeId, parameter: impl Into<ParameterRef>, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+	pub fn new(node_id: NodeId, parameter: impl Into<ParameterRef>, blank_assist: bool, context: &'a mut NodeInspectorContext) -> ParameterWidgetsInfo<'a> {
 		Self::at_index(node_id, parameter.into().input_index, blank_assist, context)
 	}
 
@@ -3541,13 +3655,15 @@ impl<'a> ParameterWidgetsInfo<'a> {
 	}
 
 	/// Reference the parameter by a runtime input index, for callers that receive the index dynamically (e.g. widget overrides).
-	pub fn at_index(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+	pub fn at_index(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodeInspectorContext) -> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
 		let input_type = context
 			.network_interface
 			.input_type_not_invalid(&InputConnector::node_at_index(node_id, index), context.selection_network_path)
 			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
+		let chain_expanded = expanded_input_chain(&node_id, context.inspector_expanded_input_chains, context.network_interface, context.selection_network_path) == Some(index);
+		let exposable = !context.network_interface.is_internal_input(&node_id, index, context.selection_network_path);
 
 		ParameterWidgetsInfo {
 			document_id: context.document_id,
@@ -3562,7 +3678,8 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			description,
 			input_type,
 			blank_assist,
-			exposable: true,
+			exposable,
+			chain_expanded,
 		}
 	}
 
@@ -3709,9 +3826,9 @@ pub mod choice {
 			}
 		}
 
-		pub fn property_row(self) -> LayoutGroup {
+		pub fn inspector_row(self) -> LayoutGroup {
 			if self.parameter_info.document_node.is_none() {
-				log::error!("Could not get document node when building property row for node {:?}", self.parameter_info.node_id);
+				log::error!("Could not get document node when building Inspector row for node {:?}", self.parameter_info.node_id);
 				return LayoutGroup::row(Vec::new());
 			}
 

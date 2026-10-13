@@ -11,6 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::color::SRGBA8;
@@ -31,8 +32,8 @@ pub struct ToolActionMessageContext<'a> {
 	pub viewport: &'a ViewportMessageHandler,
 }
 
-pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata + ToolEditTarget {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata + ToolEditTarget {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
@@ -218,6 +219,12 @@ pub trait ToolMetadata {
 		String::new()
 	}
 	fn tool_type(&self) -> ToolType;
+}
+
+/// Required of every tool, so the Layers panel can outline the node the tool edits in each selected layer.
+pub trait ToolEditTarget {
+	/// What the tool edits in its current state, which may change between its modes and interactions.
+	fn edit_target(&self) -> EditTarget;
 }
 
 pub struct ToolData {

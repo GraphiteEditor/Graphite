@@ -1,3 +1,4 @@
+use crate::consts::{FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS, FONT_CATALOG_RETRY_DELAY_MILLISECONDS};
 use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::portfolio::fonts::utility_types::FontCatalog;
 use crate::messages::prelude::*;
@@ -8,35 +9,72 @@ use std::sync::Arc;
 #[derive(ExtractField)]
 pub struct FontsMessageContext<'a> {
 	pub resource_storage: &'a ResourceStorageMessageHandler,
+	pub current_time: u64,
 }
 
 #[derive(Debug, Default, ExtractField)]
 pub struct FontsMessageHandler {
 	pub font_catalog: Arc<FontCatalog>,
+	catalog_request: CatalogRequest,
 	font_hashes: HashMap<Font, ResourceHash>,
 	font_data: HashMap<ResourceHash, Resource>,
+}
+
+/// State of the font catalog request shared by every `FontsMessage::LoadCatalog`.
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+enum CatalogRequest {
+	#[default]
+	Idle,
+	/// A request is unanswered or the last one failed, so another waits until this time.
+	Waiting { until: u64 },
 }
 
 #[message_handler_data]
 impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandler {
 	fn process_message(&mut self, message: FontsMessage, responses: &mut VecDeque<Message>, context: FontsMessageContext) {
-		let FontsMessageContext { resource_storage } = context;
+		let FontsMessageContext { resource_storage, current_time } = context;
 
 		match message {
 			FontsMessage::LoadCatalog => {
+				// Senders ask on every message until the catalog arrives, so wait out an unanswered or failed request before sending another
+				let waiting = matches!(self.catalog_request, CatalogRequest::Waiting { until } if current_time < until);
+				if !self.font_catalog.is_empty() || waiting {
+					return;
+				}
+				self.catalog_request = CatalogRequest::Waiting {
+					until: current_time + FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS,
+				};
+
 				responses.add(NetworkMessage::request(async move |client| {
 					let Some(catalog) = FontCatalog::load_from_api(&client).await else {
-						log::error!("failed to load font catalog");
-						return Message::NoOp;
+						log::error!("Failed to load the font catalog");
+						return FontsMessage::CatalogLoadFailed.into();
 					};
 					FontsMessage::CatalogLoaded { catalog }.into()
 				}));
 			}
+			FontsMessage::CatalogLoadFailed => {
+				self.catalog_request = CatalogRequest::Waiting {
+					until: current_time + FONT_CATALOG_RETRY_DELAY_MILLISECONDS,
+				};
+			}
 			FontsMessage::CatalogLoaded { catalog } => {
+				// An empty catalog counts as a failure, and one equal to the current catalog (from overlapping requests) changes nothing
+				if catalog.is_empty() {
+					self.catalog_request = CatalogRequest::Waiting {
+						until: current_time + FONT_CATALOG_RETRY_DELAY_MILLISECONDS,
+					};
+					return;
+				}
+				self.catalog_request = CatalogRequest::Idle;
+				if *self.font_catalog == catalog {
+					return;
+				}
+
 				self.font_catalog = Arc::new(catalog);
 				responses.add(PortfolioMessage::ResolveResources);
 				responses.add(ToolMessage::RefreshToolOptions);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			FontsMessage::ResourceResolved { font, hash } => {
 				let font = self.normalize(font);
@@ -112,5 +150,83 @@ impl FontsMessageHandler {
 
 	fn normalize(&self, font: Font) -> Font {
 		self.font_catalog.normalize(font)
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+	use crate::messages::portfolio::fonts::utility_types::FontCatalogFamily;
+
+	fn process(handler: &mut FontsMessageHandler, message: FontsMessage, current_time: u64) -> VecDeque<Message> {
+		let resource_storage = ResourceStorageMessageHandler::default();
+		let mut responses = VecDeque::new();
+		handler.process_message(
+			message,
+			&mut responses,
+			FontsMessageContext {
+				resource_storage: &resource_storage,
+				current_time,
+			},
+		);
+		responses
+	}
+
+	fn catalog_requests_sent(handler: &mut FontsMessageHandler, current_time: u64) -> usize {
+		let responses = process(handler, FontsMessage::LoadCatalog, current_time);
+		responses.iter().filter(|message| matches!(message, Message::Network(_))).count()
+	}
+
+	fn catalog() -> FontCatalog {
+		FontCatalog::from(vec![FontCatalogFamily {
+			name: "Lato".to_string(),
+			styles: Vec::new(),
+		}])
+	}
+
+	#[test]
+	fn catalog_requests_wait_for_an_unanswered_or_failed_one() {
+		let mut handler = FontsMessageHandler::default();
+
+		assert_eq!(catalog_requests_sent(&mut handler, 0), 1);
+		assert_eq!(
+			catalog_requests_sent(&mut handler, FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS - 1),
+			0,
+			"An unanswered request should block another"
+		);
+		assert_eq!(
+			catalog_requests_sent(&mut handler, FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS),
+			1,
+			"A request unanswered for too long should be retried"
+		);
+
+		// A failure, or an empty catalog in its place, waits the retry delay
+		for (failure_time, failure) in [(100_000, FontsMessage::CatalogLoadFailed), (200_000, FontsMessage::CatalogLoaded { catalog: FontCatalog::default() })] {
+			assert!(process(&mut handler, failure, failure_time).is_empty());
+
+			let retry_time = failure_time + FONT_CATALOG_RETRY_DELAY_MILLISECONDS;
+			assert_eq!(
+				catalog_requests_sent(&mut handler, retry_time - 1),
+				0,
+				"A failure should block another request until the retry delay passes"
+			);
+			assert_eq!(catalog_requests_sent(&mut handler, retry_time), 1);
+		}
+	}
+
+	#[test]
+	fn catalog_arrivals_after_the_first_change_nothing() {
+		let mut handler = FontsMessageHandler::default();
+
+		assert!(!process(&mut handler, FontsMessage::CatalogLoaded { catalog: catalog() }, 0).is_empty());
+		assert_eq!(*handler.font_catalog, catalog());
+		assert_eq!(catalog_requests_sent(&mut handler, 0), 0, "A loaded catalog should need no request");
+
+		assert!(
+			process(&mut handler, FontsMessage::CatalogLoaded { catalog: catalog() }, 0).is_empty(),
+			"An equal catalog should send no refreshes"
+		);
+		assert!(process(&mut handler, FontsMessage::CatalogLoaded { catalog: FontCatalog::default() }, 0).is_empty());
+		assert_eq!(*handler.font_catalog, catalog(), "An empty catalog should not replace a loaded one");
 	}
 }

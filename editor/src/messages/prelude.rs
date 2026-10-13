@@ -25,10 +25,10 @@ pub use crate::messages::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, 
 pub use crate::messages::network::{NetworkMessage, NetworkMessageContext, NetworkMessageDiscriminant, NetworkMessageHandler};
 pub use crate::messages::portfolio::document::data_panel::{DataPanelMessage, DataPanelMessageDiscriminant};
 pub use crate::messages::portfolio::document::graph_operation::{GraphOperationMessage, GraphOperationMessageContext, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
+pub use crate::messages::portfolio::document::inspector::{InspectorMessage, InspectorMessageDiscriminant, InspectorMessageHandler};
 pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageContext, NavigationMessageDiscriminant, NavigationMessageHandler};
 pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, NodeGraphMessageDiscriminant, NodeGraphMessageHandler};
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageContext, OverlaysMessageDiscriminant, OverlaysMessageHandler};
-pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::resource::{ResourceMessage, ResourceMessageContext, ResourceMessageDiscriminant, ResourceMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageContext, DocumentMessageDiscriminant, DocumentMessageHandler};
 pub use crate::messages::portfolio::failed_documents::{FailedDocumentsMessage, FailedDocumentsMessageContext, FailedDocumentsMessageDiscriminant, FailedDocumentsMessageHandler};

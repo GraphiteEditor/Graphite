@@ -70,8 +70,8 @@ define_layout_target!(
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphControlBar,
-	/// The body of the Properties panel containing many collapsable sections.
-	PropertiesPanel,
+	/// The body of the Inspector containing many collapsable sections.
+	Inspector,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
 	/// The version information shown in the status bar at the bottom right of the window.
@@ -295,7 +295,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.table.extend(rows.iter().flatten().flatten().rev());
 				self.next()
 			}
-			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
+			Some(LayoutGroup::NodeSection(NodeSection { layout, .. })) => {
 				for layout_row in &layout.0 {
 					self.stack.push(layout_row);
 				}
@@ -347,7 +347,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 				self.table.extend(rows.iter_mut().flatten().flatten().rev());
 				self.next()
 			}
-			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
+			Some(LayoutGroup::NodeSection(NodeSection { layout, .. })) => {
 				for layout_row in &mut layout.0 {
 					self.stack.push(layout_row);
 				}
@@ -364,7 +364,7 @@ pub enum LayoutGroup {
 	Column(WidgetColumn),
 	Row(WidgetRow),
 	Table(WidgetTable),
-	Section(WidgetSection),
+	NodeSection(NodeSection),
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -390,7 +390,7 @@ pub struct WidgetTable {
 	pub unstyled: bool,
 }
 
-/// A wire drawn between Properties panel sections, styled like the graph's wire carrying the same data.
+/// A wire drawn between Inspector sections, styled like the graph's wire carrying the same data.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SectionWire {
@@ -401,11 +401,11 @@ pub struct SectionWire {
 	pub is_list: bool,
 }
 
-/// A collapsible Properties panel section for a single node: a header with its name and pin, delete, and visibility controls, above its input parameter widgets.
+/// A collapsible Inspector section for a single node: a header with its name and pin, delete, and visibility controls, above its input parameter widgets.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct WidgetSection {
-	/// The node's name shown in the section header: its given alias with the implementation name in parentheses, or just the implementation name.
+pub struct NodeSection {
+	/// The node's name shown in the section header: its implementation name, followed in parentheses by its given alias if it has one.
 	pub name: String,
 	/// The node definition's icon, shown before the name in the section header (none when it has no icon).
 	pub icon: Option<IconName>,
@@ -413,21 +413,24 @@ pub struct WidgetSection {
 	pub description: String,
 	/// Whether the node is visible rather than hidden (shown as the eye icon).
 	pub visible: bool,
-	/// Whether the node is pinned, keeping its section shown in the Properties panel when nothing is selected (shown as the pin icon).
+	/// Whether the node is pinned, keeping its section shown in the Inspector when nothing is selected (shown as the pin icon).
 	pub pinned: bool,
 	/// Whether this section can be dragged to reorder it within its layer's chain of nodes (true for a layer chain's nodes, but not its terminal layer node).
 	pub draggable: bool,
-	/// For a selected layer's own section, the wire drawn up into its chain input from its chain's sections below (none when it has no chain).
+	/// For a section showing the chain feeding one of its inputs, the wire drawn up into that input from the chain's sections within it (none when it shows no chain).
 	#[serde(rename = "chainWire")]
 	pub chain_wire: Option<SectionWire>,
-	/// For a section in a selected layer's chain, the wire drawn up to the section above, which its node's output feeds.
+	/// For a section in the chain feeding another section's input, the wire drawn up to the section above, which its node's output feeds.
 	#[serde(rename = "outputWire")]
 	pub output_wire: Option<SectionWire>,
+	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for the layer whose stack feeds the bottom of a chain).
+	#[serde(rename = "nodeReference")]
+	pub node_reference: bool,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
-	/// The ID of the node whose properties this section displays.
+	/// The ID of the node whose Inspector section this is.
 	pub id: u64,
-	/// The node's properties content, rendered as the section's body when expanded.
+	/// The node's Inspector content, rendered as the section's body when expanded, followed by the sections of any chain it shows (those with an `output_wire`).
 	pub layout: Layout,
 }
 
@@ -464,7 +467,7 @@ impl LayoutGroup {
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn section(name: impl Into<String>, icon: Option<IconName>, description: impl Into<String>, visible: bool, pinned: bool, expanded: bool, id: u64, layout: Layout) -> Self {
-		Self::Section(WidgetSection {
+		Self::NodeSection(NodeSection {
 			name: name.into(),
 			icon,
 			description: description.into(),
@@ -473,6 +476,7 @@ impl LayoutGroup {
 			draggable: false,
 			chain_wire: None,
 			output_wire: None,
+			node_reference: false,
 			expanded,
 			id,
 			layout,
@@ -498,6 +502,7 @@ impl LayoutGroup {
 				Widget::ImageLabel(x) => &mut x.tooltip_description,
 				Widget::MathExpressionInput(x) => &mut x.tooltip_description,
 				Widget::NumberInput(x) => &mut x.tooltip_description,
+				Widget::ParameterChainToggle(x) => &mut x.tooltip_description,
 				Widget::PopoverButton(x) => &mut x.tooltip_description,
 				Widget::TextAreaInput(x) => &mut x.tooltip_description,
 				Widget::TextButton(x) => &mut x.tooltip_description,
@@ -567,7 +572,7 @@ impl Diffable for LayoutGroup {
 				}
 			}
 			(
-				Self::Section(WidgetSection {
+				Self::NodeSection(NodeSection {
 					name: current_name,
 					icon: current_icon,
 					description: current_description,
@@ -576,11 +581,12 @@ impl Diffable for LayoutGroup {
 					draggable: current_draggable,
 					chain_wire: current_chain_wire,
 					output_wire: current_output_wire,
+					node_reference: current_node_reference,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
 				}),
-				Self::Section(WidgetSection {
+				Self::NodeSection(NodeSection {
 					name: new_name,
 					icon: new_icon,
 					description: new_description,
@@ -589,6 +595,7 @@ impl Diffable for LayoutGroup {
 					draggable: new_draggable,
 					chain_wire: new_chain_wire,
 					output_wire: new_output_wire,
+					node_reference: new_node_reference,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -605,6 +612,7 @@ impl Diffable for LayoutGroup {
 					|| *current_draggable != new_draggable
 					|| *current_chain_wire != new_chain_wire
 					|| *current_output_wire != new_output_wire
+					|| *current_node_reference != new_node_reference
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
@@ -617,12 +625,13 @@ impl Diffable for LayoutGroup {
 					*current_draggable = new_draggable;
 					*current_chain_wire = new_chain_wire;
 					*current_output_wire = new_output_wire;
+					*current_node_reference = new_node_reference;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
 
 					// Push an update layout group to the diff
-					let new_value = Self::Section(WidgetSection {
+					let new_value = Self::NodeSection(NodeSection {
 						name: new_name,
 						icon: new_icon,
 						description: new_description,
@@ -631,6 +640,7 @@ impl Diffable for LayoutGroup {
 						draggable: new_draggable,
 						chain_wire: new_chain_wire,
 						output_wire: new_output_wire,
+						node_reference: new_node_reference,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,
@@ -681,7 +691,7 @@ impl Diffable for LayoutGroup {
 					}
 				}
 			}
-			Self::Section(WidgetSection { layout, .. }) => {
+			Self::NodeSection(NodeSection { layout, .. }) => {
 				layout.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
 			}
 		}
@@ -711,7 +721,7 @@ impl Diffable for LayoutGroup {
 					}
 				}
 			}
-			Self::Section(WidgetSection { layout, .. }) => {
+			Self::NodeSection(NodeSection { layout, .. }) => {
 				layout.replace_widget_ids(layout_target, widget_path, checkbox_map);
 			}
 		}
@@ -877,6 +887,7 @@ pub enum Widget {
 	ShortcutLabel(ShortcutLabel),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
+	ParameterChainToggle(ParameterChainToggle),
 	ParameterExposeButton(ParameterExposeButton),
 	ReferencePointInput(ReferencePointInput),
 	PopoverButton(PopoverButton),
@@ -891,12 +902,78 @@ pub enum Widget {
 	WorkingColorsInput(WorkingColorsInput),
 }
 
+/// How a widget claims width within its row, borrowing the model of flexbox. Parts left unset follow the defaults of the layout it appears in.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WidgetSizing {
+	/// The width in pixels before growing or shrinking.
+	pub basis: Option<u32>,
+	/// Whether it widens into spare room in its row.
+	pub grow: Option<bool>,
+	/// Whether it narrows below its starting width when its row runs out of room.
+	pub shrink: Option<bool>,
+	/// The narrowest it can be, in pixels.
+	pub min_width: Option<u32>,
+	/// The widest it can be, in pixels.
+	pub max_width: Option<u32>,
+}
+
+impl WidgetSizing {
+	/// Exactly this many pixels wide, neither growing nor shrinking.
+	pub const fn fixed(width: u32) -> Self {
+		Self {
+			basis: Some(width),
+			grow: Some(false),
+			shrink: Some(false),
+			min_width: Some(width),
+			max_width: Some(width),
+		}
+	}
+
+	/// As wide as its content, neither growing nor shrinking.
+	pub const fn hug() -> Self {
+		Self {
+			basis: None,
+			grow: Some(false),
+			shrink: Some(false),
+			min_width: None,
+			max_width: None,
+		}
+	}
+
+	pub const fn basis(mut self, width: u32) -> Self {
+		self.basis = Some(width);
+		self
+	}
+
+	pub const fn grow(mut self, grow: bool) -> Self {
+		self.grow = Some(grow);
+		self
+	}
+
+	pub const fn shrink(mut self, shrink: bool) -> Self {
+		self.shrink = Some(shrink);
+		self
+	}
+
+	pub const fn min_width(mut self, width: u32) -> Self {
+		self.min_width = Some(width);
+		self
+	}
+
+	pub const fn max_width(mut self, width: u32) -> Self {
+		self.max_width = Some(width);
+		self
+	}
+}
+
 /// A single change to part of the UI, containing the location of the change and the new value.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WidgetDiff {
 	/// A path to the change
-	/// e.g. [0, 1, 2] in the Properties panel is the first section, second row and third widget.
+	/// e.g. [0, 1, 2] in the Inspector is the first section, second row and third widget.
 	/// An empty path [] shows that the entire panel has changed and is sent when the UI is first created.
 	#[serde(rename = "widgetPath")]
 	pub widget_path: Vec<usize>,
@@ -930,6 +1007,7 @@ impl DiffUpdate {
 				Widget::DropdownInput(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::IconButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::NumberInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ParameterChainToggle(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::ParameterExposeButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::PopoverButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::TextButton(widget) => widget.tooltip_shortcut.as_mut(),

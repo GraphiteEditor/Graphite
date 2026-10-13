@@ -752,7 +752,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		transform_utils::update_transform(self.network_interface, &transform_node_id, last_transform_value);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -959,7 +959,7 @@ impl<'a> ModifyInputsContext<'a> {
 		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
 
 		// Refresh the render and editor UI
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
@@ -970,7 +970,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		self.network_interface.vector_modify(&path_node_id, modification_type);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -1002,10 +1002,10 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
+	/// Set the input, refresh the Inspector, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
 		self.network_interface.set_input(&input_connector, input, &[]);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
@@ -1057,6 +1057,14 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 	};
 	let downstream_consumers = primary_output_consumers(network_interface, network_path, downstream);
 
+	// The rewiring knocks chain nodes out to absolute positions, so record how the pair and the chain feeding it were placed
+	let original_placements = network_interface
+		.upstream_flow_back_from_nodes(vec![downstream], network_path, FlowType::HorizontalFlow)
+		.enumerate()
+		.take_while(|(index, node_id)| *index < 2 || network_interface.is_chain(node_id, network_path))
+		.map(|(_, node_id)| (node_id, network_interface.is_chain(&node_id, network_path), network_interface.position(&node_id, network_path)))
+		.collect::<Vec<_>>();
+
 	network_interface.set_input(&InputConnector::node_at_index(downstream, 0), upstream_source, network_path);
 	network_interface.set_input(&InputConnector::node_at_index(upstream, 0), NodeInput::node(downstream, 0), network_path);
 	for consumer in &downstream_consumers {
@@ -1064,6 +1072,16 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 			continue;
 		}
 		network_interface.set_input(consumer, NodeInput::node(upstream, 0), network_path);
+	}
+
+	// Each node of the pair takes over the other's place, and the chain feeding the pair is restored as it was
+	let swapped_nodes = [upstream, downstream].into_iter().chain(original_placements.iter().skip(2).map(|(node_id, _, _)| *node_id));
+	for (node_id, (_, was_chain, position)) in swapped_nodes.zip(&original_placements) {
+		if *was_chain {
+			network_interface.set_chain_position(&node_id, network_path);
+		} else if let Some(position) = position {
+			network_interface.set_absolute_position(&node_id, *position, network_path);
+		}
 	}
 
 	true

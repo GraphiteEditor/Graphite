@@ -1,5 +1,5 @@
 use super::document_diff::diff_networks;
-use super::node_graph::document_node_definitions;
+use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -8,27 +8,26 @@ use super::{CursorMoveError, DocumentHistory};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
-	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
 use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+use crate::messages::portfolio::document::inspector::inspector_message_handler::InspectorMessageContext;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
-use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
-use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
+use crate::messages::tool::tool_messages::select_tool::{SelectToolPointerKeys, draw_layer_outline};
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
@@ -61,10 +60,11 @@ pub struct DocumentMessageContext<'a> {
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
-	pub properties_panel_open: bool,
+	pub inspector_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
@@ -95,7 +95,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
-	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
+	pub inspector_message_handler: InspectorMessageHandler,
 	#[serde(skip)]
 	pub data_panel_message_handler: DataPanelMessageHandler,
 
@@ -111,9 +111,15 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
-	/// The node IDs whose section is collapsed in the Properties panel.
+	/// The node IDs whose section is collapsed in the Inspector.
+	#[serde(default, alias = "properties_panel_collapsed_sections")]
+	pub inspector_collapsed_sections: Vec<NodeId>,
+	/// The input (if any) whose feeding chain a node's Inspector section shows within it, for each node where that differs from the default of a layer's chain input.
 	#[serde(default)]
-	pub properties_panel_collapsed_sections: Vec<NodeId>,
+	pub inspector_expanded_input_chains: Vec<(NodeId, Option<usize>)>,
+	/// The layer node IDs whose chain is expanded into a row per node in the Layers panel.
+	#[serde(default)]
+	pub layers_panel_expanded_chains: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	#[serde(skip_deserializing, default)]
@@ -177,6 +183,9 @@ pub struct DocumentMessageHandler {
 	/// The ID of the chain node at the start of a range selection among a layer's chain node icons in the Layers panel, working like `layer_range_selection_reference`.
 	#[serde(skip)]
 	chain_node_range_selection_reference: Option<NodeId>,
+	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
+	#[serde(skip)]
+	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -191,7 +200,7 @@ impl Default for DocumentMessageHandler {
 			navigation_handler: NavigationMessageHandler::default(),
 			node_graph_handler: NodeGraphMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
-			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			inspector_message_handler: InspectorMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
@@ -199,7 +208,9 @@ impl Default for DocumentMessageHandler {
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
-			properties_panel_collapsed_sections: Vec::new(),
+			inspector_collapsed_sections: Vec::new(),
+			inspector_expanded_input_chains: Vec::new(),
+			layers_panel_expanded_chains: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -223,6 +234,7 @@ impl Default for DocumentMessageHandler {
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
 			chain_node_range_selection_reference: None,
+			layers_panel_hovered_layer: None,
 			is_loaded: false,
 		}
 	}
@@ -237,10 +249,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			executor,
 			viewport,
 			current_tool,
+			tool_edit_target,
 			preferences,
 			data_panel_open,
 			layers_panel_open,
-			properties_panel_open,
+			inspector_open,
 			resource_storage,
 			fonts,
 		} = context;
@@ -267,19 +280,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.overlays_message_handler
 					.process_message(message, responses, OverlaysMessageContext { visibility_settings, viewport });
 			}
-			DocumentMessage::PropertiesPanel(message) => {
-				let context = PropertiesPanelMessageContext {
+			DocumentMessage::Inspector(message) => {
+				let context = InspectorMessageContext {
 					executor,
 					document_id,
 					network_interface: &mut self.network_interface,
 					resources: &self.resources,
 					selection_network_path: &self.selection_network_path,
-					document_name: self.name.as_str(),
 					fonts,
-					properties_panel_open,
-					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					inspector_open,
+					inspector_collapsed_sections: &self.inspector_collapsed_sections,
+					inspector_expanded_input_chains: &self.inspector_expanded_input_chains,
 				};
-				self.properties_panel_message_handler.process_message(message, responses, context);
+				self.inspector_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::DataPanel(message) => {
 				self.data_panel_message_handler.process_message(
@@ -302,13 +315,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						breadcrumb_network_path: &self.breadcrumb_network_path,
 						document_id,
 						collapsed: &mut self.collapsed,
-						properties_panel_collapsed_sections: &mut self.properties_panel_collapsed_sections,
+						inspector_collapsed_sections: &mut self.inspector_collapsed_sections,
+						inspector_expanded_input_chains: &mut self.inspector_expanded_input_chains,
+						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
 						preferences,
 						layers_panel_open,
+						tool_edit_target,
 						viewport,
 					},
 				);
@@ -531,7 +547,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::DuplicateSelectedLayersTo { parent, insert_index } => {
 				if !self.selection_network_path.is_empty() {
@@ -625,11 +641,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				// Abort wire in progress of being connected
 				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
-					self.node_graph_handler.wire_in_progress_from_connector = None;
-					self.node_graph_handler.wire_in_progress_to_connector = None;
-					self.node_graph_handler.wire_in_progress_type = FrontendGraphDataType::General;
-
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+					self.node_graph_handler.end_wire_in_progress(&mut self.network_interface, &self.selection_network_path, responses);
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 				// Close the context menu if it's open
@@ -733,8 +745,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
-					responses.add(NodeGraphMessage::UpdateEdges);
 				} else {
+					// The closed graph won't get the pointer up that ends a wire drag, so abandon it as Escape would
+					if self.end_node_graph_wire_in_progress(responses) {
+						responses.add(DocumentMessage::AbortTransaction);
+					}
+
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
@@ -756,6 +772,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::LayersPanelHoverOverlays { context: mut overlay_context } => {
+				let Some(layer) = self.layers_panel_hovered_layer else { return };
+				if !overlay_context.visibility_settings.hover_outline() {
+					return;
+				}
+
+				// Outlined like the Select tool's hover, with groups and artboards shown by their bounding box
+				if layer.has_children(self.metadata()) || self.network_interface.is_artboard(&layer.to_node(), &[]) {
+					if let Some(bounds) = self.metadata().bounding_box_viewport(layer) {
+						overlay_context.quad(Quad::from_box(bounds), None, None);
+					}
+				} else {
+					draw_layer_outline(&mut overlay_context, self, layer, None);
+				}
 			}
 			DocumentMessage::BlendSelectedLayers => {
 				self.group_selected_layers(GroupFolderType::Blend, responses);
@@ -787,8 +818,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
 				self.move_selected_layers_to(parent, insert_index, responses);
 			}
-			DocumentMessage::ReorderPropertiesSection { node_id, insert_index, duplicate } => {
-				// The Properties panel shows draggable sections in two cases, disambiguated by the current selection:
+			DocumentMessage::ReorderInspectorSection { node_id, insert_index, duplicate } => {
+				// The Inspector shows draggable sections in two cases, disambiguated by the current selection:
 				// a single selected layer (reorder within its node chain) or no selection (reorder the pinned nodes).
 				let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path);
 				let Some(selected_nodes) = selected_nodes else { return };
@@ -819,10 +850,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(DocumentMessage::MoveChainNodes { node_ids, layer, insert_index });
 					}
 				} else if layers.is_empty() && nodes.is_empty() {
-					// Reorder a pinned node, which is purely a Properties panel display order (no graph rerender needed, and nothing to duplicate into)
+					// Reorder a pinned node, which is purely a Inspector display order (no graph rerender needed, and nothing to duplicate into)
 					responses.add(DocumentMessage::AddTransaction);
 					responses.add(NodeGraphMessage::ReorderPinnedNode { node_id, insert_index });
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 				}
 			}
 			DocumentMessage::MoveChainNodes { node_ids, layer, insert_index } => {
@@ -831,7 +862,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::MoveChainNodes { node_ids, layer, insert_index });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::DuplicateChainNodes {
 				node_ids,
@@ -851,7 +882,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::PasteChainNodes { copies } => {
 				// Layers and their chains live in the document network, so a nested one open in the graph has no chain to paste into
@@ -893,7 +924,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::PasteNodes { nodes } => {
 				// Over the same selection they were copied from, nodes are duplicated into their flow, and otherwise they're pasted loose into the graph and shown there
@@ -1440,7 +1471,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					PanelType::Layers => self.selection_network_path = vec![],
 					_ => {}
 				}
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
 			}
@@ -1452,6 +1483,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SetGraphFadeArtwork { percentage } => {
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
+			}
+			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
+				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
+				if layer != self.layers_panel_hovered_layer {
+					self.layers_panel_hovered_layer = layer;
+					responses.add(OverlaysMessage::Draw);
+				}
 			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -1625,28 +1663,48 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id, recursive } => {
-				let expand = self.properties_panel_collapsed_sections.contains(&node_id);
+			DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id, recursive } => {
+				let expand = self.inspector_collapsed_sections.contains(&node_id);
 
-				// Recursively, every section in the chain follows along, from its layer back to where another layer begins
-				let network_path = &self.selection_network_path;
-				let chain = recursive
-					.then(|| self.network_interface.downstream_layer_for_chain_node(&node_id, network_path))
-					.flatten()
-					.map(|layer| std::iter::once(layer).chain(self.network_interface.layer_chain_nodes(layer, network_path)).collect::<Vec<_>>())
-					// A node that only leads into a chain from the side, or into no layer at all, isn't part of one
-					.filter(|chain| chain.contains(&node_id));
-				let node_ids = chain.unwrap_or_else(|| vec![node_id]);
+				// Recursively, every section nested within this one follows along
+				let node_ids = if recursive {
+					node_inspector::nested_section_nodes(node_id, &self.inspector_expanded_input_chains, &self.network_interface, &self.selection_network_path)
+				} else {
+					vec![node_id]
+				};
 
 				for node_id in node_ids {
 					if expand {
-						self.properties_panel_collapsed_sections.retain(|id| *id != node_id);
-					} else if !self.properties_panel_collapsed_sections.contains(&node_id) {
-						self.properties_panel_collapsed_sections.push(node_id);
+						self.inspector_collapsed_sections.retain(|id| *id != node_id);
+					} else if !self.inspector_collapsed_sections.contains(&node_id) {
+						self.inspector_collapsed_sections.push(node_id);
 					}
 				}
 
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
+			}
+			DocumentMessage::ToggleNodeInspectorInputChain { node_id, input_index } => {
+				// A section shows at most one input's chain, so showing this one hides any other
+				let network_path = &self.selection_network_path;
+				let default = node_inspector::default_expanded_input_chain(&node_id, &self.network_interface, network_path);
+				let current = node_inspector::expanded_input_chain(&node_id, &self.inspector_expanded_input_chains, &self.network_interface, network_path);
+				let expanded = (current != Some(input_index)).then_some(input_index);
+
+				self.inspector_expanded_input_chains.retain(|(id, _)| *id != node_id);
+				if expanded != default {
+					self.inspector_expanded_input_chains.push((node_id, expanded));
+				}
+
+				responses.add(InspectorMessage::Refresh);
+			}
+			DocumentMessage::ToggleLayerChainExpanded { layer_id } => {
+				if self.layers_panel_expanded_chains.contains(&layer_id) {
+					self.layers_panel_expanded_chains.retain(|id| *id != layer_id);
+				} else {
+					self.layers_panel_expanded_chains.push(layer_id);
+				}
+
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
@@ -1845,6 +1903,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
+					// The artwork behind the graph can be navigated too, so rerender it if its view changed
+					let artwork_transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+					if artwork_transform != self.network_interface.document_metadata().document_to_viewport {
+						self.network_interface.set_document_to_viewport_transform(artwork_transform);
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
 						return;
 					};
@@ -1856,7 +1921,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
-					responses.add(NodeGraphMessage::UpdateEdges);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
@@ -2737,6 +2801,16 @@ impl DocumentMessageHandler {
 
 	pub fn is_graph_overlay_open(&self) -> bool {
 		self.graph_view_overlay_open
+	}
+
+	/// Ends any wire being dragged in the node graph, collapsing a node expanded for it, and returns whether there was one.
+	pub fn end_node_graph_wire_in_progress(&mut self, responses: &mut VecDeque<Message>) -> bool {
+		if self.node_graph_handler.wire_in_progress_from_connector.is_none() {
+			return false;
+		}
+
+		self.node_graph_handler.end_wire_in_progress(&mut self.network_interface, &self.selection_network_path, responses);
+		true
 	}
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
@@ -3666,39 +3740,9 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
 
-		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false));
-
-		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
-		if tilt_value.abs() > 0.00001 {
-			widgets.extend([
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				NumberInput::new(Some(tilt_value))
-					.unit("°")
-					.increment_behavior(NumberInputIncrementBehavior::Callback)
-					.increment_callback_increase(|number_input: &NumberInput| {
-						let one = 1. + f64::EPSILON * 100.;
-						NavigationMessage::CanvasTiltSet {
-							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL + one).floor() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
-						}
-						.into()
-					})
-					.increment_callback_decrease(|number_input: &NumberInput| {
-						let one = 1. + f64::EPSILON * 100.;
-						NavigationMessage::CanvasTiltSet {
-							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL - one).ceil() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
-						}
-						.into()
-					})
-					.tooltip_label("Canvas Tilt")
-					.on_update(|number_input: &NumberInput| {
-						NavigationMessage::CanvasTiltSet {
-							angle_radians: number_input.value.unwrap().to_radians(),
-						}
-						.into()
-					})
-					.widget_instance(),
-			]);
-		}
+		// Layers only exist in the document network, so a selection inside a subgraph has none to frame
+		let has_selection = self.selection_network_path().is_empty() && self.network_interface.selected_nodes().selected_visible_layers(&self.network_interface).next().is_some();
+		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false, has_selection));
 
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -3795,7 +3839,7 @@ impl DocumentMessageHandler {
 				.selected_index(blend_mode.and_then(|blend_mode| blend_mode.index_in_list_svg_subset()).map(|index| index as u32))
 				.disabled(disabled)
 				.draw_icon(false)
-				.max_width(100)
+				.sizing(WidgetSizing::default().grow(false))
 				.tooltip_label("Blend Mode")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3817,7 +3861,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
-				.max_width(100)
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Opacity")
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -3839,7 +3883,7 @@ impl DocumentMessageHandler {
 					}
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
-				.max_width(100)
+				.sizing(WidgetSizing::default().max_width(100))
 				.tooltip_label("Fill Opacity")
 				.widget_instance(),
 		];
@@ -4213,42 +4257,131 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool) -> Vec<WidgetInstance> {
-	let mut list = vec![
-		IconButton::new("ZoomIn", 24)
-			.tooltip_label("Zoom In")
-			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomIncrease))
-			.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
-			.widget_instance(),
-		IconButton::new("ZoomOut", 24)
-			.tooltip_label("Zoom Out")
-			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomDecrease))
-			.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
-			.widget_instance(),
-		IconButton::new("ZoomReset", 24)
-			.tooltip_label("Reset Tilt and Zoom to 100%")
-			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
-			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
-			.widget_instance(),
+/// The zoom field and a popover of the other view controls.
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool, has_selection: bool) -> Vec<WidgetInstance> {
+	let tilt_degrees = navigation_handler.snapped_tilt(ptz.tilt()).to_degrees();
+	let tilted = tilt_degrees.abs() > 0.00001;
+
+	let row_label = |label: &str| TextLabel::new(label).table_align(true).sizing(WidgetSizing::fixed(40)).widget_instance();
+
+	// Buttons line up in four equal columns, with the fit buttons and the tilt field each spanning two
+	let column = WidgetSizing::fixed(52);
+	let half_row = WidgetSizing::default().basis(0).grow(true);
+
+	// Framing the content, then stepping and preset zoom levels
+	let mut popover = vec![
+		LayoutGroup::row(vec![
+			TextLabel::new("View").bold(true).table_align(true).sizing(WidgetSizing::fixed(40)).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new("All")
+				.icon("FrameAll")
+				.tooltip_label("Zoom to Fit")
+				.tooltip_description(if node_graph {
+					"Frames all the nodes."
+				} else {
+					"Frames all the artwork, without zooming in past 100%, and undoes any tilt or flip."
+				})
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasToFitAll))
+				.sizing(half_row)
+				.on_update(|_| DocumentMessage::ZoomCanvasToFitAll.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("Selection")
+				.icon("FrameSelected")
+				.tooltip_label("Zoom to Selection")
+				.tooltip_description(if node_graph { "Frames the selected nodes." } else { "Frames the selected layers." })
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::FitViewportToSelection))
+				.sizing(half_row)
+				.disabled(!has_selection)
+				.on_update(|_| NavigationMessage::FitViewportToSelection.into())
+				.widget_instance(),
+		]),
+		LayoutGroup::row(vec![
+			row_label("Zoom"),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new("")
+				.icon("ZoomOut")
+				.tooltip_label("Zoom Out")
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+				.sizing(column)
+				.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("")
+				.icon("ZoomIn")
+				.tooltip_label("Zoom In")
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+				.sizing(column)
+				.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("100%")
+				.tooltip_label("Zoom to 100%")
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
+				.sizing(column)
+				.on_update(|_| DocumentMessage::ZoomCanvasTo100Percent.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("200%")
+				.tooltip_label("Zoom to 200%")
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent))
+				.sizing(column)
+				.on_update(|_| DocumentMessage::ZoomCanvasTo200Percent.into())
+				.widget_instance(),
+		]),
 	];
-	if ptz.flip && !node_graph {
-		list.push(
-			IconButton::new("Reverse", 24)
-				.tooltip_label("Unflip Canvas")
-				.tooltip_description("Flip the canvas back to its standard orientation.")
+
+	// The node graph can't be tilted or flipped
+	if !node_graph {
+		popover.push(LayoutGroup::row(vec![
+			row_label("Tilt"),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			NumberInput::new(Some(tilt_degrees))
+				.unit("°")
+				.mode(NumberInputMode::Range)
+				.range_min(Some(-180.))
+				.range_max(Some(180.))
+				.tooltip_label("Canvas Tilt")
+				.on_update(|number_input: &NumberInput| {
+					NavigationMessage::CanvasTiltSet {
+						angle_radians: number_input.value.unwrap().to_radians(),
+					}
+					.into()
+				})
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("")
+				.icon("TiltReset")
+				.tooltip_label("Reset Tilt")
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasTiltSet))
+				.sizing(column)
+				.disabled(!tilted)
+				.on_update(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0. }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("")
+				.icon("FlipHorizontal")
+				.emphasized(ptz.flip)
+				.tooltip_label(if ptz.flip { "Unflip Canvas" } else { "Flip Canvas" })
+				.tooltip_description(if ptz.flip {
+					"Flip the canvas back to its standard orientation."
+				} else {
+					"Mirrors the view horizontally without changing the artwork."
+				})
 				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasFlip))
+				.sizing(column)
 				.on_update(|_| NavigationMessage::CanvasFlip.into())
 				.widget_instance(),
-		);
+		]));
 	}
-	list.extend([
-		Separator::new(SeparatorStyle::Related).widget_instance(),
+
+	vec![
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
 			.min(0.000001)
 			.max(1000000.)
 			.tooltip_label(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
+			.sizing(WidgetSizing::default().min_width(80))
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,
@@ -4259,8 +4392,8 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 			.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 			.widget_instance(),
-	]);
-	list
+		PopoverButton::new().popover_layout(Layout(popover)).tooltip_label("View Options").widget_instance(),
+	]
 }
 
 impl Iterator for ClickXRayIter<'_> {

@@ -37,6 +37,8 @@ pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
 pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
 pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
+/// How long a dragged wire must rest over a node before the node reveals its hidden inputs the wire could connect to.
+pub const WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS: u64 = 250;
 
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
@@ -188,7 +190,13 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
 /// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
-pub const DOUBLE_TAP_MILLISECONDS: u64 = 500;
+pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
+
+// FONTS
+/// How long a font catalog request may go unanswered before another can be sent.
+pub const FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS: u64 = 60_000;
+/// How long to wait after a failed font catalog request before sending another.
+pub const FONT_CATALOG_RETRY_DELAY_MILLISECONDS: u64 = 10_000;
 
 // UI
 pub const UI_SCALE_DEFAULT: f64 = 1.;

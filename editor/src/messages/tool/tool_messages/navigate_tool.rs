@@ -33,6 +33,12 @@ impl ToolMetadata for NavigateTool {
 	}
 }
 
+impl ToolEditTarget for NavigateTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::Nothing
+	}
+}
+
 impl LayoutHolder for NavigateTool {
 	fn layout(&self) -> Layout {
 		Layout::default()
@@ -118,7 +124,7 @@ impl Fsm for NavigateToolFsmState {
 			}
 			NavigateToolMessage::PointerMove { snap } => {
 				if self == NavigateToolFsmState::ZoomOrClickZooming {
-					responses.add_front(NavigationMessage::BeginCanvasZoom);
+					responses.add_front(NavigationMessage::BeginCanvasZoom { artwork_behind_graph: false });
 					NavigateToolFsmState::Zooming
 				} else {
 					responses.add_front(NavigationMessage::PointerMove { snap });

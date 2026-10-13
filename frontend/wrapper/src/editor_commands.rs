@@ -521,6 +521,11 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Outline in the viewport the layer under the pointer in the Layers panel, or nothing once the pointer leaves it.
+	fn set_layers_panel_hovered_layer(id: Option<u64>) -> Message {
+		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
+	}
+
 	/// Select exactly the given nodes.
 	fn select_nodes(ids: Vec<u64>) -> Message {
 		NodeGraphMessage::SelectedNodesSet {
@@ -585,9 +590,9 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
-	fn reorder_properties_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
-		DocumentMessage::ReorderPropertiesSection {
+	/// Reorder a draggable Inspector section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_inspector_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
+		DocumentMessage::ReorderInspectorSection {
 			node_id: NodeId(node_id),
 			insert_index,
 			duplicate,
@@ -721,9 +726,14 @@ mod editor_commands {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel, or recursively every section in its layer's chain
-	fn toggle_node_properties_section_expanded(id: u64, recursive: bool) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id), recursive }.into()
+	/// Collapse or expand a node's section in the Inspector, or recursively every section in its layer's chain
+	fn toggle_node_inspector_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id: NodeId(id), recursive }.into()
+	}
+
+	/// Expand or collapse a layer's chain into a row per node in the Layers panel
+	fn toggle_layer_chain_expanded(id: u64) -> Message {
+		DocumentMessage::ToggleLayerChainExpanded { layer_id: NodeId(id) }.into()
 	}
 
 	/// Delete a layer or node given its node ID

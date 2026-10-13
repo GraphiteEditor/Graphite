@@ -37,7 +37,7 @@ async fn memoize<I: CacheHash + Send + 'n, T: Clone + WasmNotSend>(input: I, con
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), inspector("monitor_inspector"), skip_impl)]
 async fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 	input: I,
 	content: impl Node<I, Output = T>,

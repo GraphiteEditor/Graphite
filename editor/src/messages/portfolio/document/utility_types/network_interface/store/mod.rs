@@ -319,14 +319,81 @@ impl NodeNetworkInterface {
 		self.network.network().nested_network(network_path).is_some() && self.network_metadata.nested_metadata(network_path).is_some()
 	}
 
-	/// Takes what the writes since the last drain changed, in write order, leaving the buffer empty.
+	/// Takes what the writes since the last drain changed, in write order, leaving the buffer empty
+	/// after reading it for the nodes an open transaction has written to.
 	pub(crate) fn take_deltas(&mut self) -> Vec<EditorDelta> {
+		self.scan_transaction_edited_nodes();
+		self.transaction_edited_nodes_scanned = 0;
 		std::mem::take(&mut self.deltas)
 	}
 
-	/// Drops what the writes since the last drain changed, for writes that are not edits to the document.
+	/// Drops what the writes since the last drain changed, for writes that are not edits to the document,
+	/// after reading it for the nodes an open transaction has written to.
 	pub(crate) fn discard_deltas(&mut self) {
+		self.scan_transaction_edited_nodes();
+		self.transaction_edited_nodes_scanned = 0;
 		self.deltas.clear();
+	}
+
+	/// Records the open transaction's bookkeeping, so writes that are undone before [`Self::restore_transaction_checkpoint`] don't count toward it.
+	pub fn transaction_checkpoint(&mut self) -> TransactionCheckpoint {
+		self.scan_transaction_edited_nodes();
+
+		TransactionCheckpoint {
+			status: self.transaction_status,
+			edited_nodes: self.transaction_edited_nodes.clone(),
+		}
+	}
+
+	/// Puts back the open transaction's bookkeeping from [`Self::transaction_checkpoint`] once the writes made since then are undone, leaving their deltas unread.
+	pub fn restore_transaction_checkpoint(&mut self, checkpoint: TransactionCheckpoint) {
+		if self.transaction_status == TransactionStatus::Finished {
+			return;
+		}
+
+		self.transaction_status = checkpoint.status;
+		self.transaction_edited_nodes_changed |= self.transaction_edited_nodes != checkpoint.edited_nodes;
+		self.transaction_edited_nodes = checkpoint.edited_nodes;
+		self.transaction_edited_nodes_scanned = self.deltas.len();
+	}
+
+	/// Reads the open transaction's writes since the last call, returning whether that changed which nodes it has written to.
+	pub fn update_transaction_edited_nodes(&mut self) -> bool {
+		self.scan_transaction_edited_nodes();
+		std::mem::take(&mut self.transaction_edited_nodes_changed)
+	}
+
+	/// Notes the document network nodes that the unread writes of an open transaction added, or set an input value of.
+	fn scan_transaction_edited_nodes(&mut self) {
+		if self.transaction_status != TransactionStatus::Finished {
+			let new_deltas = self.deltas.get(self.transaction_edited_nodes_scanned..).unwrap_or_default();
+			let edited_nodes = new_deltas
+				.iter()
+				.filter_map(|delta| match delta {
+					EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, .. } | RuntimeDelta::ReplaceNode { network_path, node_id, .. }) if network_path.is_empty() => Some(*node_id),
+					// Judged by what the input holds now, since splicing in a node briefly disconnects a wire to a placeholder value
+					EditorDelta::Graph(RuntimeDelta::SetInput {
+						network_path, node_id, input_index, ..
+					}) if network_path.is_empty() => {
+						let input = self.input_from_connector(&InputConnector::node_at_index(*node_id, *input_index), &[]);
+						input.is_some_and(|input| input.as_value().is_some()).then_some(*node_id)
+					}
+					_ => None,
+				})
+				.collect::<Vec<_>>();
+
+			for node_id in edited_nodes {
+				self.transaction_edited_nodes_changed |= self.transaction_edited_nodes.insert(node_id);
+			}
+		}
+		self.transaction_edited_nodes_scanned = self.deltas.len();
+	}
+
+	pub(super) fn clear_transaction_edited_nodes(&mut self) {
+		if !self.transaction_edited_nodes.is_empty() {
+			self.transaction_edited_nodes.clear();
+			self.transaction_edited_nodes_changed = true;
+		}
 	}
 
 	/// Drops the network's link to the definition it was instantiated from, which no longer describes it

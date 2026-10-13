@@ -3,7 +3,7 @@ import { createHash } from "crypto";
 import { copyFileSync, cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import path from "path";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath } from "vite";
 import type { PluginOption } from "vite";
 
 const projectRootDir = path.resolve(__dirname);
@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
 			svelteGlobalStyles(),
 			webkitUserSelectPrefix(),
 			svelte(),
+			wasmEditorReload(),
 			staticAssets(),
 			mode !== "native" && thirdPartyLicenses(),
 			mode !== "native" && wasmSplitting(),
@@ -69,6 +70,33 @@ function webkitUserSelectPrefix(): PluginOption {
 				const prefixed = content.replace(/(?<![\w$-])user-select\s*:\s*([^;{}\r\n]+);/g, "-webkit-user-select: $1; user-select: $1;");
 				return `<style${attrs}>${prefixed}</style>`;
 			});
+		},
+	};
+}
+
+// Reloads the page instead of hot-updating `App.svelte` for changes to it or the Wasm it loads, since the Wasm editor can't be set up a second time
+function wasmEditorReload(): PluginOption {
+	const wasmPackageDir = normalizePath(path.resolve(projectRootDir, "wrapper/pkg")) + "/";
+	const wasmGluePath = `${wasmPackageDir}graphite_wasm_wrapper.js`;
+	const wasmSetupPaths = ["src/App.svelte", "src/utility-functions/wasm-loader.ts"].map((file) => normalizePath(path.resolve(projectRootDir, file)));
+
+	return {
+		name: "wasm-editor-reload",
+		hotUpdate({ file }) {
+			if (this.environment.name !== "client") return;
+
+			if (wasmSetupPaths.includes(file)) {
+				this.environment.hot.send({ type: "full-reload" });
+				return [];
+			}
+
+			if (!file.startsWith(wasmPackageDir)) return;
+
+			// wasm-bindgen writes the JS glue after the Wasm binary, so its change means the whole package is ready to load
+			if (file === wasmGluePath) this.environment.hot.send({ type: "full-reload" });
+
+			// Skip the default hot update for every file in the package
+			return [];
 		},
 	};
 }

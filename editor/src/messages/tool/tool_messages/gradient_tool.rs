@@ -78,6 +78,12 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
+impl ToolEditTarget for GradientTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::FirstApplicable(vec![EditTarget::proto_node(graphene_std::math_nodes::gradient_value::IDENTIFIER, Insertion::Never), EditTarget::fill()])
+	}
+}
+
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
@@ -138,7 +144,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				{
 					selected_gradient.gradient.set_color(stop_index, color);
 					selected_gradient.render_gradient(responses);
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 				}
 			}
 			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
@@ -1177,7 +1183,7 @@ impl Fsm for GradientToolFsmState {
 						GradientDragTarget::Midpoint(index) => {
 							selected_gradient.gradient.reset_midpoint(index);
 							selected_gradient.render_gradient(responses);
-							responses.add(PropertiesPanelMessage::Refresh);
+							responses.add(InspectorMessage::Refresh);
 						}
 						GradientDragTarget::Start | GradientDragTarget::End | GradientDragTarget::Stop(_) => {
 							// Find the stop index from the drag target
@@ -1271,7 +1277,7 @@ impl Fsm for GradientToolFsmState {
 						selected_gradient.render_gradient(responses);
 
 						responses.add(DocumentMessage::CommitTransaction);
-						responses.add(PropertiesPanelMessage::Refresh);
+						responses.add(InspectorMessage::Refresh);
 
 						return ready_default;
 					}
@@ -1288,7 +1294,7 @@ impl Fsm for GradientToolFsmState {
 						});
 					}
 					responses.add(DocumentMessage::CommitTransaction);
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 					return ready_default;
 				}
 
@@ -1308,7 +1314,7 @@ impl Fsm for GradientToolFsmState {
 				// Render the new gradient
 				selected_gradient.render_gradient(responses);
 				responses.add(DocumentMessage::CommitTransaction);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				tool_data.selected_gradient = None;
 
 				ready_default
@@ -1923,7 +1929,7 @@ fn apply_gradient_update(
 	{
 		update((&mut selected_gradient.gradient, &mut selected_gradient.appearance));
 	}
-	responses.add(PropertiesPanelMessage::Refresh);
+	responses.add(InspectorMessage::Refresh);
 	data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
 	responses.add(ToolMessage::RefreshToolOptions);
 }
@@ -1991,7 +1997,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 		data.default_gradient_stops = Some(new_gradient);
 	}
 
-	responses.add(PropertiesPanelMessage::Refresh);
+	responses.add(InspectorMessage::Refresh);
 	// Refresh the tool options so the swatch's `swatch_samples` update live as the user edits stops in the picker.
 	responses.add(ToolMessage::RefreshToolOptions);
 }
@@ -2812,7 +2818,7 @@ mod test_gradient {
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
 		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
 
-		// Stamp the spread into the value node's ramp, the way the Properties panel's color picker writes it
+		// Stamp the spread into the value node's ramp, the way the Inspector's color picker writes it
 		let gradient_value_id = {
 			let network_interface = &editor.active_document().network_interface;
 			get_upstream_gradient_value_node_id(layer, network_interface).expect("the chain should have a gradient value node")
@@ -2860,7 +2866,7 @@ mod test_gradient {
 			})
 			.await;
 
-		// The Properties panel reads the value node's own ramp, so the spread has to be stored there
+		// The Inspector reads the value node's own ramp, so the spread has to be stored there
 		let network_interface = &editor.active_document().network_interface;
 		assert_eq!(
 			get_chain_source_gradient_settings(layer, network_interface).map(|settings| settings.spread),

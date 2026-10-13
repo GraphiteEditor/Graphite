@@ -14,7 +14,7 @@ pub struct NodeMetadata {
 	pub icon: Option<&'static str>,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
-	pub properties: Option<&'static str>,
+	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
 	pub inject_scope: bool,
@@ -26,7 +26,8 @@ pub struct NodeMetadata {
 pub struct FieldMetadata {
 	pub name: &'static str,
 	pub description: &'static str,
-	pub hidden: bool,
+	/// Whether the parameter is internal state of its node (named with a leading `_`), which is never exposed to the graph.
+	pub internal: bool,
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,

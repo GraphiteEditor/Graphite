@@ -1,21 +1,24 @@
-use super::node_properties;
+use super::node_inspector;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
-use crate::consts::GRID_SIZE;
+use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{
-	DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
+	DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
 };
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
-use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode};
-use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainNode, LayerPanelEntry};
+use crate::messages::portfolio::document::utility_types::network_interface::{
+	self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
+};
+use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
+use crate::messages::tool::common_functionality::edit_target::{EditTarget, ResolvedEditTarget};
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
@@ -38,13 +41,16 @@ pub struct NodeGraphMessageContext<'a> {
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub document_id: DocumentId,
 	pub collapsed: &'a mut CollapsedLayers,
-	pub properties_panel_collapsed_sections: &'a mut Vec<NodeId>,
+	pub inspector_collapsed_sections: &'a mut Vec<NodeId>,
+	pub inspector_expanded_input_chains: &'a mut Vec<(NodeId, Option<usize>)>,
+	pub layers_panel_expanded_chains: &'a mut Vec<NodeId>,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
 	pub navigation_handler: &'a NavigationMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub layers_panel_open: bool,
+	pub tool_edit_target: &'a EditTarget,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
@@ -82,6 +88,12 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
+	/// The node hovered by the wire in progress and when the hover began, in milliseconds.
+	wire_hovered_node: Option<(NodeId, u64)>,
+	/// The node expanded for the wire in progress, the indices of the inputs it temporarily exposed, and the prior transaction state.
+	wire_expanded_node: Option<(NodeId, Vec<usize>, TransactionCheckpoint)>,
+	/// Whether [`NodeGraphMessage::WireHoverTick`] is subscribed to animation frames.
+	wire_hover_tick_subscribed: bool,
 	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
@@ -112,13 +124,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			breadcrumb_network_path,
 			document_id,
 			collapsed,
-			properties_panel_collapsed_sections,
+			inspector_collapsed_sections,
+			inspector_expanded_input_chains,
+			layers_panel_expanded_chains,
 			ipp,
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
 			navigation_handler,
 			preferences,
 			layers_panel_open,
+			tool_edit_target,
 			viewport,
 		} = context;
 
@@ -195,9 +210,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Prune the Layers panel collapsed state for any layer tree paths whose nodes no longer exist, so it doesn't accumulate across loads
 				collapsed.0.retain(|path| path.iter().all(|&node_id| network_interface.document_network().nodes.contains_key(&node_id)));
 
-				// Prune the Properties panel node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
+				// Prune the Inspector node section collapsed state for any nodes (in any nested network) that no longer exist, so it doesn't accumulate across loads
 				let existing_nodes = network_interface.document_network().recursive_nodes().map(|(node_id, ..)| *node_id).collect::<HashSet<_>>();
-				properties_panel_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
+				inspector_collapsed_sections.retain(|node_id| existing_nodes.contains(node_id));
+
+				// Likewise for the Inspector's expanded input chains and the Layers panel's expanded layer chains
+				inspector_expanded_input_chains.retain(|(node_id, _)| existing_nodes.contains(node_id));
+				layers_panel_expanded_chains.retain(|node_id| existing_nodes.contains(node_id));
 			}
 			NodeGraphMessage::SelectedNodesUpdated => {
 				let selected_layers = network_interface.selected_nodes().selected_layers(network_interface.document_metadata()).collect::<Vec<_>>();
@@ -207,8 +226,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 				}
 				responses.add(MenuBarMessage::SendLayout);
+				// Refreshes the Selection button in the view options popover
+				if graph_view_overlay_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
 				responses.add(ArtboardToolMessage::UpdateSelectedArtboard);
 				responses.add(DocumentMessage::DocumentStructureChanged);
@@ -261,7 +286,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type, layer } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer });
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::CreateNodeFromContextMenu {
@@ -337,12 +362,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
-
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
 				}
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				self.end_wire_in_progress(network_interface, selection_network_path, responses);
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
 					context_menu_information: self.context_menu.clone(),
 				});
@@ -482,7 +503,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Update the graph UI and re-render
 				if graph_view_overlay_open {
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 					responses.add(NodeGraphMessage::SendGraph);
 				} else {
 					responses.add(DocumentMessage::GraphViewOverlay { open: true });
@@ -843,12 +864,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
-						self.wire_in_progress_from_connector = None;
-						self.wire_in_progress_to_connector = None;
-						self.wire_in_progress_type = FrontendGraphDataType::General;
-
+						self.end_wire_in_progress(network_interface, selection_network_path, responses);
 						responses.add(DocumentMessage::AbortTransaction);
-						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 						return;
 					}
 
@@ -950,14 +967,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Since the user is clicking elsewhere in the graph, ensure the add nodes list is closed
 				if self.context_menu.is_some() {
 					self.context_menu = None;
-					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_to_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
+					self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
 					});
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				}
 
 				// Toggle visibility of clicked node and return
@@ -1190,6 +1204,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
+
+					// Input connectors stick out past their node's edge, so hovering one counts as hovering its node
+					let wire_hovered_node = to_connector
+						.and_then(|input_connector| input_connector.node_id())
+						.or_else(|| network_interface.node_from_click(viewport_location, selection_network_path))
+						// Exposing a parameter of a layer would turn it into a node
+						.filter(|node_id| !network_interface.is_layer(node_id, selection_network_path));
+					self.set_wire_hovered_node(wire_hovered_node.map(|node_id| (node_id, ipp.time)), network_interface, selection_network_path, responses);
 				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
 					if drag_start.start_x != point.x || drag_start.start_y != point.y {
 						*dragged = true;
@@ -1314,6 +1336,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let to_connector_viewport = node_graph_to_viewport.transform_point2(wire_in_progress_to_connector);
 					let output_connector = network_interface.output_connector_from_click(from_connector_viewport, selection_network_path);
 					let input_connector = network_interface.input_connector_from_click(to_connector_viewport, selection_network_path);
+
+					// Collapse now rather than when the wire ends, since the node creation menu can keep the wire alive
+					let connected_input = output_connector.and(input_connector);
+					self.collapse_wire_expanded_node(connected_input, network_interface, selection_network_path, responses);
+					self.set_wire_hovered_node(None, network_interface, selection_network_path, responses);
 
 					if let (Some(output_connector), Some(input_connector)) = (&output_connector, &input_connector) {
 						responses.add(NodeGraphMessage::CreateWire {
@@ -1518,15 +1545,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.duplicated_in_drag = false;
 				self.box_selection_start = None;
 
-				self.wire_in_progress_from_connector = None;
-				self.wire_in_progress_to_connector = None;
-				self.wire_in_progress_type = FrontendGraphDataType::General;
+				self.end_wire_in_progress(network_interface, selection_network_path, responses);
 
 				self.reordering_export = None;
 				self.reordering_import = None;
 
 				responses.add(DocumentMessage::EndTransaction);
-				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });
 				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
 				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
@@ -1540,6 +1564,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 					self.auto_panning.stop(&messages, responses);
 				}
+			}
+			NodeGraphMessage::WireHoverTick => {
+				self.expand_wire_hovered_node_after_delay(ipp.time, network_interface, selection_network_path, responses);
 			}
 			NodeGraphMessage::ShakeNode => {
 				let Some((drag_start, _)) = &mut self.drag_start else {
@@ -1782,13 +1809,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SendGraph => {
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(DocumentMessage::DocumentStructureChanged);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(EventMessage::GraphChanged);
 				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
 					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
 					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
 					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
-					responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
 					let error = self.node_graph_error(network_interface, breadcrumb_network_path);
 					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostic { error });
@@ -1823,7 +1849,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input_connector: InputConnector::node_at_index(node_id, input_index),
 					input,
 				});
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				if is_fill_input {
 					responses.add(OverlaysMessage::Draw);
 				}
@@ -2089,7 +2115,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::SendGraph);
 
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
@@ -2193,10 +2219,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, responses);
-			}
-			NodeGraphMessage::UpdateEdges => {
-				// Update the import/export UI edges whenever the PTZ changes or the bounding box of all nodes changes
+				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, tool_edit_target, layers_panel_expanded_chains, responses);
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -2282,6 +2305,141 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 }
 
 impl NodeGraphMessageHandler {
+	/// Removes the wire in progress and collapses any node expanded for it.
+	pub fn end_wire_in_progress(&mut self, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		self.set_wire_hovered_node(None, network_interface, network_path, responses);
+
+		self.wire_in_progress_from_connector = None;
+		self.wire_in_progress_to_connector = None;
+		self.wire_in_progress_type = FrontendGraphDataType::General;
+
+		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+	}
+
+	/// The output the wire in progress is dragged from.
+	fn wire_in_progress_output_connector(&self, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<OutputConnector> {
+		let from_connector = self.wire_in_progress_from_connector?;
+		let node_graph_to_viewport = network_interface.network_metadata(network_path)?.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+
+		network_interface.output_connector_from_click(node_graph_to_viewport.transform_point2(from_connector), network_path)
+	}
+
+	/// Tracks the node under the wire in progress and when the hover began, collapsing the expanded node once the wire leaves it.
+	fn set_wire_hovered_node(&mut self, hover: Option<(NodeId, u64)>, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let hovered_node = hover.map(|(node_id, _)| node_id);
+		if self.wire_hovered_node.map(|(node_id, _)| node_id) == hovered_node {
+			return;
+		}
+
+		if self.wire_expanded_node.as_ref().is_some_and(|(node_id, _, _)| Some(*node_id) != hovered_node) {
+			self.collapse_wire_expanded_node(None, network_interface, network_path, responses);
+		}
+
+		self.wire_hovered_node = hover;
+		self.set_wire_hover_tick_subscribed(hover.is_some(), responses);
+	}
+
+	/// Expands the hovered node once the wire has rested over it for the hover delay.
+	fn expand_wire_hovered_node_after_delay(&mut self, time: u64, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some((node_id, hover_start_time)) = self.wire_hovered_node else { return };
+		if time.saturating_sub(hover_start_time) < WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS {
+			return;
+		}
+		self.set_wire_hover_tick_subscribed(false, responses);
+
+		let Some(output_connector) = self.wire_in_progress_output_connector(network_interface, network_path) else {
+			return;
+		};
+
+		// Connecting the wire to its source node, or to any node upstream of it, would form a cycle
+		if let OutputConnector::Node { node_id: source_node_id, .. } = output_connector
+			&& network_interface
+				.upstream_flow_back_from_nodes(vec![source_node_id], network_path, FlowType::UpstreamFlow)
+				.any(|upstream_node_id| upstream_node_id == node_id)
+		{
+			return;
+		}
+
+		let output_types = network_interface.potential_output_types(&output_connector, network_path);
+
+		let revealed_input_indices = (0..network_interface.number_of_inputs(&node_id, network_path))
+			.filter(|&input_index| {
+				let input_connector = InputConnector::node_at_index(node_id, input_index);
+				let hidden_value = matches!(network_interface.input_from_connector(&input_connector, network_path), Some(NodeInput::Value { exposed: false, .. }));
+
+				hidden_value
+					&& !network_interface.is_internal_input(&node_id, input_index, network_path)
+					&& network_interface
+						.potential_valid_input_types(&input_connector, network_path)
+						.iter()
+						.any(|valid_type| output_types.iter().any(|output_type| type_feeds_connector(output_type, valid_type)))
+			})
+			.collect::<Vec<_>>();
+		if revealed_input_indices.is_empty() {
+			return;
+		}
+
+		let transaction_checkpoint = network_interface.transaction_checkpoint();
+		for &input_index in &revealed_input_indices {
+			Self::set_value_input_exposed(InputConnector::node_at_index(node_id, input_index), true, network_interface, network_path);
+		}
+		responses.add(NodeGraphMessage::SendGraph);
+
+		self.wire_expanded_node = Some((node_id, revealed_input_indices, transaction_checkpoint));
+	}
+
+	/// Hides the inputs revealed by the expanded node again, except `connected_input`.
+	fn collapse_wire_expanded_node(&mut self, connected_input: Option<InputConnector>, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		let Some((node_id, revealed_input_indices, transaction_checkpoint)) = self.wire_expanded_node.take() else {
+			return;
+		};
+
+		let mut connecting_revealed_input = false;
+		for &input_index in &revealed_input_indices {
+			let input_connector = InputConnector::node_at_index(node_id, input_index);
+			if Some(input_connector) == connected_input {
+				connecting_revealed_input = true;
+			} else {
+				Self::set_value_input_exposed(input_connector, false, network_interface, network_path);
+			}
+		}
+		responses.add(NodeGraphMessage::SendGraph);
+
+		// Unless the wire connects to one of them, the reveal was only a preview and isn't an edit
+		if !connecting_revealed_input {
+			network_interface.restore_transaction_checkpoint(transaction_checkpoint);
+		}
+	}
+
+	fn set_value_input_exposed(input_connector: InputConnector, exposed: bool, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId]) {
+		let Some(mut input) = network_interface.input_from_connector(&input_connector, network_path).cloned() else {
+			return;
+		};
+		let NodeInput::Value { exposed: input_exposed, .. } = &mut input else { return };
+
+		*input_exposed = exposed;
+		network_interface.set_input(&input_connector, input, network_path);
+	}
+
+	fn set_wire_hover_tick_subscribed(&mut self, subscribed: bool, responses: &mut VecDeque<Message>) {
+		if self.wire_hover_tick_subscribed == subscribed {
+			return;
+		}
+		self.wire_hover_tick_subscribed = subscribed;
+
+		let send = Box::new(NodeGraphMessage::WireHoverTick.into());
+		responses.add(match subscribed {
+			true => BroadcastMessage::SubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+			false => BroadcastMessage::UnsubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+		});
+	}
+
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
 		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp, SendClickTargets, EndSendClickTargets);
@@ -2533,7 +2691,10 @@ impl NodeGraphMessageHandler {
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
-		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true));
+		let has_selection = network_interface
+			.selected_nodes_in_nested_network(breadcrumb_network_path)
+			.is_some_and(|selected| selected.has_selected_nodes());
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true, has_selection));
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
@@ -2548,17 +2709,17 @@ impl NodeGraphMessageHandler {
 		self.widgets[1] = LayoutGroup::row(widgets);
 	}
 
-	/// Collate the Properties panel sections for a node graph
-	pub fn collate_properties(context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	/// Collate the Inspector sections for a node graph
+	pub fn collate_inspector_sections(context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 		// If the selected nodes are in the document network, use the document network. Otherwise, use the nested network
 		let Some(selected_nodes) = context.network_interface.selected_nodes_in_nested_network(context.selection_network_path) else {
-			warn!("No selected nodes in collate_properties");
+			warn!("No selected nodes in collate_inspector_sections");
 			return Vec::new();
 		};
 
 		// We want:
-		// - If only nodes (no layers) are selected: display each node's properties
-		// - If one layer is selected, and zero or more of its (primary flow) upstream nodes: display the properties for the layer and all its upstream nodes
+		// - If only nodes (no layers) are selected: display each node's Inspector section
+		// - If one layer is selected, and zero or more of its (primary flow) upstream nodes: display the Inspector sections for the layer and all its upstream nodes
 		// - If multiple layers are selected, or one node plus other non-upstream nodes: display nothing
 		// - If nothing is selected, display any pinned nodes/layers
 
@@ -2580,69 +2741,43 @@ impl NodeGraphMessageHandler {
 
 		// Next, we decide what to display based on the number of layers and nodes selected
 		match *layers.as_slice() {
-			// If no layers are selected, show properties for all selected nodes
+			// If no layers are selected, show Inspector sections for all selected nodes
 			[] => {
-				let selected_nodes = nodes.iter().map(|node_id| node_properties::generate_node_properties(*node_id, context)).collect::<Vec<_>>();
+				let selected_nodes = nodes.iter().map(|node_id| node_inspector::generate_node_inspector(*node_id, context)).collect::<Vec<_>>();
 				if !selected_nodes.is_empty() {
-					let mut properties = Vec::new();
-
-					if let [node_id] = *nodes.as_slice() {
-						let network_path = context.selection_network_path.to_vec();
-						properties.push(LayoutGroup::row(vec![
-							Separator::new(SeparatorStyle::Related).widget_instance(),
-							IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
-							Separator::new(SeparatorStyle::Related).widget_instance(),
-							TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
-								.tooltip_description("Name of the selected node.")
-								.on_update(move |text_input| {
-									NodeGraphMessage::SetDisplayName {
-										node_id,
-										network_path: network_path.clone(),
-										alias: text_input.value.clone(),
-										skip_adding_history_step: false,
-									}
-									.into()
-								})
-								.widget_instance(),
-							Separator::new(SeparatorStyle::Related).widget_instance(),
-						]));
-					}
-
-					properties.extend(selected_nodes);
-
-					return properties;
+					return selected_nodes;
 				}
 
-				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
-				// This may require store a separate path for the Properties panel
-				let mut properties = vec![LayoutGroup::row(vec![
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					TextInput::new(context.document_name)
-						.tooltip_description("Name of the current document.")
-						.on_update(|text_input| PortfolioMessage::RenameDocument { new_name: text_input.value.clone() }.into())
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-				])];
-
-				// And if no nodes are selected, show properties for all pinned nodes (in the user's saved order, each draggable to reorder)
-				let mut pinned_node_properties = context
+				// TODO: Display Inspector sections for encapsulating node when no nodes are selected in a nested network
+				// This may require store a separate path for the Inspector
+				// And if no nodes are selected, show Inspector sections for all pinned nodes (in the user's saved order, each draggable to reorder)
+				let mut pinned_node_inspector = context
 					.network_interface
 					.ordered_pinned_nodes(context.selection_network_path)
 					.into_iter()
-					.map(|node_id| node_properties::generate_node_properties(node_id, context))
+					.map(|node_id| node_inspector::generate_node_inspector(node_id, context))
 					.collect::<Vec<_>>();
-				for pinned_section in pinned_node_properties.iter_mut() {
-					if let LayoutGroup::Section(section) = pinned_section {
+				for pinned_section in pinned_node_inspector.iter_mut() {
+					if let LayoutGroup::NodeSection(section) = pinned_section {
 						section.draggable = true;
 					}
 				}
 
-				properties.extend(pinned_node_properties);
-				properties
+				// With nothing pinned either, explain what can appear here
+				if pinned_node_inspector.is_empty() {
+					return vec![LayoutGroup::row(vec![
+						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+						TextLabel::new("Select layers or nodes to inspect their parameters. Pin them for quick access here when nothing is selected.")
+							.multiline(true)
+							.disabled(true)
+							.widget_instance(),
+						Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					])];
+				}
+
+				pinned_node_inspector
 			}
-			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show properties for the layer. Otherwise, show nothing.
+			// If one layer is selected, filter out all selected nodes that are not upstream of it. If there are no nodes left, show the Inspector section for the layer. Otherwise, show nothing.
 			[layer] => {
 				let nodes_not_upstream_of_layer = nodes.into_iter().filter(|&selected_node_id| {
 					!context
@@ -2653,97 +2788,25 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
-				let layer_network_path = context.selection_network_path.to_vec();
-				let mut layer_properties = vec![LayoutGroup::row(vec![
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
-						.tooltip_description("Name of the selected layer.")
-						.on_update(move |text_input| {
-							NodeGraphMessage::SetDisplayName {
-								node_id: layer,
-								network_path: layer_network_path.clone(),
-								alias: text_input.value.clone(),
-								skip_adding_history_step: false,
-							}
-							.into()
-						})
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-					PopoverButton::new()
-						.icon("Node")
-						.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
-						.popover_layout({
-							let compatible_type = context
-								.network_interface
-								.upstream_output_connector(&InputConnector::layer_secondary_input(layer), &[])
-								.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
+				// The layer's section, containing its chain's sections unless another input's chain is shown instead
+				let mut layer_section = node_inspector::generate_node_inspector(layer, context);
 
-							let mut node_chooser = NodeCatalog::new();
-							node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
-
-							let node_chooser = node_chooser
-								.on_update(move |node_type| {
-									NodeGraphMessage::CreateNodeInLayerWithTransaction {
-										node_type: node_type.clone(),
-										layer: LayerNodeIdentifier::new_unchecked(layer),
-									}
-									.into()
-								})
-								.widget_instance();
-							Layout(vec![LayoutGroup::row(vec![node_chooser])])
-						})
-						.widget_instance(),
-					Separator::new(SeparatorStyle::Related).widget_instance(),
-				])];
-
-				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
-				let mut node_properties = context
-					.network_interface
-					.upstream_flow_back_from_nodes(vec![layer], context.selection_network_path, network_interface::FlowType::HorizontalFlow)
-					.enumerate()
-					.take_while(|(i, node_id)| {
-						if *i == 0 {
-							true
-						} else {
-							!context.network_interface.is_layer(node_id, context.selection_network_path)
-						}
-					})
-					.map(|(_, node_id)| node_id)
-					.collect::<Vec<_>>()
-					.into_iter()
-					.map(|node_id| node_properties::generate_node_properties(node_id, context))
-					.collect::<Vec<_>>();
-
-				// A wire leads up from the chain's sections into the layer's section, when there's a chain below it
-				if node_properties.len() > 1
-					&& let Some(LayoutGroup::Section(layer_section)) = node_properties.first_mut()
+				// The sections of the layer's own chain can be dragged to reorder it, except a node without a primary input (e.g. a generator)
+				let expanded_input_chain = node_inspector::expanded_input_chain(&layer, context.inspector_expanded_input_chains, context.network_interface, context.selection_network_path);
+				if expanded_input_chain == Some(network_interface::LAYER_SECONDARY_INPUT_INDEX)
+					&& let LayoutGroup::NodeSection(section) = &mut layer_section
 				{
-					let chain_input_type = context.network_interface.input_type(&InputConnector::layer_secondary_input(layer), context.selection_network_path);
-					layer_section.chain_wire = Some(SectionWire {
-						data_type: chain_input_type.displayed_type(),
-						is_list: chain_input_type.is_list(),
-					});
-				}
-
-				// Mark each chain node (but not the layer node itself, which is first) draggable so its section can be reordered.
-				// A node without a primary input (e.g. a generator) is left non-draggable.
-				for chain_node_section in node_properties.iter_mut().skip(1) {
-					if let LayoutGroup::Section(section) = chain_node_section {
-						section.draggable = context.network_interface.has_primary_input(&NodeId(section.id), context.selection_network_path);
-
-						// A wire leads up from each chain node to the section above, which its output feeds
-						let output_type = context.network_interface.output_type(&OutputConnector::node(NodeId(section.id), 0), context.selection_network_path);
-						section.output_wire = Some(SectionWire {
-							data_type: output_type.displayed_type(),
-							is_list: output_type.is_list(),
-						});
+					for layout_group in section.layout.0.iter_mut() {
+						if let LayoutGroup::NodeSection(chain_section) = layout_group
+							&& chain_section.output_wire.is_some()
+							&& !chain_section.node_reference
+						{
+							chain_section.draggable = context.network_interface.has_primary_input(&NodeId(chain_section.id), context.selection_network_path);
+						}
 					}
 				}
 
-				layer_properties.extend(node_properties);
-				layer_properties
+				vec![layer_section]
 			}
 			// If multiple layers and/or nodes are selected, show nothing
 			_ => Vec::new(),
@@ -2896,10 +2959,24 @@ impl NodeGraphMessageHandler {
 		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
-	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	fn update_layer_panel(
+		network_interface: &NodeNetworkInterface,
+		selection_network_path: &[NodeId],
+		layers_panel_open: bool,
+		tool_edit_target: &EditTarget,
+		expanded_chains: &[NodeId],
+		responses: &mut VecDeque<Message>,
+	) {
 		if !layers_panel_open {
 			return;
 		}
+
+		// What the active tool would edit in each layer it can edit
+		let tool_targets = network_interface
+			.selected_nodes()
+			.selected_visible_and_unlocked_layers(network_interface)
+			.filter_map(|layer| Some((layer.to_node(), tool_edit_target.resolve(layer, network_interface)?)))
+			.collect::<HashMap<_, _>>();
 
 		let selected_layers = network_interface
 			.selected_nodes()
@@ -2907,6 +2984,7 @@ impl NodeGraphMessageHandler {
 			.map(|layer| layer.to_node())
 			.collect::<HashSet<_>>();
 		let selected_nodes = network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
+		let edited_nodes = network_interface.transaction_edited_nodes();
 
 		let mut descendants_of_selected = HashSet::new();
 		for selected_layer in &selected_layers {
@@ -2936,6 +3014,18 @@ impl NodeGraphMessageHandler {
 
 				let clippable = layer.can_be_clipped(network_interface.document_metadata()) && network_interface.layer_hosts_blending_nodes(&node_id, &[]);
 
+				let tool_target = tool_targets.get(&node_id);
+				let description_if_outlined = |node: NodeId| tool_target.filter(|target| target.outlined_node() == Some(node)).map(|target| target.tooltip_description().to_string());
+				let tool_target_insertion = match tool_target {
+					Some(target @ ResolvedEditTarget::Inserted { definition, index }) => Some(LayerPanelChainInsertion {
+						index: *index as u32,
+						icon: resolve_document_node_type(definition).and_then(|definition| definition.icon).unwrap_or("NodeCustomNode").to_string(),
+						name: definition.implementation_name_from_identifier(),
+						description: target.tooltip_description().to_string(),
+					}),
+					_ => None,
+				};
+
 				// Listed left to right as in the graph
 				let chain_nodes = network_interface
 					.layer_chain_nodes(node_id, &[])
@@ -2945,25 +3035,24 @@ impl NodeGraphMessageHandler {
 						id: chain_node_id,
 						icon: network_interface.node_icon(&chain_node_id, &[]).to_string(),
 						name: network_interface.display_name(&chain_node_id, &[]),
+						implementation_name: network_interface.implementation_name(&chain_node_id, &[]),
 						selected: selected_nodes.contains(&chain_node_id),
 						reorderable: network_interface.has_primary_input(&chain_node_id, &[]),
 						visible: network_interface.is_visible(&chain_node_id, &[]),
+						tool_target_description: description_if_outlined(chain_node_id),
+						edit_in_progress: edited_nodes.contains(&chain_node_id),
 					})
 					.collect::<Vec<_>>();
-
-				// Only colors the connector drawn beside a chain, so a layer without one skips resolving the type
-				let chain_data_type = if chain_nodes.is_empty() {
-					FrontendGraphDataType::default()
-				} else {
-					network_interface.input_type(&InputConnector::layer_secondary_input(node_id), &[]).displayed_type()
-				};
 
 				let data = LayerPanelEntry {
 					id: node_id,
 					implementation_name: network_interface.implementation_name(&node_id, &[]),
 					icon_name: network_interface.node_icon(&node_id, &[]).to_string(),
 					chain_nodes,
-					chain_data_type,
+					chain_expanded: expanded_chains.contains(&node_id),
+					tool_target_description: description_if_outlined(node_id),
+					edit_in_progress: edited_nodes.contains(&node_id),
+					tool_target_insertion,
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
@@ -3022,6 +3111,7 @@ impl NodeGraphMessageHandler {
 		hint_data.0.extend([
 			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDouble, "Enter Node Subgraph")]),
 			HintGroup(vec![HintInfo::keys_and_mouse([Key::Alt], MouseMotion::Lmb, "Preview Node Output")]),
+			HintGroup(vec![HintInfo::mouse(MouseMotion::MmbDrag, "Pan Graph"), HintInfo::keys([Key::Alt], "Pan Artwork").prepend_plus()]),
 		]);
 		hint_data.send_layout(responses);
 	}
@@ -3047,6 +3137,9 @@ impl Default for NodeGraphMessageHandler {
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
 			wire_in_progress_type: FrontendGraphDataType::General,
+			wire_hovered_node: None,
+			wire_expanded_node: None,
+			wire_hover_tick_subscribed: false,
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),

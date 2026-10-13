@@ -104,6 +104,17 @@ impl ToolMetadata for TextTool {
 	}
 }
 
+impl ToolEditTarget for TextTool {
+	fn edit_target(&self) -> EditTarget {
+		match self.fsm_state {
+			TextToolFsmState::Ready | TextToolFsmState::Editing | TextToolFsmState::Placing | TextToolFsmState::ResizingBounds => {
+				EditTarget::proto_node(graphene_std::text::text::IDENTIFIER, Insertion::Never)
+			}
+			TextToolFsmState::Dragging => EditTarget::transform(),
+		}
+	}
+}
+
 fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog, document: &DocumentMessageHandler) -> Vec<WidgetInstance> {
 	let text_node_id = can_edit_selected(document).and_then(|layer| graph_modification_utils::get_text_id(layer, &document.network_interface));
 
