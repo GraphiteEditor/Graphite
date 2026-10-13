@@ -527,21 +527,11 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
-	/// Click targets for adding, removing, and moving import/export ports
-	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
 	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModifyImportExportClickTarget {
-	// Subtract icon that appears when hovering over an import/export
-	pub remove_imports_exports: Ports,
-	// Grip drag icon that appears when hovering over an import/export
-	pub reorder_imports_exports: Ports,
 }
 
 #[derive(Debug, Clone)]
@@ -728,6 +718,9 @@ pub struct DocumentNodePersistentMetadata {
 	/// Must match the length of node inputs
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
+	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
+	#[serde(default)]
+	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,

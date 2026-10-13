@@ -30,6 +30,8 @@ pub struct NodeTemplate {
 	/// Metadata to override the Inspector widgets for each input. Kept the same length as `inputs`.
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
+	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
+	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI.
 	pub locked: bool,
 	/// Indicates that the node will be shown in the Inspector when it would otherwise be empty.
@@ -62,6 +64,7 @@ impl Default for NodeTemplate {
 			display_name: String::new(),
 			input_metadata: Vec::new(),
 			output_names: Vec::new(),
+			output_descriptions: Vec::new(),
 			locked: false,
 			pinned: false,
 			node_type_metadata: NodeTypePersistentMetadata::default(),
@@ -122,6 +125,7 @@ impl NodeTemplate {
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -163,6 +167,7 @@ impl NodeTemplate {
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -181,6 +186,7 @@ impl NodeTemplate {
 			display_name,
 			mut input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -205,6 +211,7 @@ impl NodeTemplate {
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,

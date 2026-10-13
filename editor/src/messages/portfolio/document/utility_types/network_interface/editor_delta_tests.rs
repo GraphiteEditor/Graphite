@@ -647,3 +647,74 @@ fn a_deleted_ui_key_is_not_cleared_again() {
 	let writes = ui_attribute_writes(Some(&current), &Attributes::new());
 	assert_eq!(writes.iter().map(|write| write.key.as_str()).collect::<Vec<_>>(), ["ui::locked"]);
 }
+
+fn merge_definition() -> DefinitionIdentifier {
+	DefinitionIdentifier::Network("Merge".to_string())
+}
+
+/// A subgraph's output descriptions are addressed by export index, so each has to move with its export as exports are added, reordered, and removed.
+#[tokio::test]
+async fn output_descriptions_follow_their_exports() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let merge = editor.create_node_by_name(merge_definition()).await;
+
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
+		network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
+
+		let mut node = network_interface.node_mut(super::NodeLocator::new(merge, &[])).expect("Merge should exist");
+		node.set_output_descriptions(["First.", "Second.", "Third."].map(String::from).to_vec());
+	}
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.reorder_export(2, 0, &[merge]);
+		network_interface.remove_export(1, &[merge]);
+	}
+
+	let network_interface = &editor.active_document().network_interface;
+	let descriptions = (0..network_interface.number_of_exports(&[merge]))
+		.map(|index| network_interface.output_description(&merge, index, &[]))
+		.collect::<Vec<_>>();
+	assert_eq!(descriptions, ["Third.", "Second."], "the descriptions should have moved with their exports");
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "moved output descriptions");
+}
+
+/// Adding or removing an export past the last described one leaves every description where it was, so no description write is recorded.
+#[tokio::test]
+async fn exports_past_the_described_ones_emit_no_description_write() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let merge = editor.create_node_by_name(merge_definition()).await;
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	{
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
+		let last_export = network_interface.number_of_exports(&[merge]) - 1;
+		network_interface.remove_export(last_export, &[merge]);
+	}
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let description_writes = emitted
+		.iter()
+		.filter(|delta| {
+			matches!(
+				delta,
+				EditorDelta::NodeMetadata {
+					change: NodeMetadataChange::OutputDescriptions(_),
+					..
+				}
+			)
+		})
+		.count();
+	assert_eq!(description_writes, 0, "no description moved, so none should be written: {emitted:#?}");
+}

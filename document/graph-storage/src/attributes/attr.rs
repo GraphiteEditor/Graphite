@@ -25,6 +25,7 @@ pub mod node {
 		pub const LOCKED: &str = "ui::locked";
 		pub const PINNED: &str = "ui::pinned";
 		pub const OUTPUT_NAMES: &str = "ui::output_names";
+		pub const OUTPUT_DESCRIPTIONS: &str = "ui::output_descriptions";
 		pub const REFERENCE: &str = "ui::reference"; // TODO: Remove?
 	}
 }

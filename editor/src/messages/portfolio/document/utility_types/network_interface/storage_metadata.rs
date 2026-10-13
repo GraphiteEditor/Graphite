@@ -106,6 +106,10 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.persistent(network_path, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
 	}
 
+	fn output_descriptions(&self, network_path: &[NodeId], local_id: NodeId) -> Vec<String> {
+		self.persistent(network_path, local_id).map(|p| p.output_descriptions.clone()).unwrap_or_default()
+	}
+
 	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
 		self.persistent(network_path, local_id)?.storage_id.map(document_graph_storage::NodeId)
 	}
@@ -373,6 +377,9 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 
 			if !entry.output_names.is_empty() {
 				persistent.output_names = entry.output_names;
+			}
+			if !entry.output_descriptions.is_empty() {
+				persistent.output_descriptions = entry.output_descriptions;
 			}
 
 			document_node_metadata.transient_metadata = DocumentNodeTransientMetadata::default();
