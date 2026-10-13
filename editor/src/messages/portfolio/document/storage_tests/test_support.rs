@@ -20,6 +20,13 @@ pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
 	DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"))
 }
 
+/// Open a demo `.graphite` the way the editor does, with its migrations and load-time fix-ups.
+pub fn open_demo(file_name: &str) -> DocumentMessageHandler {
+	let path = format!("../demo-artwork/{file_name}");
+	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
+	crate::messages::portfolio::document_storage_io::load_legacy_document(content, &HashMapResourceStorage::new(), false).unwrap_or_else(|e| panic!("Failed to open {path}: {e:?}"))
+}
+
 /// Load a demo `.graphite` and describe every subgraph node's outputs, which the demos predate, so a round trip has output descriptions to carry.
 pub fn load_demo_with_output_descriptions(file_name: &str) -> DocumentMessageHandler {
 	let mut document = load_demo(file_name);

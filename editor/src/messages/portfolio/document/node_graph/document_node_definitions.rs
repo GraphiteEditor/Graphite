@@ -227,8 +227,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![NodeInput::type_default(list!(Graphic), true), NodeInput::type_default(list!(Graphic), true)],
-				input_metadata: vec![("Base", "TODO").into(), ("Content", "TODO").into()],
+				input_metadata: vec![
+					("Base", "The stack of layers below this one, which the content is placed above.").into(),
+					("Content", "The artwork this layer adds to the stack as a single item.").into(),
+				],
 				output_names: vec!["Out".to_string()],
+				output_descriptions: vec!["The stack of layers with this layer's content placed on top.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 				..Default::default()
 			},
@@ -309,11 +313,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					NodeInput::value(TaggedValue::Bool(true), false),
 				],
 				input_metadata: vec![
-					("Base", "TODO").into(),
-					("Content", "TODO").into(),
+					("Base", "The stack of artboards below this one, which this artboard is placed above.").into(),
+					("Content", "Graphics to include within the artboard.").into(),
 					InputMetadata::with_name_description_override(
 						"Location",
-						"TODO",
+						"Coordinate of the top-left corner of the artboard within the document.",
 						WidgetOverride::Vec2(Vec2InputSettings {
 							x: "X".to_string(),
 							y: "Y".to_string(),
@@ -324,7 +328,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					),
 					InputMetadata::with_name_description_override(
 						"Dimensions",
-						"TODO",
+						"Width and height of the artboard within the document.",
 						WidgetOverride::Vec2(Vec2InputSettings {
 							x: "W".to_string(),
 							y: "H".to_string(),
@@ -333,10 +337,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							..Default::default()
 						}),
 					),
-					InputMetadata::with_name_description_override("Background", "TODO", WidgetOverride::Custom("artboard_background".to_string())),
-					("Clip", "TODO").into(),
+					InputMetadata::with_name_description_override("Background", "Color of the artboard background.", WidgetOverride::Custom("artboard_background".to_string())),
+					("Clip", "Whether to cut off the contained content that extends outside the artboard, or keep it visible.").into(),
 				],
 				output_names: vec!["Out".to_string()],
+				output_descriptions: vec!["The stack of artboards with this artboard placed on top.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::new(0, 0)),
 				..Default::default()
 			},
@@ -505,17 +510,26 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					NodeInput::type_default(item!(Vector), false),
 				],
 				input_metadata: vec![
-					("Content", "TODO").into(),
-					("Count", "TODO").into(),
-					("Reverse", "TODO").into(),
-					("Distribution", "TODO").into(),
-					("Path", "TODO").into(),
+					("Content", "The vector objects to create intermediate shapes between.").into(),
+					(
+						"Count",
+						"The number of shapes spanning from the first object to the last, repeated for each subpath of the control path.",
+					)
+						.into(),
+					("Reverse", "Flip the stacking order of the shapes, so the ones nearest the first object are on top.").into(),
+					("Distribution", "What changes evenly from one shape to the next, which sets how the intermediate shapes are spaced.").into(),
+					(
+						"Path",
+						"An optional control path with one anchor point per object. Curved segments shape the trajectory of the blend instead of traveling straight.",
+					)
+						.into(),
 				],
 				output_names: vec!["Out".to_string()],
+				output_descriptions: vec!["The blended shapes, from the first object to the last.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed("Creates a series of intermediate shapes that gradually transition between vector objects, optionally along a control path."),
 			inspector: None,
 		},
 		DocumentNodeDefinition {
@@ -590,12 +604,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![NodeInput::type_default(list!(Vector), true)],
-				input_metadata: vec![("Vector", "TODO").into()],
+				input_metadata: vec![("Vector", "The vector objects to connect in order by their origins.").into()],
 				output_names: vec!["Vector".to_string()],
+				output_descriptions: vec!["An open polyline with an anchor point at the origin of each object.".to_string()],
 				node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed("Connects the origins of vector objects in order with an open polyline, such as to make a control path for the **Blend** and **Morph** nodes."),
 			inspector: None,
 		},
 		DocumentNodeDefinition {
@@ -626,8 +641,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					..Default::default()
 				}),
 				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
-				input_metadata: vec![("Empty", "TODO").into(), ("URL", "TODO").into()],
+				input_metadata: vec![
+					("Empty", "Has no effect, since the image is loaded from the URL.").into(),
+					("URL", "The web address or local asset path of the image to load.").into(),
+				],
 				output_names: vec!["Image".to_string()],
+				output_descriptions: vec!["The loaded image, which is empty if it fails to load or decode.".to_string()],
 				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),
@@ -679,11 +698,15 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						false,
 					),
 				],
-				input_metadata: vec![("Artwork", "TODO").into(), ("Footprint", "TODO").into()],
+				input_metadata: vec![
+					("Artwork", "The graphics to render as an image.").into(),
+					("Footprint", "The area of the document to render, and the resolution to render it at.").into(),
+				],
 				output_names: vec!["Canvas".to_string()],
+				output_descriptions: vec!["The rendered image.".to_string()],
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed("Renders a view of the input graphics within an area defined by the *Footprint*, producing a raster image."),
 			inspector: None,
 		},
 		DocumentNodeDefinition {
@@ -693,11 +716,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Extract,
 				inputs: vec![NodeInput::type_default(concrete!(DocumentNode), true)],
-				input_metadata: vec![("Node", "TODO").into()],
+				input_metadata: vec![("Node", "The node to output as data rather than evaluating it.").into()],
 				output_names: vec!["Document Node".to_string()],
+				output_descriptions: vec!["The connected node itself, as data.".to_string()],
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed("Outputs the connected node itself as data, rather than the result of evaluating it."),
 			inspector: None,
 		},
 		DocumentNodeDefinition {
@@ -766,6 +790,10 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					("Multiline", "Make `^` and `$` match the start and end of each line, not just the whole string.").into(),
 				],
 				output_names: vec!["Match".to_string(), "Captures".to_string()],
+				output_descriptions: vec![
+					"The whole portion of the string matching the pattern, or empty if there is no match.".to_string(),
+					"The text matched by each capture group in the pattern, in order.".to_string(),
+				],
 				..Default::default()
 			},
 			description: Cow::Borrowed(
@@ -811,11 +839,15 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					NodeInput::type_default(item!(Vector), true),
 					NodeInput::value(TaggedValue::VectorModification(Default::default()), false),
 				],
-				input_metadata: vec![("Content", "TODO").into(), ("Modification", "TODO").into()],
+				input_metadata: vec![
+					("Content", "The original shape that edits made with the Pen and Path tools are applied to.").into(),
+					("Modification", "The edits made with the Pen and Path tools, stored as changes to points and segments.").into(),
+				],
 				output_names: vec!["Modified".to_string()],
+				output_descriptions: vec!["The shape with the Pen and Path tool edits applied.".to_string()],
 				..Default::default()
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed("Holds the edits made with the Pen and Path tools, applying them to the incoming shape."),
 			inspector: None,
 		},
 	];
@@ -1607,12 +1639,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 pub fn collect_node_descriptions() -> Vec<(String, String)> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.map(|(identifier, definition)| {
-			(
-				identifier.serialized(),
-				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
-			)
-		})
+		.map(|(identifier, definition)| (identifier.serialized(), definition.description.to_string()))
 		.collect()
 }
 

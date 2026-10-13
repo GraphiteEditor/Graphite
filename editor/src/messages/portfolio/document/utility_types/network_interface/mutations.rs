@@ -454,6 +454,48 @@ impl NodeNetworkInterface {
 		node.resize_output_names(number_of_exports);
 	}
 
+	/// Used when opening a `.graphite` document to update the descriptions each node stores a copy of: "TODO" input descriptions take the definition's
+	/// text (or become empty where the node no longer matches it), and a node saved without any output descriptions takes the definition's.
+	pub fn validate_descriptions(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
+		let definition_template = self
+			.reference(node_id, network_path)
+			.as_ref()
+			.and_then(resolve_document_node_type)
+			.map(|definition| &definition.node_template);
+
+		let definition_input_metadata = definition_template
+			.map(|template| &template.input_metadata)
+			.filter(|input_metadata| input_metadata.len() == node.inputs.len());
+		let input_descriptions: Vec<(usize, String)> = (0..node.inputs.len())
+			.filter(|&index| {
+				let stored_metadata = self.persistent_input_metadata(node_id, index, network_path);
+				stored_metadata.is_some_and(|metadata| metadata.input_description.trim().eq_ignore_ascii_case("TODO"))
+			})
+			.map(|index| {
+				let description = definition_input_metadata.and_then(|input_metadata| input_metadata.get(index));
+				(index, description.map(|metadata| metadata.persistent_metadata.input_description.clone()).unwrap_or_default())
+			})
+			.collect();
+
+		// An emptied description keeps its slot, so only a node saved before it had output descriptions stores none at all
+		let has_output_descriptions = |output_descriptions: &[String]| output_descriptions.iter().any(|description| !description.is_empty());
+		let stores_output_descriptions = self
+			.node_metadata(node_id, network_path)
+			.is_some_and(|metadata| !metadata.persistent_metadata.output_descriptions.is_empty());
+		let output_descriptions = definition_template
+			.filter(|template| has_output_descriptions(&template.output_descriptions) && !stores_output_descriptions)
+			.filter(|template| template.output_names.len() == self.number_of_outputs(node_id, network_path))
+			.map(|template| template.output_descriptions.clone());
+
+		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		for (index, description) in input_descriptions {
+			node_entry.set_input_description(index, description);
+		}
+		if let Some(output_descriptions) = output_descriptions {
+			node_entry.set_output_descriptions(output_descriptions);
+		}
+	}
+
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
 	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {

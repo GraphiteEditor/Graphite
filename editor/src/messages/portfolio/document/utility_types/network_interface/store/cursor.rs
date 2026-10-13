@@ -274,6 +274,16 @@ impl NodeMut<'_> {
 		changed
 	}
 
+	pub(crate) fn set_input_description(&mut self, input_index: usize, input_description: String) -> bool {
+		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		let changed = input_metadata.persistent_metadata.input_description != input_description;
+		input_metadata.persistent_metadata.input_description = input_description;
+		if changed {
+			self.emit_input_metadata();
+		}
+		changed
+	}
+
 	/// The identifier of the widget override the Inspector uses for this input, or `None` for the
 	/// widget generated from its type.
 	pub(crate) fn set_widget_override(&mut self, input_index: usize, widget_override: Option<String>) -> bool {

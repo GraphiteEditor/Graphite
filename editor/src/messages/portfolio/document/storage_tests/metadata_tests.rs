@@ -8,10 +8,14 @@ use std::collections::{BTreeSet, HashMap};
 
 use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
-use super::test_support::{load_demo, load_demo_with_output_descriptions, node_paths};
+use super::test_support::{load_demo, load_demo_with_output_descriptions, node_paths, open_demo};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+use crate::messages::portfolio::document::utility_types::network_interface::NodeLocator;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
+use crate::messages::portfolio::document_storage_io::load_legacy_document;
+use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::NodeId;
 use graphene_std::vector::style::RenderMode;
 
@@ -302,6 +306,72 @@ fn migrating_a_document_records_no_changes() {
 
 	let recorded = document.network_interface.take_deltas();
 	assert!(recorded.is_empty(), "migration left {} recorded changes behind", recorded.len());
+}
+
+/// Opening a document updates descriptions its nodes saved before their definitions had them, both "TODO" input descriptions and missing output descriptions.
+#[test]
+fn opening_a_document_updates_saved_descriptions() {
+	let placeholder_input_descriptions = |document: &DocumentMessageHandler| {
+		let interface = &document.network_interface;
+		node_paths(interface)
+			.iter()
+			.map(|(network_path, node_id)| {
+				let input_count = interface.document_node(node_id, network_path).map_or(0, |node| node.inputs.len());
+				(0..input_count)
+					.filter(|&index| {
+						interface
+							.persistent_input_metadata(node_id, index, network_path)
+							.is_some_and(|metadata| metadata.input_description == "TODO")
+					})
+					.count()
+			})
+			.sum::<usize>()
+	};
+	let merges_without_output_descriptions = |document: &DocumentMessageHandler| {
+		let interface = &document.network_interface;
+		let merge = Some(DefinitionIdentifier::Network("Merge".into()));
+		node_paths(interface)
+			.iter()
+			.filter(|(network_path, node_id)| interface.reference(node_id, network_path) == merge && interface.output_description(node_id, 0, network_path).is_empty())
+			.count()
+	};
+
+	let mut saved = load_demo("changing-seasons.graphite");
+	crate::messages::portfolio::document_migration::document_migration_upgrades(&mut saved, false);
+	assert!(
+		placeholder_input_descriptions(&saved) > 0,
+		"the demo artwork should store placeholder input descriptions: fixture is wrong"
+	);
+	assert!(
+		merges_without_output_descriptions(&saved) > 0,
+		"the demo artwork should have Merge nodes without output descriptions: fixture is wrong"
+	);
+
+	let opened = open_demo("changing-seasons.graphite");
+	assert_eq!(placeholder_input_descriptions(&opened), 0, "placeholder input descriptions were left behind");
+	assert_eq!(merges_without_output_descriptions(&opened), 0, "Merge nodes were left without their definition's output description");
+}
+
+/// An output description that was emptied stays empty when the document is saved and opened again, rather than being filled from the definition.
+#[test]
+fn an_emptied_output_description_stays_empty_after_reopening() {
+	let mut document = open_demo("changing-seasons.graphite");
+	let merge = Some(DefinitionIdentifier::Network("Merge".into()));
+	let (network_path, node_id) = node_paths(&document.network_interface)
+		.into_iter()
+		.find(|(network_path, node_id)| document.network_interface.reference(node_id, network_path) == merge)
+		.expect("the demo artwork should have a Merge node");
+
+	let mut node = document.network_interface.node_mut(NodeLocator::new(node_id, &network_path)).expect("the Merge node should exist");
+	node.set_output_descriptions(vec![String::new()]);
+
+	let content = document.serialize_document();
+	let reopened = load_legacy_document(content, &HashMapResourceStorage::new(), false).expect("the saved document should open");
+	assert_eq!(
+		reopened.network_interface.output_description(&node_id, 0, &network_path),
+		"",
+		"the emptied description should stay empty"
+	);
 }
 
 /// The pinned display order is document state, so it survives a registry round trip. It names nodes and
