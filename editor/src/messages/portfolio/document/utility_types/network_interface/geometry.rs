@@ -164,9 +164,8 @@ impl NodeNetworkInterface {
 		Some(document_node_click_targets)
 	}
 
-	/// The add, remove and reorder handles that sit beside each import and export port.
+	/// The remove buttons that sit beside each import and export port.
 	pub(super) fn compute_modify_import_export(&self, network_path: &[NodeId]) -> Option<ModifyImportExportClickTarget> {
-		let mut reorder_imports_exports = Ports::new();
 		let mut remove_imports_exports = Ports::new();
 
 		if !network_path.is_empty() {
@@ -176,19 +175,9 @@ impl NodeNetworkInterface {
 						log::error!("Could not get export bounding box in compute_modify_import_export");
 						continue;
 					};
-					let reorder_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-12., 0.);
-
-					if *import_index == 0 {
-						let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
-						let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-					} else {
-						let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
-						let reorder_import = ClickTarget::new_with_path(rectangle_path(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-						let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
-						reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
-						remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
-					}
+					let remove_import_center = (import_bounding_box[0] + import_bounding_box[1]) / 2. + DVec2::new(-16., 0.);
+					let remove_import = ClickTarget::new_with_path(rectangle_path(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
 				}
 
 				for (export_index, export_click_target) in import_exports.input_ports() {
@@ -196,19 +185,9 @@ impl NodeNetworkInterface {
 						log::error!("Could not get export bounding box in compute_modify_import_export");
 						continue;
 					};
-					let reorder_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(12., 0.);
-
-					if *export_index == 0 {
-						let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
-						let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-					} else {
-						let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
-						let reorder_export = ClickTarget::new_with_path(rectangle_path(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-						let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
-						reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
-						remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
-					}
+					let remove_export_center = (export_bounding_box[0] + export_bounding_box[1]) / 2. + DVec2::new(16., 0.);
+					let remove_export = ClickTarget::new_with_path(rectangle_path(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
 				}
 			});
 			if ports_built.is_none() {
@@ -217,10 +196,42 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		Some(ModifyImportExportClickTarget {
-			remove_imports_exports,
-			reorder_imports_exports,
-		})
+		Some(ModifyImportExportClickTarget { remove_imports_exports })
+	}
+
+	/// The areas covered by the names beside each import and export port, which can be dragged to reorder them.
+	/// Laid out as the frontend draws them while hovered, past the connector and the remove button.
+	pub fn import_export_name_bounds(&self, network_path: &[NodeId]) -> Vec<(ImportOrExport, [DVec2; 2])> {
+		// Past the port's center, the connector and the remove button with its margin come before the name
+		const IMPORT_NAME_INSET: f64 = 27.;
+		const EXPORT_NAME_INSET: f64 = 28.;
+		const FONT_SIZE: f64 = 14.;
+
+		if network_path.is_empty() {
+			return Vec::new();
+		}
+
+		let port_center = |click_target: &ClickTarget| click_target.bounding_box().map(|[min, max]| (min + max) / 2.);
+		let Some((import_centers, export_centers)) = self.with_import_export_ports(network_path, |import_exports| {
+			let import_centers: Vec<_> = import_exports.output_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
+			let export_centers: Vec<_> = import_exports.input_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
+			(import_centers, export_centers)
+		}) else {
+			return Vec::new();
+		};
+
+		let half_row = DVec2::new(0., HALF_GRID_SIZE as f64);
+		let imports = import_centers.into_iter().map(|(import_index, center)| {
+			let name_width = text_width(&self.displayed_import_name(import_index, network_path), FONT_SIZE);
+			let name_right = center - DVec2::new(IMPORT_NAME_INSET, 0.);
+			(ImportOrExport::Import(import_index), [name_right - DVec2::new(name_width, 0.) - half_row, name_right + half_row])
+		});
+		let exports = export_centers.into_iter().map(|(export_index, center)| {
+			let name_width = text_width(&self.displayed_export_name(export_index, network_path), FONT_SIZE);
+			let name_left = center + DVec2::new(EXPORT_NAME_INSET, 0.);
+			(ImportOrExport::Export(export_index), [name_left - half_row, name_left + DVec2::new(name_width, 0.) + half_row])
+		});
+		imports.chain(exports).collect()
 	}
 
 	/// A port for each import and export of the network, placed down the left and right edges.

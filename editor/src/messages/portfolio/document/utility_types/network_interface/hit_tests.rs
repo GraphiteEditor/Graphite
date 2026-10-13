@@ -84,16 +84,15 @@ impl NodeNetworkInterface {
 
 		let mut modify_import_export = Vec::new();
 		self.with_modify_import_export(network_path, |modify_import_export_click_targets| {
-			for click_target in modify_import_export_click_targets
-				.remove_imports_exports
-				.click_targets()
-				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
-			{
+			for click_target in modify_import_export_click_targets.remove_imports_exports.click_targets() {
 				if let ClickTargetType::Path(path) = click_target.target_type() {
 					modify_import_export.push(path.to_svg());
 				}
 			}
 		});
+		for (_, [name_min, name_max]) in self.import_export_name_bounds(network_path) {
+			modify_import_export.push(rectangle_path(name_min, name_max).to_svg());
+		}
 		FrontendClickTargets {
 			node_click_targets,
 			layer_click_targets,
@@ -195,6 +194,14 @@ impl NodeNetworkInterface {
 				.flatten()
 			})
 			.next()
+	}
+
+	/// The import or export with its name under `point`, given in node graph space.
+	pub fn import_export_name_from_point(&self, point: DVec2, network_path: &[NodeId]) -> Option<ImportOrExport> {
+		self.import_export_name_bounds(network_path)
+			.into_iter()
+			.find(|(_, [name_min, name_max])| name_min.cmple(point).all() && point.cmple(*name_max).all())
+			.map(|(import_or_export, _)| import_or_export)
 	}
 
 	pub fn input_connector_from_click(&self, click: DVec2, network_path: &[NodeId]) -> Option<InputConnector> {

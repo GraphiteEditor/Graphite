@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
+	self, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -29,6 +29,7 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
+use graphene_std::vector::click_target::ClickTarget;
 use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
@@ -868,6 +869,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(DocumentMessage::AbortTransaction);
 						return;
 					}
+					// Abort reordering an import or export
+					if self.is_reordering_import_export() {
+						self.abort_import_export_reorder(responses);
+						return;
+					}
 
 					let context_menu_data = if let Some(node_id) = clicked_id {
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
@@ -949,13 +955,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(NodeGraphMessage::RemoveExport { export_index: remove_export_index });
 					}
 					return;
-				} else if let Some(move_import_index) = modify_import_export.reorder_imports_exports.clicked_output_port_from_point(node_graph_point) {
+				} else if let Some(dragged_name) = network_interface.import_export_name_from_point(node_graph_point, selection_network_path) {
 					responses.add(DocumentMessage::StartTransaction);
-					self.reordering_import = Some(move_import_index);
-					return;
-				} else if let Some(move_export_index) = modify_import_export.reorder_imports_exports.clicked_input_port_from_point(node_graph_point) {
-					responses.add(DocumentMessage::StartTransaction);
-					self.reordering_export = Some(move_export_index);
+					match dragged_name {
+						ImportOrExport::Import(import_index) => self.reordering_import = Some(import_index),
+						ImportOrExport::Export(export_index) => self.reordering_export = Some(export_index),
+					}
+					// Nothing moves until the pointer does, so a click alone (like the start of a double-click to rename) leaves it in place
+					self.end_index = None;
 					return;
 				}
 
@@ -1252,48 +1259,24 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					*box_selection_dragged = true;
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					self.update_node_graph_hints(responses);
-				} else if self.reordering_import.is_some() {
-					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
-						log::error!("Could not get modify import export in PointerMove");
-						return;
-					};
-					// Find the first import that is below the mouse position
-					self.end_index = Some(
-						modify_import_export
-							.reorder_imports_exports
-							.output_ports()
-							.find_map(|(index, click_target)| {
-								let Some(position) = click_target.bounding_box().map(|bbox| (bbox[0].y + bbox[1].y) / 2.) else {
-									log::error!("Could not get bounding box for import: {index}");
-									return None;
-								};
-								(position > point.y).then_some(*index)
-							})
-							.filter(|end_index| *end_index > 0) // An import cannot be reordered to be the primary
-							.unwrap_or_else(|| modify_import_export.reorder_imports_exports.output_ports().count() + 1),
-					);
-					responses.add(FrontendMessage::UpdateImportReorderIndex { index: self.end_index });
-				} else if self.reordering_export.is_some() {
-					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
-						log::error!("Could not get modify import export in PointerMove");
-						return;
-					};
-					// Find the first export that is below the mouse position
-					self.end_index = Some(
-						modify_import_export
-							.reorder_imports_exports
-							.input_ports()
-							.find_map(|(index, click_target)| {
-								let Some(position) = click_target.bounding_box().map(|bbox| (bbox[0].y + bbox[1].y) / 2.) else {
-									log::error!("Could not get bounding box for export: {index}");
-									return None;
-								};
-								(position > point.y).then_some(*index)
-							})
-							.filter(|end_index| *end_index > 0) // An export cannot be reordered to be the primary
-							.unwrap_or_else(|| modify_import_export.reorder_imports_exports.input_ports().count() + 1),
-					);
-					responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
+				} else if self.reordering_import.is_some() || self.reordering_export.is_some() {
+					// The dragged port is dropped before the first one below the pointer, or after the last
+					let below_pointer = |click_target: &ClickTarget| click_target.bounding_box().is_some_and(|[min, max]| (min.y + max.y) / 2. > point.y);
+					let first_below_pointer = network_interface
+						.with_import_export_ports(selection_network_path, |ports| match self.reordering_import {
+							Some(_) => ports.output_ports().find(|(_, click_target)| below_pointer(click_target)).map(|(index, _)| *index),
+							None => ports.input_ports().find(|(_, click_target)| below_pointer(click_target)).map(|(index, _)| *index),
+						})
+						.flatten();
+
+					if self.reordering_import.is_some() {
+						self.end_index = Some(first_below_pointer.unwrap_or_else(|| network_interface.number_of_imports(selection_network_path)));
+						responses.add(FrontendMessage::UpdateImportReorderIndex { index: self.end_index });
+					} else {
+						self.end_index = Some(first_below_pointer.unwrap_or_else(|| network_interface.number_of_exports(selection_network_path)));
+						responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
+					}
+					self.update_node_graph_hints(responses);
 				}
 			}
 			NodeGraphMessage::PointerUp => {
@@ -1549,6 +1532,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				self.reordering_export = None;
 				self.reordering_import = None;
+				self.end_index = None;
 
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });
@@ -2316,6 +2300,22 @@ impl NodeGraphMessageHandler {
 		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 	}
 
+	pub fn is_reordering_import_export(&self) -> bool {
+		self.reordering_import.is_some() || self.reordering_export.is_some()
+	}
+
+	/// Cancels dragging an import or export to reorder it, leaving it where it was.
+	pub fn abort_import_export_reorder(&mut self, responses: &mut VecDeque<Message>) {
+		self.reordering_import = None;
+		self.reordering_export = None;
+		self.end_index = None;
+
+		responses.add(DocumentMessage::AbortTransaction);
+		responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
+		responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
+		self.update_node_graph_hints(responses);
+	}
+
 	/// The output the wire in progress is dragged from.
 	fn wire_in_progress_output_connector(&self, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<OutputConnector> {
 		let from_connector = self.wire_in_progress_from_connector?;
@@ -3078,8 +3078,11 @@ impl NodeGraphMessageHandler {
 		// A box selection is in progress
 		let dragging_box_selection = self.box_selection_start.is_some_and(|(_, box_selection_dragged)| box_selection_dragged);
 
+		// An import or export is being dragged to a new position
+		let reordering_import_export = self.is_reordering_import_export() && self.end_index.is_some();
+
 		// Cancel the ongoing action
-		if wiring || dragging_nodes || dragging_box_selection {
+		if wiring || dragging_nodes || dragging_box_selection || reordering_import_export {
 			HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
 			return;
 		}

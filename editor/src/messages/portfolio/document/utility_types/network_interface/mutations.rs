@@ -287,7 +287,7 @@ impl NodeNetworkInterface {
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		if !self.move_export_slot(network_path, start_index, end_index) {
+		if end_index == start_index || !self.move_export_slot(network_path, start_index, end_index) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
@@ -317,10 +317,18 @@ impl NodeNetworkInterface {
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		if !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
+		if end_index == start_index || !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
+
+		// The primary input is always exposed, so a parameter moved there becomes a connector
+		if end_index == 0
+			&& let Some(NodeInput::Value { tagged_value, exposed: false }) = self.document_node(&parent_id, &encapsulating_network_path).and_then(|node| node.inputs.first()).cloned()
+		{
+			let exposed_input = NodeInput::Value { tagged_value, exposed: true };
+			self.set_input(&InputConnector::node_at_index(parent_id, 0), exposed_input, &encapsulating_network_path);
+		}
 
 		self.transaction_modified();
 

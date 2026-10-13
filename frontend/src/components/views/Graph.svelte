@@ -28,8 +28,6 @@
 	const documentState = getContext<DocumentStore>("document");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
-	let graph: HTMLDivElement | undefined;
-
 	$: gridSpacing = calculateGridSpacing($nodeGraphTransform.scale);
 	$: gridDotRadius = 1 + Math.floor($nodeGraphTransform.scale - 0.5 + 0.001) / 2;
 
@@ -44,26 +42,6 @@
 	let editingNameExportIndex: number | undefined = undefined;
 	let editingNameNodeId: bigint | undefined = undefined;
 	let editingNameText = "";
-
-	function exportsToEdgeTextInputWidth() {
-		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
-		let exportTextDiv = Array.from(exportTextDivs).find((div) => {
-			return div.getAttribute("data-index") === String(editingNameExportIndex);
-		});
-		if (!graph || !exportTextDiv) return "50px";
-		let distance = graph.getBoundingClientRect().right - exportTextDiv.getBoundingClientRect().right;
-		return distance - 15 + "px";
-	}
-
-	function importsToEdgeTextInputWidth() {
-		let importTextDivs = document.querySelectorAll(`[data-import-text-edge]`);
-		let importTextDiv = Array.from(importTextDivs).find((div) => {
-			return div.getAttribute("data-index") === String(editingNameImportIndex);
-		});
-		if (!graph || !importTextDiv) return "50px";
-		let distance = importTextDiv.getBoundingClientRect().left - graph.getBoundingClientRect().left;
-		return distance - 15 + "px";
-	}
 
 	function setEditingImportNameIndex(index: number, currentName: string) {
 		focusInput(currentName);
@@ -233,7 +211,7 @@
 	}
 </script>
 
-<div class="graph" bind:this={graph} data-node-graph>
+<div class="graph" data-node-graph>
 	<div
 		class="grid-background"
 		style:--grid-spacing={`${gridSpacing}px`}
@@ -395,9 +373,9 @@
 							<input
 								class="import-text-input"
 								type="text"
-								style:width={importsToEdgeTextInputWidth()}
 								bind:this={inputElement}
 								bind:value={editingNameText}
+								on:pointerdown|stopPropagation
 								on:blur={setEditingImportName}
 								on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
 							/>
@@ -411,15 +389,10 @@
 								size={16}
 								icon="Remove"
 								class="remove-button-import"
-								data-index={index}
-								data-import-text-edge
 								action={() => {
 									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 								}}
 							/>
-							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
-							{/if}
 						{/if}
 					</div>
 				{:else}
@@ -460,15 +433,10 @@
 						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraphImportsExports.addImportExport}
-							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
-							{/if}
 							<IconButton
 								size={16}
 								icon="Remove"
 								class="remove-button-export"
-								data-index={index}
-								data-export-text-edge
 								action={() => {
 									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 								}}
@@ -477,9 +445,9 @@
 						{#if editingNameExportIndex === index}
 							<input
 								type="text"
-								style:width={exportsToEdgeTextInputWidth()}
 								bind:this={inputElement}
 								bind:value={editingNameText}
+								on:pointerdown|stopPropagation
 								on:blur={setEditingExportName}
 								on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
 							/>
@@ -1158,6 +1126,10 @@
 					text-wrap: nowrap;
 				}
 
+				input {
+					field-sizing: content;
+				}
+
 				.import-text-input {
 					text-align: right;
 				}
@@ -1168,15 +1140,6 @@
 
 				.remove-button-export {
 					margin-right: 3px;
-				}
-
-				.reorder-drag-grip {
-					width: 8px;
-					height: 24px;
-					background-position: 2px 8px;
-					border-radius: 2px;
-					margin: -6px 0;
-					background-image: var(--icon-drag-grip-hover);
 				}
 			}
 		}

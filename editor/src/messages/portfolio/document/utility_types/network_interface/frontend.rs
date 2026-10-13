@@ -48,25 +48,12 @@ impl NodeNetworkInterface {
 		let (name, description) = match input_connector {
 			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
 			InputConnector::Export(export_index) => {
-				// Get export name from parent node metadata input, which must match the number of exports.
-				// Empty string means to use type, or "Export + index" if type is empty determined
-				let encapsulating_metadata = self.encapsulating_node_metadata(network_path).map(|metadata| &metadata.persistent_metadata);
-				let export_name = if network_path.is_empty() {
-					"Canvas".to_string()
-				} else {
-					encapsulating_metadata.and_then(|metadata| metadata.output_names.get(*export_index).cloned()).unwrap_or_default()
-				};
-				let export_description = encapsulating_metadata.and_then(|metadata| metadata.output_descriptions.get(*export_index).cloned()).unwrap_or_default();
+				let export_description = self
+					.encapsulating_node_metadata(network_path)
+					.and_then(|metadata| metadata.persistent_metadata.output_descriptions.get(*export_index).cloned())
+					.unwrap_or_default();
 
-				let export_name = if !export_name.is_empty() {
-					export_name
-				} else if let Some(export_type_name) = input_type.compiled_nested_type().map(ToString::to_string) {
-					export_type_name
-				} else {
-					format!("Export #{}", export_index)
-				};
-
-				(export_name, export_description)
+				(self.displayed_export_name(*export_index, network_path), export_description)
 			}
 		};
 
@@ -117,17 +104,12 @@ impl NodeNetworkInterface {
 				if *import_index == 0 && self.hidden_primary_import(network_path) {
 					return None;
 				};
-				let (import_name, description) = self.displayed_input_name_and_description(encapsulating_node_id, *import_index, encapsulating_path);
+				let description = self
+					.persistent_input_metadata(encapsulating_node_id, *import_index, encapsulating_path)
+					.map(|metadata| metadata.input_description.clone())
+					.unwrap_or_default();
 
-				let import_name = if !import_name.is_empty() {
-					import_name
-				} else if let Some(import_type_name) = output_type.compiled_nested_type().map(ToString::to_string) {
-					import_type_name
-				} else {
-					format!("Import #{}", import_index)
-				};
-
-				(import_name, description)
+				(self.displayed_import_name(*import_index, network_path), description)
 			}
 		};
 		let data_type = output_type.displayed_type();
@@ -160,6 +142,44 @@ impl NodeNetworkInterface {
 			input_metadata.input_name.to_string()
 		};
 		(name, description)
+	}
+
+	/// The name a subgraph's import is shown with: its encapsulating node's input name, or else its type, or else its number.
+	pub fn displayed_import_name(&self, import_index: usize, network_path: &[NodeId]) -> String {
+		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
+			return String::new();
+		};
+
+		let (import_name, _) = self.displayed_input_name_and_description(encapsulating_node_id, import_index, encapsulating_path);
+		if !import_name.is_empty() {
+			return import_name;
+		}
+
+		match self.output_type(&OutputConnector::Import(import_index), network_path).compiled_nested_type() {
+			Some(import_type) => import_type.to_string(),
+			None => format!("Import #{import_index}"),
+		}
+	}
+
+	/// The name a network's export is shown with: its encapsulating node's output name, or else its type, or else its number.
+	/// The document network has one export, the canvas.
+	pub fn displayed_export_name(&self, export_index: usize, network_path: &[NodeId]) -> String {
+		if network_path.is_empty() {
+			return "Canvas".to_string();
+		}
+
+		let export_name = self
+			.encapsulating_node_metadata(network_path)
+			.and_then(|metadata| metadata.persistent_metadata.output_names.get(export_index).cloned())
+			.unwrap_or_default();
+		if !export_name.is_empty() {
+			return export_name;
+		}
+
+		match self.input_type(&InputConnector::Export(export_index), network_path).compiled_nested_type() {
+			Some(export_type) => export_type.to_string(),
+			None => format!("Export #{export_index}"),
+		}
 	}
 }
 

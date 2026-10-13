@@ -984,6 +984,47 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 }
 
 #[tokio::test]
+async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	// Dropping an import or export just below itself leaves it where it was
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.reorder_import(1, 2, &path);
+	assert!(
+		network_interface.reference(&merge, &[]).is_some(),
+		"dropping an import back where it was should leave the subgraph matching its definition"
+	);
+	network_interface.reorder_export(0, 1, &path);
+	assert!(
+		network_interface.reference(&merge, &[]).is_some(),
+		"dropping an export back where it was should leave the subgraph matching its definition"
+	);
+
+	network_interface.add_import(TaggedValue::Number(1.), false, -1, "Parameter", "", &path);
+	let parameter_index = network_interface.number_of_imports(&path) - 1;
+	let previous_primary_name = network_interface.displayed_import_name(0, &path);
+
+	network_interface.reorder_import(parameter_index, 0, &path);
+	let new_primary = network_interface
+		.document_node(&merge, &[])
+		.and_then(|node| node.inputs.first())
+		.expect("Merge should have a primary input");
+	assert!(new_primary.is_exposed(), "a parameter moved to the front should be exposed as the primary import");
+	assert_eq!(network_interface.displayed_import_name(0, &path), "Parameter");
+	assert_eq!(
+		network_interface.displayed_import_name(1, &path),
+		previous_primary_name,
+		"the previous primary should become the first secondary import"
+	);
+
+	assert_invariants(&editor, "after reordering a parameter to be the primary import");
+}
+
+#[tokio::test]
 async fn toggle_preview_transitions_with_a_connected_export() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
