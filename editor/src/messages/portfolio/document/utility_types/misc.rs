@@ -311,6 +311,19 @@ pub enum PathSnapSource {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PivotSnapSource {
+	Custom,
+}
+
+impl fmt::Display for PivotSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			PivotSnapSource::Custom => write!(f, "Pivot: Custom"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GradientSnapSource {
 	Endpoint,
 }
@@ -364,6 +377,7 @@ pub enum SnapSource {
 	Path(PathSnapSource),
 	Alignment(AlignmentSnapSource),
 	Gradient(GradientSnapSource),
+	Pivot(PivotSnapSource),
 }
 
 impl SnapSource {
@@ -395,6 +409,7 @@ impl fmt::Display for SnapSource {
 			SnapSource::Path(path_snap_source) => write!(f, "{path_snap_source}"),
 			SnapSource::Alignment(alignment_snap_source) => write!(f, "{alignment_snap_source}"),
 			SnapSource::Gradient(gradient_snap_source) => write!(f, "{gradient_snap_source}"),
+			SnapSource::Pivot(pivot_snap_source) => write!(f, "{pivot_snap_source}"),
 		}
 	}
 }
