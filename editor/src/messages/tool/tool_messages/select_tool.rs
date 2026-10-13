@@ -1640,6 +1640,7 @@ impl Fsm for SelectToolFsmState {
 					&& let Some(bounds) = &mut tool_data.bounding_box_manager
 				{
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1755,6 +1756,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				responses.add(DocumentMessage::AbortTransaction);

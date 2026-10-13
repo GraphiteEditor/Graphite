@@ -445,6 +445,19 @@ impl VectorModification {
 		}
 	}
 
+	/// Multiply stored point offsets and handle offsets by `scale`.
+	/// Point ids and segment connectivity stay the same.
+	pub fn scale_offsets(&mut self, scale: DVec2) {
+		for delta in self.points.delta.values_mut() {
+			*delta *= scale;
+		}
+		for handle in self.segments.handle_primary.values_mut().chain(self.segments.handle_end.values_mut()) {
+			if let Some(position) = handle {
+				*position *= scale;
+			}
+		}
+	}
+
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
 	pub fn create_from_vector(vector: &Vector) -> Self {
 		Self {
@@ -732,6 +745,20 @@ mod tests {
 
 	use crate::vector::algorithms::shapes::{ellipse_bezpath, rectangle_bezpath};
 	use kurbo::{PathSeg, QuadBez};
+
+	#[test]
+	fn scale_offsets_grows_a_moved_point() {
+		let vector = Vector::from_bezpath(rectangle_bezpath(DVec2::NEG_ONE, DVec2::ONE));
+		let point = vector.point_domain.ids()[0];
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::new(2., 4.) });
+		modification.scale_offsets(DVec2::new(3., 0.5));
+
+		let mut scaled = vector.clone();
+		modification.apply(&mut scaled);
+		let expected = vector.point_domain.position_from_id(point).unwrap() + DVec2::new(6., 2.);
+		assert_eq!(scaled.point_domain.position_from_id(point), Some(expected));
+	}
 
 	#[test]
 	fn modify_new() {

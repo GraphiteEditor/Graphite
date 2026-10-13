@@ -1,6 +1,7 @@
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
+use crate::messages::portfolio::document::graph_operation::utility_types::capture_dragged_shape_size;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
@@ -250,8 +251,23 @@ pub fn resize_bounds(
 			}
 		});
 
+		if bounds.shape_resize_basis.is_empty() {
+			for &layer in dragging_layers.iter() {
+				if let Some(captured) = capture_dragged_shape_size(layer, &document.network_interface) {
+					bounds.shape_resize_basis.insert(layer, captured);
+				}
+			}
+		}
+
 		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, dragging_layers, responses, &document.network_interface, None, &tool, None);
 		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+		drop(selected);
+
+		for &layer in dragging_layers.iter() {
+			if let Some(size) = bounds.shape_resize_basis.get(&layer).cloned() {
+				responses.add(GraphOperationMessage::WriteDraggedShapeSize { layer, size });
+			}
+		}
 	}
 }
 

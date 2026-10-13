@@ -1336,6 +1336,7 @@ impl Fsm for ShapeToolFsmState {
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				tool_data.line_data.dragging_endpoint = None;
@@ -1363,6 +1364,7 @@ impl Fsm for ShapeToolFsmState {
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				tool_data.cursor = MouseCursorIcon::Crosshair;

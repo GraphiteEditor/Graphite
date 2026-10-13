@@ -773,7 +773,7 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 #[cfg(test)]
 mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::transform_utils;
-	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+	use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, capture_dragged_shape_size};
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::prelude::Message;
@@ -1466,5 +1466,132 @@ mod test_transform_layer {
 			"A scale chained into a move should still bake, got {width}x{height}"
 		);
 		assert!((transform.matrix2.x_axis.length() - 1.).abs() < 1e-6, "The chained scale should leave the Transform scale at 1");
+	}
+
+	fn local_point_positions(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Vec<DVec2> {
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("layer vector");
+		vector.point_domain.positions().to_vec()
+	}
+
+	#[tokio::test]
+	async fn test_dragged_shape_size_does_not_compound() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let size = capture_dragged_shape_size(layer, &editor.active_document().network_interface).expect("rectangle basis");
+
+		for scale in [2., 3.] {
+			editor
+				.handle_message(GraphOperationMessage::TransformSet {
+					layer,
+					transform: DAffine2::from_scale(DVec2::splat(scale)),
+					transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+					skip_rerender: false,
+				})
+				.await;
+			editor.handle_message(GraphOperationMessage::WriteDraggedShapeSize { layer, size: size.clone() }).await;
+		}
+
+		let (width, height) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			(width - 300.).abs() < 1e-6 && (height - 300.).abs() < 1e-6,
+			"The second move should replace the size, got {width}x{height}"
+		);
+		assert!((transform.matrix2.x_axis.length() - 1.).abs() < 1e-6, "The Transform scale should stay at 1 while the width is dragged");
+	}
+
+	#[tokio::test]
+	async fn test_path_point_edit_keeps_its_place_when_scale_is_baked() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		let point = editor.active_document().network_interface.compute_modified_vector(layer).expect("rectangle vector").point_domain.ids()[0];
+		editor
+			.handle_message(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::ApplyPointDelta { point, delta: DVec2::new(25., -10.) },
+			})
+			.await;
+		let size = capture_dragged_shape_size(layer, &editor.active_document().network_interface).expect("rectangle basis");
+		let before = local_point_positions(&editor, layer);
+
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_scale(DVec2::splat(2.)),
+				transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+		editor.handle_message(GraphOperationMessage::WriteDraggedShapeSize { layer, size: size.clone() }).await;
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_scale(DVec2::splat(4.)),
+				transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+		editor.handle_message(GraphOperationMessage::WriteDraggedShapeSize { layer, size }).await;
+
+		let after = local_point_positions(&editor, layer);
+		for (before, after) in before.iter().zip(&after) {
+			assert!(after.distance(*before * 4.) < 1e-4, "A moved corner should follow the drag, expected {:?}, got {after:?}", *before * 4.);
+		}
+		let (width, height) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			(width - 400.).abs() < 1e-6 && (height - 400.).abs() < 1e-6,
+			"Width should be the drag-start width times 4, got {width}x{height}"
+		);
+		assert!((transform.matrix2.x_axis.length() - 1.).abs() < 1e-6, "The Transform scale should stay at 1");
+	}
+
+	#[tokio::test]
+	async fn test_rounded_rectangle_keeps_non_uniform_scale_on_the_transform() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let node_id = {
+			use graphene_std::vector::generator_nodes::rectangle;
+			crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer::new(layer, &editor.active_document().network_interface)
+				.upstream_node_id_from_protonode(rectangle::IDENTIFIER)
+				.unwrap()
+		};
+		editor
+			.handle_message(NodeGraphMessage::SetInput {
+				input_connector: crate::messages::portfolio::document::utility_types::network_interface::InputConnector::node(
+					node_id,
+					graphene_std::vector::generator_nodes::rectangle::CornerRadiusInput,
+				),
+				input: graph_craft::document::NodeInput::value(graph_craft::document::value::TaggedValue::BoxCorners(vec![5.]), false),
+			})
+			.await;
+		let size = capture_dragged_shape_size(layer, &editor.active_document().network_interface).expect("rounded rectangle basis");
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_scale(DVec2::new(2., 3.)),
+				transform_in: crate::messages::portfolio::document::graph_operation::utility_types::TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+		editor.handle_message(GraphOperationMessage::WriteDraggedShapeSize { layer, size }).await;
+
+		let (width, height) = rectangle_size(&editor, layer);
+		let transform = get_layer_transform(&mut editor, layer).await.unwrap();
+		assert!(
+			(width - 100.).abs() < 1e-6 && (height - 100.).abs() < 1e-6,
+			"A non-uniform scale on a rounded rectangle should leave the size alone, got {width}x{height}"
+		);
+		assert!((transform.matrix2.x_axis.length() - 2.).abs() < 1e-6, "That scale should stay on the Transform");
+		assert!((transform.matrix2.y_axis.length() - 3.).abs() < 1e-6, "The vertical scale should stay on the Transform");
 	}
 }
