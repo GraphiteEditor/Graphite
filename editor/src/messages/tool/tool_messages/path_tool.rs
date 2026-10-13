@@ -2140,7 +2140,7 @@ impl Fsm for PathToolFsmState {
 						let transform = document.metadata().transform_to_viewport_if_feeds(segment.layer(), &document.network_interface);
 						let parametric_bezier_mid = point_to_dvec2(segment.pathseg().eval(0.5));
 						let mid = transform.transform_point2(parametric_bezier_mid);
-						
+
 						tool_data.molding_snap_origin = Some(mid);
 						let drag_start = tool_data.drag_start_pos;
 
