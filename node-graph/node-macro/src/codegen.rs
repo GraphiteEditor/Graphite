@@ -243,7 +243,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 			match implementations.first() {
 				// A primary's scalar `#[default]` parses as a bare element (unranked, promoted at resolution); without one it defaults to an empty List
-				Some(implementation_ty) if Some(index) == primary_regular_index && element_wise => match value_source {
+				Some(implementation_ty) if Some(index) == primary_regular_index && element_wise && mapped_variant => match value_source {
 					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
 					_ => quote!(Some(#core_types::list!(#implementation_ty))),
 				},
