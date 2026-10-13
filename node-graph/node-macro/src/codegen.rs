@@ -113,7 +113,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let input_internal = regular_field_names
 		.iter()
 		.enumerate()
-		.map(|(index, name)| index > 0 && name.to_string().starts_with('_'))
+		.map(|(index, name)| Some(index) != primary_regular_index && name.to_string().starts_with('_'))
 		.collect::<Vec<_>>();
 
 	let input_descriptions: Vec<_> = regular_fields.iter().map(|f| &f.description).collect();

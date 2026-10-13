@@ -844,6 +844,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			));
 		}
 	}
+	if exposed && ident.to_string().starts_with('_') {
+		return Err(Error::new_spanned(
+			&pat_ident,
+			"Parameters named with a leading `_` cannot be exposed (#[expose]). They are internal state, which is never exposed to the graph",
+		));
+	}
 
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
