@@ -2413,6 +2413,8 @@ impl Fsm for PathToolFsmState {
 				}
 				tool_data.molding_info = None;
 				tool_data.molding_segment = false;
+				tool_data.molding_snap_origin = None;
+				tool_data.snapping_axis = None;
 				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
@@ -2664,6 +2666,7 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.snapping_axis = None;
 				tool_data.sliding_point_info = None;
+				tool_data.snapping_axis = None;
 
 				if drag_occurred || extend_selection {
 					responses.add(DocumentMessage::EndTransaction);
