@@ -347,9 +347,18 @@ impl NodeNetworkInterface {
 				// A subgraph's output carries whatever feeds its export
 				Some(DocumentNodeImplementation::Network(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
-					self.upstream_output_connector(&InputConnector::Export(*output_index), &nested_path)
-						.map(|upstream_output| self.possible_output_types(&upstream_output, &nested_path))
-						.unwrap_or_default()
+					let export = InputConnector::Export(*output_index);
+					match self.upstream_output_connector(&export, &nested_path) {
+						Some(upstream_output) => self.possible_output_types(&upstream_output, &nested_path),
+						// A value given to the export, unless it's a new export's empty placeholder
+						None => self
+							.input_type(&export, &nested_path)
+							.compiled_nested_type()
+							.filter(|value_type| **value_type != concrete!(()))
+							.cloned()
+							.into_iter()
+							.collect(),
+					}
 				}
 				_ => Vec::new(),
 			},

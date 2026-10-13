@@ -1591,3 +1591,29 @@ fn adding_an_import_ahead_of_a_wired_input_keeps_the_loaded_wire_cache_exact() {
 	let consumers = network_interface.outward_wires(&[]).and_then(|wires| wires.get(&OutputConnector::node(source, 0)).cloned());
 	assert_eq!(consumers.as_deref(), Some([InputConnector::node_at_index(node, 1)].as_slice()));
 }
+
+#[tokio::test]
+async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.add_export(TaggedValue::Number(1.), -1, "", &path);
+	network_interface.add_export(TaggedValue::None, -1, "", &path);
+	let number_output = OutputConnector::node(merge, network_interface.number_of_exports(&path) - 2);
+	let placeholder_output = OutputConnector::node(merge, network_interface.number_of_exports(&path) - 1);
+
+	let number_type = TaggedValue::Number(1.).ty().nested_type().clone();
+	assert_eq!(
+		network_interface.possible_output_types(&number_output, &[]),
+		vec![number_type],
+		"an export given a value can only produce its type"
+	);
+	assert!(
+		network_interface.possible_output_types(&placeholder_output, &[]).is_empty(),
+		"a new export's empty placeholder shouldn't be listed as a type it can produce"
+	);
+}
