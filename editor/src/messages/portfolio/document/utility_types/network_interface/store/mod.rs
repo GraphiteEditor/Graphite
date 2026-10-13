@@ -335,6 +335,28 @@ impl NodeNetworkInterface {
 		self.deltas.clear();
 	}
 
+	/// Records the open transaction's bookkeeping, so writes that are undone before [`Self::restore_transaction_checkpoint`] don't count toward it.
+	pub fn transaction_checkpoint(&mut self) -> TransactionCheckpoint {
+		self.scan_transaction_edited_nodes();
+
+		TransactionCheckpoint {
+			status: self.transaction_status,
+			edited_nodes: self.transaction_edited_nodes.clone(),
+		}
+	}
+
+	/// Puts back the open transaction's bookkeeping from [`Self::transaction_checkpoint`] once the writes made since then are undone, leaving their deltas unread.
+	pub fn restore_transaction_checkpoint(&mut self, checkpoint: TransactionCheckpoint) {
+		if self.transaction_status == TransactionStatus::Finished {
+			return;
+		}
+
+		self.transaction_status = checkpoint.status;
+		self.transaction_edited_nodes_changed |= self.transaction_edited_nodes != checkpoint.edited_nodes;
+		self.transaction_edited_nodes = checkpoint.edited_nodes;
+		self.transaction_edited_nodes_scanned = self.deltas.len();
+	}
+
 	/// Reads the open transaction's writes since the last call, returning whether that changed which nodes it has written to.
 	pub fn update_transaction_edited_nodes(&mut self) -> bool {
 		self.scan_transaction_edited_nodes();

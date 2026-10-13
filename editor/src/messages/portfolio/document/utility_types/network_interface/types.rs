@@ -920,6 +920,13 @@ pub enum TransactionStatus {
 	Finished,
 }
 
+/// The open transaction's bookkeeping from [`NodeNetworkInterface::transaction_checkpoint`], to put back once the writes made after it are undone.
+#[derive(Clone, Debug)]
+pub struct TransactionCheckpoint {
+	pub(super) status: TransactionStatus,
+	pub(super) edited_nodes: HashSet<NodeId>,
+}
+
 /// How [`NodeNetworkInterface::is_sole_dependent`] should treat a downstream connector it encounters.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum SoleDependentStep {
