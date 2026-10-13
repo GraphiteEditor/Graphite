@@ -218,6 +218,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 				}
 				responses.add(MenuBarMessage::SendLayout);
+				// Refreshes the Selection button in the view options popover
+				if graph_view_overlay_open {
+					responses.add(NodeGraphMessage::UpdateGraphBarRight);
+				} else {
+					responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				}
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::SendSelectedNodes);
@@ -2540,7 +2546,10 @@ impl NodeGraphMessageHandler {
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
-		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true));
+		let has_selection = network_interface
+			.selected_nodes_in_nested_network(breadcrumb_network_path)
+			.is_some_and(|selected| selected.has_selected_nodes());
+		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true, has_selection));
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")

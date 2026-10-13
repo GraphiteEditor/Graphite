@@ -8,7 +8,6 @@ use super::{CursorMoveError, DocumentHistory};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
-	VIEWPORT_ROTATE_SNAP_INTERVAL,
 };
 use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -3731,39 +3730,9 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
 
-		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false));
-
-		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
-		if tilt_value.abs() > 0.00001 {
-			widgets.extend([
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				NumberInput::new(Some(tilt_value))
-					.unit("°")
-					.increment_behavior(NumberInputIncrementBehavior::Callback)
-					.increment_callback_increase(|number_input: &NumberInput| {
-						let one = 1. + f64::EPSILON * 100.;
-						NavigationMessage::CanvasTiltSet {
-							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL + one).floor() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
-						}
-						.into()
-					})
-					.increment_callback_decrease(|number_input: &NumberInput| {
-						let one = 1. + f64::EPSILON * 100.;
-						NavigationMessage::CanvasTiltSet {
-							angle_radians: ((number_input.value.unwrap() / VIEWPORT_ROTATE_SNAP_INTERVAL - one).ceil() * VIEWPORT_ROTATE_SNAP_INTERVAL).to_radians(),
-						}
-						.into()
-					})
-					.tooltip_label("Canvas Tilt")
-					.on_update(|number_input: &NumberInput| {
-						NavigationMessage::CanvasTiltSet {
-							angle_radians: number_input.value.unwrap().to_radians(),
-						}
-						.into()
-					})
-					.widget_instance(),
-			]);
-		}
+		// Layers only exist in the document network, so a selection inside a subgraph has none to frame
+		let has_selection = self.selection_network_path().is_empty() && self.network_interface.selected_nodes().selected_visible_layers(&self.network_interface).next().is_some();
+		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false, has_selection));
 
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -4278,37 +4247,125 @@ impl<'a> ClickXRayIter<'a> {
 	}
 }
 
-pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool) -> Vec<WidgetInstance> {
-	let mut list = vec![
-		IconButton::new("ZoomIn", 24)
-			.tooltip_label("Zoom In")
-			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomIncrease))
-			.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
-			.widget_instance(),
-		IconButton::new("ZoomOut", 24)
-			.tooltip_label("Zoom Out")
-			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomDecrease))
-			.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
-			.widget_instance(),
-		IconButton::new("ZoomReset", 24)
-			.tooltip_label("Reset Tilt and Zoom to 100%")
-			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
-			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
-			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
-			.widget_instance(),
+/// The zoom field and a popover of the other view controls.
+pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool, has_selection: bool) -> Vec<WidgetInstance> {
+	let tilt_degrees = navigation_handler.snapped_tilt(ptz.tilt()).to_degrees();
+	let tilted = tilt_degrees.abs() > 0.00001;
+
+	let row_label = |label: &str| TextLabel::new(label).table_align(true).sizing(WidgetSizing::fixed(40)).widget_instance();
+
+	// Buttons line up in four equal columns, with the fit buttons and the tilt field each spanning two
+	let column = WidgetSizing::fixed(52);
+	let half_row = WidgetSizing::default().basis(0).grow(true);
+
+	// Framing the content, then stepping and preset zoom levels
+	let mut popover = vec![
+		LayoutGroup::row(vec![
+			TextLabel::new("View").bold(true).table_align(true).sizing(WidgetSizing::fixed(40)).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new("All")
+				.icon("FrameAll")
+				.tooltip_label("Zoom to Fit")
+				.tooltip_description(if node_graph {
+					"Frames all the nodes."
+				} else {
+					"Frames all the artwork, without zooming in past 100%, and undoes any tilt or flip."
+				})
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasToFitAll))
+				.sizing(half_row)
+				.on_update(|_| DocumentMessage::ZoomCanvasToFitAll.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("Selection")
+				.icon("FrameSelected")
+				.tooltip_label("Zoom to Selection")
+				.tooltip_description(if node_graph { "Frames the selected nodes." } else { "Frames the selected layers." })
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::FitViewportToSelection))
+				.sizing(half_row)
+				.disabled(!has_selection)
+				.on_update(|_| NavigationMessage::FitViewportToSelection.into())
+				.widget_instance(),
+		]),
+		LayoutGroup::row(vec![
+			row_label("Zoom"),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new("")
+				.icon("ZoomOut")
+				.tooltip_label("Zoom Out")
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+				.sizing(column)
+				.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("")
+				.icon("ZoomIn")
+				.tooltip_label("Zoom In")
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+				.sizing(column)
+				.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("100%")
+				.tooltip_label("Zoom to 100%")
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
+				.sizing(column)
+				.on_update(|_| DocumentMessage::ZoomCanvasTo100Percent.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("200%")
+				.tooltip_label("Zoom to 200%")
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent))
+				.sizing(column)
+				.on_update(|_| DocumentMessage::ZoomCanvasTo200Percent.into())
+				.widget_instance(),
+		]),
 	];
-	if ptz.flip && !node_graph {
-		list.push(
-			IconButton::new("Reverse", 24)
-				.tooltip_label("Unflip Canvas")
-				.tooltip_description("Flip the canvas back to its standard orientation.")
+
+	// The node graph can't be tilted or flipped
+	if !node_graph {
+		popover.push(LayoutGroup::row(vec![
+			row_label("Tilt"),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			NumberInput::new(Some(tilt_degrees))
+				.unit("°")
+				.mode(NumberInputMode::Range)
+				.range_min(Some(-180.))
+				.range_max(Some(180.))
+				.tooltip_label("Canvas Tilt")
+				.on_update(|number_input: &NumberInput| {
+					NavigationMessage::CanvasTiltSet {
+						angle_radians: number_input.value.unwrap().to_radians(),
+					}
+					.into()
+				})
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("")
+				.icon("TiltReset")
+				.tooltip_label("Reset Tilt")
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasTiltSet))
+				.sizing(column)
+				.disabled(!tilted)
+				.on_update(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0. }.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			TextButton::new("")
+				.icon("FlipHorizontal")
+				.emphasized(ptz.flip)
+				.tooltip_label(if ptz.flip { "Unflip Canvas" } else { "Flip Canvas" })
+				.tooltip_description(if ptz.flip {
+					"Flip the canvas back to its standard orientation."
+				} else {
+					"Mirrors the view horizontally without changing the artwork."
+				})
 				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasFlip))
+				.sizing(column)
 				.on_update(|_| NavigationMessage::CanvasFlip.into())
 				.widget_instance(),
-		);
+		]));
 	}
-	list.extend([
-		Separator::new(SeparatorStyle::Related).widget_instance(),
+
+	vec![
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
 			.min(0.000001)
@@ -4325,8 +4382,8 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.increment_callback_decrease(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 			.increment_callback_increase(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 			.widget_instance(),
-	]);
-	list
+		PopoverButton::new().popover_layout(Layout(popover)).tooltip_label("View Options").widget_instance(),
+	]
 }
 
 impl Iterator for ClickXRayIter<'_> {
