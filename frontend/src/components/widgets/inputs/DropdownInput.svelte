@@ -141,11 +141,6 @@
 		return DASH_ENTRY;
 	}
 
-	function unFocusDropdownBox(e: FocusEvent) {
-		const blurTarget = (e.target instanceof Element ? e.target.closest("[data-dropdown-input]") : undefined) || undefined;
-		if (blurTarget !== self?.div?.()) open = false;
-	}
-
 	function takesDraggedFile(e: DragEvent): boolean {
 		return takesFileDrop && !disabled && Boolean(e.dataTransfer?.types.includes("Files"));
 	}
@@ -191,17 +186,7 @@
 	bind:this={self}
 	data-dropdown-input
 >
-	<LayoutRow
-		class="dropdown-box"
-		classes={{ disabled, open }}
-		{tooltipLabel}
-		{tooltipDescription}
-		{tooltipShortcut}
-		on:click={() => !disabled && (open = true)}
-		on:blur={unFocusDropdownBox}
-		tabindex={disabled ? undefined : 0}
-		data-floating-menu-spawner
-	>
+	<LayoutRow class="dropdown-box" classes={{ disabled, open }} {tooltipLabel} {tooltipDescription} {tooltipShortcut} on:click={() => !disabled && (open = true)} data-floating-menu-spawner>
 		{#if activeEntry.icon}
 			<IconLabel class="dropdown-icon" icon={activeEntry.icon} />
 		{/if}

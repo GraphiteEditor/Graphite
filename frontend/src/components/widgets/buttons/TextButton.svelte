@@ -75,7 +75,6 @@
 		data-emphasized={emphasized || undefined}
 		data-disabled={disabled || undefined}
 		data-text-button
-		tabindex={disabled ? -1 : undefined}
 		data-floating-menu-spawner
 		data-block-hover-transfer={menuListChildrenExists ? undefined : ""}
 		on:click={onClick}

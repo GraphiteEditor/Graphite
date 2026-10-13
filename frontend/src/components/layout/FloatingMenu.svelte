@@ -102,8 +102,6 @@
 
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
-			// TODO: Close any other floating menus that may already be open, which can happen using tab navigation and Enter/Space Bar to open
-
 			// Close floating menu if pointer strays far enough away
 			window.addEventListener("pointermove", pointerMoveHandler);
 			// Close floating menu if esc is pressed

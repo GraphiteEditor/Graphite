@@ -981,7 +981,6 @@
 								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
 							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.treePath)}
-							tabindex="0"
 						></button>
 					{:else}
 						<div class="expand-arrow-none"></div>
@@ -1119,7 +1118,6 @@
 										e.stopPropagation();
 										editor.toggleLayerChainExpanded(listing.entry.id);
 									}}
-									tabindex="0"
 								>
 									<IconLabel
 										icon={listing.entry.iconName}
