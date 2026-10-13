@@ -1008,7 +1008,14 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 	let parameter_index = network_interface.number_of_imports(&path) - 1;
 	let previous_primary_name = network_interface.displayed_import_name(0, &path);
 
-	network_interface.reorder_import(parameter_index, 0, &path);
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::ReorderImport {
+			start_index: parameter_index,
+			end_index: 0,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
 	let new_primary = network_interface
 		.document_node(&merge, &[])
 		.and_then(|node| node.inputs.first())
@@ -1022,6 +1029,97 @@ async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 	);
 
 	assert_invariants(&editor, "after reordering a parameter to be the primary import");
+}
+
+#[tokio::test]
+async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.add_import(TaggedValue::Number(1.), true, -1, "Parameter", "", &path);
+	let primary_name = network_interface.displayed_import_name(0, &path);
+	let secondary_name = network_interface.displayed_import_name(1, &path);
+	let fed_by_primary = fed_inputs(&editor, &OutputConnector::Import(0), &path);
+
+	// Drop the primary between the first and second secondary imports
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 2 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_import(&path), "the primary's place should be left empty");
+	assert_eq!(network_interface.displayed_import_name(1, &path), secondary_name, "the first secondary import should stay secondary");
+	assert_eq!(network_interface.displayed_import_name(2, &path), primary_name, "the moved import should land where it was dropped");
+	assert_eq!(
+		fed_inputs(&editor, &OutputConnector::Import(2), &path),
+		fed_by_primary,
+		"the moved import should keep feeding what it fed"
+	);
+
+	assert_invariants(&editor, "after moving the primary import among the secondary ones");
+}
+
+#[tokio::test]
+async fn the_primary_import_can_become_the_first_secondary_and_an_empty_primary_can_be_filled() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let network_interface = &editor.active_document().network_interface;
+	let primary_name = network_interface.displayed_import_name(0, &path);
+	let secondary_name = network_interface.displayed_import_name(1, &path);
+	let import_count = network_interface.number_of_imports(&path);
+
+	// Dropped just below the separator, the primary becomes the first secondary import
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_import(&path), "the primary's place should be left empty");
+	assert_eq!(network_interface.displayed_import_name(1, &path), primary_name, "the moved import should be the first secondary one");
+	assert_eq!(network_interface.displayed_import_name(2, &path), secondary_name);
+
+	// Dropping a secondary import into the empty primary fills it, rather than keeping the empty one as a secondary import
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 2, end_index: 0 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(!network_interface.hidden_primary_import(&path), "the primary should be filled");
+	assert_eq!(network_interface.displayed_import_name(0, &path), secondary_name);
+	assert_eq!(network_interface.displayed_import_name(1, &path), primary_name);
+	assert_eq!(network_interface.number_of_imports(&path), import_count, "the empty primary should be gone rather than pushed down");
+
+	assert_invariants(&editor, "after filling an empty primary import");
+}
+
+#[tokio::test]
+async fn the_primary_export_can_become_the_first_secondary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::AddSecondaryExport).await;
+	let network_interface = &editor.active_document().network_interface;
+	let primary_source = network_interface.upstream_output_connector(&InputConnector::Export(0), &path);
+	assert!(primary_source.is_some(), "Merge's primary export should be wired");
+
+	editor.handle_message(NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_export(&path), "the primary's place should be left empty");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::Export(1), &path),
+		primary_source,
+		"the moved export should be the first secondary one"
+	);
+	assert_eq!(network_interface.number_of_exports(&path), 3, "the empty primary should be added in front of both exports");
+
+	assert_invariants(&editor, "after making the primary export secondary");
 }
 
 /// The inputs fed by `output_connector` in the network at `network_path`, in no particular order.

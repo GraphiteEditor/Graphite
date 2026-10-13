@@ -86,7 +86,7 @@
 
 		// Just beside the connector, on the side facing into the graph
 		const [x, y] = isImport ? importsExports.importPosition : importsExports.exportPosition;
-		const anchor: [number, number] = [Number(x) + (isImport ? 7 : -5), Number(y) + index * GRID_SIZE];
+		const anchor: [number, number] = [Number(x) + (isImport ? 7 : -5), Number(y) + importExportRowOffset(index) * GRID_SIZE];
 
 		editingDescription = { isImport, index, anchor, text: description, committedText: description };
 
@@ -100,6 +100,16 @@
 		if (editingDescription.isImport) editor.setImportDescription(editingDescription.index, editingDescription.text);
 		else editor.setExportDescription(editingDescription.index, editingDescription.text);
 		editingDescription.committedText = editingDescription.text;
+	}
+
+	// How many grid cells below the first import or export the one at `index` sits, with a cell of space separating the primary from the secondary ones
+	function importExportRowOffset(index: number): number {
+		return index === 0 ? 0 : index + 1;
+	}
+
+	// The top of the drop line, at the top of the row at `index`, measured from the first row's center
+	function reorderLineTop(index: number): number {
+		return importExportRowOffset(index) * GRID_SIZE - GRID_SIZE / 2;
 	}
 
 	function closeDescriptionPopover() {
@@ -329,6 +339,16 @@
 							}}
 							flush={true}
 						/>
+					{:else}
+						<TextButton
+							label="Make Secondary"
+							action={() => {
+								if (isImport) editor.makeImportSecondary();
+								else editor.makeExportSecondary();
+								closeContextMenu();
+							}}
+							flush={true}
+						/>
 					{/if}
 					{#if isImport && index > 0}
 						<TextButton
@@ -478,7 +498,7 @@
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + index}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
 						{#if frontendOutput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -492,7 +512,7 @@
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
 						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + index}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
 						{#if editingName?.kind === "Import" && editingName.index === index}
 							<input
@@ -536,7 +556,7 @@
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
 						{#if frontendInput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -549,7 +569,7 @@
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + index}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
 						{#if editingName?.kind === "Export" && editingName.index === index}
 							<input
@@ -587,14 +607,14 @@
 				<div
 					class="plus"
 					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 12) / 24}
-					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 12) / 24 + $nodeGraphImportsExports.imports.length}
+					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 12) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length)}
 				>
 					<IconButton size={24} icon="Add" action={() => editor.addSecondaryImport()} />
 				</div>
 				<div
 					class="plus"
 					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 12) / 24}
-					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 12) / 24 + $nodeGraphImportsExports.exports.length}
+					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 12) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length)}
 				>
 					<IconButton size={24} icon="Add" action={() => editor.addSecondaryExport()} />
 				</div>
@@ -603,17 +623,17 @@
 			{#if $nodeGraph.reorderImportIndex !== undefined}
 				{@const position = {
 					x: Number($nodeGraphImportsExports.importPosition[0]),
-					y: Number($nodeGraphImportsExports.importPosition[1]) + Number($nodeGraph.reorderImportIndex) * 24,
+					y: Number($nodeGraphImportsExports.importPosition[1]) + reorderLineTop(Number($nodeGraph.reorderImportIndex)),
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24}></div>
+				<div class="reorder-bar" style:--offset-left={(position.x - 58) / 24} style:--offset-top={position.y / 24}></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
 				{@const position = {
 					x: Number($nodeGraphImportsExports.exportPosition[0]),
-					y: Number($nodeGraphImportsExports.exportPosition[1]) + Number($nodeGraph.reorderExportIndex) * 24,
+					y: Number($nodeGraphImportsExports.exportPosition[1]) + reorderLineTop(Number($nodeGraph.reorderExportIndex)),
 				}}
-				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24}></div>
+				<div class="reorder-bar" style:--offset-left={(position.x + 9) / 24} style:--offset-top={position.y / 24}></div>
 			{/if}
 		{/if}
 	</div>
@@ -1233,12 +1253,13 @@
 					right: -4px;
 				}
 
+				// Centered in the grid cell of space between the primary and the secondary rows
 				&.separator-bottom::after {
-					bottom: -1px;
+					bottom: -13px;
 				}
 
 				&.separator-top::before {
-					top: 0;
+					top: -12px;
 				}
 
 				&.import {

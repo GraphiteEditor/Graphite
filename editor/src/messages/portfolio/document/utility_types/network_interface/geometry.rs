@@ -211,16 +211,31 @@ impl NodeNetworkInterface {
 		if !network_path.is_empty() {
 			let import_start_index = if self.hidden_primary_import(network_path) { 1 } else { 0 };
 			for import_index in import_start_index..self.number_of_imports(network_path) {
-				import_export_ports.insert_output_port_at_center(import_index, import_export_position.0.as_dvec2() + DVec2::new(0., import_index as f64 * 24.));
+				import_export_ports.insert_output_port_at_center(import_index, import_export_position.0.as_dvec2() + DVec2::new(0., import_export_row_offset(import_index)));
 			}
 		}
 
 		let export_start_index = if self.hidden_primary_export(network_path) { 1 } else { 0 };
 		for export_index in export_start_index..network.exports.len() {
-			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., export_index as f64 * 24.));
+			import_export_ports.insert_input_port_at_center(export_index, import_export_position.1.as_dvec2() + DVec2::new(0., import_export_row_offset(export_index)));
 		}
 
 		Some(import_export_ports)
+	}
+
+	/// Where an import (or else an export) dragged to height `y` in node graph space would be dropped, as the index it's moved before.
+	/// Index 0 takes the primary's place.
+	pub fn import_export_drop_position(&self, y: f64, is_import: bool, network_path: &[NodeId]) -> Option<usize> {
+		let (import_position, export_position) = self.import_export_position(network_path)?;
+		let first_row_center = if is_import { import_position.y } else { export_position.y } as f64;
+		let row_count = if is_import { self.number_of_imports(network_path) } else { self.number_of_exports(network_path) };
+
+		// Above the separator, centered in the gap under the first row, it takes the primary's place.
+		// Below it, it goes before the first secondary row below the pointer, or after the last.
+		if y < first_row_center + GRID_SIZE as f64 {
+			return Some(0);
+		}
+		Some((1..row_count).find(|&row| first_row_center + import_export_row_offset(row) > y).unwrap_or(row_count))
 	}
 
 	/// The width of a layer in grid units, which covers its thumbnail, its name and its icons. Cached
@@ -318,4 +333,10 @@ impl NodeNetworkInterface {
 
 		Some((rounded_import_top_left.as_ivec2(), rounded_export_top_right.as_ivec2()))
 	}
+}
+
+/// How far below the first import or export the one at `index` sits, with a grid cell of space separating the primary from the secondary ones.
+fn import_export_row_offset(index: usize) -> f64 {
+	let rows = if index == 0 { 0 } else { index + 1 };
+	(rows * GRID_SIZE as usize) as f64
 }

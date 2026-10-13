@@ -29,7 +29,6 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
-use graphene_std::vector::click_target::ClickTarget;
 use graphene_std::*;
 use kurbo::{DEFAULT_ACCURACY, Shape};
 use renderer::Quad;
@@ -1329,21 +1328,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					*box_selection_dragged = true;
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					self.update_node_graph_hints(responses);
-				} else if self.reordering_import.is_some() || self.reordering_export.is_some() {
-					// The dragged port is dropped before the first one below the pointer, or after the last
-					let below_pointer = |click_target: &ClickTarget| click_target.bounding_box().is_some_and(|[min, max]| (min.y + max.y) / 2. > point.y);
-					let first_below_pointer = network_interface
-						.with_import_export_ports(selection_network_path, |ports| match self.reordering_import {
-							Some(_) => ports.output_ports().find(|(_, click_target)| below_pointer(click_target)).map(|(index, _)| *index),
-							None => ports.input_ports().find(|(_, click_target)| below_pointer(click_target)).map(|(index, _)| *index),
-						})
-						.flatten();
+				} else if self.is_reordering_import_export() {
+					let reordering_import = self.reordering_import.is_some();
+					self.end_index = network_interface.import_export_drop_position(point.y, reordering_import, selection_network_path);
 
-					if self.reordering_import.is_some() {
-						self.end_index = Some(first_below_pointer.unwrap_or_else(|| network_interface.number_of_imports(selection_network_path)));
+					if reordering_import {
 						responses.add(FrontendMessage::UpdateImportReorderIndex { index: self.end_index });
 					} else {
-						self.end_index = Some(first_below_pointer.unwrap_or_else(|| network_interface.number_of_exports(selection_network_path)));
 						responses.add(FrontendMessage::UpdateExportReorderIndex { index: self.end_index });
 					}
 					self.update_node_graph_hints(responses);
@@ -1779,12 +1770,46 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				ImportOrExport::Export(export_index) => NodeGraphMessage::RemoveExport { export_index },
 			}),
 			NodeGraphMessage::ReorderImport { start_index, end_index } => {
-				network_interface.reorder_import(start_index, end_index, selection_network_path);
+				let primary_was_empty = network_interface.hidden_primary_import(breadcrumb_network_path);
+				network_interface.reorder_import(start_index, end_index, breadcrumb_network_path);
+
+				if end_index == 0 {
+					// An empty primary is filled, rather than being pushed down to become a secondary import
+					if primary_was_empty && start_index != 0 {
+						network_interface.remove_import(1, breadcrumb_network_path);
+					}
+
+					// The primary input is always exposed, so a parameter moved there becomes a connector
+					responses.add(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: true });
+				}
+				// The primary moved among the secondary imports leaves an empty primary in its place, rather than promoting the next one
+				else if start_index == 0 {
+					network_interface.add_import(TaggedValue::None, false, -1, "", "", breadcrumb_network_path);
+					let added_index = network_interface.number_of_imports(breadcrumb_network_path) - 1;
+					network_interface.reorder_import(added_index, 0, breadcrumb_network_path);
+				}
+
+				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			NodeGraphMessage::ReorderExport { start_index, end_index } => {
-				network_interface.reorder_export(start_index, end_index, selection_network_path);
+				let primary_was_empty = network_interface.hidden_primary_export(breadcrumb_network_path);
+				network_interface.reorder_export(start_index, end_index, breadcrumb_network_path);
+
+				// An empty primary is filled, rather than being pushed down to become a secondary export
+				if end_index == 0 && primary_was_empty && start_index != 0 {
+					network_interface.remove_export(1, breadcrumb_network_path);
+				}
+				// The primary moved among the secondary exports leaves an empty primary in its place, rather than promoting the next one
+				else if end_index != 0 && start_index == 0 {
+					network_interface.add_export(TaggedValue::None, -1, "", breadcrumb_network_path);
+					let added_index = network_interface.number_of_exports(breadcrumb_network_path) - 1;
+					network_interface.reorder_export(added_index, 0, breadcrumb_network_path);
+					network_interface.set_input(&InputConnector::Export(0), NodeInput::value(TaggedValue::None, false), breadcrumb_network_path);
+				}
+
+				responses.add(NodeGraphMessage::UpdateImportsExports);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}

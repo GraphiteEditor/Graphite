@@ -836,6 +836,20 @@ mod editor_commands {
 		}
 	}
 
+	/// Move the primary import to the first secondary import, leaving the primary empty.
+	fn make_import_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Move the primary export to the first secondary export, leaving the primary empty.
+	fn make_export_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
 	/// Show an import on its subgraph node as an input connector, or else as a parameter in the Inspector.
 	fn set_import_exposed(index: usize, exposed: bool) -> Message {
 		Message::Batched {
