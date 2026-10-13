@@ -549,6 +549,13 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 			.map_err(map_serialization_error(node::ui::OUTPUT_NAMES))?;
 	}
 
+	let output_descriptions = metadata.output_descriptions(metadata_path, runtime_node_id);
+	if output_descriptions.iter().any(|description| !description.is_empty()) {
+		attributes
+			.set_serialized(node::ui::OUTPUT_DESCRIPTIONS, &output_descriptions, timestamp)
+			.map_err(map_serialization_error(node::ui::OUTPUT_DESCRIPTIONS))?;
+	}
+
 	Ok(())
 }
 

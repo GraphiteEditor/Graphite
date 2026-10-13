@@ -54,7 +54,7 @@ impl NodeNetworkInterface {
 				// A peer can name a slot past the end of this network's exports, which is an insert here
 				// rather than a write to a slot that does not exist yet.
 				Some(input) if *export_index >= self.number_of_exports(network_path) => {
-					self.insert_export_slot(network_path, *export_index, input.clone(), String::new());
+					self.insert_export_slot(network_path, *export_index, input.clone(), String::new(), String::new());
 				}
 				Some(input) => {
 					self.set_input_slot(&InputConnector::Export(*export_index), network_path, input.clone());
@@ -107,6 +107,7 @@ impl NodeNetworkInterface {
 					NodeMetadataChange::Locked(locked) => node.set_locked(*locked),
 					NodeMetadataChange::Pinned(pinned) => node.set_pinned(*pinned),
 					NodeMetadataChange::OutputNames(output_names) => node.set_output_names(output_names.clone()),
+					NodeMetadataChange::OutputDescriptions(output_descriptions) => node.set_output_descriptions(output_descriptions.clone()),
 					NodeMetadataChange::InputName { index, name } => node.set_input_name(*index, name.clone()),
 					NodeMetadataChange::WidgetOverride { index, widget_override } => node.set_widget_override(*index, widget_override.clone()),
 				};

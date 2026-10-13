@@ -50,13 +50,13 @@ impl NodeNetworkInterface {
 			InputConnector::Export(export_index) => {
 				// Get export name from parent node metadata input, which must match the number of exports.
 				// Empty string means to use type, or "Export + index" if type is empty determined
+				let encapsulating_metadata = self.encapsulating_node_metadata(network_path).map(|metadata| &metadata.persistent_metadata);
 				let export_name = if network_path.is_empty() {
 					"Canvas".to_string()
 				} else {
-					self.encapsulating_node_metadata(network_path)
-						.and_then(|encapsulating_metadata| encapsulating_metadata.persistent_metadata.output_names.get(*export_index).cloned())
-						.unwrap_or_default()
+					encapsulating_metadata.and_then(|metadata| metadata.output_names.get(*export_index).cloned()).unwrap_or_default()
 				};
+				let export_description = encapsulating_metadata.and_then(|metadata| metadata.output_descriptions.get(*export_index).cloned()).unwrap_or_default();
 
 				let export_name = if !export_name.is_empty() {
 					export_name
@@ -66,7 +66,7 @@ impl NodeNetworkInterface {
 					format!("Export #{}", export_index)
 				};
 
-				(export_name, String::new())
+				(export_name, export_description)
 			}
 		};
 
@@ -105,7 +105,7 @@ impl NodeNetworkInterface {
 				let output_name = node_metadata.persistent_metadata.output_names.get(*output_index).cloned().unwrap_or_default();
 
 				let output_name = if !output_name.is_empty() { output_name } else { output_type.resolved_type_node_string() };
-				(output_name, String::new())
+				(output_name, self.output_description(node_id, *output_index, network_path))
 			}
 			OutputConnector::Import(import_index) => {
 				// Get the import name from the encapsulating node input metadata

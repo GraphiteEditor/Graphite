@@ -313,6 +313,17 @@ impl NodeMut<'_> {
 		changed
 	}
 
+	/// The encapsulating node's descriptions for the network's exports, replaced together since they are stored as one array.
+	pub(crate) fn set_output_descriptions(&mut self, output_descriptions: Vec<String>) -> bool {
+		let changed = self.metadata.output_descriptions != output_descriptions;
+		self.metadata.output_descriptions = output_descriptions;
+		if changed {
+			let change = NodeMetadataChange::OutputDescriptions(self.metadata.output_descriptions.clone());
+			self.deltas.metadata(change);
+		}
+		changed
+	}
+
 	/// The metadata array the node's inputs index, one entry per input.
 	pub(crate) fn input_metadata(&self) -> &[InputMetadata] {
 		&self.metadata.input_metadata

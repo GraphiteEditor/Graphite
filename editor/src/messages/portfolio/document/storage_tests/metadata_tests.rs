@@ -8,12 +8,17 @@ use std::collections::{BTreeSet, HashMap};
 
 use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
-use super::test_support::{load_demo, node_paths};
+use super::test_support::{load_demo, load_demo_with_output_descriptions, node_paths};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use graph_craft::document::NodeId;
 use graphene_std::vector::style::RenderMode;
+
+/// Storage drops output descriptions that are all empty, which means the same as having none.
+fn normalize_output_descriptions(output_descriptions: Vec<String>) -> Vec<String> {
+	if output_descriptions.iter().all(String::is_empty) { Vec::new() } else { output_descriptions }
+}
 
 /// Loads a demo artwork, round-trips its `NodeNetwork + NodeNetworkInterface metadata` through
 /// `Registry`, and asserts every node's `ui::*` attributes survive unchanged.
@@ -21,7 +26,7 @@ use graphene_std::vector::style::RenderMode;
 /// Uses one demo (rather than the full set) because this is an exhaustive per-node check.
 #[test]
 fn editor_metadata_round_trip_against_demo() {
-	let document = load_demo("changing-seasons.graphite");
+	let document = load_demo_with_output_descriptions("changing-seasons.graphite");
 	let interface = &document.network_interface;
 	let source = StorageMetadataView::new(interface);
 
@@ -39,6 +44,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let mut checked_any_position = false;
 	let mut checked_any_layer = false;
 	let mut checked_any_input_metadata = false;
+	let mut checked_any_output_description = false;
 
 	for (network_path, local_id) in node_paths(interface) {
 		let expected_position = source.position(&network_path, local_id);
@@ -47,6 +53,7 @@ fn editor_metadata_round_trip_against_demo() {
 		let expected_locked = source.locked(&network_path, local_id);
 		let expected_pinned = source.pinned(&network_path, local_id);
 		let expected_output_names = source.output_names(&network_path, local_id);
+		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(&network_path, local_id));
 
 		// Use the node's input count as the slot-by-slot iteration bound for the per-input metadata checks.
 		let input_count = interface.document_node(&local_id, &network_path).map(|node| node.inputs.len()).unwrap_or(0);
@@ -73,6 +80,10 @@ fn editor_metadata_round_trip_against_demo() {
 		assert_eq!(entry.locked, expected_locked, "locked mismatch for node {local_id:?} in network {network_path:?}");
 		assert_eq!(entry.pinned, expected_pinned, "pinned mismatch for node {local_id:?} in network {network_path:?}");
 		assert_eq!(entry.output_names, expected_output_names, "output_names mismatch for node {local_id:?} in network {network_path:?}");
+		assert_eq!(
+			entry.output_descriptions, expected_output_descriptions,
+			"output_descriptions mismatch for node {local_id:?} in network {network_path:?}"
+		);
 
 		// Per-input metadata: the entry's `input_metadata` has one slot per input, each matching the trait's
 		// per-field view (same "empty string ↔ None" normalization as `display_name`).
@@ -115,6 +126,9 @@ fn editor_metadata_round_trip_against_demo() {
 		if any_input_metadata_present {
 			checked_any_input_metadata = true;
 		}
+		if !expected_output_descriptions.is_empty() {
+			checked_any_output_description = true;
+		}
 	}
 
 	// Sanity: a real artwork should exercise at least these two shapes; otherwise the test is
@@ -124,6 +138,7 @@ fn editor_metadata_round_trip_against_demo() {
 	// Demo artworks always have some custom widget overrides / input names; if not, the
 	// per-input round-trip isn't actually being exercised here.
 	assert!(checked_any_input_metadata, "demo artwork produced no per-input metadata: fixture is wrong or extraction is broken");
+	assert!(checked_any_output_description, "no output descriptions were round-tripped: fixture is wrong or extraction is broken");
 }
 
 /// Full editor-side round-trip: original interface → Registry → (NodeNetwork, Vec<entry>) →
@@ -131,7 +146,7 @@ fn editor_metadata_round_trip_against_demo() {
 /// the original when read through `StorageMetadataView`.
 #[test]
 fn editor_interface_rebuild_round_trip() {
-	let document = load_demo("changing-seasons.graphite");
+	let document = load_demo_with_output_descriptions("changing-seasons.graphite");
 	let original = &document.network_interface;
 	let original_view = StorageMetadataView::new(original);
 
@@ -212,6 +227,11 @@ fn editor_interface_rebuild_round_trip() {
 			rebuilt_view.output_names(&network_path, local_id),
 			original_view.output_names(&network_path, local_id),
 			"output_names mismatch for node {local_id:?} in network {network_path:?}"
+		);
+		assert_eq!(
+			normalize_output_descriptions(rebuilt_view.output_descriptions(&network_path, local_id)),
+			normalize_output_descriptions(original_view.output_descriptions(&network_path, local_id)),
+			"output_descriptions mismatch for node {local_id:?} in network {network_path:?}"
 		);
 	}
 

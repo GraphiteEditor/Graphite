@@ -77,7 +77,7 @@ impl NodeNetworkInterface {
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
 		let inserted_index = if insert_index == -1 { self.number_of_exports(network_path) } else { insert_index as usize };
-		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string()) {
+		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string(), String::new()) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);

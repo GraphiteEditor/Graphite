@@ -28,6 +28,7 @@ pub struct NodeMetadataEntry {
 	/// returns an error if this length does not match the node's input count.
 	pub input_metadata: Vec<InputMetadataEntry>,
 	pub output_names: Vec<String>,
+	pub output_descriptions: Vec<String>,
 }
 
 /// Per-network metadata. Separate from `NodeMetadataEntry` since these are
@@ -77,6 +78,10 @@ pub trait NodeMetadataSource {
 	}
 	/// Empty vec = no overrides. Stored as a single `ui::output_names` attribute (whole-vec LWW).
 	fn output_names(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Vec<String> {
+		Vec::new()
+	}
+	/// Indexed like `output_names`, where a missing or empty entry is no description. Stored as one `ui::output_descriptions` attribute.
+	fn output_descriptions(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Vec<String> {
 		Vec::new()
 	}
 
