@@ -1,4 +1,3 @@
-pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
 pub use raster_kernels::color_lookup_table;

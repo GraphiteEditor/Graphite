@@ -52,6 +52,36 @@ pub fn adjust_color(adjustment: &Adjustment, color: Color) -> Color {
 	visit_kernel(adjustment, AdjustColor(color))
 }
 
+/// The red, green, blue, and alpha curves of a per-channel adjustment, each sampled at `size` evenly spaced gamma-encoded values from 0 to 1.
+pub fn channel_curves(adjustment: &Adjustment, size: usize) -> Option<[Vec<f32>; 4]> {
+	if !adjustment.is_per_channel() || size < 2 {
+		return None;
+	}
+
+	// Each sample feeds the same value to every channel, which the curves map independently
+	let mut samples: Vec<Color> = (0..size)
+		.map(|index| {
+			let value = index as f32 / (size - 1) as f32;
+			Color::from_gamma_srgb_channels(value, value, value, value)
+		})
+		.collect();
+	adjust_colors(adjustment, &mut samples);
+
+	let channels: Vec<[f32; 4]> = samples.iter().map(Color::to_gamma_srgb_channels).collect();
+	Some(std::array::from_fn(|channel| channels.iter().map(|values| values[channel]).collect()))
+}
+
+/// Whether every color keeps its alpha to within half an 8-bit level.
+/// Only a per-channel adjustment's alpha curve can change it, since the kernels of the others all keep alpha.
+pub fn preserves_alpha(adjustment: &Adjustment) -> bool {
+	const LEVELS: usize = 256;
+
+	channel_curves(adjustment, LEVELS).is_none_or(|[.., alpha]| {
+		let identity = |index: usize| index as f32 / (LEVELS - 1) as f32;
+		alpha.iter().enumerate().all(|(index, value)| (value - identity(index)).abs() <= 0.5 / 255.)
+	})
+}
+
 /// Receives the kernel carrying out an [`Adjustment`], whose type depends on which adjustment it is.
 pub trait AdjustmentVisitor {
 	type Output;

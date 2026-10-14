@@ -26,6 +26,7 @@ graphene-core = { workspace = true }
 graphene-hash = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 node-macro = { workspace = true }
 repeat-nodes = { workspace = true }
 

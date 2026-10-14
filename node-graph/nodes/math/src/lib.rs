@@ -1946,6 +1946,7 @@ fn evaluate_gradient(
 	#[soft(0..1)]
 	position: Item<f64>,
 ) -> Item<Color> {
+	let gradient = raster_kernels::evaluate_gradient_effects(gradient);
 	let settings = vector_types::GradientSettings::from(&gradient);
 	let color = gradient.element().evaluate(*position.element(), settings);
 	Item::new_from_element(color)

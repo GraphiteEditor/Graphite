@@ -1,10 +1,10 @@
-use crate::adjust::Adjust;
+use crate::adjustments::adjust;
 use core_types::Ctx;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
-use graphic_types::Adjustment;
-use raster_types::{CPU, Raster};
+use graphic_types::{Adjustment, Graphic, Vector};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
 pub use core_types::blending::{apply_blend_mode, blend_colors};
@@ -22,7 +22,8 @@ fn mix_colors(
 	#[default(100.)]
 	opacity: Item<f64>,
 ) -> Item<Color> {
-	let mut under = under;
+	let mut under = raster_kernels::evaluate_color_effects(under);
+	let over = raster_kernels::evaluate_color_effects(over);
 	let blend_mode = blend_mode.into_element();
 	let opacity = (opacity.into_element() / 100.) as f32;
 
@@ -32,12 +33,16 @@ fn mix_colors(
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
 #[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
-fn color_overlay<T: Adjust>(
+fn color_overlay<T>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
 		Color,
 		Gradient,
+		Graphic,
+		Vector,
+		Raster<GPU>,
+		String,
 	)]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
@@ -48,14 +53,12 @@ fn color_overlay<T: Adjust>(
 	#[default(100.)]
 	opacity: Item<f64>,
 ) -> Item<T> {
-	let mut image = image;
 	let adjustment = Adjustment::ColorOverlay {
-		color: color.into_element(),
+		color: raster_kernels::evaluate_color_effects(color).into_element(),
 		blend_mode: blend_mode.into_element(),
 		opacity: opacity.into_element(),
 	};
-	image.element_mut().adjust(&adjustment);
-	image
+	adjust(image, adjustment)
 }
 
 #[cfg(test)]
@@ -84,7 +87,7 @@ mod test {
 			BlendMode::Multiply.into(),
 			opacity.into(),
 		);
-		let result = result.into_element();
+		let result = raster_kernels::evaluate_raster_effects(result).into_element();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
