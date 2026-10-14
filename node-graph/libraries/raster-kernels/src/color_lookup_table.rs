@@ -13,30 +13,33 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 pub const LUT_FILE_EXTENSIONS: &[&str] = &["cube", "3dl", "look", "csp", "icc", "icm"];
 
+/// How many files keep their parse results after the adjustments that read them move on to other files.
+const MAX_PARSED_FILES: usize = 8;
+
 /// A file's parse result, in the form the cache shares out.
 type ParsedLut = Result<Arc<Lut>, LutParseError>;
 
-/// The last file a node parsed, kept as the node's own data so the file is not parsed anew each time the node runs again.
-#[derive(Debug, Clone, Default)]
-pub struct LutCache(Arc<Mutex<Option<(ResourceHash, ParsedLut)>>>);
+/// The files parsed most recently, least recent first, shared by every adjustment that reads a lookup table.
+static PARSED_FILES: Mutex<Vec<(ResourceHash, ParsedLut)>> = Mutex::new(Vec::new());
 
-impl LutCache {
-	/// [`Lut::parse`] for a resource, reusing the last result while the file's content hash stays the same.
-	pub fn parse(&self, resource: &Resource) -> ParsedLut {
-		// A lock poisoned by a panic elsewhere still guards a usable cache
-		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+/// [`Lut::parse`] for a resource, reusing the result while recent adjustments keep reading a file with the same content hash.
+pub fn parse_cached(resource: &Resource) -> ParsedLut {
+	// A lock poisoned by a panic elsewhere still guards a usable cache
+	let mut parsed_files = PARSED_FILES.lock().unwrap_or_else(PoisonError::into_inner);
 
-		let hash = resource.hash();
-		if let Some((cached_hash, result)) = cached.as_ref()
-			&& *cached_hash == hash
-		{
-			return result.clone();
-		}
-
-		let result = Lut::parse(resource).map(Arc::new);
-		*cached = Some((hash, result.clone()));
-		result
+	let hash = resource.hash();
+	if let Some(index) = parsed_files.iter().position(|(parsed_hash, _)| *parsed_hash == hash) {
+		let entry = parsed_files.remove(index);
+		let result = entry.1.clone();
+		parsed_files.push(entry);
+		return result;
 	}
+
+	let result = Lut::parse(resource).map(Arc::new);
+	parsed_files.push((hash, result.clone()));
+	let excess = parsed_files.len().saturating_sub(MAX_PARSED_FILES);
+	parsed_files.drain(..excess);
+	result
 }
 
 /// Why a file could not be read as a lookup table.
@@ -423,18 +426,16 @@ mod tests {
 	}
 
 	#[test]
-	fn a_cache_parses_a_file_once_until_the_file_changes() {
-		let file = Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".to_vec());
-		let cache = LutCache::default();
-		let first = cache.parse(&file).unwrap();
-		assert!(Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
+	fn the_cache_parses_a_file_once_while_it_stays_recent() {
+		let file = Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n0.5 1 1\n".to_vec());
+		let first = parse_cached(&file).unwrap();
+		assert!(Arc::ptr_eq(&first, &parse_cached(&file).unwrap()));
 
-		// A cloned node shares its cache
-		assert!(Arc::ptr_eq(&first, &cache.clone().parse(&file).unwrap()));
-
-		// Another file takes its place, a failed one included
-		assert!(cache.parse(&Resource::new(b"hello world".to_vec())).is_err());
-		assert!(!Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
+		// Enough other files push it out, failed ones included
+		for index in 0..MAX_PARSED_FILES {
+			assert!(parse_cached(&Resource::new(format!("not a table {index}").into_bytes())).is_err());
+		}
+		assert!(!Arc::ptr_eq(&first, &parse_cached(&file).unwrap()));
 	}
 
 	#[test]
