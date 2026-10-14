@@ -421,15 +421,23 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 			}
 		}
 
-		let was_dragging = matches!(self.fsm_state, SelectToolFsmState::Dragging { .. });
-		let was_resizing = self.fsm_state == SelectToolFsmState::ResizingBounds;
+		let previous_state = self.fsm_state;
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
 
-		// However a drag or a resize ends, its snapping gesture ends with it
-		let drag_ended = was_dragging && !matches!(self.fsm_state, SelectToolFsmState::Dragging { .. });
-		let resize_ended = was_resizing && self.fsm_state != SelectToolFsmState::ResizingBounds;
-		if drag_ended || resize_ended {
+		// However one of these drags ends, its snapping gesture ends with it
+		let snapping = matches!(
+			previous_state,
+			SelectToolFsmState::Dragging { .. }
+				| SelectToolFsmState::ResizingBounds
+				| SelectToolFsmState::SkewingBounds { .. }
+				| SelectToolFsmState::RotatingBounds
+				| SelectToolFsmState::DraggingPivot
+		);
+		if snapping && std::mem::discriminant(&previous_state) != std::mem::discriminant(&self.fsm_state) {
 			self.tool_data.slide = None;
+			if let Some(bounds) = &mut self.tool_data.bounding_box_manager {
+				(bounds.turning, bounds.skewing) = (None, None);
+			}
 			context.snap_session.end_gesture();
 			responses.add(OverlaysMessage::Draw);
 		}
@@ -1351,6 +1359,9 @@ impl Fsm for SelectToolFsmState {
 				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
 
+					// The pivot snaps to the selected layers too, since they stay put while it moves
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
+
 					state
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
@@ -1362,6 +1373,9 @@ impl Fsm for SelectToolFsmState {
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 					SelectToolFsmState::ResizingBounds
 				} else if skew {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.begin_skewing(SnapView::new(document, *document_id, input), snap_session, &tool_data.layers_dragging);
+					}
 					SelectToolFsmState::SkewingBounds { skew: Key::Control }
 				}
 				// Dragging the selected layers around to transform them
@@ -1392,6 +1406,9 @@ impl Fsm for SelectToolFsmState {
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotate {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.begin_turning(SnapView::new(document, *document_id, input), snap_session, &tool_data.layers_dragging);
+					}
 					SelectToolFsmState::RotatingBounds
 				}
 				// Dragging a selection box
@@ -1556,12 +1573,12 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					skew_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						input.keyboard.key(skew),
 						&mut tool_data.layers_dragging,
-						input.mouse.position,
 						ToolType::Select,
 					);
 				}
@@ -1570,12 +1587,12 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					rotate_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
 						tool_data.drag_start,
-						input.mouse.position,
 						input.keyboard.key(Key::Shift),
 						ToolType::Select,
 					);
@@ -1584,10 +1601,11 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::RotatingBounds
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
-				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let snapped = snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
 
-				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
+				tool_data.pivot_gizmo.pivot.set_viewport_position(document_to_viewport.transform_point2(snapped));
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -2314,9 +2332,12 @@ pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashS
 
 #[cfg(test)]
 mod test_select_tool {
+	use super::SelectOptionsUpdate;
+	use crate::consts::ROTATE_INCREMENT;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 	use crate::test_utils::test_prelude::*;
+	use std::f64::consts::FRAC_PI_2;
 
 	/// Draws a rectangle between two viewport positions, which leaves it selected, and returns its layer.
 	async fn draw_rectangle(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) -> LayerNodeIdentifier {
@@ -2790,5 +2811,198 @@ mod test_select_tool {
 		// Its top left corner is brought a few pixels from the other's bottom right corner
 		resize(&mut editor, DVec2::new(300., 300.), DVec2::new(163., 158.), ModifierKeys::empty()).await;
 		assert_bounds(&editor, layer, [DVec2::new(160., 160.), DVec2::new(360., 360.)]);
+	}
+
+	/// A rectangle turned about its middle by a press just beyond its bottom right corner, which is a hundred from the middle.
+	const TURNED: [DVec2; 2] = [DVec2::new(290., 270.), DVec2::new(410., 430.)];
+	const TURNED_MIDDLE: DVec2 = DVec2::new(350., 350.);
+	const TURN_GRIP: DVec2 = DVec2::new(424., 444.);
+
+	/// Where the turn with a cosine of 0.6 and a sine of 0.8 carries the bottom right corner of [`TURNED`].
+	const ANCHOR_IN_THE_TURN: DVec2 = DVec2::new(322., 446.);
+
+	/// The turn that carries the bottom right corner of [`TURNED`] onto [`ANCHOR_IN_THE_TURN`], in radians.
+	fn onto_the_anchor() -> f64 {
+		DVec2::new(0.6, 0.8).to_angle()
+	}
+
+	/// Where a turn about a pivot through an angle in radians carries a position.
+	fn turned(position: DVec2, pivot: DVec2, angle: f64) -> DVec2 {
+		pivot + DVec2::from_angle(angle).rotate(position - pivot)
+	}
+
+	/// The least and greatest corners of the box around a rectangle once turned about a pivot through an angle in radians.
+	fn turned_bounds([from, to]: [DVec2; 2], pivot: DVec2, angle: f64) -> [DVec2; 2] {
+		let corners = [from, DVec2::new(to.x, from.y), to, DVec2::new(from.x, to.y)].map(|corner| turned(corner, pivot, angle));
+		[corners.into_iter().fold(DVec2::INFINITY, DVec2::min), corners.into_iter().fold(DVec2::NEG_INFINITY, DVec2::max)]
+	}
+
+	/// Draws a small rectangle with its top right corner at [`ANCHOR_IN_THE_TURN`], then the [`TURNED`] rectangle, which is left selected and returned.
+	async fn draw_a_rectangle_to_turn_onto_an_anchor(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+		draw_rectangle(editor, ANCHOR_IN_THE_TURN - DVec2::new(10., 0.), ANCHOR_IN_THE_TURN + DVec2::new(0., 10.)).await;
+		draw_rectangle(editor, TURNED[0], TURNED[1]).await
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_until_its_corner_nears_an_anchor_in_its_path_lands_with_the_corner_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
+
+		// Two degrees short of the anchor, the bottom right corner is a few pixels from it
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor() - 2_f64.to_radians());
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+
+		// The grip stays as far from the middle as it began, so the rectangle only turns
+		let to_document = editor.active_document().metadata().document_to_viewport.inverse();
+		let from_the_middle = |position: DVec2| position.distance(to_document.transform_point2(TURNED_MIDDLE));
+		let session = &editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session;
+		let grip = session.shown_position().expect("the turn should have tried to snap");
+		assert!((from_the_middle(grip) - from_the_middle(to_document.transform_point2(TURN_GRIP))).abs() < 1e-9);
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, onto_the_anchor()));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_with_shift_steps_to_a_multiple_of_the_rotate_increment_and_snaps_to_nothing() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
+
+		// Where the corner would otherwise land on the anchor, the turn of about 51 degrees steps down to 45
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor() - 2_f64.to_radians());
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::SHIFT).await;
+		assert!(editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_none());
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, (3. * ROTATE_INCREMENT).to_radians()));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_with_the_grid_on_and_nothing_nearby_turns_as_far_as_the_pointer_asks() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, TURNED[0], TURNED[1]).await;
+		editor.active_document_mut().snapping_state.grid_snapping = true;
+
+		let angle = 23.7_f64.to_radians();
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, angle);
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, angle));
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_turn_puts_the_rectangle_back_and_ends_the_snapping_gesture() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
+		let shows_an_attempt = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_some();
+
+		let angle = 30_f64.to_radians();
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, angle);
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, angle));
+		assert!(shows_an_attempt(&editor));
+
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, TURNED);
+		assert!(!shows_an_attempt(&editor));
+	}
+
+	/// Where a press takes hold of the skew handle beside the middle of the top edge of a rectangle from (300, 300) to (420, 380).
+	const TOP_SKEW_HANDLE: DVec2 = DVec2::new(370.5, 300.);
+
+	#[tokio::test]
+	async fn a_rectangle_skewed_by_its_top_edge_until_a_corner_nears_a_corner_of_another_lands_on_it_while_the_bottom_stays() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(480., 260.), DVec2::new(520., 300.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(420., 380.)).await;
+
+		// The top right corner is slid to three pixels short of the other's bottom left corner, with the pointer straying downward
+		let pointer = TOP_SKEW_HANDLE + DVec2::new(57., 5.);
+		press_cage_at(&mut editor, TOP_SKEW_HANDLE).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(480., 380.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_skewed_with_control_held_moves_its_top_edge_across_itself_as_well_as_along_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(420., 380.)).await;
+
+		// The top edge goes thirty along and twenty up, while the bottom edge stays
+		let pointer = TOP_SKEW_HANDLE + DVec2::new(30., -20.);
+		press_cage_at(&mut editor, TOP_SKEW_HANDLE).await;
+		move_to(&mut editor, pointer, ModifierKeys::CONTROL).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::CONTROL).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 280.), DVec2::new(450., 380.)]);
+	}
+
+	/// Turns on the pivot that the Select tool turns and scales about, which starts in the middle of the selection.
+	async fn turn_on_the_pivot(editor: &mut EditorTestUtils) {
+		editor.select_tool(ToolType::Select).await;
+		let options = SelectOptionsUpdate::SetPivotGizmoEnabled(true);
+		editor.handle_message(SelectToolMessage::SelectOptions { options }).await;
+	}
+
+	/// Drags the pivot, once drawing the overlays has placed it, from one viewport position to another.
+	async fn drag_pivot(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) {
+		press_cage_at(editor, from).await;
+		move_to(editor, to, ModifierKeys::empty()).await;
+		editor.left_mouseup(to.x, to.y, ModifierKeys::empty()).await;
+	}
+
+	/// Turns the selected rectangle from (300, 300) to (420, 380) a quarter turn about a pivot, held by Shift to a whole number of steps.
+	async fn turn_a_quarter_about(editor: &mut EditorTestUtils, pivot: DVec2) {
+		let grip = DVec2::new(434., 394.);
+		let pointer = turned(grip, pivot, FRAC_PI_2);
+		press_cage_at(editor, grip).await;
+		move_to(editor, pointer, ModifierKeys::SHIFT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+	}
+
+	#[tokio::test]
+	async fn the_pivot_dragged_near_a_corner_of_its_layer_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		turn_on_the_pivot(&mut editor).await;
+
+		// From the middle, the pivot is brought a few pixels from the top left corner, which a turn then goes about
+		drag_pivot(&mut editor, DVec2::new(360., 340.), from + DVec2::new(3., -2.)).await;
+		turn_a_quarter_about(&mut editor, from).await;
+
+		assert_bounds(&editor, layer, turned_bounds([from, to], from, FRAC_PI_2));
+	}
+
+	#[tokio::test]
+	async fn the_pivot_dragged_near_the_middle_of_its_layer_lands_there() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		turn_on_the_pivot(&mut editor).await;
+
+		// The pivot is taken out of the way, then brought back to a few pixels from the middle, which a turn then goes about
+		let (middle, away) = (DVec2::new(360., 340.), DVec2::new(500., 220.));
+		drag_pivot(&mut editor, middle, away).await;
+		drag_pivot(&mut editor, away, middle + DVec2::new(2., -3.)).await;
+		turn_a_quarter_about(&mut editor, middle).await;
+
+		assert_bounds(&editor, layer, turned_bounds([from, to], middle, FRAC_PI_2));
 	}
 }

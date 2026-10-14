@@ -9,7 +9,10 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
-use crate::messages::tool::common_functionality::utility_functions::is_almost_colinear;
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::transformation_cage::MIN_FEATURE_TRAVEL;
+use crate::messages::tool::common_functionality::utility_functions::{is_almost_colinear, push_nearest_anchors};
+use crate::messages::tool::tool_messages::path_tool::MAX_SNAPPING_POINTS;
 use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
@@ -18,7 +21,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{Vector, VectorModificationType};
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
 
@@ -29,9 +32,11 @@ const INCREMENTS_KEY: Key = Key::Control;
 #[derive(ExtractField)]
 pub struct TransformLayerMessageContext<'a> {
 	pub document: &'a DocumentMessageHandler,
+	pub document_id: DocumentId,
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub tool_data: &'a ToolData,
 	pub shape_editor: &'a mut ShapeState,
+	pub snap_session: &'a mut SnapSession,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
@@ -88,6 +93,8 @@ pub struct TransformLayerMessageHandler {
 	initial_transform: DAffine2,
 	operation_count: usize,
 	was_grabbing: bool,
+	/// What the transform under way snaps by, if it began a snapping gesture.
+	snapping: Option<Snapping>,
 
 	// Pen tool (outgoing handle GRS manipulation)
 	handle: DVec2,
@@ -103,11 +110,14 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, context: TransformLayerMessageContext) {
 		let TransformLayerMessageContext {
 			document,
+			document_id,
 			input,
 			tool_data,
 			shape_editor,
+			snap_session,
 			viewport,
 		} = context;
+		let view = SnapView::new(document, document_id, input);
 
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
 		let using_select_tool = tool_data.active_tool_type == ToolType::Select;
@@ -340,6 +350,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(OverlaysMessage::RemoveProvider {
 						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 					});
+					self.end_snapping(snap_session, responses);
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
@@ -352,6 +363,31 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.layer_bounding_box = selected.bounding_box();
 				let bounding_box = select_tool::create_bounding_box_transform(document);
 				self.state.local_transform_axes = [bounding_box.x_axis, bounding_box.y_axis].map(|axis| axis.normalize_or_zero());
+
+				// The Pen's handle is left unsnapped, since the Pen snaps the anchor it previews through the same session
+				let grip = self.local_mouse_start;
+				let snapping = if using_pen_tool {
+					None
+				} else if using_path_tool {
+					Some(Snapping::of_points(document, &selected_layers, shape_editor, grip))
+				} else if matches!(selected.original_transforms, OriginalTransforms::Layer(_)) {
+					let moving = Moving {
+						layers: selected_layers.clone(),
+						..Default::default()
+					};
+					Some((Snapping::of_layers(document, &selected_layers, self.layer_bounding_box, grip), moving))
+				} else {
+					None
+				};
+
+				match snapping {
+					Some((mut snapping, moving)) => {
+						snapping.build(&self.transform_operation, &self.state, document);
+						snap_session.begin_gesture(view, moving);
+						self.snapping = Some(snapping);
+					}
+					None => self.end_snapping(snap_session, responses),
+				}
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
@@ -511,13 +547,18 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(OverlaysMessage::RemoveProvider {
 					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
 				});
+				self.end_snapping(snap_session, responses);
 			}
-			TransformLayerMessage::ConstrainX => {
-				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::X, &mut selected, &self.state, document);
-				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
-			}
-			TransformLayerMessage::ConstrainY => {
-				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::Y, &mut selected, &self.state, document);
+			TransformLayerMessage::ConstrainX | TransformLayerMessage::ConstrainY => {
+				let axis = if matches!(message, TransformLayerMessage::ConstrainX) { Axis::X } else { Axis::Y };
+				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(axis, &mut selected, &self.state, document);
+
+				// A scale snaps along different axes once constrained, so its features are built again
+				if let Some(snapping) = &mut self.snapping {
+					snapping.build(&self.transform_operation, &self.state, document);
+					snapping.snap(&mut self.transform_operation, &self.state, view, snap_session);
+				}
+
 				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
@@ -532,7 +573,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				let new_increments = input.keyboard.get(increments_key as usize);
 				if new_increments != self.state.is_rounded_to_intervals {
 					self.state.is_rounded_to_intervals = new_increments;
-					self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+					snap_and_apply(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 				}
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
@@ -544,7 +585,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
 							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(delta_scaled));
-							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+							snap_and_apply(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 						}
 						TransformOperation::Rotating(rotation) => {
 							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
@@ -553,7 +594,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 								let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 								self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-								self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+								snap_and_apply(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 							}
 						}
 						TransformOperation::Scaling(mut scale) => {
@@ -576,7 +617,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 								scale = scale.increment_amount(change);
 								self.transform_operation = TransformOperation::Scaling(scale);
-								self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
+								snap_and_apply(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 							}
 						}
 					};
@@ -594,22 +635,26 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					self.typing.type_negate();
 				}
 				self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, &self.state, document);
+				snap_again(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
 				if self.transform_operation.can_begin_typing() {
-					self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, &self.state, document)
+					self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, &self.state, document);
+					snap_again(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
-					self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, &self.state, document)
+					self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, &self.state, document);
+					snap_again(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
 				if self.typing.digits.is_empty() {
 					self.transform_operation.negate(&mut selected, &self.state, document);
 				}
-				self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, &self.state, document)
+				self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, &self.state, document);
+				snap_again(&mut self.transform_operation, self.snapping.as_ref(), &self.state, view, snap_session, &mut selected);
 			}
 			TransformLayerMessage::SetPivotGizmo { pivot_gizmo } => {
 				self.pivot_gizmo = pivot_gizmo;
@@ -652,6 +697,14 @@ impl TransformLayerMessageHandler {
 		self.transform_operation.hints(responses, self.state.is_transforming_in_local_space);
 	}
 
+	/// Ends the snapping gesture of the transform, if it began one, and takes down what it showed.
+	fn end_snapping(&mut self, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
+		if self.snapping.take().is_some() {
+			snap_session.end_gesture();
+			responses.add(OverlaysMessage::Draw);
+		}
+	}
+
 	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
 		ghost_outline.clear();
 		for &layer in shape_editor.selected_shape_state.keys() {
@@ -667,6 +720,227 @@ impl TransformLayerMessageHandler {
 			};
 			ghost_outline.push((outline, transform));
 		}
+	}
+}
+
+/// What a transform snaps by, built as it begins so that an engaged snap holds from move to move.
+#[derive(Clone, Debug, Default)]
+struct Snapping {
+	/// Where the pointer took hold, in document space.
+	grip: DVec2,
+	/// Where each feature begins in document space: the corners, edge middles, and center of the box around the transformed layers, then their nearest anchors, or else the selected points.
+	starts: Vec<DVec2>,
+	/// Which starts make up the box around the transformed layers, if they have one.
+	box_features: Option<BoxFeatures>,
+	/// The box corner nearest the grip, or without a box, the start nearest it.
+	nearest: usize,
+	/// The features the operation under way snaps by.
+	features: Vec<FeatureMap>,
+	/// The feature the pointer carries.
+	lead: usize,
+	/// What the features are snapped with, apart from the track a constraint holds them to.
+	options: PointOptions,
+}
+
+impl Snapping {
+	/// Gathers what transformed layers snap by, given their box in the viewport and the grip.
+	fn of_layers(document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier], viewport_box: Quad, grip: DVec2) -> Self {
+		let metadata = document.metadata();
+		let mut snapping = Self { grip, ..Default::default() };
+
+		// The box is measured in the view the latest render was made with, which can lag a zoom or tilt
+		if layers.iter().any(|&layer| metadata.bounding_box_viewport(layer).is_some()) {
+			let corners = (metadata.rendered_document_to_viewport.inverse() * viewport_box).0;
+			let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+			snapping.starts.extend(corners.into_iter().chain(middles));
+			snapping.starts.push(corners.iter().sum::<DVec2>() / 4.);
+
+			// Along each document axis, the corner furthest toward either end carries that side of the box
+			let side = |axis: usize, toward_high: bool| {
+				let along = |&index: &usize| if toward_high { corners[index][axis] } else { -corners[index][axis] };
+				(0..4).max_by(|a, b| along(a).total_cmp(&along(b)))
+			};
+			snapping.box_features = Some(BoxFeatures {
+				corners: [0, 1, 2, 3],
+				sides: [0, 1].map(|axis| [side(axis, false), side(axis, true)]),
+			});
+
+			let distance_to_grip = |index: &usize| corners[*index].distance_squared(grip);
+			snapping.nearest = (0..4).min_by(|a, b| distance_to_grip(a).total_cmp(&distance_to_grip(b))).unwrap_or_default();
+		}
+
+		push_nearest_anchors(&mut snapping.starts, document, layers, grip);
+		snapping
+	}
+
+	/// Gathers what the selected points of transformed layers snap by, and what moves with them, given the grip.
+	fn of_points(document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier], shape_editor: &ShapeState, grip: DVec2) -> (Self, Moving) {
+		let mut moving = Moving::default();
+		let mut starts = Vec::new();
+
+		for &layer in layers {
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+			let to_document = document.metadata().transform_to_document_as_rendered_if_feeds(layer, &document.network_interface);
+
+			// A selected segment moves the anchors at its ends
+			let selected_segments = shape_editor.selected_segments_in_layer(layer);
+			let segment_ends = vector
+				.segment_iter()
+				.filter(|(segment, ..)| selected_segments.is_some_and(|selected| selected.contains(segment)))
+				.flat_map(|(_, _, start, end)| [ManipulatorPointId::Anchor(start), ManipulatorPointId::Anchor(end)]);
+			let points: Vec<ManipulatorPointId> = shape_editor.selected_points_in_layer(layer).into_iter().flatten().copied().chain(segment_ends).collect();
+			if points.is_empty() {
+				continue;
+			}
+
+			moving.edited.push(layer);
+			for point in points {
+				if let Some(anchor) = point.get_anchor(&vector) {
+					moving.anchors.push((layer, anchor));
+				}
+				if let Some(position) = point.get_position(&vector) {
+					starts.push(to_document.transform_point2(position));
+				}
+			}
+		}
+
+		// Points far from the grip seldom decide where a transform lands, so only the nearest snap. O(n log n) in the selected points.
+		starts.retain(|start| start.is_finite());
+		starts.sort_by(|a, b| a.distance_squared(grip).total_cmp(&b.distance_squared(grip)));
+		starts.dedup_by(|a, b| a.abs_diff_eq(*b, 1e-6));
+		starts.truncate(MAX_SNAPPING_POINTS);
+
+		(Self { grip, starts, ..Default::default() }, moving)
+	}
+
+	/// Builds the features an operation snaps by from the starts, which stay the same from move to move while its constraint does.
+	fn build(&mut self, operation: &TransformOperation, state: &TransformationState, document: &DocumentMessageHandler) {
+		let (pivot, grip) = (state.document_space_pivot, self.grip);
+		self.features.clear();
+		self.lead = 0;
+		self.options = PointOptions::default();
+
+		match operation {
+			TransformOperation::None => {}
+			TransformOperation::Grabbing(_) => {
+				self.features = self.starts.iter().copied().map(FeatureMap::sliding_from).collect();
+				self.lead = self.nearest;
+				self.options.box_features = self.box_features;
+			}
+			TransformOperation::Rotating(_) => {
+				let moves = |start: &DVec2| start.distance(pivot) > MIN_FEATURE_TRAVEL * grip.distance(pivot);
+				let turned = |start: DVec2| FeatureMap::turning_about(start, grip, pivot);
+				self.features = self.starts.iter().copied().filter(moves).chain([grip]).filter_map(turned).collect();
+			}
+			TransformOperation::Scaling(scale) => {
+				// The axes the scale is applied along, in document space
+				let to_document = document.metadata().document_to_viewport.inverse() * state.local_to_viewport_transform();
+				let [Some(x_axis), Some(y_axis)] = [DVec2::X, DVec2::Y].map(|axis| to_document.transform_vector2(axis).try_normalize()) else {
+					return;
+				};
+				let axes = [x_axis, y_axis];
+
+				// A scale held at 1 by a constraint gets a direction of its own, so features level with the pivot along that axis can still snap
+				let held = match scale.constraint {
+					Axis::Both => None,
+					Axis::X => Some(1),
+					Axis::Y => Some(0),
+				};
+				let stretched = |start: DVec2| {
+					let mut feature = FeatureMap::stretching(start, pivot, axes);
+					if let Some(axis) = held {
+						let column = feature.matrix.col_mut(axis);
+						feature.offset += *column - axes[axis];
+						*column = axes[axis];
+					}
+					feature
+				};
+
+				self.features = self.starts.iter().copied().chain([grip]).map(stretched).collect();
+			}
+		}
+
+		// A turn or a scale is carried by the grip, which comes last and only follows
+		if matches!(operation, TransformOperation::Rotating(_) | TransformOperation::Scaling(_)) && !self.features.is_empty() {
+			self.lead = self.features.len() - 1;
+			self.options.snapping = Some(self.lead);
+			self.options.ignores_grid = true;
+		}
+	}
+
+	/// Snaps the amount the pointer asks of an operation, which keeps that amount and applies the snapped one in its place.
+	fn snap(&self, operation: &mut TransformOperation, state: &TransformationState, view: SnapView, snap_session: &mut SnapSession) {
+		operation.clear_snapped();
+
+		// A typed value or a step of the increments is applied as it is
+		if operation.is_typing() || state.is_rounded_to_intervals || self.features.is_empty() {
+			snap_session.forget();
+			return;
+		}
+
+		let document_to_viewport = view.document.metadata().document_to_viewport;
+		let viewport_to_document = document_to_viewport.inverse();
+		let mut snap = |free: DVec2, required: Option<Locus>| {
+			let options = PointOptions { required, ..self.options };
+			snap_session.snap_features(view, &self.features, self.lead, free, options)
+		};
+
+		match operation {
+			TransformOperation::None => {}
+			TransformOperation::Grabbing(translation) => {
+				// The displacement is taken into document space the way it is applied, and the snapped one is brought back the same way
+				let free = state.local_to_viewport_transform().transform_vector2(translation.to_dvec(state, view.document));
+				let along_constraint = state.constraint_axis(translation.constraint);
+				let required = along_constraint.and_then(|axis| Locus::line(DVec2::ZERO, viewport_to_document.transform_vector2(axis)));
+
+				let slid = snap(viewport_to_document.transform_vector2(free), required);
+				translation.snapped = Some(document_to_viewport.transform_vector2(slid) / document_to_viewport.matrix2.y_axis.length());
+			}
+			TransformOperation::Rotating(rotation) => {
+				// Measured in the viewport, where the turn is applied, which a flipped canvas mirrors
+				let seen = |point: DVec2| document_to_viewport.transform_point2(point);
+				let (pivot, grip) = (state.document_space_pivot, self.grip);
+				let free = seen(pivot) + DVec2::from_angle(rotation.dragged_angle).rotate(seen(grip) - seen(pivot));
+
+				let turned = snap(viewport_to_document.transform_point2(free), Locus::circle(pivot, pivot.distance(grip)));
+				let Some(angle) = (seen(grip) - seen(pivot)).try_angle_to(seen(turned) - seen(pivot)) else {
+					return;
+				};
+
+				// The snapped angle keeps the whole turns the pointer has wound through
+				rotation.snapped = Some(rotation.dragged_angle + (angle - rotation.dragged_angle + PI).rem_euclid(TAU) - PI);
+			}
+			TransformOperation::Scaling(scale) => {
+				// The factors along both axes, with a constraint holding the other one at 1
+				let factor = scale.dragged_factor;
+				let (free, required) = match scale.constraint {
+					Axis::Both => (DVec2::splat(factor), Locus::line(DVec2::ZERO, DVec2::ONE)),
+					Axis::X => (DVec2::new(factor, 1.), Locus::line(DVec2::new(0., 1.), DVec2::X)),
+					Axis::Y => (DVec2::new(1., factor), Locus::line(DVec2::new(1., 0.), DVec2::Y)),
+				};
+
+				let stretched = snap(free, required);
+				scale.snapped = Some(if scale.constraint == Axis::Y { stretched.y } else { stretched.x });
+			}
+		}
+	}
+}
+
+/// Snaps what the pointer asks of the operation, if the transform is snapping, then applies it.
+fn snap_and_apply(operation: &mut TransformOperation, snapping: Option<&Snapping>, state: &TransformationState, view: SnapView, snap_session: &mut SnapSession, selected: &mut Selected) {
+	if let Some(snapping) = snapping {
+		snapping.snap(operation, state, view, snap_session);
+	}
+	operation.apply_transform_operation(selected, state, view.document);
+}
+
+/// Snaps the operation again once a key has changed its amount, if the transform is snapping, and applies the snapped amount. A typed amount, which the key already applied, is left as it is.
+fn snap_again(operation: &mut TransformOperation, snapping: Option<&Snapping>, state: &TransformationState, view: SnapView, snap_session: &mut SnapSession, selected: &mut Selected) {
+	let Some(snapping) = snapping else { return };
+	snapping.snap(operation, state, view, snap_session);
+
+	if !operation.is_typing() {
+		operation.apply_transform_operation(selected, state, view.document);
 	}
 }
 
@@ -763,8 +1037,9 @@ mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+	use crate::messages::portfolio::document::utility_types::transformation::TransformOperation;
 	use crate::messages::prelude::Message;
-	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
+	use crate::messages::tool::transform_layer::transform_layer_message_handler::{TransformLayerMessageHandler, VectorModificationType};
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
@@ -777,6 +1052,61 @@ mod test_transform_layer {
 		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), layer, network_interface)?;
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))
+	}
+
+	/// Draws a rectangle between two viewport positions, which leaves it selected, and returns its layer.
+	async fn draw_rectangle(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) -> LayerNodeIdentifier {
+		editor.draw_rect(from.x, from.y, to.x, to.y).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn rectangle should be selected");
+		assert_bounds(editor, layer, [from, to]);
+		layer
+	}
+
+	/// Asserts the least and greatest corners of a layer's bounding box in the viewport.
+	fn assert_bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier, [expected_min, expected_max]: [DVec2; 2]) {
+		let [min, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the layer should have a bounding box");
+		assert!(
+			min.distance(expected_min) < 1e-6 && max.distance(expected_max) < 1e-6,
+			"the layer spans {min} to {max} rather than {expected_min} to {expected_max}"
+		);
+	}
+
+	/// Moves the pointer to a viewport position with no button held, which a transform under way follows.
+	async fn move_pointer(editor: &mut EditorTestUtils, position: DVec2, modifier_keys: ModifierKeys) {
+		editor.move_mouse(position.x, position.y, modifier_keys, MouseKeys::NONE).await;
+	}
+
+	/// Begins a transform with the pointer taking hold at a viewport position.
+	async fn begin_at(editor: &mut EditorTestUtils, begin: TransformLayerMessage, grip: DVec2) {
+		move_pointer(editor, grip, ModifierKeys::empty()).await;
+		editor.handle_message(begin).await;
+	}
+
+	fn transform_layer_handler(editor: &EditorTestUtils) -> &TransformLayerMessageHandler {
+		&editor.editor.dispatcher.message_handlers.tool_message_handler.transform_layer_handler
+	}
+
+	fn shows_a_snap(editor: &EditorTestUtils) -> bool {
+		editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_some()
+	}
+
+	/// A rectangle turned about its middle by a pointer taking hold just beyond its bottom right corner, which is a hundred from the middle.
+	const TURNED: [DVec2; 2] = [DVec2::new(290., 270.), DVec2::new(410., 430.)];
+	const TURNED_MIDDLE: DVec2 = DVec2::new(350., 350.);
+	const TURN_GRIP: DVec2 = DVec2::new(424., 444.);
+
+	/// Where the turn with a cosine of 0.6 and a sine of 0.8 carries the bottom right corner of [`TURNED`].
+	const ANCHOR_IN_THE_TURN: DVec2 = DVec2::new(322., 446.);
+
+	/// Where a turn about a pivot through an angle in radians carries a position.
+	fn turned(position: DVec2, pivot: DVec2, angle: f64) -> DVec2 {
+		pivot + DVec2::from_angle(angle).rotate(position - pivot)
+	}
+
+	/// The least and greatest corners of the box around a rectangle once turned about a pivot through an angle in radians.
+	fn turned_bounds([from, to]: [DVec2; 2], pivot: DVec2, angle: f64) -> [DVec2; 2] {
+		let corners = [from, DVec2::new(to.x, from.y), to, DVec2::new(from.x, to.y)].map(|corner| turned(corner, pivot, angle));
+		[corners.into_iter().fold(DVec2::INFINITY, DVec2::min), corners.into_iter().fold(DVec2::NEG_INFINITY, DVec2::max)]
 	}
 
 	#[tokio::test]
@@ -1318,5 +1648,221 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 		let final_child_transform = get_layer_transform(&mut editor, child_layer_id).await.unwrap();
 		assert!(!final_child_transform.abs_diff_eq(original_child_transform, 1e-5), "Child layer inside transformed group should change");
+	}
+
+	#[tokio::test]
+	async fn a_grabbed_rectangle_brought_near_a_corner_of_another_lands_on_it_and_follows_the_pointer_again_once_moved_on() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		// Its top left corner is brought three pixels from the other's bottom right corner one way, and two the other
+		let grip = DVec2::new(330., 320.);
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		move_pointer(&mut editor, grip + DVec2::new(-97., -122.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(200., 180.), DVec2::new(260., 230.)]);
+
+		// The distance shown is the snapped one, while the pointer's own goes on from where the pointer is
+		let handler = transform_layer_handler(&editor);
+		let TransformOperation::Grabbing(translation) = handler.transform_operation else {
+			panic!("a grab should be under way")
+		};
+		assert!(translation.to_dvec(&handler.state, editor.active_document()).abs_diff_eq(DVec2::new(-100., -120.), 1e-6));
+		assert!(translation.dragged_distance.abs_diff_eq(DVec2::new(-97., -122.), 1e-6));
+
+		// Far from anything, it has moved exactly as far as the pointer
+		move_pointer(&mut editor, grip + DVec2::new(180., 60.), ModifierKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		assert_bounds(&editor, layer, [DVec2::new(480., 360.), DVec2::new(540., 410.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_grabbed_along_x_stays_level_and_still_lands_on_a_corner_along_that_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 180.), DVec2::new(360., 230.)).await;
+
+		// Its top left corner is brought three pixels short of the other's bottom right corner, with the pointer straying downward
+		let grip = DVec2::new(330., 200.);
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		move_pointer(&mut editor, grip + DVec2::new(-97., 6.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(200., 180.), DVec2::new(260., 230.)]);
+	}
+
+	#[tokio::test]
+	async fn a_typed_distance_and_one_stepped_by_control_are_applied_exactly_beside_a_corner_they_would_otherwise_snap_to() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(300., 100.), DVec2::new(400., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(100., 180.), DVec2::new(160., 230.)).await;
+		let grip = DVec2::new(130., 200.);
+		let near_the_corner = grip + DVec2::new(137., 4.);
+
+		// Grabbed along X to three pixels short of the other's bottom left corner, its top right corner lands on it
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		move_pointer(&mut editor, near_the_corner, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(240., 180.), DVec2::new(300., 230.)]);
+		assert!(shows_a_snap(&editor));
+
+		// Typed, that distance is applied as it is, with nothing shown as snapped
+		for digit in [1, 3, 7] {
+			editor.handle_message(TransformLayerMessage::TypeDigit { digit }).await;
+		}
+		assert_bounds(&editor, layer, [DVec2::new(237., 180.), DVec2::new(297., 230.)]);
+		assert!(!shows_a_snap(&editor));
+
+		// With the digits deleted, the pointer's own distance snaps again
+		for _ in 0..3 {
+			editor.handle_message(TransformLayerMessage::TypeBackspace).await;
+		}
+		assert_bounds(&editor, layer, [DVec2::new(240., 180.), DVec2::new(300., 230.)]);
+		assert!(shows_a_snap(&editor));
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+
+		// With Control held, it is only stepped to a whole number of pixels
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		move_pointer(&mut editor, near_the_corner, ModifierKeys::CONTROL).await;
+		assert_bounds(&editor, layer, [DVec2::new(237., 180.), DVec2::new(297., 230.)]);
+		assert!(!shows_a_snap(&editor));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_rotated_until_its_corner_nears_an_anchor_in_its_path_lands_with_the_corner_on_it_at_its_own_size() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, ANCHOR_IN_THE_TURN - DVec2::new(10., 0.), ANCHOR_IN_THE_TURN + DVec2::new(0., 10.)).await;
+		let layer = draw_rectangle(&mut editor, TURNED[0], TURNED[1]).await;
+		let original = get_layer_transform(&mut editor, layer).await.expect("the rectangle should have a transform");
+
+		// Two degrees short of the anchor, the bottom right corner is a few pixels from it
+		let onto_the_anchor = DVec2::new(0.6, 0.8).to_angle();
+		begin_at(&mut editor, TransformLayerMessage::BeginRotate, TURN_GRIP).await;
+		move_pointer(&mut editor, turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor - 2_f64.to_radians()), ModifierKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, onto_the_anchor));
+
+		// It only turned, keeping its size
+		let rotated = get_layer_transform(&mut editor, layer).await.expect("the rectangle should have a transform");
+		let size = |transform: DAffine2| DVec2::new(transform.matrix2.x_axis.length(), transform.matrix2.y_axis.length());
+		assert!(size(rotated).abs_diff_eq(size(original), 1e-9), "the rectangle was scaled from {} to {}", size(original), size(rotated));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_scaled_until_its_corner_nears_a_corner_of_another_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(390., 360.), DVec2::new(450., 420.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 340.)).await;
+
+		// Taken hold of by its bottom right corner and scaled about its middle by 1.9, which leaves that corner a few pixels from the other's top left corner
+		begin_at(&mut editor, TransformLayerMessage::BeginScale, DVec2::new(360., 340.)).await;
+		move_pointer(&mut editor, DVec2::new(387., 358.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(270., 280.), DVec2::new(390., 360.)]);
+
+		// The factor shown is the snapped one, while the pointer's own stays where it asked
+		let TransformOperation::Scaling(scale) = transform_layer_handler(&editor).transform_operation else {
+			panic!("a scale should be under way")
+		};
+		assert!((scale.to_f64(false) - 2.).abs() < 1e-9 && (scale.dragged_factor - 1.9).abs() < 1e-9);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_scaled_along_x_changes_only_its_width_and_still_lands_on_a_corner_along_that_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(390., 340.), DVec2::new(450., 400.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 340.)).await;
+
+		// Scaled by 1.9 across its middle, its bottom right corner comes three pixels short of the other's top left corner, with the pointer straying downward
+		begin_at(&mut editor, TransformLayerMessage::BeginScale, DVec2::new(360., 330.)).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		move_pointer(&mut editor, DVec2::new(387., 333.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(270., 300.), DVec2::new(390., 340.)]);
+	}
+
+	#[tokio::test]
+	async fn escape_puts_a_snapped_grab_back_and_neither_it_nor_a_confirmed_grab_leaves_anything_shown_as_snapped() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+		let grip = DVec2::new(330., 320.);
+		let near_the_corner = grip + DVec2::new(-97., -122.);
+
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		move_pointer(&mut editor, near_the_corner, ModifierKeys::empty()).await;
+		assert!(shows_a_snap(&editor));
+
+		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(360., 350.)]);
+		assert!(!shows_a_snap(&editor));
+
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		move_pointer(&mut editor, near_the_corner, ModifierKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		assert_bounds(&editor, layer, [DVec2::new(200., 180.), DVec2::new(260., 230.)]);
+		assert!(!shows_a_snap(&editor));
+	}
+
+	#[tokio::test]
+	async fn a_path_anchor_grabbed_near_a_corner_of_a_rectangle_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(400., 300., 500., 380.).await;
+
+		// A path is drawn with the Pen in a layer of its own
+		let (first, second) = (DVec2::new(100., 100.), DVec2::new(200., 220.));
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		for anchor in [first, second] {
+			editor.click_tool(ToolType::Pen, MouseKeys::LEFT, anchor, ModifierKeys::empty()).await;
+		}
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn path should be selected");
+
+		// Its second anchor is selected with the Path tool, then grabbed to a few pixels from the rectangle's top left corner
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, second, ModifierKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::BeginGrab).await;
+		move_pointer(&mut editor, DVec2::new(404., 297.), ModifierKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		let anchors: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| to_viewport.transform_point2(position)).collect();
+		assert_eq!(anchors.len(), 2, "unexpected anchors {anchors:?}");
+		assert!(
+			anchors[0].distance(first) < 1e-6 && anchors[1].distance(DVec2::new(400., 300.)) < 1e-6,
+			"unexpected anchors {anchors:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_quarter_turned_rectangle_grabbed_along_its_own_x_axis_moves_only_along_that_axis() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 140.)).await;
+
+		// Turned a quarter turn about its middle, its own X axis runs down the viewport
+		begin_at(&mut editor, TransformLayerMessage::BeginRotate, DVec2::new(250., 120.)).await;
+		for digit in [9, 0] {
+			editor.handle_message(TransformLayerMessage::TypeDigit { digit }).await;
+		}
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		assert_bounds(&editor, layer, [DVec2::new(130., 70.), DVec2::new(170., 170.)]);
+
+		// Pressing X twice holds the grab to that axis, so only the pointer's downward travel moves it
+		let grip = DVec2::new(150., 120.);
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		move_pointer(&mut editor, grip + DVec2::new(30., 50.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(130., 120.), DVec2::new(170., 220.)]);
 	}
 }

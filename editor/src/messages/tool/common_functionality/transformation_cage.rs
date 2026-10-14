@@ -1,10 +1,12 @@
-use super::snap_session::{BoxFeatures, FeatureMap, Locus, PointOptions, SnapSession, SnapView};
+use super::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use super::utility_functions::push_nearest_anchors;
 use crate::consts::{
 	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
 	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DMat2, DVec2};
@@ -330,6 +332,34 @@ impl SelectedEdges {
 	}
 }
 
+/// How far a feature of a turn or skew must move per unit the lead moves to be snapped.
+/// Less is rounding error on a feature that stays put, which the solver would divide by.
+pub const MIN_FEATURE_TRAVEL: f64 = 1e-9;
+
+/// What a turn of the cage snaps by, built once as it begins so that an engaged snap holds from move to move.
+#[derive(Clone, Debug)]
+pub struct Turning {
+	/// What the cage turns about, in document space.
+	pivot: DVec2,
+	/// Where the pointer took hold, in document space.
+	grip: DVec2,
+	/// The cage's corners and edge middles and the nearest anchors of the turned layers, then the grip, which only follows.
+	features: Vec<FeatureMap>,
+}
+
+/// What a skew of the cage snaps by, built once as it begins so that an engaged snap holds from move to move.
+#[derive(Clone, Debug)]
+pub struct Skewing {
+	/// Where the pointer took hold, in document space.
+	grip: DVec2,
+	/// The middle of the dragged edge, which the pointer carries, in document space.
+	lead_start: DVec2,
+	/// The direction of the dragged edge in document space.
+	edge_direction: DVec2,
+	/// The middle of the dragged edge, then the cage's other corners and edge middles and the nearest anchors of the skewed layers.
+	features: Vec<FeatureMap>,
+}
+
 /// Contains info on the overlays for the bounding box and transform handles
 #[derive(Clone, Debug, Default)]
 pub struct BoundingBoxManager {
@@ -345,6 +375,10 @@ pub struct BoundingBoxManager {
 	pub original_transforms: OriginalTransforms,
 	pub opposite_pivot: DVec2,
 	pub center_of_transformation: DVec2,
+	/// What a turn of the cage under way snaps by.
+	pub turning: Option<Turning>,
+	/// What a skew of the cage under way snaps by.
+	pub skewing: Option<Skewing>,
 }
 
 impl BoundingBoxManager {
@@ -752,6 +786,116 @@ impl BoundingBoxManager {
 			_ => MouseCursorIcon::Default,
 		}
 	}
+
+	/// Begins a turn of the cage about its center of transformation, held where the pointer is, which snaps the cage and the layers in it.
+	pub fn begin_turning(&mut self, view: SnapView, session: &mut SnapSession, layers: &[LayerNodeIdentifier]) {
+		let document = view.document;
+		let viewport_to_document = document.metadata().document_to_viewport.inverse();
+		let pivot = viewport_to_document.transform_point2(self.center_of_transformation);
+		let grip = viewport_to_document.transform_point2(view.input.mouse.position);
+
+		let cage_to_document = viewport_to_document * self.transform;
+		let mut starts: Vec<DVec2> = corners_and_middles(self.bounds).into_iter().map(|point| cage_to_document.transform_point2(point)).collect();
+		push_nearest_anchors(&mut starts, document, layers, grip);
+
+		let moves = |start: &DVec2| start.distance(pivot) > MIN_FEATURE_TRAVEL * grip.distance(pivot);
+		let turned = |start: DVec2| FeatureMap::turning_about(start, grip, pivot);
+		let features: Vec<FeatureMap> = starts.into_iter().filter(moves).chain([grip]).filter_map(turned).collect();
+		self.turning = (!features.is_empty()).then_some(Turning { pivot, grip, features });
+
+		let moving = Moving {
+			layers: layers.to_vec(),
+			..Default::default()
+		};
+		session.begin_gesture(view, moving);
+	}
+
+	/// Snaps the turn the pointer asks for, and returns its angle as seen in the viewport.
+	pub fn snap_turn(&self, view: SnapView, session: &mut SnapSession) -> Option<f64> {
+		let Turning { pivot, grip, features } = self.turning.as_ref()?;
+		let document_to_viewport = view.document.metadata().document_to_viewport;
+		let pointer = document_to_viewport.inverse().transform_point2(view.input.mouse.position);
+
+		// The grip keeps to its circle so the turn does not also scale
+		let lead = features.len().saturating_sub(1);
+		let options = PointOptions {
+			required: Locus::circle(*pivot, pivot.distance(*grip)),
+			snapping: Some(lead),
+			ignores_grid: true,
+			..Default::default()
+		};
+		let turned = session.snap_features(view, features, lead, pointer, options);
+
+		// Measured in the viewport, where the turn is applied, which a flipped canvas mirrors
+		let seen = |point: DVec2| document_to_viewport.transform_point2(point);
+		(seen(*grip) - seen(*pivot)).try_angle_to(seen(turned) - seen(*pivot))
+	}
+
+	/// Begins a skew of the cage by the edge it was taken hold of by, held where the pointer is, which snaps the cage and the layers in it.
+	pub fn begin_skewing(&mut self, view: SnapView, session: &mut SnapSession, layers: &[LayerNodeIdentifier]) {
+		let moving = Moving {
+			layers: layers.to_vec(),
+			..Default::default()
+		};
+		session.begin_gesture(view, moving);
+
+		self.skewing = None;
+		let Some(edges) = &self.selected_edges else { return };
+
+		let document = view.document;
+		let viewport_to_document = document.metadata().document_to_viewport.inverse();
+		let cage_to_document = viewport_to_document * self.original_bound_transform;
+		let grip = viewport_to_document.transform_point2(view.input.mouse.position);
+
+		let dragged = edges.pivot_from_bounds(edges.bounds[1], edges.bounds[0]);
+		let fixed = edges.pivot_from_bounds(edges.bounds[0], edges.bounds[1]);
+		let (along, across) = if edges.top || edges.bottom { (DVec2::X, DVec2::Y) } else { (DVec2::Y, DVec2::X) };
+
+		let lead_start = cage_to_document.transform_point2(dragged);
+		let mut starts = vec![lead_start];
+		let others = corners_and_middles(edges.bounds).into_iter().filter(|point| !point.abs_diff_eq(dragged, 1e-9));
+		starts.extend(others.map(|point| cage_to_document.transform_point2(point)));
+		push_nearest_anchors(&mut starts, document, layers, grip);
+
+		// Each point follows by the fraction of the way it lies from the fixed edge to the dragged one
+		let document_to_cage = cage_to_document.inverse();
+		let height = (dragged - fixed).dot(across);
+		let following = |start: DVec2| {
+			let fraction = (document_to_cage.transform_point2(start) - fixed).dot(across) / height;
+			(fraction.is_finite() && fraction.abs() > MIN_FEATURE_TRAVEL).then(|| FeatureMap::following(start, lead_start, fraction))
+		};
+		let features = std::iter::once(FeatureMap::IDENTITY).chain(starts.into_iter().skip(1).filter_map(following)).collect();
+
+		self.skewing = Some(Skewing {
+			grip,
+			lead_start,
+			edge_direction: cage_to_document.transform_vector2(along),
+			features,
+		});
+	}
+
+	/// Snaps the skew the pointer asks for, and returns the viewport position that brings the middle of the dragged edge to where it lands.
+	pub fn snap_skew(&self, view: SnapView, session: &mut SnapSession, free_movement: bool) -> DVec2 {
+		let pointer = view.input.mouse.position;
+		let (Some(skewing), Some(edges)) = (&self.skewing, &self.selected_edges) else { return pointer };
+		let document_to_viewport = view.document.metadata().document_to_viewport;
+
+		// Unless free movement is on, the edge slides only along itself
+		let required = if free_movement { None } else { Locus::line(skewing.lead_start, skewing.edge_direction) };
+		let options = PointOptions { required, ..Default::default() };
+		let free = skewing.lead_start + document_to_viewport.inverse().transform_point2(pointer) - skewing.grip;
+		let skewed = session.snap_features(view, &skewing.features, 0, free, options);
+
+		let dragged = edges.pivot_from_bounds(edges.bounds[1], edges.bounds[0]);
+		self.original_bound_transform.transform_point2(dragged) + document_to_viewport.transform_vector2(skewed - skewing.lead_start)
+	}
+}
+
+/// The corners of a box, in order around it, then the middles of its edges.
+fn corners_and_middles([first, second]: [DVec2; 2]) -> Vec<DVec2> {
+	let corners = [first, DVec2::new(second.x, first.y), second, DVec2::new(first.x, second.y)];
+	let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+	corners.into_iter().chain(middles).collect()
 }
 
 #[cfg(test)]
