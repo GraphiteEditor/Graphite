@@ -31,15 +31,13 @@ impl PlatformApplicationIo {
 		}
 	}
 
+	/// Uses an executor the host already made, so the host can render with the same GPU resources as the node graph.
 	#[cfg(feature = "wgpu")]
-	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
-		let executor = WgpuExecutor::with_context(context);
-
-		let wgpu_available = executor.is_some();
-		set_wgpu_available(wgpu_available);
+	pub fn new_with_executor(executor: WgpuExecutor) -> Self {
+		set_wgpu_available(true);
 
 		Self {
-			gpu_executor: executor,
+			gpu_executor: Some(executor),
 			resources: None,
 		}
 	}

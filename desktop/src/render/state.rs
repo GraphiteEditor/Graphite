@@ -1,7 +1,7 @@
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{Scene, Texture, WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
+use crate::wrapper::{Scene, Texture, VelloCanvas, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -22,11 +22,14 @@ pub(crate) struct RenderState {
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
 	overlays_scene: Option<Scene>,
+	#[derivative(Debug = "ignore")]
+	overlays_canvas: VelloCanvas,
 	surface_outdated: bool,
 }
 
 impl RenderState {
-	pub(crate) fn new(window: &Window, context: WgpuContext, present_mode: Option<PresentMode>) -> Self {
+	pub(crate) fn new(window: &Window, executor: WgpuExecutor, present_mode: Option<PresentMode>) -> Self {
+		let context = executor.context();
 		let size = window.surface_size();
 		let surface = window.create_surface(&context.instance);
 
@@ -162,8 +165,6 @@ impl RenderState {
 			cache: None,
 		});
 
-		let executor = WgpuExecutor::with_context(context).expect("Failed to create WgpuExecutor");
-
 		Self {
 			surface,
 			executor,
@@ -180,6 +181,7 @@ impl RenderState {
 			ui_texture: None,
 			bind_group: None,
 			overlays_scene: None,
+			overlays_canvas: VelloCanvas::default(),
 			surface_outdated: true,
 		}
 	}
@@ -229,7 +231,7 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = self.executor.render_vello_scene(&scene, glam::DAffine2::IDENTITY, size);
+		let result = self.executor.render_vello_scene_on_canvas(&mut self.overlays_canvas, &scene, glam::DAffine2::IDENTITY, size);
 		match result {
 			Ok(texture) => {
 				self.overlays_texture = Some(texture);
