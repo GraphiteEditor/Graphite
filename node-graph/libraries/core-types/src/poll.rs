@@ -134,6 +134,7 @@ pub enum Finality {
 pub struct Status {
 	finality: Cell<Finality>,
 	error: Cell<Option<NodeError>>,
+	raised: Cell<Option<NodeError>>,
 	interrupt: Cell<Option<Interrupt>>,
 	no_partial: bool,
 }
@@ -179,6 +180,11 @@ impl Status {
 		self.error.set(first.or(Some(error)));
 	}
 
+	pub fn raise(&self, error: NodeError) {
+		let first = self.raised.take();
+		self.raised.set(first.or(Some(error)));
+	}
+
 	#[inline(always)]
 	pub fn run<T>(self, kernel: impl FnOnce(&Self) -> Result<T, Interrupt>) -> Poll<T> {
 		match kernel(&self) {
@@ -189,10 +195,14 @@ impl Status {
 
 	#[inline(always)]
 	pub fn finish<T>(self, value: T) -> Poll<T> {
-		match (self.finality.get(), self.error.take()) {
-			(Finality::Partial, _) => Poll::Partial(value),
-			(Finality::Final, Some(error)) => Poll::Fallback(Box::new((value, error))),
-			(Finality::Final, None) => Poll::Final(value),
+		match (self.finality.get(), self.raised.take(), self.error.take()) {
+			(Finality::Partial, _, _) => Poll::Partial(value),
+			(Finality::Final, Some(mut raised), input) => {
+				raised.upstream.extend(input);
+				Poll::Fallback(Box::new((value, raised)))
+			}
+			(Finality::Final, None, Some(error)) => Poll::Fallback(Box::new((value, error))),
+			(Finality::Final, None, None) => Poll::Final(value),
 		}
 	}
 
@@ -351,6 +361,23 @@ mod tests {
 		assert_eq!(error.trace(), [0]);
 		let error: Box<dyn Error + Send + Sync> = error;
 		assert_eq!(error.to_string(), "invalid digit found in string");
+	}
+
+	#[test]
+	fn a_raised_error_carries_the_input_error_upstream() {
+		let Poll::Fallback(boxed) = Status::new().run(|cell| {
+			let value = cell.record(0, Poll::fallback(1, "input"))?;
+			cell.raise(NodeError::new("own"));
+			Ok(value)
+		}) else {
+			unreachable!()
+		};
+		let error = boxed.1;
+		assert_eq!(error.to_string(), "own");
+		assert!(error.trace().is_empty());
+		let [upstream] = error.upstream() else { unreachable!() };
+		assert_eq!(upstream.to_string(), "input");
+		assert_eq!(upstream.trace(), [0]);
 	}
 
 	#[test]

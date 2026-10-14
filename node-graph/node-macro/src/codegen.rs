@@ -555,7 +555,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			match #call {
 				Ok(value) => Ok(value),
 				Err((value, error)) => {
-					__cell.fail(error);
+					__cell.raise(error);
 					Ok(value)
 				}
 			}
@@ -569,7 +569,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			match #call {
 				Ok(value) => value,
 				Err((value, error)) => {
-					__cell.fail(error);
+					__cell.raise(error);
 					value
 				}
 			}

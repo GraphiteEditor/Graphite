@@ -920,3 +920,30 @@ fn executor_panics_reach_the_host_with_the_original_payload() {
 	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (&executor).execute(()))).unwrap_err();
 	assert_eq!(*payload.downcast::<u32>().unwrap(), 42);
 }
+
+#[test]
+fn chained_fallbacks_both_reach_the_root() {
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(1.).into()), vec![NodeId(0)]);
+	let fail_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(1)]);
+	let mut first = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1)]), vec![NodeId(2)]);
+	first.identifier = graphene_std::poll_debug::fallback::IDENTIFIER;
+	let mut second = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2), NodeId(1)]), vec![NodeId(3)]);
+	second.identifier = graphene_std::poll_debug::fallback::IDENTIFIER;
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(3),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), fail_node), (NodeId(2), first), (NodeId(3), second)],
+	})
+	.unwrap();
+
+	let context: Context = None;
+	let Ok(Poll::Fallback(boxed)) = (&executor).execute(context) else {
+		panic!("Both nodes fall back, so the root should too")
+	};
+	let error = &boxed.1;
+	assert_eq!(executor.find_origin(executor.output(), error), Some(NodeId(3)));
+	let [upstream] = error.upstream() else {
+		panic!("The second node's error should carry the first node's error")
+	};
+	assert_eq!(executor.find_origin(NodeId(3), upstream), Some(NodeId(2)));
+}
