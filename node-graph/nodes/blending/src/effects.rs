@@ -2,7 +2,7 @@ use core_types::list::Item;
 use core_types::{Color, Ctx};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{BevelDirection, BevelStyle, Effect, EffectOperation, GlowSource, Graphic, Vector, stamp_effect};
+use graphic_types::{BevelDirection, BevelStyle, Effect, EffectOperation, Generator, GlowSource, Graphic, Vector, stamp_effect};
 use raster_kernels::evaluate_color_effects;
 use vector_types::Gradient;
 use vector_types::vector::style::StrokeAlign;
@@ -12,7 +12,7 @@ use vector_types::vector::style::StrokeAlign;
 fn blur<T>(
 	_: impl Ctx,
 	/// The content to blur.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// How far the blur spreads each point of the content.
 	#[unit(" px")]
@@ -42,7 +42,7 @@ fn blur<T>(
 fn drop_shadow<T>(
 	_: impl Ctx,
 	/// The content casting the shadow.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shadow's color, with its opacity.
 	#[default("#00000080")]
@@ -81,7 +81,7 @@ fn drop_shadow<T>(
 fn inner_shadow<T>(
 	_: impl Ctx,
 	/// The content the shadow falls inside.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shadow's color, with its opacity.
 	#[default("#00000080")]
@@ -120,7 +120,7 @@ fn inner_shadow<T>(
 fn outer_glow<T>(
 	_: impl Ctx,
 	/// The content to glow around.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The glow's color, with its opacity.
 	#[default("#ffffbebf")]
@@ -154,7 +154,7 @@ fn outer_glow<T>(
 fn inner_glow<T>(
 	_: impl Ctx,
 	/// The content to glow within.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The glow's color, with its opacity.
 	#[default("#ffffbebf")]
@@ -191,7 +191,7 @@ fn inner_glow<T>(
 fn satin<T>(
 	_: impl Ctx,
 	/// The content to shade.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shading's color, with its opacity.
 	#[default("#00000080")]
@@ -229,7 +229,7 @@ fn satin<T>(
 fn outline<T>(
 	_: impl Ctx,
 	/// The content to outline.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The outline's color, with its opacity.
 	#[default(Color::BLACK)]
@@ -262,7 +262,7 @@ fn outline<T>(
 fn bevel_and_emboss<T>(
 	_: impl Ctx,
 	/// The content to raise.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// Where the slope lies: inside the edge, outside it, across it, or across it with the edge pressed in.
 	style: Item<BevelStyle>,

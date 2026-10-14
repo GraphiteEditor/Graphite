@@ -1,6 +1,6 @@
 use crate::adjustments::adjust;
 use core_types::list::Item;
-use graphic_types::{Adjustment, Graphic, Vector};
+use graphic_types::{Adjustment, Generator, Graphic, Vector};
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::Color;
@@ -43,6 +43,7 @@ fn color_overlay<T>(
 		Vector,
 		Raster<GPU>,
 		String,
+		Generator,
 	)]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
