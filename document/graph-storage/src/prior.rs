@@ -10,21 +10,39 @@ use std::hash::Hash;
 /// the fold of history up to the delta's parent. Never sent or applied as an op.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Prior {
-	/// The whole entity, live or tombstoned; `None, None` means it didn't exist, so undoing an addition leaves no tombstone.
-	WholeNode {
+	/// The whole entity, live, tombstoned, or absent. Restoring an absent one leaves no tombstone, so undoing an addition erases it.
+	Node {
 		id: NodeId,
-		live: Option<Node>,
-		removed: Option<Tombstone<Node>>,
+		node: Node,
 	},
-	WholeNetwork {
+	RemovedNode {
+		id: NodeId,
+		tombstone: Tombstone<Node>,
+	},
+	AbsentNode {
+		id: NodeId,
+	},
+	Network {
 		id: NetworkId,
-		live: Option<Network>,
-		removed: Option<Tombstone<Network>>,
+		network: Network,
 	},
-	WholeResource {
+	RemovedNetwork {
+		id: NetworkId,
+		tombstone: Tombstone<Network>,
+	},
+	AbsentNetwork {
+		id: NetworkId,
+	},
+	Resource {
 		id: ResourceId,
-		live: Option<ResourceEntry>,
-		removed: Option<Tombstone<ResourceEntry>>,
+		resource: ResourceEntry,
+	},
+	RemovedResource {
+		id: ResourceId,
+		tombstone: Tombstone<ResourceEntry>,
+	},
+	AbsentResource {
+		id: ResourceId,
 	},
 	/// One field of a live node, and the node's presence, which every write moves.
 	NodeField {
@@ -157,11 +175,7 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 		| RegistryDelta::RemoveResource { id, .. }
 		| RegistryDelta::SetResourceHash { id, .. }
 		| RegistryDelta::AddSource { id, .. }
-		| RegistryDelta::RemoveSource { id, .. } => priors.push(Prior::WholeResource {
-			id: *id,
-			live: registry.resources.get(id).cloned(),
-			removed: registry.removed_resources.get(id).cloned(),
-		}),
+		| RegistryDelta::RemoveSource { id, .. } => priors.push(whole_resource(registry, *id)),
 		RegistryDelta::RegisterPeer { peer, .. } => priors.push(Prior::PeerUser {
 			peer: *peer,
 			previous: registry.peer_users.get(peer).copied(),
@@ -179,9 +193,15 @@ pub(crate) fn capture(registry: &Registry, op: &RegistryDelta) -> Vec<Prior> {
 pub(crate) fn restore(registry: &mut Registry, priors: &[Prior]) {
 	for prior in priors.iter().rev() {
 		match prior {
-			Prior::WholeNode { id, live, removed } => put_whole(&mut registry.node_instances, &mut registry.removed_nodes, *id, live.as_ref(), removed.as_ref()),
-			Prior::WholeNetwork { id, live, removed } => put_whole(&mut registry.networks, &mut registry.removed_networks, *id, live.as_ref(), removed.as_ref()),
-			Prior::WholeResource { id, live, removed } => put_whole(&mut registry.resources, &mut registry.removed_resources, *id, live.as_ref(), removed.as_ref()),
+			Prior::Node { id, node } => put_live(&mut registry.node_instances, &mut registry.removed_nodes, *id, node),
+			Prior::RemovedNode { id, tombstone } => put_removed(&mut registry.node_instances, &mut registry.removed_nodes, *id, tombstone),
+			Prior::AbsentNode { id } => put_absent(&mut registry.node_instances, &mut registry.removed_nodes, *id),
+			Prior::Network { id, network } => put_live(&mut registry.networks, &mut registry.removed_networks, *id, network),
+			Prior::RemovedNetwork { id, tombstone } => put_removed(&mut registry.networks, &mut registry.removed_networks, *id, tombstone),
+			Prior::AbsentNetwork { id } => put_absent(&mut registry.networks, &mut registry.removed_networks, *id),
+			Prior::Resource { id, resource } => put_live(&mut registry.resources, &mut registry.removed_resources, *id, resource),
+			Prior::RemovedResource { id, tombstone } => put_removed(&mut registry.resources, &mut registry.removed_resources, *id, tombstone),
+			Prior::AbsentResource { id } => put_absent(&mut registry.resources, &mut registry.removed_resources, *id),
 			Prior::NodeField { id, presence, field } => {
 				let Some(node) = registry.node_instances.get_mut(id) else {
 					debug_assert!(false, "a field prior is taken from a live node, which the later priors put back");
@@ -233,18 +253,32 @@ pub(crate) fn restore(registry: &mut Registry, priors: &[Prior]) {
 }
 
 fn whole_node(registry: &Registry, id: NodeId) -> Prior {
-	Prior::WholeNode {
-		id,
-		live: registry.node_instances.get(&id).cloned(),
-		removed: registry.removed_nodes.get(&id).cloned(),
+	if let Some(node) = registry.node_instances.get(&id) {
+		Prior::Node { id, node: node.clone() }
+	} else if let Some(tombstone) = registry.removed_nodes.get(&id) {
+		Prior::RemovedNode { id, tombstone: tombstone.clone() }
+	} else {
+		Prior::AbsentNode { id }
 	}
 }
 
 fn whole_network(registry: &Registry, id: NetworkId) -> Prior {
-	Prior::WholeNetwork {
-		id,
-		live: registry.networks.get(&id).cloned(),
-		removed: registry.removed_networks.get(&id).cloned(),
+	if let Some(network) = registry.networks.get(&id) {
+		Prior::Network { id, network: network.clone() }
+	} else if let Some(tombstone) = registry.removed_networks.get(&id) {
+		Prior::RemovedNetwork { id, tombstone: tombstone.clone() }
+	} else {
+		Prior::AbsentNetwork { id }
+	}
+}
+
+fn whole_resource(registry: &Registry, id: ResourceId) -> Prior {
+	if let Some(resource) = registry.resources.get(&id) {
+		Prior::Resource { id, resource: resource.clone() }
+	} else if let Some(tombstone) = registry.removed_resources.get(&id) {
+		Prior::RemovedResource { id, tombstone: tombstone.clone() }
+	} else {
+		Prior::AbsentResource { id }
 	}
 }
 
@@ -282,15 +316,19 @@ fn input_field(node: &Node, index: u32, field: impl FnOnce(&InputSlot) -> NodeFi
 	}
 }
 
-fn put_whole<K: Hash + Eq + Copy, T: Clone>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, was_live: Option<&T>, was_removed: Option<&Tombstone<T>>) {
-	match was_live {
-		Some(content) => _ = live.insert(id, content.clone()),
-		None => _ = live.remove(&id),
-	}
-	match was_removed {
-		Some(mark) => _ = dead.insert(id, mark.clone()),
-		None => _ = dead.remove(&id),
-	}
+fn put_live<K: Hash + Eq + Copy, T: Clone>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, content: &T) {
+	dead.remove(&id);
+	live.insert(id, content.clone());
+}
+
+fn put_removed<K: Hash + Eq + Copy, T: Clone>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K, tombstone: &Tombstone<T>) {
+	live.remove(&id);
+	dead.insert(id, tombstone.clone());
+}
+
+fn put_absent<K: Hash + Eq + Copy, T>(live: &mut HashMap<K, T>, dead: &mut HashMap<K, Tombstone<T>>, id: K) {
+	live.remove(&id);
+	dead.remove(&id);
 }
 
 fn put_attribute(attributes: &mut crate::Attributes, key: &str, previous: Option<&AttributeValue>) {
