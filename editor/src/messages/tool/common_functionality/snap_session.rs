@@ -283,6 +283,23 @@ impl SnapSession {
 			outcome,
 		});
 
+		// A crossing, or the grid, can hold the box anywhere along the track that evens out its gaps, so they are measured again where it landed
+		if let Some(shown) = &mut self.shown
+			&& shown.outcome.engaged_candidates().any(|candidate| candidate.gaps.is_some())
+			&& let Some(landed) = options.box_features.and_then(|box_features| spaced_box(kind, &box_features, features, parameters))
+		{
+			let mut measured = Vec::new();
+			find_spacing(&context, &landed, &mut measured);
+
+			let engaged = shown.outcome.engagement().map(|engagement| engagement.candidates.clone()).unwrap_or_default();
+			for index in engaged {
+				let Some(candidate) = shown.outcome.candidates.get_mut(index) else { continue };
+				if let Some(remeasured) = measured.iter().find(|remeasured| remeasured.key == candidate.key) {
+					candidate.gaps = remeasured.gaps;
+				}
+			}
+		}
+
 		parameters
 	}
 
@@ -1195,6 +1212,37 @@ mod tests {
 
 		assert!(slid.abs_diff_eq(unit * 10., 1e-6), "the box slid by {slid}");
 		assert!(engaged_kinds(&session).contains(&Kind::Spacing));
+	}
+
+	#[tokio::test]
+	async fn a_box_both_evenly_spaced_and_lined_up_has_its_gaps_drawn_across_where_it_lands() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 160., 160.).await;
+		editor.draw_rect(300., 100., 360., 160.).await;
+		editor.draw_rect(200., 104., 240., 164.).await;
+		let mut session = moving_the_selected_layer(&mut editor).await;
+
+		// Centered between the boxes is ten further along, and level with them is four pixels up
+		let (features, box_features) = sliding_box(box_corners(&editor, DVec2::new(200., 104.), DVec2::new(240., 164.)));
+		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let options = PointOptions {
+			box_features: Some(box_features),
+			..Default::default()
+		};
+		let slid = slide(&mut session, &editor, &features, unit * 7., options);
+
+		assert!(slid.abs_diff_eq(unit * 10. - unit.perp() * 4., 1e-6), "the box slid by {slid}");
+		let kinds = engaged_kinds(&session);
+		assert!(kinds.contains(&Kind::Spacing) && kinds.contains(&Kind::Alignment), "engaged {kinds:?}");
+
+		// Each gap is drawn halfway across where the box overlaps its neighbor once lined up, rather than where the pointer alone would have put it
+		let shown = session.shown().expect("an attempt to snap should have been made");
+		let gaps = shown.outcome.engaged_candidates().find_map(|candidate| candidate.gaps).expect("the evened-out gaps should be shown");
+		let to_viewport = editor.active_document().metadata().document_to_viewport;
+		let ends: Vec<DVec2> = gaps.spans.iter().flatten().map(|&end| to_viewport.transform_point2(end)).collect();
+		let wanted = [(160., 130.), (210., 130.), (250., 130.), (300., 130.)].map(DVec2::from);
+		assert!(ends.iter().zip(wanted).all(|(end, wanted)| end.abs_diff_eq(wanted, 1e-6)), "the gaps are drawn between {ends:?}");
 	}
 
 	#[tokio::test]
