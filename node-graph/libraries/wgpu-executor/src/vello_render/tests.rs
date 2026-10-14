@@ -659,6 +659,29 @@ fn gpu_adjustment_passes_match_the_cpu_kernels() {
 }
 
 #[test]
+fn minified_images_average_their_pixels() {
+	use graphic_types::raster_types::{Image, Raster};
+
+	// Stripes half black and half white in every eight columns, drawn at an eighth of their size, where sampling only the two
+	// columns nearest each pixel's center would find black
+	let stripes = Image {
+		width: 64,
+		height: 64,
+		data: (0..64 * 64)
+			.map(|index| if (2..6).contains(&(index % 8)) { core_types::Color::BLACK } else { core_types::Color::WHITE })
+			.collect(),
+	};
+	let mut scene = Scene::new();
+	scene.draw_raster(Raster::new_cpu(stripes), peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+
+	let size = UVec2::new(8, 8);
+	let Some(pixels) = render(&scene, size) else { return };
+	for (index, pixel) in pixels.iter().enumerate() {
+		assert!((115..=140).contains(&pixel[0]) && pixel[3] == 255, "pixel {index} is {pixel:?} rather than the gray of its average");
+	}
+}
+
+#[test]
 fn rasters_upload_once_across_scenes_until_modified() {
 	use graphic_types::raster_types::{Image, Raster};
 
