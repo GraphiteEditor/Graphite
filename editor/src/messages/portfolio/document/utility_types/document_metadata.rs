@@ -11,7 +11,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use kurbo::{Affine, BezPath};
+use kurbo::BezPath;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
 use std::sync::Arc;
@@ -210,23 +210,6 @@ impl DocumentMetadata {
 		self.visual_targets(layer)?
 			.iter()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
-			.reduce(Quad::combine_bounds)
-	}
-
-	/// Get the loose bounding box of the click target of the specified layer in the specified transform space
-	pub fn loose_bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.visual_targets(layer)?
-			.iter()
-			.filter_map(|click_target| match click_target.target_type() {
-				ClickTargetType::Path(path) => {
-					let mut transformed = path.clone();
-					transformed.apply_affine(Affine::new(transform.to_cols_array()));
-
-					let control_box = transformed.control_box();
-					(!transformed.is_empty()).then(|| [DVec2::new(control_box.min_x(), control_box.min_y()), DVec2::new(control_box.max_x(), control_box.max_y())])
-				}
-				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
-			})
 			.reduce(Quad::combine_bounds)
 	}
 

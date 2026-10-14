@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_tu
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, extract_spiral_parameters};
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::snap_session::{PointOptions, SnapSession, SnapView};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
@@ -113,25 +113,15 @@ impl Spiral {
 		])
 	}
 
-	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		layer: LayerNodeIdentifier,
-		shape_tool_data: &mut ShapeToolData,
-		responses: &mut VecDeque<Message>,
-	) {
+	pub fn update_shape(view: SnapView, snap_session: &mut SnapSession, layer: LayerNodeIdentifier, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
+		let SnapView { document, input: ipp, .. } = view;
 		let viewport_drag_start = shape_tool_data.data.viewport_drag_start(document);
 
-		let ignore = vec![layer];
-		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
-		let config = SnapTypeConfiguration::default();
-		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-		let snapped = shape_tool_data.data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
-		let snapped_viewport_point = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-		shape_tool_data.data.snap_manager.update_indicator(snapped);
+		let document_to_viewport = document.metadata().document_to_viewport;
+		let pointer = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+		let snapped_viewport_point = document_to_viewport.transform_point2(snap_session.snap_point(view, pointer, PointOptions::default()));
 
 		let dragged_distance = (viewport_drag_start - snapped_viewport_point).length() / viewport_zoom(document);
 
