@@ -2397,7 +2397,7 @@ mod test_pen_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::misc::ManipulatorPointId;
-	use graphene_std::vector::{SegmentId, Vector};
+	use graphene_std::vector::{PointId, SegmentId, Vector};
 
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
 	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, Vector)> {
@@ -2972,6 +2972,35 @@ mod test_pen_tool {
 		assert!(leaving.distance(handle) < 1e-6, "the joining segment's handle is at {leaving}");
 	}
 
+	/// Finds the point ID whose viewport position is within tolerance of `target`.
+	fn get_anchor_near(vector: &Vector, layer_to_viewport: DAffine2, target: DVec2) -> PointId {
+		vector
+			.point_domain
+			.ids()
+			.iter()
+			.copied()
+			.find(|&id| {
+				let pos = vector.point_domain.position_from_id(id).unwrap();
+				layer_to_viewport.transform_point2(pos).distance(target) < 1e-6
+			})
+			.unwrap_or_else(|| panic!("No anchor found near {target}"))
+	}
+
+	/// Finds the segment that connects two given point IDs (in either direction).
+	fn get_segment_between(vector: &Vector, point_a: PointId, point_b: PointId) -> SegmentId {
+		vector
+			.segment_domain
+			.ids()
+			.iter()
+			.copied()
+			.find(|&segment| {
+				let start = vector.segment_start_from_id(segment);
+				let end = vector.segment_end_from_id(segment);
+				(start == Some(point_a) && end == Some(point_b)) || (start == Some(point_b) && end == Some(point_a))
+			})
+			.unwrap_or_else(|| panic!("No segment found between the given anchors"))
+	}
+
 	#[tokio::test]
 	async fn an_anchor_moved_with_space_lands_on_a_corner_and_carries_its_handles_along() {
 		let mut editor = EditorTestUtils::create();
@@ -3028,39 +3057,9 @@ mod test_pen_tool {
 		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 
-		let b_id = vector
-			.point_domain
-			.ids()
-			.iter()
-			.copied()
-			.find(|&id| {
-				let pos = vector.point_domain.position_from_id(id).unwrap();
-				layer_to_viewport.transform_point2(pos).distance(B) < 1e-6
-			})
-			.expect("Anchor B should exist");
-
-		let d_id = vector
-			.point_domain
-			.ids()
-			.iter()
-			.copied()
-			.find(|&id| {
-				let pos = vector.point_domain.position_from_id(id).unwrap();
-				layer_to_viewport.transform_point2(pos).distance(D) < 1e-6
-			})
-			.expect("Anchor D should exist");
-
-		let bd_segment = vector
-			.segment_domain
-			.ids()
-			.iter()
-			.copied()
-			.find(|&segment| {
-				let start = vector.segment_start_from_id(segment);
-				let end = vector.segment_end_from_id(segment);
-				(start == Some(b_id) && end == Some(d_id)) || (start == Some(d_id) && end == Some(b_id))
-			})
-			.expect("Segment between B and D should exist");
+		let b_id = get_anchor_near(&vector, layer_to_viewport, B);
+		let d_id = get_anchor_near(&vector, layer_to_viewport, D);
+		let bd_segment = get_segment_between(&vector, b_id, d_id);
 
 		let handle_at_b = if vector.segment_start_from_id(bd_segment) == Some(b_id) {
 			ManipulatorPointId::PrimaryHandle(bd_segment).get_position(&vector)
@@ -3073,4 +3072,47 @@ mod test_pen_tool {
 			assert!(handle_pos.distance(B) < 1e-4, "Handle at B for the new segment should remain at the anchor");
 		}
 	}
+
+	#[tokio::test]
+	async fn extending_from_anchor_with_single_segment_uses_colinear_handle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// 1. Draw a single segment A→B with a curved handle dragged out at B
+		click_pen(&mut editor, A).await;
+		let handle = B + DVec2::new(50., 0.);
+		editor.drag_path(&[B, handle], ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 2, 1);
+
+		// 2. Extend from B to C by clicking B then C (only one segment is attached to B)
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 3, 2);
+
+		// 3. Verify the new segment leaving B carries a mirrored/colinear handle
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+
+		let b_id = get_anchor_near(&vector, layer_to_viewport, B);
+		let c_id = get_anchor_near(&vector, layer_to_viewport, C);
+		let bc_segment = get_segment_between(&vector, b_id, c_id);
+
+		let handle_at_b = if vector.segment_start_from_id(bc_segment) == Some(b_id) {
+			ManipulatorPointId::PrimaryHandle(bc_segment).get_position(&vector)
+		} else {
+			ManipulatorPointId::EndHandle(bc_segment).get_position(&vector)
+		};
+
+		// When only one segment is connected, the handle should NOT collapse to the
+		// anchor — it should carry a meaningful colinear handle away from B.
+		let handle_pos = handle_at_b.expect("The new segment should have a handle at B");
+		let handle_pos = layer_to_viewport.transform_point2(handle_pos);
+		assert!(
+			handle_pos.distance(B) > 1e-4,
+			"Handle at B should not collapse to the anchor when only one segment is connected (got {handle_pos})"
+		);
+	}
 }
+
