@@ -65,7 +65,7 @@ pub struct ImageChannels {
 /// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
 #[node_macro::node(category("Raster"), icon("NodeImageToChannels"), name("Image to Channels"))]
 fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
-	let (image, attributes) = image.into_parts();
+	let (image, attributes) = raster_kernels::evaluate_raster_effects(image).into_parts();
 	let (width, height) = (image.width, image.height);
 
 	// O(4 × pixels), since all four channels are written even when only some outputs are connected

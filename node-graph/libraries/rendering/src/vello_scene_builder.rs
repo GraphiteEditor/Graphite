@@ -1,3 +1,5 @@
+use glam::{DMat2, UVec2};
+use graphic_types::Effects;
 use graphic_types::raster_types::{CPU, Raster, Texture};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
@@ -8,9 +10,11 @@ use vello_gpu::{Image, ImageSource, PaintType, TextureId, TextureRegion};
 /// Tolerance for turning shapes other than paths into paths, matching Vello's own.
 const SHAPE_TOLERANCE: f64 = 0.1;
 
+/// The texture size an effects group's area rounds up to a multiple of, so a group moving across renders keeps reusing the same pooled textures.
+const EFFECTS_SIZE_CLASS: u32 = 64;
+
 /// Builds a Vello GPU scene of a fixed size, recording the images it draws so the renderer can supply their textures at render time.
-#[derive(Debug)]
-pub struct VelloSceneBuilder {
+pub struct VelloSceneBuilder<'a> {
 	scene: vello_gpu::Scene,
 	/// Places the drawn content in the scene, applied on top of every transform it's drawn with.
 	view: Affine,
@@ -20,6 +24,18 @@ pub struct VelloSceneBuilder {
 	/// The largest width or height an image's texture can have, beyond which images are drawn from a downscaled texture.
 	max_texture_size: u32,
 	pushed: Vec<Pushed>,
+	/// Renders effects groups as they're drawn. A scene drawn ahead of its render has none, so it draws effects groups without their effects.
+	effects_renderer: Option<&'a mut dyn EffectsRenderer>,
+}
+
+/// Renders the content of a scene's effects groups offscreen and carries out their effects, while the scene is drawn.
+pub trait EffectsRenderer: Send {
+	/// Whether the GPU can carry out effects, without which effects groups draw their content faded by their fill.
+	fn renders_effects(&self) -> bool;
+
+	/// Renders the content `draw` draws, placed by `view`, into a premultiplied texture of `size`, returning a texture of the same size with `effects` carried out on it.
+	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
+	fn render_effects(&mut self, size: UVec2, view: Affine, effects: &Effects, fill: f32, lengths_to_pixels: DMat2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> wgpu::Texture;
 }
 
 /// The pixels behind an image the scene draws.
@@ -31,6 +47,8 @@ pub enum SceneImage {
 	Raster(Raster<CPU>),
 	/// Straight-alpha pixels in a GPU texture.
 	Texture(Texture),
+	/// Premultiplied pixels of an effects group's result, rendered for this scene.
+	Rendered(wgpu::Texture),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -38,6 +56,7 @@ enum ImageKey {
 	Blob(u64),
 	Raster(u64),
 	Texture(Texture),
+	Rendered(wgpu::Texture),
 }
 
 #[derive(Debug)]
@@ -46,7 +65,17 @@ enum Pushed {
 	Clip,
 }
 
-impl VelloSceneBuilder {
+impl std::fmt::Debug for VelloSceneBuilder<'_> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("VelloSceneBuilder")
+			.field("scene", &self.scene)
+			.field("view", &self.view)
+			.field("images", &self.images)
+			.finish_non_exhaustive()
+	}
+}
+
+impl<'a> VelloSceneBuilder<'a> {
 	pub fn new(width: u16, height: u16, view: Affine, max_texture_size: u32) -> Self {
 		Self::from_vello(vello_gpu::Scene::new(width, height), view, max_texture_size)
 	}
@@ -61,7 +90,14 @@ impl VelloSceneBuilder {
 			image_ids: HashMap::new(),
 			max_texture_size,
 			pushed: Vec::new(),
+			effects_renderer: None,
 		}
+	}
+
+	/// Renders the effects groups drawn into the scene through `renderer`.
+	pub fn with_effects_renderer(mut self, renderer: &'a mut dyn EffectsRenderer) -> Self {
+		self.effects_renderer = Some(renderer);
+		self
 	}
 
 	pub fn width(&self) -> u16 {
@@ -191,6 +227,52 @@ impl VelloSceneBuilder {
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
 	}
 
+	/// Draws the content `draw` draws with `effects` carried out on it, given the area it covers in the space of the drawn content, or `None` if unbounded.
+	/// `fill` fades the content but not the shadows and glows cast from it. Rendering a split scene calls `draw` again for each part.
+	pub fn draw_effects(&mut self, effects: &Effects, fill: f32, bounds: Option<Rect>, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) {
+		if !self.effects_renderer.as_ref().is_some_and(|renderer| renderer.renders_effects()) {
+			self.push_viewport_layer(peniko::Mix::Normal, fill);
+			draw(self);
+			self.pop_layer();
+			return;
+		}
+
+		let [a, b, c, d, _, _] = self.view.as_coeffs();
+		let lengths_to_device = DMat2::from_cols_array(&[a, b, c, d]);
+		let reach = effects.reach() * lengths_to_device.determinant().abs().sqrt();
+
+		// The content reaching into the viewport, rounded out to whole pixels
+		let viewport = Rect::new(0., 0., self.width() as f64, self.height() as f64);
+		let content_bounds = bounds.map_or(viewport, |bounds| self.view.transform_rect_bbox(bounds));
+		let region = content_bounds.inflate(reach, reach).intersect(viewport.inflate(reach, reach)).expand();
+		if !(region.width() > 0. && region.height() > 0.) {
+			return;
+		}
+
+		// A region too large for one texture renders at a lower resolution, which the blurs and shadows that make it so large hide.
+		// Its size rounds up to a size class so a group that moves between renders keeps reusing the same textures.
+		let max_size = self.max_texture_size.min(u16::MAX as u32);
+		let resolution = (max_size as f64 / region.width().max(region.height())).min(1.);
+		let size_along = |length: f64| ((length * resolution).ceil() as u32).next_multiple_of(EFFECTS_SIZE_CLASS).min(max_size);
+		let size = UVec2::new(size_along(region.width()), size_along(region.height()));
+		let origin = region.origin().to_vec2();
+
+		let content_view = Affine::scale(resolution) * Affine::translate(-origin) * self.view;
+		let Some(renderer) = self.effects_renderer.as_deref_mut() else { return };
+		let result = renderer.render_effects(size, content_view, effects, fill, lengths_to_device * resolution, draw);
+
+		// Draw the result where the content was
+		self.images.push(SceneImage::Rendered(result));
+		let id = TextureId(self.images.len() as u64 - 1);
+		self.scene.set_transform(Affine::translate(origin) * Affine::scale(1. / resolution));
+		self.scene.set_paint(PaintType::Image(Image {
+			image: ImageSource::external_texture(id, TextureRegion::Full, true),
+			sampler: peniko::ImageSampler::new(),
+		}));
+		self.scene.set_paint_transform(Affine::IDENTITY);
+		self.scene.fill_rect(&Rect::new(0., 0., size.x as f64, size.y as f64));
+	}
+
 	fn draw_image_source(&mut self, source: ImageSource, sampler: peniko::ImageSampler, transform: Affine, (width, height): (u32, u32)) {
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_paint(PaintType::Image(Image { image: source, sampler }));
@@ -222,6 +304,7 @@ impl VelloSceneBuilder {
 			SceneImage::Pixels(data) => (data.width, data.height),
 			SceneImage::Raster(raster) => (raster.width, raster.height),
 			SceneImage::Texture(texture) => (texture.width(), texture.height()),
+			SceneImage::Rendered(texture) => (texture.width(), texture.height()),
 		};
 		if width == 0 || height == 0 {
 			return None;
@@ -231,6 +314,7 @@ impl VelloSceneBuilder {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture(texture.clone()),
+			SceneImage::Rendered(texture) => ImageKey::Rendered(texture.clone()),
 		};
 		let id = *self.image_ids.entry(key).or_insert_with(|| {
 			self.images.push(image);
