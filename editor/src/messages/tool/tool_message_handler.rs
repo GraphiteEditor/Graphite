@@ -197,6 +197,7 @@ impl ToolMessageHandler {
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
+				self.release_snapping(responses);
 
 				// Unsubscribe the transform layer to selection change events
 				responses.add(BroadcastMessage::UnsubscribeEvent {
@@ -225,6 +226,7 @@ impl ToolMessageHandler {
 				});
 
 				self.tool_is_active = true;
+				self.release_snapping(responses);
 
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -434,6 +436,13 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
+	/// Lets go of what the snapping session holds and has woken, so none of it carries over while the tools are off or into another document.
+	fn release_snapping(&mut self, responses: &mut VecDeque<Message>) {
+		self.snap_session.end_gesture();
+		self.snap_session.sleep_all();
+		self.keep_snapping_ticks_as_wanted(responses);
+	}
+
 	/// Starts or stops the ticks sent to the snapping session on each animation frame, to match whether it has any use for them.
 	fn keep_snapping_ticks_as_wanted(&mut self, responses: &mut VecDeque<Message>) {
 		let wanted = self.snap_session.wants_ticks();

@@ -1339,9 +1339,11 @@ impl Fsm for ShapeToolFsmState {
 				if matches!(tool_data.current_shape, ShapeType::Line | ShapeType::Arrow) {
 					tool_data.data.snap_manager.clear_indicator();
 
-					let rotating_bounds = !input.keyboard.key(Key::Control) && tool_data.bounding_box_manager.as_ref().is_some_and(|bounds| bounds.check_rotate(input.mouse.position));
-					let press_does_something_else = dragging_bounds || rotating_bounds || tool_data.gizmo_manager.hovering_over_gizmo() || tool_data.hovering_over_line_endpoint(document, input);
-					if press_does_something_else {
+					// Accel makes a press pass over a gizmo, and Control over the transform cage and a selected line's ends, as in `DragStart`
+					let press_drags_gizmo = !input.keyboard.key(Key::Accel) && tool_data.gizmo_manager.hovering_over_gizmo();
+					let rotating_bounds = tool_data.bounding_box_manager.as_ref().is_some_and(|bounds| bounds.check_rotate(input.mouse.position));
+					let press_edits_selection = !input.keyboard.key(Key::Control) && (dragging_bounds || rotating_bounds || tool_data.hovering_over_line_endpoint(document, input));
+					if press_drags_gizmo || press_edits_selection {
 						snap_session.forget();
 					} else {
 						let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);

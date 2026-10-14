@@ -17,7 +17,8 @@ pub fn settings(state: &SnappingState) -> Settings {
 		artboards: state.artboards,
 		tangents: state.path.tangent_to_path,
 		perpendiculars: state.path.normal_to_path,
-		alignment: state.bounding_box.align_with_edges || state.path.align_with_anchor_point,
+		point_alignment: state.path.align_with_anchor_point,
+		box_alignment: state.bounding_box.align_with_edges,
 		// These come only from targets that have been woken, and have no options of their own
 		extensions: true,
 		constructions: true,

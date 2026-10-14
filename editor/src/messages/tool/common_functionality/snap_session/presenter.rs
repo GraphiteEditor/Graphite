@@ -35,10 +35,9 @@ impl SnapSession {
 			}
 		}
 
-		let kinds: Vec<Kind> = engaged.iter().map(|(candidate, _)| candidate.key.kind).collect();
 		let marked = to_viewport.transform_point2(marked);
 		let above = DAffine2::from_translation(marked - DVec2::new(0., 4.));
-		overlay_context.text(&label(&kinds), COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_BLACK_75), above, 4., [Pivot::Start, Pivot::End]);
+		overlay_context.text(&marked_label(&engaged), COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_BLACK_75), above, 4., [Pivot::Start, Pivot::End]);
 		overlay_context.square(marked, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 	}
 
@@ -82,6 +81,18 @@ impl SnapSession {
 			}
 		}
 	}
+}
+
+/// The label for the mark on the first engaged feature, naming only what holds that feature, since other features may be held by unrelated things.
+fn marked_label(engaged: &[(&Candidate, DVec2)]) -> String {
+	let Some((first, _)) = engaged.first() else { return String::new() };
+	let kinds: Vec<Kind> = engaged
+		.iter()
+		.filter(|(candidate, _)| candidate.key.feature == first.key.feature)
+		.map(|(candidate, _)| candidate.key.kind)
+		.collect();
+
+	label(&kinds)
 }
 
 /// The relationship a snap gives, in a word or two.
@@ -138,5 +149,26 @@ mod tests {
 		assert_eq!(label(&[Kind::Extension, Kind::Extension]), "Extension");
 		assert_eq!(label(&[Kind::OnCurve, Kind::Alignment]), "On Path and Aligned");
 		assert_eq!(label(&[Kind::TangentLine, Kind::Extension]), "Tangent and Extension");
+	}
+
+	#[test]
+	fn the_mark_is_named_for_what_holds_its_own_feature() {
+		let on = |kind: Kind, feature: u32, identity: u64| {
+			Candidate::spot(
+				snapping::CandidateKey {
+					kind,
+					feature,
+					identity: [identity, 0, 0],
+				},
+				DVec2::ZERO,
+			)
+		};
+		let [path, edge, other_path] = [on(Kind::OnCurve, 0, 1), on(Kind::OnBoxEdge, 0, 2), on(Kind::OnCurve, 1, 3)];
+
+		// Two paths holding the same feature meet there
+		assert_eq!(marked_label(&[(&path, DVec2::ZERO), (&edge, DVec2::ZERO)]), "Intersection");
+
+		// Each end of a line drawn from its middle on a path of its own isn't at a crossing
+		assert_eq!(marked_label(&[(&path, DVec2::ZERO), (&other_path, DVec2::X)]), "On Path");
 	}
 }

@@ -133,12 +133,18 @@ impl DocumentMetadata {
 	/// The transformation to document space from layer space as the latest render had it.
 	/// Unlike [`Self::transform_to_document`], this stays correct after the view changes and before the next render reports back.
 	pub fn transform_to_document_as_rendered(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		self.rendered_document_to_viewport.inverse() * self.transform_to_viewport(layer)
+		self.document_to_viewport_placing(layer).inverse() * self.transform_to_viewport(layer)
 	}
 
 	/// The counterpart of [`Self::transform_to_document_as_rendered`] for [`Self::transform_to_document_if_feeds`].
 	pub fn transform_to_document_as_rendered_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
-		self.rendered_document_to_viewport.inverse() * self.transform_to_viewport_if_feeds(layer, network_interface)
+		self.document_to_viewport_placing(layer).inverse() * self.transform_to_viewport_if_feeds(layer, network_interface)
+	}
+
+	/// The view that [`Self::transform_to_viewport`] places a layer by: the latest render's for a layer it reported a footprint for, and the present one for any other, such as the root.
+	fn document_to_viewport_placing(&self, layer: LayerNodeIdentifier) -> DAffine2 {
+		let reported = layer != LayerNodeIdentifier::ROOT_PARENT && self.upstream_footprints.contains_key(&layer.to_node());
+		if reported { self.rendered_document_to_viewport } else { self.document_to_viewport }
 	}
 
 	/// Notes that the layer structure, or something a render reported, has changed.
@@ -642,6 +648,23 @@ mod tests {
 		// Panning and zooming before the next render reports back leaves the layer where it was in the document
 		metadata.document_to_viewport = DAffine2::from_scale_angle_translation(DVec2::splat(5.), -0.2, DVec2::new(-300., 80.));
 		assert!(metadata.transform_to_document_as_rendered(layer).abs_diff_eq(layer_to_document, 1e-9));
+	}
+
+	#[test]
+	fn the_root_and_a_layer_without_a_footprint_stay_put_as_rendered_while_the_view_moves_on() {
+		let unreported_layer = LayerNodeIdentifier::new_unchecked(NodeId(3));
+		let rendered_view = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.3, DVec2::new(40., -10.));
+		let mut metadata = DocumentMetadata {
+			document_to_viewport: rendered_view,
+			rendered_document_to_viewport: rendered_view,
+			..Default::default()
+		};
+
+		// Panning and zooming before the next render reports back leaves them lined up with the document
+		metadata.document_to_viewport = DAffine2::from_scale_angle_translation(DVec2::splat(5.), -0.2, DVec2::new(-300., 80.));
+		for layer in [LayerNodeIdentifier::ROOT_PARENT, unreported_layer] {
+			assert!(metadata.transform_to_document_as_rendered(layer).abs_diff_eq(DAffine2::IDENTITY, 1e-9));
+		}
 	}
 
 	#[test]

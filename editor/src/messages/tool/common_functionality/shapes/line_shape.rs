@@ -164,6 +164,7 @@ pub fn generate_line(tool_data: &mut ShapeToolData, snap_session: &mut SnapSessi
 #[cfg(test)]
 mod test_line_tool {
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -347,6 +348,47 @@ mod test_line_tool {
 		let (start, end) = get_line_endpoints_document(&mut editor).await.expect("a line should have been drawn");
 		assert!(start.abs_diff_eq(DVec2::new(40., 170.), 1e-6), "the line starts at {start}");
 		assert!(end.abs_diff_eq(DVec2::new(360., 230.), 1e-6), "the line ends at {end}");
+	}
+
+	#[tokio::test]
+	async fn holding_control_over_an_end_of_the_selected_line_shows_where_a_new_line_would_start() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 300., 200., ModifierKeys::empty()).await;
+		let (_, end) = get_line_endpoints_document(&mut editor).await.expect("a line should have been drawn");
+
+		// Drawing the overlays finds where the selected line's ends are, and the pointer is brought a couple of pixels to the side of one
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+		let beside_end = editor.active_document().metadata().document_to_viewport.transform_point2(end) + DVec2::new(-1., 2.);
+		let shown = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown_position();
+
+		// A press here would drag that end, so no start is shown
+		editor.move_mouse(beside_end.x, beside_end.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		assert_eq!(shown(&editor), None);
+
+		// With Control, a press here starts a new line instead, so its start is shown on that end
+		editor.move_mouse(beside_end.x, beside_end.y, ModifierKeys::CONTROL, MouseKeys::empty()).await;
+		let start = shown(&editor).expect("the start of a new line should be shown");
+		assert!(start.abs_diff_eq(end, 1e-6), "the new line would start at {start} rather than {end}");
+	}
+
+	#[tokio::test]
+	async fn holding_control_over_the_cage_of_a_selected_rectangle_shows_where_a_line_would_start() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 200., 180.).await;
+		editor.select_tool(ToolType::Line).await;
+		let shown = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown_position();
+
+		// Drawing the overlays lays the cage around the rectangle, and a press on its right edge would resize it rather than start a line
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+		let on_the_right_edge = DVec2::new(200., 130.);
+		editor.move_mouse(on_the_right_edge.x, on_the_right_edge.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		assert_eq!(shown(&editor), None);
+
+		// With Control, a press there draws a line instead, so where it would start is shown
+		editor.move_mouse(on_the_right_edge.x, on_the_right_edge.y, ModifierKeys::CONTROL, MouseKeys::empty()).await;
+		assert!(shown(&editor).is_some(), "where a new line would start should be shown");
 	}
 
 	#[tokio::test]

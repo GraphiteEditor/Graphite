@@ -352,19 +352,21 @@ impl SnapSession {
 		let on_a_path = |candidate: &&Candidate| matches!(candidate.key.kind, snapping::Kind::OnCurve | snapping::Kind::OnBoxEdge | snapping::Kind::OnArtboardEdge);
 		let point_of_its_own = match engaged.as_slice() {
 			[midpoint] => midpoint.key.kind == snapping::Kind::Midpoint,
-			[first, second] => on_a_path(first) && on_a_path(second),
+			[first, second] => first.key.feature == second.key.feature && on_a_path(first) && on_a_path(second),
 			_ => false,
 		};
 		let found_on: Vec<Awake> = match (point_of_its_own, engaged.first()) {
 			(true, Some(candidate)) => {
-				// The same point is known as one whichever feature found it
+				let Some(&position) = shown.features.get(candidate.key.feature as usize) else { return Vec::new() };
+
+				// Known by the paths it was found on and by where they cross
 				let mut relationships: Vec<_> = engaged.iter().map(|candidate| (candidate.key.kind, candidate.key.identity)).collect();
 				relationships.sort();
 				let mut hasher = DefaultHasher::new();
 				relationships.hash(&mut hasher);
+				position.to_array().map(f64::to_bits).hash(&mut hasher);
 
-				let position = shown.features.get(candidate.key.feature as usize).copied();
-				position.map(|position| Awake::Position { id: hasher.finish(), position }).into_iter().collect()
+				vec![Awake::Position { id: hasher.finish(), position }]
 			}
 			_ => found_on.collect(),
 		};
@@ -416,7 +418,7 @@ mod tests {
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
-	use glam::DAffine2;
+	use glam::{DAffine2, DMat2};
 	use snapping::{GeometryRole, Kind, LayerKind, Snap};
 
 	const DOCUMENT: DocumentId = DocumentId(1);
@@ -743,6 +745,97 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn a_woken_box_offers_alignment_by_its_own_option_alone() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		let mut session = SnapSession::default();
+
+		// Resting on the center of the rectangle wakes its box, with no anchor there to wake along with it
+		assert!(rest(&mut session, &editor, DVec2::new(200., 170.), 0));
+		assert!(matches!(session.awake.as_slice(), [Awake::Box { .. }]));
+
+		// Level with the center from afar, the box offers no alignment while its option is off, whatever the option for anchors
+		let level_with_the_center = DVec2::new(600., 171.);
+		let state = &mut editor.active_document_mut().snapping_state;
+		(state.bounding_box.align_with_edges, state.path.align_with_anchor_point) = (false, true);
+		snap_at_time(&mut session, &editor, level_with_the_center, 5000);
+		assert!(!engaged_kinds(&session).contains(&Kind::Alignment));
+
+		// And it offers it again with its option on, even with the option for anchors off
+		let state = &mut editor.active_document_mut().snapping_state;
+		(state.bounding_box.align_with_edges, state.path.align_with_anchor_point) = (true, false);
+		snap_at_time(&mut session, &editor, level_with_the_center, 6000);
+		assert_eq!(engaged_kinds(&session), vec![Kind::Alignment]);
+	}
+
+	#[tokio::test]
+	async fn each_place_one_pair_of_paths_crosses_is_woken_as_a_point_of_its_own() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (corner, size) = (DVec2::new(200., 200.), DVec2::new(200., 200.));
+		editor.draw_ellipse(corner.x, corner.y, corner.x + size.x, corner.y + size.y).await;
+
+		// A line cuts across one quarter of the circle's rim, crossing that same piece of it twice
+		let crossings = [on_rim(corner, size, 20.), on_rim(corner, size, 70.)];
+		let beyond = (crossings[1] - crossings[0]).normalize() * 40.;
+		let (start, end) = (crossings[0] - beyond, crossings[1] + beyond);
+		editor.drag_tool(ToolType::Line, start.x, start.y, end.x, end.y, ModifierKeys::default()).await;
+		let mut session = SnapSession::default();
+
+		// Both crossings are found on the same two curves
+		let mut crossed_curves = Vec::new();
+		for (index, crossing) in crossings.into_iter().enumerate() {
+			assert!(rest(&mut session, &editor, crossing, index as u64 * 2000), "nothing woke at {crossing}");
+			assert_eq!(engaged_kinds(&session), vec![Kind::OnCurve, Kind::OnCurve]);
+
+			let shown = session.shown().expect("an attempt to snap should have been made");
+			let mut curves: Vec<[u64; 3]> = shown.outcome.engaged_candidates().map(|candidate| candidate.key.identity).collect();
+			curves.sort();
+			crossed_curves.push(curves);
+		}
+		assert_eq!(crossed_curves[0], crossed_curves[1]);
+		let &[Awake::Position { .. }, Awake::Position { position: second_crossing, .. }] = session.awake.as_slice() else {
+			panic!("both crossings should be awake, not {:?}", session.awake)
+		};
+
+		// Far off but level with the second crossing, the pointer lines up with it
+		snap_at_time(&mut session, &editor, DVec2::new(600., crossings[1].y + 2.), 9000);
+		let shown = session.shown().expect("an attempt to snap should have been made");
+		let lined_up_with: Vec<_> = shown.outcome.engaged_candidates().map(|candidate| (candidate.key.kind, candidate.reference)).collect();
+		assert_eq!(lined_up_with, vec![(Kind::Alignment, Some(second_crossing))]);
+	}
+
+	#[tokio::test]
+	async fn two_features_resting_on_paths_of_their_own_wake_those_paths() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(320., 200., 520., 260.).await;
+		editor.draw_rect(100., 340., 200., 520.).await;
+		let mut session = SnapSession::default();
+
+		// A line grown both ways from its middle has one end on the first rectangle's top side and the other on the second's right side
+		let mirrored = FeatureMap {
+			matrix: DMat2::from_diagonal(DVec2::splat(-1.)),
+			offset: in_document(&editor, DVec2::new(300., 300.)) * 2.,
+		};
+		let mut input = InputPreprocessorMessageHandler::default();
+		input.mouse.position = DVec2::new(400., 201.);
+		let view = SnapView::new(editor.active_document(), DOCUMENT, &input);
+		session.snap_features(view, &[FeatureMap::IDENTITY, mirrored], 0, in_document(&editor, input.mouse.position), PointOptions::default());
+
+		let shown = session.shown().expect("an attempt to snap should have been made");
+		let mut held: Vec<u32> = shown.outcome.engaged_candidates().map(|candidate| candidate.key.feature).collect();
+		held.sort();
+		assert_eq!(held, vec![0, 1]);
+
+		// Each end wakes what it rests on, as it would alone, rather than a point where nothing crosses
+		assert!(session.tick(WAKE_DWELL_ON_APPROACH));
+		assert_eq!(session.awake.len(), 2);
+		assert!(!session.awake.iter().any(|target| matches!(target, Awake::Position { .. })));
+	}
+
+	#[tokio::test]
 	async fn a_woken_midpoint_goes_with_its_layer() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -790,6 +883,37 @@ mod tests {
 		snap_at_time(&mut session, &editor, DVec2::new(900., 600.), 5000);
 
 		assert!(matches!(session.awake.as_slice(), [Awake::Curve { .. }]));
+	}
+
+	#[tokio::test]
+	async fn deactivating_the_tools_lets_go_of_the_snap_and_wakes_nothing_the_pointer_was_resting_on() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 100., 300., 240.).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Line).await;
+		fn session(editor: &EditorTestUtils) -> &SnapSession {
+			&editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session
+		}
+
+		// With the Line tool ready, the pointer comes to rest beside a corner, which starts the wait to wake it
+		editor.handle_message(InputPreprocessorMessage::CurrentTime { timestamp: 1000 }).await;
+		editor.move_mouse(302., 242., ModifierKeys::empty(), MouseKeys::empty()).await;
+		assert!(engaged_kinds(session(&editor)).contains(&Kind::Anchor));
+		assert!(session(&editor).wants_ticks());
+
+		// Deactivating the tools, as opening the graph does, lets go of the corner at once
+		editor.handle_message(ToolMessage::DeactivateTools).await;
+		assert!(session(&editor).shown().is_none() && !session(&editor).wants_ticks());
+
+		// The frame on which the corner would have woken wakes nothing
+		editor
+			.handle_message(InputPreprocessorMessage::CurrentTime {
+				timestamp: 1000 + WAKE_DWELL_ON_APPROACH,
+			})
+			.await;
+		editor.handle_message(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame)).await;
+		assert!(session(&editor).awake.is_empty());
 	}
 
 	#[tokio::test]
