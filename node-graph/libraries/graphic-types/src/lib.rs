@@ -5,6 +5,7 @@ pub mod appearance;
 pub mod artboard;
 pub mod color_lookup_table;
 pub mod effects;
+pub mod generator;
 pub mod graphic;
 pub mod raster_effects;
 pub mod value_effects;
