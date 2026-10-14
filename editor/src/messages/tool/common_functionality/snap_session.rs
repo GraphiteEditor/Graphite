@@ -646,20 +646,27 @@ impl SnapSession {
 }
 
 /// How far a nudge moves something in document space. With grid snapping on, the position furthest along the nudge lands on the next grid line ahead.
-/// A diagonal nudge does so along each of its two directions.
+/// A diagonal nudge moves as a nudge along each of its two directions would, one after the other.
 pub fn nudge_translation(document: &DocumentMessageHandler, nudge: DVec2, positions: impl IntoIterator<Item = DVec2>) -> DVec2 {
 	let positions: Vec<DVec2> = positions.into_iter().collect();
 	if nudge.x != 0. && nudge.y != 0. {
-		return nudge_along(document, DVec2::new(nudge.x, 0.), &positions) + nudge_along(document, DVec2::new(0., nudge.y), &positions);
+		let first_move = nudge_along(document, DVec2::new(nudge.x, 0.), &positions);
+		let moved_positions: Vec<DVec2> = positions.iter().map(|position| position + first_move).collect();
+		return first_move + nudge_along(document, DVec2::new(0., nudge.y), &moved_positions);
 	}
 	nudge_along(document, nudge, &positions)
+}
+
+/// Whether a nudge lands on the next grid line, rather than moving by its own amount.
+pub fn nudges_land_on_grid(document: &DocumentMessageHandler) -> bool {
+	document.snapping_state.snapping_enabled && settings::grid(document).is_some()
 }
 
 /// How far a nudge in one direction moves something in document space, as [`nudge_translation`] describes.
 fn nudge_along(document: &DocumentMessageHandler, nudge: DVec2, positions: &[DVec2]) -> DVec2 {
 	let translation = DVec2::from_angle(-document.document_ptz.tilt()).rotate(nudge);
 
-	if !document.snapping_state.snapping_enabled {
+	if !nudges_land_on_grid(document) {
 		return translation;
 	}
 

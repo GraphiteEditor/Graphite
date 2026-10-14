@@ -6,7 +6,9 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
-use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, Drawn, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, nudge_translation, snapping_hints};
+use crate::messages::tool::common_functionality::snap_session::{
+	BoxFeatures, Drawn, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, nudge_translation, nudges_land_on_grid, snapping_hints,
+};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::nudge_resize_bounds;
 use graph_craft::document::NodeId;
@@ -598,14 +600,19 @@ impl Fsm for ArtboardToolFsmState {
 				} else {
 					let delta = nudge_translation(document, DVec2::new(delta_x, delta_y), Quad::from_box(bounds.bounds).0);
 
-					// Whole pixels are rounded to in the direction of the nudge, so a grid line under half a pixel ahead doesn't round it back to where it was
+					// A nudge onto the grid rounds to whole pixels in its direction, so a grid line under half a pixel ahead doesn't round it back to where it was
 					let moved = existing_top_left + delta;
 					let onward = |value: f64, step: f64| match step.partial_cmp(&0.) {
 						Some(std::cmp::Ordering::Greater) => (value - 1e-9).ceil(),
 						Some(std::cmp::Ordering::Less) => (value + 1e-9).floor(),
 						_ => value.round(),
 					};
-					(DVec2::new(onward(moved.x, delta.x), onward(moved.y, delta.y)), (existing_bottom_right - existing_top_left).round())
+					let location = if nudges_land_on_grid(document) {
+						DVec2::new(onward(moved.x, delta.x), onward(moved.y, delta.y))
+					} else {
+						moved.round()
+					};
+					(location, (existing_bottom_right - existing_top_left).round())
 				};
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -1098,5 +1105,26 @@ mod test_artboard {
 
 			assert_bounds(&editor, artboard, [DVec2::new(expected_left, 30.), DVec2::new(expected_left + 60., 70.)]);
 		}
+	}
+
+	#[tokio::test]
+	async fn an_artboard_nudged_on_a_tilted_canvas_with_grid_snapping_off_moves_to_the_nearest_whole_pixels() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(103., 32.), DVec2::new(163., 76.)).await;
+
+		// Rightward on the screen runs a third of a pixel upward in the document, too little to leave its row
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 20_f64.to_radians() }).await;
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+		editor
+			.handle_message(ArtboardToolMessage::NudgeSelected {
+				delta_x: NUDGE_AMOUNT,
+				delta_y: 0.,
+				resize: Key::Alt,
+				resize_opposite: Key::Control,
+			})
+			.await;
+
+		assert_bounds(&editor, artboard, [DVec2::new(104., 32.), DVec2::new(164., 76.)]);
 	}
 }

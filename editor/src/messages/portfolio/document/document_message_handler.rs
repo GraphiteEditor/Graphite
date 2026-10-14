@@ -2461,7 +2461,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = deserialize_replacing_null_floats_with_zero::<DocumentMessageHandler>(serialized_content)
+		let mut document_message_handler = deserialize_replacing_null_floats_with_zero::<DocumentMessageHandler>(serialized_content)
 			.or_else(|e| {
 				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
@@ -2514,6 +2514,13 @@ impl DocumentMessageHandler {
 				})
 			})
 			.map_err(|e| EditorError::DocumentDeserialization(e.to_string()))?;
+
+		// TODO: Eventually remove this document upgrade code
+		// Documents saved before the grid had its own visibility toggle showed it whenever grid snapping was on
+		if !serialized_content.contains("\"grid_visible\":") {
+			document_message_handler.snapping_state.grid_visible = document_message_handler.snapping_state.grid_snapping;
+		}
+
 		Ok(document_message_handler)
 	}
 
@@ -4328,6 +4335,22 @@ mod document_message_handler_tests {
 		assert!(!DocumentMessageHandler::default().serialize_document().contains("pending_gradient_bbox_bake"));
 	}
 
+	#[test]
+	fn a_document_saved_before_the_grid_had_its_own_visibility_toggle_shows_the_grid_it_snaps_to() {
+		let mut document = DocumentMessageHandler::default();
+		document.snapping_state.grid_snapping = true;
+		let serialized = document.serialize_document();
+		let legacy = serialized.replace("\"grid_visible\":false,", "");
+		assert_ne!(legacy, serialized, "the legacy document should lack the grid visibility setting");
+
+		let deserialized = DocumentMessageHandler::deserialize_document(&legacy).expect("the legacy document should deserialize");
+		assert!(deserialized.snapping_state.grid_visible);
+
+		// A document saved with the setting keeps the grid hidden
+		let deserialized = DocumentMessageHandler::deserialize_document(&serialized).expect("the document should deserialize");
+		assert!(!deserialized.snapping_state.grid_visible);
+	}
+
 	#[tokio::test]
 	async fn test_layer_selection_with_shift_and_ctrl() {
 		let mut editor = EditorTestUtils::create();
@@ -4910,6 +4933,31 @@ mod document_message_handler_tests {
 		// The right side goes to the line at 170 and the bottom to the one at 80
 		nudge(&mut editor, DVec2::splat(NUDGE_AMOUNT)).await;
 		assert_bounds(&editor, rectangle, [DVec2::new(110., 36.), DVec2::new(170., 80.)]);
+	}
+
+	#[tokio::test]
+	async fn a_diagonal_nudge_on_a_turned_grid_moves_as_its_two_directions_would_one_after_the_other() {
+		let (from, to) = (DVec2::new(103., 32.), DVec2::new(163., 76.));
+
+		// On a turned grid, how far down the next line is depends on how far right the first move went
+		let mut moved_bounds = Vec::new();
+		for nudges in [vec![DVec2::splat(NUDGE_AMOUNT)], vec![DVec2::new(NUDGE_AMOUNT, 0.), DVec2::new(0., NUDGE_AMOUNT)]] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			let rectangle = draw_rectangle_over_grid(&mut editor, from, to).await;
+			editor.active_document_mut().snapping_state.grid.angle = 45.;
+
+			for delta in nudges {
+				nudge(&mut editor, delta).await;
+			}
+			moved_bounds.push(editor.active_document().metadata().bounding_box_document(rectangle).expect("the layer should have a bounding box"));
+		}
+
+		let ([diagonal_min, diagonal_max], [sequential_min, sequential_max]) = (moved_bounds[0], moved_bounds[1]);
+		assert!(
+			diagonal_min.distance(sequential_min) < 1e-6 && diagonal_max.distance(sequential_max) < 1e-6,
+			"the diagonal nudge reaches {diagonal_min} to {diagonal_max} rather than {sequential_min} to {sequential_max}"
+		);
 	}
 
 	#[tokio::test]
