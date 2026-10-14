@@ -566,7 +566,7 @@ enum PathToolFsmState {
 }
 
 /// The most selected points that snap while being dragged together, counting the one under the pointer.
-const MAX_SNAPPING_POINTS: usize = 16;
+pub const MAX_SNAPPING_POINTS: usize = 16;
 
 /// The selected points being dragged, which slide together by however far the pointer asks from where the drag began.
 #[derive(Clone, Debug, Default)]

@@ -297,30 +297,36 @@ pub fn resize_bounds(
 
 #[allow(clippy::too_many_arguments)]
 pub fn rotate_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
 	drag_start: DVec2,
-	mouse_position: DVec2,
 	snap_angle: bool,
 	tool: ToolType,
 ) {
-	let start_offset = drag_start - bounds.center_of_transformation;
-	let end_offset = mouse_position - bounds.center_of_transformation;
-	let Some(angle) = start_offset.try_angle_to(end_offset) else {
+	let document = view.document;
+	let pointer_angle = || {
+		let start_offset = drag_start - bounds.center_of_transformation;
+		let end_offset = view.input.mouse.position - bounds.center_of_transformation;
+		start_offset.try_angle_to(end_offset)
+	};
+
+	// A stepped angle comes from the pointer alone, with nothing snapped
+	let angle = if snap_angle {
+		snap_session.forget();
+		let snap_resolution = ROTATE_INCREMENT.to_radians();
+		pointer_angle().map(|angle| (angle / snap_resolution).round() * snap_resolution)
+	} else {
+		bounds.snap_turn(view, snap_session).or_else(pointer_angle)
+	};
+	let Some(angle) = angle else {
 		warn!("Unable to rotate bounds due to zero offset");
 		return;
 	};
 
-	let snapped_angle = if snap_angle {
-		let snap_resolution = ROTATE_INCREMENT.to_radians();
-		(angle / snap_resolution).round() * snap_resolution
-	} else {
-		angle
-	};
-
-	let delta = DAffine2::from_angle(snapped_angle);
+	let delta = DAffine2::from_angle(angle);
 
 	dragging_layers.retain(|layer| {
 		if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -345,14 +351,17 @@ pub fn rotate_bounds(
 }
 
 pub fn skew_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	free_movement: bool,
 	layers: &mut Vec<LayerNodeIdentifier>,
-	mouse_position: DVec2,
 	tool: ToolType,
 ) {
+	let document = view.document;
+	let mouse_position = bounds.snap_skew(view, snap_session, free_movement);
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let mut pivot = DVec2::ZERO;
 
