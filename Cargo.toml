@@ -284,3 +284,7 @@ winit = { git = "https://github.com/timon-schelling/winit", branch = "graphite" 
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
 cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-151" }
 cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite-151" }
+# TODO: Point at the fork's published branch rather than a local checkout
+vello_gpu = { path = "../vello-graphite/vello_gpu" }
+vello_common = { path = "../vello-graphite/vello_common" }
+vello_gpu_shaders = { path = "../vello-graphite/vello_gpu_shaders" }
