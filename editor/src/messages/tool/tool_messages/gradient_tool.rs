@@ -1327,6 +1327,9 @@ impl Fsm for GradientToolFsmState {
 				tool_data.auto_pan_shift = DVec2::ZERO;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
+				// The press selects whatever it lands on, so one landing on nothing leaves no stop selected
+				tool_data.selected_gradient = None;
+
 				let mut drag_hint: Option<GradientDragHintState> = None;
 				let mut transaction_started = false;
 				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
@@ -1674,6 +1677,9 @@ impl Fsm for GradientToolFsmState {
 				// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
 				snap_session.sleep_all();
 				responses.add(OverlaysMessage::Draw);
+
+				// It also deselects the stop, so Delete goes back to deleting the selected layers
+				tool_data.selected_gradient = None;
 
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
@@ -2840,6 +2846,25 @@ mod test_gradient {
 		let (start, end) = (transform.transform_point2(gradient.start()), transform.transform_point2(gradient.end()));
 		assert!(start.abs_diff_eq(DVec2::new(0., 0.), 1e-6), "the start should stay put, got {start:?}");
 		assert!(end.abs_diff_eq(DVec2::new(60., 0.), 1e-6), "the line should end at the middle stop on the undragged line, got {end:?}");
+	}
+
+	#[tokio::test]
+	async fn esc_deselects_the_stop_so_delete_removes_the_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// Clicking the line adds a stop and selects it
+		editor.move_mouse(60., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(60., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(60., 0., ModifierKeys::empty()).await;
+		assert_eq!(get_gradient_from_fill(&mut editor).await.0.stops.len(), 3);
+
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "with the stop deselected, Delete should remove the layer");
 	}
 
 	#[tokio::test]
