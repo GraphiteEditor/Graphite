@@ -1,9 +1,9 @@
-use crate::parallel_rows::fill_rows;
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::Item;
 use raster_types::Bitmap;
 use raster_types::Image;
+use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Raster};
 
 /// Applies a median filter to reduce noise while preserving edges.

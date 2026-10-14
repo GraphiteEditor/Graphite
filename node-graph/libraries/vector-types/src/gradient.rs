@@ -1790,7 +1790,7 @@ impl GradientInterpolation {
 
 /// The whole-ramp attributes governing how a gradient plays back, read together off a gradient item so the
 /// sampling entry points take one argument instead of a widening list of same-typed positional ones.
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash)]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct GradientSettings {
 	pub spread: GradientSpread,

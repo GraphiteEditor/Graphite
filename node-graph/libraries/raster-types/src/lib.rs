@@ -1,4 +1,5 @@
 pub mod image;
+pub mod parallel_rows;
 pub mod raster_types;
 
 // Re-exports for convenience
