@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, is_almost_colinear, should_extend};
 use glam::DMat2;
@@ -1875,8 +1875,7 @@ impl Fsm for PenToolFsmState {
 				// The path starts on whatever the pointer was shown snapping to before the press
 				let document_to_viewport = document.metadata().document_to_viewport;
 				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
-				let landed = snap_session.shown_position().unwrap_or_else(|| snap_session.snap_point(view, pointer, PointOptions::default()));
-				let start = document_to_viewport.transform_point2(landed);
+				let start = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				tool_data.store_clicked_endpoint(document, start);
 				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor, start);
@@ -1900,6 +1899,7 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { .. }) => {
 				// The anchor goes where its preview is shown for where the pointer is pressed
 				tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses);
+				snap_session.land_press(view, transform.transform_point2(tool_data.next_point));
 				let next_anchor = (document.metadata().document_to_viewport * transform).transform_point2(tool_data.next_point);
 
 				// Each segment placement is its own history step, spanning from this click through the release that finalizes it
@@ -2317,11 +2317,14 @@ impl Fsm for PenToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
-				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
-				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
-			])]),
+			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
+					// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
+					HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+				]),
+				snapping_hints(),
+			]),
 			PenToolFsmState::PlacingAnchor => HintData(vec![
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
@@ -2335,6 +2338,7 @@ impl Fsm for PenToolFsmState {
 					HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash(),
 					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 				]),
+				snapping_hints(),
 			]),
 			PenToolFsmState::DraggingHandle(mode) => {
 				let mut dragging_hint_data = HintData(Vec::new());
@@ -2370,6 +2374,7 @@ impl Fsm for PenToolFsmState {
 
 				dragging_hint_data.0.push(HintGroup(toggle_group));
 				dragging_hint_data.0.push(HintGroup(hold_group));
+				dragging_hint_data.0.push(snapping_hints());
 				dragging_hint_data
 			}
 		};
