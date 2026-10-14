@@ -44,6 +44,8 @@ pub struct TransformLayerMessageContext<'a> {
 pub struct TransformationState {
 	pub is_rounded_to_intervals: bool,
 	pub is_transforming_in_local_space: bool,
+	/// Whether the transform snaps, which the Pen's handle transforms don't.
+	pub is_snapping: bool,
 	pub local_transform_axes: [DVec2; 2],
 	pub document_space_pivot: DocumentPosition,
 }
@@ -385,6 +387,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						snapping.build(&self.transform_operation, &self.state, document);
 						snap_session.begin_gesture(view, moving);
 						self.snapping = Some(snapping);
+						self.state.is_snapping = true;
 					}
 					None => self.end_snapping(snap_session, responses),
 				}
@@ -694,11 +697,12 @@ impl TransformLayerMessageHandler {
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		self.transform_operation.hints(responses, self.state.is_transforming_in_local_space);
+		self.transform_operation.hints(responses, self.state.is_transforming_in_local_space, self.state.is_snapping);
 	}
 
 	/// Ends the snapping gesture of the transform, if it began one, and takes down what it showed.
 	fn end_snapping(&mut self, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
+		self.state.is_snapping = false;
 		if self.snapping.take().is_some() {
 			snap_session.end_gesture();
 			responses.add(OverlaysMessage::Draw);

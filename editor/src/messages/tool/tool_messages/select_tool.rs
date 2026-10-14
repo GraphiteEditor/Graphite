@@ -19,7 +19,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
-use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::{push_nearest_anchors, resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
@@ -2069,6 +2069,7 @@ impl Fsm for SelectToolFsmState {
 				if !(*using_compass && axis.is_constraint()) {
 					hint_data.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]));
 				};
+				hint_data.push(snapping_hints());
 				let hint_data = HintData(hint_data);
 				hint_data.send_layout(responses);
 			}
@@ -2087,6 +2088,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
@@ -2094,6 +2096,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
@@ -2101,11 +2104,15 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::DraggingPivot => {
-				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					snapping_hints(),
+				]);
 				hint_data.send_layout(responses);
 			}
 		}
@@ -2336,7 +2343,9 @@ mod test_select_tool {
 	use crate::consts::ROTATE_INCREMENT;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
+	use crate::messages::tool::common_functionality::snap_session::{SnapSession, WAKE_DWELL_ON_APPROACH};
 	use crate::test_utils::test_prelude::*;
+	use snapping::{Awake, Engagement, Highlight, Kind};
 	use std::f64::consts::FRAC_PI_2;
 
 	/// Draws a rectangle between two viewport positions, which leaves it selected, and returns its layer.
@@ -3004,5 +3013,243 @@ mod test_select_tool {
 		turn_a_quarter_about(&mut editor, middle).await;
 
 		assert_bounds(&editor, layer, turned_bounds([from, to], middle, FRAC_PI_2));
+	}
+
+	fn snap_session(editor: &EditorTestUtils) -> &SnapSession {
+		&editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session
+	}
+
+	/// What the latest attempt to snap engaged.
+	fn engaged(editor: &EditorTestUtils) -> Engagement {
+		let engagement = snap_session(editor).shown().and_then(|shown| shown.outcome.engagement());
+		engagement.cloned().expect("the latest attempt to snap should have engaged something")
+	}
+
+	/// Moves the pointer, with no button down, to a viewport position.
+	async fn hover(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.move_mouse(position.x, position.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	}
+
+	/// Rests the pointer at a viewport position from a time in milliseconds for as long as waking takes before any press, and returns the anchor this wakes.
+	async fn wake_anchor(editor: &mut EditorTestUtils, position: DVec2, time: u64) -> Awake {
+		let awake_before = snap_session(editor).awake().to_vec();
+		editor.animation_frame(time).await;
+		hover(editor, position).await;
+		editor.animation_frame(time + WAKE_DWELL_ON_APPROACH).await;
+
+		let latest = snap_session(editor).awake().last().copied();
+		let Some(anchor @ Awake::Anchor { .. }) = latest.filter(|latest| !awake_before.contains(latest)) else {
+			panic!("resting at {position} should have woken an anchor")
+		};
+		anchor
+	}
+
+	/// Checks that the latest attempt to snap lined the pointer up with a woken anchor, which put it at a viewport position.
+	fn assert_aligned_with(editor: &EditorTestUtils, anchor: Awake, expected: DVec2) {
+		let Awake::Anchor { layer, index } = anchor else { panic!("{anchor:?} should be an anchor") };
+		let session = snap_session(editor);
+
+		let lines_up = |candidate: &snapping::Candidate| candidate.key.kind == Kind::Alignment && candidate.highlight == Some(Highlight::Anchor { layer, index });
+		assert!(
+			session.shown().is_some_and(|shown| shown.outcome.engaged_candidates().any(lines_up)),
+			"the pointer should be lined up with {anchor:?}"
+		);
+
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		let landed = session.shown_position().map(|position| document_to_viewport.transform_point2(position));
+		assert!(
+			landed.is_some_and(|landed| landed.abs_diff_eq(expected, 1e-6)),
+			"the pointer landed at {landed:?} rather than {expected}"
+		);
+	}
+
+	#[tokio::test]
+	async fn holding_q_through_a_drag_lets_the_rectangle_follow_the_pointer_until_q_is_let_go() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+		let on_the_corner = [DVec2::new(200., 180.), DVec2::new(260., 230.)];
+
+		// Its top left corner is brought three pixels from the other's bottom right corner, where it snaps
+		let grab = DVec2::new(330., 320.);
+		let mut pointer = grab + DVec2::new(-97., -122.);
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+
+		// Putting Q down lets go of the corner at once, and the rectangle follows the pointer exactly while Q is held
+		editor.key_down(Key::KeyQ, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(203., 178.), DVec2::new(263., 228.)]);
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(204., 178.), DVec2::new(264., 228.)]);
+		assert!(!snap_session(&editor).caught());
+
+		// Letting Q go snaps it back onto the corner, where it stays as the pointer moves on
+		editor.key_up(Key::KeyQ, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+		assert!(snap_session(&editor).caught());
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+	}
+
+	#[tokio::test]
+	async fn tapping_w_through_a_drag_steps_on_to_another_snap_within_reach_once_per_tap_and_holds_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		// Three pixels from the other's bottom right corner, the top left corner has that corner and the lines through it within reach
+		let grab = DVec2::new(330., 320.);
+		let mut pointer = grab + DVec2::new(-97., -122.);
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		let natural = engaged(&editor);
+		assert!(natural.alternatives >= 2 && !natural.pinned, "there should be more than one snap to step through");
+
+		// W steps on as soon as it goes down, and staying down as the pointer moves steps no further
+		editor.key_down(Key::KeyW, ModifierKeys::empty()).await;
+		let stepped = engaged(&editor);
+		assert_ne!(stepped.key, natural.key);
+		assert!(stepped.pinned);
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_eq!(engaged(&editor).key, stepped.key);
+		editor.key_up(Key::KeyW, ModifierKeys::empty()).await;
+
+		// Another tap steps on again, and what it reaches holds as the pointer moves on
+		editor.press(Key::KeyW, ModifierKeys::empty()).await;
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		let stepped_again = engaged(&editor);
+		assert_ne!(stepped_again.key, stepped.key);
+		assert!(stepped_again.pinned);
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_corner_rested_on_before_drawing_lines_the_pointer_up_from_afar_until_escape_puts_it_back_to_sleep() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// With the Rectangle tool ready, the pointer drawing left on the corner is taken away, then rests beside the corner until it wakes
+		hover(&mut editor, DVec2::new(600., 500.)).await;
+		editor.animation_frame(1000).await;
+		hover(&mut editor, DVec2::new(202., 182.)).await;
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH - 1).await;
+		assert!(snap_session(&editor).awake().is_empty());
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH).await;
+		let &[woken @ Awake::Anchor { .. }] = snap_session(&editor).awake() else {
+			panic!("only the corner should be awake, not {:?}", snap_session(&editor).awake())
+		};
+
+		// Three hundred pixels away, the pointer lines up with it
+		let (far_but_level, level) = (DVec2::new(500., 182.), DVec2::new(500., 180.));
+		hover(&mut editor, far_but_level).await;
+		assert_aligned_with(&editor, woken, level);
+
+		// Drawing another rectangle elsewhere leaves it awake and still lined up with, as the next move shows
+		editor.drag_path(&[DVec2::new(400., 300.), DVec2::new(460., 360.)], ModifierKeys::empty()).await;
+		let drawn = editor.get_selected_layer().await.expect("the rectangle drawn last should be selected");
+		assert_bounds(&editor, drawn, [DVec2::new(400., 300.), DVec2::new(460., 360.)]);
+		hover(&mut editor, far_but_level).await;
+		assert_eq!(snap_session(&editor).awake(), [woken]);
+		assert_aligned_with(&editor, woken, level);
+
+		// Escape with nothing under way puts it back to sleep
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		assert!(snap_session(&editor).awake().is_empty());
+		hover(&mut editor, far_but_level + DVec2::Y).await;
+		assert!(!snap_session(&editor).caught());
+	}
+
+	#[tokio::test]
+	async fn with_the_pen_tool_a_corner_rested_on_before_the_first_point_lines_the_pointer_up_from_afar() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Pen).await;
+
+		hover(&mut editor, DVec2::new(600., 500.)).await;
+		editor.animation_frame(1000).await;
+		hover(&mut editor, DVec2::new(202., 182.)).await;
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH).await;
+		let &[woken @ Awake::Anchor { .. }] = snap_session(&editor).awake() else {
+			panic!("only the corner should be awake, not {:?}", snap_session(&editor).awake())
+		};
+
+		let (far_but_level, level) = (DVec2::new(500., 182.), DVec2::new(500., 180.));
+		hover(&mut editor, far_but_level).await;
+		assert_aligned_with(&editor, woken, level);
+	}
+
+	#[tokio::test]
+	async fn with_the_pen_tool_the_middle_of_an_edge_rested_on_before_the_first_point_lines_the_pointer_up_from_afar() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Pen).await;
+
+		// Resting beside the middle of the top edge wakes that point, not the edge
+		hover(&mut editor, DVec2::new(600., 500.)).await;
+		editor.animation_frame(1000).await;
+		hover(&mut editor, DVec2::new(152., 102.)).await;
+		let resting_on: Vec<Kind> = snap_session(&editor).shown().unwrap().outcome.engaged_candidates().map(|candidate| candidate.key.kind).collect();
+		assert_eq!(resting_on, vec![Kind::Midpoint]);
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH).await;
+		let &[Awake::Position { position, .. }] = snap_session(&editor).awake() else {
+			panic!("only the middle of the edge should be awake, not {:?}", snap_session(&editor).awake())
+		};
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		assert!(document_to_viewport.transform_point2(position).abs_diff_eq(DVec2::new(150., 100.), 1e-6));
+
+		// Far below it, the pointer lines up with it
+		hover(&mut editor, DVec2::new(153., 400.)).await;
+		let kinds: Vec<Kind> = snap_session(&editor).shown().unwrap().outcome.engaged_candidates().map(|candidate| candidate.key.kind).collect();
+		assert_eq!(kinds, vec![Kind::Alignment]);
+		let landed = snap_session(&editor).shown_position().map(|position| document_to_viewport.transform_point2(position));
+		assert!(landed.is_some_and(|landed| landed.abs_diff_eq(DVec2::new(150., 400.), 1e-6)), "the pointer landed at {landed:?}");
+	}
+
+	#[tokio::test]
+	async fn a_sixth_corner_rested_on_puts_the_first_one_woken_back_to_sleep() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 140.)).await;
+		draw_rectangle(&mut editor, DVec2::new(230., 190.), DVec2::new(310., 250.)).await;
+		draw_rectangle(&mut editor, DVec2::new(390., 290.), DVec2::new(430., 370.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// The top left and bottom right corners of each rectangle, none level with another, are rested on in turn from two pixels outside
+		let beside_corners = [(98., 98.), (162., 142.), (228., 188.), (312., 252.), (388., 288.), (432., 372.)].map(DVec2::from);
+		let [first_five @ .., sixth] = beside_corners;
+		let mut woken = Vec::new();
+		for (index, beside) in first_five.into_iter().enumerate() {
+			woken.push(wake_anchor(&mut editor, beside, 1000 + index as u64 * 2000).await);
+		}
+
+		// Five stay awake, and the first still lines the pointer up from afar
+		assert_eq!(snap_session(&editor).awake(), woken);
+		hover(&mut editor, DVec2::new(600., 102.)).await;
+		assert_aligned_with(&editor, woken[0], DVec2::new(600., 100.));
+
+		// The sixth puts the first back to sleep, while the rest stay awake in the order they woke
+		woken.push(wake_anchor(&mut editor, sixth, 11_000).await);
+		assert_eq!(snap_session(&editor).awake(), &woken[1..]);
+		hover(&mut editor, DVec2::new(600., 102.)).await;
+		assert!(!snap_session(&editor).caught());
+		hover(&mut editor, DVec2::new(600., 142.)).await;
+		assert_aligned_with(&editor, woken[1], DVec2::new(600., 140.));
 	}
 }

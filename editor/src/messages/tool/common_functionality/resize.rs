@@ -22,7 +22,7 @@ impl Resize {
 	/// Puts the start of the drag where the pointer is shown snapped to, without beginning a gesture.
 	pub fn snap_drag_start(&mut self, snap_session: &mut SnapSession, view: SnapView) {
 		let pointer = view.document.metadata().document_to_viewport.inverse().transform_point2(view.input.mouse.position);
-		self.drag_start = snap_session.shown_position().unwrap_or_else(|| snap_session.snap_point(view, pointer, PointOptions::default()));
+		self.drag_start = snap_session.snap_press(view, pointer);
 	}
 
 	/// Begins the gesture of drawing a layer that is not yet in the document.

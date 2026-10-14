@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
-use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapSession, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use graph_craft::document::{NodeId, NodeInput};
@@ -388,10 +388,9 @@ impl Fsm for SplineToolFsmState {
 				tool_data.weight = tool_options.drawing.effective_line_weight();
 
 				// The spline starts on whatever the pointer was shown snapping to before the press
-				let viewport_vec = match snap_session.shown_position() {
-					Some(shown) => document.metadata().document_to_viewport.transform_point2(shown),
-					None => tool_data.snapped_point(snap_session, view),
-				};
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let viewport_vec = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				let layers = LayerNodeIdentifier::ROOT_PARENT
 					.descendants(document.metadata())
@@ -587,14 +586,18 @@ impl Fsm for SplineToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
-				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
-			])]),
+			SplineToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
+					HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+				]),
+				snapping_hints(),
+			]),
 			SplineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
+				snapping_hints(),
 			]),
 			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};

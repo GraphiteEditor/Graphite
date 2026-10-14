@@ -5,20 +5,30 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
-use snapping::{Awake, Candidate, Highlight, Kind, Locus, Shape};
+use snapping::{Awake, Candidate, Highlight, Kind, Locus, Shape, Snap};
 
 /// How far the cap at each end of a drawn gap reaches to either side of it, in viewport pixels.
 const GAP_CAP_REACH: f64 = 4.;
 
 impl SnapSession {
-	/// Draws the woken targets, and then what the pointer is snapped to: the piece of the scene it found, any line it is held on, and a mark at the snapped position with a word for the relationship.
+	/// Draws the woken targets, then where a press would land if no gesture is under way, or else what the pointer is snapped to:
+	/// the piece of the scene it found, any line or circle it is held on, and a mark at each feature it holds, with a word for the relationship at the first.
 	pub fn draw_overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		let to_viewport = document.metadata().document_to_viewport;
 		for &target in &self.awake {
 			self.draw_awake(target, to_viewport, overlay_context);
 		}
 
-		let Some(Shown { outcome, features, .. }) = &self.shown else { return };
+		let Some(Shown { outcome, features, lead, .. }) = &self.shown else { return };
+
+		// Before a press, the point is marked where the press would place it, even with no snap to name
+		if matches!(outcome.snap, Snap::Grid | Snap::Free)
+			&& self.gesture.is_none()
+			&& let Some(&position) = features.get(*lead)
+		{
+			overlay_context.square(to_viewport.transform_point2(position), Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
+			return;
+		}
 
 		let engaged: Vec<(&Candidate, DVec2)> = outcome
 			.engaged_candidates()
@@ -31,11 +41,18 @@ impl SnapSession {
 				self.draw_highlight(highlight, to_viewport, overlay_context);
 			}
 
-			// A line the feature is held on is drawn from what the line was measured from to where the feature now is
-			if let (Shape::Track(Locus::Line { .. }), Some(reference)) = (candidate.shape, candidate.reference) {
-				let [from, to] = [reference, snapped].map(|position| to_viewport.transform_point2(position));
-				overlay_context.line(from, to, None, None);
-				overlay_context.manipulator_handle(from, false, None);
+			// A line is drawn from what it was measured from to where the feature now is, and a circle is drawn whole
+			match (candidate.shape, candidate.reference) {
+				(Shape::Track(Locus::Line { .. }), Some(reference)) => {
+					let [from, to] = [reference, snapped].map(|position| to_viewport.transform_point2(position));
+					overlay_context.line(from, to, None, None);
+					overlay_context.manipulator_handle(from, false, None);
+				}
+				(Shape::Track(Locus::Circle { center, radius }), _) => {
+					let radius_on_screen = to_viewport.transform_vector2(DVec2::X * radius).length();
+					overlay_context.circle(to_viewport.transform_point2(center), radius_on_screen, None, Some(COLOR_OVERLAY_BLUE));
+				}
+				_ => {}
 			}
 
 			if let Some(gaps) = candidate.gaps {
@@ -45,10 +62,16 @@ impl SnapSession {
 			}
 		}
 
+		// Each feature that snapped is marked, and the relationship is named at the first
+		let mut snapped_features: Vec<DVec2> = engaged.iter().map(|&(_, snapped)| to_viewport.transform_point2(snapped)).collect();
+		snapped_features.dedup_by(|a, b| a.abs_diff_eq(*b, 0.5));
+		for &position in &snapped_features {
+			overlay_context.square(position, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
+		}
+
 		let marked = to_viewport.transform_point2(marked);
 		let above = DAffine2::from_translation(marked - DVec2::new(0., 4.));
 		overlay_context.text(&marked_label(&engaged), COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_BLACK_75), above, 4., [Pivot::Start, Pivot::End]);
-		overlay_context.square(marked, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 	}
 
 	/// Marks a woken target softly, which stays marked wherever the pointer goes.
@@ -75,7 +98,7 @@ impl SnapSession {
 		}
 	}
 
-	/// Outlines the piece of the scene a snap was found on. An anchor needs none, since the mark at the snapped position sits on it.
+	/// Outlines the piece of the scene a snap was found on, with a box dashed since it is not drawn itself. An anchor needs none, since the mark at the snapped position sits on it.
 	fn draw_highlight(&self, highlight: Highlight, to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
 		match highlight {
 			Highlight::Anchor { .. } => {}
@@ -86,7 +109,7 @@ impl SnapSession {
 			}
 			Highlight::Box { layer } => {
 				if let Some(corners) = self.scene.layer(layer).and_then(|layer| layer.quad) {
-					overlay_context.quad(to_viewport * Quad(corners), None, None);
+					overlay_context.dashed_quad(to_viewport * Quad(corners), Some(COLOR_OVERLAY_BLUE), None, Some(4.), Some(4.), None);
 				}
 			}
 		}

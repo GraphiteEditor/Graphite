@@ -211,10 +211,29 @@ impl EditorTestUtils {
 	}
 
 	pub async fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
-		let key_repeat = false;
+		self.key_down(key, modifier_keys).await;
+		self.key_up(key, modifier_keys).await;
+	}
 
+	/// Puts a key down and leaves it held until `key_up`.
+	pub async fn key_down(&mut self, key: Key, modifier_keys: ModifierKeys) {
+		let key_repeat = false;
 		self.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat }).await;
+	}
+
+	pub async fn key_up(&mut self, key: Key, modifier_keys: ModifierKeys) {
+		let key_repeat = false;
 		self.handle_message(InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat }).await;
+	}
+
+	/// Sets the clock to a time in milliseconds and runs one animation frame, as the frontend does on each `requestAnimationFrame`.
+	pub async fn animation_frame(&mut self, timestamp: u64) {
+		let messages = Box::new([
+			InputPreprocessorMessage::CurrentTime { timestamp }.into(),
+			AnimationMessage::IncrementFrameCounter.into(),
+			BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into(),
+		]);
+		self.handle_message(Message::Batched { messages }).await;
 	}
 
 	pub async fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {

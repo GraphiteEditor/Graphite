@@ -22,7 +22,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeTo
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
-use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView};
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
@@ -1461,7 +1461,7 @@ impl Fsm for ShapeToolFsmState {
 fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Message>, tool_data: &ShapeToolData) {
 	let hint_data = match state {
 		ShapeToolFsmState::Ready(_) => {
-			let hint_groups = match tool_data.current_shape {
+			let mut hint_groups = match tool_data.current_shape {
 				ShapeType::Polygon | ShapeType::Star => vec![
 					HintGroup(vec![
 						HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polygon"),
@@ -1511,6 +1511,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
 			};
+			hint_groups.push(snapping_hints());
 			HintData(hint_groups)
 		}
 		ShapeToolFsmState::Drawing(shape) => {
@@ -1546,6 +1547,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				common_hint_group.push(HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Turns")]));
 			}
 
+			common_hint_group.push(snapping_hints());
 			HintData(common_hint_group)
 		}
 		ShapeToolFsmState::DraggingLineEndpoints => HintData(vec![
@@ -1555,18 +1557,22 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				HintInfo::keys([Key::Alt], "From Center"),
 				HintInfo::keys([Key::Control], "Lock Angle"),
 			]),
+			snapping_hints(),
 		]),
 		ShapeToolFsmState::ResizingBounds => HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 			HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+			snapping_hints(),
 		]),
 		ShapeToolFsmState::RotatingBounds => HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 			HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+			snapping_hints(),
 		]),
 		ShapeToolFsmState::SkewingBounds { .. } => HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 			HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
+			snapping_hints(),
 		]),
 		ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
