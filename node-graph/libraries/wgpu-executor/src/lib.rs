@@ -1,12 +1,14 @@
 mod buffer;
 mod context;
 mod pipeline;
+pub mod raster_effects;
 pub mod raster_kernel;
 pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
 mod vello_render;
 
+use crate::shader_runtime::raster_kernel_runtime::RasterKernelRuntime;
 use crate::texture_cache::TextureCache;
 use crate::vello_render::VelloRenderer;
 pub use crate::vello_render::{MAX_LAYER_RENDER_SIZE, VelloCanvas};
@@ -65,6 +67,8 @@ pub struct WgpuExecutorInner {
 	texture_cache: std::sync::Mutex<TextureCache>,
 	raster_format: wgpu::TextureFormat,
 	vello_renderer: VelloRenderer,
+	/// The raster kernels renders carry out effects with, which aren't bound to the executor so they don't keep it alive.
+	render_kernels: WgpuPipelineCache,
 	/// The canvas the node graph renders documents on.
 	document_canvas: Mutex<VelloCanvas>,
 }
@@ -105,7 +109,7 @@ impl WgpuExecutor {
 		let mut canvas = self.inner.document_canvas.lock().unwrap_or_else(PoisonError::into_inner);
 		self.inner
 			.vello_renderer
-			.render(&mut canvas, &self.context().device, &self.context().queue, draw, view, size, &texture)?;
+			.render(&mut canvas, &self.context().device, &self.context().queue, &self.render_kernels(), draw, view, size, &texture)?;
 
 		Ok(texture)
 	}
@@ -114,7 +118,7 @@ impl WgpuExecutor {
 	pub fn render_vello_scene_on_canvas(&self, canvas: &mut VelloCanvas, scene: VelloSceneBuilder) -> Result<Texture> {
 		let texture = self.request_texture(UVec2::new(scene.width() as u32, scene.height() as u32));
 
-		self.inner.vello_renderer.render_scene(canvas, &self.context().device, &self.context().queue, scene, &texture);
+		(self.inner.vello_renderer).render_scene(canvas, &self.context().device, &self.context().queue, &self.render_kernels(), scene, &texture);
 
 		Ok(texture)
 	}
@@ -168,6 +172,11 @@ impl WgpuExecutor {
 		pipeline.init::<P>(self);
 	}
 
+	/// The raster kernels a render carries out its effects groups' effects with, sharing their pipelines across renders.
+	fn render_kernels(&self) -> WgpuPipelineCache {
+		self.inner.render_kernels.bound_to::<RasterKernelRuntime>(self)
+	}
+
 	pub fn request_texture(&self, size: UVec2) -> Texture {
 		self.request_texture_with_format(size, wgpu::TextureFormat::Rgba8Unorm)
 	}
@@ -204,6 +213,7 @@ impl WgpuExecutor {
 				raster_format,
 				vello_renderer,
 				document_canvas: Mutex::default(),
+				render_kernels: WgpuPipelineCache::default(),
 			}),
 		})
 	}

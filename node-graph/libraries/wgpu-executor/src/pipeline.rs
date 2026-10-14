@@ -25,6 +25,17 @@ impl PipelineCache {
 		self.pipeline.get_or_init(|| Box::new(P::create(executor)));
 	}
 
+	/// A cache running this one's pipeline on `executor`, creating the pipeline if this one has none yet.
+	/// Unlike [`Self::init`], this leaves `self` unbound, so an executor can keep it without keeping itself alive.
+	pub(super) fn bound_to<P: Pipeline>(&self, executor: &WgpuExecutor) -> Self {
+		let bound = Self {
+			pipeline: self.pipeline.clone(),
+			executor: Arc::default(),
+		};
+		bound.init::<P>(executor);
+		bound
+	}
+
 	pub fn run<P: Pipeline>(&self, args: &P::Args<'_>) -> Result<P::Out, PipelineError> {
 		let (Some(executor), Some(entry)) = (self.executor.get(), self.pipeline.get()) else {
 			return Err(PipelineError::NotInitialized);

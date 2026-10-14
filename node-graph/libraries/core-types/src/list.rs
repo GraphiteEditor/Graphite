@@ -80,6 +80,9 @@ pub const ATTR_POSITION: &str = "position";
 pub const ATTR_MIDPOINT: &str = "midpoint";
 /// Item's ordered list of paint passes, of type `Appearance`. Earlier coverages paint first, compositing below later ones.
 pub const ATTR_APPEARANCE: &str = "appearance";
+/// Item's ordered list of effects, of type `Effects`, which the renderer applies in turn to the pixels the item renders to.
+/// Unlike the appearance, it doesn't cascade to descendants.
+pub const ATTR_EFFECTS: &str = "effects";
 // TODO: Add a "fill_rule" attribute as a sibling of "paint" on the coverage list (uniform across covers) once a FillRule type ships
 /// Coverage's `Graphic` paint (implicit default `Graphic::None`, painting nothing), on the
 /// `List<Coverage>` inside an `Appearance`.

@@ -9,6 +9,7 @@ use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphic_types::Adjustment;
 use graphic_types::generator::GeneratorPattern;
 use raster_kernels::adjustments::{AdjustmentVisitor, visit_kernel};
+use raster_kernels::blur::{BlurHalve, BlurHorizontal, BlurPass, BlurSpace, BlurUpsample, BlurVertical, MAX_BLUR_REACH, blur_extent};
 use raster_kernels::generators::visit_generator_kernel;
 use raster_kernels::{GpuParams, MapColor, RasterKernel, RasterKernelVisitor, ToGpuParams, map_color_module, raster_kernel_module};
 use raster_types::{GPU, Raster, Storage};
@@ -117,6 +118,61 @@ pub fn render_generator(pattern: &GeneratorPattern, area: [DVec2; 2], size: UVec
 	}
 
 	visit_generator_kernel(pattern, area, size, RenderGenerator { size, pipeline })
+}
+
+/// The kernel input of a raster the output pixels line up with.
+fn unplaced_input(raster: &Raster<GPU>) -> Vec<RasterKernelInput<'_>> {
+	vec![RasterKernelInput {
+		raster,
+		output_to_texel: DAffine2::IDENTITY,
+	}]
+}
+
+/// Blurs `raster` with a Gaussian of standard deviation `radius`, or a box of half width `radius`, in pixels, reading and writing its colors in `space`.
+///
+/// Each pass sums premultiplied colors into a [`FILTERABLE_FORMAT`] intermediate, and a kernel reaching past [`MAX_BLUR_REACH`] runs on the image halved
+/// until it fits, weighing each halved texel by how much of the image it covers, then is scaled back up bilinearly.
+pub fn blur_raster(raster: &Raster<GPU>, radius: f64, box_blur: bool, space: BlurSpace, pipeline: &WgpuPipelineCache) -> Result<Raster<GPU>, NodeError> {
+	if radius < 0.1 || raster.is_empty() {
+		return Ok(raster.clone());
+	}
+
+	let size = raster.size();
+	let full_size = size.as_ivec2().to_array();
+
+	let mut levels = 0;
+	while blur_extent(radius, box_blur, 1 << levels).1 > MAX_BLUR_REACH {
+		levels += 1;
+	}
+	let level_size = |level: u32| size.map(|side| side.div_ceil(1 << level));
+
+	let mut source = raster.clone();
+	for level in 1..=levels {
+		let kernel = BlurHalve {
+			space: if level == 1 { space } else { BlurSpace::Premultiplied },
+			scale: 1 << (level - 1),
+			full_size,
+		};
+		source = run_raster_kernel_with_format(&kernel, unplaced_input(&source), level_size(level), FILTERABLE_FORMAT, pipeline)?;
+	}
+
+	let (radius, reach) = blur_extent(radius, box_blur, 1 << levels);
+	let pass = BlurPass {
+		radius,
+		reach,
+		box_blur,
+		space: if levels == 0 { space } else { BlurSpace::Premultiplied },
+		scale: 1 << levels,
+		full_size,
+	};
+	let horizontal = run_raster_kernel_with_format(&BlurHorizontal(pass.clone()), unplaced_input(&source), level_size(levels), FILTERABLE_FORMAT, pipeline)?;
+	if levels == 0 {
+		return run_raster_kernel(&BlurVertical(pass), unplaced_input(&horizontal), size, pipeline);
+	}
+	let vertical = run_raster_kernel_with_format(&BlurVertical(pass), unplaced_input(&horizontal), level_size(levels), FILTERABLE_FORMAT, pipeline)?;
+
+	let upsample = BlurUpsample { scale: (1 << levels) as f32, space };
+	run_raster_kernel(&upsample, unplaced_input(&vertical), size, pipeline)
 }
 
 /// The most pixels along each side of a [`union_frame`], which coarsens its grid to fit, within the texture size most WebGL2 devices support.

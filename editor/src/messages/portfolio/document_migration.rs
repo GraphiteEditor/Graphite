@@ -513,8 +513,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::filter::blur::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
+		node: graphene_std::raster_nodes::effects::blur::IDENTIFIER,
+		aliases: &["raster_nodes::filter::BlurNode", "graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::brightness_contrast::IDENTIFIER,
@@ -3572,7 +3572,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
 			graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER,
 			graphene_std::raster_nodes::filter::median_filter::IDENTIFIER,
-			graphene_std::raster_nodes::filter::blur::IDENTIFIER,
+			graphene_std::raster_nodes::effects::blur::IDENTIFIER,
 			graphene_std::raster_nodes::image_color_palette::image_color_palette::IDENTIFIER,
 			graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
 			graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
@@ -4711,7 +4711,7 @@ mod tests {
 	fn cpu_raster_type_defaults_become_gpu_defaults() {
 		let node_id = NodeId(1);
 		let mut document = DocumentMessageHandler::default();
-		let mut blur_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::filter::blur::IDENTIFIER))
+		let mut blur_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::effects::blur::IDENTIFIER))
 			.expect("the definition should exist")
 			.default_node_template();
 		blur_template.inputs[0] = NodeInput::type_default(item!(Raster<CPU>), true);

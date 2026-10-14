@@ -1,6 +1,9 @@
-use glam::UVec2;
-use raster_types::WeakCPU;
-use rendering::vello_scene_builder::{SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
+use crate::WgpuPipelineCache;
+use crate::raster_effects::apply_effects;
+use glam::{DMat2, UVec2};
+use graphic_types::Effects;
+use raster_types::{GPU, Raster, Texture, WeakCPU};
+use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
@@ -34,11 +37,20 @@ pub(crate) struct VelloRenderer {
 /// A stream of frames rendered through the shared Vello renderer, such as the document or the overlays, keeping what its frames reuse.
 #[derive(Default)]
 pub struct VelloCanvas {
-	/// The Vello GPU scene of the last render, handed out again to keep its allocations.
-	spare_scene: Option<vello_gpu::Scene>,
+	/// Scenes to draw into, one for each depth of effects groups nested in a render, reused between renders to keep their allocations.
+	spare_scenes: Vec<vello_gpu::Scene>,
 	/// The premultiplied texture Vello GPU renders into before conversion to straight alpha, kept while the render size stays the same.
 	premultiplied_target: Option<wgpu::Texture>,
 	images: ImageTextures,
+}
+
+/// A render in progress: the shared renderer and GPU, the canvas whose resources it draws with, and the raster kernels that carry out its effects groups' effects.
+struct RenderContext<'a> {
+	renderer: &'a VelloRenderer,
+	canvas: &'a mut VelloCanvas,
+	device: &'a wgpu::Device,
+	queue: &'a Queue,
+	kernels: &'a WgpuPipelineCache,
 }
 
 impl VelloRenderer {
@@ -64,13 +76,14 @@ impl VelloRenderer {
 	}
 
 	/// Renders the scene `draw` draws on `canvas`, with its content placed by `view`, into `target`, a texture of `size` with straight alpha that is either `Rgba8Unorm` holding sRGB values or the executor's raster format holding linear-light values.
-	/// A render with more content than Vello GPU can hold calls `draw` again for each part it splits into.
+	/// A render with more content than Vello GPU can hold calls `draw` again for each part it splits into. Its effects groups' effects are carried out with the raster kernels of `kernels`.
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn render(
 		&self,
 		canvas: &mut VelloCanvas,
 		device: &wgpu::Device,
 		queue: &Queue,
+		kernels: &WgpuPipelineCache,
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 		view: Affine,
 		size: UVec2,
@@ -81,9 +94,14 @@ impl VelloRenderer {
 		}
 
 		canvas.images.render_count += 1;
-		if let Err(error) = self.render_once(canvas, device, queue, draw, view, size, target) {
-			self.render_halves(canvas, device, queue, draw, view, size, target, error, 1);
-		}
+		let mut context = RenderContext {
+			renderer: self,
+			canvas,
+			device,
+			queue,
+			kernels,
+		};
+		context.render_area(draw, view, size, target);
 		canvas.images.free_unused();
 
 		Ok(())
@@ -91,30 +109,36 @@ impl VelloRenderer {
 
 	/// Renders a `scene` drawn beforehand on `canvas` into `target` (an `Rgba8Unorm` texture of the scene's size with straight alpha).
 	/// Unlike [`Self::render`], it can't split the scene, so one with more content than Vello GPU can hold renders transparent.
-	pub(crate) fn render_scene(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &Queue, scene: VelloSceneBuilder, target: &wgpu::Texture) {
+	pub(crate) fn render_scene(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &Queue, kernels: &WgpuPipelineCache, scene: VelloSceneBuilder, target: &wgpu::Texture) {
 		canvas.images.render_count += 1;
 		let max_texture_size = scene.max_texture_size();
-		if let Err(error) = self.submit(canvas, device, queue, scene.finish(), max_texture_size, target) {
+		let mut context = RenderContext {
+			renderer: self,
+			canvas,
+			device,
+			queue,
+			kernels,
+		};
+		if let Err(error) = context.submit(scene.finish(), max_texture_size, target) {
 			log::error!("Vello GPU failed to render: {error}");
 			clear(device, queue, target);
 		}
 		canvas.images.free_unused();
 	}
+}
+
+impl RenderContext<'_> {
+	/// Renders the scene `draw` draws into `target`, a texture of `size`, splitting its area into halves while it holds more content than one render can.
+	fn render_area(&mut self, draw: &mut dyn FnMut(&mut VelloSceneBuilder), view: Affine, size: UVec2, target: &wgpu::Texture) {
+		if let Err(error) = self.render_once(draw, view, size, target) {
+			self.render_halves(draw, view, size, target, error, 1);
+		}
+	}
 
 	/// Renders each half of the area of `target`, a texture of `size`, after rendering it whole failed with `error`, splitting again each half that still holds too much.
-	#[expect(clippy::too_many_arguments)]
-	fn render_halves(
-		&self,
-		canvas: &mut VelloCanvas,
-		device: &wgpu::Device,
-		queue: &Queue,
-		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
-		view: Affine,
-		size: UVec2,
-		target: &wgpu::Texture,
-		error: RenderError,
-		split_depth: u32,
-	) {
+	fn render_halves(&mut self, draw: &mut dyn FnMut(&mut VelloSceneBuilder), view: Affine, size: UVec2, target: &wgpu::Texture, error: RenderError, split_depth: u32) {
+		let (device, queue) = (self.device, self.queue);
+
 		// Each half covers less of the scene, so it has less content and smaller layers to hold
 		let too_much_to_hold = matches!(
 			error,
@@ -144,7 +168,7 @@ impl VelloRenderer {
 				wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
 			);
 			let half_view = Affine::translate((-(offset.x as f64), -(offset.y as f64))) * view;
-			let rendered = self.render_once(canvas, device, queue, draw, half_view, half_size, &half_target);
+			let rendered = self.render_once(draw, half_view, half_size, &half_target);
 			(offset, half_size, half_view, half_target, rendered)
 		});
 
@@ -168,7 +192,7 @@ impl VelloRenderer {
 
 		for (offset, half_size, half_view, half_target, rendered) in halves {
 			if let Err(half_error) = rendered {
-				self.render_halves(canvas, device, queue, draw, half_view, half_size, &half_target, half_error, split_depth + 1);
+				self.render_halves(draw, half_view, half_size, &half_target, half_error, split_depth + 1);
 			}
 
 			let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_split_copy") });
@@ -184,43 +208,29 @@ impl VelloRenderer {
 		}
 	}
 
-	/// Renders the scene `draw` draws, with its content placed by `view`, into `target`, a texture of `size`, in a single Vello GPU render.
-	#[expect(clippy::too_many_arguments)]
-	fn render_once(
-		&self,
-		canvas: &mut VelloCanvas,
-		device: &wgpu::Device,
-		queue: &Queue,
-		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
-		view: Affine,
-		size: UVec2,
-		target: &wgpu::Texture,
-	) -> Result<(), RenderError> {
+	/// Renders the scene `draw` draws into `target`, a texture of `size`, in a single Vello GPU render.
+	fn render_once(&mut self, draw: &mut dyn FnMut(&mut VelloSceneBuilder), view: Affine, size: UVec2, target: &wgpu::Texture) -> Result<(), RenderError> {
 		let (width, height) = (size.x as u16, size.y as u16);
-		let max_texture_size = device.limits().max_texture_dimension_2d;
+		let max_texture_size = self.device.limits().max_texture_dimension_2d;
 
-		let mut scene = canvas.spare_scene.take().unwrap_or_else(|| vello_gpu::Scene::new(width, height));
+		// Draw the scene for this render's size and placement, which renders its effects groups as they're drawn
+		let mut scene = self.canvas.spare_scenes.pop().unwrap_or_else(|| vello_gpu::Scene::new(width, height));
 		scene.reset_and_resize(width, height);
-		let mut builder = VelloSceneBuilder::from_vello(scene, view, max_texture_size);
+		let mut builder = VelloSceneBuilder::from_vello(scene, view, max_texture_size).with_effects_renderer(self);
 		draw(&mut builder);
+		let drawn = builder.finish();
 
-		self.submit(canvas, device, queue, builder.finish(), max_texture_size, target)
+		self.submit(drawn, max_texture_size, target)
 	}
 
 	/// Renders a drawn scene, with the images it draws, into `target`, a texture of the scene's size, in a single Vello GPU render.
-	fn submit(
-		&self,
-		canvas: &mut VelloCanvas,
-		device: &wgpu::Device,
-		queue: &Queue,
-		(scene, images): (vello_gpu::Scene, Vec<SceneImage>),
-		max_texture_size: u32,
-		target: &wgpu::Texture,
-	) -> Result<(), RenderError> {
+	fn submit(&mut self, (scene, images): (vello_gpu::Scene, Vec<SceneImage>), max_texture_size: u32, target: &wgpu::Texture) -> Result<(), RenderError> {
+		let device = self.device;
 		let (width, height) = (scene.width(), scene.height());
+		let size = UVec2::new(width as u32, height as u32);
 
 		// Locked from here to the submission, so drawing a scene doesn't hold up other uses of the queue
-		let queue = queue.lock();
+		let queue = self.queue.lock();
 
 		// Each render submits its own encoder, since Vello GPU stages its uploads for the next submission
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_render") });
@@ -228,14 +238,13 @@ impl VelloRenderer {
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			if let Some(view) = canvas.images.prepare(device, &queue, &mut encoder, &self.alpha_conversion, image, max_texture_size) {
+			if let Some(view) = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size) {
 				texture_bindings.insert(TextureId(id as u64), view);
 			}
 		}
 
 		// Render premultiplied, then convert to the straight alpha the rest of Graphite expects
-		let size = UVec2::new(width as u32, height as u32);
-		let premultiplied_target = match &canvas.premultiplied_target {
+		let premultiplied_target = match &self.canvas.premultiplied_target {
 			Some(texture) if texture.width() == size.x && texture.height() == size.y => texture.clone(),
 			_ => {
 				let texture = create_texture(
@@ -244,7 +253,7 @@ impl VelloRenderer {
 					size,
 					wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				);
-				canvas.premultiplied_target = Some(texture.clone());
+				self.canvas.premultiplied_target = Some(texture.clone());
 				texture
 			}
 		};
@@ -252,7 +261,7 @@ impl VelloRenderer {
 		let target_init = TargetInit::Clear(ClearSettings::Viewport { color: peniko::Color::TRANSPARENT });
 
 		// Vello GPU stages this render's uploads into resources every render shares, so another can't stage its own until this one is submitted
-		let mut gpu = self.gpu.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut gpu = self.renderer.gpu.lock().unwrap_or_else(PoisonError::into_inner);
 		let (renderer, resources) = &mut *gpu;
 		let rendered = renderer.render(
 			&scene,
@@ -269,15 +278,42 @@ impl VelloRenderer {
 
 		if rendered.is_ok() {
 			let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-			self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view, target.format());
+			self.renderer.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view, target.format());
 		}
 
 		// Submitted even after a failure, since it also prepares the textures of the scene's images
 		queue.submit([encoder.finish()]);
 		drop((gpu, queue));
-		canvas.spare_scene = Some(scene);
+
+		// Once the render that draws it is submitted, its scene is free to reuse
+		self.canvas.spare_scenes.push(scene);
 
 		rendered
+	}
+}
+
+impl EffectsRenderer for RenderContext<'_> {
+	fn renders_effects(&self) -> bool {
+		self.kernels.executor().is_some()
+	}
+
+	fn render_effects(&mut self, size: UVec2, view: Affine, effects: &Effects, fill: f32, lengths_to_pixels: DMat2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> Texture {
+		// Rendered into a raster of the content, which the effects are carried out on with the same kernels as a raster's own effects
+		let executor = self.kernels.executor().expect("effects are only rendered with a GPU");
+		let content = executor.request_texture_with_format(size, executor.raster_format());
+		self.render_area(draw, view, size, &content);
+		let content = Raster::<GPU>::new_gpu(content);
+
+		match apply_effects(&content, effects.operations(), fill, lengths_to_pixels, self.kernels) {
+			Ok(result) => result
+				.texture()
+				.cloned()
+				.unwrap_or_else(|| content.texture().cloned().expect("the content was rendered into a texture")),
+			Err(error) => {
+				log::error!("Failed to carry out effects: {error}");
+				content.texture().cloned().expect("the content was rendered into a texture")
+			}
+		}
 	}
 }
 

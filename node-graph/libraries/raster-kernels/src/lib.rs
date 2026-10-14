@@ -3,7 +3,9 @@
 
 pub mod adjustments;
 pub mod blending;
+pub mod blur;
 pub mod color_lookup_table;
+pub mod effects;
 pub mod generators;
 mod kernel;
 
