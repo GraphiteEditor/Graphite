@@ -949,6 +949,27 @@ async fn drag_offsets_do_not_outlive_programmatic_shifts() {
 }
 
 #[tokio::test]
+async fn each_arrow_key_nudge_is_its_own_undo_step() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node] }).await;
+	let start = editor.active_document().network_interface.position(&node, &[]).expect("The node should have a position");
+
+	editor.handle_message(NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }).await;
+	editor.handle_message(NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }).await;
+
+	// Undoing takes back only the last nudge, not the node's creation before them
+	editor.handle_message(DocumentMessage::Undo).await;
+	let network_interface = &editor.active_document().network_interface;
+	let position = network_interface.position(&node, &[]).expect("Undo should keep the node created before the nudges");
+	assert_eq!(position.x - start.x, 1, "Undo should take back only the last nudge");
+
+	assert_invariants(&editor, "after nudging and undoing");
+}
+
+#[tokio::test]
 async fn signature_edits_keep_parallel_metadata_in_sync() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
