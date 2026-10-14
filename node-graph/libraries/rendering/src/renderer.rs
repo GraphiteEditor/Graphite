@@ -1,7 +1,6 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
-use core_types::FallibleVec2Operations;
 use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
@@ -19,6 +18,7 @@ use core_types::{
 	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
 	ATTR_TRANSFORM,
 };
+use core_types::{FallibleAffine2Operations, FallibleVec2Operations};
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
@@ -509,7 +509,7 @@ pub(crate) fn gradient_settings_from_item(item: ItemRef<'_, Gradient>) -> Gradie
 
 /// Whether the affine transform inverts to a finite matrix (a zero, subnormal, or NaN determinant does not).
 pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
-	transform.matrix2.determinant().recip().is_finite()
+	transform.is_invertible()
 }
 
 /// Maps a gradient's `transform` into the frame handed to the renderer: radial keeps the full matrix (so a
@@ -2043,6 +2043,7 @@ fn collect_vector_items_metadata<'a>(
 	inherited_appearance: Option<&Appearance>,
 ) {
 	let mut reference_transforms: HashMap<NodeId, DAffine2> = HashMap::new();
+	let mut reference_inverses: HashMap<NodeId, DAffine2> = HashMap::new();
 
 	let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 	let mut accumulated_outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
@@ -2055,16 +2056,17 @@ fn collect_vector_items_metadata<'a>(
 
 		if let Some(element_id) = caller_element_id.or(item.layer()) {
 			let reference_transform = *reference_transforms.entry(element_id).or_insert(transform);
-			let reference_inverse = if transform_is_invertible(reference_transform) {
-				reference_transform.inverse()
-			} else {
+			let item_relative_transform = if transform == reference_transform {
 				DAffine2::IDENTITY
+			} else {
+				let reference_inverse = *reference_inverses
+					.entry(element_id)
+					.or_insert_with(|| if reference_transform.is_invertible() { reference_transform.inverse() } else { DAffine2::IDENTITY });
+				reference_inverse * transform
 			};
 
 			// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes)
 			let click_target_vector = item.attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET).unwrap_or(source);
-
-			let item_relative_transform = reference_inverse * transform;
 
 			let mut click_targets_unwrapped = Vec::new();
 			extend_targets_from_vector(&mut click_targets_unwrapped, appearance, click_target_vector, item_relative_transform);
@@ -2888,6 +2890,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Gradient>>, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {
 	let Some(element_id) = element_id else { return };
 
+	let mut item_zero_transform = None;
 	let mut item_zero_inverse = None;
 	let mut outline_targets = Vec::new();
 	let mut click_targets = Vec::new();
@@ -2896,10 +2899,16 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 		let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 		// The first item's transform is the reference all targets bake against
-		let item_zero_inverse = *item_zero_inverse.get_or_insert_with(|| if transform_is_invertible(item_transform) { item_transform.inverse() } else { DAffine2::IDENTITY });
+		let item_zero_transform = *item_zero_transform.get_or_insert(item_transform);
 
 		let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
-		target.apply_transform(item_zero_inverse * item_transform);
+		let relative_transform = if item_transform == item_zero_transform {
+			DAffine2::IDENTITY
+		} else {
+			let item_zero_inverse = *item_zero_inverse.get_or_insert_with(|| if item_zero_transform.is_invertible() { item_zero_transform.inverse() } else { DAffine2::IDENTITY });
+			item_zero_inverse * item_transform
+		};
+		target.apply_transform(relative_transform);
 		let target = Arc::new(target);
 
 		if gradient_control_interior_is_clickable(gradient_form) {
@@ -3283,7 +3292,7 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, trans
 /// which `Graphic::collect_metadata` records as `local_transforms[element_id]`.
 fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, String>>, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 	let mut item_zero_transform = None;
-	let mut item_zero_inverse = DAffine2::IDENTITY;
+	let mut item_zero_inverse = None;
 
 	let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
@@ -3291,7 +3300,6 @@ fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Strin
 		// The first item's transform is the reference all targets bake against
 		let item_zero_transform = *item_zero_transform.get_or_insert_with(|| {
 			let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-			item_zero_inverse = if transform.matrix2.determinant() != 0. { transform.inverse() } else { DAffine2::IDENTITY };
 			transform
 		});
 
@@ -3305,7 +3313,13 @@ fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Strin
 
 		let Some((size, item_transform)) = text_item_size_and_transform(item) else { continue };
 		let mut target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, size), 0.);
-		target.apply_transform(item_zero_inverse * item_transform);
+		let relative_transform = if item_transform == item_zero_transform {
+			DAffine2::IDENTITY
+		} else {
+			let item_zero_inverse = *item_zero_inverse.get_or_insert_with(|| if item_zero_transform.is_invertible() { item_zero_transform.inverse() } else { DAffine2::IDENTITY });
+			item_zero_inverse * item_transform
+		};
+		target.apply_transform(relative_transform);
 		accumulated_click_targets.entry(element_id).or_default().push(Arc::new(target));
 	}
 
@@ -3537,5 +3551,40 @@ mod tests {
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();
 		assert_eq!(colors, vec![Color::TRANSPARENT, Color::BLACK, Color::BLACK, Color::TRANSPARENT]);
+	}
+
+	#[test]
+	fn zero_width_vector_metadata_preserves_local_target_coordinates() {
+		let mut metadata = RenderMetadata::default();
+		let node_id = NodeId(12345);
+		let rect = vector_types::vector::algorithms::shapes::rectangle_bezpath(DVec2::ZERO, DVec2::new(100., 100.));
+		let vector = Vector::from_bezpath(rect);
+
+		// Transform with zero width (singular) and non-zero translation
+		let singular_transform = DAffine2::from_scale_angle_translation(DVec2::new(0., 50.), 0., DVec2::new(100., 200.));
+
+		let mut list = List::new();
+		list.push(
+			Item::new_from_element(vector)
+				.with_attribute(ATTR_TRANSFORM, singular_transform)
+				.with_attribute(ATTR_EDITOR_LAYER_PATH, NodeIdPath::from(vec![node_id])),
+		);
+
+		collect_vector_items_metadata((0..list.len()).map(|i| ItemRef::ListItem(&list, i)), &mut metadata, Footprint::default(), None, None);
+
+		// The local transform stored in metadata is the singular transform
+		assert_eq!(metadata.local_transforms.get(&node_id), Some(&singular_transform));
+
+		// The click target geometry must be in local layer coordinates (not pre-baked with the singular transform)
+		let targets = metadata.click_targets.get(&node_id).expect("targets exist");
+		assert_eq!(targets.len(), 1);
+
+		// In local space, the bounding box of [0, 0] to [100, 100] with IDENTITY is [0, 0] to [100, 100]
+		let local_bounds = targets[0].bounding_box_with_transform(DAffine2::IDENTITY).expect("bounds exist");
+		assert_eq!(local_bounds, [DVec2::new(0., 0.), DVec2::new(100., 100.)]);
+
+		// When transformed by singular_transform, it correctly places at (100, 200) to (100, 200 + 50*100 = 5200) without double translation
+		let transformed_bounds = targets[0].bounding_box_with_transform(singular_transform).expect("bounds exist");
+		assert_eq!(transformed_bounds, [DVec2::new(100., 200.), DVec2::new(100., 5200.)]);
 	}
 }
