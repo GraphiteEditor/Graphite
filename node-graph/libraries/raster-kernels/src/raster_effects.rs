@@ -8,7 +8,7 @@ use crate::generators::pattern_sampler;
 use core_types::FallibleVec2Operations;
 use core_types::blending::BlendMode;
 use core_types::color::{linear_to_srgb, srgb_to_linear};
-use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_FORM, Item};
+use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_END_CURVATURE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_START_CURVATURE, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2, DVec3};
 use graphic_types::Graphic;
@@ -17,7 +17,7 @@ use graphic_types::effects::{BevelDirection, BevelStyle, EffectOperation, Effect
 use graphic_types::generator::GeneratorPattern;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
-use vector_types::gradient::{Gradient, GradientForm, GradientSettings};
+use vector_types::gradient::{Gradient, GradientForm, GradientSettings, LINEAR_DIALS, RADIAL_DIALS, wrapped_dial};
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
 const MAX_PIXELS_WITH_MARGIN: f64 = (1 << 24) as f64;
@@ -463,21 +463,24 @@ fn paint_sampler(paint: &Graphic) -> Option<Box<dyn Fn(DVec2) -> Color + Sync + 
 	}
 }
 
-/// How far along the gradient each point lies, or `None` where its placement collapses it.
+/// How far along a linear or radial gradient each point lies, or `None` for the other shapes its curvature dials make, which only the renderers draw.
 fn gradient_position(item: &Item<Gradient>) -> Option<Box<dyn Fn(DVec2) -> f64 + Sync>> {
 	let placement: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let preset = item.attribute_cloned_or_default::<GradientForm>(ATTR_GRADIENT_FORM).dials();
+	let dial = |key: &str, preset: f64| wrapped_dial(item.attribute_cloned_or(key, preset), preset);
 
-	match item.attribute_cloned_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+	match [dial(ATTR_GRADIENT_START_CURVATURE, preset[0]), dial(ATTR_GRADIENT_END_CURVATURE, preset[1])] {
 		// Measured along the line across the bands, which stay parallel to the placement's sheared y axis as the renderers draw them
-		GradientForm::Linear => {
+		LINEAR_DIALS => {
 			let axis = placement.matrix2.x_axis;
 			let line = axis.try_project_onto(placement.matrix2.y_axis.perp()).unwrap_or(axis);
 			let origin = placement.translation;
 			(line.length_squared() > 0.).then(|| Box::new(move |point: DVec2| (point - origin).dot(line) / line.length_squared()) as Box<dyn Fn(DVec2) -> f64 + Sync>)
 		}
-		GradientForm::Radial => {
+		RADIAL_DIALS => {
 			let to_unit = (placement.matrix2.determinant() != 0.).then(|| placement.inverse())?;
 			Some(Box::new(move |point| to_unit.transform_point2(point).length()))
 		}
+		_ => None,
 	}
 }

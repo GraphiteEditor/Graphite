@@ -61,6 +61,11 @@ pub const ATTR_CLIP: &str = "clip";
 pub const ATTR_GRADIENT_SPREAD: &str = "gradient_spread";
 /// Gradient's `GradientForm` (`Linear` or `Radial`).
 pub const ATTR_GRADIENT_FORM: &str = "gradient_form";
+/// Gradient's `f64` curvature dial for the contour through its start, from -1 to 1: 0 is a line, ±1 is the start point
+/// itself, and between is a circle bowing toward (positive) or away from (negative) the end. Absent, the form decides it.
+pub const ATTR_GRADIENT_START_CURVATURE: &str = "gradient_start_curvature";
+/// Gradient's `f64` curvature dial for the contour through its end, like `gradient_start_curvature` with the ends swapped.
+pub const ATTR_GRADIENT_END_CURVATURE: &str = "gradient_end_curvature";
 /// Gradient's `GradientSpace`, the color space its stops interpolate in.
 pub const ATTR_GRADIENT_SPACE: &str = "gradient_space";
 /// Gradient's `GradientHueDirection` (`Shorter`, `Longer`, `Increasing`, or `Decreasing`), which way around the

@@ -20,7 +20,7 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{GradientForm, GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -298,10 +298,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::footprint_value::IDENTIFIER,
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::math_nodes::gradient_form::IDENTIFIER,
-		aliases: &["math_nodes::GradientTypeNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
@@ -1638,6 +1634,49 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		for input_connector in &downstream_from_output {
 			document.network_interface.set_input(input_connector, NodeInput::node(*node_id, output_index), network_path);
 		}
+	}
+
+	// The "Gradient Form" node was replaced by "Gradient Curvature", whose two curvatures take the presets of the form it set
+	const GRADIENT_FORM: [&str; 2] = ["math_nodes::GradientFormNode", "math_nodes::GradientTypeNode"];
+	let gradient_form_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return None };
+			GRADIENT_FORM.contains(&identifier.as_str().split('<').next().unwrap_or_default()).then_some((*node_id, path))
+		})
+		.collect();
+	for (node_id, network_path) in &gradient_form_nodes {
+		let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_curvature::IDENTIFIER)) else {
+			continue;
+		};
+		let mut node_template = definition.default_node_template();
+
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		reset_default_display_name(document, node_id, network_path, "Gradient Form");
+
+		if let Some(input) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), input.clone(), network_path);
+		}
+
+		let [start, end] = match old_inputs.get(1).and_then(|input| input.as_value()) {
+			Some(TaggedValue::GradientForm(GradientForm::Radial)) => graphene_std::renderer::dial_gradient::RADIAL_DIALS,
+			Some(TaggedValue::GradientForm(GradientForm::Linear)) => graphene_std::renderer::dial_gradient::LINEAR_DIALS,
+			_ => {
+				log::warn!("Old \"Gradient Form\" node {node_id} has no fixed form to migrate, so it becomes linear");
+				graphene_std::renderer::dial_gradient::LINEAR_DIALS
+			}
+		};
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Number(start), false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Number(end), false), network_path);
 	}
 
 	// "Position on Path" and "Tangent on Path" were merged into the multi-output "Evaluate Path" node, with position at output 0 and tangent direction at output 1.
@@ -4731,6 +4770,54 @@ mod tests {
 		let migrated = &document.network_interface.document_network().nodes[&node_id].inputs[1];
 		assert_eq!(migrated.as_value(), Some(&TaggedValue::TypeDefault(item!(Resource))), "the bare default should become the item default");
 		assert!(matches!(migrated, NodeInput::Value { exposed: true, .. }), "the exposed flag should be kept");
+	}
+
+	#[test]
+	fn gradient_form_nodes_become_gradient_curvature_presets() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+		use graphene_std::renderer::dial_gradient::{LINEAR_DIALS, RADIAL_DIALS};
+
+		let (source_id, form_id) = (NodeId(1), NodeId(2));
+		for (identifier, form, dials) in [
+			("math_nodes::GradientFormNode", GradientForm::Radial, RADIAL_DIALS),
+			("math_nodes::GradientTypeNode", GradientForm::Linear, LINEAR_DIALS),
+		] {
+			let mut document = DocumentMessageHandler::default();
+			let placeholder = || NodeInput::value(TaggedValue::None, false);
+			document.network_interface.insert_node(
+				source_id,
+				NodeTemplate {
+					inputs: vec![placeholder()],
+					..Default::default()
+				},
+				&[],
+			);
+			document.network_interface.insert_node(
+				form_id,
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
+					inputs: vec![placeholder(); 2],
+					..Default::default()
+				},
+				&[],
+			);
+			document.network_interface.set_input(&InputConnector::node_at_index(form_id, 0), NodeInput::node(source_id, 0), &[]);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(form_id, 1), NodeInput::value(TaggedValue::GradientForm(form), false), &[]);
+			migrate(&mut document);
+
+			let node = &document.network_interface.document_network().nodes[&form_id];
+			assert!(matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::math_nodes::gradient_curvature::IDENTIFIER));
+			assert_eq!(node.inputs.first(), Some(&NodeInput::node(source_id, 0)), "the gradient feeding {identifier} should stay wired");
+
+			let curvature = |index: usize| node.inputs.get(index).and_then(|input| input.as_value()).cloned();
+			assert_eq!(
+				[curvature(1), curvature(2)],
+				dials.map(|dial| Some(TaggedValue::Number(dial))),
+				"{form:?} should become its curvature presets"
+			);
+		}
 	}
 
 	#[test]
