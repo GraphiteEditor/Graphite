@@ -60,7 +60,6 @@ fn premultiply_gamma(buffer: Image<Color>) -> Image<PremultipliedGammaPixel> {
 				PremultipliedGammaPixel { r: r * a, g: g * a, b: b * a, a }
 			})
 			.collect(),
-		base64_string: None,
 	}
 }
 
@@ -80,7 +79,6 @@ fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Imag
 				}
 			})
 			.collect(),
-		base64_string: None,
 	}
 }
 

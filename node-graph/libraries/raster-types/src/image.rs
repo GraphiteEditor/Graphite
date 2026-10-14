@@ -56,10 +56,6 @@ pub struct Image<P: Pixel> {
 	pub height: u32,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub data: Vec<P>,
-	/// Optional: Stores a base64 string representation of the image which can be used to speed up the conversion
-	/// to an svg string. This is used as a cache in order to not have to encode the data on every graph evaluation.
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub base64_string: Option<String>,
 	// TODO: Add an `origin` field to store where in the local space the image is anchored.
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
 }
@@ -136,7 +132,6 @@ impl<P: Pixel> Image<P> {
 			width,
 			height,
 			data: vec![color; (width * height) as usize],
-			base64_string: None,
 		}
 	}
 }
@@ -145,17 +140,30 @@ impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 		let data = image_data.chunks_exact(4).map(|v| SRGBA8::new(v[0], v[1], v[2], v[3]).into()).collect();
-		Image {
-			width,
-			height,
-			data,
-			base64_string: None,
-		}
+		Image { width, height, data }
 	}
 
 	/// Decodes an image file of any supported format.
 	pub fn from_encoded(data: &[u8]) -> Option<Self> {
 		let image = decode(data)?;
+
+		// Most files hold eight-bit samples, which decode through a table of all 256 values rather than a power function for each
+		if matches!(image.color(), ::image::ColorType::L8 | ::image::ColorType::La8 | ::image::ColorType::Rgb8 | ::image::ColorType::Rgba8) {
+			let image = image.to_rgba8();
+			let data = image
+				.as_raw()
+				.as_chunks::<4>()
+				.0
+				.iter()
+				.map(|&[red, green, blue, alpha]| SRGBA8::new(red, green, blue, alpha).into())
+				.collect();
+
+			return Some(Image {
+				width: image.width(),
+				height: image.height(),
+				data,
+			});
+		}
 
 		// Float samples hold linear light, as in HDR and EXR files, while integer samples are gamma encoded
 		let linear = matches!(image.color(), ::image::ColorType::Rgb32F | ::image::ColorType::Rgba32F);
@@ -182,7 +190,6 @@ impl Image<Color> {
 			width: image.width(),
 			height: image.height(),
 			data,
-			base64_string: None,
 		})
 	}
 
@@ -313,7 +320,6 @@ mod test {
 			width: 2,
 			height: 2,
 			data: vec![Color::WHITE, Color::BLACK, Color::RED, Color::GREEN],
-			base64_string: None,
 		};
 
 		let serialized = serde_json::to_string(&image).unwrap();
@@ -352,6 +358,25 @@ mod test {
 		}
 
 		assert!(Image::from_encoded(b"not an image").is_none());
+	}
+
+	#[test]
+	fn eight_bit_decoding_matches_the_gamma_curve() {
+		use super::*;
+
+		// Every channel value, as a gray ramp whose alpha runs the other way
+		let pixels: Vec<u8> = (0..=255_u8).flat_map(|value| [value, value, value, 255 - value]).collect();
+		let mut encoded = Vec::new();
+		::image::RgbaImage::from_raw(256, 1, pixels)
+			.unwrap()
+			.write_to(&mut std::io::Cursor::new(&mut encoded), ::image::ImageFormat::Png)
+			.unwrap();
+
+		let image = Image::from_encoded(&encoded).unwrap();
+		for (value, color) in image.data.iter().enumerate() {
+			let expected = Color::from_gamma_srgb_channels(value as f32 / 255., value as f32 / 255., value as f32 / 255., (255 - value) as f32 / 255.);
+			assert!((color.r() - expected.r()).abs() < 1e-6 && (color.a() - expected.a()).abs() < 1e-6, "value {value}");
+		}
 	}
 
 	#[test]

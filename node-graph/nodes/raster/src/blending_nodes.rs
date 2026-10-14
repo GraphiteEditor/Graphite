@@ -35,7 +35,6 @@ mod blend_std {
 				data,
 				width: self.width,
 				height: self.height,
-				base64_string: None,
 			})
 		}
 	}

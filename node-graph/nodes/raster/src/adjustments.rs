@@ -169,12 +169,7 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 
 	// Each channel image keeps the source image's attributes, such as its transform
 	let [red, green, blue, alpha] = channels.map(|data| {
-		let channel_image = Image {
-			width,
-			height,
-			data,
-			base64_string: None,
-		};
+		let channel_image = Image { width, height, data };
 		Item::from_parts(Raster::new_cpu(channel_image), attributes.clone())
 	});
 

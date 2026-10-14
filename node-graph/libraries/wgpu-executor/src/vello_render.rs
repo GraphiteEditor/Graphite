@@ -289,6 +289,7 @@ fn clear(device: &wgpu::Device, queue: &Queue, target: &wgpu::Texture) {
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum ImageKey {
 	Blob(u64),
+	Raster(u64),
 	Texture(wgpu::Texture),
 }
 
@@ -319,12 +320,24 @@ impl ImageTextures {
 	) -> Option<wgpu::TextureView> {
 		let key = match image {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
+			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture((**texture).clone()),
 		};
 
 		if !self.textures.contains_key(&key) {
 			let texture = match image {
-				SceneImage::Pixels(data) => upload_pixels(device, queue, data, max_texture_size)?,
+				SceneImage::Pixels(data) => {
+					if data.format != peniko::ImageFormat::Rgba8 {
+						log::error!("Unsupported image format {:?}", data.format);
+						return None;
+					}
+
+					upload_pixels(device, queue, data.data.data(), data.width, data.height, data.alpha_type, max_texture_size)?
+				}
+				SceneImage::Raster(raster) => {
+					let (pixels, width, height) = raster.to_flat_u8();
+					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+				}
 				SceneImage::Texture(texture) => create_texture(
 					device,
 					"vello_gpu_premultiplied_image",
@@ -354,27 +367,20 @@ impl ImageTextures {
 			match key {
 				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 				ImageKey::Blob(_) => unused_renders == 0,
-				ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
+				ImageKey::Raster(_) | ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
 			}
 		});
 	}
 }
 
 /// Uploads CPU pixels as a premultiplied texture, downscaling them by a whole factor if they exceed `max_texture_size`.
-fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, image: &peniko::ImageData, max_texture_size: u32) -> Option<wgpu::Texture> {
-	let (width, height) = (image.width, image.height);
+fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, pixels: &[u8], width: u32, height: u32, alpha_type: peniko::ImageAlphaType, max_texture_size: u32) -> Option<wgpu::Texture> {
 	if width == 0 || height == 0 {
 		return None;
 	}
-	if image.format != peniko::ImageFormat::Rgba8 {
-		log::error!("Unsupported image format {:?}", image.format);
-		return None;
-	}
 
-	let premultiplied: Vec<u8> = match image.alpha_type {
-		peniko::ImageAlphaType::Alpha => image
-			.data
-			.data()
+	let premultiplied: Vec<u8> = match alpha_type {
+		peniko::ImageAlphaType::Alpha => pixels
 			.as_chunks::<4>()
 			.0
 			.iter()
@@ -384,7 +390,7 @@ fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, image: &peniko::Ima
 				[premultiply(pixel[0]), premultiply(pixel[1]), premultiply(pixel[2]), pixel[3]]
 			})
 			.collect(),
-		peniko::ImageAlphaType::AlphaPremultiplied => image.data.data().to_vec(),
+		peniko::ImageAlphaType::AlphaPremultiplied => pixels.to_vec(),
 	};
 
 	// Box-average whole blocks of pixels down until both sides fit, which is exact to average since the pixels are premultiplied

@@ -147,7 +147,6 @@ impl RasterGpuToRasterCpuConverter {
 			data: cpu_data,
 			width: self.width,
 			height: self.height,
-			base64_string: None,
 		};
 
 		Ok(Raster::new_cpu(cpu_image))

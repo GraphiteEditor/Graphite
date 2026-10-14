@@ -273,3 +273,30 @@ fn degenerate_strokes_render() {
 
 	let Some(_) = render(size, draw) else { return };
 }
+
+#[test]
+fn rasters_upload_once_across_scenes_until_modified() {
+	use raster_types::{Image, Raster};
+
+	let Some(executor) = executor() else { return };
+	let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
+	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
+
+	// Each render draws its scene anew, as the editor does whenever the graph runs
+	let scene_drawing = |raster: &Raster<raster_types::CPU>| {
+		let mut scene = VelloSceneBuilder::new(64, 64, Affine::IDENTITY, max_texture_size);
+		scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::scale(8.));
+		scene
+	};
+
+	let mut canvas = crate::VelloCanvas::default();
+	for _ in 0..3 {
+		executor.render_vello_scene_on_canvas(&mut canvas, scene_drawing(&raster)).unwrap();
+	}
+	assert_eq!(canvas.images.textures.len(), 1, "a clone of the same pixels reuses their texture");
+
+	let mut modified = raster.clone();
+	modified.data_mut().data[0] = core_types::Color::BLACK;
+	executor.render_vello_scene_on_canvas(&mut canvas, scene_drawing(&modified)).unwrap();
+	assert_eq!(canvas.images.textures.len(), 2, "modified pixels get a texture of their own");
+}
