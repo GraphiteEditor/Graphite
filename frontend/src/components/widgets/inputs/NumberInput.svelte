@@ -502,6 +502,13 @@
 		initialValueBeforeDragging = value;
 		initialExactBeforeDragging = exact;
 		if (exact !== undefined) steppingDigit = useShownDigit();
+
+		// A press and the repeats while it's held are one history step, as a drag is (exact mode's owner keeps its own history)
+		if (exact === undefined && (incrementBehavior === "Add" || incrementBehavior === "Multiply")) {
+			dispatch("startHistoryTransaction");
+			transactionInProgress = true;
+		}
+
 		let afterInitialDelay = false;
 		sendAction();
 		repeatTimeout = setTimeout(sendAction, PRESS_REPEAT_DELAY_MS);
@@ -513,6 +520,7 @@
 		steppingDigit = undefined;
 		clearTimeout(repeatTimeout);
 		removeEventListener("keydown", incrementPressAbort);
+		commitTransactionIfInProgress();
 	}
 
 	function incrementPressAbort(e: KeyboardEvent | MouseEvent) {
@@ -531,6 +539,7 @@
 		if (initialExact) updateExact(initialExact, initialExactBeforeDragging);
 		else updateValue(initialValueBeforeDragging);
 		removeEventListener("keydown", incrementPressAbort);
+		commitTransactionIfInProgress();
 	}
 
 	// =======================================
