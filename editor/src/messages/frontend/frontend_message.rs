@@ -271,8 +271,8 @@ pub enum FrontendMessage {
 	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
 	},
-	UpdateNodeGraphErrorDiagnostic {
-		error: Option<NodeGraphErrorDiagnostic>,
+	UpdateNodeGraphErrorDiagnostics {
+		errors: Vec<NodeGraphErrorDiagnostic>,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,

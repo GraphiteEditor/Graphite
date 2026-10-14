@@ -281,14 +281,16 @@
 		</FloatingMenu>
 	{/if}
 
-	{#if $nodeGraph.error}
+	{#if $nodeGraph.errors.length > 0}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
-			<span class="node-error faded" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
-				{$nodeGraph.error.error}
-			</span>
-			<span class="node-error hover" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
-				{$nodeGraph.error.error}
-			</span>
+			{#each $nodeGraph.errors as error}
+				<span class="node-error faded" style:left={`${error.position[0]}px`} style:top={`${error.position[1]}px`} transition:fade={FADE_TRANSITION}>
+					{error.error}
+				</span>
+				<span class="node-error hover" style:left={`${error.position[0]}px`} style:top={`${error.position[1]}px`} transition:fade={FADE_TRANSITION}>
+					{error.error}
+				</span>
+			{/each}
 		</div>
 	{/if}
 

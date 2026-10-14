@@ -340,9 +340,9 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphErrorDiagnostic { error } = self else { return };
-		if let Some(error) = error {
-			panic!("error: {:?}", error);
+		let FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors } = self else { return };
+		if !errors.is_empty() {
+			panic!("errors: {errors:?}");
 		}
 	}
 }

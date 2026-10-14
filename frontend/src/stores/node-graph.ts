@@ -12,7 +12,7 @@ type NodeGraphStoreState = {
 	box: BoxSelection | undefined;
 	clickTargets: FrontendClickTargets | undefined;
 	contextMenuInformation: ContextMenuInformation | undefined;
-	error: NodeGraphErrorDiagnostic | undefined;
+	errors: NodeGraphErrorDiagnostic[];
 	layerWidths: Map<bigint, number>;
 	chainWidths: Map<bigint, number>;
 	hasLeftInputWire: Map<bigint, boolean>;
@@ -30,7 +30,7 @@ const initialState: NodeGraphStoreState = {
 	box: undefined,
 	clickTargets: undefined,
 	contextMenuInformation: undefined,
-	error: undefined,
+	errors: [],
 	layerWidths: new Map(),
 	chainWidths: new Map(),
 	hasLeftInputWire: new Map(),
@@ -146,9 +146,9 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics", (data) => {
 		update((state) => {
-			state.error = data.error;
+			state.errors = data.errors;
 			return state;
 		});
 	});
@@ -240,7 +240,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
-	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics");
 	subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");
 	subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");

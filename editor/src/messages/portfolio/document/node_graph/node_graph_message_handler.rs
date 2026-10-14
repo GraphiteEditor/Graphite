@@ -1747,8 +1747,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
 					responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
-					let error = self.node_graph_error(network_interface, breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostic { error });
+					let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -2202,8 +2202,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if self.evaluation_errors != errors {
 					self.evaluation_errors = errors;
 					if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
-						let error = self.node_graph_error(network_interface, breadcrumb_network_path);
-						responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostic { error });
+						let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
+						responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
 						responses.add(NodeGraphMessage::UpdateVisibleNodes);
 					}
 				}
@@ -2821,28 +2821,47 @@ impl NodeGraphMessageHandler {
 		Some(subgraph_names)
 	}
 
-	fn node_graph_error(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<NodeGraphErrorDiagnostic> {
+	fn node_graph_errors(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<NodeGraphErrorDiagnostic> {
 		let depth = breadcrumb_network_path.len();
 		let inside = |path: &[NodeId]| path.starts_with(breadcrumb_network_path) && path.len() > depth;
-		let graph_error = network_interface.resolved_types.node_graph_errors.iter().find(|error| inside(&error.node_path));
-		let evaluation_error = self.evaluation_errors.iter().find(|error| inside(&error.node_path));
-		let (error_node, error) = match (graph_error, evaluation_error) {
-			(Some(graph_error), _) if graph_error.node_path.len() == depth + 1 => (graph_error.node_path[depth], format!("{:?}", graph_error.error)),
-			(Some(graph_error), _) => (graph_error.node_path[depth], "Node graph type error within this node".to_string()),
-			(None, Some(error)) if error.node_path.len() == depth + 1 => (error.node_path[depth], error.message.clone()),
-			(None, Some(error)) => (error.node_path[depth], "Node graph error within this node".to_string()),
-			(None, None) => return None,
+		let graph_errors: Vec<_> = network_interface
+			.resolved_types
+			.node_graph_errors
+			.iter()
+			.filter(|error| inside(&error.node_path))
+			.map(|error| match error.node_path.len() == depth + 1 {
+				true => (error.node_path[depth], format!("{:?}", error.error)),
+				false => (error.node_path[depth], "Node graph type error within this node".to_string()),
+			})
+			.collect();
+		// Evaluation errors come from the last graph that compiled, so a type error hides them
+		let errors = match graph_errors.is_empty() {
+			true => self
+				.evaluation_errors
+				.iter()
+				.filter(|error| inside(&error.node_path))
+				.map(|error| match error.node_path.len() == depth + 1 {
+					true => (error.node_path[depth], error.message.clone()),
+					false => (error.node_path[depth], "Node graph error within this node".to_string()),
+				})
+				.collect(),
+			false => graph_errors,
 		};
 
-		let mut position = network_interface.position(&error_node, breadcrumb_network_path)?;
-		// Convert to graph space
-		position *= 24;
-		if network_interface.is_layer(&error_node, breadcrumb_network_path) {
-			position += IVec2::new(12, -12)
-		}
-		let position = position.into();
-
-		Some(NodeGraphErrorDiagnostic { position, error })
+		let mut shown = HashSet::new();
+		errors
+			.into_iter()
+			.filter(|(node, _)| shown.insert(*node))
+			.filter_map(|(node, error)| {
+				let mut position = network_interface.position(&node, breadcrumb_network_path)?;
+				// Convert to graph space
+				position *= 24;
+				if network_interface.is_layer(&node, breadcrumb_network_path) {
+					position += IVec2::new(12, -12)
+				}
+				Some(NodeGraphErrorDiagnostic { position: position.into(), error })
+			})
+			.collect()
 	}
 
 	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], layers_panel_open: bool, responses: &mut VecDeque<Message>) {
