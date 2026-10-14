@@ -2391,6 +2391,7 @@ impl Fsm for PenToolFsmState {
 
 #[cfg(test)]
 mod test_pen_tool {
+	use super::is_almost_colinear;
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 	use crate::messages::tool::common_functionality::snap_session::WAKE_DWELL_ON_APPROACH;
@@ -3001,6 +3002,15 @@ mod test_pen_tool {
 			.unwrap_or_else(|| panic!("No segment found between the given anchors"))
 	}
 
+	/// Finds the handle position on `segment` that corresponds to `point`.
+	fn get_handle_at(vector: &Vector, segment: SegmentId, point: PointId) -> Option<DVec2> {
+		if vector.segment_start_from_id(segment) == Some(point) {
+			ManipulatorPointId::PrimaryHandle(segment).get_position(vector)
+		} else {
+			ManipulatorPointId::EndHandle(segment).get_position(vector)
+		}
+	}
+
 	#[tokio::test]
 	async fn an_anchor_moved_with_space_lands_on_a_corner_and_carries_its_handles_along() {
 		let mut editor = EditorTestUtils::create();
@@ -3061,13 +3071,7 @@ mod test_pen_tool {
 		let d_id = get_anchor_near(&vector, layer_to_viewport, D);
 		let bd_segment = get_segment_between(&vector, b_id, d_id);
 
-		let handle_at_b = if vector.segment_start_from_id(bd_segment) == Some(b_id) {
-			ManipulatorPointId::PrimaryHandle(bd_segment).get_position(&vector)
-		} else {
-			ManipulatorPointId::EndHandle(bd_segment).get_position(&vector)
-		};
-
-		if let Some(handle_pos) = handle_at_b {
+		if let Some(handle_pos) = get_handle_at(&vector, bd_segment, b_id) {
 			let handle_pos = layer_to_viewport.transform_point2(handle_pos);
 			assert!(handle_pos.distance(B) < 1e-4, "Handle at B for the new segment should remain at the anchor");
 		}
@@ -3099,20 +3103,23 @@ mod test_pen_tool {
 		let c_id = get_anchor_near(&vector, layer_to_viewport, C);
 		let bc_segment = get_segment_between(&vector, b_id, c_id);
 
-		let handle_at_b = if vector.segment_start_from_id(bc_segment) == Some(b_id) {
-			ManipulatorPointId::PrimaryHandle(bc_segment).get_position(&vector)
-		} else {
-			ManipulatorPointId::EndHandle(bc_segment).get_position(&vector)
-		};
+		let a_id = get_anchor_near(&vector, layer_to_viewport, A);
+		let ab_segment = get_segment_between(&vector, a_id, b_id);
+		let existing_handle_at_b = get_handle_at(&vector, ab_segment, b_id).expect("Segment AB should have a handle at B");
+		let existing_handle_pos = layer_to_viewport.transform_point2(existing_handle_at_b);
 
-		// When only one segment is connected, the handle should NOT collapse to the
-		// anchor — it should carry a meaningful colinear handle away from B.
-		let handle_pos = handle_at_b.expect("The new segment should have a handle at B");
-		let handle_pos = layer_to_viewport.transform_point2(handle_pos);
+		let new_handle_at_b = get_handle_at(&vector, bc_segment, b_id).expect("The new segment should have a handle at B");
+		let new_handle_pos = layer_to_viewport.transform_point2(new_handle_at_b);
+
+		// When only one segment is connected, the handle should not collapse to the
+		// anchor, and must be colinear with the existing handle at B.
 		assert!(
-			handle_pos.distance(B) > 1e-4,
-			"Handle at B should not collapse to the anchor when only one segment is connected (got {handle_pos})"
+			new_handle_pos.distance(B) > 1e-4,
+			"Handle at B should not collapse to the anchor when only one segment is connected (got {new_handle_pos})"
+		);
+		assert!(
+			is_almost_colinear(B, existing_handle_pos, new_handle_pos),
+			"New handle should be colinear with the existing handle at B (existing: {existing_handle_pos}, new: {new_handle_pos})"
 		);
 	}
 }
-
