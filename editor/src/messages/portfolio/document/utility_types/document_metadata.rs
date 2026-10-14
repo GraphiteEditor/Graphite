@@ -44,6 +44,8 @@ pub struct DocumentMetadata {
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Item<Vector>>>,
 	/// Per-layer `ATTR_APPEARANCE` attribute, exposed so message handlers can read paint information that lives on the list.
 	pub layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>,
+	/// How far each layer's effects paint past its content, in document pixels, for the layers with effects.
+	pub layer_effects_reach: HashMap<LayerNodeIdentifier, f64>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 	/// The transform from document space to viewport space that the latest render was made with, which is the one `upstream_footprints` include.
@@ -241,21 +243,22 @@ impl DocumentMetadata {
 	}
 
 	/// Get the bounding box of the specified layer in document space, expanded to include the actual rendered
-	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
-	/// bounds for non-vector layers (groups, raster, text, color, gradient).
-	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		if let Some(item) = self.layer_vector_data.get(&layer) {
+	/// stroke geometry when the layer is a vector with a stroke style, and how far its effects paint past it.
+	/// Falls back to the click-target-based bounds for non-vector layers (groups, raster, text, color, gradient).
+	pub fn bounding_box_document_with_stroke_and_effects(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
+		let stroke_bounds = self.layer_vector_data.get(&layer).and_then(|item| {
 			let stroke = self
 				.layer_appearance_attributes
 				.get(&layer)
 				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
 				.map(graphene_std::Coverage::stroke_params);
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
-			if let Some(bounds) = item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref()) {
-				return Some(bounds);
-			}
-		}
-		self.bounding_box_document(layer)
+			item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref())
+		});
+		let [min, max] = stroke_bounds.or_else(|| self.bounding_box_document(layer))?;
+
+		let reach = self.layer_effects_reach.get(&layer).copied().unwrap_or_default();
+		Some([min - reach, max + reach])
 	}
 
 	/// Get the bounding box of the click target of the specified layer in viewport space

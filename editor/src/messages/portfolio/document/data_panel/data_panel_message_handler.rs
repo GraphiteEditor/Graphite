@@ -30,7 +30,7 @@ use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel, SegmentId, Vector};
-use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
+use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Effect, EffectKind, Effects, Graphic};
 use kurbo::BezPath;
 use std::any::Any;
 use std::sync::Arc;
@@ -543,6 +543,45 @@ impl TableItemLayout for Coverage {
 	}
 }
 
+impl TableItemLayout for Effects {
+	fn type_name() -> &'static str {
+		"Effects"
+	}
+	fn identifier(&self) -> String {
+		"Effects".to_string()
+	}
+	// The wrapping `Item` already contributes the breadcrumb; the inner list supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	// Label the spreadsheet's element button with the inner list's identifier, like Appearance
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
+impl TableItemLayout for Effect {
+	fn type_name() -> &'static str {
+		"Effect"
+	}
+	fn identifier(&self) -> String {
+		"Effect".to_string()
+	}
+	// The wrapping row already contributes the breadcrumb; the inner item supplies the next level
+	fn layout_with_breadcrumb(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.value_page(data)
+	}
+	fn value_widgets(&self, target: PathStep, data: &LayoutData) -> Vec<WidgetInstance> {
+		self.0.value_widgets(target, data)
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.layout_with_breadcrumb(data)
+	}
+}
+
 impl TableItemLayout for TransferCurve {
 	fn type_name() -> &'static str {
 		"TransferCurve"
@@ -975,6 +1014,7 @@ macro_rules! impl_table_item_layout_for_choice_enum {
 impl_table_item_layout_for_choice_enum!(
 	BlendMode,
 	Cover,
+	EffectKind,
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
@@ -1144,6 +1184,9 @@ macro_rules! known_item_types {
 			Appearance,
 			Coverage,
 			Cover,
+			Effects,
+			Effect,
+			EffectKind,
 			DashPattern,
 			BoxCorners,
 			TransferCurve,

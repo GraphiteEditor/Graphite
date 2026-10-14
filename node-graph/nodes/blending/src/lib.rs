@@ -1,3 +1,5 @@
+pub mod effects;
+
 use core_types::list::Item;
 use core_types::{ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_OPACITY, ATTR_OPACITY_FILL, BlendMode, Color, Ctx};
 use graphic_types::Graphic;

@@ -1,5 +1,6 @@
+use graphic_types::Effects;
 use graphic_types::raster_types::Texture;
-use kurbo::{Affine, BezPath, Shape, Stroke};
+use kurbo::{Affine, BezPath, Rect, Shape, Stroke};
 use vello_gpu::PencilGradient;
 use vello_gpu::peniko::{self, BlendMode, Brush, Fill};
 
@@ -37,7 +38,9 @@ pub enum SceneCommand {
 	PushLayer { blend_mode: BlendMode, alpha: f32, clip: Option<ClipPath> },
 	/// Begins clipping the content that follows to a path, drawing it directly onto what lies beneath rather than into an isolated layer.
 	PushClip { clip: ClipPath },
-	/// Ends the most recently begun layer or clip.
+	/// Begins content that renders through effects, which apply to its pixels before the result composites onto what lies beneath.
+	PushEffects(EffectsGroup),
+	/// Ends the most recently begun layer, clip, or effects group.
 	Pop,
 	/// Draws an image's rectangle of pixels, from the origin to its width and height, placed by `transform`.
 	DrawImage { image: SceneImage, transform: Affine },
@@ -88,6 +91,18 @@ pub struct ClipPath {
 	pub fill_rule: Fill,
 	pub transform: Affine,
 	pub path: BezPath,
+}
+
+/// The effects that content renders through, as recorded by [`Scene::push_effects`].
+#[derive(Clone, Debug)]
+pub struct EffectsGroup {
+	pub effects: Effects,
+	/// How much of the content itself shows in the result, while the shadows and glows cast from it stay at full strength.
+	pub fill: f32,
+	/// Maps the space the effects' lengths are measured in into the scene's space.
+	pub transform: Affine,
+	/// The extent of the content in the scene's space, or `None` for content that covers the whole render area.
+	pub bounds: Option<Rect>,
 }
 
 /// The pixels an image command draws.
@@ -180,7 +195,18 @@ impl Scene {
 		});
 	}
 
-	/// Ends the most recent layer or clip.
+	/// Begins content that renders through `effects`, whose lengths are in the scene's space, within `bounds` (or covering the whole render area for `None`).
+	/// Must be balanced by [`Self::pop_layer`].
+	pub fn push_effects(&mut self, effects: Effects, fill: f32, bounds: Option<Rect>) {
+		self.commands.push(SceneCommand::PushEffects(EffectsGroup {
+			effects,
+			fill,
+			transform: Affine::IDENTITY,
+			bounds,
+		}));
+	}
+
+	/// Ends the most recent layer, clip, or effects group.
 	pub fn pop_layer(&mut self) {
 		self.commands.push(SceneCommand::Pop);
 	}
@@ -251,6 +277,11 @@ impl Scene {
 				clip: clip.as_ref().map(place_clip),
 			},
 			SceneCommand::PushClip { clip } => SceneCommand::PushClip { clip: place_clip(clip) },
+			SceneCommand::PushEffects(group) => SceneCommand::PushEffects(EffectsGroup {
+				transform: transform * group.transform,
+				bounds: group.bounds.map(|bounds| transform.transform_rect_bbox(bounds)),
+				..group.clone()
+			}),
 			SceneCommand::Pop => SceneCommand::Pop,
 			SceneCommand::DrawImage { image, transform: command_transform } => SceneCommand::DrawImage {
 				image: image.clone(),

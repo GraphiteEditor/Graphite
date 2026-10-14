@@ -4,6 +4,7 @@ mod pipeline;
 pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
+mod vello_effects;
 mod vello_render;
 
 use crate::shader_runtime::ShaderRuntime;

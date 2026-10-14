@@ -1,5 +1,6 @@
-use glam::UVec2;
-use rendering::scene::{Scene, SceneBrush, SceneCommand, SceneImage};
+use crate::vello_effects::{EffectPasses, EffectTextures};
+use glam::{DMat2, UVec2};
+use rendering::scene::{EffectsGroup, Scene, SceneBrush, SceneCommand, SceneImage};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -23,30 +24,52 @@ const MAX_SPLIT_DEPTH: u32 = 12;
 /// These grow to fit the largest layer and stay that size, so a larger limit keeps more memory after one large render. Renders larger than this are split.
 pub const MAX_LAYER_RENDER_SIZE: u32 = 4096;
 
+/// The texture size an effects group's area rounds up to a multiple of, so a group moving across renders keeps reusing the same pooled textures.
+const EFFECTS_SIZE_CLASS: u32 = 64;
+
+/// The first ID of the textures holding a render's effects results, far from the IDs of image textures, which count up from zero.
+const FIRST_EFFECTS_TEXTURE_ID: u64 = 1 << 63;
+
 /// Vello GPU's renderer and GPU resources, shared by every [`VelloCanvas`] so their memory and pipelines exist once.
 pub(crate) struct VelloRenderer {
 	/// Locked only while a recorded scene is drawn and submitted, so one canvas recording its scene on the CPU doesn't hold up another's render.
 	gpu: Mutex<(Renderer, Resources)>,
 	alpha_conversion: AlphaConversion,
+	effect_passes: EffectPasses,
 }
 
 /// A stream of frames rendered through the shared Vello renderer, such as the document or the overlays, keeping what its frames reuse.
+#[derive(Default)]
 pub struct VelloCanvas {
-	/// Reused between renders to keep its allocations.
-	scene: vello_gpu::Scene,
+	/// Scenes to record into, one for each depth of effects groups nested in a render, reused between renders to keep their allocations.
+	spare_scenes: Vec<vello_gpu::Scene>,
 	/// The premultiplied texture Vello GPU renders into before conversion to straight alpha, kept while the render size stays the same.
 	premultiplied_target: Option<wgpu::Texture>,
 	images: ImageTextures,
+	effect_textures: EffectTextures,
 }
 
-impl Default for VelloCanvas {
-	fn default() -> Self {
-		Self {
-			scene: vello_gpu::Scene::new(1, 1),
-			premultiplied_target: None,
-			images: ImageTextures::default(),
-		}
-	}
+/// Whether a render leaves its target with the straight alpha the rest of Graphite expects, or the premultiplied alpha the effect passes take.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TargetAlpha {
+	Straight,
+	Premultiplied,
+}
+
+/// A render in progress: the shared renderer and GPU, and the canvas whose resources it draws with.
+struct RenderContext<'a> {
+	renderer: &'a VelloRenderer,
+	canvas: &'a mut VelloCanvas,
+	device: &'a wgpu::Device,
+	queue: &'a wgpu::Queue,
+}
+
+/// What one Vello GPU render records: its scene, and the textures its paints sample.
+struct Recording {
+	scene: vello_gpu::Scene,
+	texture_bindings: TextureBindings,
+	/// The textures holding the results of the render's effects groups, kept until the render that draws them is submitted.
+	effect_results: Vec<wgpu::Texture>,
 }
 
 impl VelloRenderer {
@@ -71,6 +94,7 @@ impl VelloRenderer {
 		Self {
 			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
 			alpha_conversion: AlphaConversion::new(device),
+			effect_passes: EffectPasses::new(device),
 		}
 	}
 
@@ -82,16 +106,25 @@ impl VelloRenderer {
 		}
 
 		canvas.images.render_count += 1;
-		self.render_area(canvas, device, queue, scene, transform, size, target, 0);
+		let mut context = RenderContext {
+			renderer: self,
+			canvas,
+			device,
+			queue,
+		};
+		context.render_area(scene.commands(), transform, size, target, TargetAlpha::Straight, 0);
 		canvas.images.free_unused();
+		canvas.effect_textures.finish_render();
 
 		Ok(())
 	}
+}
 
-	/// Renders `scene` into `target`, a texture of `size`. When the scene holds more content than one render can, renders each half of the area separately and copies it into place.
-	#[expect(clippy::too_many_arguments)]
-	fn render_area(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene, transform: Affine, size: UVec2, target: &wgpu::Texture, split_depth: u32) {
-		let error = match self.render_once(canvas, device, queue, scene, transform, size, target) {
+impl RenderContext<'_> {
+	/// Renders `commands` into `target`, a texture of `size`. When they hold more content than one render can, renders each half of the area separately and copies it into place.
+	fn render_area(&mut self, commands: &[SceneCommand], transform: Affine, size: UVec2, target: &wgpu::Texture, target_alpha: TargetAlpha, split_depth: u32) {
+		let (device, queue) = (self.device, self.queue);
+		let error = match self.render_once(commands, transform, size, target, target_alpha) {
 			Ok(()) => return,
 			Err(error) => error,
 		};
@@ -118,7 +151,7 @@ impl VelloRenderer {
 					wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
 				);
 				let half_transform = Affine::translate((-(offset.x as f64), -(offset.y as f64))) * transform;
-				self.render_area(canvas, device, queue, scene, half_transform, half_size, &half_target, split_depth + 1);
+				self.render_area(commands, half_transform, half_size, &half_target, target_alpha, split_depth + 1);
 
 				let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_split_copy") });
 				encoder.copy_texture_to_texture(
@@ -141,51 +174,47 @@ impl VelloRenderer {
 		queue.submit([encoder.finish()]);
 	}
 
-	/// Renders `scene` into `target`, a texture of `size`, in a single Vello GPU render.
-	#[expect(clippy::too_many_arguments)]
-	fn render_once(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene, transform: Affine, size: UVec2, target: &wgpu::Texture) -> Result<(), RenderError> {
+	/// Renders `commands` into `target`, a texture of `size`, in a single Vello GPU render.
+	fn render_once(&mut self, commands: &[SceneCommand], transform: Affine, size: UVec2, target: &wgpu::Texture, target_alpha: TargetAlpha) -> Result<(), RenderError> {
+		let (device, queue) = (self.device, self.queue);
 		let (width, height) = (size.x as u16, size.y as u16);
-		let VelloCanvas {
-			scene: gpu_scene,
-			premultiplied_target,
-			images,
-		} = canvas;
+
+		// Record the scene for this render's size and placement, preparing the textures of its images and rendering its effects groups
+		let mut recording = Recording {
+			scene: self.canvas.spare_scenes.pop().unwrap_or_else(|| vello_gpu::Scene::new(1, 1)),
+			texture_bindings: TextureBindings::new(),
+			effect_results: Vec::new(),
+		};
+		recording.scene.reset_and_resize(width, height);
+		self.replay(&mut recording, commands, transform, Rect::new(0., 0., width as f64, height as f64));
 
 		// Each render submits its own encoder, since Vello GPU stages its uploads for the next submission
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_render") });
 
-		// Record the scene for this render's size and placement, preparing the textures of the images it draws
-		gpu_scene.reset_and_resize(width, height);
-		let mut texture_bindings = TextureBindings::new();
-		let viewport = Rect::new(0., 0., width as f64, height as f64);
-		replay(gpu_scene, scene, transform, viewport, &mut |image| {
-			let image_texture = images.prepare(device, queue, &mut encoder, &self.alpha_conversion, image)?;
-			texture_bindings.insert(image_texture.texture_id, image_texture.view.clone());
-			Some(image_texture.paint_source())
-		});
-
-		// Render premultiplied, then convert to the straight alpha the rest of Graphite expects
-		let premultiplied_target = match premultiplied_target {
-			Some(texture) if texture.width() == size.x && texture.height() == size.y => texture.clone(),
-			_ => {
+		// Vello GPU renders premultiplied, which is converted to straight alpha unless the target wants it premultiplied
+		let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+		let premultiplied_view = match (target_alpha, &self.canvas.premultiplied_target) {
+			(TargetAlpha::Premultiplied, _) => target_view.clone(),
+			(TargetAlpha::Straight, Some(texture)) if texture.width() == size.x && texture.height() == size.y => texture.create_view(&wgpu::TextureViewDescriptor::default()),
+			(TargetAlpha::Straight, _) => {
 				let texture = create_texture(
 					device,
 					"vello_gpu_premultiplied_target",
 					size,
 					wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				);
-				*premultiplied_target = Some(texture.clone());
-				texture
+				let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+				self.canvas.premultiplied_target = Some(texture);
+				view
 			}
 		};
-		let premultiplied_view = premultiplied_target.create_view(&wgpu::TextureViewDescriptor::default());
 		let target_init = TargetInit::Clear(ClearSettings::Viewport { color: peniko::Color::TRANSPARENT });
 
 		// Vello GPU stages this render's uploads into resources every render shares, so another can't stage its own until this one is submitted
-		let mut gpu = self.gpu.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut gpu = self.renderer.gpu.lock().unwrap_or_else(PoisonError::into_inner);
 		let (renderer, resources) = &mut *gpu;
 		let rendered = renderer.render(
-			gpu_scene,
+			&recording.scene,
 			resources,
 			device,
 			queue,
@@ -193,21 +222,239 @@ impl VelloRenderer {
 			&RenderSize { width, height },
 			&premultiplied_view,
 			None,
-			&texture_bindings,
+			&recording.texture_bindings,
 			target_init,
 		);
 
-		if rendered.is_ok() {
-			let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-			self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view);
+		if rendered.is_ok() && target_alpha == TargetAlpha::Straight {
+			self.renderer.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view);
 		}
 
-		// Submitted even after a failure, since it also prepares the textures of the scene's images
 		queue.submit([encoder.finish()]);
 		drop(gpu);
 
+		// Once the render that draws them is submitted, its scene and effects results are free to reuse
+		self.canvas.spare_scenes.push(recording.scene);
+		for texture in recording.effect_results {
+			self.canvas.effect_textures.release(texture);
+		}
+
 		rendered
 	}
+
+	/// Records `commands` into the render's Vello GPU scene, placed by `transform`, with `viewport` as the area fills of unbounded content cover.
+	fn replay(&mut self, recording: &mut Recording, commands: &[SceneCommand], transform: Affine, viewport: Rect) {
+		enum Pushed {
+			Layer,
+			Clip,
+		}
+		let mut pushed = Vec::new();
+
+		// How deep the replay is inside a layer or clip that covers nothing in the viewport, whose content is skipped
+		let mut culled_depth = 0_usize;
+
+		let mut index = 0;
+		while let Some(command) = commands.get(index) {
+			index += 1;
+
+			if culled_depth > 0 {
+				match command {
+					SceneCommand::PushLayer { .. } | SceneCommand::PushClip { .. } | SceneCommand::PushEffects(_) => culled_depth += 1,
+					SceneCommand::Pop => culled_depth -= 1,
+					_ => {}
+				}
+				continue;
+			}
+
+			let target = &mut recording.scene;
+			let texture_bindings = &mut recording.texture_bindings;
+			match command {
+				SceneCommand::Fill {
+					fill_rule,
+					transform: path_transform,
+					brush,
+					brush_transform,
+					path,
+				} => {
+					let Some(paint_to_brush) = set_paint(target, brush, &mut |image| self.resolve_image(texture_bindings, image)) else {
+						continue;
+					};
+					target.set_transform(transform * *path_transform);
+					target.set_fill_rule(*fill_rule);
+					target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
+					target.fill_path(&finite_path(path));
+				}
+				SceneCommand::Stroke {
+					stroke,
+					transform: path_transform,
+					brush,
+					brush_transform,
+					path,
+				} => {
+					let Some(paint_to_brush) = set_paint(target, brush, &mut |image| self.resolve_image(texture_bindings, image)) else {
+						continue;
+					};
+					target.set_transform(transform * *path_transform);
+					target.set_stroke(stroke.clone());
+					target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
+					target.stroke_path(&finite_path(path));
+				}
+				SceneCommand::FillViewport { brush, brush_transform } => {
+					let Some(paint_to_brush) = set_paint(target, brush, &mut |image| self.resolve_image(texture_bindings, image)) else {
+						continue;
+					};
+					target.set_transform(Affine::IDENTITY);
+					target.set_paint_transform(transform * brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
+					target.fill_rect(&viewport);
+				}
+				SceneCommand::PushLayer { blend_mode, alpha, clip } => {
+					let clip_path = clip.as_ref().map(|clip| finite_path(&clip.path));
+					if let (Some(clip), Some(clip_path)) = (clip, &clip_path) {
+						if !clip_reaches(clip_path, transform * clip.transform, viewport) {
+							culled_depth = 1;
+							continue;
+						}
+
+						target.set_transform(transform * clip.transform);
+						target.set_fill_rule(clip.fill_rule);
+					}
+					target.push_layer(clip_path.as_deref(), Some(*blend_mode), Some(*alpha), None, None);
+					pushed.push(Pushed::Layer);
+				}
+				SceneCommand::PushClip { clip } => {
+					let clip_path = finite_path(&clip.path);
+					if !clip_reaches(&clip_path, transform * clip.transform, viewport) {
+						culled_depth = 1;
+						continue;
+					}
+
+					target.set_transform(transform * clip.transform);
+					target.set_fill_rule(clip.fill_rule);
+					target.push_clip_path(&clip_path);
+					pushed.push(Pushed::Clip);
+				}
+				// The group's content is consumed through its own render rather than replayed here
+				SceneCommand::PushEffects(group) => {
+					let end = matching_pop(commands, index);
+					self.draw_effects_group(recording, group, &commands[index..end], transform, viewport);
+					index = end + 1;
+				}
+				SceneCommand::Pop => match pushed.pop() {
+					Some(Pushed::Layer) => target.pop_layer(),
+					Some(Pushed::Clip) => target.pop_clip(),
+					None => log::error!("A recorded scene ends a layer or clip it never began"),
+				},
+				SceneCommand::DrawImage { image, transform: image_transform } => {
+					let Some(resolved) = self.resolve_image(texture_bindings, image) else { continue };
+					let sampler = match image {
+						SceneImage::Pixels(brush) => brush.sampler,
+						SceneImage::Texture { sampler, .. } => *sampler,
+					};
+
+					target.set_transform(transform * *image_transform * resolved.texture_to_image);
+					target.set_paint(PaintType::Image(Image { image: resolved.source, sampler }));
+					target.set_paint_transform(Affine::IDENTITY);
+					let (width, height) = resolved.texture_size;
+					target.fill_rect(&Rect::new(0., 0., width as f64, height as f64));
+				}
+			}
+		}
+
+		// Close whatever a malformed scene left open
+		if !pushed.is_empty() {
+			log::error!("A recorded scene leaves {} layers or clips unended", pushed.len());
+		}
+		for kind in pushed.into_iter().rev() {
+			match kind {
+				Pushed::Layer => recording.scene.pop_layer(),
+				Pushed::Clip => recording.scene.pop_clip(),
+			}
+		}
+	}
+
+	/// The texture to draw `image` with, bound for the render being recorded.
+	fn resolve_image(&mut self, texture_bindings: &mut TextureBindings, image: &SceneImage) -> Option<ResolvedImage> {
+		let image_texture = self.canvas.images.prepare(self.device, self.queue, &self.renderer.alpha_conversion, image)?;
+		texture_bindings.insert(image_texture.texture_id, image_texture.view.clone());
+
+		Some(image_texture.paint_source())
+	}
+
+	/// Renders an effects group's `content` offscreen, carries out its effects there, and draws the result in place of the content.
+	fn draw_effects_group(&mut self, recording: &mut Recording, group: &EffectsGroup, content: &[SceneCommand], transform: Affine, viewport: Rect) {
+		let [a, b, c, d, _, _] = (transform * group.transform).as_coeffs();
+		let lengths_to_device = DMat2::from_cols_array(&[a, b, c, d]);
+		let reach = group.effects.reach() * lengths_to_device.determinant().abs().sqrt();
+
+		// The content reaching into the viewport, rounded out to whole pixels
+		let content_bounds = content_extent(group, content).map_or(viewport, |bounds| transform.transform_rect_bbox(bounds));
+		let region = content_bounds.inflate(reach, reach).intersect(viewport.inflate(reach, reach)).expand();
+		if !(region.width() > 0. && region.height() > 0.) {
+			return;
+		}
+
+		// A region too large for one texture renders at a lower resolution, which the blurs and shadows that make it so large hide.
+		// Its size rounds up to a size class so a group that moves between renders keeps reusing the same textures.
+		let max_size = self.device.limits().max_texture_dimension_2d.min(u16::MAX as u32);
+		let resolution = (max_size as f64 / region.width().max(region.height())).min(1.);
+		let size_along = |length: f64| ((length * resolution).ceil() as u32).next_multiple_of(EFFECTS_SIZE_CLASS).min(max_size);
+		let size = UVec2::new(size_along(region.width()), size_along(region.height()));
+		let origin = region.origin().to_vec2();
+
+		let content_texture = self.canvas.effect_textures.acquire(self.device, size, TEXTURE_FORMAT);
+		let content_transform = Affine::scale(resolution) * Affine::translate(-origin) * transform;
+		self.render_area(content, content_transform, size, &content_texture, TargetAlpha::Premultiplied, 0);
+
+		let effect_textures = &mut self.canvas.effect_textures;
+		let result = (self.renderer.effect_passes).apply(self.device, self.queue, effect_textures, &content_texture, &group.effects, group.fill, lengths_to_device * resolution);
+		effect_textures.release(content_texture);
+
+		// Draw the result where the content was, under an ID none of the render's images can share
+		let texture_id = TextureId(FIRST_EFFECTS_TEXTURE_ID + recording.effect_results.len() as u64);
+		recording.texture_bindings.insert(texture_id, result.create_view(&wgpu::TextureViewDescriptor::default()));
+		let target = &mut recording.scene;
+		target.set_transform(Affine::translate(origin) * Affine::scale(1. / resolution));
+		target.set_paint(PaintType::Image(Image {
+			image: ImageSource::external_texture(texture_id, RectU16::new(0, 0, size.x as u16, size.y as u16), true),
+			sampler: peniko::ImageSampler::new(),
+		}));
+		target.set_paint_transform(Affine::IDENTITY);
+		target.fill_rect(&Rect::new(0., 0., size.x as f64, size.y as f64));
+
+		recording.effect_results.push(result);
+	}
+}
+
+/// The area an effects group's content covers in the scene's space, or `None` if unbounded.
+/// Effects groups nested in the content paint past their own bounds, so the area grows by how far all of them reach.
+fn content_extent(group: &EffectsGroup, content: &[SceneCommand]) -> Option<Rect> {
+	let mut bounds = group.bounds?;
+	let mut nested_reach = 0.;
+
+	for command in content {
+		if let SceneCommand::PushEffects(nested) = command {
+			bounds = bounds.union(nested.bounds?);
+			nested_reach += nested.effects.reach() * nested.transform.determinant().abs().sqrt();
+		}
+	}
+
+	Some(bounds.inflate(nested_reach, nested_reach))
+}
+
+/// The index of the `Pop` ending the layer, clip, or effects group whose content begins at `start`, or the end of `commands` if a malformed scene never ends it.
+fn matching_pop(commands: &[SceneCommand], start: usize) -> usize {
+	let mut depth = 0_usize;
+
+	for (index, command) in commands.iter().enumerate().skip(start) {
+		match command {
+			SceneCommand::PushLayer { .. } | SceneCommand::PushClip { .. } | SceneCommand::PushEffects(_) => depth += 1,
+			SceneCommand::Pop if depth == 0 => return index,
+			SceneCommand::Pop => depth -= 1,
+			_ => {}
+		}
+	}
+
+	commands.len()
 }
 
 /// The source and placement of an image ready to be drawn, with the rectangle of texture pixels it covers.
@@ -216,119 +463,6 @@ struct ResolvedImage {
 	/// Maps the drawn texture's pixels onto the image's own pixels, which differ when the texture had to be downscaled.
 	texture_to_image: Affine,
 	texture_size: (u16, u16),
-}
-
-/// Records `scene` into Vello GPU's scene, placed by `transform`, with `viewport` as the area fills of unbounded content cover.
-fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewport: Rect, resolve_image: &mut dyn FnMut(&SceneImage) -> Option<ResolvedImage>) {
-	enum Pushed {
-		Layer,
-		Clip,
-	}
-	let mut pushed = Vec::new();
-
-	// How deep the replay is inside a layer or clip that covers nothing in the viewport, whose content is skipped
-	let mut culled_depth = 0_usize;
-
-	for command in scene.commands() {
-		if culled_depth > 0 {
-			match command {
-				SceneCommand::PushLayer { .. } | SceneCommand::PushClip { .. } => culled_depth += 1,
-				SceneCommand::Pop => culled_depth -= 1,
-				_ => {}
-			}
-			continue;
-		}
-
-		match command {
-			SceneCommand::Fill {
-				fill_rule,
-				transform: path_transform,
-				brush,
-				brush_transform,
-				path,
-			} => {
-				let Some(paint_to_brush) = set_paint(target, brush, resolve_image) else { continue };
-				target.set_transform(transform * *path_transform);
-				target.set_fill_rule(*fill_rule);
-				target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-				target.fill_path(&finite_path(path));
-			}
-			SceneCommand::Stroke {
-				stroke,
-				transform: path_transform,
-				brush,
-				brush_transform,
-				path,
-			} => {
-				let Some(paint_to_brush) = set_paint(target, brush, resolve_image) else { continue };
-				target.set_transform(transform * *path_transform);
-				target.set_stroke(stroke.clone());
-				target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-				target.stroke_path(&finite_path(path));
-			}
-			SceneCommand::FillViewport { brush, brush_transform } => {
-				let Some(paint_to_brush) = set_paint(target, brush, resolve_image) else { continue };
-				target.set_transform(Affine::IDENTITY);
-				target.set_paint_transform(transform * brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-				target.fill_rect(&viewport);
-			}
-			SceneCommand::PushLayer { blend_mode, alpha, clip } => {
-				let clip_path = clip.as_ref().map(|clip| finite_path(&clip.path));
-				if let (Some(clip), Some(clip_path)) = (clip, &clip_path) {
-					if !clip_reaches(clip_path, transform * clip.transform, viewport) {
-						culled_depth = 1;
-						continue;
-					}
-
-					target.set_transform(transform * clip.transform);
-					target.set_fill_rule(clip.fill_rule);
-				}
-				target.push_layer(clip_path.as_deref(), Some(*blend_mode), Some(*alpha), None, None);
-				pushed.push(Pushed::Layer);
-			}
-			SceneCommand::PushClip { clip } => {
-				let clip_path = finite_path(&clip.path);
-				if !clip_reaches(&clip_path, transform * clip.transform, viewport) {
-					culled_depth = 1;
-					continue;
-				}
-
-				target.set_transform(transform * clip.transform);
-				target.set_fill_rule(clip.fill_rule);
-				target.push_clip_path(&clip_path);
-				pushed.push(Pushed::Clip);
-			}
-			SceneCommand::Pop => match pushed.pop() {
-				Some(Pushed::Layer) => target.pop_layer(),
-				Some(Pushed::Clip) => target.pop_clip(),
-				None => log::error!("A recorded scene ends a layer or clip it never began"),
-			},
-			SceneCommand::DrawImage { image, transform: image_transform } => {
-				let Some(resolved) = resolve_image(image) else { continue };
-				let sampler = match image {
-					SceneImage::Pixels(brush) => brush.sampler,
-					SceneImage::Texture { sampler, .. } => *sampler,
-				};
-
-				target.set_transform(transform * *image_transform * resolved.texture_to_image);
-				target.set_paint(PaintType::Image(Image { image: resolved.source, sampler }));
-				target.set_paint_transform(Affine::IDENTITY);
-				let (width, height) = resolved.texture_size;
-				target.fill_rect(&Rect::new(0., 0., width as f64, height as f64));
-			}
-		}
-	}
-
-	// Close whatever a malformed scene left open
-	if !pushed.is_empty() {
-		log::error!("A recorded scene leaves {} layers or clips unended", pushed.len());
-	}
-	for kind in pushed.into_iter().rev() {
-		match kind {
-			Pushed::Layer => target.pop_layer(),
-			Pushed::Clip => target.pop_clip(),
-		}
-	}
 }
 
 /// Whether a clip path, placed by `transform`, overlaps the viewport. Vello GPU fails to render a layer whose clip covers no pixels.
@@ -464,7 +598,8 @@ struct ImageTextures {
 
 impl ImageTextures {
 	/// The texture for `image`, uploading or converting its pixels the first time it is drawn.
-	fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, encoder: &mut wgpu::CommandEncoder, alpha_conversion: &AlphaConversion, image: &SceneImage) -> Option<&ImageTexture> {
+	/// The conversion is submitted right away, ahead of whichever render first draws the texture, since a render can begin inside another's recording.
+	fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, alpha_conversion: &AlphaConversion, image: &SceneImage) -> Option<&ImageTexture> {
 		let key = match image {
 			SceneImage::Pixels(brush) => ImageKey::Blob(brush.image.data.id()),
 			SceneImage::Texture { texture, .. } => ImageKey::Texture((**texture).clone()),
@@ -473,7 +608,14 @@ impl ImageTextures {
 		if !self.textures.contains_key(&key) {
 			let (texture, texture_to_image) = match image {
 				SceneImage::Pixels(brush) => upload_pixels(device, queue, &brush.image)?,
-				SceneImage::Texture { texture, .. } => (premultiply_texture(device, encoder, alpha_conversion, texture), Affine::IDENTITY),
+				SceneImage::Texture { texture, .. } => {
+					let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+						label: Some("vello_gpu_premultiply_image"),
+					});
+					let premultiplied = premultiply_texture(device, &mut encoder, alpha_conversion, texture);
+					queue.submit([encoder.finish()]);
+					(premultiplied, Affine::IDENTITY)
+				}
 			};
 			let size = (u16::try_from(texture.width()).ok()?, u16::try_from(texture.height()).ok()?);
 

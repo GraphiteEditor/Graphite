@@ -7275,6 +7275,7 @@ dependencies = [
  "futures",
  "glam 0.33.10",
  "graphene-application-io",
+ "graphic-types",
  "log",
  "node-macro",
  "raster-types",

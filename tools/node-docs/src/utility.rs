@@ -21,6 +21,7 @@ pub fn category_description(category: &str) -> &str {
 			Nodes in this category are temporarily included for debugging purposes by Graphite's developers. They may have rare potential uses for advanced users, but are not intended for general use and will be removed in future releases.
 			"
 		),
+		"Effect" => "Nodes in this category apply effects like blurs, shadows, and glows to the pixels any graphical content renders to, whether vector, raster, or text.",
 		"General" => "Nodes in this category deal with general data handling, such as merging and flattening graphical elements.",
 		"Gradient" => "Nodes in this category build gradients and adjust the placement of their color stops, as well as the shape and repetition of the transition between them.",
 		"Context" => "Nodes in this category read data from the evaluation context supplied by downstream nodes, such as the current loop iteration index.",
@@ -34,7 +35,7 @@ pub fn category_description(category: &str) -> &str {
 		"Raster: Adjustment" => "Nodes in this category perform per-pixel color adjustments on raster graphics, such as brightness and contrast modifications.",
 		"Raster: Brush" => "Nodes in this category paint raster imagery from the strokes drawn with the Brush tool, controlling the size, hardness, flow, and color of the marks they leave behind.",
 		"Raster: Channels" => "Nodes in this category enable channel-specific manipulation of the RGB and alpha channels of raster graphics.",
-		"Raster: Filter" => "Nodes in this category apply filtering effects to raster graphics such as blurs and sharpening.",
+		"Raster: Filter" => "Nodes in this category apply filtering effects to raster graphics such as noise reduction.",
 		"Raster: Pattern" => "Nodes in this category generate procedural raster patterns, fractals, textures, and noise.",
 		"Raster" => "Nodes in this category deal with fundamental raster image operations.",
 		"Text" => "Nodes in this category support the manipulation, formatting, and rendering of text strings.",

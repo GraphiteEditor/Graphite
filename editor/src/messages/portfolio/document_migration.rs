@@ -475,8 +475,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::filter::blur::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
+		node: graphene_std::blending_nodes::effects::blur::IDENTIFIER,
+		aliases: &["raster_nodes::filter::BlurNode", "graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::brightness_contrast::IDENTIFIER,
