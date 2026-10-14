@@ -4,6 +4,7 @@ pub mod artboard;
 pub mod effects;
 pub mod generator;
 pub mod graphic;
+pub(crate) mod parameters;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
 pub use core_types;
@@ -15,6 +16,7 @@ pub use adjustment::Adjustment;
 pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use effects::{Effect, EffectKind, EffectOperation, Effects, stamp_effect};
+pub use generator::Generator;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 
 pub mod migrations {

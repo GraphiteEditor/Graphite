@@ -6,7 +6,7 @@ use core_types::{
 };
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
-use graphic_types::{Artboard, Effects, Vector};
+use graphic_types::{Artboard, Effects, Generator, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
 use raster_kernels::value_effects;
@@ -34,6 +34,7 @@ fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: T,
@@ -67,6 +68,7 @@ fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: List<T>,
@@ -105,6 +107,7 @@ fn filter<T: Send + Sync + Clone + 'static>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: List<T>,
@@ -138,6 +141,7 @@ fn reverse<T: Send + Sync + Clone + 'static>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: List<T>,
@@ -163,6 +167,7 @@ fn shift<T: Send + Sync + Clone + 'static>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: List<T>,
@@ -208,6 +213,7 @@ fn shuffle<T: Send + Sync + Clone + 'static>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: List<T>,
@@ -280,6 +286,7 @@ fn slice<T: Send + Sync + Clone + 'static>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	list: List<T>,
@@ -415,6 +422,7 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 	)]
 	content: List<Item>,
@@ -431,6 +439,7 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
@@ -586,6 +595,7 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 		List<BlendMode>,
 		List<GradientForm>,
@@ -899,6 +909,7 @@ fn extend<T: Send + Clone>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 		List<Stroke>,
 	)]
@@ -918,6 +929,7 @@ fn extend<T: Send + Clone>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<Artboard>,
 		List<Stroke>,
 	)]
@@ -935,9 +947,9 @@ fn extend<T: Send + Clone>(
 #[node_macro::node(category(""))]
 fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Generator>)] base: List<T>,
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Generator>)]
 	new: List<T>,
 	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
@@ -969,6 +981,7 @@ fn into_group<T: Into<Graphic>>(
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<String>,
 		List<DVec2>,
 		Item<DAffine2>, // TODO: Remove this

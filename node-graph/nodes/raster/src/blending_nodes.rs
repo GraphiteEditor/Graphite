@@ -3,7 +3,7 @@ use core_types::Ctx;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
-use graphic_types::{Adjustment, Graphic, Vector};
+use graphic_types::{Adjustment, Generator, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
@@ -43,6 +43,7 @@ fn color_overlay<T>(
 		Vector,
 		Raster<GPU>,
 		String,
+		Generator,
 	)]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
