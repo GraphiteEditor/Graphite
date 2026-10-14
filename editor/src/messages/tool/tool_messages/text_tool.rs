@@ -742,9 +742,6 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				let view = SnapView::new(document, *document_id, input);
-				tool_data.resize.snap_drag_start(snap_session, view);
-				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
@@ -802,11 +799,13 @@ impl Fsm for TextToolFsmState {
 					return TextToolFsmState::Dragging;
 				}
 
+				// The text box starts on whatever the pointer was shown snapping to before the press
 				let drawn = Drawn {
 					parent: document.new_layer_parent(true),
 					artboard: false,
 				};
-				Resize::begin_drawing(snap_session, view, drawn);
+				tool_data.resize.start(snap_session, SnapView::new(document, *document_id, input), drawn);
+				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 
 				TextToolFsmState::Placing
 			}
@@ -987,7 +986,7 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::DragStop) => {
-				let drag_too_small = input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON;
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
 
@@ -1243,6 +1242,56 @@ mod test_text_tool {
 		let [min, max] = text_box(&editor, layer);
 		assert!(
 			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(500., 350.), 1e-6),
+			"the text box spans {min} to {max}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_text_box_stretched_from_beside_a_corner_onto_that_corner_keeps_its_new_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		provide_fonts(&mut editor).await;
+		editor.draw_rect(405., 325., 465., 400.).await;
+
+		// A text box a hundred wide and fifty tall, with its top left corner at (300, 300)
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
+		let typesetting = TypesettingConfig {
+			max_width: Some(100.),
+			max_height: Some(50.),
+			..Default::default()
+		};
+		editor
+			.handle_message(GraphOperationMessage::NewTextLayer {
+				id: layer.to_node(),
+				text: "Text".into(),
+				font: Font::default(),
+				typesetting,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_translation(DVec2::new(300., 300.)),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: false,
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Its right edge is pressed a pixel short of the rectangle's top left corner, nearer that than the edge itself, and moved onto the corner
+		editor.select_tool(ToolType::Text).await;
+		editor.handle_message(TextToolMessage::Overlays { context: OverlayContext::default() }).await;
+		let (press, corner) = (DVec2::new(404., 325.), DVec2::new(405., 325.));
+		editor.move_mouse(press.x, press.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(press.x, press.y, ModifierKeys::empty()).await;
+		editor.move_mouse(corner.x, corner.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(corner.x, corner.y, ModifierKeys::empty()).await;
+
+		let [min, max] = text_box(&editor, layer);
+		assert!(
+			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(405., 350.), 1e-6),
 			"the text box spans {min} to {max}"
 		);
 	}

@@ -217,7 +217,7 @@ pub fn is_visible_point(
 /// The most anchors of the dragged layers that snap along with the box around them, which are those nearest where the pointer took hold.
 const MAX_SNAPPING_ANCHORS: usize = 8;
 
-/// The most layers, counting those inside dragged groups, for which a drag snaps their anchors as well as the box around them.
+/// The most visible layers, counting those inside dragged groups, for which a drag snaps their anchors as well as the box around them.
 const MAX_LAYERS_WITH_SNAPPING_ANCHORS: usize = 8;
 
 /// Adds the anchors of the dragged layers nearest the grip to where a gesture's features start, in document space, skipping any already there.
@@ -243,7 +243,7 @@ fn dragged_anchors(document: &DocumentMessageHandler, layers: &[LayerNodeIdentif
 	let metadata = document.metadata();
 	let with_everything_inside = layers.iter().flat_map(|&layer| std::iter::once(layer).chain(layer.descendants(metadata)));
 	let layers: Vec<_> = with_everything_inside
-		.filter(|layer| !layer.has_children(metadata))
+		.filter(|&layer| !layer.has_children(metadata) && document.network_interface.is_layer_visible(layer))
 		.take(MAX_LAYERS_WITH_SNAPPING_ANCHORS + 1)
 		.collect();
 	if layers.len() > MAX_LAYERS_WITH_SNAPPING_ANCHORS {
@@ -679,6 +679,33 @@ pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn hidden_layers_neither_offer_anchors_nor_count_toward_the_cutoff_for_snapping_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// One more rectangle than the cutoff allows, the last of which is then hidden
+		let mut layers = Vec::new();
+		let mut left = 100.;
+		for _ in 0..=MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+			editor.draw_rect(left, 100., left + 60., 160.).await;
+			layers.push(editor.get_selected_layer().await.expect("the rectangle should be selected"));
+			left += 80.;
+		}
+		let hide = NodeGraphMessage::SetVisibility {
+			node_id: layers[MAX_LAYERS_WITH_SNAPPING_ANCHORS].to_node(),
+			network_path: Vec::new(),
+			visible: false,
+		};
+		editor.handle_message(hide).await;
+
+		let mut starts = Vec::new();
+		push_nearest_anchors(&mut starts, editor.active_document(), &layers, DVec2::new(100., 100.));
+		assert!(!starts.is_empty(), "the visible rectangles' anchors should snap");
+	}
+
 	#[test]
 	fn is_almost_colinear_test() {
 		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::X, DVec2::X));
