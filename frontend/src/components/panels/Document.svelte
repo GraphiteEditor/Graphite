@@ -54,6 +54,8 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
+	// The rendered SVG as sent, with its outer tags
+	let artworkSvgDocuments = "";
 
 	// Web-only "Initializing Renderer…" overlay shown until the first Vello-rendered artwork arrives
 	const isWeb = import.meta.env.MODE !== "native";
@@ -178,6 +180,7 @@
 			.trim()
 			.replace(/<svg[^>]*>/, "")
 			.slice(0, -"</svg>".length);
+		artworkSvgDocuments = svg.trim();
 		rasterizedCanvas = undefined;
 
 		await tick();
@@ -253,8 +256,9 @@
 
 			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
+			// The documents are nested whole, as stripping several (the canvas background, then the artwork) leaves invalid XML
 			const svg = `
-				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
+				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvgDocuments}</svg>
 				`.trim();
 
 			if (!rasterizedCanvas) {
