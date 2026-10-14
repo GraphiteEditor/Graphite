@@ -1,6 +1,6 @@
 //! Starting, reaching, and stopping the session host, which owns the browser so separate invocations can act on the same editor one after another.
 
-use graphite_editor_control_protocol::{ClientMessage, Command, CommandResult, HostMessage, PROTOCOL_VERSION};
+use control_protocol::{ClientMessage, Command, CommandResult, HostMessage, PROTOCOL_VERSION};
 use interprocess::local_socket::{RecvHalf, SendHalf, Stream, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::io::BufReader;
