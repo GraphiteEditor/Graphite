@@ -317,7 +317,7 @@ name = "blending-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphic-types",
  "node-macro",
  "serde",
@@ -359,7 +359,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "graphic-types",
  "half",
@@ -377,7 +377,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "serde",
 ]
@@ -834,7 +834,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 name = "control-protocol"
 version = "0.0.0"
 dependencies = [
- "glam 0.33.10",
+ "glam 0.33.12",
  "serde",
  "serde_json",
 ]
@@ -913,7 +913,7 @@ dependencies = [
  "color",
  "ctor",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "image",
  "kurbo",
@@ -1181,6 +1181,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
 
 [[package]]
+name = "diffrast"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1395,7 +1402,7 @@ name = "dyn-any"
 version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
- "glam 0.33.10",
+ "glam 0.33.12",
  "reqwest",
 ]
 
@@ -1970,9 +1977,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.33.10"
+version = "0.33.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "928452f9c953e142b2f0973e4bd5f34445fcaa8069556ea97a3c9d34d15a4cf8"
+checksum = "37bfe73dc8ec21f54d181e5a60554327ec3f1c600c455a75ccbfc65d2106a6c4"
 dependencies = [
  "bytemuck",
  "libm",
@@ -2048,7 +2055,7 @@ dependencies = [
  "core-types",
  "criterion",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graph-craft",
  "graphene-animation",
  "graphene-application-io",
@@ -2082,7 +2089,7 @@ name = "graphene-animation"
 version = "0.0.0"
 dependencies = [
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "kurbo",
  "serde",
@@ -2095,7 +2102,7 @@ dependencies = [
  "blake3",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "graphene-resource",
  "log",
@@ -2112,7 +2119,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-application-io",
  "log",
  "serde",
@@ -2150,7 +2157,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-animation",
  "graphene-hash",
  "graphic-types",
@@ -2166,7 +2173,7 @@ dependencies = [
 name = "graphene-hash"
 version = "0.0.0"
 dependencies = [
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash-derive",
 ]
 
@@ -2201,7 +2208,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graph-craft",
  "graphene-application-io",
  "graphene-canvas-utils",
@@ -2222,6 +2229,7 @@ dependencies = [
  "transform-nodes",
  "vector-nodes",
  "vector-types",
+ "vectorize-nodes",
  "vello",
  "vello_encoding",
  "wasm-bindgen",
@@ -2238,7 +2246,7 @@ dependencies = [
  "brush-types",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphic-types",
  "node-macro",
  "rand",
@@ -2254,7 +2262,7 @@ dependencies = [
  "brush-types",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "node-macro",
  "raster-types",
@@ -2275,7 +2283,7 @@ dependencies = [
  "dirs",
  "fd-lock",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphite-desktop-ui",
  "graphite-desktop-wrapper",
  "interprocess",
@@ -2402,7 +2410,7 @@ dependencies = [
  "dyn-any",
  "env_logger",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graph-craft",
  "graphene-hash",
  "graphene-std",
@@ -3012,7 +3020,7 @@ dependencies = [
  "criterion",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graph-craft",
  "graphene-animation",
  "graphene-core",
@@ -3453,7 +3461,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-core",
  "graphic-types",
  "log",
@@ -3666,7 +3674,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "half",
  "log",
@@ -4108,7 +4116,7 @@ name = "path-bool-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphic-types",
  "linesweeper",
  "log",
@@ -4427,7 +4435,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
@@ -4649,7 +4657,7 @@ dependencies = [
  "dyn-any",
  "fastnoise-lite",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-core",
  "graphene-hash",
  "graphene-resource",
@@ -4697,7 +4705,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "image",
  "node-macro",
@@ -4885,7 +4893,7 @@ dependencies = [
  "brush-types",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "graphene-resource",
  "graphic-types",
@@ -4908,7 +4916,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-core",
  "graphic-types",
  "kurbo",
@@ -5625,7 +5633,7 @@ name = "snapping"
 version = "0.0.0"
 dependencies = [
  "criterion",
- "glam 0.33.10",
+ "glam 0.33.12",
  "kurbo",
 ]
 
@@ -5697,7 +5705,7 @@ dependencies = [
  "glam 0.30.10",
  "glam 0.31.1",
  "glam 0.32.1",
- "glam 0.33.10",
+ "glam 0.33.12",
  "libm",
  "num-traits",
  "spirv-std-macros",
@@ -5942,7 +5950,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "fancy-regex",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "graphene-resource",
  "ipsum",
@@ -6281,6 +6289,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8df9b6e13f2d32c91b9bd719c00d1958837bc7dec474d94952798cc8e69eeec3"
 
 [[package]]
+name = "tracer"
+version = "0.1.0"
+dependencies = [
+ "glam 0.33.12",
+]
+
+[[package]]
 name = "tracing"
 version = "0.1.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6347,7 +6362,7 @@ name = "transform-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphic-types",
  "node-macro",
  "rand",
@@ -6601,7 +6616,7 @@ dependencies = [
  "delaunator",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-core",
  "graphene-hash",
  "graphic-types",
@@ -6629,7 +6644,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "fixedbitset",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-hash",
  "kurbo",
  "log",
@@ -6644,6 +6659,25 @@ dependencies = [
  "tinyvec",
  "tsify",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "vectorize-nodes"
+version = "0.0.0"
+dependencies = [
+ "core-types",
+ "diffrast",
+ "dyn-any",
+ "futures",
+ "glam 0.33.12",
+ "graphene-hash",
+ "graphic-types",
+ "kurbo",
+ "log",
+ "node-macro",
+ "raster-types",
+ "vector-types",
+ "vtrace",
 ]
 
 [[package]]
@@ -6696,6 +6730,15 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "vtrace"
+version = "0.1.0"
+dependencies = [
+ "diffrast",
+ "glam 0.33.12",
+ "tracer",
+]
 
 [[package]]
 name = "walkdir"
@@ -6929,7 +6972,7 @@ dependencies = [
  "clap",
  "control-protocol",
  "getrandom 0.3.3",
- "glam 0.33.10",
+ "glam 0.33.12",
  "image",
  "interprocess",
  "serde",
@@ -7092,7 +7135,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam 0.33.12",
  "graphene-application-io",
  "node-macro",
  "raster-types",

@@ -21,6 +21,7 @@ pub use text_nodes;
 pub use transform_nodes;
 pub use vector_nodes;
 pub use vector_types;
+pub use vectorize_nodes;
 
 /// Backward compatibility re-exports
 pub mod vector {
