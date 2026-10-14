@@ -147,6 +147,41 @@ impl Adjustment {
 		self.apply(&mut colors);
 		colors[0]
 	}
+
+	/// Whether each channel of the result depends only on the same channel of the color, making the adjustment four curves.
+	pub fn is_per_channel(&self) -> bool {
+		matches!(
+			self,
+			Self::GammaCorrection { .. }
+				| Self::MakeOpaque
+				| Self::BrightnessContrast { .. }
+				| Self::Levels(_)
+				| Self::Curves(_)
+				| Self::Invert
+				| Self::Posterize { .. }
+				| Self::Exposure { .. }
+				| Self::ColorBalance(_)
+		)
+	}
+
+	/// The red, green, blue, and alpha curves of a per-channel adjustment, each sampled at `size` evenly spaced gamma-encoded values from 0 to 1.
+	pub fn channel_curves(&self, size: usize) -> Option<[Vec<f32>; 4]> {
+		if !self.is_per_channel() || size < 2 {
+			return None;
+		}
+
+		// Each sample feeds the same value to every channel, which the curves map independently
+		let mut samples: Vec<Color> = (0..size)
+			.map(|index| {
+				let value = index as f32 / (size - 1) as f32;
+				Color::from_gamma_srgb_channels(value, value, value, value)
+			})
+			.collect();
+		self.apply(&mut samples);
+
+		let channels: Vec<[f32; 4]> = samples.iter().map(Color::to_gamma_srgb_channels).collect();
+		Some(std::array::from_fn(|channel| channels.iter().map(|values| values[channel]).collect()))
+	}
 }
 
 /// Replaces each color with the kernel's result for it.

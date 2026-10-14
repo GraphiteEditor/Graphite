@@ -1,5 +1,6 @@
 pub mod adjustment;
 pub mod adjustment_kernels;
+pub mod adjustment_tables;
 pub mod appearance;
 pub mod artboard;
 pub mod color_lookup_table;

@@ -2,12 +2,12 @@ use crate::adjust::Adjust;
 use core::cmp::Ordering;
 use core_types::list::Item;
 use glam::{DAffine2, DVec2};
-use graphic_types::Adjustment;
+use graphic_types::{Adjustment, Graphic, Vector};
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
 use raster_types::parallel_rows::fill_rows;
-use raster_types::{CPU, Image, Raster};
+use raster_types::{CPU, GPU, Image, Raster};
 use vector_types::{Gradient, GradientStop};
 
 pub trait Blend<P: Pixel>: Sized {
@@ -144,6 +144,10 @@ fn color_overlay<T: Adjust>(
 		Raster<CPU>,
 		Color,
 		Gradient,
+		Graphic,
+		Vector,
+		Raster<GPU>,
+		String,
 	)]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
@@ -154,14 +158,12 @@ fn color_overlay<T: Adjust>(
 	#[default(100.)]
 	opacity: Item<f64>,
 ) -> Item<T> {
-	let mut image = image;
 	let adjustment = Adjustment::ColorOverlay {
 		color: color.into_element(),
 		blend_mode: blend_mode.into_element(),
 		opacity: opacity.into_element(),
 	};
-	image.element_mut().adjust(&adjustment);
-	image
+	T::adjust(image, &adjustment)
 }
 
 #[cfg(test)]
