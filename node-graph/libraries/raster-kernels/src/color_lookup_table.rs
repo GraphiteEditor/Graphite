@@ -8,35 +8,52 @@ mod format_look;
 
 use crate::adjustments::{SRGB_TO_XYZ_D50, WHITE_XYZ_D50, XYZ_D50_TO_SRGB, multiply_matrix};
 use core_types::color::{linear_to_srgb, srgb_to_linear};
-use graphene_resource::{Resource, ResourceHash};
-use std::sync::{Arc, Mutex, PoisonError};
+use graphene_resource::{Resource, ResourceHash, WeakResource};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 pub const LUT_FILE_EXTENSIONS: &[&str] = &["cube", "3dl", "look", "csp", "icc", "icm"];
 
 /// A file's parse result, in the form the cache shares out.
 type ParsedLut = Result<Arc<Lut>, LutParseError>;
 
-/// The last file a node parsed, kept as the node's own data so the file is not parsed anew each time the node runs again.
-#[derive(Debug, Clone, Default)]
-pub struct LutCache(Arc<Mutex<Option<(ResourceHash, ParsedLut)>>>);
+/// A parse result, kept while the file it came from is still loaded somewhere.
+struct ParsedFile {
+	hash: ResourceHash,
+	file: WeakResource,
+	parsed: ParsedLut,
+}
 
-impl LutCache {
-	/// [`Lut::parse`] for a resource, reusing the last result while the file's content hash stays the same.
-	pub fn parse(&self, resource: &Resource) -> ParsedLut {
-		// A lock poisoned by a panic elsewhere still guards a usable cache
-		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+/// The parse results of the files that are still loaded, shared by every adjustment that reads a lookup table.
+static PARSED_FILES: Mutex<Vec<ParsedFile>> = Mutex::new(Vec::new());
 
-		let hash = resource.hash();
-		if let Some((cached_hash, result)) = cached.as_ref()
-			&& *cached_hash == hash
-		{
-			return result.clone();
-		}
+fn parsed_files() -> MutexGuard<'static, Vec<ParsedFile>> {
+	// A lock poisoned by a panic elsewhere still guards a usable cache
+	PARSED_FILES.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
-		let result = Lut::parse(resource).map(Arc::new);
-		*cached = Some((hash, result.clone()));
-		result
+/// [`Lut::parse`] for a resource, reusing the result for as long as a file with the same content hash stays loaded. O(n) in the loaded files.
+pub fn parse_cached(resource: &Resource) -> ParsedLut {
+	let hash = resource.hash();
+
+	// Follows the copy in hand, in case another copy of the same content is the one that goes away
+	if let Some(entry) = parsed_files().iter_mut().find(|entry| entry.hash == hash) {
+		entry.file = resource.downgrade();
+		return entry.parsed.clone();
 	}
+
+	// Parsed outside the lock, so a large file doesn't hold up the adjustments reading other files
+	let parsed = Lut::parse(resource).map(Arc::new);
+
+	let mut parsed_files = parsed_files();
+	parsed_files.retain(|entry| entry.file.is_alive());
+	if !parsed_files.iter().any(|entry| entry.hash == hash) {
+		parsed_files.push(ParsedFile {
+			hash,
+			file: resource.downgrade(),
+			parsed: parsed.clone(),
+		});
+	}
+	parsed
 }
 
 /// Why a file could not be read as a lookup table.
@@ -423,18 +440,20 @@ mod tests {
 	}
 
 	#[test]
-	fn a_cache_parses_a_file_once_until_the_file_changes() {
-		let file = Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n1 1 1\n".to_vec());
-		let cache = LutCache::default();
-		let first = cache.parse(&file).unwrap();
-		assert!(Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
+	fn the_cache_parses_a_file_once_while_it_stays_loaded() {
+		let file = Resource::new(b"LUT_1D_SIZE 2\n0 0 0\n0.5 1 1\n".to_vec());
+		let first = parse_cached(&file).unwrap();
 
-		// A cloned node shares its cache
-		assert!(Arc::ptr_eq(&first, &cache.clone().parse(&file).unwrap()));
+		// Any number of other files, failed ones included, leave it in place
+		let others: Vec<Resource> = (0..20).map(|index| Resource::new(format!("not a table {index}").into_bytes())).collect();
+		others.iter().for_each(|other| assert!(parse_cached(other).is_err()));
+		assert!(Arc::ptr_eq(&first, &parse_cached(&file).unwrap()));
 
-		// Another file takes its place, a failed one included
-		assert!(cache.parse(&Resource::new(b"hello world".to_vec())).is_err());
-		assert!(!Arc::ptr_eq(&first, &cache.parse(&file).unwrap()));
+		// Once no copy of it is loaded, parsing another file clears it out
+		let content = file.to_vec();
+		drop(file);
+		assert!(parse_cached(&Resource::new(b"not a table either".to_vec())).is_err());
+		assert!(!Arc::ptr_eq(&first, &parse_cached(&Resource::new(content)).unwrap()));
 	}
 
 	#[test]

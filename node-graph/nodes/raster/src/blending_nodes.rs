@@ -3,6 +3,7 @@ use core_types::Ctx;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
+use graphic_types::Adjustment;
 use raster_types::{CPU, Raster};
 use vector_types::Gradient;
 
@@ -31,7 +32,7 @@ fn mix_colors(
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
 #[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
-fn color_overlay<T: Adjust<Color>>(
+fn color_overlay<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
@@ -48,16 +49,12 @@ fn color_overlay<T: Adjust<Color>>(
 	opacity: Item<f64>,
 ) -> Item<T> {
 	let mut image = image;
-	let color = color.into_element();
-	let blend_mode = blend_mode.into_element();
-	let opacity = (opacity.into_element() / 100.) as f32;
-
-	image.element_mut().adjust(|pixel| {
-		let overlay = apply_blend_mode(color, *pixel, blend_mode);
-		let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity;
-
-		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
-	});
+	let adjustment = Adjustment::ColorOverlay {
+		color: color.into_element(),
+		blend_mode: blend_mode.into_element(),
+		opacity: opacity.into_element(),
+	};
+	image.element_mut().adjust(&adjustment);
 	image
 }
 

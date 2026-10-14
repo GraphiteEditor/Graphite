@@ -5,7 +5,7 @@ use std::future::Future;
 use std::hash::Hash;
 use std::ops::Deref;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 #[derive(Clone, DynAny)]
 pub struct Resource {
@@ -29,6 +29,22 @@ impl Resource {
 
 	pub fn empty() -> Self {
 		Self::new([])
+	}
+
+	/// A reference to this resource's data that doesn't keep it alive.
+	pub fn downgrade(&self) -> WeakResource {
+		WeakResource(Arc::downgrade(&self.inner))
+	}
+}
+
+/// A reference to a [`Resource`]'s data that doesn't keep it alive, for caches of what's derived from the data.
+#[derive(Clone)]
+pub struct WeakResource(Weak<dyn AsRef<[u8]> + Send + Sync>);
+
+impl WeakResource {
+	/// Whether anything still holds the resource's data.
+	pub fn is_alive(&self) -> bool {
+		self.0.strong_count() > 0
 	}
 }
 
