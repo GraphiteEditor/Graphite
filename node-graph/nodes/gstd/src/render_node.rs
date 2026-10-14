@@ -105,7 +105,7 @@ fn render(
 
 			RenderOutputType::Svg {
 				svg: output.svg,
-				image_data: output.image_data.into_iter().map(|(id, raster)| (id, raster.into_data())).collect(),
+				image_data: output.image_data.into_iter().collect(),
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(scene)) => {

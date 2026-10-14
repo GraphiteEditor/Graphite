@@ -141,6 +141,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
+				self.executor.forget_canvas_images();
+
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
 

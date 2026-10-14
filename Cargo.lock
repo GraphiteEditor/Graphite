@@ -2456,6 +2456,7 @@ dependencies = [
 name = "graphite-wasm-wrapper"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "graph-craft",
  "graphene-std",
  "graphite-editor",

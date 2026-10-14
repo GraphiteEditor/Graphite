@@ -478,8 +478,8 @@ pub struct SvgRender {
 	pub svg_defs: String,
 	/// Maps the user space of the content being rendered into the document's space, where the lengths of effects are measured.
 	pub transform: DAffine2,
-	/// The rasters drawn to canvases rather than embedded, by the buffer ID their placeholders name.
-	pub image_data: HashMap<u64, Raster<CPU>>,
+	/// The images drawn to canvases rather than embedded, by the canvas ID their placeholders name.
+	pub image_data: HashMap<u64, CanvasImage>,
 	indent: usize,
 }
 
@@ -573,7 +573,7 @@ impl SvgRender {
 pub struct SvgRenderOutput {
 	pub svg: String,
 	pub svg_defs: String,
-	pub image_data: HashMap<u64, Raster<CPU>>,
+	pub image_data: HashMap<u64, CanvasImage>,
 }
 
 impl From<&SvgRenderOutput> for SvgRender {
@@ -2741,11 +2741,37 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	});
 }
 
+/// The most times an image drawn to a canvas is halved, which is when 4096 of its pixels fit on one screen pixel.
+const MAX_CANVAS_HALVINGS: u32 = 12;
+
+/// An image the frontend draws to a canvas rather than an SVG embedding it, at a resolution to suit how large it appears.
+#[derive(Clone, Debug, PartialEq, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CanvasImage {
+	pub raster: Raster<CPU>,
+	/// How many times the pixels are halved along each axis for display.
+	pub halvings: u32,
+}
+
+/// Names the canvas for one resolution of an image's pixels, staying the same while the pixels do.
+fn canvas_image_id(buffer_id: u64, halvings: u32) -> u64 {
+	(buffer_id << 4) | halvings as u64
+}
+
 /// Emits a CPU raster's image as SVG, either as a placeholder for a canvas or as an embedded PNG.
 fn render_raster_cpu_image_svg(image: &Raster<CPU>, transform: DAffine2, opacity: f32, blend_mode: BlendMode, render: &mut SvgRender, render_params: &RenderParams) {
 	if render_params.to_canvas() {
-		let id = image.buffer_id();
-		render.image_data.entry(id).or_insert_with(|| image.clone());
+		// An image drawn smaller than its pixels is sent at a resolution halved enough times to still cover each screen pixel
+		let image_to_screen = render_params.footprint.transform * render.transform * transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let (largest_scale, _) = singular_values(image_to_screen);
+		let halvings = if largest_scale > 0. {
+			(1. / largest_scale).log2().floor().clamp(0., MAX_CANVAS_HALVINGS as f64) as u32
+		} else {
+			0
+		};
+
+		let id = canvas_image_id(image.buffer_id(), halvings);
+		render.image_data.entry(id).or_insert_with(|| CanvasImage { raster: image.clone(), halvings });
 
 		render.parent_tag(
 			"foreignObject",
