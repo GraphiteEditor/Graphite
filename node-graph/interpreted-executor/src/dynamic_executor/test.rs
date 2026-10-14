@@ -861,3 +861,40 @@ fn a_whole_list_of_scalars_switches_as_one_bundle() {
 	let list = result.expect("The whole scalar list should round-trip through the bundle switch");
 	assert_eq!(list.len(), 2, "The true branch's whole list should be selected and preserved intact");
 }
+
+fn error_traced_through(indices: &[usize]) -> NodeError {
+	let mut state = Poll::<()>::error("boom");
+	for &index in indices {
+		let status = core_types::Status::new();
+		let Err(interrupt) = status.record(index, state) else { unreachable!() };
+		state = status.bail(interrupt);
+	}
+	let Poll::Error(error) = state else { unreachable!() };
+	*error
+}
+
+#[test]
+fn a_trace_leads_to_the_node_that_raised_the_error() {
+	let executor = DynamicExecutor::new(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
+
+	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[])), Some(NodeId(1)));
+	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0])), Some(NodeId(0)));
+	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0, 0])), None, "a value node has no inputs");
+	assert_eq!(executor.find_origin(NodeId(0), &error_traced_through(&[])), Some(NodeId(0)));
+	assert_eq!(executor.find_origin(NodeId(0), &error_traced_through(&[0])), None, "an upstream trace starts at its parent's origin");
+}
+
+#[test]
+fn a_trace_steps_over_the_index_of_a_promotion_adapter() {
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(f64)).into()), vec![NodeId(0)]);
+	let mut box_corners_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(1)]);
+	box_corners_node.identifier = graphene_std::vector::generator_nodes::box_corners::IDENTIFIER;
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(1),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), box_corners_node)],
+	})
+	.unwrap();
+
+	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0, 0])), Some(NodeId(0)));
+}

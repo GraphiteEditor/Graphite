@@ -1,5 +1,5 @@
 use crate::node_registry;
-use core_types::{Poll, SourceId, WasmNotSend};
+use core_types::{NodeError, Poll, SourceId, WasmNotSend};
 use graph_craft::Type;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
@@ -138,6 +138,23 @@ impl DynamicExecutor {
 		// TODO: https://github.com/GraphiteEditor/Graphite/issues/1767
 		// TODO: Non exposed inputs are not added to the inputs_source_map, so they are not included in the resolved_document_node_types. The type is still available in the typing_context. This only affects the UI-only "Import" node.
 	}
+
+	// TODO(Dennis and Timon): Remove this once rank promotion is fixed.
+	// Only really needed due to the runtime not knowing about rank adapters.
+	// Once we reworked that we should be able to move this resolution into the runtime.
+	// Also remember to remove `BorrowTree::nodes.3` at that point
+	pub fn find_origin(&self, mut node: NodeId, error: &NodeError) -> Option<NodeId> {
+		let mut trace = error.trace().iter().rev();
+		while let Some(&index) = trace.next() {
+			// Hack to undo rank promotion while traversing the graph
+			if self.typing_context.promotions(node).is_some_and(|promotions| promotions.iter().any(|(argument, _)| *argument == index)) {
+				trace.next();
+			}
+
+			node = *self.tree.nodes.get(&node).map(|(_, _, inputs)| &**inputs)?.get(index)?;
+		}
+		Some(node)
+	}
 }
 
 impl<I> Executor<I, Poll<TaggedValue>> for &DynamicExecutor
@@ -186,8 +203,8 @@ impl std::fmt::Display for IntrospectError {
 ///
 /// # Fields
 ///
-/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`SharedNodeContainer`] and [`Path`].
-///   This stores the actual node instances and their associated paths.
+/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`SharedNodeContainer`], [`Path`], and input [`NodeId`]s.
+///   This stores the actual node instances, their associated paths, and the nodes connected to their inputs.
 ///
 /// * `source_map`: A [`HashMap`] from [`Path`] to tuples of [`NodeId`] and [`NodeTypes`].
 ///   This maps document paths to node IDs and their associated type information.
@@ -195,8 +212,8 @@ impl std::fmt::Display for IntrospectError {
 /// A store of the dynamically typed nodes and also the source map.
 #[derive(Default, Clone)]
 pub struct BorrowTree {
-	/// A hashmap of node IDs and dynamically typed nodes.
-	nodes: HashMap<NodeId, (SharedNodeContainer, Path)>,
+	/// A hashmap of node IDs and dynamically typed nodes, with their paths and input node IDs.
+	nodes: HashMap<NodeId, (SharedNodeContainer, Path, Box<[NodeId]>)>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 }
@@ -231,19 +248,19 @@ impl BorrowTree {
 		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.clone()).collect()
 	}
 
-	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId, path: Path) {
-		self.nodes.insert(id, (node, path));
+	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId, path: Path, inputs: Box<[NodeId]>) {
+		self.nodes.insert(id, (node, path, inputs));
 	}
 
 	/// Calls the `Node::serialize` for that specific node, returning for example the cached value for a monitor node. The node path must match the document node path.
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
-		let (node, _path) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
+		let (node, _path, _) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
 		node.serialize().ok_or(IntrospectError::NoData)
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
-		self.nodes.get(&id).map(|(node, _)| node.clone())
+		self.nodes.get(&id).map(|(node, _, _)| node.clone())
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
@@ -252,7 +269,7 @@ impl BorrowTree {
 		I: 'static + WasmNotSend,
 		O: 'static,
 	{
-		let (node, _path) = self.nodes.get(&id)?;
+		let (node, _path, _) = self.nodes.get(&id)?;
 		node.eval(input).value().and_then(|output| output.downcast::<O>().ok().map(|o| *o))
 	}
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
@@ -261,7 +278,7 @@ impl BorrowTree {
 	where
 		I: 'static + WasmNotSend,
 	{
-		let (node, _path) = self.nodes.get(&id).ok_or("Output node not found in executor")?;
+		let (node, _path, _) = self.nodes.get(&id).ok_or("Output node not found in executor")?;
 		Ok(match node.eval(input) {
 			Poll::Pending => Poll::Pending,
 			Poll::Final(output) => Poll::Final(TaggedValue::try_from_any(output)?),
@@ -330,7 +347,7 @@ impl BorrowTree {
 	/// - If the node is the primary node for its path in the `source_map`, it's also removed from there.
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
 	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
-		let (_, path) = self.nodes.remove(&id)?;
+		let (_, path, _) = self.nodes.remove(&id)?;
 		if self.source_map.get(&path)?.0 == id {
 			self.source_map.remove(&path);
 			return Some(path);
@@ -406,7 +423,7 @@ impl BorrowTree {
 			ConstructionArgs::Value(value) => {
 				let upcasted = UpcastNode::new(value.to_owned());
 				let node = NodeContainer::new(Box::new(upcasted) as TypeErasedBox<'_>);
-				self.store_node(node, id, path.into());
+				self.store_node(node, id, path.into(), Box::default());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
@@ -427,7 +444,7 @@ impl BorrowTree {
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes);
 				let node = NodeContainer::new(node);
-				self.store_node(node, id, path.into());
+				self.store_node(node, id, path.into(), ids.into());
 			}
 		};
 		Ok(())
