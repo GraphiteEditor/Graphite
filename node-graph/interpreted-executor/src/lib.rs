@@ -1,3 +1,6 @@
+// Proving wgpu-core's nested resource types are `Send` and `Sync` overflows the default limit of 128
+#![recursion_limit = "256"]
+
 pub mod dynamic_executor;
 pub mod node_registry;
 pub mod util;

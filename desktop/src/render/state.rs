@@ -42,6 +42,7 @@ impl RenderState {
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
 			desired_maximum_frame_latency: 1,
+			color_space: wgpu::SurfaceColorSpace::Auto,
 		};
 
 		surface.configure(&context.device, &config);
