@@ -919,6 +919,9 @@ impl Fsm for ShapeToolFsmState {
 					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
 
 					if all_selected_layers_line_or_arrow {
+						// Lines, arrows, and an empty selection have no cage, so an earlier selection's cage mustn't stay behind to catch presses
+						tool_data.bounding_box_manager = None;
+
 						let cursor = if hovering_over_endpoint { MouseCursorIcon::Default } else { MouseCursorIcon::Crosshair };
 						tool_data.cursor = cursor;
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
@@ -2228,5 +2231,41 @@ mod test_shape_tool {
 		drag_pressing_mid_way(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.), ToolMessage::ActivateToolShape).await;
 
 		assert_eq!(layer_count(&editor), count, "switching tools mid-drag should cancel the rectangle");
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_once_the_selection_has_no_cage() {
+		for leave_cage in [DocumentMessage::Undo, DocumentMessage::DeselectAllLayers] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.draw_rect(300., 300., 400., 380.).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			editor.handle_message(leave_cage).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			editor.draw_rect(400., 380., 480., 440.).await;
+			let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+			assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_once_only_a_line_is_selected() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(300., 300., 400., 380.).await;
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::empty()).await;
+		let line = editor.get_selected_layer().await.expect("the line drawn should be selected");
+		let line_bounds = editor.active_document().metadata().bounding_box_viewport(line);
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.draw_rect(400., 380., 480., 440.).await;
+		let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+		assert_ne!(layer, line, "the drag should draw a new layer rather than change the line");
+		assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		assert_eq!(editor.active_document().metadata().bounding_box_viewport(line), line_bounds, "the line should be left as it was");
 	}
 }
