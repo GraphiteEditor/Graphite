@@ -3,7 +3,6 @@ use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluat
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
@@ -148,12 +147,6 @@ impl NodeGraphExecutor {
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
-	}
-
-	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
-		self.sender
-			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
-			.expect("Failed to send editor preferences");
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.

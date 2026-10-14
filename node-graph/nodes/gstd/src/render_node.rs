@@ -109,11 +109,19 @@ fn render(
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(scene)) => {
-			let texture = executor
-				.into_element()
-				.expect("GPU executor not available")
-				.render_vello_scene(&scene, footprint.transform, footprint.resolution)
-				.expect("Failed to render Vello scene");
+			let executor = executor.into_element().expect("GPU executor not available");
+			let texture = match executor.render_vello_scene(&scene, footprint.transform, footprint.resolution) {
+				Ok(texture) => texture,
+				// Leave the output transparent, at a size the GPU can hold, rather than taking down the editor
+				Err(error) => {
+					log::error!("Failed to render Vello scene: {error}");
+					let limit = glam::UVec2::splat(executor.context().device.limits().max_texture_dimension_2d);
+					let empty_scene = wgpu_executor::Scene::new();
+					executor
+						.render_vello_scene(&empty_scene, footprint.transform, footprint.resolution.min(limit))
+						.expect("Failed to render an empty Vello scene")
+				}
+			};
 			RenderOutputType::Texture(texture)
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
