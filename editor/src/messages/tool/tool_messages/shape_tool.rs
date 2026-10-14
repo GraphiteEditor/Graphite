@@ -1590,6 +1590,8 @@ mod test_shape_tool {
 	use super::ShapeOptionsUpdate;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
+	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+	use crate::messages::tool::common_functionality::graph_modification_utils::get_arc_id;
 	use crate::messages::tool::common_functionality::shapes::shape_utility::{
 		ShapeType, arc_end_points, extract_arc_parameters, extract_circle_radius, extract_spiral_parameters, extract_star_parameters, regular_polygon_points, star_vertex_position,
 	};
@@ -1597,6 +1599,11 @@ mod test_shape_tool {
 	use crate::messages::tool::common_functionality::snap_session::Kind;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
+	use graph_craft::document::NodeInput;
+	use graph_craft::document::value::TaggedValue;
+	use graphene_std::vector::algorithms::shapes::calculate_growth_factor;
+	use graphene_std::vector::generator_nodes::arc;
+	use graphene_std::vector::misc::SpiralType;
 	use kurbo::PathEl;
 	use std::f64::consts::{PI, TAU};
 
@@ -2035,5 +2042,125 @@ mod test_shape_tool {
 		assert!(marked.distance(end) < 1e-6, "the snap is marked at {marked} rather than at the end, {end}");
 
 		editor.left_mouseup(at_sweep(183.).x, at_sweep(183.).y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_circle_with_its_radius_dragged_near_the_rim_of_a_stretched_arc_meets_that_rim_in_the_direction_it_is_pulled() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Drawn twice as wide as it is tall, the arc reaches twice as far from its center across as it does up and down
+		let arc = draw_shape(&mut editor, ShapeType::Arc, DVec2::new(100., 100.), DVec2::new(300., 200.)).await;
+
+		// With the arc left selected, the Shape tool would go on drawing arcs
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		let layer = draw_shape(&mut editor, ShapeType::Circle, DVec2::new(400., 400.), DVec2::new(460., 460.)).await;
+
+		let document = editor.active_document();
+		let (arc_radius, ..) = extract_arc_parameters(Some(arc), document).expect("the arc should have its parameters");
+		let arc_to_document = document.metadata().transform_to_document(arc);
+		let arc_rim = arc_to_document.transform_vector2(DVec2::X * arc_radius).length();
+
+		// The circle's rim is taken hold of on its right and drawn out to one and a half short of how far the arc reaches across
+		let radius = extract_circle_radius(layer, document).expect("the circle should have a radius");
+		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let (rim, pointer) = (to_viewport.transform_point2(DVec2::X * radius), to_viewport.transform_point2(DVec2::X * (arc_rim - 1.5)));
+		drag_gizmo_handle(&mut editor, rim, &[pointer]).await;
+
+		let dragged = extract_circle_radius(layer, editor.active_document()).expect("the circle should have a radius");
+		assert!((dragged - arc_rim).abs() < 1e-9, "the radius is {dragged} rather than {arc_rim}");
+		assert_eq!(engaged_kinds(&editor), vec![Kind::EqualRadius]);
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_stretched_arc_with_its_end_dragged_a_few_degrees_from_a_half_turn_where_it_crosses_the_screen_slowest_sweeps_one() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_shape(&mut editor, ShapeType::Arc, DVec2::new(300., 300.), DVec2::new(500., 400.)).await;
+
+		let document = editor.active_document();
+		let (radius, start_angle, _, _) = extract_arc_parameters(Some(layer), document).expect("the arc should have its parameters");
+		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let at_sweep = |degrees: f64| to_viewport.transform_point2(DVec2::from_angle((start_angle + degrees).to_radians()) * radius);
+		let (_, end) = arc_end_points(Some(layer), document).expect("the arc should have two ends");
+
+		// Seven degrees short of a half turn, the end lies a hundred pixels from the center but only six pixels from where a half turn takes it
+		drag_gizmo_handle(&mut editor, end, &[at_sweep(200.), at_sweep(173.)]).await;
+
+		let (_, _, sweep, _) = extract_arc_parameters(Some(layer), editor.active_document()).expect("the arc should have its parameters");
+		assert!((sweep - 180.).abs() < 1e-9, "the arc sweeps {sweep}°");
+		assert_eq!(engaged_kinds(&editor), vec![Kind::AngleStep]);
+
+		editor.left_mouseup(at_sweep(173.).x, at_sweep(173.).y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn an_arc_with_its_start_dragged_to_just_inside_a_larger_snap_angle_grows_to_it_and_keeps_its_far_end() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_shape(&mut editor, ShapeType::Arc, DVec2::new(300., 300.), DVec2::new(400., 400.)).await;
+
+		// The arc sweeps two degrees short of a three-quarter turn
+		let node_id = get_arc_id(layer, &editor.active_document().network_interface).expect("the arc should have its node");
+		editor
+			.handle_message(NodeGraphMessage::SetInput {
+				input_connector: InputConnector::node(node_id, arc::SweepAngleInput),
+				input: NodeInput::value(TaggedValue::Number(268.), false),
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
+
+		let document = editor.active_document();
+		let (radius, start_angle, _, _) = extract_arc_parameters(Some(layer), document).expect("the arc should have its parameters");
+		let (start, end) = arc_end_points(Some(layer), document).expect("the arc should have two ends");
+		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let at_angle = |degrees: f64| to_viewport.transform_point2(DVec2::from_angle((start_angle + degrees).to_radians()) * radius);
+
+		// The start is carried along the arc and back to two degrees on, which shrinks the sweep to four short of the three-quarter turn
+		drag_gizmo_handle(&mut editor, start, &[at_angle(30.), at_angle(2.)]).await;
+
+		let document = editor.active_document();
+		let (_, _, sweep, _) = extract_arc_parameters(Some(layer), document).expect("the arc should have its parameters");
+		assert!((sweep - 270.).abs() < 1e-9, "the arc sweeps {sweep}°");
+		assert_eq!(engaged_kinds(&editor), vec![Kind::RightAngle]);
+
+		let (_, dragged_end) = arc_end_points(Some(layer), document).expect("the arc should have two ends");
+		assert!(dragged_end.distance(end) < 1e-6, "the far end moved from {end} to {dragged_end}");
+
+		editor.left_mouseup(at_angle(2.).x, at_angle(2.).y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_logarithmic_spiral_with_a_turn_taken_off_its_start_winds_as_tightly_as_before() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Shape).await;
+		editor
+			.handle_message(ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::SpiralType(SpiralType::Logarithmic),
+			})
+			.await;
+		let layer = draw_shape(&mut editor, ShapeType::Spiral, DVec2::new(300., 300.), DVec2::new(360., 300.)).await;
+
+		let turns_and_growth_factor_of = |document: &DocumentMessageHandler| {
+			let (spiral_type, _, inner_radius, outer_radius, turns, _) = extract_spiral_parameters(layer, document).expect("the spiral should have its parameters");
+			(turns, calculate_growth_factor(inner_radius, turns, outer_radius, spiral_type))
+		};
+		let (turns, growth_factor) = turns_and_growth_factor_of(editor.active_document());
+
+		// The start lands on a whole turn fewer, and the outer radius shrinks so the spiral keeps winding as it did
+		let whole = turns.ceil() - 1.;
+		let last = turn_spiral_start(&mut editor, layer, turns - (whole + 0.01)).await;
+
+		let (dragged, dragged_growth_factor) = turns_and_growth_factor_of(editor.active_document());
+		assert!((dragged - whole).abs() < 1e-9, "the spiral has {dragged} turns rather than {whole}");
+		assert!(
+			(dragged_growth_factor - growth_factor).abs() < 1e-9,
+			"the growth factor is {dragged_growth_factor} rather than {growth_factor}"
+		);
+
+		editor.left_mouseup(last.x, last.y, ModifierKeys::empty()).await;
 	}
 }

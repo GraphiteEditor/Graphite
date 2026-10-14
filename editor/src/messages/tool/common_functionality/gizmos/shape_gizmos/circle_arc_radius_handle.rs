@@ -183,10 +183,10 @@ impl RadiusHandle {
 
 		// Kept apart from the radius written, which a snap may have moved
 		self.free_radius += net_delta;
-		let equal_radii = self.equal_radii.get_or_insert_with(|| equal_radius_candidates(document, layer));
 
 		// The handle is where the pointer took hold of the rim, which moves out along that angle as the radius grows
 		let spoke = calculate_circle_point_position(self.angle, 1.);
+		let equal_radii = self.equal_radii.get_or_insert_with(|| equal_radius_candidates(document, layer, spoke));
 		let on_screen_per_unit = viewport_transform.transform_vector2(spoke).length();
 		let to_document = document.metadata().document_to_viewport.inverse() * viewport_transform;
 		let position_of = |radius: f64| to_document.transform_point2(spoke * radius);
@@ -203,17 +203,17 @@ impl RadiusHandle {
 }
 
 /// The sizes of the radii of the visible circles, arcs, polygons, and stars nearest a dragged one, in its units.
+/// Each is measured in document space along the dragged handle's spoke, since a stretched shape reaches a different distance in each direction.
 /// O(n) in the document's layers.
-fn equal_radius_candidates(document: &DocumentMessageHandler, dragged: LayerNodeIdentifier) -> Vec<ValueCandidate> {
+fn equal_radius_candidates(document: &DocumentMessageHandler, dragged: LayerNodeIdentifier, spoke: DVec2) -> Vec<ValueCandidate> {
 	let metadata = document.metadata();
 
-	// A radius is compared in document space, as the layer's transform scales it
-	let scale = |layer: LayerNodeIdentifier| metadata.transform_to_document(layer).matrix2.determinant().abs().sqrt();
-	let dragged_scale = scale(dragged);
-	if !dragged_scale.is_normal() {
-		return Vec::new();
-	}
-	let dragged_center = metadata.transform_to_document(dragged).transform_point2(DVec2::ZERO);
+	// The spoke's direction in document space, and how far the handle moves along it per unit of radius
+	let dragged_to_document = metadata.transform_to_document(dragged);
+	let document_spoke = dragged_to_document.transform_vector2(spoke);
+	let Some(direction) = document_spoke.try_normalize() else { return Vec::new() };
+	let dragged_scale = document_spoke.length();
+	let dragged_center = dragged_to_document.transform_point2(DVec2::ZERO);
 
 	// A star offers its outer radius
 	let radius_of = |layer: LayerNodeIdentifier| {
@@ -227,8 +227,14 @@ fn equal_radius_candidates(document: &DocumentMessageHandler, dragged: LayerNode
 		.all_layers()
 		.filter(|&layer| layer != dragged && document.network_interface.is_layer_visible(layer))
 		.filter_map(|layer| {
-			let value = radius_of(layer)?.abs() * scale(layer) / dragged_scale;
-			let distance = metadata.transform_to_document(layer).transform_point2(DVec2::ZERO).distance(dragged_center);
+			// The rim lies a radius out in the layer's own space, where the direction has its own length
+			let to_document = metadata.transform_to_document(layer);
+			if to_document.matrix2.determinant() == 0. {
+				return None;
+			}
+			let rim_along_direction = radius_of(layer)?.abs() / to_document.matrix2.inverse().mul_vec2(direction).length();
+			let value = rim_along_direction / dragged_scale;
+			let distance = to_document.transform_point2(DVec2::ZERO).distance(dragged_center);
 			let candidate = ValueCandidate {
 				value,
 				kind: Kind::EqualRadius,

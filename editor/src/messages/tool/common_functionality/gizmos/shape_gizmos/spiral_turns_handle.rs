@@ -7,7 +7,7 @@ use crate::messages::prelude::Responses;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::extract_spiral_parameters;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_spiral_parameters, pointer_travel_per_radian};
 use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_spiral_endpoints;
 use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
 use glam::DVec2;
@@ -153,7 +153,7 @@ impl SpiralTurns {
 	/// The start angle in degrees, the turns, and the outer radius that dragging the start writes for a number of turns, which turns the start along as turns come off.
 	fn start_dragged_to(&self, turns: f64) -> (f64, f64, f64) {
 		let turns_taken_off = self.initial_turns - turns;
-		let outer_radius = (self.initial_outer_radius - self.outer_radius_change(turns_taken_off)).max(0.1);
+		let outer_radius = (self.initial_outer_radius + self.outer_radius_change(-turns_taken_off)).max(0.1);
 		(self.initial_start_angle + turns_taken_off * 360., turns.max(0.5), outer_radius)
 	}
 
@@ -167,9 +167,9 @@ impl SpiralTurns {
 			return free_turns;
 		}
 
-		// The turns follow the pointer's angle around the center, so a turn is a lap of the pointer there
+		// The turns follow the pointer's angle in the spiral's own space, which a stretched spiral spaces unevenly on screen
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-		let on_screen_per_turn = TAU * view.input.mouse.position.distance(layer_to_viewport.transform_point2(DVec2::ZERO));
+		let on_screen_per_turn = TAU * pointer_travel_per_radian(layer_to_viewport, view.input.mouse.position);
 
 		let growth_factor = calculate_growth_factor(inner_radius, turns, outer_radius, spiral_type);
 		let viewport_to_document = document.metadata().document_to_viewport.inverse();

@@ -395,6 +395,19 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 	Some((start_point, end_point))
 }
 
+/// How far the pointer must move on screen to turn its angle about a layer's center, in the layer's own space, by a radian.
+/// On a layer scaled evenly, that is its distance from the center.
+pub fn pointer_travel_per_radian(layer_to_viewport: DAffine2, pointer: DVec2) -> f64 {
+	let from_center = pointer - layer_to_viewport.translation;
+	let determinant = layer_to_viewport.matrix2.determinant();
+	if determinant == 0. {
+		return f64::NAN;
+	}
+
+	let in_layer = layer_to_viewport.matrix2.inverse() * from_center;
+	in_layer.length_squared() * determinant.abs() / from_center.length()
+}
+
 /// Calculate the viewport position of a star vertex given its index
 /// Extract the node input values of Circle.
 /// Returns an option of (radius).

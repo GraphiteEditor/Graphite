@@ -6,7 +6,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::DocumentMessageHandler;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded, pointer_travel_per_radian};
 use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
@@ -218,11 +218,10 @@ impl SweepAngleGizmo {
 			EndpointType::Start => {
 				// Dragging start changes both start and sweep
 
-				let sign = -angle.signum();
 				let mut total = angle;
 
 				let new_start_angle = self.initial_start_angle + total;
-				let new_sweep_angle = self.initial_sweep_angle + total.abs() * sign;
+				let new_sweep_angle = self.initial_sweep_angle - total;
 
 				match () {
 					// Clamp sweep angle to 360°
@@ -278,14 +277,14 @@ impl SweepAngleGizmo {
 						self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), input, responses);
 					}
 					_ => {
-						let free_sweep_angle = self.initial_sweep_angle + total.abs() * sign;
+						let free_sweep_angle = self.initial_sweep_angle - total;
 						total += free_sweep_angle - self.snap_sweep_angle(view, snap_session, free_sweep_angle);
 						if snap_session.caught() {
 							self.update_state(SweepAngleGizmoState::Snapped);
 						}
 
 						self.total_angle_delta = angle;
-						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle + total.abs() * sign, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle - total, input, responses);
 					}
 				}
 			}
@@ -360,9 +359,9 @@ impl SweepAngleGizmo {
 			return free_sweep_angle;
 		};
 
+		// The sweep follows the pointer's angle in the arc's own space, which a stretched arc spaces unevenly on screen
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
-		let center = layer_to_viewport.transform_point2(DVec2::ZERO);
-		let on_screen_per_degree = view.input.mouse.position.distance(center) * PI / 180.;
+		let on_screen_per_degree = pointer_travel_per_radian(layer_to_viewport, view.input.mouse.position) * PI / 180.;
 
 		// The dragged end turns about the center in the arc's own space, the start leaving the far end where it is as it shrinks the sweep
 		let layer_to_document = document.metadata().document_to_viewport.inverse() * layer_to_viewport;
