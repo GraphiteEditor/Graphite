@@ -78,6 +78,8 @@ pub struct NodeGraphExecutor {
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
+	/// The view the render was asked for, which the footprints it reports back are measured in.
+	document_to_viewport: DAffine2,
 	// TODO: Eventually remove this document upgrade code
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
@@ -212,6 +214,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -283,6 +286,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -347,6 +351,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: Some(export_config),
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -416,7 +421,7 @@ impl NodeGraphExecutor {
 						// Special handling for exporting the artwork
 						self.process_export(node_graph_output, export_config, document, responses)?;
 					} else {
-						self.process_node_graph_output(node_graph_output, responses)?;
+						self.process_node_graph_output(node_graph_output, execution_context.document_to_viewport, responses)?;
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
 						execution_id,
@@ -581,6 +586,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: Some((network_path, fill_node_id, gradient)),
 			},
 		));
@@ -661,7 +667,7 @@ impl NodeGraphExecutor {
 		self.node_graph_hash = 0;
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, document_to_viewport: DAffine2, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
 			return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
 		};
@@ -712,6 +718,7 @@ impl NodeGraphExecutor {
 			upstream_footprints,
 			local_transforms,
 			first_element_source_id,
+			document_to_viewport,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateOutlines { outlines });

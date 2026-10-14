@@ -102,10 +102,10 @@ pub fn find_constructions(context: &Context) -> Vec<Candidate> {
 
 	for target in &woken {
 		match *target {
-			Woken::Point { position, highlight, .. } if settings.alignment => {
+			Woken::Point { position, highlight, .. } if settings.point_alignment => {
 				candidates.extend(lines_along_axes(context, position).map(|track| highlighted(track, highlight)));
 			}
-			Woken::Box { quad, identity, highlight } if settings.alignment => {
+			Woken::Box { quad, identity, highlight } if settings.box_alignment => {
 				let points = [quad[0], quad[1], quad[2], quad[3], (quad[0] + quad[2]) / 2.];
 				let size = (quad[2] - quad[0]).length();
 
@@ -214,7 +214,7 @@ pub fn find_constructions_from(context: &Context, previous: DVec2, previous_leng
 	let settings = context.settings;
 	let mut candidates = Vec::new();
 
-	if settings.alignment {
+	if settings.point_alignment {
 		candidates.extend(lines_along_axes(context, previous));
 	}
 
@@ -358,6 +358,45 @@ mod tests {
 		] {
 			assert_eq!(alignments.iter().filter(|track| track_passes_through(track, point)).count(), 1);
 		}
+	}
+
+	#[test]
+	fn alignment_with_points_and_with_boxes_is_turned_off_each_on_its_own() {
+		let quad = [DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 6.), DVec2::new(0., 6.)];
+		let mut scene = Scene::new();
+		scene.set_layer(LayerId(1), layer(&[DVec2::new(30., 40.)], &[], Some(quad)));
+		let awake = [Awake::Anchor { layer: LayerId(1), index: 0 }, Awake::Box { layer: LayerId(1) }];
+
+		let alignments = |settings: Settings| {
+			let (view, frame, tunables, exclusions) = (ViewMapping::IDENTITY, Frame::default(), Tunables::default(), Exclusions::default());
+			let context = Context {
+				scene: &scene,
+				view: &view,
+				frame: &frame,
+				tunables: &tunables,
+				settings: &settings,
+				exclusions: &exclusions,
+				awake: &awake,
+			};
+			of_kind(&find_constructions(&context), Kind::Alignment).len()
+		};
+
+		// The anchor offers a line along each axis, and the box its two edges and center line along each
+		assert_eq!(alignments(Settings::default()), 8);
+		assert_eq!(
+			alignments(Settings {
+				box_alignment: false,
+				..Default::default()
+			}),
+			2
+		);
+		assert_eq!(
+			alignments(Settings {
+				point_alignment: false,
+				..Default::default()
+			}),
+			6
+		);
 	}
 
 	#[test]

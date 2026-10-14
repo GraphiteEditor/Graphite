@@ -1729,8 +1729,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				upstream_footprints,
 				local_transforms,
 				first_element_source_id,
+				document_to_viewport,
 			} => {
-				self.network_interface.update_transforms(upstream_footprints, local_transforms);
+				self.network_interface.update_transforms(upstream_footprints, local_transforms, document_to_viewport);
 				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
