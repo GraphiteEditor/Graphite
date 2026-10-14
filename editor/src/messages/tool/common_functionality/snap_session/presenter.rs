@@ -2,9 +2,13 @@ use super::{Shown, SnapSession};
 use crate::consts::{COLOR_OVERLAY_BLACK_75, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use snapping::{Awake, Candidate, Highlight, Kind, Locus, Shape};
+
+/// How far the cap at each end of a drawn gap reaches to either side of it, in viewport pixels.
+const GAP_CAP_REACH: f64 = 4.;
 
 impl SnapSession {
 	/// Draws the woken targets, and then what the pointer is snapped to: the piece of the scene it found, any line it is held on, and a mark at the snapped position with a word for the relationship.
@@ -32,6 +36,12 @@ impl SnapSession {
 				let [from, to] = [reference, snapped].map(|position| to_viewport.transform_point2(position));
 				overlay_context.line(from, to, None, None);
 				overlay_context.manipulator_handle(from, false, None);
+			}
+
+			if let Some(gaps) = candidate.gaps {
+				for span in gaps.spans {
+					draw_gap(span, gaps.gap, to_viewport, overlay_context);
+				}
 			}
 		}
 
@@ -93,6 +103,24 @@ fn marked_label(engaged: &[(&Candidate, DVec2)]) -> String {
 		.collect();
 
 	label(&kinds)
+}
+
+/// Draws one of the gaps a snap has made equal: a line across it with a cap at each end, and its length in document units.
+fn draw_gap(span: [DVec2; 2], gap: f64, to_viewport: DAffine2, overlay_context: &mut OverlayContext) {
+	let [from, to] = span.map(|position| to_viewport.transform_point2(position));
+	let Some(cap) = (to - from).try_normalize().map(|along| along.perp() * GAP_CAP_REACH) else {
+		return;
+	};
+
+	overlay_context.line(from, to, None, None);
+	overlay_context.line(from - cap, from + cap, None, None);
+	overlay_context.line(to - cap, to + cap, None, None);
+
+	// The length goes above a gap running across and to the right of one running up and down, clear of its line either way
+	let runs_across = (to - from).x.abs() >= (to - from).y.abs();
+	let pivot = if runs_across { [Pivot::Middle, Pivot::End] } else { [Pivot::Start, Pivot::Middle] };
+	let beside = DAffine2::from_translation((from + to) / 2.);
+	overlay_context.text(&format_rounded(gap, 2), COLOR_OVERLAY_BLUE, None, beside, 5., pivot);
 }
 
 /// The relationship a snap gives, in a word or two.

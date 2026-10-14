@@ -1,10 +1,10 @@
-use crate::candidate::{Candidate, Shape};
+use crate::candidate::{Candidate, Kind, Shape};
 use crate::find::{Context, Probe, find_near_probe};
 use crate::grid::Grid;
 use crate::locus::Locus;
 use crate::solve::{CrossingCache, Engagement, FeatureMap, Incumbent, Problem, Snap, confine, solve};
 use glam::DVec2;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 /// The parts of a snap attempt that carry over from one moment of a gesture to the next, or that the user controls directly.
 #[derive(Clone, Copy, Debug, Default)]
@@ -23,6 +23,11 @@ pub struct Request<'a> {
 	pub constructions: &'a [Candidate],
 	/// Candidates offered to the lead feature alone, such as those from the point it joins back to.
 	pub lead_constructions: &'a [Candidate],
+	/// Candidates the caller found for particular features, such as the places that even out a box's gaps, each for the feature its key names.
+	pub particular: &'a [Candidate],
+	/// The features that look for geometry near them and are offered the constructions, which is all of them when `None`.
+	/// One left out still follows the parameters, can be the lead, and can be given `particular` candidates.
+	pub probed: Option<&'a [u32]>,
 	/// Somewhere to remember the crossings of curves between attempts, which spares finding them again at every move of the pointer.
 	pub crossings: Option<&'a CrossingCache>,
 }
@@ -97,9 +102,14 @@ pub fn snap_features(context: &Context, request: &Request, features: &[FeatureMa
 	// Each feature gathers its own candidates where the pointer would put it, alongside the ones offered wherever it is
 	let mut candidates = Vec::new();
 	for (index, feature) in features.iter().enumerate() {
-		let is_lead = index == lead;
+		let index = index as u32;
+		if request.probed.is_some_and(|probed| !probed.contains(&index)) {
+			continue;
+		}
+
+		let is_lead = index as usize == lead;
 		let probe = Probe {
-			feature: index as u32,
+			feature: index,
 			position: feature.position(base),
 			previous: if is_lead { previous } else { None },
 		};
@@ -108,13 +118,16 @@ pub fn snap_features(context: &Context, request: &Request, features: &[FeatureMa
 		let lead_constructions = if is_lead { request.lead_constructions } else { &[] };
 		candidates.extend(request.constructions.iter().chain(lead_constructions).map(|construction| {
 			let mut key = construction.key;
-			key.feature = index as u32;
+			key.feature = index;
 			Candidate { key, ..*construction }
 		}));
 	}
 
+	let exists = |candidate: &&Candidate| (candidate.key.feature as usize) < features.len();
+	candidates.extend(request.particular.iter().filter(exists));
+
 	// One relationship can be offered twice over, as by a curve that is both awake and near the pointer
-	if !request.constructions.is_empty() || !request.lead_constructions.is_empty() {
+	if !request.constructions.is_empty() || !request.lead_constructions.is_empty() || !request.particular.is_empty() {
 		let mut offered = HashSet::new();
 		candidates.retain(|candidate| offered.insert(candidate.key));
 	}
@@ -140,6 +153,22 @@ pub fn snap_features(context: &Context, request: &Request, features: &[FeatureMa
 		})
 		.collect();
 
+	// Features in line with each other, such as a box's corners down one side, turn one relationship into copies that land alike.
+	// One copy is kept, the lead's if it has one, so stepping through the snaps moves on to a different one. O(n) in the candidates.
+	let lead_first = (0..candidates.len()).filter(|&index| candidates[index].key.feature as usize == lead);
+	let others = (0..candidates.len()).filter(|&index| candidates[index].key.feature as usize != lead);
+	let mut kept_copies: HashMap<(Kind, [u64; 3]), Vec<usize>> = HashMap::new();
+	let mut keep = vec![false; candidates.len()];
+	for index in lead_first.chain(others) {
+		let key = candidates[index].key;
+		let copies = kept_copies.entry((key.kind, key.identity)).or_default();
+		if !copies.iter().any(|&kept| lands_alike(&in_parameters[kept].shape, &in_parameters[index].shape)) {
+			copies.push(index);
+			keep[index] = true;
+		}
+	}
+	let (candidates, in_parameters): (Vec<Candidate>, Vec<Candidate>) = candidates.into_iter().zip(in_parameters).zip(keep).filter_map(|(pair, keep)| keep.then_some(pair)).unzip();
+
 	let solution = solve(&Problem {
 		view: context.view,
 		tunables: context.tunables,
@@ -159,5 +188,26 @@ pub fn snap_features(context: &Context, request: &Request, features: &[FeatureMa
 		parameters: solution.parameters,
 		snap: solution.snap,
 		candidates,
+	}
+}
+
+/// Whether two shapes in the gesture's parameters are the same to within rounding, so snapping to either lands alike.
+fn lands_alike(a: &Shape, b: &Shape) -> bool {
+	let close = |a: DVec2, b: DVec2| (a - b).abs().cmple(a.abs().max(b.abs()).max(DVec2::ONE) * 1e-9).all();
+
+	match (a, b) {
+		(Shape::Spot(a), Shape::Spot(b)) => close(*a, *b),
+		(
+			Shape::Track(Locus::Line { point, direction }),
+			Shape::Track(Locus::Line {
+				point: other_point,
+				direction: other_direction,
+			}),
+		) => {
+			let scale = point.abs().max(other_point.abs()).max_element().max(1.);
+			direction.perp_dot(*other_direction).abs() <= 1e-9 && direction.perp_dot(*other_point - *point).abs() <= 1e-9 * scale
+		}
+		(Shape::Track(a), Shape::Track(b)) => a == b,
+		_ => false,
 	}
 }

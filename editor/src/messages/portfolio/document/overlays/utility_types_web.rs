@@ -1043,7 +1043,7 @@ impl OverlayContext {
 		};
 		let y = match pivot[1] {
 			Pivot::Start => padding + metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
-			Pivot::Middle => (metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent()) / 2.,
+			Pivot::Middle => (metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent()) / 2.,
 			Pivot::End => -padding,
 		};
 

@@ -177,7 +177,7 @@ fn mirror_layer(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -
 }
 
 /// The positions a path passes through at the ends of its segments.
-fn anchor_positions(path: &BezPath) -> impl Iterator<Item = DVec2> + '_ {
+pub fn anchor_positions(path: &BezPath) -> impl Iterator<Item = DVec2> + '_ {
 	path.elements().iter().filter_map(|element| match *element {
 		PathEl::MoveTo(point) | PathEl::LineTo(point) | PathEl::QuadTo(_, point) | PathEl::CurveTo(_, _, point) => Some(DVec2::new(point.x, point.y)),
 		PathEl::ClosePath => None,
