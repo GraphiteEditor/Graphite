@@ -1,16 +1,27 @@
 use glam::UVec2;
-use rendering::scene::{ClipPath, Scene, SceneCommand, SceneImage};
+use rendering::scene::{Scene, SceneCommand, SceneImage};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
-use vello_gpu::kurbo::{Affine, Rect, Shape};
+use vello_gpu::kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape};
 use vello_gpu::peniko::{self, Brush};
-use vello_gpu::{ClearSettings, Image, ImageSource, PaintType, RectU16, RenderSize, RenderTargetConfig, Renderer, Resources, TargetInit, TextureBindings, TextureId};
+use vello_gpu::{
+	ClearSettings, Image, ImageSource, IntermediateTextureError, LayersConfig, MemorySettings, PaintType, RectU16, RenderError, RenderSettings, RenderSize, RenderTargetConfig, Renderer, Resources,
+	SizeU16, TargetInit, TextureBindings, TextureId,
+};
 
 /// The format of the textures Vello GPU renders into, of the image textures it samples, and of the textures handed back.
 const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// How many renders an image's texture survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
+
+/// How many times a render with too much content for Vello GPU is halved, reaching areas 1/4096 the size of the original.
+const MAX_SPLIT_DEPTH: u32 = 12;
+
+/// The widest or tallest area a single render can draw an isolated layer across, since that is the limit of the intermediate textures Vello GPU draws layers into.
+/// These grow to fit the largest layer and stay that size, so a larger limit keeps more memory after one large render. Renders larger than this are split.
+pub const MAX_LAYER_RENDER_SIZE: u32 = 4096;
 
 /// Vello GPU's renderer and GPU resources, shared by every [`VelloCanvas`] so their memory and pipelines exist once.
 pub(crate) struct VelloRenderer {
@@ -46,8 +57,19 @@ impl VelloRenderer {
 			height: 1,
 		};
 
+		let settings = RenderSettings {
+			memory_settings: MemorySettings {
+				layers_config: LayersConfig {
+					max_texture_size: SizeU16::new(MAX_LAYER_RENDER_SIZE as u16),
+					..Default::default()
+				},
+				..Default::default()
+			},
+			..Default::default()
+		};
+
 		Self {
-			gpu: Mutex::new(Renderer::new(device, &render_target_config)),
+			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
 			alpha_conversion: AlphaConversion::new(device),
 		}
 	}
@@ -55,16 +77,81 @@ impl VelloRenderer {
 	/// Renders `scene` on `canvas`, placed by `transform`, into `target` (an `Rgba8Unorm` texture of `size` with straight alpha).
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn render(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene, transform: Affine, size: UVec2, target: &wgpu::Texture) -> anyhow::Result<()> {
-		let (Ok(width), Ok(height)) = (u16::try_from(size.x), u16::try_from(size.y)) else {
+		if u16::try_from(size.x).is_err() || u16::try_from(size.y).is_err() {
 			anyhow::bail!("Render size {size} exceeds Vello GPU's limit");
+		}
+
+		canvas.images.render_count += 1;
+		self.render_area(canvas, device, queue, scene, transform, size, target, 0);
+		canvas.images.free_unused();
+
+		Ok(())
+	}
+
+	/// Renders `scene` into `target`, a texture of `size`. When the scene holds more content than one render can, renders each half of the area separately and copies it into place.
+	#[expect(clippy::too_many_arguments)]
+	fn render_area(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene, transform: Affine, size: UVec2, target: &wgpu::Texture, split_depth: u32) {
+		let error = match self.render_once(canvas, device, queue, scene, transform, size, target) {
+			Ok(()) => return,
+			Err(error) => error,
 		};
 
+		// Each half covers less of the scene, so it has less content and smaller layers to hold
+		let too_much_to_hold = matches!(
+			error,
+			RenderError::ResourceTextureOverflow { .. } | RenderError::IntermediateTexture(IntermediateTextureError::TooLarge { .. })
+		);
+		if too_much_to_hold && split_depth < MAX_SPLIT_DEPTH && size.max_element() > 1 {
+			let halves = if size.x >= size.y {
+				let left = size.x / 2;
+				[(UVec2::ZERO, UVec2::new(left, size.y)), (UVec2::new(left, 0), UVec2::new(size.x - left, size.y))]
+			} else {
+				let top = size.y / 2;
+				[(UVec2::ZERO, UVec2::new(size.x, top)), (UVec2::new(0, top), UVec2::new(size.x, size.y - top))]
+			};
+
+			for (offset, half_size) in halves {
+				let half_target = create_texture(
+					device,
+					"vello_gpu_split_target",
+					half_size,
+					wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+				);
+				let half_transform = Affine::translate((-(offset.x as f64), -(offset.y as f64))) * transform;
+				self.render_area(canvas, device, queue, scene, half_transform, half_size, &half_target, split_depth + 1);
+
+				let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_split_copy") });
+				encoder.copy_texture_to_texture(
+					half_target.as_image_copy(),
+					wgpu::TexelCopyTextureInfo {
+						origin: wgpu::Origin3d { x: offset.x, y: offset.y, z: 0 },
+						..target.as_image_copy()
+					},
+					half_target.size(),
+				);
+				queue.submit([encoder.finish()]);
+			}
+			return;
+		}
+
+		// A failed render leaves its area transparent rather than taking down the editor
+		log::error!("Vello GPU failed to render: {error}");
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_clear") });
+		clear_texture(&mut encoder, &target.create_view(&wgpu::TextureViewDescriptor::default()));
+		queue.submit([encoder.finish()]);
+	}
+
+	/// Renders `scene` into `target`, a texture of `size`, in a single Vello GPU render.
+	#[expect(clippy::too_many_arguments)]
+	fn render_once(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: &Scene, transform: Affine, size: UVec2, target: &wgpu::Texture) -> Result<(), RenderError> {
+		let (width, height) = (size.x as u16, size.y as u16);
 		let VelloCanvas {
 			scene: gpu_scene,
 			premultiplied_target,
 			images,
 		} = canvas;
-		images.render_count += 1;
+
+		// Each render submits its own encoder, since Vello GPU stages its uploads for the next submission
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_render") });
 
 		// Record the scene for this render's size and placement, preparing the textures of the images it draws
@@ -110,21 +197,16 @@ impl VelloRenderer {
 			target_init,
 		);
 
-		// A failed render leaves its area transparent rather than taking down the editor
-		let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-		match rendered {
-			Ok(()) => self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view),
-			Err(error) => {
-				log::error!("Vello GPU failed to render: {error}");
-				clear_texture(&mut encoder, &target_view);
-			}
+		if rendered.is_ok() {
+			let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+			self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view);
 		}
 
+		// Submitted even after a failure, since it also prepares the textures of the scene's images
 		queue.submit([encoder.finish()]);
 		drop(gpu);
-		images.free_unused();
 
-		Ok(())
+		rendered
 	}
 }
 
@@ -170,7 +252,7 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 				target.set_fill_rule(*fill_rule);
 				target.set_paint(paint);
 				target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-				target.fill_path(path);
+				target.fill_path(&finite_path(path));
 			}
 			SceneCommand::Stroke {
 				stroke,
@@ -184,7 +266,7 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 				target.set_stroke(stroke.clone());
 				target.set_paint(paint);
 				target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-				target.stroke_path(path);
+				target.stroke_path(&finite_path(path));
 			}
 			SceneCommand::FillViewport { brush, brush_transform } => {
 				let Some((paint, paint_to_brush)) = resolve_paint(brush, resolve_image) else { continue };
@@ -194,8 +276,9 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 				target.fill_rect(&viewport);
 			}
 			SceneCommand::PushLayer { blend_mode, alpha, clip } => {
-				if let Some(clip) = clip {
-					if !clip_reaches(clip, transform, viewport) {
+				let clip_path = clip.as_ref().map(|clip| finite_path(&clip.path));
+				if let (Some(clip), Some(clip_path)) = (clip, &clip_path) {
+					if !clip_reaches(clip_path, transform * clip.transform, viewport) {
 						culled_depth = 1;
 						continue;
 					}
@@ -203,18 +286,19 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 					target.set_transform(transform * clip.transform);
 					target.set_fill_rule(clip.fill_rule);
 				}
-				target.push_layer(clip.as_ref().map(|clip| &clip.path), Some(*blend_mode), Some(*alpha), None, None);
+				target.push_layer(clip_path.as_deref(), Some(*blend_mode), Some(*alpha), None, None);
 				pushed.push(Pushed::Layer);
 			}
 			SceneCommand::PushClip { clip } => {
-				if !clip_reaches(clip, transform, viewport) {
+				let clip_path = finite_path(&clip.path);
+				if !clip_reaches(&clip_path, transform * clip.transform, viewport) {
 					culled_depth = 1;
 					continue;
 				}
 
 				target.set_transform(transform * clip.transform);
 				target.set_fill_rule(clip.fill_rule);
-				target.push_clip_path(&clip.path);
+				target.push_clip_path(&clip_path);
 				pushed.push(Pushed::Clip);
 			}
 			SceneCommand::Pop => match pushed.pop() {
@@ -250,10 +334,72 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 	}
 }
 
-/// Whether a clip, placed by `transform`, overlaps the viewport. Vello GPU fails to render a layer whose clip covers no pixels.
-fn clip_reaches(clip: &ClipPath, transform: Affine, viewport: Rect) -> bool {
-	let bounds = (transform * clip.transform).transform_rect_bbox(clip.path.bounding_box());
+/// Whether a clip path, placed by `transform`, overlaps the viewport. Vello GPU fails to render a layer whose clip covers no pixels.
+fn clip_reaches(clip_path: &BezPath, transform: Affine, viewport: Rect) -> bool {
+	let bounds = transform.transform_rect_bbox(clip_path.bounding_box());
 	bounds.x0 < viewport.x1 && bounds.x1 > viewport.x0 && bounds.y0 < viewport.y1 && bounds.y1 > viewport.y0
+}
+
+/// Stands in for an infinite coordinate: far past any viewport, yet small enough for the transforms and clipping it goes through to stay finite.
+const UNBOUNDED_COORDINATE: f64 = 1e200;
+
+/// The path with its infinite coordinates made finite, so a line to infinity along one axis keeps the average of its other axis.
+/// Points infinite along both axes, or NaN, have no sensible position and are skipped.
+fn finite_path(path: &BezPath) -> Cow<'_, BezPath> {
+	let element_is_finite = |element: &PathEl| match *element {
+		PathEl::MoveTo(p) | PathEl::LineTo(p) => p.is_finite(),
+		PathEl::QuadTo(p1, p2) => p1.is_finite() && p2.is_finite(),
+		PathEl::CurveTo(p1, p2, p3) => p1.is_finite() && p2.is_finite() && p3.is_finite(),
+		PathEl::ClosePath => true,
+	};
+	if path.elements().iter().all(element_is_finite) {
+		return Cow::Borrowed(path);
+	}
+
+	let bounded = |value: f64| if value.is_infinite() { value.signum() * UNBOUNDED_COORDINATE } else { value };
+	let finite_point = |p: Point| (!p.x.is_nan() && !p.y.is_nan() && !(p.x.is_infinite() && p.y.is_infinite())).then(|| Point::new(bounded(p.x), bounded(p.y)));
+
+	let mut result = BezPath::new();
+	// Whether the subpath has yet to reach a point it can start from
+	let mut awaiting_start = true;
+
+	for element in path.elements() {
+		let end = match *element {
+			PathEl::MoveTo(p) => {
+				awaiting_start = true;
+				p
+			}
+			PathEl::ClosePath => {
+				if !awaiting_start {
+					result.close_path();
+				}
+				continue;
+			}
+			PathEl::LineTo(p) | PathEl::QuadTo(_, p) | PathEl::CurveTo(_, _, p) => p,
+		};
+		let Some(end) = finite_point(end) else { continue };
+
+		if awaiting_start {
+			result.move_to(end);
+			awaiting_start = false;
+			continue;
+		}
+
+		// A curve with an unplaceable control point becomes a line to its end
+		match *element {
+			PathEl::QuadTo(p1, _) => match finite_point(p1) {
+				Some(p1) => result.quad_to(p1, end),
+				None => result.line_to(end),
+			},
+			PathEl::CurveTo(p1, p2, _) => match (finite_point(p1), finite_point(p2)) {
+				(Some(p1), Some(p2)) => result.curve_to(p1, p2, end),
+				_ => result.line_to(end),
+			},
+			_ => result.line_to(end),
+		}
+	}
+
+	Cow::Owned(result)
 }
 
 /// The Vello GPU paint for a recorded brush, plus the transform from the paint's space into the brush's (which differ for an image whose texture was downscaled).
@@ -634,3 +780,6 @@ impl AlphaConversion {
 		pass.draw(0..3, 0..1);
 	}
 }
+
+#[cfg(test)]
+mod tests;

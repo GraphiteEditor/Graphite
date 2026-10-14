@@ -8,8 +8,8 @@ mod vello_render;
 
 use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
-pub use crate::vello_render::VelloCanvas;
 use crate::vello_render::VelloRenderer;
+pub use crate::vello_render::{MAX_LAYER_RENDER_SIZE, VelloCanvas};
 use anyhow::Result;
 use glam::{DAffine2, UVec2};
 use graphene_application_io::{ApplicationIo, EditorApi};
@@ -78,6 +78,11 @@ impl WgpuExecutor {
 
 	/// Renders a recorded scene like [`Self::render_vello_scene`], but on a canvas the caller owns.
 	pub fn render_vello_scene_on_canvas(&self, canvas: &mut VelloCanvas, scene: &Scene, transform: DAffine2, size: UVec2) -> Result<Texture> {
+		let limit = self.context().device.limits().max_texture_dimension_2d;
+		if size.x > limit || size.y > limit {
+			anyhow::bail!("Render size {size} exceeds the GPU's texture size limit of {limit}");
+		}
+
 		let texture = self.request_texture(size);
 		let transform = vello_gpu::kurbo::Affine::new(transform.to_cols_array());
 
@@ -85,6 +90,51 @@ impl WgpuExecutor {
 		self.inner.vello_renderer.render(canvas, &self.context().device, &queue, scene, transform, size, &texture)?;
 
 		Ok(texture)
+	}
+
+	/// Reads an `Rgba8Unorm` texture's pixels back to the CPU, as tightly packed rows, waiting on the GPU.
+	/// Fails in a browser, which hands over the pixels only once control returns to it.
+	pub fn read_texture_pixels(&self, texture: &wgpu::Texture) -> Result<Vec<u8>> {
+		let device = &self.context().device;
+		let (width, height) = (texture.width(), texture.height());
+		let row_bytes = width * 4;
+		let padded_row_bytes = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+
+		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+			label: Some("texture_readback_buffer"),
+			size: padded_row_bytes as u64 * height as u64,
+			usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+			mapped_at_creation: false,
+		});
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("texture_readback") });
+		encoder.copy_texture_to_buffer(
+			texture.as_image_copy(),
+			wgpu::TexelCopyBufferInfo {
+				buffer: &buffer,
+				layout: wgpu::TexelCopyBufferLayout {
+					offset: 0,
+					bytes_per_row: Some(padded_row_bytes),
+					rows_per_image: Some(height),
+				},
+			},
+			texture.size(),
+		);
+		self.context().queue.lock().submit([encoder.finish()]);
+
+		let (sender, mut receiver) = futures::channel::oneshot::channel();
+		buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+			let _ = sender.send(result);
+		});
+		let _ = device.poll(wgpu::wgt::PollType::wait_indefinitely());
+		let Ok(Some(mapping)) = receiver.try_recv() else {
+			anyhow::bail!("The GPU didn't map the texture's pixels for reading");
+		};
+		mapping?;
+
+		let mapped = buffer.slice(..).get_mapped_range()?;
+		let pixels = mapped.chunks_exact(padded_row_bytes as usize).flat_map(|row| &row[..row_bytes as usize]).copied().collect();
+
+		Ok(pixels)
 	}
 
 	pub fn pipeline_init<P: WgpuPipeline>(&self, pipeline: &WgpuPipelineCache) {
