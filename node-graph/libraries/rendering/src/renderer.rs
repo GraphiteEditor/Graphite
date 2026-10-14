@@ -438,10 +438,6 @@ pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
 }
 
-fn to_point(p: DVec2) -> kurbo::Point {
-	kurbo::Point::new(p.x, p.y)
-}
-
 fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::Color) {
 	use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
 
@@ -529,46 +525,19 @@ pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientFor
 	}
 }
 
-/// Texel count of the baked gradient ramp Vello samples stops through (`N_SAMPLES`/`GRADIENT_WIDTH` in vello_encoding).
-const VELLO_GRADIENT_RAMP_TEXELS: f64 = 512.;
-
 /// Renderable gradient samples of `(position, color, original midpoint)`, as produced by [`Gradient::interpolated_samples`].
 type GradientSamples = Vec<(f64, Color, Option<f64>)>;
 
-/// Where a renderer needs the transparent guard stops that emulate the `Clear` spread, which neither SVG nor Vello supports natively.
-#[derive(Copy, Clone, PartialEq)]
-pub(crate) enum ClearGuardPlacement {
-	/// Guards share the range ends' exact offsets, resolved against the visible colors by stop order alone.
-	SvgStopOrder,
-	/// Guards own the outermost ramp texel at each cleared end, since Vello's pad extension samples those texels for
-	/// everything beyond the ends and its ramp bake would tie-break a shared-offset guard away. The visible range
-	/// compresses inward by one texel per cleared end, costing about 0.4% of the ramp's color resolution.
-	VelloRampTexels,
-}
-
-/// The gradient's renderable samples plus the gradient-space span `(start, end)` the renderer's 0 to 1 offset range must cover, normally the unit interval with the samples unchanged.
+/// The gradient's renderable samples, bracketed for the `Clear` spread (which neither SVG nor Vello supports natively) by transparent guard stops.
 ///
-/// The `Clear` spread brackets the samples with transparent guard stops placed per `guards`: the pad extension then
-/// paints transparency outward while hard stops cut the paint off exactly at the unit range's boundaries. A radial
-/// gradient's span still starts at zero, since its sampling distance never goes below the center.
-pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSettings, gradient_form: GradientForm, guards: ClearGuardPlacement) -> (GradientSamples, (f64, f64)) {
+/// The guards share the unit range's end offsets, ordered so the pad extension paints transparency outward while the later
+/// of each pair of coincident stops cuts the paint off exactly at the range's boundaries. A radial gradient needs no guard
+/// at its start, since its sampling distance never goes below the center.
+pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSettings, gradient_form: GradientForm) -> GradientSamples {
 	let samples = gradient.interpolated_samples(settings);
 	if settings.spread != GradientSpread::Clear {
-		return (samples, (0., 1.));
+		return samples;
 	}
-
-	// The remapped offsets where the visible range's ends land, with the guards owning whatever lies outside them
-	let texel = 1. / (VELLO_GRADIENT_RAMP_TEXELS - 1.);
-	let (start_offset, end_offset) = match (guards, gradient_form) {
-		(ClearGuardPlacement::SvgStopOrder, _) => (0., 1.),
-		(ClearGuardPlacement::VelloRampTexels, GradientForm::Linear) => (texel, 1. - texel),
-		(ClearGuardPlacement::VelloRampTexels, GradientForm::Radial) => (0., 1. - texel),
-	};
-	let remap = |position: f64| (1. - position) * start_offset + position * end_offset;
-
-	// The geometric span grows to compensate for the compression, keeping the visible range at the unit interval
-	let scale = 1. / (end_offset - start_offset);
-	let span = (-start_offset * scale, (1. - start_offset) * scale);
 
 	// A stopless gradient paints solid black, matching `Gradient::evaluate`
 	let first_color = samples.first().map_or(Color::BLACK, |&(_, color, _)| color);
@@ -578,48 +547,56 @@ pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSet
 
 	let mut adjusted = Vec::with_capacity(samples.len() + 4);
 
-	// Lead with the transparent guard (linear only, a radial's center is already the sampling minimum), then anchor the visible range's start color
+	// Lead with the transparent guard, then anchor the visible range's start color
 	if gradient_form == GradientForm::Linear {
 		adjusted.push((0., Color::TRANSPARENT, None));
 	}
 	if needs_start_anchor {
-		adjusted.push((remap(0.), first_color, None));
+		adjusted.push((0., first_color, None));
 	}
 
-	adjusted.extend(samples.into_iter().map(|(position, color, midpoint)| (remap(position), color, midpoint)));
+	adjusted.extend(samples);
 
 	// Anchor the visible range's end color, then cut to the trailing transparent guard
 	if needs_end_anchor {
-		adjusted.push((remap(1.), last_color, None));
+		adjusted.push((1., last_color, None));
 	}
 	adjusted.push((1., Color::TRANSPARENT, None));
 
-	(adjusted, span)
+	adjusted
 }
 
-/// Converts a gradient's renderer samples to peniko color stops, duplicating an off-zero first stop at position 0 since Vello ignores the first stop's position and always treats it as 0.
+/// Converts a gradient's renderer samples to peniko color stops, keeping each color's full precision.
 fn peniko_color_stops(samples: &[(f64, Color, Option<f64>)]) -> peniko::ColorStops {
-	let mut peniko_stops = peniko::ColorStops::new();
-
-	for &(position, color, _) in samples {
-		let color = peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(color).to_peniko_color());
-
-		if peniko_stops.is_empty() && position > 0. {
-			peniko_stops.push(peniko::ColorStop { offset: 0., color });
-		}
-
-		peniko_stops.push(peniko::ColorStop { offset: position as f32, color });
-	}
+	let stop = |offset: f64, color: Color| peniko::ColorStop {
+		offset: offset as f32,
+		color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new(color.to_gamma_srgb_channels())),
+	};
 
 	// A gradient with no stops paints as solid black, matching `Gradient::evaluate`
-	if peniko_stops.is_empty() {
-		peniko_stops.push(peniko::ColorStop {
-			offset: 0.,
-			color: peniko::color::DynamicColor::from_alpha_color(SRGBA8::from(Color::BLACK).to_peniko_color()),
-		});
+	if samples.is_empty() {
+		return peniko::ColorStops([stop(0., Color::BLACK)].into_iter().collect());
 	}
 
-	peniko_stops
+	peniko::ColorStops(samples.iter().map(|&(position, color, _)| stop(position, color)).collect())
+}
+
+/// The gradient in its own space before the brush transform places it: the line from the origin along +X to 1 for linear, or the unit circle about the origin for radial.
+fn unit_gradient_kind(gradient_form: GradientForm) -> peniko::GradientKind {
+	match gradient_form {
+		GradientForm::Linear => peniko::LinearGradientPosition {
+			start: kurbo::Point::ORIGIN,
+			end: kurbo::Point::new(1., 0.),
+		}
+		.into(),
+		GradientForm::Radial => peniko::RadialGradientPosition {
+			start_center: kurbo::Point::ORIGIN,
+			start_radius: 0.,
+			end_center: kurbo::Point::ORIGIN,
+			end_radius: 1.,
+		}
+		.into(),
+	}
 }
 
 /// The peniko extend mode for a spread; `Clear` rides pad, with the transparent guard stops from `spread_adjusted_samples` doing the clearing.
@@ -640,7 +617,7 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 	let gradient_transform: DAffine2 = gradient_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(gradient_item);
 
-	let (mut samples, span) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
+	let mut samples = spread_adjusted_samples(stops, settings, gradient_form);
 
 	let paint_opacity = gradient_item.paint_opacity(for_mask);
 	if paint_opacity < 1. {
@@ -657,23 +634,10 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 	let peniko_stops = peniko_color_stops(&samples);
 
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
-	let (start, end, gradient_to_device) = (DVec2::X * span.0, DVec2::X * span.1, gradient_placement(multiplied_transform * gradient_transform, gradient_form));
+	let gradient_to_device = gradient_placement(multiplied_transform * gradient_transform, gradient_form);
 
 	let brush = peniko::Brush::Gradient(peniko::Gradient {
-		kind: match gradient_form {
-			GradientForm::Linear => peniko::LinearGradientPosition {
-				start: to_point(start),
-				end: to_point(end),
-			}
-			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
-				start_center: to_point(start),
-				start_radius: 0.,
-				end_center: to_point(start),
-				end_radius: start.distance(end) as f32,
-			}
-			.into(),
-		},
+		kind: unit_gradient_kind(gradient_form),
 		extend: peniko_extend(settings.spread),
 		stops: peniko_stops,
 		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
@@ -2756,7 +2720,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 			attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 		}
 
-		let (samples, _) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
 
 		let mut stop_string = String::new();
 		for (position, color, original_midpoint) in samples {
@@ -2834,28 +2798,13 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 		let settings = gradient_settings_from_item(item);
-		let (samples, span) = spread_adjusted_samples(gradient, settings, gradient_form, ClearGuardPlacement::VelloRampTexels);
+		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
 
 		let stops = peniko_color_stops(&samples);
 
 		let extend = peniko_extend(settings.spread);
 
-		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied.
-		// For radial, the unit-radius circle at the origin scales out to the line's length once the brush transform applies.
-		let kind = match gradient_form {
-			GradientForm::Linear => peniko::LinearGradientPosition {
-				start: to_point(DVec2::X * span.0),
-				end: to_point(DVec2::X * span.1),
-			}
-			.into(),
-			GradientForm::Radial => peniko::RadialGradientPosition {
-				start_center: to_point(DVec2::ZERO),
-				start_radius: 0.,
-				end_center: to_point(DVec2::ZERO),
-				end_radius: span.1 as f32,
-			}
-			.into(),
-		};
+		let kind = unit_gradient_kind(gradient_form);
 
 		let fill = peniko::Brush::Gradient(peniko::Gradient {
 			kind,
@@ -3444,85 +3393,31 @@ mod tests {
 	#[test]
 	fn spread_adjusted_samples_wraps_clear_in_transparent_guards() {
 		let gradient = Gradient::from(vec![Color::BLACK, Color::WHITE]);
+		let settings = |spread| GradientSettings {
+			spread,
+			space: GradientSpace::RgbGamma,
+			..Default::default()
+		};
 
-		let (samples, span) = spread_adjusted_samples(
-			&gradient,
-			GradientSettings {
-				spread: GradientSpread::Repeat,
-				space: GradientSpace::RgbGamma,
-				..Default::default()
-			},
-			GradientForm::Linear,
-			ClearGuardPlacement::SvgStopOrder,
-		);
-		assert_eq!(span, (0., 1.));
-		assert_eq!(
-			samples,
-			gradient.interpolated_samples(GradientSettings {
-				space: GradientSpace::RgbGamma,
-				..Default::default()
-			})
-		);
+		// Other spreads pass the samples through unchanged
+		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Repeat), GradientForm::Linear);
+		assert_eq!(samples, gradient.interpolated_samples(settings(GradientSpread::Pad)));
 
-		// SVG guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
-		let (samples, span) = spread_adjusted_samples(
-			&gradient,
-			GradientSettings {
-				spread: GradientSpread::Clear,
-				space: GradientSpace::RgbGamma,
-				..Default::default()
-			},
-			GradientForm::Linear,
-			ClearGuardPlacement::SvgStopOrder,
-		);
-		assert_eq!(span, (0., 1.));
+		// The guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
+		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Clear), GradientForm::Linear);
 		assert_eq!(
 			samples,
 			vec![(0., Color::TRANSPARENT, None), (0., Color::BLACK, None), (1., Color::WHITE, None), (1., Color::TRANSPARENT, None)]
 		);
 
-		// Vello guards own the outermost ramp texels, with the visible range compressed inward to make room
-		let texel = 1. / (VELLO_GRADIENT_RAMP_TEXELS - 1.);
-		let (samples, span) = spread_adjusted_samples(
-			&gradient,
-			GradientSettings {
-				spread: GradientSpread::Clear,
-				space: GradientSpace::RgbGamma,
-				..Default::default()
-			},
-			GradientForm::Linear,
-			ClearGuardPlacement::VelloRampTexels,
-		);
-		assert_eq!(
-			samples,
-			vec![
-				(0., Color::TRANSPARENT, None),
-				(texel, Color::BLACK, None),
-				(1. - texel, Color::WHITE, None),
-				(1., Color::TRANSPARENT, None)
-			]
-		);
-		assert!(span.0 < 0. && span.1 > 1., "the geometry must stretch to compensate for the compressed stops: {span:?}");
-
-		// A radial keeps its stops and span anchored at zero, with no guard below the center
-		let (samples, span) = spread_adjusted_samples(
-			&gradient,
-			GradientSettings {
-				spread: GradientSpread::Clear,
-				space: GradientSpace::RgbGamma,
-				..Default::default()
-			},
-			GradientForm::Radial,
-			ClearGuardPlacement::VelloRampTexels,
-		);
-		assert_eq!(span.0, 0.);
-		assert_eq!(samples.first().unwrap(), &(0., Color::BLACK, None));
-		assert_eq!(samples.last().unwrap(), &(1., Color::TRANSPARENT, None));
+		// A radial has no guard below the center
+		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Clear), GradientForm::Radial);
+		assert_eq!(samples, vec![(0., Color::BLACK, None), (1., Color::WHITE, None), (1., Color::TRANSPARENT, None)]);
 	}
 
 	#[test]
 	fn spread_adjusted_samples_keeps_a_stopless_clear_gradient_black_inside_the_range() {
-		let (samples, _) = spread_adjusted_samples(
+		let samples = spread_adjusted_samples(
 			&Gradient::from(Vec::new()),
 			GradientSettings {
 				spread: GradientSpread::Clear,
@@ -3530,7 +3425,6 @@ mod tests {
 				..Default::default()
 			},
 			GradientForm::Linear,
-			ClearGuardPlacement::SvgStopOrder,
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();
 		assert_eq!(colors, vec![Color::TRANSPARENT, Color::BLACK, Color::BLACK, Color::TRANSPARENT]);
