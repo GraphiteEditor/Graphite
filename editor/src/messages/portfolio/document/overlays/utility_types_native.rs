@@ -15,6 +15,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
+use graphene_std::renderer::scene::Scene;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
@@ -23,8 +24,7 @@ use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use vello::Scene;
-use vello::peniko;
+use vello_gpu::peniko;
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;

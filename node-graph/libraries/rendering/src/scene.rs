@@ -1,0 +1,224 @@
+use graphic_types::raster_types::Texture;
+use kurbo::{Affine, BezPath, Shape, Stroke};
+use vello_gpu::peniko::{self, BlendMode, Brush, BrushRef, Fill};
+
+/// Tolerance for turning shapes other than paths into paths, matching Vello's own.
+const SHAPE_TOLERANCE: f64 = 0.1;
+
+/// A recording of drawing operations, kept independent of any render's size or viewport so it can be cached and replayed into Vello at every render.
+#[derive(Clone, Debug, Default)]
+pub struct Scene {
+	commands: Vec<SceneCommand>,
+}
+
+/// One recorded drawing operation.
+#[derive(Clone, Debug)]
+pub enum SceneCommand {
+	/// Fills a path given in the space of `transform`, with the brush placed by `transform * brush_transform`.
+	Fill {
+		fill_rule: Fill,
+		transform: Affine,
+		brush: Brush,
+		brush_transform: Option<Affine>,
+		path: BezPath,
+	},
+	/// Strokes a path given in the space of `transform`, with the brush placed by `transform * brush_transform`.
+	Stroke {
+		stroke: Stroke,
+		transform: Affine,
+		brush: Brush,
+		brush_transform: Option<Affine>,
+		path: BezPath,
+	},
+	/// Fills the whole render area, for content without bounds, with the brush placed by `brush_transform` in the scene's space.
+	FillViewport { brush: Brush, brush_transform: Option<Affine> },
+	/// Begins an isolated layer that composites its content with a blend mode and opacity, clipped to a path or covering the whole render area.
+	PushLayer { blend_mode: BlendMode, alpha: f32, clip: Option<ClipPath> },
+	/// Begins clipping the content that follows to a path, drawing it directly onto what lies beneath rather than into an isolated layer.
+	PushClip { clip: ClipPath },
+	/// Ends the most recently begun layer or clip.
+	Pop,
+	/// Draws an image's rectangle of pixels, from the origin to its width and height, placed by `transform`.
+	DrawImage { image: SceneImage, transform: Affine },
+}
+
+/// A clipping path given in the space of `transform`.
+#[derive(Clone, Debug)]
+pub struct ClipPath {
+	pub fill_rule: Fill,
+	pub transform: Affine,
+	pub path: BezPath,
+}
+
+/// The pixels an image command draws.
+#[derive(Clone, Debug)]
+pub enum SceneImage {
+	/// Straight-alpha pixels in CPU memory, identified by their blob's ID so the renderer uploads them once.
+	Pixels(peniko::ImageBrush),
+	/// Straight-alpha pixels in a GPU texture.
+	Texture { texture: Texture, sampler: peniko::ImageSampler },
+}
+
+impl SceneImage {
+	/// The width and height in pixels.
+	pub fn size(&self) -> (u32, u32) {
+		match self {
+			Self::Pixels(brush) => (brush.image.width, brush.image.height),
+			Self::Texture { texture, .. } => (texture.width(), texture.height()),
+		}
+	}
+}
+
+impl Scene {
+	pub fn new() -> Self {
+		Self::default()
+	}
+
+	pub fn commands(&self) -> &[SceneCommand] {
+		&self.commands
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.commands.is_empty()
+	}
+
+	pub fn fill<'b>(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
+		self.commands.push(SceneCommand::Fill {
+			fill_rule,
+			transform,
+			brush: brush.into().to_owned(),
+			brush_transform,
+			path: shape.to_path(SHAPE_TOLERANCE),
+		});
+	}
+
+	pub fn stroke<'b>(&mut self, stroke: &Stroke, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
+		self.commands.push(SceneCommand::Stroke {
+			stroke: stroke.clone(),
+			transform,
+			brush: brush.into().to_owned(),
+			brush_transform,
+			path: shape.to_path(SHAPE_TOLERANCE),
+		});
+	}
+
+	/// Fills the whole render area, which is how content without bounds (like a color or gradient layer) paints.
+	pub fn fill_viewport<'b>(&mut self, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>) {
+		self.commands.push(SceneCommand::FillViewport {
+			brush: brush.into().to_owned(),
+			brush_transform,
+		});
+	}
+
+	/// Begins an isolated layer clipped to `clip`, given in the space of `transform`. Must be balanced by [`Self::pop_layer`].
+	pub fn push_layer(&mut self, fill_rule: Fill, blend_mode: impl Into<BlendMode>, alpha: f32, transform: Affine, clip: &impl Shape) {
+		self.commands.push(SceneCommand::PushLayer {
+			blend_mode: blend_mode.into(),
+			alpha,
+			clip: Some(ClipPath {
+				fill_rule,
+				transform,
+				path: clip.to_path(SHAPE_TOLERANCE),
+			}),
+		});
+	}
+
+	/// Begins an isolated layer covering the whole render area, for content without bounds. Must be balanced by [`Self::pop_layer`].
+	pub fn push_viewport_layer(&mut self, blend_mode: impl Into<BlendMode>, alpha: f32) {
+		self.commands.push(SceneCommand::PushLayer {
+			blend_mode: blend_mode.into(),
+			alpha,
+			clip: None,
+		});
+	}
+
+	/// Clips the content that follows to `clip`, given in the space of `transform`, without isolating it. Must be balanced by [`Self::pop_layer`].
+	pub fn push_clip_layer(&mut self, fill_rule: Fill, transform: Affine, clip: &impl Shape) {
+		self.commands.push(SceneCommand::PushClip {
+			clip: ClipPath {
+				fill_rule,
+				transform,
+				path: clip.to_path(SHAPE_TOLERANCE),
+			},
+		});
+	}
+
+	/// Ends the most recent layer or clip.
+	pub fn pop_layer(&mut self) {
+		self.commands.push(SceneCommand::Pop);
+	}
+
+	/// Draws an image's rectangle of pixels, from the origin to its width and height, placed by `transform`.
+	pub fn draw_image(&mut self, image: &peniko::ImageBrush, transform: Affine) {
+		self.commands.push(SceneCommand::DrawImage {
+			image: SceneImage::Pixels(image.clone()),
+			transform,
+		});
+	}
+
+	/// Draws a GPU texture's rectangle of pixels, from the origin to its width and height, placed by `transform`.
+	pub fn draw_texture(&mut self, texture: Texture, sampler: peniko::ImageSampler, transform: Affine) {
+		self.commands.push(SceneCommand::DrawImage {
+			image: SceneImage::Texture { texture, sampler },
+			transform,
+		});
+	}
+
+	/// Appends another scene's commands, placed by `transform`.
+	pub fn append(&mut self, other: &Scene, transform: Option<Affine>) {
+		let Some(transform) = transform else {
+			self.commands.extend_from_slice(&other.commands);
+			return;
+		};
+
+		let place_clip = |clip: &ClipPath| ClipPath {
+			transform: transform * clip.transform,
+			..clip.clone()
+		};
+
+		self.commands.extend(other.commands.iter().map(|command| match command {
+			SceneCommand::Fill {
+				fill_rule,
+				transform: command_transform,
+				brush,
+				brush_transform,
+				path,
+			} => SceneCommand::Fill {
+				fill_rule: *fill_rule,
+				transform: transform * *command_transform,
+				brush: brush.clone(),
+				brush_transform: *brush_transform,
+				path: path.clone(),
+			},
+			SceneCommand::Stroke {
+				stroke,
+				transform: command_transform,
+				brush,
+				brush_transform,
+				path,
+			} => SceneCommand::Stroke {
+				stroke: stroke.clone(),
+				transform: transform * *command_transform,
+				brush: brush.clone(),
+				brush_transform: *brush_transform,
+				path: path.clone(),
+			},
+			// The brush transform is in the scene's own space here, so it is the one placed
+			SceneCommand::FillViewport { brush, brush_transform } => SceneCommand::FillViewport {
+				brush: brush.clone(),
+				brush_transform: Some(transform * brush_transform.unwrap_or(Affine::IDENTITY)),
+			},
+			SceneCommand::PushLayer { blend_mode, alpha, clip } => SceneCommand::PushLayer {
+				blend_mode: *blend_mode,
+				alpha: *alpha,
+				clip: clip.as_ref().map(place_clip),
+			},
+			SceneCommand::PushClip { clip } => SceneCommand::PushClip { clip: place_clip(clip) },
+			SceneCommand::Pop => SceneCommand::Pop,
+			SceneCommand::DrawImage { image, transform: command_transform } => SceneCommand::DrawImage {
+				image: image.clone(),
+				transform: transform * *command_transform,
+			},
+		}));
+	}
+}

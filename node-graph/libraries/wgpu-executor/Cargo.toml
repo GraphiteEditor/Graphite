@@ -30,5 +30,5 @@ wgpu-sync = { workspace = true }
 futures = { workspace = true }
 log = { workspace = true }
 web-sys = { workspace = true }
-vello = { workspace = true }
+vello_gpu = { workspace = true }
 bytemuck = { workspace = true }

@@ -1,7 +1,7 @@
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{Texture, WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
+use crate::wrapper::{Scene, Texture, WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -21,7 +21,7 @@ pub(crate) struct RenderState {
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
-	overlays_scene: Option<vello::Scene>,
+	overlays_scene: Option<Scene>,
 	surface_outdated: bool,
 }
 
@@ -218,18 +218,18 @@ impl RenderState {
 		self.viewport_offset = offset;
 	}
 
-	pub(crate) fn set_overlays_scene(&mut self, scene: vello::Scene) {
+	pub(crate) fn set_overlays_scene(&mut self, scene: Scene) {
 		self.surface_outdated = true;
 		self.overlays_scene = Some(scene);
 	}
 
-	fn render_overlays(&mut self, scene: vello::Scene) {
+	fn render_overlays(&mut self, scene: Scene) {
 		let Some(viewport_texture) = self.viewport_texture.as_ref() else {
 			tracing::warn!("No viewport texture bound, cannot render overlays");
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = self.executor.render_vello_scene(&scene, size, &Default::default(), None);
+		let result = self.executor.render_vello_scene(&scene, glam::DAffine2::IDENTITY, size);
 		match result {
 			Ok(texture) => {
 				self.overlays_texture = Some(texture);
