@@ -40,7 +40,8 @@ impl Bounds {
 	}
 
 	pub fn center(&self) -> DVec2 {
-		(self.min + self.max) / 2.
+		// Unlike adding the corners and halving, this stays finite for any finite corners
+		DVec2::new(self.min.x.midpoint(self.max.x), self.min.y.midpoint(self.max.y))
 	}
 
 	pub fn size(&self) -> DVec2 {
@@ -112,5 +113,14 @@ mod tests {
 		assert!(bounds.intersects(&Bounds::from_points([DVec2::new(10., 0.), DVec2::new(20., 10.)])));
 		assert!(!bounds.intersects(&Bounds::from_points([DVec2::new(10.5, 0.), DVec2::new(20., 10.)])));
 		assert!(!bounds.intersects(&Bounds::EMPTY));
+	}
+
+	#[test]
+	fn the_center_of_a_box_near_the_largest_finite_value_lies_within_it() {
+		let point = DVec2::new(1e308, -f64::MAX);
+		assert_eq!(Bounds::from_point(point).center(), point);
+
+		let far = Bounds::from_points([point, DVec2::new(f64::MAX, -1e308)]);
+		assert!(far.contains(far.center()));
 	}
 }

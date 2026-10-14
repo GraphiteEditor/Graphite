@@ -14,20 +14,20 @@ pub fn common_tangents(first: &Curve, second: &Curve) -> Vec<(f64, f64)> {
 		return Vec::new();
 	}
 
-	// Lengths are judged against the size of the curves, so the same shapes give the same answer at any scale
+	// Lengths are measured in units of the curves' size, so the same shapes give the same answer at any scale
 	let size = first.bounds().union(&second.bounds()).size().max_element();
 	if !size.is_finite() || size <= 0. {
 		return Vec::new();
 	}
 
-	let [first, second] = [Derivatives::of(first), Derivatives::of(second)];
+	let [first, second] = [Derivatives::of(first, size), Derivatives::of(second, size)];
 	let mut found: Vec<(f64, f64)> = Vec::new();
 
 	// O(seeds^2) Newton searches, each a handful of cheap evaluations
 	for first_seed in 0..SEEDS_PER_CURVE {
 		for second_seed in 0..SEEDS_PER_CURVE {
 			let seed = DVec2::new(first_seed as f64 + 0.5, second_seed as f64 + 0.5) / SEEDS_PER_CURVE as f64;
-			let Some(solution) = refine(&first, &second, seed, size) else { continue };
+			let Some(solution) = refine(&first, &second, seed) else { continue };
 
 			let already_found = found.iter().any(|&(s, t)| (s - solution.x).abs() < 1e-6 && (t - solution.y).abs() < 1e-6);
 			if !already_found {
@@ -40,7 +40,7 @@ pub fn common_tangents(first: &Curve, second: &Curve) -> Vec<(f64, f64)> {
 	found
 }
 
-/// A curve as a cubic, with its first and second derivatives.
+/// A curve as a cubic, with its first and second derivatives, in units of a given size.
 struct Derivatives {
 	curve: kurbo::CubicBez,
 	first: kurbo::QuadBez,
@@ -48,8 +48,9 @@ struct Derivatives {
 }
 
 impl Derivatives {
-	fn of(curve: &Curve) -> Self {
-		let curve = curve.segment().to_cubic();
+	/// Dividing every length by `size` leaves the parameter of each point on the curve unchanged.
+	fn of(curve: &Curve, size: f64) -> Self {
+		let curve = kurbo::Affine::scale(1. / size) * curve.segment().to_cubic();
 		let first = curve.deriv();
 		let second = first.deriv();
 		Self { curve, first, second }
@@ -61,7 +62,7 @@ impl Derivatives {
 }
 
 /// Newton's method on the two conditions for a common tangent: each curve's direction of travel runs along the line joining the two touch points.
-fn refine(first: &Derivatives, second: &Derivatives, seed: DVec2, size: f64) -> Option<DVec2> {
+fn refine(first: &Derivatives, second: &Derivatives, seed: DVec2) -> Option<DVec2> {
 	let mut parameters = seed;
 
 	for _ in 0..MAX_ITERATIONS {
@@ -78,7 +79,7 @@ fn refine(first: &Derivatives, second: &Derivatives, seed: DVec2, size: f64) -> 
 		// Touch points that coincide, or a curve at rest, satisfy the conditions without there being any line to speak of
 		let scale = between.length();
 		let [first_speed, second_speed] = [first_velocity.length(), second_velocity.length()];
-		if scale < 1e-9 * size || first_speed < 1e-12 * size || second_speed < 1e-12 * size {
+		if scale < 1e-9 || first_speed < 1e-12 || second_speed < 1e-12 {
 			return None;
 		}
 
@@ -158,7 +159,7 @@ mod tests {
 		let expected = at_scale(1.);
 		assert_eq!(expected.len(), 1);
 
-		for scale in [1e-9, 1e-4, 1e5, 1e12] {
+		for scale in [1e-80, 1e-9, 1e-4, 1e5, 1e12, 1e80] {
 			let tangents = at_scale(scale);
 			assert_eq!(tangents.len(), 1, "at a scale of {scale}");
 			assert!((tangents[0].0 - expected[0].0).abs() < 1e-9 && (tangents[0].1 - expected[0].1).abs() < 1e-9);

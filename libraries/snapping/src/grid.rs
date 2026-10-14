@@ -119,8 +119,10 @@ impl Grid {
 				continue;
 			}
 
+			// A position exactly on a line has only that line on either side
 			let steps = self.steps_across(family, near);
-			for line in [steps.floor(), steps.ceil()] {
+			let (line_below, line_above) = (steps.floor(), steps.ceil());
+			for line in std::iter::once(line_below).chain((line_above > line_below).then_some(line_above)) {
 				let along = (line - self.steps_across(family, point)) * family.spacing / progress_across;
 				let crossing = point + direction * along;
 
@@ -237,6 +239,11 @@ mod tests {
 		assert_eq!(crossings.len(), 4);
 		assert!(contains(&crossings, DVec2::new(0., -1.)) && contains(&crossings, DVec2::new(10., 9.)));
 		assert!(contains(&crossings, DVec2::new(1., 0.)) && contains(&crossings, DVec2::new(11., 10.)));
+
+		// A position on a line is crossed by that line alone
+		let crossings = grid.crossings_along(DVec2::new(0., 3.), DVec2::X, DVec2::new(20., 3.));
+		assert_eq!(crossings.len(), 1);
+		assert!(contains(&crossings, DVec2::new(20., 3.)));
 
 		assert!(grid.crossings_along(DVec2::ZERO, DVec2::ZERO, DVec2::ONE).is_empty());
 	}

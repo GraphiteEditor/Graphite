@@ -372,8 +372,8 @@ fn hold<'r>(problem: &Problem, resolved: &'r [Resolved]) -> Option<(&'r Resolved
 
 	// One pair of tracks can cross in several places, of which the one it was at carries on
 	let moved = |candidate: &&Resolved| candidate.parameters.distance_squared(incumbent.parameters);
-	let same = resolved.iter().filter(|candidate| candidate.key == incumbent.key).filter(holding);
-	if let Some(same) = same.min_by(|a, b| moved(a).total_cmp(&moved(b))) {
+	let same = resolved.iter().filter(|candidate| candidate.key == incumbent.key);
+	if let Some(same) = same.min_by(|a, b| moved(a).total_cmp(&moved(b))).filter(holding) {
 		return Some((same, incumbent.pinned));
 	}
 
@@ -1161,6 +1161,27 @@ mod tests {
 			});
 			assert_eq!(solution.parameters, crossing);
 		}
+	}
+
+	#[test]
+	fn an_engaged_crossing_lets_go_rather_than_jump_to_another_crossing_of_the_same_tracks() {
+		let (view, tunables) = (ViewMapping::IDENTITY, Tunables::default());
+		let candidates = [track(Kind::Alignment, 1, horizontal(0.)), track(Kind::OnCurve, 2, Locus::circle(DVec2::ZERO, 10.).unwrap())];
+		let incumbent = Some(Incumbent {
+			key: EngagementKey::crossing(candidates[0].key, candidates[1].key),
+			parameters: DVec2::new(-10., 0.),
+			pinned: false,
+			riding: None,
+		});
+
+		// The pointer is past the release distance from the crossing it was at, and short of reach of the other
+		let solution = solve(&Problem {
+			incumbent,
+			..problem(&view, &tunables, &candidates, DVec2::new(1., 7.))
+		});
+
+		assert_eq!(engaged(&solution).tier, Tier::Track);
+		assert_eq!(engaged(&solution).candidates, vec![1]);
 	}
 
 	#[test]

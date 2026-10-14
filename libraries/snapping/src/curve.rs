@@ -23,7 +23,7 @@ const LEAF_SIZE: f64 = 1e-6;
 
 const MAX_SUBDIVISION_DEPTH: usize = 40;
 
-/// More overlapping pairs of pieces than this at once means the curves coincide along a stretch.
+/// More overlapping pairs of pieces than this at once means the curves coincide, or run too close to tell apart, along a stretch.
 const MAX_LIVE_PAIRS: usize = 4096;
 
 const MAX_ROOT_REFINEMENT_STEPS: usize = 100;
@@ -418,7 +418,7 @@ impl Curve {
 				break;
 			}
 
-			// So many overlapping pairs means the curves coincide along a stretch, where no meeting point is isolated
+			// So many overlapping pairs means the curves coincide, or run too close to tell apart, along a stretch where no meeting point is isolated
 			if pairs.len() > MAX_LIVE_PAIRS {
 				intersections.retain(|&(t, u)| !pairs.iter().any(|(piece, other_piece)| piece.contains(t) && other_piece.contains(u)));
 				break;

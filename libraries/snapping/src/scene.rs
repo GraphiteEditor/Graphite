@@ -89,7 +89,7 @@ impl Exclusions {
 	}
 
 	fn is_edited(&self, layer: LayerId) -> bool {
-		self.edited.contains(&layer) || self.anchors.contains_key(&layer)
+		self.edited.contains(&layer) || self.anchors.get(&layer).is_some_and(|moving| !moving.is_empty())
 	}
 
 	fn skips_role(&self, layer: LayerId, role: GeometryRole) -> bool {
@@ -498,6 +498,16 @@ mod tests {
 		assert_eq!(
 			everything_within(&scene, &Bounds::EVERYTHING, &moving_an_anchor),
 			everything_within(&scene, &Bounds::EVERYTHING, &exclusions)
+		);
+
+		// Listing it with no anchors moving leaves it alone
+		let no_anchors_moving = Exclusions {
+			anchors: HashMap::from([(LayerId(1), HashSet::new())]),
+			..Default::default()
+		};
+		assert_eq!(
+			everything_within(&scene, &Bounds::EVERYTHING, &no_anchors_moving),
+			everything_within(&scene, &Bounds::EVERYTHING, &Exclusions::default())
 		);
 	}
 
