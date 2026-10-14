@@ -10,9 +10,14 @@ use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
 use vector_types::{Gradient, GradientStop};
 
-pub trait Blend<P: Pixel> {
+pub trait Blend<P: Pixel>: Sized {
 	/// Blends `self` over `under`, each placed by its transform where placement matters.
 	fn blend(&self, transform: DAffine2, under: &Self, under_transform: DAffine2, blend_fn: impl Fn(P, P) -> P + Sync) -> Self;
+
+	/// The item with any effects it carries carried out into its content, so blending sees what it looks like.
+	fn with_effects_applied(item: Item<Self>) -> Item<Self> {
+		item
+	}
 }
 impl Blend<Color> for Color {
 	fn blend(&self, _transform: DAffine2, under: &Self, _under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
@@ -21,6 +26,10 @@ impl Blend<Color> for Color {
 }
 
 impl Blend<Color> for Raster<CPU> {
+	fn with_effects_applied(item: Item<Self>) -> Item<Self> {
+		graphic_types::evaluate_raster_effects(item)
+	}
+
 	/// Each pixel blends with what lies beneath its center in `under`, so the two images needn't share a size or placement. O(width × height).
 	fn blend(&self, transform: DAffine2, under: &Self, under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
 		// Maps this image's pixel coordinates onto the under image's, through the unit square each transform places
@@ -115,7 +124,8 @@ fn mix<T: Blend<Color> + Send>(
 	#[default(100.)]
 	opacity: Item<f64>,
 ) -> Item<T> {
-	let mut over = over;
+	let mut over = T::with_effects_applied(over);
+	let under = T::with_effects_applied(under);
 	let blend_mode = blend_mode.into_element();
 	let opacity = (opacity.into_element() / 100.) as f32;
 

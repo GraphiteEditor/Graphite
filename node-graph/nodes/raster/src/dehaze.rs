@@ -1,5 +1,6 @@
 use core_types::context::Ctx;
 use core_types::list::Item;
+use graphic_types::evaluate_raster_effects;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use raster_types::Image;
@@ -17,7 +18,7 @@ fn dehaze(
 ) -> Item<Raster<CPU>> {
 	let strength = *strength.element();
 
-	let (image, attributes) = image_frame.into_parts();
+	let (image, attributes) = evaluate_raster_effects(image_frame).into_parts();
 	let (width, height) = (image.width, image.height);
 
 	// Prepare the image data for processing

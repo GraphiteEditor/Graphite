@@ -1,3 +1,4 @@
+pub mod effect_kernels;
 pub mod image;
 pub mod parallel_rows;
 pub mod raster_types;

@@ -1,6 +1,7 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::Item;
+use graphic_types::evaluate_raster_effects;
 use raster_types::Bitmap;
 use raster_types::Image;
 use raster_types::parallel_rows::fill_rows;
@@ -21,7 +22,7 @@ fn median_filter(
 ) -> Item<Raster<CPU>> {
 	let radius = *radius.element();
 
-	let (image, attributes) = image_frame.into_parts();
+	let (image, attributes) = evaluate_raster_effects(image_frame).into_parts();
 
 	// TODO: Scale the radius through the footprint so it acts as the document-space length its Pixels unit promises, with a
 	// window that varies continuously rather than snapping to whole source pixels

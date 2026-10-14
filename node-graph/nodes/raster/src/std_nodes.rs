@@ -1,7 +1,7 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
-use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
+use core_types::color::{Alpha, AlphaMut, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
@@ -10,6 +10,7 @@ use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
 use graphene_resource::Resource;
+use graphic_types::evaluate_raster_effects;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use raster_types::Image;
@@ -33,6 +34,7 @@ impl From<std::io::Error> for Error {
 
 #[node_macro::node(category("Debug"), icon("NodeSampleImage"))]
 fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
+	let image_frame = evaluate_raster_effects(image_frame);
 	let image_frame_transform: DAffine2 = image_frame.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 	let footprint = ctx.footprint();
@@ -105,44 +107,61 @@ fn channels_to_image(
 ) -> Item<Raster<CPU>> {
 	// An unconnected channel arrives as the default zero-sized raster, which counts as absent
 	let present = |channel: Item<Raster<CPU>>| (channel.element().width > 0 && channel.element().height > 0).then_some(channel);
-	let (red, green, blue, alpha) = (present(red), present(green), present(blue), present(alpha));
-
-	// Take this item's transform and blending attributes from the first present channel
-	let Some(attributes) = [&red, &green, &blue, &alpha].iter().find_map(|channel| channel.as_ref()).map(|channel| channel.attributes().clone()) else {
-		return Item::default();
-	};
+	let channels = [red, green, blue, alpha].map(present);
 
 	// All present channels must share the same dimensions; a mismatch yields the default zero-sized raster
-	let channel_dimensions = [&red, &green, &blue, &alpha].map(|channel| channel.as_ref().map(|channel| (channel.element().width, channel.element().height)));
-	let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else {
+	let Some((width, height, transform)) = channels
+		.iter()
+		.flatten()
+		.next()
+		.map(|channel| (channel.element().width, channel.element().height, channel.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM)))
+	else {
 		return Item::default();
 	};
-	if channel_dimensions.iter().flatten().any(|&(other_width, other_height)| other_width != width || other_height != height) {
+	if channels.iter().flatten().any(|channel| channel.element().width != width || channel.element().height != height) {
 		return Item::default();
 	}
 
+	// A channel's effects grow it by the margin they cast past its edges, so every channel is placed within the widest margin
+	let channels = channels.map(|channel| channel.map(evaluate_raster_effects));
+	let margin = |channel: &Item<Raster<CPU>>| ((channel.element().width - width) / 2, (channel.element().height - height) / 2);
+	let (margin_x, margin_y) = channels
+		.iter()
+		.flatten()
+		.map(margin)
+		.fold((0, 0), |(x, y), (channel_x, channel_y)| (x.max(channel_x), y.max(channel_y)));
+
+	// Take this item's blending attributes from the first present channel, whose effects are carried out by now
+	let Some(mut attributes) = channels.iter().flatten().next().map(|channel| channel.attributes().clone()) else {
+		return Item::default();
+	};
+	let size = DVec2::new(width as f64, height as f64);
+	let unit_margin = DVec2::new(margin_x as f64, margin_y as f64) / size;
+	attributes.insert(
+		ATTR_TRANSFORM,
+		transform * DAffine2::from_translation(-unit_margin) * DAffine2::from_scale(DVec2::ONE + 2. * unit_margin),
+	);
+
+	// A channel's value at a pixel of the output, with nothing past its own edges, or `None` if the channel is absent
+	let value = |channel: &Option<Item<Raster<CPU>>>, x: u32, y: u32| {
+		channel.as_ref().map(|channel| {
+			let (channel_margin_x, channel_margin_y) = margin(channel);
+			let (x, y) = ((x + channel_margin_x).checked_sub(margin_x), (y + channel_margin_y).checked_sub(margin_y));
+			x.zip(y).and_then(|(x, y)| channel.element().get_pixel(x, y)).map_or(0., |pixel| pixel.l().cast_linear_channel())
+		})
+	};
+
 	// Set each output pixel's channels from the present inputs, defaulting absent color channels to 0 and absent alpha to 1
-	let mut image = Image::new(width, height, Color::TRANSPARENT);
+	let [red, green, blue, alpha] = &channels;
+	let mut image = Image::new(width + 2 * margin_x, height + 2 * margin_y, Color::TRANSPARENT);
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
 
-			match red.as_ref().and_then(|r| r.element().get_pixel(x, y)) {
-				Some(r) => image_pixel.set_red(r.l().cast_linear_channel()),
-				None => image_pixel.set_red(Channel::from_linear(0.)),
-			}
-			match green.as_ref().and_then(|g| g.element().get_pixel(x, y)) {
-				Some(g) => image_pixel.set_green(g.l().cast_linear_channel()),
-				None => image_pixel.set_green(Channel::from_linear(0.)),
-			}
-			match blue.as_ref().and_then(|b| b.element().get_pixel(x, y)) {
-				Some(b) => image_pixel.set_blue(b.l().cast_linear_channel()),
-				None => image_pixel.set_blue(Channel::from_linear(0.)),
-			}
-			match alpha.as_ref().and_then(|a| a.element().get_pixel(x, y)) {
-				Some(a) => image_pixel.set_alpha(a.l().cast_linear_channel()),
-				None => image_pixel.set_alpha(Channel::from_linear(1.)),
-			}
+			image_pixel.set_red(value(red, x, y).unwrap_or(0.));
+			image_pixel.set_green(value(green, x, y).unwrap_or(0.));
+			image_pixel.set_blue(value(blue, x, y).unwrap_or(0.));
+			image_pixel.set_alpha(value(alpha, x, y).unwrap_or(1.));
 		}
 	}
 
@@ -158,6 +177,9 @@ fn mask(
 	#[expose]
 	stencil: Item<Raster<CPU>>,
 ) -> Item<Raster<CPU>> {
+	let image = evaluate_raster_effects(image);
+	let stencil = evaluate_raster_effects(stencil);
+
 	// An absent stencil arrives as the default empty raster, leaving the image unmasked
 	if stencil.element().width == 0 || stencil.element().height == 0 {
 		return image;
@@ -198,6 +220,7 @@ fn mask(
 
 #[node_macro::node(category(""))]
 fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
+	let image = evaluate_raster_effects(image);
 	let bounds = *bounds.element();
 
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -488,4 +511,40 @@ fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
 fn map_color(iter: usize, max_iter: usize) -> Color {
 	let v = iter as f32 / max_iter as f32;
 	Color::from_rgbaf32_unchecked(v, v, v, 1.)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn channels_stay_aligned_when_effects_grow_only_one() {
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		let gray = |value: f32| {
+			let image = Image::new(8, 8, Color::from_rgbaf32_unchecked(value, value, value, 1.));
+			Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(8.)))
+		};
+
+		// Only the red channel is blurred, which grows it by the blur's margin
+		let mut red = gray(1.);
+		stamp_effect(
+			&mut red,
+			Effect::new(&EffectOperation::Blur {
+				radius: 1.,
+				box_blur: false,
+				gamma: false,
+			}),
+		);
+		let image = channels_to_image((), (), red, gray(0.5), gray(0.25), gray(1.));
+
+		// The other channels are placed within the same margin, and the whole image keeps its place in the document
+		let raster = image.element();
+		assert!(raster.width > 8 && raster.height > 8, "the image grows to hold the blur, rather than coming out empty");
+		let transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let to_pixels = DAffine2::from_scale(DVec2::new(raster.width as f64, raster.height as f64)) * transform.inverse();
+		let center = to_pixels.transform_point2(DVec2::splat(4.)).as_uvec2();
+		let pixel = raster.get_pixel(center.x, center.y).unwrap();
+		assert!((pixel.g() - 0.5).abs() < 1e-6 && (pixel.b() - 0.25).abs() < 1e-6, "the unblurred channels line up: {pixel:?}");
+	}
 }
