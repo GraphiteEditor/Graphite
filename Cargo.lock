@@ -4645,6 +4645,7 @@ dependencies = [
  "bytemuck",
  "color",
  "core-types",
+ "delaunator",
  "dyn-any",
  "fastnoise-lite",
  "futures",

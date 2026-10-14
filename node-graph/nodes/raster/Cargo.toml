@@ -34,6 +34,7 @@ std = [
 	"dep:fastnoise-lite",
 	"dep:kurbo",
 	"dep:color",
+	"dep:delaunator",
 ]
 wasm = [
 	"core-types/wasm",
@@ -58,6 +59,7 @@ raster-types = { workspace = true, optional = true }
 vector-types = { workspace = true, optional = true }
 wgpu-executor = { workspace = true, optional = true }
 raster-nodes-shaders = { path = "./shaders", optional = true }
+delaunator = { workspace = true, optional = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }

@@ -18,4 +18,6 @@ pub mod filter;
 #[cfg(feature = "std")]
 pub mod image_color_palette;
 #[cfg(feature = "std")]
+pub mod mesh_warp;
+#[cfg(feature = "std")]
 pub mod std_nodes;
