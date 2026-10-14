@@ -1485,6 +1485,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
 			}
+			DocumentMessage::SetLayerNameInGraph { node_id, name } => {
+				responses.add(NodeGraphMessage::SetDisplayName {
+					node_id,
+					network_path: self.breadcrumb_network_path.clone(),
+					alias: name,
+					skip_adding_history_step: false,
+				});
+			}
 			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
 				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
 				if layer != self.layers_panel_hovered_layer {
@@ -1715,6 +1723,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
+			}
+			DocumentMessage::ToggleNodeVisibility { node_id } => {
+				responses.add(NodeGraphMessage::ToggleVisibility {
+					node_id,
+					network_path: self.selection_network_path.clone(),
+				});
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {

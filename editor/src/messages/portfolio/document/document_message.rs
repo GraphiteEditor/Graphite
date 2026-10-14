@@ -199,6 +199,11 @@ pub enum DocumentMessage {
 	SetGraphFadeArtwork {
 		percentage: f64,
 	},
+	/// Renames a layer in the network the node graph is showing, which may be a subgraph.
+	SetLayerNameInGraph {
+		node_id: NodeId,
+		name: String,
+	},
 	SetLayersPanelHoveredLayer {
 		id: Option<NodeId>,
 	},
@@ -262,6 +267,10 @@ pub enum DocumentMessage {
 	},
 	ToggleLayerChainExpanded {
 		layer_id: NodeId,
+	},
+	/// Hides or shows a node in the network holding the selection, which may be a subgraph.
+	ToggleNodeVisibility {
+		node_id: NodeId,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,

@@ -587,7 +587,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name for the layer
+	/// Set the name for the layer in the document network, as listed in the Layers panel
 	fn set_layer_name(id: u64, name: String) -> Message {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		NodeGraphMessage::SetDisplayName {
@@ -597,6 +597,11 @@ mod editor_commands {
 			skip_adding_history_step: false,
 		}
 		.into()
+	}
+
+	/// Set the name for a layer in the network shown by the node graph, which may be a subgraph
+	fn set_layer_name_in_graph(id: u64, name: String) -> Message {
+		DocumentMessage::SetLayerNameInGraph { node_id: NodeId(id), name }.into()
 	}
 
 	/// Translates document (in viewport coords)
@@ -688,13 +693,18 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Toggle visibility of a layer or node given its node ID
+	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel
 	fn toggle_node_visibility_layer_panel(id: u64) -> Message {
 		NodeGraphMessage::ToggleVisibility {
 			node_id: NodeId(id),
 			network_path: Vec::new(),
 		}
 		.into()
+	}
+
+	/// Toggle visibility of a node shown in the Inspector, which may be in a subgraph
+	fn toggle_node_visibility_inspector(id: u64) -> Message {
+		DocumentMessage::ToggleNodeVisibility { node_id: NodeId(id) }.into()
 	}
 
 	/// Pin or unpin a node given its node ID
