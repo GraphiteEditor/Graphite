@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_rows
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::snap_session::{PointOptions, SnapSession, SnapView};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -92,8 +93,8 @@ impl Grid {
 	}
 
 	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
+		view: SnapView,
+		snap_session: &mut SnapSession,
 		layer: LayerNodeIdentifier,
 		grid_type: GridType,
 		shape_tool_data: &mut ShapeToolData,
@@ -102,7 +103,9 @@ impl Grid {
 	) {
 		use graphene_std::vector::generator_nodes::grid::*;
 
+		let SnapView { document, input: ipp, .. } = view;
 		let [center, lock_ratio, _] = modifier;
+		let (center, lock_ratio) = (ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
 		let is_isometric = grid_type == GridType::Isometric;
 
 		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
@@ -110,9 +113,18 @@ impl Grid {
 		};
 
 		let start = shape_tool_data.data.viewport_drag_start(document);
-		let end = ipp.mouse.position;
 
-		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
+		// Only a rectangular grid dragged corner to corner has its far corner under the pointer, which is then snapped
+		let end = if grid_type == GridType::Rectangular && !center && !lock_ratio {
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let pointer = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+			document_to_viewport.transform_point2(snap_session.snap_point(view, pointer, PointOptions::default()))
+		} else {
+			snap_session.forget();
+			ipp.mouse.position
+		};
+
+		let (translation, dimensions, angle) = calculate_grid_params(start, end, is_isometric, center, lock_ratio);
 
 		let dimensions = dimensions / viewport_zoom(document);
 

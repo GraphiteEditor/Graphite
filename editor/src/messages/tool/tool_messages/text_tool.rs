@@ -13,7 +13,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 };
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::{Resize, viewport_zoom, window_aligned_transform};
-use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
 use crate::messages::tool::utility_types::ToolRefreshOptions;
@@ -324,7 +324,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				return;
 			}
 			_ => {
+				let previous_state = self.fsm_state;
 				self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
+
+				// However a placement or a resize ends, its snapping gesture ends with it
+				let in_gesture = matches!(previous_state, TextToolFsmState::Placing | TextToolFsmState::ResizingBounds);
+				if in_gesture && self.fsm_state != previous_state {
+					context.snap_session.end_gesture();
+					responses.add(OverlaysMessage::Draw);
+				}
 				return;
 			}
 		};
@@ -465,7 +473,6 @@ struct TextToolData {
 	// Since the overlays must be drawn without knowledge of the inputs
 	cached_resize_bounds: [DVec2; 2],
 	bounding_box_manager: Option<BoundingBoxManager>,
-	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<ResizingLayer>,
 }
@@ -610,15 +617,6 @@ impl TextToolData {
 			transformed_quad.contains(mouse)
 		})
 	}
-
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
-		self.snap_candidates.clear();
-
-		if let Some(ResizingLayer { id, .. }) = self.layer_dragging {
-			let quad = document.metadata().transform_to_document(id) * text_bounding_box(id, document, fonts, responses);
-			snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
-		}
-	}
 }
 
 fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
@@ -651,7 +649,15 @@ impl Fsm for TextToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext { document, input, fonts, viewport, .. } = transition_data;
+		let ToolActionMessageContext {
+			document,
+			document_id,
+			input,
+			fonts,
+			viewport,
+			snap_session,
+			..
+		} = transition_data;
 		let fill_color = COLOR_OVERLAY_BLUE_05;
 
 		let ToolMessage::Text(event) = event else { return self };
@@ -724,21 +730,18 @@ impl Fsm for TextToolFsmState {
 					tool_data.bounding_box_manager.take();
 				}
 
-				tool_data.resize.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
-
 				self
 			}
 			(state, TextToolMessage::EditSelected) => {
 				if let Some(layer) = can_edit_selected(document) {
 					tool_data.start_editing_layer(layer, state, document, fonts, responses);
+					snap_session.forget();
 					return TextToolFsmState::Editing;
 				}
 
 				state
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
-				tool_data.resize.start(document, input, viewport);
-				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
 
@@ -771,7 +774,12 @@ impl Fsm for TextToolFsmState {
 						bounds.original_bound_transform = bounds.transform;
 						bounds.center_of_transformation = bounds.transform.transform_point2((bounds.bounds[0] + bounds.bounds[1]) / 2.);
 					}
-					tool_data.get_snap_candidates(document, fonts, responses);
+
+					let moving = Moving {
+						layers: tool_data.layer_dragging.iter().map(|layer| layer.id).collect(),
+						..Default::default()
+					};
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 
 					return TextToolFsmState::ResizingBounds;
 				} else if let Some(clicked_layer) = TextToolData::check_click(document, input, fonts, responses) {
@@ -786,9 +794,19 @@ impl Fsm for TextToolFsmState {
 						id: clicked_layer,
 						original_transform,
 					});
-					tool_data.get_snap_candidates(document, fonts, responses);
+					snap_session.forget();
+
 					return TextToolFsmState::Dragging;
 				}
+
+				// The text box starts on whatever the pointer was shown snapping to before the press
+				let drawn = Drawn {
+					parent: document.new_layer_parent(true),
+					artboard: false,
+				};
+				tool_data.resize.start(snap_session, SnapView::new(document, *document_id, input), drawn);
+				tool_data.cached_resize_bounds = [tool_data.resize.viewport_drag_start(document); 2];
+
 				TextToolFsmState::Placing
 			}
 			(TextToolFsmState::Ready, TextToolMessage::PointerMove { .. }) => {
@@ -805,13 +823,31 @@ impl Fsm for TextToolFsmState {
 					cursor = MouseCursorIcon::Text;
 				}
 
+				// Shows where a press would start a text box, unless it would resize, drag, or edit text instead. O(t) in the text layers.
+				let over_cage = tool_data
+					.bounding_box_manager
+					.as_ref()
+					.is_some_and(|bounds| bounds.check_selected_edges(input.mouse.position).is_some());
+				let metadata = document.metadata();
+				let over_text = metadata
+					.text_frames
+					.iter()
+					.any(|(&layer, &frame)| (metadata.transform_to_viewport(layer) * frame * Quad::from_box([DVec2::ZERO, DVec2::ONE])).contains(input.mouse.position));
+				if over_cage || over_text {
+					snap_session.forget();
+				} else {
+					let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+					snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
+				}
+
 				responses.add(OverlaysMessage::Draw);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Placing, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(document, input, viewport, center, lock_ratio, false);
+				let view = SnapView::new(document, *document_id, input);
+				tool_data.cached_resize_bounds = tool_data.resize.calculate_points_ignore_layer(snap_session, view, center, lock_ratio, false);
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -862,11 +898,9 @@ impl Fsm for TextToolFsmState {
 						return TextToolFsmState::Ready;
 					};
 
-					let selected = vec![dragging_layer.id];
 					let snap = Some(SizeSnapData {
-						manager: &mut tool_data.resize.snap_manager,
-						points: &mut tool_data.snap_candidates,
-						snap_data: SnapData::ignore(document, input, viewport, &selected),
+						session: snap_session,
+						view: SnapView::new(document, *document_id, input),
 					});
 
 					let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, constrain, snap);
@@ -919,7 +953,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::ResizingBounds
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
-				tool_data.resize.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				snap_session.forget();
 				responses.add(OverlaysMessage::Draw);
 
 				self
@@ -952,11 +986,9 @@ impl Fsm for TextToolFsmState {
 				state
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::DragStop) => {
-				let drag_too_small = input.mouse.position.distance(tool_data.resize.viewport_drag_start(document)) < 10. * f64::EPSILON;
+				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
-
-				tool_data.resize.snap_manager.cleanup(responses);
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -998,8 +1030,6 @@ impl Fsm for TextToolFsmState {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				responses.add(response);
-
-				tool_data.resize.snap_manager.cleanup(responses);
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -1079,7 +1109,8 @@ impl Fsm for TextToolFsmState {
 				} else {
 					input.mouse.finish_transaction(tool_data.resize.viewport_drag_start(document), responses);
 				}
-				tool_data.resize.cleanup(responses);
+				tool_data.resize.cleanup();
+				responses.add(OverlaysMessage::Draw);
 
 				TextToolFsmState::Ready
 			}
@@ -1122,5 +1153,169 @@ impl Fsm for TextToolFsmState {
 			_ => MouseCursorIcon::Text,
 		};
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+	}
+}
+
+#[cfg(test)]
+mod test_text_tool {
+	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+	use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
+	use crate::messages::portfolio::fonts::utility_types::FontCatalogFamily;
+	use crate::test_utils::test_prelude::*;
+	use glam::DAffine2;
+	use graph_craft::application_io::resource::ResourceHash;
+	use graph_craft::document::NodeId;
+	use graphene_std::renderer::Quad;
+	use graphene_std::text::{Font, TypesettingConfig};
+	use std::sync::Arc;
+
+	/// Gives the editor a font catalog and the default font's data, which it would otherwise fetch over the network that tests lack.
+	async fn provide_fonts(editor: &mut EditorTestUtils) {
+		let catalog = vec![FontCatalogFamily {
+			name: "Unused".into(),
+			styles: Vec::new(),
+		}];
+		editor.handle_message(FontsMessage::CatalogLoaded { catalog: catalog.into() }).await;
+
+		let data: Arc<[u8]> = Arc::from(FALLBACK_FONT_RESOURCE.as_ref());
+		let hash = ResourceHash::from(data.as_ref());
+		editor.handle_message(ResourceStorageMessage::Store { data }).await;
+		editor.handle_message(FontsMessage::ResourceResolved { font: Font::default(), hash }).await;
+	}
+
+	/// The least and greatest corners of the text box of a text layer in the viewport.
+	fn text_box(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> [DVec2; 2] {
+		let metadata = editor.active_document().metadata();
+		let frame = metadata.text_frames.get(&layer).copied().expect("the text layer should have a text frame");
+		(metadata.transform_to_viewport(layer) * frame * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box()
+	}
+
+	#[tokio::test]
+	async fn a_text_box_stretched_by_its_right_edge_to_near_the_edge_of_a_rectangle_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		provide_fonts(&mut editor).await;
+		editor.draw_rect(500., 250., 560., 400.).await;
+
+		// A text box a hundred wide and fifty tall, with its top left corner at (300, 300)
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
+		let typesetting = TypesettingConfig {
+			max_width: Some(100.),
+			max_height: Some(50.),
+			..Default::default()
+		};
+		editor
+			.handle_message(GraphOperationMessage::NewTextLayer {
+				id: layer.to_node(),
+				text: "Text".into(),
+				font: Font::default(),
+				typesetting,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_translation(DVec2::new(300., 300.)),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: false,
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+		let [min, max] = text_box(&editor, layer);
+		assert!(
+			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(400., 350.), 1e-6),
+			"the text box spans {min} to {max}"
+		);
+
+		// Drawing the overlays lays the cage around the text box, and its right edge is brought a few pixels from the rectangle's left edge
+		editor.select_tool(ToolType::Text).await;
+		editor.handle_message(TextToolMessage::Overlays { context: OverlayContext::default() }).await;
+		let (edge, pointer) = (DVec2::new(400., 325.), DVec2::new(497., 330.));
+		editor.move_mouse(edge.x, edge.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(edge.x, edge.y, ModifierKeys::empty()).await;
+		editor.move_mouse(pointer.x, pointer.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		let [min, max] = text_box(&editor, layer);
+		assert!(
+			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(500., 350.), 1e-6),
+			"the text box spans {min} to {max}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_text_box_stretched_from_beside_a_corner_onto_that_corner_keeps_its_new_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		provide_fonts(&mut editor).await;
+		editor.draw_rect(405., 325., 465., 400.).await;
+
+		// A text box a hundred wide and fifty tall, with its top left corner at (300, 300)
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
+		let typesetting = TypesettingConfig {
+			max_width: Some(100.),
+			max_height: Some(50.),
+			..Default::default()
+		};
+		editor
+			.handle_message(GraphOperationMessage::NewTextLayer {
+				id: layer.to_node(),
+				text: "Text".into(),
+				font: Font::default(),
+				typesetting,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer,
+				transform: DAffine2::from_translation(DVec2::new(300., 300.)),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: false,
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// Its right edge is pressed a pixel short of the rectangle's top left corner, nearer that than the edge itself, and moved onto the corner
+		editor.select_tool(ToolType::Text).await;
+		editor.handle_message(TextToolMessage::Overlays { context: OverlayContext::default() }).await;
+		let (press, corner) = (DVec2::new(404., 325.), DVec2::new(405., 325.));
+		editor.move_mouse(press.x, press.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(press.x, press.y, ModifierKeys::empty()).await;
+		editor.move_mouse(corner.x, corner.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(corner.x, corner.y, ModifierKeys::empty()).await;
+
+		let [min, max] = text_box(&editor, layer);
+		assert!(
+			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(405., 350.), 1e-6),
+			"the text box spans {min} to {max}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_text_box_dragged_out_with_its_far_corner_near_a_corner_of_a_rectangle_ends_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		provide_fonts(&mut editor).await;
+		editor.draw_rect(500., 400., 560., 460.).await;
+
+		// The far corner of the text box is brought a few pixels from the rectangle's top left corner
+		editor.drag_tool(ToolType::Text, 300., 300., 497., 397., ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the new text should be selected");
+		let commit = TextToolMessage::TextChange {
+			new_text: "Text".into(),
+			is_left_or_right_click: false,
+		};
+		editor.handle_message(commit).await;
+
+		let [min, max] = text_box(&editor, layer);
+		assert!(
+			min.abs_diff_eq(DVec2::new(300., 300.), 1e-6) && max.abs_diff_eq(DVec2::new(500., 400.), 1e-6),
+			"the text box spans {min} to {max}"
+		);
 	}
 }

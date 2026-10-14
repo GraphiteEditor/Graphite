@@ -118,7 +118,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		//
 		// ArtboardToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ArtboardToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift, Alt], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
+		entry!(PointerMove; refresh_keys=[Shift, Alt, KeyQ, KeyW], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
 		entry!(KeyUp(MouseLeft); action_dispatch=ArtboardToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=ArtboardToolMessage::DeleteSelected),
 		entry!(KeyDown(Backspace); action_dispatch=ArtboardToolMessage::DeleteSelected),
@@ -166,7 +166,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, KeyQ, KeyW], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),

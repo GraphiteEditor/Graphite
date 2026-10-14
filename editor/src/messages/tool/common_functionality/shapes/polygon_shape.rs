@@ -8,7 +8,8 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::{PointRadiusHandle, PointRadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, polygon_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, extract_polygon_parameters, polygon_outline, regular_polygon_points};
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
@@ -117,17 +118,18 @@ impl Polygon {
 	}
 
 	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
+		view: SnapView,
+		snap_session: &mut SnapSession,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let document = view.document;
 		let [center, lock_ratio, _] = modifier;
 
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
+		let vertices = extract_polygon_parameters(Some(layer), document).map(|(sides, _)| regular_polygon_points(sides)).unwrap_or_default();
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(snap_session, view, center, lock_ratio, &vertices) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			update_radius_sign(end, start, layer, document, responses);
 
@@ -135,14 +137,13 @@ impl Polygon {
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
 			let mut aspect = DVec2::ONE;
-			let radius;
-			if dimensions.x > dimensions.y {
+			let radius = if dimensions.x > dimensions.y {
 				aspect.x = dimensions.x / dimensions.y;
-				radius = dimensions.y / 2.;
+				dimensions.y / 2.
 			} else {
 				aspect.y = dimensions.y / dimensions.x;
-				radius = dimensions.x / 2.;
-			}
+				dimensions.x / 2.
+			};
 
 			let radius = radius / viewport_zoom(document);
 

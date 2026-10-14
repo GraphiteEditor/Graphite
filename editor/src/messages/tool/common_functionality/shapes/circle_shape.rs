@@ -7,6 +7,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::{viewport_zoom, window_aligned_transform_set};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
@@ -86,16 +87,16 @@ impl Circle {
 	}
 
 	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
+		view: SnapView,
+		snap_session: &mut SnapSession,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let document = view.document;
 		let center = modifier[0];
-		let [start, end] = shape_tool_data.data.calculate_circle_points(document, ipp, viewport, center);
+		let [start, end] = shape_tool_data.data.calculate_circle_points(snap_session, view, center);
 		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface) else {
 			return;
 		};
