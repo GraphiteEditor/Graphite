@@ -4,19 +4,17 @@ mod pipeline;
 pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
+mod vello_render;
 
 use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
+use crate::vello_render::VelloRenderer;
 use anyhow::Result;
-use core_types::Color;
-use core_types::color::SRGBA8;
-use glam::UVec2;
+use glam::{DAffine2, UVec2};
 use graphene_application_io::{ApplicationIo, EditorApi};
 use std::sync::Arc;
 use std::sync::Mutex;
-use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::DeviceExt;
-use wgpu::{Origin3d, TextureAspect};
 
 pub use buffer::Buffer;
 pub use context::Context as WgpuContext;
@@ -24,7 +22,7 @@ pub use context::ContextBuilder as WgpuContextBuilder;
 pub use pipeline::Pipeline as WgpuPipeline;
 pub use pipeline::PipelineCache as WgpuPipelineCache;
 pub use raster_types::Texture;
-pub use rendering::RenderContext;
+pub use rendering::vello_scene_builder::VelloSceneBuilder;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
 pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
@@ -52,7 +50,7 @@ impl WgpuExecutor {
 pub struct WgpuExecutorInner {
 	context: WgpuContext,
 	texture_cache: std::sync::Mutex<TextureCache>,
-	vello_renderer: Mutex<Renderer>,
+	vello_renderer: Mutex<VelloRenderer>,
 	shader_runtime: ShaderRuntime,
 }
 
@@ -69,39 +67,19 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 }
 
 impl WgpuExecutor {
-	pub fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
-		let texture = self.request_texture(size);
+	/// An empty scene of `size` to draw into, with its content placed by `view`.
+	pub fn vello_scene(&self, size: UVec2, view: DAffine2) -> Result<VelloSceneBuilder> {
+		let view = vello_gpu::kurbo::Affine::new(view.to_cols_array());
+		self.inner.vello_renderer.lock().unwrap().scene(&self.context().device, size, view)
+	}
 
-		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+	/// Renders a scene into a new texture of the scene's size with straight alpha.
+	pub fn render_vello_scene(&self, scene: VelloSceneBuilder) -> Result<Texture> {
+		let texture = self.request_texture(UVec2::new(scene.width() as u32, scene.height() as u32));
 
-		let SRGBA8 { red, green, blue, alpha } = background.unwrap_or(Color::TRANSPARENT).into();
-		let render_params = RenderParams {
-			base_color: vello::peniko::Color::from_rgba8(red, green, blue, alpha),
-			width: size.x,
-			height: size.y,
-			antialiasing_method: AaConfig::Msaa16,
-		};
-
-		{
-			let mut renderer = self.inner.vello_renderer.lock().unwrap();
-			for (image_brush, texture) in context.resource_overrides.iter() {
-				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture: (**texture).clone(),
-					mip_level: 0,
-					origin: Origin3d::ZERO,
-					aspect: TextureAspect::All,
-				};
-				renderer.override_image(&image_brush.image, Some(texture_view));
-			}
-
-			{
-				let queue = self.context().queue.lock();
-				renderer.render_to_texture(&self.context().device, &queue, scene, &texture_view, &render_params)?;
-			}
-			for (image_brush, _) in context.resource_overrides.iter() {
-				renderer.override_image(&image_brush.image, None);
-			}
-		}
+		let mut renderer = self.inner.vello_renderer.lock().unwrap();
+		let queue = self.context().queue.lock();
+		renderer.render(&self.context().device, &queue, scene, &texture);
 
 		Ok(texture)
 	}
@@ -133,17 +111,7 @@ impl WgpuExecutor {
 	}
 
 	pub fn with_context(context: WgpuContext) -> Option<Self> {
-		let vello_renderer = Renderer::new(
-			&context.device,
-			RendererOptions {
-				pipeline_cache: None,
-				use_cpu: false,
-				antialiasing_support: AaSupport::all(),
-				num_init_threads: std::num::NonZeroUsize::new(1),
-			},
-		)
-		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
-		.ok()?;
+		let vello_renderer = VelloRenderer::new(&context.device);
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
 
