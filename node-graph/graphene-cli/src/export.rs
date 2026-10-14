@@ -6,6 +6,7 @@ use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::runtime::AsyncRuntime;
+use graphene_std::{NodeError, Poll};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
 use std::io::Cursor;
@@ -243,5 +244,22 @@ async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntim
 	while spawner.join().await {
 		frame = execute()?;
 	}
-	frame.value().ok_or_else(|| "The node graph produced no frame".into())
+	match frame {
+		Poll::Fallback(boxed) => {
+			let (value, error) = *boxed;
+			log::warn!("Exported fallback value due to node error: {}", messages(&error));
+			Ok(value)
+		}
+		Poll::Error(error) => Err(format!("Node graph failed: {}", messages(&error)).into()),
+		frame => frame.value().ok_or_else(|| "Node graph produced no frame".into()),
+	}
+}
+
+fn messages(error: &NodeError) -> String {
+	let mut text = error.to_string();
+	for upstream in error.upstream() {
+		text.push('\n');
+		text.push_str(&messages(upstream));
+	}
+	text
 }
