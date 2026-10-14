@@ -22,7 +22,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeTo
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
-use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView, snapping_hints};
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
@@ -593,7 +593,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				responses.add(OverlaysMessage::Draw);
 			}
 
-			if is_set_shape {
+			// A shape's own key pressed mid-drag leaves the drag as it is
+			if is_set_shape && matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
 				handle_shape_mode_change(&mut self.options, self.tool_data.current_shape, shape_before, context.global_tool_data, context.document);
 				self.send_layout(responses, LayoutTarget::ToolOptions);
 			}
@@ -1403,22 +1404,7 @@ impl Fsm for ShapeToolFsmState {
 				| ShapeToolFsmState::ModifyingGizmo,
 				ShapeToolMessage::Abort,
 			) => {
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.data.cleanup();
-				snap_session.end_gesture();
-				responses.add(OverlaysMessage::Draw);
-				tool_data.line_data.dragging_endpoint = None;
-				tool_data.line_data.editing_layer = None;
-
-				tool_data.gizmo_manager.handle_cleanup();
-
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
-				}
-
-				tool_data.cursor = MouseCursorIcon::Crosshair;
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
-
+				cancel_drag(tool_data, snap_session, responses);
 				ShapeToolFsmState::Ready(tool_data.current_shape)
 			}
 			(_, ShapeToolMessage::WorkingColorChanged) => {
@@ -1427,22 +1413,10 @@ impl Fsm for ShapeToolFsmState {
 				});
 				self
 			}
-			(_, ShapeToolMessage::SetShape { shape }) => {
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.data.cleanup();
-				snap_session.end_gesture();
-				responses.add(OverlaysMessage::Draw);
-				tool_data.current_shape = shape;
-				// Update hints for the new shape (without updating options.shape_type)
-				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
-				ShapeToolFsmState::Ready(shape)
-			}
-			(_, ShapeToolMessage::SyncShapeWithOptions) => {
-				// Sync current_shape with the dropdown selection when returning from alias tools
-				tool_data.current_shape = tool_options.shape_type;
-				update_dynamic_hints(&ShapeToolFsmState::Ready(tool_options.shape_type), responses, tool_data);
-				ShapeToolFsmState::Ready(tool_options.shape_type)
-			}
+			// The Line, Rectangle, and Ellipse tools set their own shape (without updating options.shape_type)
+			(_, ShapeToolMessage::SetShape { shape }) => switch_shape(self, shape, tool_data, snap_session, responses),
+			// Returning to the Shape tool from one of those draws the dropdown's shape again
+			(_, ShapeToolMessage::SyncShapeWithOptions) => switch_shape(self, tool_options.shape_type, tool_data, snap_session, responses),
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;
 				responses.add(ToolMessage::RefreshToolOptions);
@@ -1459,6 +1433,39 @@ impl Fsm for ShapeToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
+}
+
+/// Ends a drag without keeping anything it changed.
+fn cancel_drag(tool_data: &mut ShapeToolData, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
+	responses.add(DocumentMessage::AbortTransaction);
+	tool_data.data.cleanup();
+	snap_session.end_gesture();
+	responses.add(OverlaysMessage::Draw);
+	tool_data.line_data.dragging_endpoint = None;
+	tool_data.line_data.editing_layer = None;
+
+	tool_data.gizmo_manager.handle_cleanup();
+
+	if let Some(bounds) = &mut tool_data.bounding_box_manager {
+		bounds.original_transforms.clear();
+	}
+
+	tool_data.cursor = MouseCursorIcon::Crosshair;
+	responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+}
+
+/// Switches to drawing another shape. Mid-drag, this cancels the drag as changing tools does, unless the shape is the one already being drawn, whose key is ignored as other tools ignore their own.
+fn switch_shape(state: ShapeToolFsmState, shape: ShapeType, tool_data: &mut ShapeToolData, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) -> ShapeToolFsmState {
+	if !matches!(state, ShapeToolFsmState::Ready(_)) {
+		if shape == tool_data.current_shape {
+			return state;
+		}
+		cancel_drag(tool_data, snap_session, responses);
+	}
+
+	tool_data.current_shape = shape;
+	update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
+	ShapeToolFsmState::Ready(shape)
 }
 
 fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Message>, tool_data: &ShapeToolData) {
@@ -2162,5 +2169,49 @@ mod test_shape_tool {
 		);
 
 		editor.left_mouseup(last.x, last.y, ModifierKeys::empty()).await;
+	}
+
+	/// Presses at one viewport position, drags halfway to another, sends a tool key's message, then finishes the drag.
+	async fn drag_pressing_mid_way(editor: &mut EditorTestUtils, from: DVec2, to: DVec2, key_message: ToolMessage) {
+		let halfway = from.midpoint(to);
+		editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(from.x, from.y, ModifierKeys::empty()).await;
+		editor.move_mouse(halfway.x, halfway.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.handle_message(key_message).await;
+		editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(to.x, to.y, ModifierKeys::empty()).await;
+	}
+
+	fn layer_count(editor: &EditorTestUtils) -> usize {
+		editor.active_document().metadata().all_layers().count()
+	}
+
+	#[tokio::test]
+	async fn the_shape_tools_own_key_mid_drag_is_ignored_and_leaves_nothing_to_undo_later() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Shape).await;
+		drag_pressing_mid_way(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.), ToolMessage::ActivateToolShape).await;
+
+		// The pentagon reaches nearly the right of the drag's box, as its side vertices sit at 95% of the box's half width
+		let layer = editor.get_selected_layer().await.expect("the pentagon drawn should be selected");
+		let [_, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the pentagon should have a bounding box");
+		assert!(max.x > 395., "the pentagon reaches only {max} rather than the release");
+
+		// Switching to another of the Shape tool's modes finds no drawing left to cancel
+		let count = layer_count(&editor);
+		editor.select_tool(ToolType::Ellipse).await;
+		assert_eq!(layer_count(&editor), count, "the pentagon should survive switching to the Ellipse tool");
+	}
+
+	#[tokio::test]
+	async fn switching_to_the_shape_tool_mid_drag_cancels_the_rectangle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Rectangle).await;
+		let count = layer_count(&editor);
+		drag_pressing_mid_way(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.), ToolMessage::ActivateToolShape).await;
+
+		assert_eq!(layer_count(&editor), count, "switching tools mid-drag should cancel the rectangle");
 	}
 }
