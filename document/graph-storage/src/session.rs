@@ -157,7 +157,7 @@ impl Session {
 			pending.insert(0, RegistryDelta::RegisterPeer { peer, user });
 		}
 
-		// A reused sequence would fall under the settled marks, so a batch running past the end is refused.
+		// A reused sequence would fall under the retired marks, so a batch running past the end is refused.
 		if self.document.last_hot_sequence.0.checked_add(pending.len() as u64).is_none() {
 			return Err(CrdtError::SequencesExhausted);
 		}
@@ -282,14 +282,14 @@ impl Session {
 		Ok(session)
 	}
 
-	/// Which hot ops are done with, for a peer catching up and for persisting. See [`SettledMarks`].
-	pub fn settled_marks(&self) -> &SettledMarks {
-		&self.document.settled
+	/// Which hot ops are done with, for a peer catching up and for persisting. See [`RetiredMarks`].
+	pub fn retired_marks(&self) -> &RetiredMarks {
+		&self.document.retired
 	}
 
 	/// Take on a peer's marks, or this peer's persisted ones, dropping the hot ops they cover.
-	pub fn absorb_settled_marks(&mut self, remote: &SettledMarks) {
-		self.document.absorb_settled_marks(remote);
+	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) {
+		self.document.absorb_retired_marks(remote);
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -357,7 +357,7 @@ impl Session {
 		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
 		self.document.hot_log = kept;
 		self.document.resync_hot_timestamps();
-		self.document.settled.extend(drained.iter().map(HotOp::id));
+		self.document.retired.extend(drained.iter().map(HotOp::id));
 
 		let ops = drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
 		self.commit_ops_authored_at(ops, true)
@@ -645,7 +645,7 @@ pub struct HotOp {
 }
 
 impl HotOp {
-	/// Identifies the op in the settled marks, which track a contiguous prefix per author.
+	/// Identifies the op in the retired marks, which track a contiguous prefix per author.
 	pub fn id(&self) -> HotOpId {
 		HotOpId {
 			peer: self.timestamp.peer,
@@ -670,7 +670,7 @@ impl HotSequence {
 	}
 }
 
-/// One hot op's author and position in its run, as the settled marks name it.
+/// One hot op's author and position in its run, as the retired marks name it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct HotOpId {
 	pub peer: PeerId,
@@ -680,10 +680,10 @@ pub struct HotOpId {
 /// Which hot ops are retired: each author's gap-free prefix, plus runs past it while ops are in flight. Persisted, so
 /// a late copy of a retired op is dropped.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SettledMarks {
-	pub settled_up_to: HashMap<PeerId, HotSequence>,
-	/// Settled ops past their author's prefix, as inclusive runs, one per gap in flight.
-	pub settled_runs: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
+pub struct RetiredMarks {
+	pub retired_up_to: HashMap<PeerId, HotSequence>,
+	/// retired ops past their author's prefix, as inclusive runs, one per gap in flight.
+	pub retired_runs: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
 }
 
 /// Sort and coalesce runs, joining any that touch or abut.
@@ -698,41 +698,41 @@ fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
 	});
 }
 
-impl SettledMarks {
+impl RetiredMarks {
 	/// Whether history already holds this hot op.
 	pub fn covers(&self, id: HotOpId) -> bool {
-		self.settled_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)
+		self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)
 			|| self
-				.settled_runs
+				.retired_runs
 				.get(&id.peer)
 				.is_some_and(|runs| runs.iter().any(|&(start, end)| (start..=end).contains(&id.sequence)))
 	}
 
 	/// Take on `remote`'s coverage as well as this one's.
 	pub(crate) fn absorb(&mut self, remote: &Self) {
-		for (&peer, &remote_through) in &remote.settled_up_to {
-			let through = self.settled_up_to.entry(peer).or_default();
+		for (&peer, &remote_through) in &remote.retired_up_to {
+			let through = self.retired_up_to.entry(peer).or_default();
 			*through = (*through).max(remote_through);
 		}
-		for (&peer, runs) in &remote.settled_runs {
-			self.settled_runs.entry(peer).or_default().extend(runs.iter().copied());
+		for (&peer, runs) in &remote.retired_runs {
+			self.retired_runs.entry(peer).or_default().extend(runs.iter().copied());
 		}
 		self.compact();
 	}
 
-	/// Record newly settled ops.
-	pub fn extend(&mut self, settled: impl IntoIterator<Item = HotOpId>) {
-		for id in settled {
-			self.settled_runs.entry(id.peer).or_default().push((id.sequence, id.sequence));
+	/// Record newly retired ops.
+	pub fn extend(&mut self, retired: impl IntoIterator<Item = HotOpId>) {
+		for id in retired {
+			self.retired_runs.entry(id.peer).or_default().push((id.sequence, id.sequence));
 		}
 		self.compact();
 	}
 
-	/// Fold runs that continue their author's prefix into `settled_up_to`, leaving only those past a gap.
+	/// Fold runs that continue their author's prefix into `retired_up_to`, leaving only those past a gap.
 	fn compact(&mut self) {
-		for (&peer, runs) in &mut self.settled_runs {
+		for (&peer, runs) in &mut self.retired_runs {
 			coalesce(runs);
-			let mut through = self.settled_up_to.get(&peer).copied().unwrap_or(HotSequence::NONE);
+			let mut through = self.retired_up_to.get(&peer).copied().unwrap_or(HotSequence::NONE);
 			let joined = runs.iter().take_while(|&&(start, end)| {
 				let joins = start <= through.next();
 				if joins {
@@ -743,10 +743,10 @@ impl SettledMarks {
 			let joined = joined.count();
 			runs.drain(..joined);
 			if through != HotSequence::NONE {
-				self.settled_up_to.insert(peer, through);
+				self.retired_up_to.insert(peer, through);
 			}
 		}
-		self.settled_runs.retain(|_, runs| !runs.is_empty());
+		self.retired_runs.retain(|_, runs| !runs.is_empty());
 	}
 }
 

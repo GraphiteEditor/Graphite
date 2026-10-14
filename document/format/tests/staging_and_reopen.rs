@@ -69,7 +69,7 @@ fn a_reopen_keeps_unretired_hot_ops_out_of_the_retired_snapshot() {
 	});
 }
 
-/// A reused sequence would let a peer's settled marks drop the new op.
+/// A reused sequence would let a peer's retired marks drop the new op.
 #[test]
 fn a_reopen_continues_the_hot_op_sequence() {
 	use document_graph_storage::{AttributeDelta, RegistryDelta, Value};

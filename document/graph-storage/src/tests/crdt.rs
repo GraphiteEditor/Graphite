@@ -913,14 +913,14 @@ fn hot_op(op: RegistryDelta, counter: u64, peer: u64, sequence: u64) -> HotOp {
 
 /// An op past a gap is covered without the gap, a filled gap joins the prefix, and absorbing is a union.
 #[test]
-fn settled_marks_keep_a_prefix_and_runs_past_gaps() {
+fn retired_marks_keep_a_prefix_and_runs_past_gaps() {
 	let author = PeerId(1);
 	let id = |sequence: u64| crate::HotOpId {
 		peer: author,
 		sequence: crate::HotSequence(sequence),
 	};
 	let marks_of = |batches: &[&[u64]]| {
-		let mut marks = crate::SettledMarks::default();
+		let mut marks = crate::RetiredMarks::default();
 		batches.iter().for_each(|batch| marks.extend(batch.iter().map(|&sequence| id(sequence))));
 		marks
 	};
@@ -939,9 +939,9 @@ fn settled_marks_keep_a_prefix_and_runs_past_gaps() {
 	for (batches, absorbed, prefix, runs) in cases {
 		let mut marks = marks_of(batches);
 		marks.absorb(&marks_of(absorbed));
-		let up_to = marks.settled_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
+		let up_to = marks.retired_up_to.get(&author).copied().unwrap_or(crate::HotSequence::NONE);
 		assert_eq!(up_to, crate::HotSequence(prefix), "{batches:?}");
-		assert_eq!(marks.settled_runs.get(&author).map(Vec::len), runs, "{batches:?}");
+		assert_eq!(marks.retired_runs.get(&author).map(Vec::len), runs, "{batches:?}");
 		for sequence in 1..=21 {
 			let retired = batches.iter().chain(absorbed).any(|batch| batch.contains(&sequence));
 			assert_eq!(marks.covers(id(sequence)), retired, "{batches:?}: sequence {sequence}");
@@ -958,9 +958,9 @@ fn retiring_over_a_gap_lands_beyond_the_prefix() {
 	host.replay_hot_op(second.clone()).expect("apply");
 	host.retire(second.timestamp).expect("retire");
 
-	let marks = host.settled_marks();
-	assert_eq!(marks.settled_up_to.get(&PeerId(2)).copied().unwrap_or(crate::HotSequence::NONE), crate::HotSequence::NONE);
-	assert_eq!(marks.settled_runs.get(&PeerId(2)).map(Vec::len), Some(1));
+	let marks = host.retired_marks();
+	assert_eq!(marks.retired_up_to.get(&PeerId(2)).copied().unwrap_or(crate::HotSequence::NONE), crate::HotSequence::NONE);
+	assert_eq!(marks.retired_runs.get(&PeerId(2)).map(Vec::len), Some(1));
 	assert!(marks.covers(second.id()));
 }
 

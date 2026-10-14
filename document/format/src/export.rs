@@ -152,7 +152,7 @@ impl<L: Layout> Gdd<L> {
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
 			last_hot_sequence: self.session.last_hot_sequence(),
-			settled_marks: self.session.settled_marks().clone(),
+			retired_marks: self.session.retired_marks().clone(),
 			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),

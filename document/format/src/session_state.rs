@@ -4,7 +4,7 @@
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{HotSequence, NetworkId, PeerId, Rev, SettledMarks, UserId, Value};
+use document_graph_storage::{HotSequence, NetworkId, PeerId, RetiredMarks, Rev, UserId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -45,9 +45,9 @@ pub struct SessionState {
 	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
 	#[serde(default)]
 	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
-	/// The settled hot op marks, so a late copy re-sent after a reopen is dropped rather than retired again.
+	/// The retired hot op marks, so a late copy re-sent after a reopen is dropped rather than retired again.
 	#[serde(default)]
-	pub settled_marks: SettledMarks,
+	pub retired_marks: RetiredMarks,
 	/// The Lamport counter, so a reopen never mints a spent stamp.
 	#[serde(default)]
 	pub clock_counter: u64,

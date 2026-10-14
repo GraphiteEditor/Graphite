@@ -3,7 +3,7 @@ use std::hash::Hash;
 
 use crate::{
 	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput,
-	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, Rev, SettledMarks, SourceValue, TimeStamp, Tombstone, UserId, Value, reverse_attribute_delta,
+	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, UserId, Value, reverse_attribute_delta,
 };
 use std::borrow::Cow;
 
@@ -18,7 +18,7 @@ pub struct Document {
 	/// The stamps of the hot log's ops, so a re-announced op is recognised without a scan.
 	pub(crate) hot_timestamps: HashSet<TimeStamp>,
 	/// Which hot ops are retired into history, so a late copy is dropped.
-	pub(crate) settled: SettledMarks,
+	pub(crate) retired: RetiredMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it. It equals the working registry whenever the hot log is
@@ -52,7 +52,7 @@ impl Document {
 			history: History::new(),
 			hot_log: Vec::new(),
 			hot_timestamps: HashSet::new(),
-			settled: SettledMarks::default(),
+			retired: RetiredMarks::default(),
 			head: None,
 			redo_stack: Vec::new(),
 			clock: LamportClock::new(peer),
@@ -89,7 +89,7 @@ impl Document {
 		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
-	/// Stage a local op onto the working registry and the hot log, skipping the settled check so local work is never dropped.
+	/// Stage a local op onto the working registry and the hot log, skipping the retired check so local work is never dropped.
 	pub(crate) fn stage_hot_op(&mut self, hot_op: HotOp, mode: ApplyMode) -> Result<(), CrdtError> {
 		self.apply_op_with(RegistryTarget::Working, hot_op.op.clone(), hot_op.timestamp, mode)?;
 		self.hot_timestamps.insert(hot_op.timestamp);
@@ -97,7 +97,7 @@ impl Document {
 		Ok(())
 	}
 
-	/// Replay a persisted or received hot op. One already settled or held changes nothing.
+	/// Replay a persisted or received hot op. One already retired or held changes nothing.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
 		// Seeing an op is enough to know what it implies, whether or not it applies: its stamp, and for one of our own a
 		// spent sequence, should the persisted counter lag.
@@ -105,7 +105,7 @@ impl Document {
 		if hot_op.timestamp.peer == self.peer {
 			self.last_hot_sequence = self.last_hot_sequence.max(hot_op.sequence);
 		}
-		if self.settled.covers(hot_op.id()) {
+		if self.retired.covers(hot_op.id()) {
 			return Ok(());
 		}
 		if self.hot_timestamps.contains(&hot_op.timestamp) {
@@ -119,9 +119,9 @@ impl Document {
 	}
 
 	/// Take on a peer's marks as well as this peer's. Returns whether a hot op was dropped.
-	pub(crate) fn absorb_settled_marks(&mut self, remote: &SettledMarks) -> bool {
-		self.settled.absorb(remote);
-		self.drop_settled_hot_ops()
+	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> bool {
+		self.retired.absorb(remote);
+		self.drop_retired_hot_ops()
 	}
 
 	/// Bring the stamp index back in line after the hot log was filtered as a whole.
@@ -139,11 +139,11 @@ impl Document {
 		}
 	}
 
-	/// Drop settled hot ops and re-derive working without them: their effect returns with their deltas.
-	fn drop_settled_hot_ops(&mut self) -> bool {
+	/// Drop retired hot ops and re-derive working without them: their effect returns with their deltas.
+	fn drop_retired_hot_ops(&mut self) -> bool {
 		let before = self.hot_log.len();
-		let settled = &self.settled;
-		self.hot_log.retain(|hot_op| !settled.covers(hot_op.id()));
+		let retired = &self.retired;
+		self.hot_log.retain(|hot_op| !retired.covers(hot_op.id()));
 		let dropped = self.hot_log.len() != before;
 		if dropped {
 			self.resync_hot_timestamps();

@@ -89,7 +89,7 @@ fn a_reopened_session_drops_a_late_copy_of_a_retired_op() {
 	host.retire(op.timestamp).unwrap();
 
 	let mut reopened = Session::load(PeerId(1), UserId(1), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
-	reopened.absorb_settled_marks(host.settled_marks());
+	reopened.absorb_retired_marks(host.retired_marks());
 	reopened.replay_hot_op(op.clone()).unwrap();
 	assert!(reopened.hot_log().is_empty());
 	assert!(reopened.retire(op.timestamp).unwrap().is_empty());
@@ -145,31 +145,31 @@ fn a_refused_batch_stages_nothing() {
 }
 
 #[test]
-fn settled_marks_round_trip_through_json() {
-	let mut marks = crate::SettledMarks::default();
+fn retired_marks_round_trip_through_json() {
+	let mut marks = crate::RetiredMarks::default();
 	let id = |peer: u64, sequence: u64| HotOpId {
 		peer: PeerId(peer),
 		sequence: crate::HotSequence(sequence),
 	};
 	marks.extend([id(1, 1), id(1, 2), id(1, 5), id(u64::MAX, 3)]);
 	let json = serde_json::to_string(&marks).unwrap();
-	assert_eq!(serde_json::from_str::<crate::SettledMarks>(&json).unwrap(), marks);
+	assert_eq!(serde_json::from_str::<crate::RetiredMarks>(&json).unwrap(), marks);
 }
 
-/// A late copy of one of this peer's own ops that is already settled still raises the sequence and the clock, so the
+/// A late copy of one of this peer's own ops that is already retired still raises the sequence and the clock, so the
 /// next op this peer stages takes a fresh sequence and a later stamp.
 #[test]
-fn a_settled_late_copy_still_advances_the_sequence_and_the_clock() {
+fn a_retired_late_copy_still_advances_the_sequence_and_the_clock() {
 	let mut session = Session::with_peer(PeerId(1));
 	let own = crate::HotOp {
 		op: set_attribute("k", 1),
 		timestamp: crate::TimeStamp { counter: 50, peer: PeerId(1) },
 		sequence: crate::HotSequence(7),
 	};
-	let mut marks = crate::SettledMarks::default();
+	let mut marks = crate::RetiredMarks::default();
 	marks.extend([own.id()]);
-	session.absorb_settled_marks(&marks);
-	session.replay_hot_op(own.clone()).expect("a settled copy is dropped");
+	session.absorb_retired_marks(&marks);
+	session.replay_hot_op(own.clone()).expect("a retired copy is dropped");
 
 	let staged = session.stage_ops([set_attribute("k", 2)]).expect("stage");
 	let next = staged.last().expect("staged");
