@@ -63,6 +63,7 @@ pub enum Interrupt {
 pub struct NodeError {
 	error: Arc<dyn Error + Send + Sync>,
 	trace: Vec<usize>,
+	upstream: Vec<NodeError>,
 }
 
 impl NodeError {
@@ -70,17 +71,35 @@ impl NodeError {
 		Self {
 			error: Arc::from(error.into()),
 			trace: Vec::new(),
+			upstream: Vec::new(),
 		}
+	}
+
+	pub fn with_upstream(mut self, upstream: Vec<NodeError>) -> Self {
+		self.upstream = upstream;
+		self
+	}
+
+	pub fn track(&mut self, input: usize) {
+		self.trace.push(input);
 	}
 
 	pub fn trace(&self) -> &[usize] {
 		&self.trace
 	}
+
+	pub fn upstream(&self) -> &[NodeError] {
+		&self.upstream
+	}
+
+	pub fn error(&self) -> &Arc<dyn Error + Send + Sync> {
+		&self.error
+	}
 }
 
 impl PartialEq for NodeError {
 	fn eq(&self, other: &Self) -> bool {
-		Arc::ptr_eq(&self.error, &other.error) && self.trace == other.trace
+		Arc::ptr_eq(&self.error, &other.error) && self.trace == other.trace && self.upstream == other.upstream
 	}
 }
 
@@ -143,13 +162,13 @@ impl Status {
 			}
 			Poll::Fallback(boxed) => {
 				let (value, mut error) = *boxed;
-				error.trace.push(index);
+				error.track(index);
 				self.fail(error);
 				Ok(value)
 			}
 			Poll::Pending => Err(self.interrupted(Interrupt::Pending)),
 			Poll::Error(mut error) => {
-				error.trace.push(index);
+				error.track(index);
 				Err(self.interrupted(Interrupt::Error(error)))
 			}
 		}
@@ -261,8 +280,8 @@ impl<I: ?Sized, N: Node<I>> Node<I> for PollInput<'_, N> {
 	fn eval(&self, input: &I) -> Poll<N::Output> {
 		let mut state = self.node.eval(input);
 		match &mut state {
-			Poll::Fallback(boxed) => boxed.1.trace.push(self.index),
-			Poll::Error(error) => error.trace.push(self.index),
+			Poll::Fallback(boxed) => boxed.1.track(self.index),
+			Poll::Error(error) => error.track(self.index),
 			Poll::Pending | Poll::Final(_) | Poll::Partial(_) => {}
 		}
 		state
