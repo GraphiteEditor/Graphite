@@ -1,12 +1,13 @@
+use crate::parallel_rows::fill_rows;
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::Item;
+use raster_types::Bitmap;
 use raster_types::Image;
-use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 
 /// Applies a median filter to reduce noise while preserving edges.
-#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"))]
+#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"), memoize)]
 fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.
@@ -37,16 +38,19 @@ fn median_filter(
 fn median_filter_algorithm(original_buffer: Image<Color>, radius: u32) -> Image<Color> {
 	let (width, height) = original_buffer.dimensions();
 	let mut output = Image::new(width, height, Color::TRANSPARENT);
-
-	// Pre-allocate and reuse buffers outside the loops to avoid repeated allocations.
 	let window_capacity = ((2 * radius + 1).pow(2)) as usize;
-	let mut r_vals: Vec<f32> = Vec::with_capacity(window_capacity);
-	let mut g_vals: Vec<f32> = Vec::with_capacity(window_capacity);
-	let mut b_vals: Vec<f32> = Vec::with_capacity(window_capacity);
-	let mut a_vals: Vec<f32> = Vec::with_capacity(window_capacity);
 
-	for y in 0..height {
-		for x in 0..width {
+	fill_rows(&mut output.data, width as usize, |y, row| {
+		let y = y as u32;
+
+		// Allocated once for the row and reused for each of its pixels
+		let mut r_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+		let mut g_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+		let mut b_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+		let mut a_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+
+		for (x, output_pixel) in row.iter_mut().enumerate() {
+			let x = x as u32;
 			r_vals.clear();
 			g_vals.clear();
 			b_vals.clear();
@@ -72,9 +76,9 @@ fn median_filter_algorithm(original_buffer: Image<Color>, radius: u32) -> Image<
 			let b = median_quickselect(&mut b_vals);
 			let a = median_quickselect(&mut a_vals);
 
-			output.set_pixel(x, y, Color::from_rgbaf32_unchecked(r, g, b, a));
+			*output_pixel = Color::from_rgbaf32_unchecked(r, g, b, a);
 		}
-	}
+	});
 
 	output
 }

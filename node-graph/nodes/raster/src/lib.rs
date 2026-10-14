@@ -18,4 +18,6 @@ pub mod filter;
 #[cfg(feature = "std")]
 pub mod image_color_palette;
 #[cfg(feature = "std")]
+pub mod parallel_rows;
+#[cfg(feature = "std")]
 pub mod std_nodes;
