@@ -2498,6 +2498,7 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_from_new_import = None;
 		self.wire_in_progress_from_input = None;
 		self.wire_in_progress_from_new_export = None;
+		self.disconnecting = None;
 
 		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 	}
@@ -2523,6 +2524,7 @@ impl NodeGraphMessageHandler {
 		if self.wire_in_progress_from_connector.is_some() {
 			self.end_wire_in_progress(network_interface, network_path, responses);
 			responses.add(DocumentMessage::AbortTransaction);
+			self.update_node_graph_hints(responses);
 		}
 		if self.context_menu.take().is_some() {
 			responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });

@@ -1791,3 +1791,36 @@ async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_
 	assert!(node_graph_handler.context_menu.is_none(), "the node menu should close with the subgraph it was opened in");
 	assert!(node_graph_handler.wire_in_progress_from_connector.is_none(), "the wire should end with the subgraph it was dragged in");
 }
+
+#[tokio::test]
+async fn clicking_a_connected_input_leaves_it_connected_when_a_later_wire_is_dragged_away() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let other_rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 10).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	editor
+		.handle_message(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::node(rectangle, 0),
+			input_connector: fill_content,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let other_output_position = network_interface
+		.output_position(&OutputConnector::node(other_rectangle, 0), &[])
+		.expect("the other Rectangle's output should have a position");
+
+	// Click Fill's wired content without dragging, then drag a new wire out of the other Rectangle into empty space
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+	drag_in_graph(&mut editor, &[], other_output_position, other_output_position + DVec2::new(240., 240.)).await;
+
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"Fill's content should still be wired from the first Rectangle"
+	);
+}
