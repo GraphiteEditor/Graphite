@@ -354,6 +354,7 @@ fn vary_cover_colors<T: VectorListIterMut>(
 	repeat_every: Item<i64>,
 ) -> Result<T, VaryColorsError> {
 	let (reverse, randomize, seed, repeat_every) = (reverse.into_element(), randomize.into_element(), seed.into_element(), repeat_every.into_element());
+	let gradient = raster_kernels::evaluate_gradient_effects(gradient);
 
 	if gradient.element().is_empty() {
 		return Err(VaryColorsError::EmptyGradient);

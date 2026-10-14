@@ -12,6 +12,8 @@ struct Parameters {
 	tap_count: u32,
 	// The premultiplied color a silhouette is tinted
 	color: vec4<f32>,
+	// The extra constants a pass needs beyond the fields above
+	values: vec4<f32>,
 	// Each kernel tap's distance in steps (x) and weight (y)
 	taps: array<vec4<f32>, 25>,
 }
@@ -144,4 +146,176 @@ fn linear_to_srgb(linear: vec3<f32>) -> vec3<f32> {
 	let low = linear * 12.92;
 	let high = 1.055 * pow(linear, vec3<f32>(1. / 2.4)) - 0.055;
 	return select(high, low, linear <= vec3<f32>(0.0031308));
+}
+
+// ===========
+// Adjustments
+// ===========
+
+// The adjustment passes work on a pixel's straight color, leaving fully transparent pixels empty since they keep no color to adjust
+
+// A one-row table's value at a position from 0 to 1, interpolated between its two nearest entries
+fn curve_lookup(table: texture_2d<f32>, value: f32) -> vec4<f32> {
+	let last = f32(textureDimensions(table).x - 1u);
+	let position = clamp(value, 0., 1.) * last;
+	let index = min(floor(position), last - 1.);
+
+	let before = textureLoad(table, vec2<i32>(i32(index), 0), 0);
+	let after = textureLoad(table, vec2<i32>(i32(index) + 1, 0), 0);
+	return mix(before, after, position - index);
+}
+
+// Each channel through its own curve
+@fragment
+fn adjust_curves(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = textureLoad(source, vec2<i32>(position.xy), 0);
+	if pixel.a <= 0. {
+		return vec4<f32>(0.);
+	}
+	let color = vec4<f32>(pixel.rgb / pixel.a, pixel.a);
+
+	let red = curve_lookup(secondary, color.r).r;
+	let green = curve_lookup(secondary, color.g).g;
+	let blue = curve_lookup(secondary, color.b).b;
+	let alpha = curve_lookup(secondary, color.a).a;
+	return vec4<f32>(vec3<f32>(red, green, blue) * alpha, alpha);
+}
+
+// The cube entry at a grid point, from the texture's tiles of slices of constant blue, each with red across and green down
+fn cube_entry(size: u32, point: vec3<u32>) -> vec3<f32> {
+	let columns = textureDimensions(secondary).x / size;
+	let tile = vec2<u32>(point.b % columns, point.b / columns) * size;
+	return textureLoad(secondary, vec2<i32>(tile + point.rg), 0).rgb;
+}
+
+// The cube's color at a point, interpolated in the tetrahedron of its cell that holds it, which fits the cube far closer than trilinear interpolation.
+// The cube has `values.x` samples along each side.
+fn cube_lookup(color: vec3<f32>) -> vec3<f32> {
+	let size = u32(parameters.values.x);
+	let scaled = clamp(color, vec3<f32>(0.), vec3<f32>(1.)) * f32(size - 1u);
+	let base = min(vec3<u32>(floor(scaled)), vec3<u32>(size - 2u));
+	let f = scaled - vec3<f32>(base);
+
+	let black = cube_entry(size, base);
+	let white = cube_entry(size, base + vec3<u32>(1u, 1u, 1u));
+	let r = cube_entry(size, base + vec3<u32>(1u, 0u, 0u));
+	let g = cube_entry(size, base + vec3<u32>(0u, 1u, 0u));
+	let b = cube_entry(size, base + vec3<u32>(0u, 0u, 1u));
+	let rg = cube_entry(size, base + vec3<u32>(1u, 1u, 0u));
+	let rb = cube_entry(size, base + vec3<u32>(1u, 0u, 1u));
+	let gb = cube_entry(size, base + vec3<u32>(0u, 1u, 1u));
+
+	// Each tetrahedron runs from the cell's black corner to its white one, stepping along the axes in order of how far the point lies along them
+	if f.r >= f.g && f.g >= f.b {
+		return (1. - f.r) * black + (f.r - f.g) * r + (f.g - f.b) * rg + f.b * white;
+	} else if f.r >= f.b && f.b >= f.g {
+		return (1. - f.r) * black + (f.r - f.b) * r + (f.b - f.g) * rb + f.g * white;
+	} else if f.b >= f.r && f.r >= f.g {
+		return (1. - f.b) * black + (f.b - f.r) * b + (f.r - f.g) * rb + f.g * white;
+	} else if f.g >= f.r && f.r >= f.b {
+		return (1. - f.g) * black + (f.g - f.r) * g + (f.r - f.b) * rg + f.b * white;
+	} else if f.g >= f.b && f.b >= f.r {
+		return (1. - f.g) * black + (f.g - f.b) * g + (f.b - f.r) * gb + f.r * white;
+	}
+	return (1. - f.b) * black + (f.b - f.g) * b + (f.g - f.r) * gb + f.r * white;
+}
+
+// The color through the cube and alpha through its own curve
+@fragment
+fn adjust_cube(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = textureLoad(source, vec2<i32>(position.xy), 0);
+	if pixel.a <= 0. {
+		return vec4<f32>(0.);
+	}
+
+	let alpha = curve_lookup(content, pixel.a).a;
+	return vec4<f32>(cube_lookup(pixel.rgb / pixel.a) * alpha, alpha);
+}
+
+// The color the pixel's luma picks from a table, with the pixel's alpha
+@fragment
+fn adjust_by_luma(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = textureLoad(source, vec2<i32>(position.xy), 0);
+	if pixel.a <= 0. {
+		return vec4<f32>(0.);
+	}
+
+	let luma = dot(pixel.rgb / pixel.a, parameters.values.rgb);
+	return vec4<f32>(curve_lookup(secondary, luma).rgb * pixel.a, pixel.a);
+}
+
+fn wrap_positive(value: f32, modulus: f32) -> f32 {
+	return value - floor(value / modulus) * modulus;
+}
+
+// Hexagon hue in degrees, 0 for gray
+fn hexagon_hue_degrees(color: vec3<f32>) -> f32 {
+	let maximum = max(color.r, max(color.g, color.b));
+	let chroma = maximum - min(color.r, min(color.g, color.b));
+	if chroma <= 0. {
+		return 0.;
+	}
+
+	if maximum == color.r {
+		return wrap_positive((color.g - color.b) / chroma, 6.) * 60.;
+	} else if maximum == color.g {
+		return ((color.b - color.r) / chroma + 2.) * 60.;
+	}
+	return ((color.r - color.g) / chroma + 4.) * 60.;
+}
+
+// How fully a hue falls under the skin-tone protection: all of it from red to 30 degrees, fading out by 45, and back in from 300
+fn skin_tone_window(hue: f32) -> f32 {
+	if hue < 45. {
+		return min((45. - hue) / 15., 1.);
+	} else if hue >= 300. {
+		return (hue - 300.) / 60.;
+	}
+	return 0.;
+}
+
+// Vibrance on linear channels as the chroma factor about the maximum channel (x) and the brightness multiplier (y), mirroring the CPU kernel
+fn vibrance_factors(color: vec3<f32>, amount: f32) -> vec2<f32> {
+	let maximum = max(color.r, max(color.g, color.b));
+	let minimum = min(color.r, min(color.g, color.b));
+	if maximum <= 0. {
+		return vec2<f32>(1.);
+	}
+
+	let ratio = minimum / maximum;
+	let saturation = 1. - ratio;
+	let q = ratio * saturation;
+	let toe = 1. - min(16. * maximum, 1.);
+	let rolloff = 1. - toe * toe;
+	let brightness = (2. * q - q * q) * (1. - maximum) * rolloff;
+
+	if amount < 0. {
+		let desaturation = -amount;
+		let chroma_factor = (1. - desaturation / 4.) * (1. - desaturation * (1. - rolloff * saturation * (1. + saturation) / 2.));
+		return vec2<f32>(chroma_factor, 1. - desaturation * brightness);
+	}
+
+	let protection = skin_tone_window(hexagon_hue_degrees(color)) * (1. - saturation * saturation);
+	let protected_amount = amount * (1. - protection * (1. - amount));
+	let boost = (5. / 6.) * (1. - 0.4857 * protection) * protected_amount * ratio * (1. - minimum) * rolloff;
+	return vec2<f32>(1. / (1. - boost), 1. + protected_amount * brightness / 4.);
+}
+
+// Vibrance (amount in values.x) then saturation (scale in values.y), both in linear light
+@fragment
+fn adjust_vibrance(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = textureLoad(source, vec2<i32>(position.xy), 0);
+	if pixel.a <= 0. {
+		return vec4<f32>(0.);
+	}
+	let linear = srgb_to_linear(max(pixel.rgb / pixel.a, vec3<f32>(0.)));
+
+	let maximum = max(linear.r, max(linear.g, linear.b));
+	let factors = vibrance_factors(linear, parameters.values.x);
+	let vibrant = clamp(factors.y * (maximum + factors.x * (linear - maximum)), vec3<f32>(0.), vec3<f32>(1.));
+
+	// Saturation scales each channel's distance from a gray weighted by ProPhoto's luminance coefficients
+	let gray = dot(vibrant, vec3<f32>(0.288040, 0.711874, 0.000086));
+	let saturated = clamp(gray + (vibrant - gray) * parameters.values.y, vec3<f32>(0.), vec3<f32>(1.));
+	return vec4<f32>(linear_to_srgb(saturated) * pixel.a, pixel.a);
 }

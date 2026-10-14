@@ -1,11 +1,13 @@
 //! Carries out a raster's effects on the CPU at the raster's own resolution, for the nodes that read its pixels.
 //! Each step mirrors the renderer's GPU passes, working on premultiplied gamma-encoded channels as they do.
 
+use crate::adjustments::adjust_colors;
 use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
 use core_types::color::{linear_to_srgb, srgb_to_linear};
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
+use graphic_types::adjustment::Adjustment;
 use graphic_types::effects::{EffectOperation, Effects};
 use raster_types::{CPU, Image, Raster};
 
@@ -15,12 +17,14 @@ const MAX_PIXELS_WITH_MARGIN: f64 = (1 << 24) as f64;
 /// The raster with its effects carried out into its pixels, grown to hold what they cast past its edges, and with the effects and the fill opacity they used removed.
 /// A raster without the effects attribute is returned as it is.
 pub fn evaluate_raster_effects(item: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
-	let Some(effects) = item.attribute::<Effects>(ATTR_EFFECTS).cloned() else { return item };
+	let Some(operations) = item.attribute::<Effects>(ATTR_EFFECTS).map(|effects| effects.operations().collect::<Vec<_>>()) else {
+		return item;
+	};
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let fill = item.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.) as f32;
 
 	let (raster, attributes) = item.into_parts();
-	let (raster, transform) = match evaluate(&raster, transform, &effects, fill) {
+	let (raster, transform) = match evaluate(&raster, transform, &operations, fill) {
 		Some((image, grown_transform)) => (Raster::new_cpu(image), grown_transform),
 		None => (raster, transform),
 	};
@@ -33,14 +37,52 @@ pub fn evaluate_raster_effects(item: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	item
 }
 
+/// The raster with `adjustments` carried out on its colors, even those of transparent pixels, as for the adjustments leading its effects.
+/// The result is kept with the raster's pixels, so adjusting them the same way again reuses it, ID and all.
+pub fn adjusted_raster(raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Raster<CPU> {
+	let mut hasher = std::hash::DefaultHasher::new();
+	adjustments.iter().for_each(|adjustment| core_types::graphene_hash::CacheHash::cache_hash(adjustment, &mut hasher));
+	let key = std::hash::Hasher::finish(&hasher);
+
+	raster.derived(key, |raster| {
+		let mut image = raster.data().clone();
+		adjustments.iter().for_each(|adjustment| adjust_colors(adjustment, &mut image.data));
+		Raster::new_cpu(image)
+	})
+}
+
 /// The image of the effects carried out on `raster`, which `transform` places in the document, with the transform placing that larger image.
 /// `None` when there's nothing to carry out, or the image is empty or its transform can't be inverted.
-fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: f32) -> Option<(Image<Color>, DAffine2)> {
+fn evaluate(raster: &Raster<CPU>, transform: DAffine2, operations: &[EffectOperation], fill: f32) -> Option<(Image<Color>, DAffine2)> {
 	let (width, height) = (raster.width as usize, raster.height as usize);
-	if (effects.is_empty() && fill >= 1.) || width == 0 || height == 0 || transform.matrix2.determinant() == 0. {
+	if (operations.is_empty() && fill >= 1.) || width == 0 || height == 0 || transform.matrix2.determinant() == 0. {
 		return None;
 	}
 	let size = DVec2::new(width as f64, height as f64);
+
+	// Unless a fill fades them first, leading adjustments change the image's own colors, keeping even transparent pixels' colors
+	let leading_adjustments = operations.iter().take_while(|_| fill == 1.).map_while(|operation| match operation {
+		EffectOperation::Adjustment(adjustment) => Some(adjustment),
+		_ => None,
+	});
+	let mut colors = std::borrow::Cow::Borrowed(raster.data.as_slice());
+	let mut remaining = operations;
+	for adjustment in leading_adjustments {
+		adjust_colors(adjustment, colors.to_mut());
+		remaining = &remaining[1..];
+	}
+	if remaining.is_empty() {
+		let data = colors.iter().map(|color| color.with_alpha(color.a() * fill)).collect();
+		return Some((
+			Image {
+				width: raster.width,
+				height: raster.height,
+				data,
+			},
+			transform,
+		));
+	}
+	let operations = remaining;
 
 	// Document lengths become pixels along each of the image's axes, and offsets map through the inverse of its pixel placement
 	let pixels_to_document = transform.matrix2 * DMat2::from_diagonal(size.recip());
@@ -48,7 +90,8 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 	let pixels_per_length = DVec2::new(pixels_to_document.x_axis.length(), pixels_to_document.y_axis.length()).recip();
 
 	// A margin around the image to hold the blur and shadows cast past its edges, cut short for an image that would grow too large
-	let mut margin = (effects.reach() * pixels_per_length).ceil();
+	let reach: f64 = operations.iter().map(EffectOperation::reach).sum();
+	let mut margin = (reach * pixels_per_length).ceil();
 	let grown_size = size + 2. * margin;
 	if grown_size.x * grown_size.y > MAX_PIXELS_WITH_MARGIN {
 		let shrunk_size = grown_size * (MAX_PIXELS_WITH_MARGIN / (grown_size.x * grown_size.y)).sqrt();
@@ -58,7 +101,7 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 
 	// The content at full strength, which casts every silhouette, and the content faded by the fill, which shows in the result
 	let mut full = Plane::<[f32; 4]>::new(width + 2 * margin_x, height + 2 * margin_y);
-	for (y, row) in raster.data.chunks_exact(width).enumerate() {
+	for (y, row) in colors.chunks_exact(width).enumerate() {
 		let start = (y + margin_y) * full.width + margin_x;
 		full.data[start..start + width]
 			.iter_mut()
@@ -69,8 +112,8 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 	// The shadows and glows stacked beneath the content
 	let mut beneath: Option<Plane<[f32; 4]>> = None;
 
-	for effect in effects.operations() {
-		match effect {
+	for operation in operations {
+		match *operation {
 			EffectOperation::Blur { radius, box_blur, gamma } => {
 				let radius = radius * pixels_per_length;
 				if radius.max_element() < NEGLIGIBLE_LENGTH {
@@ -102,6 +145,10 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let coverage = cast(&full, document_to_pixels * offset, blur * pixels_per_length, spread * pixels_per_length, true);
 				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
 				full = composite_within(&full, &coverage, &full, color);
+			}
+			EffectOperation::Adjustment(ref adjustment) => {
+				full = adjust(&full, adjustment);
+				filled = filled.map(|filled| adjust(&filled, adjustment));
 			}
 		}
 	}
@@ -136,6 +183,24 @@ fn straight_linear_color([red, green, blue, alpha]: [f32; 4]) -> Color {
 		return Color::TRANSPARENT;
 	}
 	Color::from_gamma_srgb_channels(red / alpha, green / alpha, blue / alpha, alpha.min(1.))
+}
+
+/// Adjusts premultiplied gamma-encoded pixels by way of their straight colors, leaving fully transparent pixels empty since they keep no color to adjust.
+fn adjust(plane: &Plane<[f32; 4]>, adjustment: &Adjustment) -> Plane<[f32; 4]> {
+	let mut colors: Vec<Color> = plane.data.iter().copied().map(straight_linear_color).collect();
+	adjust_colors(adjustment, &mut colors);
+
+	let data = plane
+		.data
+		.iter()
+		.zip(colors)
+		.map(|(pixel, color)| if pixel[3] <= 0. { [0.; 4] } else { premultiplied_gamma_channels(color) })
+		.collect();
+	Plane {
+		width: plane.width,
+		height: plane.height,
+		data,
+	}
 }
 
 /// Premultiplied channels with `transfer` applied to their straight color.
