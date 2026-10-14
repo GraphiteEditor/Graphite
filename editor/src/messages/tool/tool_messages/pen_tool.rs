@@ -3068,13 +3068,9 @@ mod test_pen_tool {
 			ManipulatorPointId::EndHandle(bd_segment).get_position(&vector)
 		};
 
-		let mirrored_handle = 2. * B - handle;
 		if let Some(handle_pos) = handle_at_b {
 			let handle_pos = layer_to_viewport.transform_point2(handle_pos);
-			assert!(
-				handle_pos.distance(mirrored_handle) > 1e-4,
-				"Handle at B for the new segment must not be mirrored into a colinear handle"
-			);
+			assert!(handle_pos.distance(B) < 1e-4, "Handle at B for the new segment should remain at the anchor");
 		}
 	}
 }
