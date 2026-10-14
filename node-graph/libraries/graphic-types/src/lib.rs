@@ -1,3 +1,4 @@
+pub mod adjustment;
 pub mod appearance;
 pub mod artboard;
 pub mod graphic;
@@ -8,6 +9,7 @@ pub use raster_types;
 pub use vector_types;
 
 // Re-export commonly used types at the crate root
+pub use adjustment::Adjustment;
 pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};

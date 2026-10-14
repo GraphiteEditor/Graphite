@@ -1,5 +1,4 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use crate::parallel_rows::fill_rows;
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
@@ -13,6 +12,7 @@ use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graphene_resource::Resource;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 use raster_types::{Image, ImageError};

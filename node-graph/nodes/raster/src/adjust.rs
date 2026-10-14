@@ -1,27 +1,27 @@
+use graphic_types::Adjustment;
 use no_std_types::color::Color;
+use raster_kernels::adjustments::{adjust_color, adjust_colors};
 use raster_types::{CPU, Raster};
 use vector_types::Gradient;
 
-pub trait Adjust<P> {
-	fn adjust(&mut self, map_fn: impl Fn(&P) -> P);
+pub trait Adjust {
+	fn adjust(&mut self, adjustment: &Adjustment);
 }
 
-impl Adjust<Color> for Color {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		*self = map_fn(self);
+impl Adjust for Color {
+	fn adjust(&mut self, adjustment: &Adjustment) {
+		*self = adjust_color(adjustment, *self);
 	}
 }
 
-impl Adjust<Color> for Raster<CPU> {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for color in self.data_mut().data.iter_mut() {
-			*color = map_fn(color);
-		}
+impl Adjust for Raster<CPU> {
+	fn adjust(&mut self, adjustment: &Adjustment) {
+		adjust_colors(adjustment, &mut self.data_mut().data);
 	}
 }
 
-impl Adjust<Color> for Gradient {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		*self = self.map_colors(map_fn);
+impl Adjust for Gradient {
+	fn adjust(&mut self, adjustment: &Adjustment) {
+		*self = self.map_colors(|color| adjust_color(adjustment, *color));
 	}
 }
