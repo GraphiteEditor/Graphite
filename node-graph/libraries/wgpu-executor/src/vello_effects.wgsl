@@ -236,6 +236,27 @@ fn scale(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	return textureLoad(source, vec2<i32>(position.xy), 0) * parameters.amount;
 }
 
+// A mipmap level from the one above it, each texel averaging a block of two by two, which grows to three along an odd side's last texel
+@fragment
+fn halve(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let size = vec2<i32>(textureDimensions(source));
+	let half_size = max(size / 2, vec2<i32>(1));
+	let index = vec2<i32>(position.xy);
+	let start = index * 2;
+	// Selecting per axis, since WebGL2 can't select between integer vectors
+	let last = index + 1 == half_size;
+	let end = clamp(vec2<i32>(select(start.x + 2, size.x, last.x), select(start.y + 2, size.y, last.y)), start + 1, size);
+
+	var sum = vec4<f32>(0.);
+	for (var y = start.y; y < end.y; y++) {
+		for (var x = start.x; x < end.x; x++) {
+			sum += textureLoad(source, vec2<i32>(x, y), 0);
+		}
+	}
+	let count = end - start;
+	return sum / f32(count.x * count.y);
+}
+
 @fragment
 fn decode_to_linear(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let color = textureLoad(source, vec2<i32>(position.xy), 0);

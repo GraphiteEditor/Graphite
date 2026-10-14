@@ -762,33 +762,44 @@ fn gpu_adjustment_passes_match_the_cpu_kernels() {
 			2,
 		),
 		(vec![Adjustment::Vibrance { vibrance: 60., saturation: 20. }], 2),
+		// Runs of two and three passes, which hand their colors between textures
+		(vec![Adjustment::Vibrance { vibrance: 40., saturation: 0. }, Adjustment::Invert], 3),
+		(vec![Adjustment::Invert, Adjustment::Vibrance { vibrance: -30., saturation: 10. }, Adjustment::Invert], 3),
 	];
 
 	for (run, tolerance) in runs {
-		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
-		let draw = |scene: &mut VelloSceneBuilder| {
-			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
-			scene.draw_effects(&effects, 1., Some(bounds), &mut |scene| {
-				scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::IDENTITY)
-			});
-		};
-
-		// The first render bakes any cube as a draft, which rendering the same run again refines
-		let Some(_) = render(size, draw) else { return };
-		let Some(gpu) = render(size, draw) else { return };
-
 		let mut expected = colors.clone();
 		run.iter().for_each(|adjustment| raster_kernels::adjustments::adjust_colors(adjustment, &mut expected));
 
-		let mut worst = 0;
-		for (index, color) in expected.iter().enumerate() {
-			let cpu = color.to_gamma_srgb_channels().map(|channel| (channel * 255.).round() as i32);
-			for channel in 0..3 {
-				worst = worst.max((cpu[channel] - gpu[index][channel] as i32).unsigned_abs());
+		// Carried out on the rendered content by an effects group, and on the image's own texture as it's drawn
+		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
+		let through_effects_group = |scene: &mut VelloSceneBuilder| {
+			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
+			scene.draw_effects(&effects, 1., Some(bounds), &mut |scene| {
+				scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::IDENTITY)
+			});
+		};
+		let on_image_texture = |scene: &mut VelloSceneBuilder| scene.draw_raster(raster.clone(), run.clone(), peniko::ImageSampler::new(), Affine::IDENTITY);
+		let paths = [
+			("through an effects group", &through_effects_group as &dyn Fn(&mut VelloSceneBuilder)),
+			("on the image's texture", &on_image_texture),
+		];
+
+		for (path, draw) in paths {
+			// The first render bakes any cube as a draft, which rendering the same run again refines
+			let Some(_) = render(size, draw) else { return };
+			let Some(gpu) = render(size, draw) else { return };
+
+			let mut worst = 0;
+			for (index, color) in expected.iter().enumerate() {
+				let cpu = color.to_gamma_srgb_channels().map(|channel| (channel * 255.).round() as i32);
+				for channel in 0..3 {
+					worst = worst.max((cpu[channel] - gpu[index][channel] as i32).unsigned_abs());
+				}
 			}
+			let names = run.iter().map(|adjustment| adjustment.kind().to_string()).collect::<Vec<_>>().join(" + ");
+			assert!(worst <= tolerance as u32, "{names} {path} differs from the CPU kernels by up to {worst} levels");
 		}
-		let names = run.iter().map(|adjustment| adjustment.kind().to_string()).collect::<Vec<_>>().join(" + ");
-		assert!(worst <= tolerance as u32, "{names} differs from the CPU kernels by up to {worst} levels");
 	}
 }
 
@@ -806,7 +817,7 @@ fn minified_images_average_their_pixels() {
 			.collect(),
 	};
 	let stripes = Raster::new_cpu(stripes);
-	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(stripes.clone(), peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(stripes.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::scale(1. / 8.));
 
 	let size = UVec2::new(8, 8);
 	let Some(pixels) = render(size, draw) else { return };
@@ -816,17 +827,33 @@ fn minified_images_average_their_pixels() {
 }
 
 #[test]
+fn minified_adjusted_images_sample_their_adjusted_mipmaps() {
+	use graphic_types::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+
+	// White inverted to black, drawn at an eighth of its size where only the smaller levels are sampled
+	let white = Raster::new_cpu(Image::new(64, 64, core_types::Color::WHITE));
+	let draw = |scene: &mut VelloSceneBuilder| scene.draw_raster(white.clone(), vec![Adjustment::Invert], peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+
+	let Some(pixels) = render(UVec2::new(8, 8), draw) else { return };
+	for (index, pixel) in pixels.iter().enumerate() {
+		assert!(pixel[0] <= 1 && pixel[3] == 255, "pixel {index} is {pixel:?} rather than black");
+	}
+}
+
+#[test]
 fn rasters_upload_once_across_scenes_until_modified() {
 	use raster_types::{Image, Raster};
 
 	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
 	let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
 	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
 
 	// Each render draws its scene anew, as the editor does whenever the graph runs
 	let scene_drawing = |raster: &Raster<raster_types::CPU>| {
 		let mut scene = VelloSceneBuilder::new(64, 64, Affine::IDENTITY, max_texture_size);
-		scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::scale(8.));
+		scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::scale(8.));
 		scene
 	};
 
@@ -853,8 +880,41 @@ fn textures_of_dropped_rasters_are_freed() {
 	let mut canvas = crate::VelloCanvas::default();
 	for _ in 0..10 {
 		let mut scene = VelloSceneBuilder::new(64, 64, Affine::IDENTITY, max_texture_size);
-		scene.draw_raster(Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE)), peniko::ImageSampler::new(), Affine::scale(8.));
+		scene.draw_raster(Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE)), Vec::new(), peniko::ImageSampler::new(), Affine::scale(8.));
 		executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
 	}
 	assert_eq!(canvas.images.textures.len(), 1, "only the texture of pixels that still exist stays");
+}
+
+#[test]
+fn adjusted_images_remake_one_copy_as_their_adjustments_change() {
+	use graphic_types::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+
+	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
+	let new_scene = || VelloSceneBuilder::new(64, 64, Affine::IDENTITY, executor.context().device.limits().max_texture_dimension_2d);
+	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
+	let exposure = |exposure| Adjustment::Exposure {
+		exposure,
+		offset: 0.,
+		gamma_correction: 1.,
+	};
+	let copies = |canvas: &crate::VelloCanvas| canvas.images.textures.values().map(|image_texture| image_texture.adjusted.len()).sum::<usize>();
+
+	// Dragging a slider adjusts the same pixels differently in every render
+	let mut canvas = crate::VelloCanvas::default();
+	for amount in [0.1, 0.2, 0.3] {
+		let mut scene = new_scene();
+		scene.draw_raster(raster.clone(), vec![exposure(amount)], peniko::ImageSampler::new(), Affine::scale(8.));
+		executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
+	}
+	assert_eq!(copies(&canvas), 1, "each new run takes over the copy the last render drew");
+
+	// Two layers sharing the pixels with different adjustments need a copy each
+	let mut scene = new_scene();
+	scene.draw_raster(raster.clone(), vec![exposure(0.4)], peniko::ImageSampler::new(), Affine::scale(4.));
+	scene.draw_raster(raster.clone(), vec![Adjustment::Invert], peniko::ImageSampler::new(), Affine::scale(8.));
+	executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
+	assert_eq!(copies(&canvas), 2);
 }

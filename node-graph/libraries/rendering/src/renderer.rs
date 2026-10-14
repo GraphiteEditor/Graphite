@@ -3001,6 +3001,9 @@ fn extend_free_point_targets<'a>(vector: &'a Vector, geometry_paths: &List<Path>
 /// The most times an image drawn to a canvas is halved, which is when 4096 of its pixels fit on one screen pixel.
 const MAX_CANVAS_HALVINGS: u32 = 12;
 
+/// The most pixels an image may have for its adjustments to be carried out on a copy of its texture, past which an effects group carries them out at the render's resolution.
+const MAX_ADJUSTED_TEXTURE_PIXELS: u64 = 4096 * 4096;
+
 /// An image the frontend draws to a canvas rather than an SVG embedding it, at a resolution to suit how large it appears.
 #[derive(Clone, Debug, PartialEq, CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -3132,6 +3135,22 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let compositing = item.compositing(render_params);
 	let blend_mode = blend_mode_attr.to_peniko();
 
+	// Leading adjustments are carried out on the image's texture as it's drawn, rather than on a render of it in an effects group
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, split_compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let changes_alpha = leading_adjustments.iter().any(|adjustment| !raster_kernels::adjustments::preserves_alpha(adjustment));
+	let fits_texture_copy = image.width as u64 * image.height as u64 <= MAX_ADJUSTED_TEXTURE_PIXELS;
+	let adjusted_image;
+	let (image, adjustments, compositing) = if leading_adjustments.is_empty() || !(changes_alpha || fits_texture_copy) {
+		(image, Vec::new(), compositing)
+	} else if changes_alpha {
+		// A premultiplied texture keeps no color where alpha is zero, so adjustments changing alpha are carried out on the CPU like in SVG
+		adjusted_image = adjusted_raster(image, &leading_adjustments);
+		(&adjusted_image, Vec::new(), split_compositing)
+	} else {
+		(image, leading_adjustments, split_compositing)
+	};
+
 	let opacity = compositing.opacity;
 	let mut layer = false;
 
@@ -3166,7 +3185,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
 	compositing.draw_with_effects(scene, item_bounds, |scene| {
-		scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
+		scene.draw_raster(image.clone(), adjustments.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
 	});
 
 	if layer {
@@ -4414,6 +4433,30 @@ mod tests {
 		// One no primitive expresses passes the content through unchanged
 		let vibrance = filter(Adjustment::Vibrance { vibrance: 50., saturation: 0. });
 		assert!(!vibrance.contains("feComponentTransfer") && !vibrance.contains("feColorMatrix"), "{vibrance}");
+	}
+
+	#[test]
+	fn image_adjustments_changing_alpha_are_carried_out_on_the_cpu_for_vello() {
+		use crate::vello_scene_builder::{SceneImage, VelloSceneBuilder};
+		use graphic_types::raster_types::Image;
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		// A hidden color under full transparency, which only the CPU's straight colors keep for Make Opaque to reveal
+		let hidden = Color::from_rgbaf32_unchecked(0.8, 0.4, 0.2, 0.);
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, hidden)));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::MakeOpaque)));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Invert)));
+
+		let mut scene = VelloSceneBuilder::new(16, 16, kurbo::Affine::IDENTITY, 4096);
+		List::new_from_item(item).render_to_vello(&mut scene, DAffine2::IDENTITY, &RenderParams::default());
+		let (_, images) = scene.finish();
+		let drawn = images.into_iter().find_map(|image| match image {
+			SceneImage::Raster { raster, adjustments } => Some((raster, adjustments)),
+			_ => None,
+		});
+		let (raster, adjustments) = drawn.expect("the image is drawn");
+		assert!(adjustments.is_empty(), "the texture takes no adjustments of its own");
+		assert_eq!(raster.data[0], raster_kernels::adjustments::adjust_color(&Adjustment::Invert, hidden.with_alpha(1.)));
 	}
 
 	#[test]

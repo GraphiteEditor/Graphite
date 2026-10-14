@@ -381,6 +381,64 @@ impl EffectPasses {
 		queue.submit([recorder.encoder.finish()]);
 		result
 	}
+
+	/// Carries out adjustment `passes` on the top level of `image`, a texture of premultiplied pixels, into the top level of `target`,
+	/// then averages each of `target`'s smaller levels from the one above it like the levels of an uploaded image.
+	pub(crate) fn adjust_image(&self, device: &wgpu::Device, queue: &wgpu::Queue, textures: &mut EffectTextures, image: &wgpu::Texture, passes: &[AdjustmentPassTextures], target: &wgpu::Texture) {
+		let size = UVec2::new(image.width(), image.height());
+		let mut recorder = PassRecorder {
+			passes: self,
+			device,
+			encoder: device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+				label: Some("vello_effects_adjust_image"),
+			}),
+			textures,
+			size,
+		};
+		let level = |texture: &wgpu::Texture, level: u32| {
+			texture.create_view(&wgpu::TextureViewDescriptor {
+				base_mip_level: level,
+				mip_level_count: Some(1),
+				..Default::default()
+			})
+		};
+
+		// The passes take turns writing the target's top level and one scratch texture like it, ending on the target, so they need no larger texture
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let scratch = (passes.len() > 1).then(|| recorder.textures.acquire(device, size, target.format()));
+		let (target_top, scratch_view) = (level(target, 0), scratch.as_ref().map(view));
+		let mut source = view(image);
+		for (index, pass) in passes.iter().enumerate() {
+			let destination = match (&scratch_view, (passes.len() - 1 - index) % 2) {
+				(Some(scratch_view), 1) => scratch_view,
+				_ => &target_top,
+			};
+
+			let (entry_point, secondary, content, parameters) = pass.shader_inputs();
+			let (secondary, content) = (secondary.map(view), content.map(view));
+			recorder.run_into(entry_point, target.format(), destination, size, &source, secondary.as_ref(), content.as_ref(), parameters);
+			source = destination.clone();
+		}
+		if let Some(scratch) = scratch {
+			recorder.textures.release(scratch);
+		}
+
+		for index in 1..target.mip_level_count() {
+			let level_size = UVec2::new(target.width() >> index, target.height() >> index).max(UVec2::ONE);
+			recorder.run_into(
+				"halve",
+				target.format(),
+				&level(target, index),
+				level_size,
+				&level(target, index - 1),
+				None,
+				None,
+				Parameters::default(),
+			);
+		}
+
+		queue.submit([recorder.encoder.finish()]);
+	}
 }
 
 /// A color as the premultiplied, gamma-encoded channels the passes work with.
@@ -412,13 +470,33 @@ impl PassRecorder<'_> {
 		parameters: Parameters,
 	) -> wgpu::Texture {
 		let target = self.textures.acquire(self.device, size, format);
+
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let (source, secondary, content) = (view(source), secondary.map(view), content.map(view));
+		self.run_into(entry_point, format, &view(&target), size, &source, secondary.as_ref(), content.as_ref(), parameters);
+
+		target
+	}
+
+	/// Runs the shader's `entry_point` into `target`, a view of `format` and `size`, reading the `source` view and optionally the `secondary` and `content` views.
+	#[expect(clippy::too_many_arguments)]
+	fn run_into(
+		&mut self,
+		entry_point: &'static str,
+		format: wgpu::TextureFormat,
+		target: &wgpu::TextureView,
+		size: UVec2,
+		source: &wgpu::TextureView,
+		secondary: Option<&wgpu::TextureView>,
+		content: Option<&wgpu::TextureView>,
+		parameters: Parameters,
+	) {
 		let parameters = Parameters {
 			target_to_uv: [1. / size.x as f32, 1. / size.y as f32],
 			..parameters
 		};
 
-		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let (source_view, secondary_view, content_view) = (view(source), view(secondary.unwrap_or(source)), view(content.unwrap_or(source)));
+		let (secondary, content) = (secondary.unwrap_or(source), content.unwrap_or(source));
 		let parameters_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("vello_effects_parameters"),
 			contents: bytemuck::bytes_of(&parameters),
@@ -430,15 +508,15 @@ impl PassRecorder<'_> {
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&source_view),
+					resource: wgpu::BindingResource::TextureView(source),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&secondary_view),
+					resource: wgpu::BindingResource::TextureView(secondary),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::TextureView(&content_view),
+					resource: wgpu::BindingResource::TextureView(content),
 				},
 				wgpu::BindGroupEntry {
 					binding: 3,
@@ -452,11 +530,10 @@ impl PassRecorder<'_> {
 		});
 
 		let pipeline = self.passes.pipeline(self.device, entry_point, format);
-		let target_view = view(&target);
 		let mut pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 			label: Some(entry_point),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: &target_view,
+				view: target,
 				resolve_target: None,
 				ops: wgpu::Operations {
 					load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -472,9 +549,6 @@ impl PassRecorder<'_> {
 		pass.set_pipeline(&pipeline);
 		pass.set_bind_group(0, &bind_group, &[]);
 		pass.draw(0..3, 0..1);
-		drop(pass);
-
-		target
 	}
 
 	/// Puts `next` in place of the texture in `slot`, returning the old one to the pool.
@@ -586,13 +660,8 @@ impl PassRecorder<'_> {
 
 	/// The image with one pass of adjustments carried out on it.
 	fn adjust(&mut self, image: &wgpu::Texture, pass: &AdjustmentPassTextures) -> wgpu::Texture {
-		let (entry_point, secondary, content, values) = match pass {
-			AdjustmentPassTextures::Curves(curves) => ("adjust_curves", Some(curves), None, [0.; 4]),
-			AdjustmentPassTextures::Cube { size, cube, alpha } => ("adjust_cube", Some(cube), Some(alpha), [*size as f32, 0., 0., 0.]),
-			AdjustmentPassTextures::Luma { weights, colors } => ("adjust_by_luma", Some(colors), None, [weights[0], weights[1], weights[2], 0.]),
-			AdjustmentPassTextures::Vibrance { vibrance, saturation_scale } => ("adjust_vibrance", None, None, [*vibrance, *saturation_scale, 0., 0.]),
-		};
-		self.run(entry_point, WORKING_FORMAT, self.size, image, secondary, content, Parameters { values, ..Default::default() })
+		let (entry_point, secondary, content, parameters) = pass.shader_inputs();
+		self.run(entry_point, WORKING_FORMAT, self.size, image, secondary, content, parameters)
 	}
 
 	/// Grows the shapes in `texture` by `distance` pixels along each axis, in a square like SVG's `feMorphology`.
@@ -694,6 +763,13 @@ struct CachedAdjustmentRun {
 	last_used: u64,
 }
 
+/// Identifies a run of adjustments by its settings.
+pub(crate) fn adjustment_run_hash(run: &[&Adjustment]) -> u64 {
+	let mut hasher = std::hash::DefaultHasher::new();
+	run.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
+	std::hash::Hasher::finish(&hasher)
+}
+
 /// One pass of adjustments, with the tables it looks colors up in uploaded as textures.
 pub(crate) enum AdjustmentPassTextures {
 	Curves(wgpu::Texture),
@@ -703,6 +779,17 @@ pub(crate) enum AdjustmentPassTextures {
 }
 
 impl AdjustmentPassTextures {
+	/// The shader entry point carrying out the pass, the tables it reads as its secondary and content inputs, and its parameters.
+	fn shader_inputs(&self) -> (&'static str, Option<&wgpu::Texture>, Option<&wgpu::Texture>, Parameters) {
+		let (entry_point, secondary, content, values) = match self {
+			Self::Curves(curves) => ("adjust_curves", Some(curves), None, [0.; 4]),
+			Self::Cube { size, cube, alpha } => ("adjust_cube", Some(cube), Some(alpha), [*size as f32, 0., 0., 0.]),
+			Self::Luma { weights, colors } => ("adjust_by_luma", Some(colors), None, [weights[0], weights[1], weights[2], 0.]),
+			Self::Vibrance { vibrance, saturation_scale } => ("adjust_vibrance", None, None, [*vibrance, *saturation_scale, 0., 0.]),
+		};
+		(entry_point, secondary, content, Parameters { values, ..Default::default() })
+	}
+
 	fn upload(device: &wgpu::Device, queue: &wgpu::Queue, pass: AdjustmentPass) -> Self {
 		let table = |width: usize, height: usize, entries: &mut dyn Iterator<Item = [f32; 4]>| {
 			let data: Vec<half::f16> = entries.flat_map(|entry| entry.map(half::f16::from_f32)).collect();
@@ -757,9 +844,7 @@ impl EffectTextures {
 	/// The passes that carry out a run of adjustments, baking and uploading their tables only when the run hasn't been seen recently.
 	/// A new run is likely changing every frame, as when a slider drags, so its cubes start as quick drafts that a later render refines.
 	pub(crate) fn adjustment_passes(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, run: &[&Adjustment]) -> Arc<Vec<AdjustmentPassTextures>> {
-		let mut hasher = std::hash::DefaultHasher::new();
-		run.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
-		let hash = std::hash::Hasher::finish(&hasher);
+		let hash = adjustment_run_hash(run);
 
 		let bake = |cube_size: usize| {
 			let run: Vec<Adjustment> = run.iter().map(|&adjustment| adjustment.clone()).collect();
