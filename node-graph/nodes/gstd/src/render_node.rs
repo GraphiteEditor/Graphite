@@ -4,6 +4,7 @@ use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
+use graphic_types::Generator;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::scene::Scene;
@@ -33,6 +34,7 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<String>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,

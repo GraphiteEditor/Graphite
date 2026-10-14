@@ -3,6 +3,7 @@ use core::f64::consts::TAU;
 use core_types::list::{Item, List};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphic_types::Generator;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
@@ -24,6 +25,7 @@ fn repeat<T: Send + Clone + 'static>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<Context<'static>, Output = List<T>>,
@@ -69,6 +71,7 @@ fn repeat_array<T: Send + Clone + 'static>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<Context<'static>, Output = List<T>>,
@@ -130,6 +133,7 @@ fn repeat_radial<T: Send + Clone + 'static>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<Context<'static>, Output = List<T>>,
@@ -188,6 +192,7 @@ fn repeat_on_points<T: Send + Clone + 'static>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<Context<'static>, Output = List<T>>,

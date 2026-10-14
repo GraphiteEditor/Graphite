@@ -7,6 +7,7 @@ pub mod color_lookup_table;
 pub mod effects;
 pub mod generator;
 pub mod graphic;
+pub(crate) mod parameters;
 pub mod raster_effects;
 pub mod value_effects;
 
@@ -20,6 +21,7 @@ pub use adjustment::Adjustment;
 pub use appearance::{Appearance, Cover, CoverPlacement, Coverage, FillAndStroke, stamp_coverage};
 pub use artboard::Artboard;
 pub use effects::{Effect, EffectKind, EffectOperation, Effects, stamp_effect};
+pub use generator::Generator;
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 pub use raster_effects::evaluate_raster_effects;
 pub use value_effects::{evaluate_color_effects, evaluate_gradient_effects};

@@ -59,6 +59,10 @@ pub mod gradient {
 	pub use vector_types::{Gradient, GradientStop};
 }
 
+pub mod generator {
+	pub use graphic_types::generator::*;
+}
+
 pub mod transform {
 	pub use core_types::transform::*;
 	pub use vector_types::ReferencePoint;

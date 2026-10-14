@@ -1794,6 +1794,52 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// Noise Pattern and Mandelbrot once drew images cut off at a square, 100 units for a clipped Noise Pattern and 1 for Mandelbrot, where their
+	// patterns now fill the plane. An old Noise Pattern has a Clip toggle, after the primary input or first from before that input existed,
+	// and an old Mandelbrot lacks the primary input. Each takes the current inputs, with a square filled by its pattern where it was cut off.
+	let old_pattern_nodes = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let reference = document.network_interface.reference(node_id, &path)?;
+			let clipped = |clip_index: usize| !matches!(node.inputs.get(clip_index).and_then(|input| input.as_value()), Some(TaggedValue::Bool(false)));
+
+			if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) {
+				let starts_with_clip = matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::Bool(_)));
+				let clip_index = match node.inputs.len() {
+					16 => 1,
+					15 if starts_with_clip => 0,
+					_ => return None,
+				};
+				return Some((*node_id, path, reference, Some(clip_index), clipped(clip_index).then_some(100.)));
+			}
+			if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) && node.inputs.is_empty() {
+				return Some((*node_id, path, reference, None, Some(1.)));
+			}
+			None
+		})
+		.collect::<Vec<_>>();
+	for (node_id, network_path, reference, clip_index, clipped_size) in &old_pattern_nodes {
+		let Some(definition) = resolve_document_node_type(reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		// The noise settings follow the Clip toggle, in the same order as the current inputs after the primary one
+		if let Some(clip_index) = clip_index {
+			for (offset, input) in old_inputs.iter().skip(clip_index + 1).enumerate() {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1 + offset), input.clone(), network_path);
+			}
+		}
+
+		if let Some(size) = clipped_size {
+			fill_square_with_pattern(document, node_id, network_path, *size);
+		}
+	}
+
 	// Parameters that historically accepted fractional numbers are now integers (the polygon and star "Sides", the index,
 	// shift amount, and slice bound parameters of the list, string, and regex nodes, the "Path is Closed" index, and the
 	// "Blend" count), so a stored F64 truncates as those slots' own casts and Floor node did, preserving what documents drew
@@ -1845,6 +1891,76 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	// recorded leaves the opened document as the baseline rather than as a pile of changes to itself.
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();
+}
+
+/// Splices a rectangle filled with the pattern node's output onto the wires leaving it, covering the square from the origin of the pattern's space out to `size`.
+/// The rectangle is centered on its origin, so a Transform moves it onto the square, and the paint is moved back by the same amount to stay in place.
+fn fill_square_with_pattern(document: &mut DocumentMessageHandler, pattern_node_id: &NodeId, network_path: &[NodeId], size: f64) -> Option<()> {
+	let downstream_consumers: Vec<InputConnector> = document
+		.network_interface
+		.outward_wires(network_path)
+		.and_then(|wires| wires.get(&OutputConnector::node(*pattern_node_id, 0)))
+		.cloned()
+		.unwrap_or_default();
+	let was_in_chain = document.network_interface.is_chain(pattern_node_id, network_path);
+
+	let template = |identifier| resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier)).map(|definition| definition.default_node_template());
+	let rectangle_template = template(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)?;
+	let fill_template = template(graphene_std::vector_nodes::fill::IDENTIFIER)?;
+	let transform_template = template(graphene_std::transform_nodes::transform::IDENTIFIER)?;
+
+	let [rectangle_id, fill_id, paint_transform_id, placement_transform_id] = [(); 4].map(|_| NodeId::new());
+	document.network_interface.insert_node(rectangle_id, rectangle_template, network_path);
+	document.network_interface.insert_node(fill_id, fill_template, network_path);
+	document.network_interface.insert_node(paint_transform_id, transform_template.clone(), network_path);
+	document.network_interface.insert_node(placement_transform_id, transform_template, network_path);
+
+	let set_value = |document: &mut DocumentMessageHandler, node_id: NodeId, index: usize, value: TaggedValue| {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(value, false), network_path);
+	};
+	let wire = |document: &mut DocumentMessageHandler, node_id: NodeId, index: usize, source: NodeId| {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::node(source, 0), network_path);
+	};
+
+	// The rectangle's width and height, and the half-square translations of the paint and the filled rectangle
+	set_value(document, rectangle_id, 1, TaggedValue::Number(size));
+	set_value(document, rectangle_id, 2, TaggedValue::Number(size));
+	set_value(document, paint_transform_id, 1, TaggedValue::DVec2(DVec2::splat(-size / 2.)));
+	set_value(document, placement_transform_id, 1, TaggedValue::DVec2(DVec2::splat(size / 2.)));
+
+	wire(document, paint_transform_id, 0, *pattern_node_id);
+	wire(document, fill_id, 0, rectangle_id);
+	wire(document, fill_id, 1, paint_transform_id);
+	wire(document, placement_transform_id, 0, fill_id);
+	for consumer in &downstream_consumers {
+		document.network_interface.set_input(consumer, NodeInput::node(placement_transform_id, 0), network_path);
+	}
+
+	// A pattern in a layer chain gives way to the filled rectangle there, moving below to paint it, and otherwise the new nodes sit beside it
+	if was_in_chain {
+		document.network_interface.force_set_upstream_to_chain(&placement_transform_id, network_path);
+
+		if let Some(fill_position) = document.network_interface.position(&fill_id, network_path) {
+			document.network_interface.set_absolute_position(&paint_transform_id, fill_position + IVec2::new(-7, 3), network_path);
+			document.network_interface.set_absolute_position(pattern_node_id, fill_position + IVec2::new(-14, 3), network_path);
+		}
+	} else if let Some(position) = document.network_interface.position(pattern_node_id, network_path) {
+		let offsets = [
+			(paint_transform_id, IVec2::new(7, 0)),
+			(rectangle_id, IVec2::new(7, -3)),
+			(fill_id, IVec2::new(14, 0)),
+			(placement_transform_id, IVec2::new(21, 0)),
+		];
+		for (node_id, offset) in offsets {
+			document.network_interface.shift_absolute_node_position(&node_id, position + offset, network_path);
+		}
+	}
+
+	Some(())
 }
 
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
@@ -2696,20 +2812,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document
 				.network_interface
 				.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
-		}
-	}
-
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
-		for (i, input) in old_inputs.iter().enumerate() {
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i + 1), input.clone(), network_path);
 		}
 	}
 
@@ -4729,6 +4831,83 @@ mod tests {
 
 			let current_content = opened.network_interface.document_node(&current, &[]).map(|node| node.inputs[0].clone());
 			assert!(matches!(current_content, Some(NodeInput::Node { node_id, output_index: 0, .. }) if node_id == upstream), "{title}");
+		}
+	}
+
+	// Noise Pattern and Mandelbrot once drew a square of their patterns, which now fill the plane, so the square becomes a rectangle filled with the pattern
+	#[tokio::test]
+	async fn clipped_patterns_become_rectangles_filled_with_them() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let proto = |identifier| DefinitionIdentifier::ProtoNode(identifier);
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let noise = editor.create_node_by_name(proto(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER)).await;
+		let mandelbrot = editor.create_node_by_name(proto(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER)).await;
+		let noise_reader = editor.create_node_by_name(proto(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		let mandelbrot_reader = editor.create_node_by_name(proto(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+
+		let document = editor.active_document_mut();
+		for (reader, pattern) in [(noise_reader, noise), (mandelbrot_reader, mandelbrot)] {
+			document.network_interface.set_input(&InputConnector::node_at_index(reader, 0), NodeInput::node(pattern, 0), &[]);
+		}
+
+		// Save them as an older editor did, the Noise Pattern with its Clip toggle on and the Mandelbrot without a primary input
+		let mut noise_inputs = document.network_interface.document_node(&noise, &[]).unwrap().inputs.clone();
+		noise_inputs.insert(1, NodeInput::value(TaggedValue::Bool(true), false));
+		noise_inputs[2] = NodeInput::value(TaggedValue::Integer(7), false);
+		for (node_id, inputs) in [(noise, noise_inputs), (mandelbrot, Vec::new())] {
+			let mut legacy = NodeTemplate { inputs, ..Default::default() };
+			legacy.normalize_input_metadata();
+			document.network_interface.replace_inputs(&node_id, &[], &mut legacy);
+		}
+		let serialized = document.serialize_document();
+
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let interface = &opened.network_interface;
+		let input = |node_id: NodeId, index: usize| interface.document_node(&node_id, &[]).and_then(|node| node.inputs.get(index)).cloned();
+		let upstream = |node_id: NodeId, index: usize| input(node_id, index).and_then(|input| input.as_node());
+		let value = |node_id: NodeId, index: usize| input(node_id, index).and_then(|input| input.as_value().cloned());
+
+		// Each reader now reads a rectangle of the square's size, moved onto the square, filled with the pattern moved back by the same amount
+		for (reader, pattern, size) in [(noise_reader, noise, 100.), (mandelbrot_reader, mandelbrot, 1.)] {
+			let placement = upstream(reader, 0).expect("the reader should read the placement transform");
+			assert_eq!(value(placement, 1), Some(TaggedValue::DVec2(DVec2::splat(size / 2.))));
+
+			let fill = upstream(placement, 0).expect("the placement should move the filled rectangle");
+			let rectangle = upstream(fill, 0).expect("the fill should paint a rectangle");
+			assert_eq!((value(rectangle, 1), value(rectangle, 2)), (Some(TaggedValue::Number(size)), Some(TaggedValue::Number(size))));
+
+			let paint = upstream(fill, 1).expect("the fill should paint with the moved pattern");
+			assert_eq!(value(paint, 1), Some(TaggedValue::DVec2(DVec2::splat(-size / 2.))));
+			assert_eq!(upstream(paint, 0), Some(pattern));
+		}
+
+		// The noise settings shift down past the removed Clip toggle, and the Mandelbrot gains its primary input
+		assert_eq!(interface.document_node(&noise, &[]).unwrap().inputs.len(), 15);
+		assert_eq!(value(noise, 1), Some(TaggedValue::Integer(7)));
+		assert_eq!(interface.document_node(&mandelbrot, &[]).unwrap().inputs.len(), 1);
+	}
+
+	// The demo draws its patterns through layers and adjustments, which must all take the generators the patterns now are
+	#[tokio::test]
+	async fn marbled_mandelbrot_renders_after_migration() {
+		use crate::messages::portfolio::ingest::utility_types::IngestAction;
+		use crate::messages::prelude::IngestMessage;
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		let content = std::fs::read_to_string("../demo-artwork/marbled-mandelbrot.graphite").unwrap();
+		editor.editor.handle_message(IngestMessage::Ingest {
+			data: content.into_bytes(),
+			action: IngestAction::Open,
+			mime_type: String::new(),
+			path: Some("marbled-mandelbrot.graphite".into()),
+		});
+		if let Err(error) = editor.eval_graph_until_finished().await {
+			panic!("The migrated demo failed to render: {error}");
 		}
 	}
 }

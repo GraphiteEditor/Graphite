@@ -10,7 +10,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
 use graphic_types::evaluate_raster_effects;
-use graphic_types::generator::{GeneratorPattern, NoiseSettings};
+use graphic_types::generator::{Generator, NoiseSettings};
 use raster_types::Image;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
@@ -293,9 +293,8 @@ fn image(
 #[node_macro::node(category("Raster: Pattern"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
-	ctx: impl ExtractFootprint + Ctx,
+	_: impl Ctx,
 	_primary: (),
-	#[default(true)] clip: Item<bool>,
 	#[hard(0..)] seed: Item<i64>,
 	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_scale")]
 	#[default(10.)]
@@ -325,82 +324,32 @@ fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: Item<f64>,
-) -> Item<Raster<CPU>> {
-	let (clip, seed, scale, domain_warp_amplitude) = (*clip.element(), *seed.element(), *scale.element(), *domain_warp_amplitude.element());
-	let (fractal_octaves, fractal_lacunarity, fractal_gain) = (*fractal_octaves.element(), *fractal_lacunarity.element(), *fractal_gain.element());
-	let (fractal_weighted_strength, fractal_ping_pong_strength, cellular_jitter) = (*fractal_weighted_strength.element(), *fractal_ping_pong_strength.element(), *cellular_jitter.element());
-	let (noise_type, domain_warp_type, fractal_type) = (noise_type.into_element(), domain_warp_type.into_element(), fractal_type.into_element());
-	let (cellular_distance_function, cellular_return_type) = (cellular_distance_function.into_element(), cellular_return_type.into_element());
+) -> Item<Generator> {
+	let settings = NoiseSettings {
+		seed: seed.into_element(),
+		scale: scale.into_element(),
+		noise_type: noise_type.into_element(),
+		domain_warp_type: domain_warp_type.into_element(),
+		domain_warp_amplitude: domain_warp_amplitude.into_element(),
+		fractal_type: fractal_type.into_element(),
+		fractal_octaves: fractal_octaves.into_element(),
+		fractal_lacunarity: fractal_lacunarity.into_element(),
+		fractal_gain: fractal_gain.into_element(),
+		fractal_weighted_strength: fractal_weighted_strength.into_element(),
+		fractal_ping_pong_strength: fractal_ping_pong_strength.into_element(),
+		cellular_distance_function: cellular_distance_function.into_element(),
+		cellular_return_type: cellular_return_type.into_element(),
+		cellular_jitter: cellular_jitter.into_element(),
+	};
 
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-
-	let mut size = viewport_bounds.size();
-	let mut offset = viewport_bounds.start;
-	if clip {
-		// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
-		const CLIPPING_SQUARE_SIZE: f64 = 100.;
-		let image_bounds = Bbox::from_transform(DAffine2::from_scale(DVec2::splat(CLIPPING_SQUARE_SIZE))).to_axis_aligned_bbox();
-		let intersection = viewport_bounds.intersect(&image_bounds);
-
-		offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-		size = intersection.size();
-	}
-
-	// If the image would not be visible, return an empty image
-	if size.x <= 0. || size.y <= 0. {
-		return Item::default();
-	}
-
-	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-
-	let footprint_scale = footprint.scale();
-	let width = (size.x * footprint_scale.x) as u32;
-	let height = (size.y * footprint_scale.y) as u32;
-
-	let noise = GeneratorPattern::Noise(NoiseSettings {
-		seed,
-		scale,
-		noise_type,
-		domain_warp_type,
-		domain_warp_amplitude,
-		fractal_type,
-		fractal_octaves,
-		fractal_lacunarity,
-		fractal_gain,
-		fractal_weighted_strength,
-		fractal_ping_pong_strength,
-		cellular_distance_function,
-		cellular_return_type,
-		cellular_jitter,
-	});
-	let image = noise.render([offset, offset + size], width, height);
-
-	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
+	let mut generator = Item::new_from_element(Generator::Noise);
+	settings.stamp(&mut generator);
+	generator
 }
 
 #[node_macro::node(category("Raster: Pattern"), icon("NodeMandelbrot"))]
-fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-
-	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
-	let intersection = viewport_bounds.intersect(&image_bounds);
-	let size = intersection.size();
-
-	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-
-	// If the image would not be visible, return an empty image
-	if size.x <= 0. || size.y <= 0. {
-		return Item::default();
-	}
-
-	let scale = footprint.scale();
-	let width = (size.x * scale.x) as u32;
-	let height = (size.y * scale.y) as u32;
-	let image = GeneratorPattern::Mandelbrot.render([offset, offset + size], width, height);
-
-	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size))
+fn mandelbrot(_: impl Ctx, _primary: ()) -> Item<Generator> {
+	Item::new_from_element(Generator::Mandelbrot)
 }
 
 #[cfg(test)]

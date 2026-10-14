@@ -2,7 +2,7 @@ use core_types::list::Item;
 use core_types::{Color, Ctx};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, Graphic, Vector, evaluate_color_effects, stamp_effect};
+use graphic_types::{Effect, EffectOperation, Generator, Graphic, Vector, evaluate_color_effects, stamp_effect};
 use vector_types::Gradient;
 
 /// Blurs the input graphics, whether vector shapes, images, or text.
@@ -10,7 +10,7 @@ use vector_types::Gradient;
 fn blur<T>(
 	_: impl Ctx,
 	/// The content to blur.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// How far the blur spreads each point of the content.
 	#[unit(" px")]
@@ -40,7 +40,7 @@ fn blur<T>(
 fn drop_shadow<T>(
 	_: impl Ctx,
 	/// The content casting the shadow.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shadow's color, with its opacity.
 	#[default("#00000080")]
@@ -79,7 +79,7 @@ fn drop_shadow<T>(
 fn inner_shadow<T>(
 	_: impl Ctx,
 	/// The content the shadow falls inside.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shadow's color, with its opacity.
 	#[default("#00000080")]
@@ -118,7 +118,7 @@ fn inner_shadow<T>(
 fn outer_glow<T>(
 	_: impl Ctx,
 	/// The content to glow around.
-	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The glow's color, with its opacity.
 	#[default("#ffffbebf")]

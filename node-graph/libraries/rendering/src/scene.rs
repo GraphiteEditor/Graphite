@@ -1,3 +1,4 @@
+use graphic_types::generator::GeneratorPattern;
 use graphic_types::raster_types::{CPU, Raster, Texture};
 use graphic_types::{Adjustment, Effects};
 use kurbo::{Affine, BezPath, Rect, Shape, Stroke};
@@ -44,6 +45,8 @@ pub enum SceneCommand {
 	Pop,
 	/// Draws an image's rectangle of pixels, from the origin to its width and height, placed by `transform`.
 	DrawImage { image: SceneImage, transform: Affine },
+	/// Draws a generator's pattern, whose own space `transform` places, at the resolution and across the area the render needs.
+	DrawGenerator { pattern: GeneratorPattern, transform: Affine },
 }
 
 /// What a fill or stroke paints with.
@@ -243,6 +246,11 @@ impl Scene {
 		});
 	}
 
+	/// Draws a generator's pattern with its own space placed by `transform`.
+	pub fn draw_generator(&mut self, pattern: GeneratorPattern, transform: Affine) {
+		self.commands.push(SceneCommand::DrawGenerator { pattern, transform });
+	}
+
 	/// Draws a GPU texture's rectangle of pixels, from the origin to its width and height, placed by `transform`.
 	pub fn draw_texture(&mut self, texture: Texture, sampler: peniko::ImageSampler, transform: Affine) {
 		self.commands.push(SceneCommand::DrawImage {
@@ -309,6 +317,13 @@ impl Scene {
 			SceneCommand::Pop => SceneCommand::Pop,
 			SceneCommand::DrawImage { image, transform: command_transform } => SceneCommand::DrawImage {
 				image: image.clone(),
+				transform: transform * *command_transform,
+			},
+			SceneCommand::DrawGenerator {
+				pattern,
+				transform: command_transform,
+			} => SceneCommand::DrawGenerator {
+				pattern: pattern.clone(),
 				transform: transform * *command_transform,
 			},
 		}));

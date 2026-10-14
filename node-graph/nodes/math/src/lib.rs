@@ -6,7 +6,7 @@ use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
 use core_types::{Context, Interrupt};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Artboard, Generator, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -1394,6 +1394,7 @@ fn switch<T: Send>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
@@ -1424,6 +1425,7 @@ fn switch<T: Send>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,

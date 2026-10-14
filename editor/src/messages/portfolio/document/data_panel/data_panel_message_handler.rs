@@ -10,6 +10,7 @@ use graphene_std::animation::RealTimeMode;
 use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::format_f64;
+use graphene_std::generator::Generator;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
@@ -191,6 +192,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
+		List<Generator>,
 		List<String>,
 		List<f64>,
 		List<i64>,
@@ -246,6 +248,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<Raster<GPU>>,
 		Item<Color>,
 		Item<Gradient>,
+		Item<Generator>,
 		Item<String>,
 		Item<f64>,
 		Item<i64>,
@@ -647,6 +650,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(item) => item.identifier(),
 			Self::Color(item) => item.identifier(),
 			Self::Gradient(item) => item.identifier(),
+			Self::Generator(item) => item.identifier(),
 			Self::Text(item) => item.identifier(),
 			Self::NoneList(list) => list.identifier(),
 			Self::GraphicList(list) => list.identifier(),
@@ -655,6 +659,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPUList(list) => list.identifier(),
 			Self::ColorList(list) => list.identifier(),
 			Self::GradientList(list) => list.identifier(),
+			Self::GeneratorList(list) => list.identifier(),
 			Self::TextList(list) => list.identifier(),
 			Self::StrokeList(list) => list.identifier(),
 		}
@@ -672,6 +677,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPU(item) => item.layout_with_breadcrumb(data),
 			Self::Color(item) => item.layout_with_breadcrumb(data),
 			Self::Gradient(item) => item.layout_with_breadcrumb(data),
+			Self::Generator(item) => item.layout_with_breadcrumb(data),
 			Self::Text(item) => item.layout_with_breadcrumb(data),
 			Self::NoneList(list) => list.layout_with_breadcrumb(data),
 			Self::GraphicList(list) => list.layout_with_breadcrumb(data),
@@ -680,6 +686,7 @@ impl TableItemLayout for Graphic {
 			Self::RasterGPUList(list) => list.layout_with_breadcrumb(data),
 			Self::ColorList(list) => list.layout_with_breadcrumb(data),
 			Self::GradientList(list) => list.layout_with_breadcrumb(data),
+			Self::GeneratorList(list) => list.layout_with_breadcrumb(data),
 			Self::TextList(list) => list.layout_with_breadcrumb(data),
 			Self::StrokeList(list) => list.layout_with_breadcrumb(data),
 		}
@@ -1004,6 +1011,7 @@ impl_table_item_layout_for_choice_enum!(
 	BlendMode,
 	Cover,
 	EffectKind,
+	Generator,
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
@@ -1149,9 +1157,11 @@ macro_rules! known_item_types {
 			List<Raster<GPU>>,
 			List<Color>,
 			List<Gradient>,
+			List<Generator>,
 			List<String>,
 			List<f64>,
 			Gradient,
+			Generator,
 			Color,
 			NodeId,
 			DAffine2,

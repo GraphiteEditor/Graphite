@@ -1,6 +1,8 @@
 use crate::vello_effects::{AdjustmentPassTextures, EffectPasses, EffectTextures, adjustment_run_hash};
-use glam::{DMat2, UVec2};
+use core_types::graphene_hash::CacheHash;
+use glam::{DMat2, DVec2, UVec2};
 use graphic_types::Adjustment;
+use graphic_types::generator::GeneratorPattern;
 use graphic_types::raster_types::{CPU, Raster};
 use rendering::scene::{EffectsGroup, Scene, SceneBrush, SceneCommand, SceneImage};
 use std::borrow::Cow;
@@ -18,6 +20,19 @@ const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// How many renders an image's texture survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
+
+/// The pixels across and down a generator's tile covers, besides the samples bordering it that let neighboring tiles overlap seamlessly.
+const GENERATOR_TILE_PIXELS: u32 = 256;
+
+/// The samples bordering each side of a generator's tile, and how many of them its neighbor's drawing overlaps.
+const GENERATOR_TILE_BORDER: u32 = 2;
+const GENERATOR_TILE_OVERLAP: u32 = 1;
+
+/// The most tiles of generators kept between renders, past which the least recently drawn are freed.
+const MAX_CACHED_GENERATOR_TILES: usize = 256;
+
+/// The most tiles one generator draws in a render, past which larger tiles render at a lower resolution, as for a view skewed far along one axis.
+const MAX_GENERATOR_TILES_PER_DRAW: f64 = 256.;
 
 /// How many times a render with too much content for Vello GPU is halved, reaching areas 1/4096 the size of the original.
 const MAX_SPLIT_DEPTH: u32 = 12;
@@ -356,6 +371,7 @@ impl RenderContext<'_> {
 					let (width, height) = resolved.texture_size;
 					target.fill_rect(&Rect::new(0., 0., width as f64, height as f64));
 				}
+				SceneCommand::DrawGenerator { pattern, transform: local_transform } => self.draw_generator(recording, pattern, transform * *local_transform, viewport),
 			}
 		}
 
@@ -387,6 +403,74 @@ impl RenderContext<'_> {
 		texture_bindings.insert(texture_id, view);
 
 		Some(resolved)
+	}
+
+	/// Draws a generator's pattern across the part of the `viewport` it covers, as tiles each rendered on the CPU the first time it's seen.
+	/// The tiles span a power of two of the pattern's units, so a pan reuses them, as does a zoom until the scale nears the next power.
+	fn draw_generator(&mut self, recording: &mut Recording, pattern: &GeneratorPattern, local_to_device: Affine, viewport: Rect) {
+		let [a, b, c, d, _, _] = local_to_device.as_coeffs();
+		let determinant = a * d - b * c;
+		if !determinant.is_normal() {
+			return;
+		}
+
+		// The part of the pattern's space in view
+		let visible = local_to_device.inverse().transform_rect_bbox(viewport);
+		if visible.width() <= 0. || visible.height() <= 0. {
+			return;
+		}
+
+		// The tile size nearest to a tile's pixels in view, grown if the view would otherwise need too many
+		let pixels_per_unit = determinant.abs().sqrt();
+		let tile_span = |level: i32| 2_f64.powi(-level);
+		let tile_range = |start: f64, end: f64, span: f64| (start / span).floor() as i64..(end / span).ceil() as i64;
+		let tile_count = |level: i32| {
+			let span = tile_span(level);
+			(tile_range(visible.x0, visible.x1, span).count() * tile_range(visible.y0, visible.y1, span).count()) as f64
+		};
+		let mut level = (pixels_per_unit / GENERATOR_TILE_PIXELS as f64).log2().round() as i32;
+		while tile_count(level) > MAX_GENERATOR_TILES_PER_DRAW {
+			level -= 1;
+		}
+		let span = tile_span(level);
+		let texel = span / GENERATOR_TILE_PIXELS as f64;
+
+		let mut hasher = std::hash::DefaultHasher::new();
+		pattern.cache_hash(&mut hasher);
+		let pattern_hash = std::hash::Hasher::finish(&hasher);
+
+		let (border, overlap) = (GENERATOR_TILE_BORDER as f64, GENERATOR_TILE_OVERLAP as f64);
+		let pixels_with_border = GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER;
+		for row in tile_range(visible.y0, visible.y1, span) {
+			for column in tile_range(visible.x0, visible.x1, span) {
+				// The tile's samples, including its border, from this corner of the pattern's space
+				let corner = DVec2::new(column as f64, row as f64) * span - border * texel;
+				let render = || pattern.render([corner, corner + DVec2::splat(pixels_with_border as f64 * texel)], pixels_with_border, pixels_with_border);
+
+				let tile = GeneratorTile {
+					pattern: pattern_hash,
+					level,
+					column,
+					row,
+				};
+				let Some(image_texture) = self.canvas.images.prepare_generator_tile(self.device, self.queue, tile, || Raster::new_cpu(render())) else {
+					continue;
+				};
+				recording.texture_bindings.insert(image_texture.texture_id, image_texture.view.clone());
+				let resolved = image_texture.paint_source(image_texture.texture_id);
+
+				// Drawn across the tile and part of its border, overlapping its neighbors' identical samples so no seam shows between them
+				let texels_to_device = local_to_device * Affine::translate((corner.x, corner.y)) * Affine::scale(texel);
+				recording.scene.set_transform(texels_to_device * resolved.texture_to_image);
+				recording.scene.set_paint(PaintType::Image(Image {
+					image: resolved.source,
+					sampler: peniko::ImageSampler::new(),
+				}));
+				recording.scene.set_paint_transform(Affine::IDENTITY);
+				let (start, end) = (border - overlap, border + GENERATOR_TILE_PIXELS as f64 + overlap);
+				recording.scene.fill_rect(&Rect::new(start, start, end, end));
+			}
+		}
 	}
 
 	/// Renders an effects group's `content` offscreen, carries out its effects there, and draws the result in place of the content.
@@ -567,12 +651,24 @@ fn set_paint(target: &mut vello_gpu::Scene, brush: &SceneBrush, resolve_image: &
 	Some(Affine::IDENTITY)
 }
 
-/// Identifies the pixels behind an image texture: a blob of CPU pixels, or a GPU texture.
+/// Identifies the pixels behind an image texture: a blob of CPU pixels, a GPU texture, or a tile of a generator's pattern.
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum ImageKey {
 	Blob(u64),
 	Raster(u64),
 	Texture(wgpu::Texture),
+	GeneratorTile(GeneratorTile),
+}
+
+/// One tile of a generator's pattern, from a grid in the pattern's space whose tiles span a power of two of units.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct GeneratorTile {
+	/// Identifies the pattern by the hash of its settings.
+	pattern: u64,
+	/// The tiles span `2^-level` units, so a tile is about the same number of pixels in view at any zoom.
+	level: i32,
+	column: i64,
+	row: i64,
 }
 
 /// A premultiplied copy of an image's pixels that Vello GPU samples as an external texture.
@@ -656,27 +752,48 @@ impl ImageTextures {
 					(premultiplied, Affine::IDENTITY)
 				}
 			};
-			let size = (u16::try_from(texture.width()).ok()?, u16::try_from(texture.height()).ok()?);
-
-			self.textures.insert(
-				key.clone(),
-				ImageTexture {
-					texture_id: TextureId(self.next_texture_id),
-					view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
-					mip_level_count: texture.mip_level_count() as u8,
-					texture,
-					size,
-					texture_to_image,
-					last_used: self.render_count,
-					adjusted: Vec::new(),
-				},
-			);
-			self.next_texture_id += 1;
+			self.insert(key.clone(), texture, texture_to_image)?;
 		}
 
 		let image_texture = self.textures.get_mut(&key)?;
 		image_texture.last_used = self.render_count;
 		Some(image_texture)
+	}
+
+	/// The texture of one tile of a generator's pattern, with `render` making its pixels the first time it's drawn.
+	fn prepare_generator_tile(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, tile: GeneratorTile, render: impl FnOnce() -> Raster<CPU>) -> Option<&ImageTexture> {
+		let key = ImageKey::GeneratorTile(tile);
+
+		if !self.textures.contains_key(&key) {
+			let (pixels, width, height) = render().to_flat_u8();
+			let (texture, texture_to_image) = upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha)?;
+			self.insert(key.clone(), texture, texture_to_image)?;
+		}
+
+		let image_texture = self.textures.get_mut(&key)?;
+		image_texture.last_used = self.render_count;
+		Some(image_texture)
+	}
+
+	fn insert(&mut self, key: ImageKey, texture: wgpu::Texture, texture_to_image: Affine) -> Option<()> {
+		let size = (u16::try_from(texture.width()).ok()?, u16::try_from(texture.height()).ok()?);
+
+		self.textures.insert(
+			key,
+			ImageTexture {
+				texture_id: TextureId(self.next_texture_id),
+				view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
+				mip_level_count: texture.mip_level_count() as u8,
+				texture,
+				size,
+				texture_to_image,
+				last_used: self.render_count,
+				adjusted: Vec::new(),
+			},
+		);
+		self.next_texture_id += 1;
+
+		Some(())
 	}
 
 	/// The copy of the texture of the `raster` already prepared, with the `run` of adjustments carried out on it, made with the run's latest tables.
@@ -750,6 +867,18 @@ impl ImageTextures {
 
 		self.textures.retain(|_, image_texture| in_use(image_texture.last_used));
 		self.textures.values_mut().for_each(|image_texture| image_texture.adjusted.retain(|copy| in_use(copy.last_used)));
+
+		// Panning and zooming across a generator leaves tiles behind faster than they go unused for long, so the least recent beyond a limit are freed too
+		let mut tile_ages: Vec<u64> = (self.textures.iter())
+			.filter(|(key, _)| matches!(key, ImageKey::GeneratorTile(_)))
+			.map(|(_, image_texture)| image_texture.last_used)
+			.collect();
+		if tile_ages.len() > MAX_CACHED_GENERATOR_TILES {
+			let excess = tile_ages.len() - MAX_CACHED_GENERATOR_TILES;
+			let (_, &mut oldest_kept, _) = tile_ages.select_nth_unstable(excess);
+			self.textures
+				.retain(|key, image_texture| !matches!(key, ImageKey::GeneratorTile(_)) || image_texture.last_used >= oldest_kept);
+		}
 	}
 }
 

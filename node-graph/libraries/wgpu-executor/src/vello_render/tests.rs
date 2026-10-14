@@ -763,3 +763,75 @@ fn adjusted_images_remake_one_copy_as_their_adjustments_change() {
 	executor.render_vello_scene_on_canvas(&mut canvas, &scene, DAffine2::IDENTITY, size).unwrap();
 	assert_eq!(copies(&canvas), 2);
 }
+
+/// A noise pattern with features a few units across.
+fn noise_pattern() -> graphic_types::generator::GeneratorPattern {
+	use graphic_types::generator::*;
+
+	GeneratorPattern::Noise(NoiseSettings {
+		seed: 11,
+		scale: 6.,
+		noise_type: NoiseType::OpenSimplex2,
+		domain_warp_type: DomainWarpType::None,
+		domain_warp_amplitude: 0.,
+		fractal_type: FractalType::FBm,
+		fractal_octaves: 3,
+		fractal_lacunarity: 2.,
+		fractal_gain: 0.5,
+		fractal_weighted_strength: 0.,
+		fractal_ping_pong_strength: 2.,
+		cellular_distance_function: CellularDistanceFunction::Euclidean,
+		cellular_return_type: CellularReturnType::Nearest,
+		cellular_jitter: 1.,
+	})
+}
+
+#[test]
+fn generators_draw_their_pattern_at_the_resolution_in_view() {
+	use graphic_types::raster_types::Raster;
+
+	// Each unit of the pattern drawn across two pixels, so its tiles sample the pattern at every pixel's center
+	let size = UVec2::new(80, 80);
+	let pattern = noise_pattern();
+	let mut scene = Scene::new();
+	scene.draw_generator(pattern.clone(), Affine::translate((8., 8.)) * Affine::scale(2.));
+	let Some(pixels) = render(&scene, size) else { return };
+
+	let (expected, _, _) = Raster::new_cpu(pattern.render([glam::DVec2::ZERO, glam::DVec2::splat(32.)], 64, 64)).to_flat_u8();
+	let mut worst = 0;
+	for y in 0..64 {
+		for x in 0..64 {
+			let gpu = pixel(&pixels, size, x + 8, y + 8);
+			let cpu = &expected[((y * 64 + x) * 4) as usize..][..4];
+			worst = (0..3).map(|channel| gpu[channel].abs_diff(cpu[channel])).fold(worst, u8::max);
+		}
+	}
+	assert!(worst <= 2, "the drawn pattern differs from the generator's own samples by up to {worst} levels");
+
+	// The pattern fills the plane, past the area compared
+	assert_eq!(pixel(&pixels, size, 2, 2)[3], 255);
+	assert_eq!(pixel(&pixels, size, 76, 76)[3], 255);
+}
+
+#[test]
+fn generator_tiles_are_reused_across_a_pan() {
+	let Some(executor) = executor() else { return };
+	let size = UVec2::new(512, 512);
+	let tiles = |canvas: &crate::VelloCanvas| canvas.images.textures.len();
+
+	// A pattern drawn two pixels to a unit, in tiles of 256 pixels, panned by part of a tile
+	let mut canvas = crate::VelloCanvas::default();
+	let draw = |offset: f64| {
+		let mut scene = Scene::new();
+		scene.draw_generator(noise_pattern(), Affine::translate((offset, 0.)) * Affine::scale(2.));
+		scene
+	};
+	executor.render_vello_scene_on_canvas(&mut canvas, &draw(0.), DAffine2::IDENTITY, size).unwrap();
+	let first = tiles(&canvas);
+	executor.render_vello_scene_on_canvas(&mut canvas, &draw(0.), DAffine2::IDENTITY, size).unwrap();
+	assert_eq!(tiles(&canvas), first, "drawing the same view again renders no tiles");
+
+	executor.render_vello_scene_on_canvas(&mut canvas, &draw(-100.), DAffine2::IDENTITY, size).unwrap();
+	let panned = tiles(&canvas) - first;
+	assert!(panned < first, "panning renders only the tiles newly in view, not all {first} again (rendered {panned})");
+}
