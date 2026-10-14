@@ -1,6 +1,6 @@
 //! The long-lived process that owns the browser, which `start` runs in the background and every later invocation connects to.
 
-use graphite_editor_control_protocol::{ClientMessage, Command, CommandResult, HostMessage, PROTOCOL_VERSION};
+use control_protocol::{ClientMessage, Command, CommandResult, HostMessage, PROTOCOL_VERSION};
 use interprocess::local_socket::{ListenerOptions, Stream, prelude::*};
 use std::io::BufReader;
 use std::sync::{Arc, Mutex, PoisonError};
