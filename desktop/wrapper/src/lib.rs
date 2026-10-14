@@ -14,6 +14,7 @@ pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use graphite_editor::document_store::{DocumentStore, FolderStore};
 pub use graphite_editor::task::{Spawn, Task};
 pub use wgpu_executor::Texture;
+pub use wgpu_executor::VelloSceneBuilder;
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;

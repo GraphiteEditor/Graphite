@@ -10,12 +10,14 @@ use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
+use crate::messages::viewport::ToPhysical;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
+use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
@@ -24,8 +26,7 @@ use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use vello::Scene;
-use vello::peniko;
+use vello_gpu::peniko;
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -226,7 +227,7 @@ impl Clone for OverlayContext {
 	}
 }
 
-// Manual implementations since Scene doesn't implement PartialEq or Debug
+// Manual implementations since VelloSceneBuilder doesn't implement PartialEq or Debug
 impl PartialEq for OverlayContext {
 	fn eq(&self, other: &Self) -> bool {
 		self.viewport == other.viewport && self.visibility_settings == other.visibility_settings
@@ -236,14 +237,14 @@ impl PartialEq for OverlayContext {
 impl std::fmt::Debug for OverlayContext {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OverlayContext")
-			.field("scene", &"Scene { ... }")
+			.field("scene", &"VelloSceneBuilder { ... }")
 			.field("viewport", &self.viewport)
 			.field("visibility_settings", &self.visibility_settings)
 			.finish()
 	}
 }
 
-// Default implementation for Scene
+// Default implementation for VelloSceneBuilder
 impl Default for OverlayContext {
 	fn default() -> Self {
 		Self {
@@ -269,9 +270,10 @@ impl OverlayContext {
 		}
 	}
 
-	pub fn take_scene(self) -> Scene {
+	pub fn take_scene(self) -> VelloSceneBuilder {
 		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		std::mem::take(&mut internal.scene)
+		let empty_scene = overlay_scene(&internal.viewport);
+		std::mem::replace(&mut internal.scene, empty_scene)
 	}
 
 	fn internal(&'_ self) -> MutexGuard<'_, OverlayContextInternal> {
@@ -484,9 +486,18 @@ pub enum DrawHandles {
 }
 
 pub(super) struct OverlayContextInternal {
-	scene: Scene,
+	scene: VelloSceneBuilder,
 	viewport: ViewportMessageHandler,
 	visibility_settings: OverlaysVisibilitySettings,
+}
+
+/// An empty scene covering the viewport's physical pixels, matching the resolution the viewport renders at.
+fn overlay_scene(viewport: &ViewportMessageHandler) -> VelloSceneBuilder {
+	// The smallest texture size limit WebGL2 guarantees, which only matters for the overlays' tiny pattern images
+	const MAX_TEXTURE_SIZE: u32 = 2048;
+
+	let size = viewport.size().to_physical().into_dvec2().round().max(DVec2::ONE).min(DVec2::splat(u16::MAX as f64));
+	VelloSceneBuilder::new(size.x as u16, size.y as u16, Affine::IDENTITY, MAX_TEXTURE_SIZE)
 }
 
 impl Default for OverlayContextInternal {
@@ -498,7 +509,7 @@ impl Default for OverlayContextInternal {
 impl OverlayContextInternal {
 	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
-			scene: Scene::new(),
+			scene: overlay_scene(&viewport),
 			viewport,
 			visibility_settings,
 		}

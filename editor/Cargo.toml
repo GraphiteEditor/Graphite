@@ -51,7 +51,7 @@ usvg = { workspace = true }
 simplecss = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
-vello = { workspace = true }
+vello_gpu = { workspace = true }
 base64 = { workspace = true }
 image = { workspace = true }
 color = { workspace = true }
