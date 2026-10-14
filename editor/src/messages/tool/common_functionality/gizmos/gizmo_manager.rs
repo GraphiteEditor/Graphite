@@ -12,6 +12,7 @@ use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonG
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::spiral_shape::SpiralGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use glam::DVec2;
 use std::collections::VecDeque;
 
@@ -89,14 +90,14 @@ impl ShapeGizmoHandlers {
 	}
 
 	/// Updates the gizmo state while the user is dragging a handle (e.g., adjusting radius).
-	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		match self {
-			Self::Star(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Polygon(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Circle(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
-			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Star(h) => h.handle_update(drag_start, view, snap_session, responses),
+			Self::Polygon(h) => h.handle_update(drag_start, view, snap_session, responses),
+			Self::Arc(h) => h.handle_update(drag_start, view, snap_session, responses),
+			Self::Circle(h) => h.handle_update(drag_start, view, snap_session, responses),
+			Self::Grid(h) => h.handle_update(drag_start, view, snap_session, responses),
+			Self::Spiral(h) => h.handle_update(drag_start, view, snap_session, responses),
 			Self::None => {}
 		}
 	}
@@ -269,9 +270,9 @@ impl GizmoManager {
 	}
 
 	/// Passes drag update data to the active gizmo to update shape parameters live.
-	pub fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if let Some(handle) = &mut self.active_shape_handler {
-			handle.handle_update(drag_start, document, input, responses);
+			handle.handle_update(drag_start, view, snap_session, responses);
 		}
 	}
 

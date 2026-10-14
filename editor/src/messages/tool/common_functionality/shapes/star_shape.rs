@@ -43,13 +43,13 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
+			self.number_of_points_dial.update_number_of_sides(view.document, view.input, responses, drag_start);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.point_radius_handle.update_inner_radius(view, snap_session, responses, drag_start);
 		}
 	}
 
