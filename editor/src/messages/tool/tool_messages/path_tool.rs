@@ -427,7 +427,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				}
 			},
 			ToolMessage::Path(PathToolMessage::SwapSelectedHandles) => {
-				if context.shape_editor.handle_with_pair_selected(&context.document.network_interface) {
+				// Holding Tab swaps once, not again with each repeat of the held key
+				if !context.input.key_repeat && context.shape_editor.handle_with_pair_selected(&context.document.network_interface) {
 					context.shape_editor.alternate_selected_handles(&context.document.network_interface);
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
@@ -4555,5 +4556,44 @@ mod test_path_tool {
 			let angle = (handle - curved).angle_to(end - curved);
 			assert!(angle.abs() < 1e-6, "the handle is {}° off the direction to the other neighbor", angle.to_degrees());
 		}
+	}
+
+	#[tokio::test]
+	async fn tab_during_a_handle_drag_swaps_the_dragged_handle_without_switching_tools() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Dragging out of the middle anchor gives it a handle on each side
+		let (start, middle, dragged_out, end) = (DVec2::new(100., 300.), DVec2::new(300., 200.), DVec2::new(380., 210.), DVec2::new(500., 320.));
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+		editor.move_mouse(middle.x, middle.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(middle.x, middle.y, ModifierKeys::empty()).await;
+		editor.move_mouse(dragged_out.x, dragged_out.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(dragged_out.x, dragged_out.y, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, end, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		// Selecting the anchor shows its handles, then one of them is dragged
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, middle, ModifierKeys::empty()).await;
+		press_at(&mut editor, dragged_out).await;
+		move_to(&mut editor, dragged_out + DVec2::new(20., 30.), ModifierKeys::empty()).await;
+		let dragged = selected_points(&editor);
+
+		editor.press(Key::Tab, ModifierKeys::empty()).await;
+		let active_tool = editor.editor.dispatcher.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
+		assert_eq!(active_tool, ToolType::Path, "Tab mid-drag should leave the Path tool active");
+		assert_ne!(selected_points(&editor), dragged, "Tab mid-drag should swap which handle is dragged");
+
+		// Holding Tab repeats its key press, which shouldn't swap back
+		let swapped = selected_points(&editor);
+		editor
+			.handle_message(InputPreprocessorMessage::KeyDown {
+				key: Key::Tab,
+				key_repeat: true,
+				modifier_keys: ModifierKeys::empty(),
+			})
+			.await;
+		assert_eq!(selected_points(&editor), swapped, "a repeat of the held Tab shouldn't swap the handles again");
 	}
 }

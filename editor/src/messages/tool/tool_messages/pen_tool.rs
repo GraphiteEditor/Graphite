@@ -311,7 +311,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				PointerMove,
 				FinalPosition
 			),
-			PenToolFsmState::DraggingHandle(_) | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
+			// Only a handle drag has handles to swap, so elsewhere Tab is left to the Select/Path toggle
+			PenToolFsmState::DraggingHandle(_) => actions!(PenToolMessageDiscriminant;
 				DragStart,
 				DragStop,
 				PointerMove,
@@ -320,6 +321,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				RemovePreviousHandle,
 				GRS,
 				SwapHandles
+			),
+			PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
+				DragStart,
+				DragStop,
+				PointerMove,
+				Confirm,
+				Abort,
+				RemovePreviousHandle,
+				GRS
 			),
 		}
 	}
@@ -2256,6 +2266,11 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::SwapHandles) => {
+				// Holding Tab swaps once, not again with each repeat of the held key
+				if input.key_repeat {
+					return self;
+				}
+
 				if !tool_data.handle_swapped {
 					tool_data.handle_swapped = true
 				}
@@ -2572,6 +2587,21 @@ mod test_pen_tool {
 
 			assert_path_shape(&editor, 2, 1);
 		}
+	}
+
+	#[tokio::test]
+	async fn tab_while_pulling_out_a_handle_keeps_the_pen_tool() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		editor.move_mouse(B.x, B.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(B.x, B.y, ModifierKeys::empty()).await;
+		editor.move_mouse(B.x + 60., B.y + 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.press(Key::Tab, ModifierKeys::empty()).await;
+
+		let active_tool = editor.editor.dispatcher.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
+		assert_eq!(active_tool, ToolType::Pen, "Tab mid-drag should swap the handles without leaving the Pen tool");
 	}
 
 	#[tokio::test]
