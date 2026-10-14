@@ -39,10 +39,13 @@ impl PaintTarget {
 pub trait RenderExt {
 	type Output;
 
+	/// `user_to_document` maps the user space the painted element sits in, before its `element_transform`, into the document, and the filters reading the element read it `paint_reach` past the view, in document pixels.
 	#[allow(clippy::too_many_arguments)]
 	fn render(
 		&self,
 		svg_defs: &mut String,
+		user_to_document: DAffine2,
+		paint_reach: f64,
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		stroke_transform: DAffine2,
@@ -70,6 +73,8 @@ impl RenderExt for List<Color> {
 	fn render(
 		&self,
 		_svg_defs: &mut String,
+		_user_to_document: DAffine2,
+		_paint_reach: f64,
 		_item_transform: DAffine2,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
@@ -176,6 +181,8 @@ impl RenderExt for List<Gradient> {
 	fn render(
 		&self,
 		svg_defs: &mut String,
+		_user_to_document: DAffine2,
+		_paint_reach: f64,
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		_stroke_transform: DAffine2,
@@ -200,6 +207,8 @@ impl RenderExt for Stroke {
 	fn render(
 		&self,
 		_svg_defs: &mut String,
+		_user_to_document: DAffine2,
+		_paint_reach: f64,
 		_item_transform: DAffine2,
 		_element_transform: DAffine2,
 		_stroke_transform: DAffine2,
@@ -259,6 +268,8 @@ impl RenderExt for Graphic {
 	fn render(
 		&self,
 		svg_defs: &mut String,
+		user_to_document: DAffine2,
+		paint_reach: f64,
 		item_transform: DAffine2,
 		element_transform: DAffine2,
 		stroke_transform: DAffine2,
@@ -270,13 +281,33 @@ impl RenderExt for Graphic {
 
 		match self {
 			Graphic::Color(item) => render_color_paint(faded_paint_color(ItemRef::Item(item), render_params.for_mask), target),
-			Graphic::ColorList(color_list) => color_list.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target),
+			Graphic::ColorList(color_list) => color_list.render(
+				svg_defs,
+				user_to_document,
+				paint_reach,
+				item_transform,
+				element_transform,
+				stroke_transform,
+				bounds,
+				render_params,
+				target,
+			),
 			Graphic::Gradient(item) => render_gradient_paint(Some(ItemRef::Item(item)), svg_defs, item_transform, element_transform, render_params.for_mask)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			// One gradient resolves to a paint server; stacking several needs them composited, which only the pattern below can do
 			Graphic::GradientList(gradient_list) if gradient_list.len() <= 1 => gradient_list
-				.render(svg_defs, item_transform, element_transform, stroke_transform, bounds, render_params, target)
+				.render(
+					svg_defs,
+					user_to_document,
+					paint_reach,
+					item_transform,
+					element_transform,
+					stroke_transform,
+					bounds,
+					render_params,
+					target,
+				)
 				.map(|gradient_id| format!(r##" {paint_attr}="url(#{gradient_id})""##))
 				.unwrap_or_else(|| format!(r#" {paint_attr}="none""#)),
 			Graphic::None(_) | Graphic::NoneList(_) => format!(r#" {paint_attr}="none""#),
@@ -284,10 +315,12 @@ impl RenderExt for Graphic {
 			| Graphic::Vector(_)
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::GradientList(_)
 			| Graphic::TextList(_)
@@ -302,7 +335,8 @@ impl RenderExt for Graphic {
 				} else {
 					bounds
 				};
-				render_svg_pattern(svg_defs, self, stroke_transform, bounds, render_params)
+				let content_to_document = user_to_document * element_transform * stroke_transform;
+				render_svg_pattern(svg_defs, self, content_to_document, paint_reach, stroke_transform, bounds, render_params)
 					.map(|id| format!(r##" {paint_attr}="url(#{id})""##))
 					.unwrap_or_else(|| format!(r#" {paint_attr}="none""#))
 			}
@@ -312,7 +346,16 @@ impl RenderExt for Graphic {
 
 /// Emits an SVG `<pattern>` paint server into `svg_defs` that renders the given graphic as the paint content, and returns the pattern ID.
 /// Currently, this function is only used for clipping-based filling and stroking, not considering tiling yet.
-fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: DAffine2, bounds: DAffine2, render_params: &RenderParams) -> Option<String> {
+/// `content_to_document` maps the paint's own space, which `stroke_transform` places inside the painted element's `element_transform`, into the document, and the filters reading the element read it `paint_reach` past the view.
+fn render_svg_pattern(
+	svg_defs: &mut String,
+	paint: &Graphic,
+	content_to_document: DAffine2,
+	paint_reach: f64,
+	stroke_transform: DAffine2,
+	bounds: DAffine2,
+	render_params: &RenderParams,
+) -> Option<String> {
 	let min = bounds.transform_point2(DVec2::ZERO);
 	let max = bounds.transform_point2(DVec2::ONE);
 	let size = max - min;
@@ -322,6 +365,8 @@ fn render_svg_pattern(svg_defs: &mut String, paint: &Graphic, stroke_transform: 
 
 	// Render the pattern content recursively
 	let mut content = SvgRender::new();
+	content.transform = content_to_document;
+	content.ancestors_reach = paint_reach;
 	paint.render_svg(&mut content, &render_params.for_pattern());
 
 	// Unwrap the inner def element

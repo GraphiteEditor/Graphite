@@ -5,6 +5,7 @@ use core_types::transform::Footprint;
 use core_types::{Color, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphene_animation::AnimationCurve;
+use graphic_types::Generator;
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -30,6 +31,7 @@ fn context_modification<T>(
 		Context -> Item<Color>,
 		Context -> Item<Artboard>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<NodeIdPath>,
 		Context -> Item<AttributeValueDyn>,
 		Context -> Item<AnimationCurve>,
@@ -43,6 +45,7 @@ fn context_modification<T>(
 		Context -> List<Color>,
 		Context -> List<Artboard>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<AnimationCurve>,
 		Context -> ListDyn,
 	)]

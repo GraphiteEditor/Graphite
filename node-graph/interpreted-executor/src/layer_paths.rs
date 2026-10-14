@@ -313,4 +313,12 @@ mod tests {
 
 		assert_eq!(network, unchanged);
 	}
+
+	// The writer has to take every graphic type, or nodes taking any graphic, like these, lose the layer path of everything they output
+	#[test]
+	fn nodes_taking_any_graphic_carry_a_layer_path() {
+		for identifier in [graphene_std::transform_nodes::transform::IDENTIFIER, graphene_std::blending_nodes::opacity::IDENTIFIER] {
+			assert!(matches!(output_can_carry_layer_path(&identifier), CarriesLayerPath::Always), "{identifier:?} should carry a layer path");
+		}
+	}
 }
