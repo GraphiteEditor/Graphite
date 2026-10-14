@@ -59,6 +59,15 @@ pub enum Highlight {
 	Box { layer: LayerId },
 }
 
+/// Two gaps a spacing candidate makes equal, for the presenter to draw.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MatchedGaps {
+	/// The length both gaps have.
+	pub gap: f64,
+	/// Each gap as the two facing positions it spans, in the work plane.
+	pub spans: [[DVec2; 2]; 2],
+}
+
 /// One way a feature could snap.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Candidate {
@@ -67,6 +76,7 @@ pub struct Candidate {
 	pub highlight: Option<Highlight>,
 	/// A position the relationship is measured from, such as the point being aligned with, for the presenter to connect to the feature.
 	pub reference: Option<DVec2>,
+	pub gaps: Option<MatchedGaps>,
 }
 
 impl Candidate {
@@ -76,6 +86,7 @@ impl Candidate {
 			shape: Shape::Spot(position),
 			highlight: None,
 			reference: None,
+			gaps: None,
 		}
 	}
 
@@ -85,6 +96,7 @@ impl Candidate {
 			shape: Shape::Track(locus),
 			highlight: None,
 			reference: None,
+			gaps: None,
 		}
 	}
 
@@ -94,5 +106,9 @@ impl Candidate {
 
 	pub fn with_reference(self, reference: DVec2) -> Self {
 		Self { reference: Some(reference), ..self }
+	}
+
+	pub fn with_gaps(self, gaps: MatchedGaps) -> Self {
+		Self { gaps: Some(gaps), ..self }
 	}
 }
