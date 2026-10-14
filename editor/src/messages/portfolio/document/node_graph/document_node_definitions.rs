@@ -1001,14 +1001,13 @@ fn static_input_inspector() -> InputInspector {
 		// The custom number input settings are only available on proto nodes
 		"optional_f64".to_string(),
 		Box::new(|node_id, index, context| {
-			let node_metadata = registry::NODE_METADATA.lock().unwrap();
 			let mut number_input = NumberInput::default();
+			// The field is cloned so the lock is released before building the row below, which locks the node metadata again
 			if let Some(field) = context
 				.network_interface
 				.implementation(&node_id, context.selection_network_path)
 				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
-				.and_then(|proto_node_identifier| node_metadata.get(proto_node_identifier))
-				.and_then(|metadata| metadata.fields.get(index))
+				.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().unwrap().get(proto_node_identifier)?.fields.get(index).cloned())
 			{
 				if let Some(unit) = field.unit {
 					number_input = number_input.unit(unit);
@@ -1721,6 +1720,19 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+	}
+
+	// Guards the `optional_f64` widget override against holding the node metadata lock while building rows that lock it again
+	#[tokio::test]
+	async fn optional_f64_inspector_row_builds() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let node_id = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::qr_code::IDENTIFIER))
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }).await;
+		editor.handle_message(InspectorMessage::Refresh).await;
 	}
 }
 
