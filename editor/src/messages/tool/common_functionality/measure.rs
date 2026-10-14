@@ -71,6 +71,11 @@ impl Marks {
 	}
 
 	fn measured(&mut self, from: [f64; 2], to: [f64; 2], side: Side) {
+		// Edges the boxes share have no distance between them to show
+		if from == to {
+			return;
+		}
+
 		let side = if self.swapped { side.transposed() } else { side };
 		let mark = Mark::Measured {
 			from: self.point(from),
@@ -249,6 +254,15 @@ fn edges_within(a_min: f64, a_max: f64, b_min: f64, b_max: f64) -> u8 {
 	within(a_min) as u8 + within(a_max) as u8
 }
 
+/// Counts a span sharing one edge with the span it lies within as lying strictly within it.
+fn within_despite_a_shared_edge(crossings: (u8, u8)) -> (u8, u8) {
+	match crossings {
+		(2, 1) => (2, 0),
+		(1, 2) => (0, 2),
+		crossings => crossings,
+	}
+}
+
 /// The lines that measure the hovered box against the selected one, chosen by how the two boxes overlap.
 fn measurement_marks(selected: Rect, hovered: Rect) -> Vec<Mark> {
 	let (selected_min, selected_max) = (selected.min(), selected.max());
@@ -271,14 +285,20 @@ fn measurement_marks(selected: Rect, hovered: Rect) -> Vec<Mark> {
 		(false, true) if center_within_y => marks.with_axes_swapped(selected, hovered, apart_vertically_aligned),
 		(false, true) => marks.with_axes_swapped(selected, hovered, apart_vertically_offset),
 		(true, true) => {
-			let crossings_along_y = (
+			let crossings_along_y = within_despite_a_shared_edge((
 				edges_within(selected_min.y, selected_max.y, hovered_min.y, hovered_max.y),
 				edges_within(hovered_min.y, hovered_max.y, selected_min.y, selected_max.y),
-			);
-			let crossings_along_x = (
+			));
+			let crossings_along_x = within_despite_a_shared_edge((
 				edges_within(selected_min.x, selected_max.x, hovered_min.x, hovered_max.x),
 				edges_within(hovered_min.x, hovered_max.x, selected_min.x, selected_max.x),
-			);
+			));
+
+			// Identical spans along one axis take on the arrangement along the other, and identical boxes draw nothing
+			let (crossings_along_y, crossings_along_x) = match (crossings_along_y, crossings_along_x) {
+				((2, 2), other) | (other, (2, 2)) => (other, other),
+				pair => pair,
+			};
 
 			match (crossings_along_y, crossings_along_x) {
 				((1, 1), (1, 1)) => overlapping_corners(&mut marks, selected, hovered),
@@ -487,6 +507,30 @@ mod tests {
 		// Whether it is the hovered box or the selection
 		assert_eq!(measurement_marks(outer, inner), expected);
 		assert_eq!(measurement_marks(inner, outer), expected);
+	}
+
+	#[test]
+	fn boxes_sharing_an_edge_measure_only_the_edges_that_differ() {
+		// A header across the top of its artboard
+		let marks = measurement_marks(rect([0., 0.], [100., 100.]), rect([0., 0.], [100., 20.]));
+		assert_eq!(marks, vec![measured([50., 20.], [50., 100.], Side::Right)]);
+
+		// Within the other at a shared corner
+		let marks = measurement_marks(rect([0., 0.], [10., 10.]), rect([0., 0.], [20., 20.]));
+		assert_eq!(marks, vec![measured([10., 5.], [20., 5.], Side::Top), measured([5., 10.], [5., 20.], Side::Right)]);
+
+		// Just as wide and overlapping partway down
+		let marks = measurement_marks(rect([0., 0.], [10., 10.]), rect([0., 5.], [10., 15.]));
+		assert_eq!(marks, vec![measured([10., 0.], [10., 5.], Side::Right), measured([0., 10.], [0., 15.], Side::Left)]);
+
+		// Taller and sharing the selection's top while crossing its right side
+		let marks = measurement_marks(rect([0., 0.], [10., 10.]), rect([5., 0.], [15., 20.]));
+		let expected = vec![
+			measured([0., 0.], [5., 0.], Side::Top),
+			measured([0., 20.], [5., 20.], Side::Bottom),
+			measured([0., 20.], [0., 10.], Side::Left),
+		];
+		assert_eq!(marks, expected);
 	}
 
 	#[test]
