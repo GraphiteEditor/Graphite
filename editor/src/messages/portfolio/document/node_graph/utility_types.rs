@@ -183,6 +183,12 @@ pub struct NodeGraphErrorDiagnostic {
 	pub error: String,
 }
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeEvaluationError {
+	pub node_path: Vec<NodeId>,
+	pub message: String,
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct FrontendClickTargets {

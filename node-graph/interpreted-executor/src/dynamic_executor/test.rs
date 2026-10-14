@@ -898,3 +898,25 @@ fn a_trace_steps_over_the_index_of_a_promotion_adapter() {
 
 	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0, 0])), Some(NodeId(0)));
 }
+
+#[test]
+fn executor_panics_reach_the_host_with_the_original_payload() {
+	struct Panics;
+	impl core_types::Node<core_types::registry::AnyInput> for Panics {
+		type Output = core_types::registry::Any;
+		fn eval(&self, _: &core_types::registry::AnyInput) -> Poll<Self::Output> {
+			std::panic::panic_any(42_u32);
+		}
+	}
+
+	let mut executor = DynamicExecutor {
+		output: NodeId(0),
+		..Default::default()
+	};
+	let missing_output = (&executor).execute(()).unwrap_err();
+	assert_eq!(missing_output.to_string(), "Output node not found in executor");
+
+	executor.tree.store_node(NodeContainer::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
+	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (&executor).execute(()))).unwrap_err();
+	assert_eq!(*payload.downcast::<u32>().unwrap(), 42);
+}

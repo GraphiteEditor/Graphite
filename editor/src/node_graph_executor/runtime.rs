@@ -22,7 +22,7 @@ use graphene_std::runtime::AsyncRuntime;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic, Poll};
+use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
@@ -218,7 +218,27 @@ impl NodeRuntime {
 						render_config.export_format = ExportFormat::Svg;
 					}
 
-					let result = self.execute_network(render_config);
+					let mut result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.execute_network(render_config))) {
+						Ok(Ok(Poll::Pending)) => continue,
+						Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
+						Ok(Ok(Poll::Fallback(boxed))) => {
+							let (value, error) = *boxed;
+							ExecutionResult::Fallback(value, self.resolve_errors(&error))
+						}
+						Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
+						Ok(Err(error)) => ExecutionResult::Error(Box::new([(Arc::clone(NodeError::new(error).error()), Box::default())])),
+						Err(payload) => {
+							let response = ExecutionResponse {
+								execution_id,
+								result: ExecutionResult::Panic(payload),
+								responses: VecDeque::new(),
+								vector_modify: HashMap::new(),
+								inspect_result: None,
+							};
+							self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+							return None;
+						}
+					};
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					if !render_config.for_eyedropper {
@@ -229,88 +249,62 @@ impl NodeRuntime {
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
 
-					let (result, texture) = match result {
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata,
-						})) if render_config.for_export => {
-							let executor = self
-								.editor_api
-								.application_io
-								.as_ref()
-								.unwrap()
-								.gpu_executor()
-								.expect("GPU executor should be available when we receive a texture");
-
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
-
-							let (data, width, height) = raster_cpu.to_flat_u8();
-
-							(
-								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::Buffer { data, width, height },
-									metadata,
-								})),
-								None,
-							)
-						}
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata: _,
-						})) if render_config.for_eyedropper => {
-							let executor = self
-								.editor_api
-								.application_io
-								.as_ref()
-								.unwrap()
-								.gpu_executor()
-								.expect("GPU executor should be available when we receive a texture");
-
-							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
-
-							self.sender.send(NodeGraphUpdate::EyedropperPreview(raster_cpu)).expect("Failed to send response");
-							continue;
-						}
-						// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
-						_ if render_config.for_eyedropper => {
-							continue;
-						}
-						#[cfg(all(target_family = "wasm", feature = "gpu"))]
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata,
-						})) if !render_config.for_export => {
-							self.current_viewport_texture = Some(texture.clone());
-
-							let app_io = self.editor_api.application_io.as_ref().unwrap();
-							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
-
-							self.wasm_canvas_cache.present(&texture, executor);
-
-							let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
-							(
-								Ok(TaggedValue::RenderOutput(RenderOutput {
-									data: RenderOutputType::CanvasFrame {
-										canvas_id: self.wasm_canvas_cache.id(),
-										resolution: logical_resolution,
-									},
-									metadata,
-								})),
-								None,
-							)
-						}
-						Ok(TaggedValue::RenderOutput(RenderOutput {
-							data: RenderOutputType::Texture(texture),
-							metadata,
-						})) => (
-							Ok(TaggedValue::RenderOutput(RenderOutput {
-								data: RenderOutputType::Texture(texture.clone()),
-								metadata,
-							})),
-							Some(texture),
-						),
-						r => (r, None),
+					let output = match &mut result {
+						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
+						ExecutionResult::Error(_) | ExecutionResult::Panic(_) => None,
 					};
+					let texture = if let Some(TaggedValue::RenderOutput(RenderOutput { data, .. })) = output
+						&& let RenderOutputType::Texture(texture) = data
+					{
+						let texture = texture.clone();
+						if render_config.for_export || render_config.for_eyedropper {
+							let executor = self
+								.editor_api
+								.application_io
+								.as_ref()
+								.unwrap()
+								.gpu_executor()
+								.expect("GPU executor should be available when we receive a texture");
+
+							let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
+
+							if render_config.for_eyedropper {
+								self.sender.send(NodeGraphUpdate::EyedropperPreview(raster_cpu)).expect("Failed to send response");
+								continue;
+							}
+
+							let (buffer, width, height) = raster_cpu.to_flat_u8();
+							*data = RenderOutputType::Buffer { data: buffer, width, height };
+							None
+						} else {
+							#[cfg(all(target_family = "wasm", feature = "gpu"))]
+							{
+								self.current_viewport_texture = Some(texture.clone());
+
+								let app_io = self.editor_api.application_io.as_ref().unwrap();
+								let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
+
+								self.wasm_canvas_cache.present(&texture, executor);
+
+								let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
+								*data = RenderOutputType::CanvasFrame {
+									canvas_id: self.wasm_canvas_cache.id(),
+									resolution: logical_resolution,
+								};
+								None
+							}
+							#[cfg(not(all(target_family = "wasm", feature = "gpu")))]
+							{
+								Some(texture)
+							}
+						}
+					} else {
+						None
+					};
+					// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
+					if render_config.for_eyedropper {
+						continue;
+					}
 
 					let response = ExecutionResponse {
 						execution_id,
@@ -358,26 +352,36 @@ impl NodeRuntime {
 		result
 	}
 
-	fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
+	fn execute_network(&mut self, render_config: RenderConfig) -> Result<Poll<TaggedValue>, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		let state = match self.executor.input_type() {
+		match self.executor.input_type() {
 			Some(t) if t == concrete!(Context) => (&self.executor)
 				.execute(render_config.into_context_with_generations(self.async_runtime().snapshot()))
-				.map_err(|e| e.to_string())?,
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).map_err(|e| e.to_string())?,
-			Some(t) => return Err(format!("Invalid input type {t:?}")),
-			_ => return Err(format!("No input type:\n{:?}", self.node_graph_errors)),
-		};
-		match state {
-			Poll::Final(value) | Poll::Partial(value) => Ok(value),
-			Poll::Fallback(boxed) => {
-				let (value, error) = *boxed;
-				Ok(value)
-			}
-			Poll::Pending => Err("Node graph evaluation is pending".to_string()),
-			Poll::Error(error) => Err(format!("Node graph evaluation failed: {error}")),
+				.map_err(|e| e.to_string()),
+			Some(t) if t == concrete!(()) => (&self.executor).execute(()).map_err(|e| e.to_string()),
+			Some(t) => Err(format!("Invalid input type {t:?}")),
+			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
 		}
+	}
+
+	fn resolve_errors(&self, error: &NodeError) -> EvaluationError {
+		let source_map = self.executor.tree().source_map();
+		let mut errors = Vec::new();
+		let mut pending = vec![(Some(self.executor.output()), error)];
+		while let Some((node, error)) = pending.pop() {
+			let origin = node.and_then(|node| self.executor.find_origin(node, error));
+			let start = errors.len();
+			if let Some(origin) = origin {
+				errors.extend(source_map.iter().filter(|(_, (node, _))| *node == origin).map(|(path, _)| (Arc::clone(error.error()), path.clone())));
+				errors[start..].sort_unstable_by(|(_, a), (_, b)| a.cmp(b));
+			}
+			if errors.len() == start {
+				errors.push((Arc::clone(error.error()), Box::default()));
+			}
+			pending.extend(error.upstream().iter().rev().map(|upstream| (origin, upstream)));
+		}
+		errors.into_boxed_slice()
 	}
 
 	/// Updates state data

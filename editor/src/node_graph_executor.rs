@@ -1,4 +1,5 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage};
+use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -34,12 +35,22 @@ pub struct ExecutionRequest {
 
 pub struct ExecutionResponse {
 	execution_id: u64,
-	result: Result<TaggedValue, String>,
+	result: ExecutionResult,
 	responses: VecDeque<FrontendMessage>,
 	vector_modify: HashMap<NodeId, Vector>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
 }
+
+#[derive(Debug)]
+pub enum ExecutionResult {
+	Value(TaggedValue),
+	Fallback(TaggedValue, EvaluationError),
+	Error(EvaluationError),
+	Panic(Box<dyn Any + Send>),
+}
+
+pub type EvaluationError = Box<[(Arc<dyn std::error::Error + Send + Sync>, Box<[NodeId]>)]>;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
@@ -385,14 +396,37 @@ impl NodeGraphExecutor {
 					// Apply only to the active document's in-progress migration, dropping responses left over from a document switch.
 					if let Some(bake_target) = execution_context.measure_fill {
 						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
-							self.handle_gradient_measurement(document, document_id, bake_target, result.ok().and(inspect_result), responses);
+							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Fallback(..)).then_some(inspect_result).flatten();
+							self.handle_gradient_measurement(document, document_id, bake_target, inspect_result, responses);
 						}
 						continue;
 					}
 
 					responses.add(OverlaysMessage::Draw);
 
+					if execution_context.export_config.is_none() {
+						let errors = match &result {
+							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => errors
+								.iter()
+								.map(|(error, node_path)| NodeEvaluationError {
+									node_path: node_path.to_vec(),
+									message: error.to_string(),
+								})
+								.collect(),
+							ExecutionResult::Value(_) | ExecutionResult::Panic(_) => Vec::new(),
+						};
+						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
+					}
+
 					let node_graph_output = match result {
+						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(value),
+						ExecutionResult::Error(errors) => Err(errors.iter().map(|(error, _)| error.to_string()).collect::<Vec<_>>().join("\n")),
+						ExecutionResult::Panic(payload) => {
+							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+							Err(format!("Panicked: {}", message.unwrap_or("no message")))
+						}
+					};
+					let node_graph_output = match node_graph_output {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state

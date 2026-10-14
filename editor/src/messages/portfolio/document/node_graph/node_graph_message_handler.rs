@@ -9,7 +9,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{
 	DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
 };
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{self, FlowType, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing};
@@ -101,6 +101,7 @@ pub struct NodeGraphMessageHandler {
 	frontend_nodes: Vec<NodeId>,
 	/// Used to keep track of what wires are sent to the front end so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
+	evaluation_errors: Vec<NodeEvaluationError>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1728,6 +1729,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							nodes.push(*node_id);
 						}
 					}
+					if self.evaluation_errors.iter().any(|error| error.node_path.contains(node_id)) {
+						nodes.push(*node_id);
+					}
 				}
 
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
@@ -2193,6 +2197,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			NodeGraphMessage::UpdateEvaluationErrors { errors } => {
+				if self.evaluation_errors != errors {
+					self.evaluation_errors = errors;
+					if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
+						let error = self.node_graph_error(network_interface, breadcrumb_network_path);
+						responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostic { error });
+						responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					}
+				}
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {
@@ -2808,17 +2822,17 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn node_graph_error(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<NodeGraphErrorDiagnostic> {
-		let graph_error = network_interface
-			.resolved_types
-			.node_graph_errors
-			.iter()
-			.find(|error| error.node_path.starts_with(breadcrumb_network_path) && error.node_path.len() > breadcrumb_network_path.len())?;
-		let error = if graph_error.node_path.len() == breadcrumb_network_path.len() + 1 {
-			format!("{:?}", graph_error.error)
-		} else {
-			"Node graph type error within this node".to_string()
+		let depth = breadcrumb_network_path.len();
+		let inside = |path: &[NodeId]| path.starts_with(breadcrumb_network_path) && path.len() > depth;
+		let graph_error = network_interface.resolved_types.node_graph_errors.iter().find(|error| inside(&error.node_path));
+		let evaluation_error = self.evaluation_errors.iter().find(|error| inside(&error.node_path));
+		let (error_node, error) = match (graph_error, evaluation_error) {
+			(Some(graph_error), _) if graph_error.node_path.len() == depth + 1 => (graph_error.node_path[depth], format!("{:?}", graph_error.error)),
+			(Some(graph_error), _) => (graph_error.node_path[depth], "Node graph type error within this node".to_string()),
+			(None, Some(error)) if error.node_path.len() == depth + 1 => (error.node_path[depth], error.message.clone()),
+			(None, Some(error)) => (error.node_path[depth], "Node graph error within this node".to_string()),
+			(None, None) => return None,
 		};
-		let error_node = graph_error.node_path[breadcrumb_network_path.len()];
 
 		let mut position = network_interface.position(&error_node, breadcrumb_network_path)?;
 		// Convert to graph space
@@ -2966,6 +2980,7 @@ impl Default for NodeGraphMessageHandler {
 			end_index: None,
 			frontend_nodes: Vec::new(),
 			frontend_wires: HashSet::new(),
+			evaluation_errors: Vec::new(),
 		}
 	}
 }

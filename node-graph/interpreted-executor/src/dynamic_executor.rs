@@ -162,15 +162,10 @@ where
 	I: 'static + WasmNotSend,
 {
 	fn execute(&self, input: I) -> Result<Poll<TaggedValue>, Box<dyn Error>> {
-		match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.tree.eval_tagged_value(self.output, &input))) {
-			Ok(result) => result.map_err(|e| e.into()),
-			Err(e) => {
-				Box::leak(e);
-				Err("Node graph execution panicked".into())
-			}
-		}
+		self.tree.eval_tagged_value(self.output, &input).map_err(|error| error.into())
 	}
 }
+
 pub struct InputMapping {}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -272,6 +267,7 @@ impl BorrowTree {
 		let (node, _path, _) = self.nodes.get(&id)?;
 		node.eval(input).value().and_then(|output| output.downcast::<O>().ok().map(|o| *o))
 	}
+
 	/// Evaluate the output node of the [`BorrowTree`] and cast it to a tagged value.
 	/// This ensures that no borrowed data can escape the node graph.
 	pub fn eval_tagged_value<I>(&self, id: NodeId, input: &I) -> Result<Poll<TaggedValue>, String>
