@@ -388,7 +388,10 @@ impl Fsm for SplineToolFsmState {
 				tool_data.weight = tool_options.drawing.effective_line_weight();
 
 				// The spline starts on whatever the pointer was shown snapping to before the press
-				let viewport_vec = tool_data.snapped_point(snap_session, view);
+				let viewport_vec = match snap_session.shown_position() {
+					Some(shown) => document.metadata().document_to_viewport.transform_point2(shown),
+					None => tool_data.snapped_point(snap_session, view),
+				};
 
 				let layers = LayerNodeIdentifier::ROOT_PARENT
 					.descendants(document.metadata())
@@ -679,6 +682,7 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 #[cfg(test)]
 mod test_spline_tool {
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::tool::common_functionality::snap_session::WAKE_DWELL_ON_APPROACH;
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
@@ -1029,6 +1033,44 @@ mod test_spline_tool {
 		let splines = spline_layers(&editor);
 		assert_eq!(splines.len(), 1);
 		assert_spline_points(&editor, splines[0], &[corner, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn a_spline_starts_where_its_press_was_shown_after_resting_there_wakes_a_nearer_snap() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// The corner of an ellipse's bounding box, which a spline doesn't join to, sits six pixels left of a rectangle's side, kept apart by drawing them with snapping off
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.draw_rect(206., 160., 300., 300.).await;
+		editor.draw_ellipse(100., 100., 200., 200.).await;
+		editor.active_document_mut().snapping_state.snapping_enabled = true;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Spline).await;
+
+		// The pointer rests on the side beside the corner, where a press is shown starting on the corner, for long enough to wake its box
+		let (corner, pointer) = (DVec2::new(200., 200.), DVec2::new(206., 200.));
+		editor.handle_message(InputPreprocessorMessage::CurrentTime { timestamp: 1000 }).await;
+		editor.move_mouse(pointer.x, pointer.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor
+			.handle_message(InputPreprocessorMessage::CurrentTime {
+				timestamp: 1000 + WAKE_DWELL_ON_APPROACH,
+			})
+			.await;
+		editor.handle_message(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame)).await;
+
+		// The woken corner's level line crosses the side right under the pointer, but the spline starts where the press was shown
+		editor.left_mousedown(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		let later_points = [DVec2::new(150., 400.), DVec2::new(100., 450.)];
+		for point in later_points {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &[corner, later_points[0], later_points[1]]);
 	}
 
 	#[tokio::test]

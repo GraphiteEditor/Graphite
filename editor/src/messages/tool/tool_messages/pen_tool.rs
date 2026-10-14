@@ -1875,7 +1875,8 @@ impl Fsm for PenToolFsmState {
 				// The path starts on whatever the pointer was shown snapping to before the press
 				let document_to_viewport = document.metadata().document_to_viewport;
 				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
-				let start = document_to_viewport.transform_point2(snap_session.snap_point(view, pointer, PointOptions::default()));
+				let landed = snap_session.shown_position().unwrap_or_else(|| snap_session.snap_point(view, pointer, PointOptions::default()));
+				let start = document_to_viewport.transform_point2(landed);
 
 				tool_data.store_clicked_endpoint(document, start);
 				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor, start);
@@ -2385,6 +2386,7 @@ impl Fsm for PenToolFsmState {
 mod test_pen_tool {
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::tool::common_functionality::snap_session::WAKE_DWELL_ON_APPROACH;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::misc::ManipulatorPointId;
@@ -2655,6 +2657,42 @@ mod test_pen_tool {
 
 		click_pen(&mut editor, DVec2::new(304., 397.)).await;
 		assert_anchors(&editor, &[DVec2::new(300., 400.)]);
+	}
+
+	#[tokio::test]
+	async fn a_path_starts_where_its_press_was_shown_after_resting_there_wakes_a_nearer_snap() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Snapping is off while drawing so the corner stays six pixels left of the other rectangle's side
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.draw_rect(206., 160., 300., 300.).await;
+		editor.draw_rect(100., 100., 200., 200.).await;
+		editor.active_document_mut().snapping_state.snapping_enabled = true;
+		deselect_all(&mut editor).await;
+		editor.select_tool(ToolType::Pen).await;
+
+		// The pointer rests on the side beside the corner, where a press is shown starting on the corner, for long enough to wake it
+		let (corner, pointer) = (DVec2::new(200., 200.), DVec2::new(206., 200.));
+		editor.handle_message(InputPreprocessorMessage::CurrentTime { timestamp: 1000 }).await;
+		editor.move_mouse(pointer.x, pointer.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor
+			.handle_message(InputPreprocessorMessage::CurrentTime {
+				timestamp: 1000 + WAKE_DWELL_ON_APPROACH,
+			})
+			.await;
+		editor.handle_message(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame)).await;
+
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		let snap_session = &editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session;
+		let shown = snap_session.shown_position().map(|position| document_to_viewport.transform_point2(position));
+		assert!(shown.is_some_and(|shown| shown.abs_diff_eq(corner, 1e-6)), "the press is shown at {shown:?} rather than on the corner");
+		assert!(!snap_session.wants_ticks(), "resting on the corner should have woken it");
+
+		// The woken corner's level line crosses the side right under the pointer, but the path starts where the press was shown
+		editor.left_mousedown(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[corner]);
 	}
 
 	#[tokio::test]

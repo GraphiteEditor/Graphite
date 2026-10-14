@@ -1309,7 +1309,9 @@ impl Fsm for GradientToolFsmState {
 				// The press lands on whatever the pointer was shown snapping to, or takes hold of a handle right where it is
 				let unsnapped = document_to_viewport.inverse().transform_point2(input.mouse.position);
 				let drag_start = match detect_hover_target(input.mouse.position, document) {
-					GradientHoverTarget::None | GradientHoverTarget::InsertionPoint => snap_press(snap_session, SnapView::new(document, *document_id, input)).0,
+					GradientHoverTarget::None | GradientHoverTarget::InsertionPoint => snap_session
+						.shown_position()
+						.unwrap_or_else(|| snap_press(snap_session, SnapView::new(document, *document_id, input)).0),
 					_ => unsnapped,
 				};
 				let mouse = document_to_viewport.transform_point2(drag_start);
