@@ -22,6 +22,7 @@ default = ["serde"]
 core-types = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies

@@ -19,6 +19,20 @@ impl Context {
 	pub async fn new() -> Option<Self> {
 		ContextBuilder::new().build().await
 	}
+
+	/// The context the GPU tests run on, which wgpu's environment variables can aim at each backend and shader compiler in turn.
+	#[cfg(test)]
+	pub(crate) async fn for_tests() -> Option<Self> {
+		let context = ContextBuilder::new().with_environment_overrides().build().await;
+
+		// A backend asked for by name fails the tests if it can't run them, rather than passing them all as skipped
+		assert!(
+			context.is_some() || std::env::var_os("WGPU_BACKEND").is_none(),
+			"No device could be made on the backend WGPU_BACKEND names"
+		);
+
+		context
+	}
 }
 
 #[derive(Default)]
@@ -27,6 +41,7 @@ pub struct ContextBuilder {
 	features: Features,
 	optional_features: Features,
 	selection: Option<usize>,
+	environment_overrides: bool,
 }
 impl ContextBuilder {
 	pub fn new() -> Self {
@@ -35,7 +50,13 @@ impl ContextBuilder {
 			features: Features::empty(),
 			optional_features: Features::empty(),
 			selection: None,
+			environment_overrides: false,
 		}
+	}
+	/// Lets wgpu's environment variables (`WGPU_BACKEND`, `WGPU_DX12_COMPILER`, `WGPU_DEBUG`, `WGPU_VALIDATION`, and the like) override the instance's settings.
+	pub fn with_environment_overrides(mut self) -> Self {
+		self.environment_overrides = true;
+		self
 	}
 	pub fn with_backends(mut self, backends: Backends) -> Self {
 		self.backends = backends;
@@ -110,15 +131,13 @@ impl ContextBuilder {
 }
 
 /// Enables `EXT_texture_norm16` on the WebGL2 context wgpu made for the `canvas`, returning whether it did.
-/// Firefox 159 to 161 offer the extension but can't filter its formats, which then read as black, so it's left off there.
 #[cfg(target_family = "wasm")]
 fn enable_texture_norm16(canvas: &web_sys::HtmlCanvasElement) -> bool {
 	use web_sys::wasm_bindgen::JsCast;
 
-	let firefox_version = web_sys::window()
-		.and_then(|window| window.navigator().user_agent().ok())
-		.and_then(|user_agent| user_agent.split("Firefox/").nth(1)?.split('.').next()?.parse::<u32>().ok());
-	if firefox_version.is_some_and(|version| (159..=161).contains(&version)) {
+	// TODO: Remove this check once Firefox 162 is out, since 159 to 161 offer the extension but can't filter its formats, which then read as black (Bugzilla 2086168)
+	let user_agent = web_sys::window().and_then(|window| window.navigator().user_agent().ok()).unwrap_or_default();
+	if firefox_version(&user_agent).is_some_and(|version| (159..=161).contains(&version)) {
 		return false;
 	}
 
@@ -127,12 +146,22 @@ fn enable_texture_norm16(canvas: &web_sys::HtmlCanvasElement) -> bool {
 	let Ok(context) = context.dyn_into::<web_sys::WebGl2RenderingContext>() else { return false };
 	context.get_extension("EXT_texture_norm16").is_ok_and(|extension| extension.is_some())
 }
+
+// TODO: Remove along with the Firefox 159 to 161 check in `enable_texture_norm16` once Firefox 162 is out
+/// The major version of Firefox that a browser's `user_agent` string names, or `None` for any other browser.
+#[cfg(any(target_family = "wasm", test))]
+fn firefox_version(user_agent: &str) -> Option<u32> {
+	user_agent.split("Firefox/").nth(1)?.split('.').next()?.parse().ok()
+}
+
 impl ContextBuilder {
 	fn build_instance(&self) -> Instance {
-		Instance::new(wgpu::Instance::new(wgpu::InstanceDescriptor {
+		let descriptor = wgpu::InstanceDescriptor {
 			backends: self.backends,
 			..wgpu::InstanceDescriptor::new_without_display_handle()
-		}))
+		};
+
+		Instance::new(wgpu::Instance::new(if self.environment_overrides { descriptor.with_env() } else { descriptor }))
 	}
 	/// Requests a device with the builder's features, plus whichever optional ones are among the `available_features`.
 	async fn request_device(&self, adapter: &Adapter, available_features: Features) -> Option<(Device, Queue)> {
@@ -196,5 +225,27 @@ mod fmt {
 			}
 			Ok(())
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// TODO: Remove along with `firefox_version` once Firefox 162 is out
+	#[test]
+	fn firefox_versions_are_read_from_user_agents() {
+		assert_eq!(firefox_version("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0"), Some(160));
+		assert_eq!(firefox_version("Mozilla/5.0 (X11; Linux x86_64; rv:163.0) Gecko/20100101 Firefox/163.0a1"), Some(163));
+		assert_eq!(
+			firefox_version("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"),
+			None
+		);
+
+		// Firefox on iOS draws with Safari's engine and names itself differently
+		assert_eq!(
+			firefox_version("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) FxiOS/160.0 Mobile/15E148 Safari/605.1.15"),
+			None
+		);
 	}
 }

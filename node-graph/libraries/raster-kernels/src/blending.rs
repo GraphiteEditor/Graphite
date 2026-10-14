@@ -1,6 +1,7 @@
 //! The kernels blending one color with another.
 
 use crate::MapColor;
+use crate::adjustment_steps::{AdjustmentSteps, StepKind, texel};
 use core_types::Color;
 use core_types::blending::{BlendMode, apply_blend_mode};
 
@@ -17,4 +18,82 @@ impl MapColor for ColorOverlay {
 
 		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let color = [self.color.r(), self.color.g(), self.color.b(), self.color.a()];
+		steps.push(StepKind::ColorOverlay, [texel(&[blend_mode_code(self.blend_mode) as f32, self.opacity]), color]);
+	}
+}
+
+/// Every blend mode with the name the shader gives its code.
+const BLEND_MODES: [(BlendMode, &str); 29] = [
+	(BlendMode::Normal, "BLEND_NORMAL"),
+	(BlendMode::Darken, "BLEND_DARKEN"),
+	(BlendMode::Multiply, "BLEND_MULTIPLY"),
+	(BlendMode::ColorBurn, "BLEND_COLOR_BURN"),
+	(BlendMode::LinearBurn, "BLEND_LINEAR_BURN"),
+	(BlendMode::DarkerColor, "BLEND_DARKER_COLOR"),
+	(BlendMode::Lighten, "BLEND_LIGHTEN"),
+	(BlendMode::Screen, "BLEND_SCREEN"),
+	(BlendMode::ColorDodge, "BLEND_COLOR_DODGE"),
+	(BlendMode::LinearDodge, "BLEND_LINEAR_DODGE"),
+	(BlendMode::LighterColor, "BLEND_LIGHTER_COLOR"),
+	(BlendMode::Overlay, "BLEND_OVERLAY"),
+	(BlendMode::SoftLight, "BLEND_SOFT_LIGHT"),
+	(BlendMode::HardLight, "BLEND_HARD_LIGHT"),
+	(BlendMode::VividLight, "BLEND_VIVID_LIGHT"),
+	(BlendMode::LinearLight, "BLEND_LINEAR_LIGHT"),
+	(BlendMode::PinLight, "BLEND_PIN_LIGHT"),
+	(BlendMode::HardMix, "BLEND_HARD_MIX"),
+	(BlendMode::Difference, "BLEND_DIFFERENCE"),
+	(BlendMode::Exclusion, "BLEND_EXCLUSION"),
+	(BlendMode::Subtract, "BLEND_SUBTRACT"),
+	(BlendMode::Divide, "BLEND_DIVIDE"),
+	(BlendMode::Hue, "BLEND_HUE"),
+	(BlendMode::Saturation, "BLEND_SATURATION"),
+	(BlendMode::Color, "BLEND_COLOR"),
+	(BlendMode::Luminosity, "BLEND_LUMINOSITY"),
+	(BlendMode::Erase, "BLEND_ERASE"),
+	(BlendMode::Restore, "BLEND_RESTORE"),
+	(BlendMode::MultiplyAlpha, "BLEND_MULTIPLY_ALPHA"),
+];
+
+/// The code the shader knows a blend mode by.
+fn blend_mode_code(blend_mode: BlendMode) -> u32 {
+	match blend_mode {
+		BlendMode::Normal => 0,
+		BlendMode::Darken => 1,
+		BlendMode::Multiply => 2,
+		BlendMode::ColorBurn => 3,
+		BlendMode::LinearBurn => 4,
+		BlendMode::DarkerColor => 5,
+		BlendMode::Lighten => 6,
+		BlendMode::Screen => 7,
+		BlendMode::ColorDodge => 8,
+		BlendMode::LinearDodge => 9,
+		BlendMode::LighterColor => 10,
+		BlendMode::Overlay => 11,
+		BlendMode::SoftLight => 12,
+		BlendMode::HardLight => 13,
+		BlendMode::VividLight => 14,
+		BlendMode::LinearLight => 15,
+		BlendMode::PinLight => 16,
+		BlendMode::HardMix => 17,
+		BlendMode::Difference => 18,
+		BlendMode::Exclusion => 19,
+		BlendMode::Subtract => 20,
+		BlendMode::Divide => 21,
+		BlendMode::Hue => 22,
+		BlendMode::Saturation => 23,
+		BlendMode::Color => 24,
+		BlendMode::Luminosity => 25,
+		BlendMode::Erase => 26,
+		BlendMode::Restore => 27,
+		BlendMode::MultiplyAlpha => 28,
+	}
+}
+
+/// The names the shader gives the codes of the blend modes.
+pub(crate) fn shader_constants() -> Vec<(&'static str, u32)> {
+	BLEND_MODES.into_iter().map(|(blend_mode, name)| (name, blend_mode_code(blend_mode))).collect()
 }

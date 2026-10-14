@@ -1,17 +1,20 @@
 //! The kernels carrying out each [`Adjustment`], with its settings turned into what its kernel reads by [`visit_kernel`].
 
 use crate::MapColor;
+use crate::adjustment_steps::{AdjustmentSteps, StepKind, f32_pair, texel};
 use crate::blending::ColorOverlay;
 use crate::color_lookup_table::{Lut, parse_cached};
 use core_types::Color;
 use core_types::color::{linear_to_srgb, set_luminosity, srgb_to_linear};
+use core_types::math::midpoint::sanitized_midpoint;
 use core_types::transfer_curve::TransferCurveEvaluator;
 use glam::Vec3;
 use graphic_types::adjustment::{self as settings, Adjustment, DesaturateMethod, RelativeAbsolute};
 use raster_types::parallel_rows::fill_rows;
+use std::iter::once;
 use std::sync::Arc;
-use vector_types::GradientSettings;
-use vector_types::gradient::GradientEvaluator;
+use vector_types::gradient::{GradientEvaluator, SplineKnots, interpolation_endpoints};
+use vector_types::{GradientInterpolation, GradientSettings, GradientSpace, GradientSpread};
 
 /// How many colors each thread band handles at a time when a long slice is split across threads.
 const COLORS_PER_ROW: usize = 4096;
@@ -78,6 +81,36 @@ impl PreparedAdjustment {
 	pub fn adjust(&self, color: Color) -> Color {
 		self.0.as_ref().map_or(color, |kernel| kernel.map_cpu(color))
 	}
+}
+
+/// The red, green, blue, and alpha curves of a per-channel adjustment, each sampled at `size` evenly spaced gamma-encoded values from 0 to 1.
+pub fn channel_curves(adjustment: &Adjustment, size: usize) -> Option<[Vec<f32>; 4]> {
+	if !adjustment.is_per_channel() || size < 2 {
+		return None;
+	}
+
+	// Each sample feeds the same value to every channel, which the curves map independently
+	let mut samples: Vec<Color> = (0..size)
+		.map(|index| {
+			let value = index as f32 / (size - 1) as f32;
+			Color::from_gamma_srgb_channels(value, value, value, value)
+		})
+		.collect();
+	adjust_colors(adjustment, &mut samples);
+
+	let channels: Vec<[f32; 4]> = samples.iter().map(Color::to_gamma_srgb_channels).collect();
+	Some(std::array::from_fn(|channel| channels.iter().map(|values| values[channel]).collect()))
+}
+
+/// Whether every color keeps its alpha to within half an 8-bit level.
+/// Only a per-channel adjustment's alpha curve can change it, since the kernels of the others all keep alpha.
+pub fn preserves_alpha(adjustment: &Adjustment) -> bool {
+	const LEVELS: usize = 256;
+
+	channel_curves(adjustment, LEVELS).is_none_or(|[.., alpha]| {
+		let identity = |index: usize| index as f32 / (LEVELS - 1) as f32;
+		alpha.iter().enumerate().all(|(index, value)| (value - identity(index)).abs() <= 0.5 / 255.)
+	})
 }
 
 /// Receives the kernel carrying out an [`Adjustment`], which has its own type for each adjustment.
@@ -317,7 +350,14 @@ pub fn visit_kernel<V: AdjustmentVisitor>(adjustment: &Adjustment, visitor: V) -
 			})
 		}
 		Adjustment::ColorLookup { lut_file } => match parse_cached(lut_file) {
-			Ok(lut) => visitor.visit(ColorLookup { lut }),
+			Ok(lut) => {
+				let mut hasher = std::hash::DefaultHasher::new();
+				std::hash::Hash::hash(&lut_file.hash(), &mut hasher);
+				visitor.visit(ColorLookup {
+					lut,
+					file_key: std::hash::Hasher::finish(&hasher),
+				})
+			}
 			Err(_) => visitor.unchanged(),
 		},
 		Adjustment::ColorOverlay { color, blend_mode, opacity } => visitor.visit(ColorOverlay {
@@ -363,6 +403,24 @@ impl MapColor for Desaturate {
 		};
 		color.map_rgb(|_| luminance)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Desaturate, [texel(&[desaturate_method_code(self.method) as f32])]);
+	}
+}
+
+/// The code the shader knows a Desaturate method by.
+fn desaturate_method_code(method: DesaturateMethod) -> u32 {
+	match method {
+		DesaturateMethod::LuminanceRec709 => 0,
+		DesaturateMethod::LumaRec709 => 1,
+		DesaturateMethod::LumaRec601 => 2,
+		DesaturateMethod::LightnessOkLab => 3,
+		DesaturateMethod::ChannelsAverage => 4,
+		DesaturateMethod::ChannelsMinimum => 5,
+		DesaturateMethod::ChannelsMaximum => 6,
+		DesaturateMethod::LightnessHsl => 7,
+	}
 }
 
 struct GammaCorrection {
@@ -373,6 +431,10 @@ impl MapColor for GammaCorrection {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.apply_gamma_exponent(self.exponent)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::GammaCorrection, [texel(&[self.exponent])]);
+	}
 }
 
 struct MakeOpaque;
@@ -380,6 +442,10 @@ struct MakeOpaque;
 impl MapColor for MakeOpaque {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.with_alpha(1.)
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::MakeOpaque, []);
 	}
 }
 
@@ -476,6 +542,10 @@ impl BrightnessCurve {
 
 		self.knee + t * (1. - self.knee)
 	}
+
+	fn texel(&self) -> [f32; 4] {
+		texel(&[self.slope, self.knee, self.end_slope])
+	}
 }
 
 struct BrightnessContrast {
@@ -505,6 +575,11 @@ impl MapColor for BrightnessContrast {
 			let contrasted = brightened + 0.76 * self.contrast * (2. * brightened - 1.) * brightened.min(1. - brightened);
 			contrasted.clamp(0., 1.)
 		})
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let settings = [f32::from(self.use_classic), self.brightness, self.contrast, self.classic_pivot];
+		steps.push(StepKind::BrightnessContrast, [settings, self.first_curve.texel(), self.second_curve.texel()]);
 	}
 }
 
@@ -548,9 +623,22 @@ impl LevelsRecord {
 
 impl LevelsStage {
 	fn apply(&self, value: f32) -> f32 {
-		self.curve.apply(value) * (self.output_maximum - self.output_minimum) + self.output_minimum
+		let output = self.curve.apply(value) * (self.output_maximum - self.output_minimum) + self.output_minimum;
+
+		// Held within the output range, which rounding could carry the result a hair past
+		output.clamp(self.output_minimum.min(self.output_maximum), self.output_minimum.max(self.output_maximum))
+	}
+
+	fn texels(&self) -> [[f32; 4]; LEVELS_STAGE_TEXELS] {
+		let [points, toe] = self.curve.texels();
+		[points, toe, texel(&[self.output_minimum, self.output_maximum])]
 	}
 }
+
+/// How many texels a Levels curve, a stage holding one and its output range, and a chain of two stages take up in a step.
+const LEVELS_CURVE_TEXELS: usize = 2;
+const LEVELS_STAGE_TEXELS: usize = LEVELS_CURVE_TEXELS + 1;
+const LEVELS_CHAIN_TEXELS: usize = 1 + 2 * LEVELS_STAGE_TEXELS;
 
 /// A channel's record followed by the composite record.
 #[derive(Clone, Copy)]
@@ -590,6 +678,10 @@ impl LevelsChain {
 		let value = self.first.apply(value);
 		if self.two_stages { self.second.apply(value) } else { value }
 	}
+
+	fn texels(&self) -> impl Iterator<Item = [f32; 4]> {
+		once(texel(&[f32::from(self.two_stages)])).chain(self.first.texels()).chain(self.second.texels())
+	}
 }
 
 struct Levels {
@@ -605,6 +697,11 @@ impl MapColor for Levels {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 
 		Color::from_gamma_srgb_channels(self.red.apply(r), self.green.apply(g), self.blue.apply(b), self.alpha.apply(a))
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let chains = self.red.texels().chain(self.green.texels()).chain(self.blue.texels());
+		steps.push(StepKind::Levels, chains.chain(self.alpha.texels()));
 	}
 }
 
@@ -633,6 +730,24 @@ impl MapColor for Curves {
 		let [r, g, b, a] = self.apply(color.to_gamma_srgb_channels());
 		Color::from_gamma_srgb_channels(r, g, b, a)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let curves = [&self.composite, &self.red, &self.green, &self.blue, &self.alpha];
+		steps.push(StepKind::Curves, curves.into_iter().flat_map(transfer_curve_texels));
+	}
+}
+
+/// A curve's point count, then each point's x (as a pair, so the shader compares inputs against it as the CPU does), y, and second derivative,
+/// with the width to the next point worked out in double precision, so points too close to tell apart in single precision keep their order.
+fn transfer_curve_texels(curve: &TransferCurveEvaluator) -> Vec<[f32; 4]> {
+	let knots: Vec<(glam::DVec2, f64)> = curve.knots().collect();
+	let widths = knots.windows(2).map(|pair| (pair[1].0.x - pair[0].0.x).max(f64::EPSILON)).chain(once(0.));
+
+	let points = knots.iter().zip(widths).flat_map(|(&(point, second_derivative), width)| {
+		let [x, x_remainder] = f32_pair(point.x);
+		[[x, x_remainder, point.y as f32, second_derivative as f32], texel(&[width as f32])]
+	});
+	once(texel(&[knots.len() as f32])).chain(points).collect()
 }
 
 struct BlackAndWhite {
@@ -668,10 +783,11 @@ impl MapColor for BlackAndWhite {
 		let green_part = g - gray_base;
 		let blue_part = b - gray_base;
 
-		let additional = if red_part == 0. {
+		// The smallest channel, which has no part past the gray, picks the pair of hues the others lie between
+		let additional = if r <= gray_base {
 			let cyan_part = green_part.min(blue_part);
 			cyan_part * cyans + (green_part - cyan_part) * greens + (blue_part - cyan_part) * blues
-		} else if green_part == 0. {
+		} else if g <= gray_base {
 			let magenta_part = red_part.min(blue_part);
 			magenta_part * magentas + (red_part - magenta_part) * reds + (blue_part - magenta_part) * blues
 		} else {
@@ -690,6 +806,12 @@ impl MapColor for BlackAndWhite {
 		let [tinted_r, tinted_g, tinted_b] = set_luminosity(tint_r, tint_g, tint_b, tint_luma, luminance);
 
 		Color::from_gamma_srgb_channels(tinted_r, tinted_g, tinted_b, alpha_part)
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let weights = [f32::from(self.use_tint), self.reds, self.yellows, self.greens];
+		let tint = [self.tint.r(), self.tint.g(), self.tint.b(), self.tint.a()];
+		steps.push(StepKind::BlackAndWhite, [weights, texel(&[self.cyans, self.blues, self.magentas]), tint]);
 	}
 }
 
@@ -715,9 +837,9 @@ fn hexagon_hue_degrees(r: f32, g: f32, b: f32) -> f32 {
 		return 0.;
 	}
 
-	let sector = if maximum == r {
+	let sector = if r >= maximum {
 		wrap_positive((g - b) / chroma, 6.)
-	} else if maximum == g {
+	} else if g >= maximum {
 		(b - r) / chroma + 2.
 	} else {
 		(r - g) / chroma + 4.
@@ -772,6 +894,10 @@ impl PreparedHueSaturationSliders {
 			lightness: lightness_percent / 100.,
 		}
 	}
+
+	fn texel(&self) -> [f32; 4] {
+		[self.hue, self.saturation, self.saturation_gain, self.lightness]
+	}
 }
 
 /// A hue range with its falloff: full weight from `range_start` to `range_end`, fading linearly to zero at the falloff ends.
@@ -803,15 +929,22 @@ impl HueSaturationRangeSettings {
 		if distance(self.range_start, hue) <= distance(self.range_start, self.range_end) {
 			return 1.;
 		}
+
+		// Each falloff is measured from its end of the range, so a hue a hair outside the range keeps nearly its full weight
 		let start_falloff = distance(self.falloff_start, self.range_start);
 		let end_falloff = distance(self.range_end, self.falloff_end);
-		if distance(self.falloff_start, hue) < start_falloff {
-			return distance(self.falloff_start, hue) / start_falloff;
+		if distance(hue, self.range_start) < start_falloff {
+			return 1. - distance(hue, self.range_start) / start_falloff;
 		}
 		if distance(self.range_end, hue) < end_falloff {
 			return 1. - distance(self.range_end, hue) / end_falloff;
 		}
+
 		0.
+	}
+
+	fn texels(&self) -> [[f32; 4]; 2] {
+		[[self.falloff_start, self.range_start, self.range_end, self.falloff_end], self.settings.texel()]
 	}
 }
 
@@ -853,15 +986,16 @@ fn saturation_gain(amount: f32) -> f32 {
 
 /// Blends toward white for a positive amount and toward black for a negative one, as the master lightness slider does.
 fn lightness_toward_white_or_black(value: f32, amount: f32) -> f32 {
-	if amount >= 0. { value + (1. - value) * amount } else { value * (1. + amount) }
+	if amount >= 0. { value * (1. - amount) + amount } else { value * (1. + amount) }
 }
 
 /// A range's lightness moves the channels toward the color's own maximum (positive) or minimum (negative) instead.
+/// The weighted sum lands every channel exactly on it at a full amount, leaving no trace of chroma for a saturation to raise.
 fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
 	let maximum = rgb[0].max(rgb[1]).max(rgb[2]);
 	let minimum = rgb[0].min(rgb[1]).min(rgb[2]);
 	let toward = if amount >= 0. { maximum } else { minimum };
-	let blend = |value: f32| value + (toward - value) * amount.abs();
+	let blend = |value: f32| value * (1. - amount.abs()) + toward * amount.abs();
 	[blend(rgb[0]), blend(rgb[1]), blend(rgb[2])]
 }
 
@@ -943,6 +1077,12 @@ impl MapColor for HueSaturation {
 
 		Color::from_gamma_srgb_channels(r, g, b, alpha)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let sliders = [texel(&[f32::from(self.colorize)]), self.master.texel(), self.colorize_settings.texel()];
+		let ranges = [&self.reds, &self.yellows, &self.greens, &self.cyans, &self.blues, &self.magentas];
+		steps.push(StepKind::HueSaturation, sliders.into_iter().chain(ranges.into_iter().flat_map(HueSaturationRangeSettings::texels)));
+	}
 }
 
 struct Invert;
@@ -951,6 +1091,10 @@ impl MapColor for Invert {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.map_gamma_rgb(|channel| 1. - channel)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Invert, []);
+	}
 }
 
 struct Threshold {
@@ -958,18 +1102,25 @@ struct Threshold {
 	max_luminance: f32,
 }
 
+/// How far past either bound of a Threshold a luminance may fall and still lie within it (half a step of the fixed-point luma of 8-bit channels, for float ties).
+pub(crate) const THRESHOLD_SLACK: f32 = 0.5 / (16384. * 255.);
+
 impl MapColor for Threshold {
 	fn map_cpu(&self, color: Color) -> Color {
 		// For PSD interop, we compare this 14-bit fixed-point Rec. 601 luma against the level unrounded
 		let [r, g, b, _] = color.to_gamma_srgb_channels();
 		let luminance = (4915. * r + 9667. * g + 1802. * b) / 16384.;
 
-		let output = if luminance >= self.min_luminance && luminance <= self.max_luminance {
+		let output = if luminance >= self.min_luminance - THRESHOLD_SLACK && luminance <= self.max_luminance + THRESHOLD_SLACK {
 			Color::WHITE
 		} else {
 			Color::BLACK
 		};
 		output.with_alpha(color.a())
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Threshold, [texel(&[self.min_luminance, self.max_luminance])]);
 	}
 }
 
@@ -986,8 +1137,111 @@ impl MapColor for GradientMap {
 		let intensity = if self.reverse { 1. - intensity } else { intensity };
 
 		// The source alpha is kept and the gradient's own alpha stops are ignored
-		self.evaluator.evaluate(intensity as f64).with_alpha(alpha)
+		self.evaluator.evaluate_mapped(intensity as f64).with_alpha(alpha)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let GradientSettings {
+			spread,
+			cyclic,
+			space,
+			hue_direction,
+			interpolation,
+		} = self.evaluator.settings();
+		let stops = self.evaluator.stops();
+		let stop_count = texel(&[stops.len() as f32, f32::from(cyclic)]);
+		let color = |color: Color| texel(&[color.r(), color.g(), color.b()]);
+
+		// The ramp's Smooth path, its stops' colors to hold when stepped, or else its stops to interpolate linearly between
+		let (evaluation, ramp): (RampEvaluation, Vec<[f32; 4]>) = match self.evaluator.smooth_knots() {
+			Some((warp, [first, second, third, _])) => {
+				// The channel splines share their knots' positions, and alpha is left out since the map keeps the color's own
+				let warp_knots = monotonic_spline_texels(&[&warp]);
+				let channel_knots = monotonic_spline_texels(&[&first, &second, &third]);
+
+				let knot_counts = texel(&[warp.len() as f32, first.len() as f32]);
+				(RampEvaluation::Smooth, once(knot_counts).chain(warp_knots).chain(channel_knots).collect())
+			}
+			None if interpolation == GradientInterpolation::Stepped => {
+				let stop_texels = stops.iter().flat_map(|stop| [texel(&f32_pair(stop.position)), color(stop.color)]);
+				(RampEvaluation::Stepped, once(stop_count).chain(stop_texels).collect())
+			}
+			None => {
+				// Each stop with its interval to the next (the last stop's wrapping around to the first): its width in double precision and the channels it interpolates between
+				let stop_texels = stops.iter().enumerate().flat_map(|(index, stop)| {
+					let next = &stops[(index + 1) % stops.len()];
+					let width = if index + 1 < stops.len() {
+						next.position - stop.position
+					} else {
+						next.position + 1. - stop.position
+					};
+					let [start, end] = interpolation_endpoints(stop.color, next.color, space, hue_direction);
+
+					let [position, position_remainder] = f32_pair(stop.position);
+					let placement = [position, position_remainder, width as f32, sanitized_midpoint(stop.midpoint) as f32];
+					[placement, color(stop.color), texel(&start), texel(&end)]
+				});
+				(RampEvaluation::Linear, once(stop_count).chain(stop_texels).collect())
+			}
+		};
+
+		let settings = [
+			f32::from(self.reverse),
+			gradient_spread_code(spread) as f32,
+			evaluation as u32 as f32,
+			gradient_space_code(space) as f32,
+		];
+		steps.push(StepKind::GradientMap, once(settings).chain(ramp));
+	}
+}
+
+/// How the shader evaluates a Gradient Map's ramp, numbered as its constants for them are.
+#[derive(Clone, Copy)]
+enum RampEvaluation {
+	Stepped = 0,
+	Linear = 1,
+	Smooth = 2,
+}
+
+/// The code the shader knows a gradient's spread by.
+fn gradient_spread_code(spread: GradientSpread) -> u32 {
+	match spread {
+		GradientSpread::Pad => 0,
+		GradientSpread::Reflect => 1,
+		GradientSpread::Repeat => 2,
+		GradientSpread::Clear => 3,
+	}
+}
+
+/// The code the shader knows a gradient's interpolation space by.
+fn gradient_space_code(space: GradientSpace) -> u32 {
+	match space {
+		GradientSpace::OkLab => 0,
+		GradientSpace::Lab => 1,
+		GradientSpace::OkLCh => 2,
+		GradientSpace::LCh => 3,
+		GradientSpace::RgbLinear => 4,
+		GradientSpace::RgbGamma => 5,
+		GradientSpace::Hsv => 6,
+		GradientSpace::Hsl => 7,
+	}
+}
+
+/// Up to three monotonic splines sharing the first one's knot positions. Each knot holds its position (paired, as the shader compares inputs against it)
+/// and the run to the next worked out in double precision, then its value in each spline, then its tangent in each.
+fn monotonic_spline_texels(splines: &[&SplineKnots]) -> Vec<[f32; 4]> {
+	let Some(positions) = splines.first() else { return Vec::new() };
+
+	(0..positions.len())
+		.flat_map(|index| {
+			let position = positions[index][0];
+			let run = positions.get(index + 1).map_or(0., |next| next[0] - position);
+			let component = |component: usize| texel(&splines.iter().map(|spline| spline.get(index).map_or(0., |knot| knot[component] as f32)).collect::<Vec<_>>());
+
+			let [position, position_remainder] = f32_pair(position);
+			[texel(&[position, position_remainder, run as f32]), component(1), component(2)]
+		})
+		.collect()
 }
 
 struct Vibrance {
@@ -1011,6 +1265,10 @@ impl MapColor for Vibrance {
 		// For PSD interop, saturation scales each channel's distance from a gray weighted by ProPhoto's luminance coefficients
 		let gray = 0.288040 * after_vibrance.r() + 0.711874 * after_vibrance.g() + 0.000086 * after_vibrance.b();
 		after_vibrance.map_rgb(|c| (gray + (c - gray) * self.saturation_scale).clamp(0., 1.))
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Vibrance, [texel(&[self.vibrance, self.saturation_scale])]);
 	}
 }
 
@@ -1097,20 +1355,31 @@ impl MapColor for ChannelMixer {
 
 		Color::from_gamma_srgb_channels(out_r, out_g, out_b, a)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let rows = [
+			texel(&[f32::from(self.monochrome)]),
+			[self.monochrome_r, self.monochrome_g, self.monochrome_b, self.monochrome_c],
+			[self.red_r, self.red_g, self.red_b, self.red_c],
+			[self.green_r, self.green_g, self.green_b, self.green_c],
+			[self.blue_r, self.blue_g, self.blue_b, self.blue_c],
+		];
+		steps.push(StepKind::ChannelMixer, rows);
+	}
 }
 
-/// The groups of colors that Selective Color adjusts, in the order of its settings.
+/// The groups of colors that Selective Color adjusts, in the order of its settings, numbered as the GPU's shader numbers them.
 #[derive(Clone, Copy)]
 enum SelectiveColorGroup {
-	Reds,
-	Yellows,
-	Greens,
-	Cyans,
-	Blues,
-	Magentas,
-	Whites,
-	Neutrals,
-	Blacks,
+	Reds = 0,
+	Yellows = 1,
+	Greens = 2,
+	Cyans = 3,
+	Blues = 4,
+	Magentas = 5,
+	Whites = 6,
+	Neutrals = 7,
+	Blacks = 8,
 }
 
 /// A group's cyan, magenta, yellow, and black percentages, with the inks they combine into for each of red, green, and blue.
@@ -1138,12 +1407,12 @@ impl MapColor for SelectiveColor {
 		let min_channel = min(r, g, b);
 
 		let pixel_color_range = |group| match group {
-			SelectiveColorGroup::Reds => max_channel == r,
-			SelectiveColorGroup::Yellows => min_channel == b,
-			SelectiveColorGroup::Greens => max_channel == g,
-			SelectiveColorGroup::Cyans => min_channel == r,
-			SelectiveColorGroup::Blues => max_channel == b,
-			SelectiveColorGroup::Magentas => min_channel == g,
+			SelectiveColorGroup::Reds => r >= max_channel,
+			SelectiveColorGroup::Yellows => b <= min_channel,
+			SelectiveColorGroup::Greens => g >= max_channel,
+			SelectiveColorGroup::Cyans => r <= min_channel,
+			SelectiveColorGroup::Blues => b >= max_channel,
+			SelectiveColorGroup::Magentas => g <= min_channel,
 			SelectiveColorGroup::Whites => r > 0.5 && g > 0.5 && b > 0.5,
 			// Every pixel, since the neutrals scale factor already vanishes at black, white, and fully saturated colors
 			SelectiveColorGroup::Neutrals => true,
@@ -1192,6 +1461,20 @@ impl MapColor for SelectiveColor {
 
 		Color::from_gamma_srgb_channels(out.x, out.y, out.z, a)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		// Groups left at zero offset nothing, so only the others are carried out, in the same order
+		let groups: Vec<[f32; 4]> = (self.groups.iter())
+			.filter(|group| group.cmyk.iter().any(|&percent| percent != 0.))
+			.map(|group| {
+				let [ink_c, ink_m, ink_y] = group.inks;
+				[group.group as u32 as f32, ink_c, ink_m, ink_y]
+			})
+			.collect();
+
+		let settings = texel(&[f32::from(self.mode == RelativeAbsolute::Absolute), groups.len() as f32]);
+		steps.push(StepKind::SelectiveColor, once(settings).chain(groups));
+	}
 }
 
 struct Posterize {
@@ -1206,8 +1489,12 @@ impl MapColor for Posterize {
 			// Bins as floor(c * levels) with the outputs spread evenly to white.
 			// The sliver of slack keeps an input exactly on an edge in the upper bin despite float ties.
 			let bin = ((c + 2e-7) * levels).floor().min(levels - 1.);
-			bin / (levels - 1.)
+			(bin / (levels - 1.)).min(1.)
 		})
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Posterize, [texel(&[self.levels])]);
 	}
 }
 
@@ -1226,11 +1513,15 @@ impl MapColor for Exposure {
 		let encode = |linear: f32| if linear < TOE_END / 32. { linear * 32. } else { linear.powf(1. / 2.2) };
 		let adjust = |c: f32| {
 			let linear = decode(c) * 2_f32.powf(self.exposure) + self.offset;
-			encode(linear.max(0.).powf(1. / self.gamma_correction).min(1.))
+			encode(linear.max(0.).powf(1. / self.gamma_correction).min(1.)).min(1.)
 		};
 
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 		Color::from_gamma_srgb_channels(adjust(r), adjust(g), adjust(b), a)
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::Exposure, [texel(&[self.exposure, self.offset, self.gamma_correction])]);
 	}
 }
 
@@ -1294,7 +1585,14 @@ impl LevelsCurve {
 		} else {
 			255. * (t / 255.).powf(self.exponent)
 		};
-		y / 255.
+		(y / 255.).clamp(0., 1.)
+	}
+
+	fn texels(&self) -> [[f32; 4]; LEVELS_CURVE_TEXELS] {
+		[
+			[self.black, self.white, self.exponent, self.toe_end],
+			texel(&[self.toe_value, self.toe_slope_start, self.toe_slope_end]),
+		]
 	}
 }
 
@@ -1325,6 +1623,10 @@ impl MapColor for ColorBalance {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
 		Color::from_gamma_srgb_channels(self.red.apply(r), self.green.apply(g), self.blue.apply(b), a)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		steps.push(StepKind::ColorBalance, [self.red, self.green, self.blue].iter().flat_map(LevelsCurve::texels));
+	}
 }
 
 struct PhotoFilter {
@@ -1339,9 +1641,9 @@ impl MapColor for PhotoFilter {
 		let [r_in, g_in, b_in, alpha] = pixel.to_gamma_srgb_channels();
 		let xyz = multiply_matrix(&SRGB_TO_XYZ_D50, [srgb_to_linear(r_in), srgb_to_linear(g_in), srgb_to_linear(b_in)]);
 		let filtered = multiply_matrix(&XYZ_D50_TO_SRGB, [xyz[0] * factor[0], xyz[1] * factor[1], xyz[2] * factor[2]]);
-		let mut r = linear_to_srgb(filtered[0].clamp(0., 1.));
-		let mut g = linear_to_srgb(filtered[1].clamp(0., 1.));
-		let mut b = linear_to_srgb(filtered[2].clamp(0., 1.));
+		let mut r = linear_to_srgb(filtered[0].clamp(0., 1.)).min(1.);
+		let mut g = linear_to_srgb(filtered[1].clamp(0., 1.)).min(1.);
+		let mut b = linear_to_srgb(filtered[2].clamp(0., 1.)).min(1.);
 
 		if preserve_luminosity {
 			let luma_in = luma_rec_601_fixed_point(r_in.clamp(0., 1.), g_in.clamp(0., 1.), b_in.clamp(0., 1.));
@@ -1349,6 +1651,11 @@ impl MapColor for PhotoFilter {
 		}
 
 		Color::from_gamma_srgb_channels(r, g, b, alpha)
+	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let [x, y, z] = self.factor;
+		steps.push(StepKind::PhotoFilter, [[x, y, z, f32::from(self.preserve_luminosity)]]);
 	}
 }
 
@@ -1372,6 +1679,8 @@ fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 
 struct ColorLookup {
 	lut: Arc<Lut>,
+	/// Identifies the file the table was read from, so its upload outlasts changes to the other adjustments around it.
+	file_key: u64,
 }
 
 impl MapColor for ColorLookup {
@@ -1382,6 +1691,77 @@ impl MapColor for ColorLookup {
 
 		Color::from_gamma_srgb_channels(r, g, b, a)
 	}
+
+	fn encode_step(&self, steps: &mut AdjustmentSteps) {
+		let lut = self.lut.clone();
+		let table = steps.push_table(self.file_key, move |max_texels| lut.texels_within(max_texels));
+		steps.push(StepKind::ColorLookup, [texel(&[table as f32])]);
+	}
+}
+
+/// The names the shader gives the codes the kernels here encode settings with, and the texel counts it steps over.
+pub(crate) fn shader_constants() -> Vec<(&'static str, u32)> {
+	let desaturate_methods = [
+		("LUMINANCE_REC_709", DesaturateMethod::LuminanceRec709),
+		("LUMA_REC_709", DesaturateMethod::LumaRec709),
+		("LUMA_REC_601", DesaturateMethod::LumaRec601),
+		("LIGHTNESS_OKLAB", DesaturateMethod::LightnessOkLab),
+		("CHANNELS_AVERAGE", DesaturateMethod::ChannelsAverage),
+		("CHANNELS_MINIMUM", DesaturateMethod::ChannelsMinimum),
+		("CHANNELS_MAXIMUM", DesaturateMethod::ChannelsMaximum),
+		("LIGHTNESS_HSL", DesaturateMethod::LightnessHsl),
+	]
+	.map(|(name, method)| (name, desaturate_method_code(method)));
+
+	let selective_color_groups = [
+		("REDS", SelectiveColorGroup::Reds),
+		("YELLOWS", SelectiveColorGroup::Yellows),
+		("GREENS", SelectiveColorGroup::Greens),
+		("CYANS", SelectiveColorGroup::Cyans),
+		("BLUES", SelectiveColorGroup::Blues),
+		("MAGENTAS", SelectiveColorGroup::Magentas),
+		("WHITES", SelectiveColorGroup::Whites),
+		("NEUTRALS", SelectiveColorGroup::Neutrals),
+		("BLACKS", SelectiveColorGroup::Blacks),
+	]
+	.map(|(name, group)| (name, group as u32));
+
+	let spreads = [
+		("PAD", GradientSpread::Pad),
+		("REFLECT", GradientSpread::Reflect),
+		("REPEAT", GradientSpread::Repeat),
+		("CLEAR", GradientSpread::Clear),
+	]
+	.map(|(name, spread)| (name, gradient_spread_code(spread)));
+
+	let evaluations = [("STEPPED", RampEvaluation::Stepped), ("LINEAR", RampEvaluation::Linear), ("SMOOTH", RampEvaluation::Smooth)].map(|(name, evaluation)| (name, evaluation as u32));
+
+	let spaces = [
+		("OKLAB", GradientSpace::OkLab),
+		("LAB", GradientSpace::Lab),
+		("OKLCH", GradientSpace::OkLCh),
+		("LCH", GradientSpace::LCh),
+		("RGB_LINEAR", GradientSpace::RgbLinear),
+		("RGB_GAMMA", GradientSpace::RgbGamma),
+		("HSV", GradientSpace::Hsv),
+		("HSL", GradientSpace::Hsl),
+	]
+	.map(|(name, space)| (name, gradient_space_code(space)));
+
+	let texel_counts = [
+		("LEVELS_CURVE_TEXELS", LEVELS_CURVE_TEXELS),
+		("LEVELS_STAGE_TEXELS", LEVELS_STAGE_TEXELS),
+		("LEVELS_CHAIN_TEXELS", LEVELS_CHAIN_TEXELS),
+	]
+	.map(|(name, count)| (name, count as u32));
+
+	(desaturate_methods.into_iter())
+		.chain(selective_color_groups)
+		.chain(spreads)
+		.chain(evaluations)
+		.chain(spaces)
+		.chain(texel_counts)
+		.collect()
 }
 
 #[cfg(test)]
@@ -1427,6 +1807,161 @@ mod tests {
 				let adjusted = adjust_color(adjustment, color);
 				assert!([adjusted.r(), adjusted.g(), adjusted.b(), adjusted.a()].iter().all(|channel| channel.is_finite()), "{adjustment:?}");
 			}
+		}
+	}
+
+	fn gray(level: u8) -> Color {
+		let value = f32::from(level) / 255.;
+		Color::from_gamma_srgb_channels(value, value, value, 1.)
+	}
+
+	#[test]
+	fn white_stays_exactly_white_through_adjustments_set_to_keep_it() {
+		let identity = settings::LevelsRecord {
+			shadows: 0.,
+			midtones: 1.,
+			highlights: 100.,
+			output_minimums: 0.,
+			output_maximums: 100.,
+		};
+		let adjustments = [
+			Adjustment::Levels(Box::new(settings::LevelsSettings {
+				composite: settings::LevelsRecord { midtones: 1.2, ..identity },
+				red: identity,
+				green: identity,
+				blue: identity,
+				alpha: identity,
+			})),
+			Adjustment::ColorBalance(Default::default()),
+			Adjustment::Curves(Default::default()),
+			Adjustment::Posterize { levels: 4 },
+			Adjustment::HueSaturation(Default::default()),
+			Adjustment::Exposure {
+				exposure: 0.,
+				offset: 0.,
+				gamma_correction: 1.,
+			},
+			Adjustment::Threshold {
+				min_luminance: 100.,
+				max_luminance: 100.,
+			},
+		];
+
+		for adjustment in &adjustments {
+			assert_eq!(adjust_color(adjustment, Color::WHITE), Color::WHITE, "{adjustment:?}");
+		}
+	}
+
+	#[test]
+	fn a_threshold_takes_in_the_grays_exactly_at_its_bounds() {
+		for level in 0..=255_u8 {
+			let bound = f64::from(level) / 255. * 100.;
+			let from_the_gray = Adjustment::Threshold {
+				min_luminance: bound,
+				max_luminance: 100.,
+			};
+			let up_to_the_gray = Adjustment::Threshold {
+				min_luminance: 0.,
+				max_luminance: bound,
+			};
+
+			assert_eq!(adjust_color(&from_the_gray, gray(level)), Color::WHITE, "from gray {level}");
+			assert_eq!(adjust_color(&up_to_the_gray, gray(level)), Color::WHITE, "up to gray {level}");
+		}
+
+		// A color with a fixed-point luma a few steps short of the bound is still out
+		let from_82 = Adjustment::Threshold {
+			min_luminance: 82. / 255. * 100.,
+			max_luminance: 100.,
+		};
+		let just_short = Color::from_gamma_srgb_channels(1., 0., 50. / 255., 1.);
+		assert_eq!(adjust_color(&from_82, just_short), Color::BLACK);
+	}
+
+	#[test]
+	fn a_range_at_full_lightness_leaves_grays_that_full_saturation_keeps_gray() {
+		let sliders = |saturation, lightness| settings::HueSaturationSliders { hue: 0., saturation, lightness };
+		let range = |sliders, [falloff_start, range_start, range_end, falloff_end]: [f64; 4]| settings::HueRangeSettings {
+			sliders,
+			falloff_start,
+			range_start,
+			range_end,
+			falloff_end,
+		};
+
+		for lightness in [-100., 100.] {
+			let hue_saturation = Adjustment::HueSaturation(Box::new(settings::HueSaturationSettings {
+				master: sliders(100., 0.),
+				reds: range(sliders(0., lightness), [315., 345., 15., 45.]),
+				yellows: range(sliders(0., 0.), [15., 45., 75., 105.]),
+				greens: range(sliders(0., 0.), [75., 105., 135., 165.]),
+				cyans: range(sliders(0., 0.), [135., 165., 195., 225.]),
+				blues: range(sliders(0., 0.), [195., 225., 255., 285.]),
+				magentas: range(sliders(0., 0.), [255., 285., 315., 345.]),
+				..Default::default()
+			}));
+
+			// Reds of every strength with hues well within the range
+			for red in (40..=255_u8).step_by(5) {
+				for low in (0..red / 2).step_by(7) {
+					let color = Color::from_gamma_srgb_channels(f32::from(red) / 255., f32::from(low) / 255., f32::from(low + red / 16) / 255., 1.);
+					let [r, g, b, _] = adjust_color(&hue_saturation, color).to_gamma_srgb_channels();
+					assert!(r == g && g == b, "{color:?} at a lightness of {lightness} comes out as {:?}", [r, g, b]);
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn a_hue_a_hair_outside_a_range_keeps_nearly_its_full_weight() {
+		let sliders = PreparedHueSaturationSliders::new(0., 0., 0.);
+
+		// Ranges with a falloff on each side, some of them reaching across the turn of the hue circle
+		for [falloff_start, range_start, range_end, falloff_end] in [[15., 45., 75., 105.], [350., 10., 40., 60.], [291., 105., 250., 280.], [300., 330., 350., 20.]] {
+			let range = HueSaturationRangeSettings::new(falloff_start, range_start, range_end, falloff_end, sliders);
+
+			let just_before = f32::from_bits(range.range_start.to_bits() - 1);
+			let just_after = f32::from_bits(range.range_end.to_bits() + 1);
+			for hue in [just_before, range.range_start, range.range_end, just_after] {
+				let weight = range.weight(hue);
+				assert!(weight > 0.9999 && weight <= 1., "A range from {range_start} to {range_end} weighs a hue of {hue} as {weight}");
+			}
+		}
+	}
+
+	#[test]
+	fn a_gradient_map_lands_black_white_and_grays_on_the_stops_at_them() {
+		use core_types::list::{ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPREAD, Item};
+		use vector_types::Gradient;
+		use vector_types::gradient::GradientStop;
+
+		let stop = |position, value: f32| GradientStop {
+			position,
+			midpoint: 0.5,
+			color: Color::from_gamma_srgb_channels(value, value, value, 1.),
+		};
+		let map = |stops: Vec<GradientStop>, interpolation: GradientInterpolation, spread: GradientSpread| Adjustment::GradientMap {
+			gradient: Item::new_from_element(Gradient::new(stops))
+				.with_attribute(ATTR_GRADIENT_INTERPOLATION, interpolation)
+				.with_attribute(ATTR_GRADIENT_SPREAD, spread),
+			reverse: false,
+		};
+		let mapped = |map: &Adjustment, level: u8| adjust_color(map, gray(level)).to_gamma_srgb_channels()[0];
+
+		// A stepped ramp gives each gray the color of the stop it lands on, white among them
+		let stepped = map(
+			vec![stop(0., 0.1), stop(51. / 255., 0.3), stop(128. / 255., 0.5), stop(204. / 255., 0.7), stop(1., 0.9)],
+			GradientInterpolation::Stepped,
+			GradientSpread::Pad,
+		);
+		for (level, value) in [(0, 0.1), (50, 0.1), (51, 0.3), (127, 0.3), (128, 0.5), (204, 0.7), (254, 0.7), (255, 0.9)] {
+			assert!((mapped(&stepped, level) - value).abs() < 1e-5, "gray {level} steps to {}", mapped(&stepped, level));
+		}
+
+		// A repeating ramp keeps white at its end, and a clear one keeps it on the ramp
+		for spread in [GradientSpread::Repeat, GradientSpread::Clear] {
+			let ramp = map(vec![stop(0., 0.), stop(1., 1.)], GradientInterpolation::Linear, spread);
+			assert_eq!((mapped(&ramp, 0), mapped(&ramp, 255)), (0., 1.), "{spread:?}");
 		}
 	}
 }

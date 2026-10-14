@@ -132,6 +132,11 @@ impl TransferCurveEvaluator {
 		let (m_a, m_b) = (self.second_derivatives[lower], self.second_derivatives[upper]);
 		t_a * a.y + t_b * b.y + ((t_a * t_a * t_a - t_a) * m_a + (t_b * t_b * t_b - t_b) * m_b) * width * width / 6.
 	}
+
+	/// The points the spline passes through, sorted by x, each with the spline's second derivative there.
+	pub fn knots(&self) -> impl ExactSizeIterator<Item = (DVec2, f64)> + '_ {
+		self.points.iter().copied().zip(self.second_derivatives.iter().copied())
+	}
 }
 
 /// Second derivatives of the natural cubic spline through sorted `points`, solved by the tridiagonal (Thomas) algorithm in O(n).

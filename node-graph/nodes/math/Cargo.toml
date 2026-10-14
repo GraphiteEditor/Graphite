@@ -19,6 +19,7 @@ core-types = { workspace = true }
 graphene-core = { workspace = true }
 node-macro = { workspace = true }
 graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 vector-types = { workspace = true }
 
 # Workspace dependencies

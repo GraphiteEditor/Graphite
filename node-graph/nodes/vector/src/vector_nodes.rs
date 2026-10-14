@@ -358,6 +358,7 @@ fn vary_cover_colors<T: VectorListIterMut>(
 	if gradient.element().is_empty() {
 		return Err(VaryColorsError::EmptyGradient);
 	}
+	let gradient = raster_kernels::evaluate_gradient_effects(gradient);
 
 	let mut content = content;
 	let length = content.vector_count();

@@ -147,7 +147,7 @@ fn centered_cell_window(first_cell: DVec2, last_cell: DVec2, max_count: f64) -> 
 }
 
 /// Repeats the content on a grid that covers the visible viewport.
-#[node_macro::node(category("Graphic"), icon("NodeRepeatArray"))]
+#[node_macro::node(category(""), icon("NodeRepeatArray"))]
 fn tile<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx + ExtractFootprint + InjectFootprint,
 	#[implementations(

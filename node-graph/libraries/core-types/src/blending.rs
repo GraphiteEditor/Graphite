@@ -252,6 +252,30 @@ mod tests {
 	use super::*;
 
 	#[test]
+	fn blend_modes_with_a_hard_edge_take_a_channel_a_hair_off_black_or_white_as_it() {
+		// Color Burn keeps a white backdrop white under any source, and gives black for a black source otherwise
+		for backdrop in [1., 1. - 1e-7, 1. + 2e-7] {
+			assert_eq!(Color::blend_color_burn(backdrop, 0.), 1., "a backdrop of {backdrop}");
+		}
+		for source in [0., 1e-7, -1e-7] {
+			assert_eq!(Color::blend_color_burn(0.5, source), 0., "a source of {source}");
+		}
+
+		// Color Dodge gives white for a white source, and Divide for a black backdrop
+		for source in [1., 1. - 1e-7, 1. + 2e-7] {
+			assert_eq!(Color::blend_color_dodge(0., source), 1., "a source of {source}");
+		}
+		for backdrop in [0., 1e-7, -1e-7] {
+			assert_eq!(Color::blend_divide(backdrop, 0.5), 1., "a backdrop of {backdrop}");
+		}
+
+		// Past the tolerance the modes follow their formulas
+		assert!((Color::blend_color_burn(0.99, 0.5) - 0.98).abs() < 1e-6);
+		assert!((Color::blend_color_dodge(0.25, 0.5) - 0.5).abs() < 1e-6);
+		assert!((Color::blend_divide(0.25, 0.5) - 0.5).abs() < 1e-6);
+	}
+
+	#[test]
 	fn overlay_is_hard_light_with_swapped_operands() {
 		let a = Color::from_rgbaf32_unchecked(0.8, 0.3, 0.6, 1.);
 		let b = Color::from_rgbaf32_unchecked(0.2, 0.7, 0.4, 1.);

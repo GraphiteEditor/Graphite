@@ -99,12 +99,15 @@ fn render(
 			let output = SvgRenderOutput::from(render);
 			assert!(output.svg_defs.is_empty());
 
-			// Without a GPU, the filters' maps keep their placeholders, which leave those effects out
-			let effect_maps = match output.effect_maps.is_empty() {
-				true => Vec::new(),
+			// Without a GPU, the filters' maps and the images of content with effects SVG filters can't carry out keep their placeholders, which leave those effects out
+			let (effect_maps, deferred_images) = match output.effect_maps.is_empty() && output.deferred_images.is_empty() {
+				true => (Vec::new(), Vec::new()),
 				false => match executor.eval(Context::default()) {
-					Ok(executor) => executor.element().render_effect_maps(&output.effect_maps, *footprint),
-					Err(_) => Vec::new(),
+					Ok(executor) => (
+						executor.element().render_effect_maps(&output.effect_maps, *footprint),
+						executor.element().render_deferred_svg_images(&output.deferred_images, *footprint),
+					),
+					Err(_) => (Vec::new(), Vec::new()),
 				},
 			};
 
@@ -112,6 +115,7 @@ fn render(
 				svg: output.svg,
 				image_data: output.image_data.into_iter().collect(),
 				effect_maps,
+				deferred_images,
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {

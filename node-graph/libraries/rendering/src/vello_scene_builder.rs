@@ -14,8 +14,8 @@ const SHAPE_TOLERANCE: f64 = 0.1;
 /// The texture size an effects group's area rounds up to a multiple of, so a group moving across renders keeps reusing the same pooled textures.
 const EFFECTS_SIZE_CLASS: u32 = 64;
 
-/// The most pixels an effects group's area renders with, as a multiple of the viewport's, beyond which it renders at a lower resolution to bound its memory.
-const MAX_EFFECTS_AREA_PER_VIEWPORT_AREA: f64 = 4.;
+/// The most pixels an effects group's area, or an image for an SVG, renders with, as a multiple of the viewport's, beyond which it renders at a lower resolution to bound its memory.
+pub(crate) const MAX_EFFECTS_AREA_PER_VIEWPORT_AREA: f64 = 4.;
 
 /// Builds a Vello GPU scene of a fixed size, recording the images it draws so the renderer can supply their textures at render time.
 pub struct VelloSceneBuilder<'a> {
