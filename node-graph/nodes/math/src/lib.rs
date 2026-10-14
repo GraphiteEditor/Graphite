@@ -1705,6 +1705,29 @@ fn gradient_stretch(
 	gradient
 }
 
+/// Sets the start and end positions of each gradient in the input list, positioning and orienting the gradient across the layer.
+#[node_macro::node(category("Gradient"), icon("NodeTransform"))]
+fn gradient_endpoints(
+	_: impl Ctx,
+	gradient: Item<Gradient>,
+	#[unit(" px")]
+	#[default(0., 0.)]
+	start: Item<DVec2>,
+	#[unit(" px")]
+	#[default(100., 0.)]
+	end: Item<DVec2>,
+) -> Item<Gradient> {
+	let (start, mut end) = (*start.element(), *end.element());
+	if (end - start).length_squared() < 1e-18 {
+		end += DVec2::X * 1e-4;
+	}
+	let mut gradient = gradient;
+	let existing = gradient.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+	let transform = vector_types::gradient::build_transform_with_y_preservation(existing, start, end);
+	gradient.set_attribute(core_types::ATTR_TRANSFORM, transform);
+	gradient
+}
+
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
 #[node_macro::node(category("Color"), icon("NodeEvaluateGradient"))]
 fn evaluate_gradient(
@@ -2366,5 +2389,43 @@ mod test {
 			super::modulo((), Item::new_from_element(-5_f64), Item::new_from_element(2_f64), Item::new_from_element(false)).into_element(),
 			-1_f64
 		);
+	}
+
+	#[test]
+	pub fn gradient_endpoints_default_axis() {
+		let gradient = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		let start = Item::new_from_element(DVec2::new(0., 0.));
+		let end = Item::new_from_element(DVec2::new(100., 0.));
+		let result = gradient_endpoints((), gradient, start, end);
+		let transform: DAffine2 = result.attribute_cloned_or_default(core_types::ATTR_TRANSFORM);
+
+		assert_eq!(transform.transform_point2(DVec2::ZERO), DVec2::new(0., 0.));
+		assert_eq!(transform.transform_point2(DVec2::X), DVec2::new(100., 0.));
+		assert_eq!(transform.transform_point2(DVec2::Y), DVec2::new(0., 100.));
+	}
+
+	#[test]
+	pub fn gradient_endpoints_angled_and_offset() {
+		let gradient = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		let start = Item::new_from_element(DVec2::new(10., 20.));
+		let end = Item::new_from_element(DVec2::new(10., 80.));
+		let result = gradient_endpoints((), gradient, start, end);
+		let transform: DAffine2 = result.attribute_cloned_or_default(core_types::ATTR_TRANSFORM);
+
+		assert_eq!(transform.transform_point2(DVec2::ZERO), DVec2::new(10., 20.));
+		assert_eq!(transform.transform_point2(DVec2::X), DVec2::new(10., 80.));
+		assert!((transform.matrix2.determinant().abs() - 3600.).abs() < 1e-4);
+	}
+
+	#[test]
+	pub fn gradient_endpoints_coincident() {
+		let gradient = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		let start = Item::new_from_element(DVec2::new(50., 50.));
+		let end = Item::new_from_element(DVec2::new(50., 50.));
+		let result = gradient_endpoints((), gradient, start, end);
+		let transform: DAffine2 = result.attribute_cloned_or_default(core_types::ATTR_TRANSFORM);
+
+		assert_eq!(transform.transform_point2(DVec2::ZERO), DVec2::new(50., 50.));
+		assert!(transform.matrix2.determinant().abs() > 0.);
 	}
 }
