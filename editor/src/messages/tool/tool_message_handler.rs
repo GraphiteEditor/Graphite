@@ -1,5 +1,6 @@
 use super::common_functionality::shape_editor::ShapeState;
 use super::common_functionality::shapes::shape_utility::ShapeType::{Ellipse, Line, Rectangle};
+use super::common_functionality::snap_session::SnapSession;
 use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -13,6 +14,7 @@ use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 
 const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays { context }.into();
+const SNAPPING_OVERLAY_PROVIDER: OverlayProvider = |context| ToolMessage::DrawSnappingOverlays { context }.into();
 
 #[derive(ExtractField)]
 pub struct ToolMessageContext<'a> {
@@ -30,6 +32,9 @@ pub struct ToolMessageHandler {
 	pub tool_state: ToolFsmState,
 	pub transform_layer_handler: TransformLayerMessageHandler,
 	pub shape_editor: ShapeState,
+	pub snap_session: SnapSession,
+	/// Whether the snapping session is being sent a tick on every animation frame, which it only asks for while the pointer rests on something it could wake.
+	snapping_ticks: bool,
 	pub tool_is_active: bool,
 	/// What the active tool would edit in the selected layers, as last shown in the Layers panel.
 	pub edit_target: EditTarget,
@@ -49,17 +54,20 @@ impl ToolMessageHandler {
 
 		match message {
 			// Messages
-			ToolMessage::TransformLayer(message) => self.transform_layer_handler.process_message(
-				message,
-				responses,
-				TransformLayerMessageContext {
+			ToolMessage::TransformLayer(message) => {
+				let context = TransformLayerMessageContext {
 					document,
+					document_id,
 					input,
 					tool_data: &self.tool_state.tool_data,
 					shape_editor: &mut self.shape_editor,
+					snap_session: &mut self.snap_session,
 					viewport,
-				},
-			),
+				};
+				self.transform_layer_handler.process_message(message, responses, context);
+
+				self.keep_snapping_ticks_as_wanted(responses);
+			}
 
 			ToolMessage::ActivateToolSelect => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Select }),
 			ToolMessage::ActivateToolArtboard => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Artboard }),
@@ -125,6 +133,7 @@ impl ToolMessageHandler {
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
 							shape_editor: &mut self.shape_editor,
+							snap_session: &mut self.snap_session,
 							node_graph,
 							preferences,
 							viewport,
@@ -156,6 +165,10 @@ impl ToolMessageHandler {
 				send_abort_to_tool(old_tool, tool_type, true);
 				send_abort_to_tool(old_tool, old_tool, false);
 
+				// Nothing a tool was snapping, or had woken, carries over to the next tool
+				self.snap_session.end_gesture();
+				self.snap_session.sleep_all();
+
 				// Unsubscribe old tool from the broadcaster
 				tool_data.tools.get(&old_tool).unwrap().deactivate(responses);
 
@@ -167,6 +180,7 @@ impl ToolMessageHandler {
 
 				// Re-add the artboard overlay provider when tools are reactivated
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+				responses.add(OverlaysMessage::AddProvider { provider: SNAPPING_OVERLAY_PROVIDER });
 
 				// Re-subscribe the transform layer to selection change events, which `DeactivateTools` also unsubscribes
 				responses.add(BroadcastMessage::SubscribeEvent {
@@ -186,6 +200,7 @@ impl ToolMessageHandler {
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
+				self.release_snapping(responses);
 
 				// Unsubscribe the transform layer to selection change events
 				responses.add(BroadcastMessage::UnsubscribeEvent {
@@ -194,6 +209,7 @@ impl ToolMessageHandler {
 				});
 
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+				responses.add(OverlaysMessage::RemoveProvider { provider: SNAPPING_OVERLAY_PROVIDER });
 
 				HintData::clear_layout(responses);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: Default::default() });
@@ -213,6 +229,7 @@ impl ToolMessageHandler {
 				});
 
 				self.tool_is_active = true;
+				self.release_snapping(responses);
 
 				let tool_data = &mut self.tool_state.tool_data;
 				let document_data = &self.tool_state.document_tool_data;
@@ -236,6 +253,7 @@ impl ToolMessageHandler {
 					global_tool_data: &self.tool_state.document_tool_data,
 					input,
 					shape_editor: &mut self.shape_editor,
+					snap_session: &mut self.snap_session,
 					node_graph,
 					preferences,
 					viewport,
@@ -247,6 +265,14 @@ impl ToolMessageHandler {
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 
 				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+				responses.add(OverlaysMessage::AddProvider { provider: SNAPPING_OVERLAY_PROVIDER });
+			}
+			ToolMessage::DrawSnappingOverlays { mut context } => self.snap_session.draw_overlays(document, &mut context),
+			ToolMessage::SnappingTick => {
+				if self.snap_session.tick(input.time) {
+					responses.add(OverlaysMessage::Draw);
+				}
+				self.keep_snapping_ticks_as_wanted(responses);
 			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -330,6 +356,7 @@ impl ToolMessageHandler {
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
 							shape_editor: &mut self.shape_editor,
+							snap_session: &mut self.snap_session,
 							node_graph,
 							preferences,
 							viewport,
@@ -349,6 +376,8 @@ impl ToolMessageHandler {
 						}
 					}
 				}
+
+				self.keep_snapping_ticks_as_wanted(responses);
 			}
 		}
 	}
@@ -410,6 +439,29 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
+	/// Lets go of what the snapping session holds and has woken, so none of it carries over while the tools are off or into another document.
+	fn release_snapping(&mut self, responses: &mut VecDeque<Message>) {
+		self.snap_session.end_gesture();
+		self.snap_session.sleep_all();
+		self.keep_snapping_ticks_as_wanted(responses);
+	}
+
+	/// Starts or stops the ticks sent to the snapping session on each animation frame, to match whether it has any use for them.
+	fn keep_snapping_ticks_as_wanted(&mut self, responses: &mut VecDeque<Message>) {
+		let wanted = self.snap_session.wants_ticks();
+		if wanted == self.snapping_ticks {
+			return;
+		}
+		self.snapping_ticks = wanted;
+
+		let (on, send) = (EventMessage::AnimationFrame, Box::new(ToolMessage::SnappingTick.into()));
+		if wanted {
+			responses.add(BroadcastMessage::SubscribeEvent { on, send });
+		} else {
+			responses.add(BroadcastMessage::UnsubscribeEvent { on, send });
+		}
+	}
+
 	pub fn actions_with_preferences(&self, preferences: &PreferencesMessageHandler) -> ActionList {
 		let mut list = self.actions();
 

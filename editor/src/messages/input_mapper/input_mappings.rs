@@ -105,10 +105,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Minus); action_dispatch=TransformLayerMessage::TypeNegate),
 		entry!(KeyDown(Comma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
 		entry!(KeyDown(Period); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
+		entry!(PointerMove; refresh_keys=[Control, Shift, Alt, KeyQ, KeyW], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyQ, KeyW], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, remove_from_selection: Alt, select_deepest: Accel, lasso_select: Control, skew: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
@@ -118,7 +118,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		//
 		// ArtboardToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ArtboardToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift, Alt], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
+		entry!(PointerMove; refresh_keys=[Shift, Alt, KeyQ, KeyW], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
 		entry!(KeyUp(MouseLeft); action_dispatch=ArtboardToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=ArtboardToolMessage::DeleteSelected),
 		entry!(KeyDown(Backspace); action_dispatch=ArtboardToolMessage::DeleteSelected),
@@ -166,7 +166,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, KeyQ, KeyW], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),
@@ -176,7 +176,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// GradientToolMessage
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
+		entry!(PointerMove; refresh_keys=[Shift, Control, KeyQ, KeyW], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=GradientToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
@@ -190,7 +190,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
 		entry!(KeyDown(BracketLeft); action_dispatch=ShapeToolMessage::DecreaseSides),
 		entry!(KeyDown(BracketRight); action_dispatch=ShapeToolMessage::IncreaseSides),
-		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove { modifier: [Alt, Shift, Control] }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control, KeyQ, KeyW], action_dispatch=ShapeToolMessage::PointerMove { modifier: [Alt, Shift, Control] }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite: Control }),
@@ -233,7 +233,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
+		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt, KeyQ, KeyW], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAll),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllSelected),
@@ -269,7 +269,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=ToolMessage::Path(PathToolMessage::ClosePath)),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC, KeyQ, KeyW], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
 		entry!(KeyDownNoRepeat(Tab); action_dispatch=PenToolMessage::SwapHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
@@ -290,7 +290,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
 		//
 		// SplineToolMessage
-		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
+		entry!(PointerMove; refresh_keys=[KeyQ, KeyW], action_dispatch=SplineToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=SplineToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SplineToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=SplineToolMessage::Confirm),

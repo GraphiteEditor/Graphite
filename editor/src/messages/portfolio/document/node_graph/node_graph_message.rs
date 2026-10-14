@@ -19,8 +19,16 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
-	AddPrimaryImport,
-	AddSecondaryImport,
+	/// Adds the import at `import_index` wired to `input_connector`, from a wire dragged out of a dimmed connector for adding one.
+	/// Index 0 fills the empty primary, and any other is the next secondary import.
+	AddImportAndConnect {
+		import_index: usize,
+		input_connector: InputConnector,
+	},
+	/// Inserts a Passthrough node beside the import that takes over the wires it fed, so nodes can be placed in front of all of them at once.
+	AddImportPassthrough {
+		import_index: usize,
+	},
 	AddExport,
 	AddPrimaryExport,
 	AddSecondaryExport,
@@ -60,6 +68,10 @@ pub enum NodeGraphMessage {
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
+	/// Disconnects every wire an import feeds, or the wire feeding an export.
+	DisconnectImportExport {
+		index: ImportOrExport,
+	},
 	DisconnectRootNode,
 	SetRootNodeToRestore {
 		root_node_to_restore: RootNode,
@@ -71,7 +83,10 @@ pub enum NodeGraphMessage {
 		set_to_exposed: bool,
 		start_transaction: bool,
 	},
-	ExposeEncapsulatingPrimaryInput {
+	/// Whether the subgraph node shows its input for an import as a connector rather than as a parameter in the Inspector.
+	/// A hidden primary import also disappears from the subgraph.
+	ExposeEncapsulatingInput {
+		input_index: usize,
 		exposed: bool,
 	},
 	ExposePrimaryExport {
@@ -146,6 +161,10 @@ pub enum NodeGraphMessage {
 	},
 	RemoveExport {
 		export_index: usize,
+	},
+	/// Removes an import or export, or hides it if it's the primary, since the primary slot always remains.
+	RemoveImportExport {
+		index: ImportOrExport,
 	},
 	ReorderImport {
 		start_index: usize,
@@ -228,6 +247,14 @@ pub enum NodeGraphMessage {
 	},
 	SetImportExportNameImpl {
 		name: String,
+		index: ImportOrExport,
+	},
+	SetImportExportDescription {
+		description: String,
+		index: ImportOrExport,
+	},
+	SetImportExportDescriptionImpl {
+		description: String,
 		index: ImportOrExport,
 	},
 	ToggleSelectedAsLayersOrNodes,

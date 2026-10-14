@@ -640,17 +640,17 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = 1.;
+	/// Fills a square dot about `size` pixels across at each position, all in one fill, with their edges on whole physical pixels so they stay crisp.
+	pub fn dots(&mut self, positions: &[DVec2], size: f64, color: Option<&str>) {
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
-
-		let position = self.snap_to_physical_pixel_center(position);
-		let corner = position - DVec2::splat(size) / 2.;
 
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
-		self.render_context.rect(corner.x, corner.y, size, size);
+		for &position in positions {
+			let (corner, size) = self.physical_pixel_square(position, size);
+			self.render_context.rect(corner.x, corner.y, size, size);
+		}
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.fill();
 
@@ -1043,7 +1043,7 @@ impl OverlayContext {
 		};
 		let y = match pivot[1] {
 			Pivot::Start => padding + metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
-			Pivot::Middle => (metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent()) / 2.,
+			Pivot::Middle => (metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent()) / 2.,
 			Pivot::End => -padding,
 		};
 
@@ -1110,6 +1110,16 @@ impl OverlayContext {
 			return p.round() - DVec2::splat(0.5);
 		}
 		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)
+	}
+
+	/// The corner and side of a square about `size` pixels across centered near `position`, with its edges on whole physical pixels.
+	fn physical_pixel_square(&self, position: DVec2, size: f64) -> (DVec2, f64) {
+		let scale = self.viewport.scale();
+		let scale = if scale.is_finite() && scale > 0. { scale } else { 1. };
+
+		let physical_size = (size * scale).round().max(1.);
+		let physical_corner = (position * scale - physical_size / 2.).round();
+		(physical_corner / scale, physical_size / scale)
 	}
 }
 

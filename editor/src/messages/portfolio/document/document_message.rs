@@ -225,6 +225,9 @@ pub enum DocumentMessage {
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},
+	SetSnappingAngleStep {
+		degrees: f64,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
@@ -269,6 +272,7 @@ pub enum DocumentMessage {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
 		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
+		document_to_viewport: DAffine2,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,

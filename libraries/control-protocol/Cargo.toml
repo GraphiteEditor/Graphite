@@ -1,5 +1,5 @@
 [package]
-name = "graphite-editor-control-protocol"
+name = "control-protocol"
 description = "The commands, results, and scenarios that scripts, QA, and agents use to operate the Graphite editor"
 version.workspace = true
 license.workspace = true

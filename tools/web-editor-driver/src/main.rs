@@ -11,8 +11,8 @@ mod session;
 mod socket;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use control_protocol::{Command, Filmstrip, MouseButton, Rectangle, Space, parse_scenario};
 use glam::{DVec2, UVec2};
-use graphite_editor_control_protocol::{Command, Filmstrip, MouseButton, Rectangle, Space, parse_scenario};
 use serde::Serialize;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};

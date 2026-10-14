@@ -92,9 +92,9 @@ impl NodeNetworkInterface {
 		self.insert_input_slot(locator, to, input, metadata)
 	}
 
-	/// Inserts an export at `index`, clamped to the end, along with the name the encapsulating node shows
-	/// for it. The document network has no encapsulating node, so it carries no name.
-	pub(crate) fn insert_export_slot(&mut self, network_path: &[NodeId], index: usize, export: NodeInput, output_name: String) -> bool {
+	/// Inserts an export at `index`, clamped to the end, along with the name and description the encapsulating
+	/// node shows for it. The document network has no encapsulating node, so it carries neither.
+	pub(crate) fn insert_export_slot(&mut self, network_path: &[NodeId], index: usize, export: NodeInput, output_name: String, output_description: String) -> bool {
 		let Some(network) = self.network_graph_mut(network_path) else {
 			log::error!("Could not get nested network in insert_export_slot");
 			return false;
@@ -103,15 +103,26 @@ impl NodeNetworkInterface {
 		let index = index.min(network.exports.len());
 		network.exports.insert(index, export);
 
+		let mut descriptions_changed = false;
 		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			let output_names = &mut encapsulating_node_metadata.persistent_metadata.output_names;
-			output_names.insert(index.min(output_names.len()), output_name);
+			let persistent_metadata = &mut encapsulating_node_metadata.persistent_metadata;
+			persistent_metadata.output_names.insert(index.min(persistent_metadata.output_names.len()), output_name);
+
+			// A missing description is empty, so only a non-empty one past the end needs the gap filled
+			let output_descriptions = &mut persistent_metadata.output_descriptions;
+			descriptions_changed = !output_description.is_empty() || (index <= output_descriptions.len() && has_description(output_descriptions));
+			if index <= output_descriptions.len() {
+				output_descriptions.insert(index, output_description);
+			} else if !output_description.is_empty() {
+				output_descriptions.resize(index, String::new());
+				output_descriptions.push(output_description);
+			}
 		}
-		self.emit_exports_from(network_path, index, None);
+		self.emit_exports_from(network_path, index, None, descriptions_changed);
 		true
 	}
 
-	/// Removes the export at `index` together with the encapsulating node's name for it.
+	/// Removes the export at `index` together with the encapsulating node's name and description for it.
 	pub(crate) fn remove_export_slot(&mut self, network_path: &[NodeId], index: usize) -> Option<NodeInput> {
 		let Some(network) = self.network_graph_mut(network_path) else {
 			log::error!("Could not get nested network in remove_export_slot");
@@ -126,22 +137,27 @@ impl NodeNetworkInterface {
 		// The list shrank by one, so what was the last index now has no slot and has to be cleared.
 		let vacated = network.exports.len();
 
+		let mut descriptions_changed = false;
 		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			let output_names = &mut encapsulating_node_metadata.persistent_metadata.output_names;
-			if index < output_names.len() {
-				output_names.remove(index);
+			let persistent_metadata = &mut encapsulating_node_metadata.persistent_metadata;
+			if index < persistent_metadata.output_names.len() {
+				persistent_metadata.output_names.remove(index);
+			}
+			descriptions_changed = index < persistent_metadata.output_descriptions.len() && has_description(&persistent_metadata.output_descriptions);
+			if index < persistent_metadata.output_descriptions.len() {
+				persistent_metadata.output_descriptions.remove(index);
 			}
 		}
-		self.emit_exports_from(network_path, index, Some(vacated));
+		self.emit_exports_from(network_path, index, Some(vacated), descriptions_changed);
 		Some(export)
 	}
 
 	/// Records every export slot from `index` on, plus a clear for `vacated` when the list shrank.
 	///
 	/// Export slots are addressed by index, so inserting or removing one changes the meaning of every
-	/// later slot and each has to be restated. The encapsulating node's names for them ride along as one
-	/// whole-array metadata write.
-	fn emit_exports_from(&mut self, network_path: &[NodeId], index: usize, vacated: Option<usize>) {
+	/// later slot and each has to be restated. The encapsulating node's names, and its descriptions unless
+	/// they're all empty, ride along as whole-array metadata writes.
+	fn emit_exports_from(&mut self, network_path: &[NodeId], index: usize, vacated: Option<usize>, descriptions_changed: bool) {
 		let Some(network) = self.network.network().nested_network(network_path) else { return };
 		let exports: Vec<_> = network.exports.iter().skip(index).cloned().collect();
 
@@ -162,22 +178,31 @@ impl NodeNetworkInterface {
 
 		let Some((&node_id, parent_path)) = network_path.split_last() else { return };
 		let Some(metadata) = self.encapsulating_node_metadata(network_path) else { return };
-		let change = NodeMetadataChange::OutputNames(metadata.persistent_metadata.output_names.clone());
-		self.deltas.push(EditorDelta::NodeMetadata {
-			network_path: parent_path.to_vec(),
-			node_id,
-			change,
-		});
+		let output_names = NodeMetadataChange::OutputNames(metadata.persistent_metadata.output_names.clone());
+		let output_descriptions = descriptions_changed.then(|| NodeMetadataChange::OutputDescriptions(metadata.persistent_metadata.output_descriptions.clone()));
+		for change in std::iter::once(output_names).chain(output_descriptions) {
+			self.deltas.push(EditorDelta::NodeMetadata {
+				network_path: parent_path.to_vec(),
+				node_id,
+				change,
+			});
+		}
 	}
 
-	/// Moves the export at `from` to `to`, carrying the encapsulating node's name for it.
+	/// Moves the export at `from` to `to`, carrying the encapsulating node's name and description for it.
 	pub(crate) fn move_export_slot(&mut self, network_path: &[NodeId], from: usize, to: usize) -> bool {
-		let name = self
+		let (name, description) = self
 			.encapsulating_node_metadata(network_path)
-			.and_then(|metadata| metadata.persistent_metadata.output_names.get(from).cloned())
+			.map(|metadata| {
+				let persistent_metadata = &metadata.persistent_metadata;
+				(
+					persistent_metadata.output_names.get(from).cloned().unwrap_or_default(),
+					persistent_metadata.output_descriptions.get(from).cloned().unwrap_or_default(),
+				)
+			})
 			.unwrap_or_default();
 		let Some(export) = self.remove_export_slot(network_path, from) else { return false };
-		self.insert_export_slot(network_path, to, export, name)
+		self.insert_export_slot(network_path, to, export, name, description)
 	}
 
 	/// Writes the input at `connector`, returning the input it replaced.
@@ -403,6 +428,11 @@ impl NodeNetworkInterface {
 			network.set_reference(None);
 		}
 	}
+}
+
+/// Whether any of `descriptions` says anything, since storage keeps the whole list then, but not a list that's all empty.
+fn has_description(descriptions: &[String]) -> bool {
+	descriptions.iter().any(|description| !description.is_empty())
 }
 
 /// The slot `connector` addresses, whether it is a node's input or one of the network's exports.

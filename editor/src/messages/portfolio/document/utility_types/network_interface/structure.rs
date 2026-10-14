@@ -58,6 +58,7 @@ impl NodeNetworkInterface {
 
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
 
 		// Only load structure if there is a root node
@@ -144,24 +145,29 @@ impl NodeNetworkInterface {
 		self.document_metadata.text_frames.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 	}
 
-	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, upstream_footprints: HashMap<NodeId, Footprint>, local_transforms: HashMap<NodeId, DAffine2>) {
+	/// Update the cached transforms of the layers, which a render made with the given view reported
+	pub fn update_transforms(&mut self, upstream_footprints: HashMap<NodeId, Footprint>, local_transforms: HashMap<NodeId, DAffine2>, document_to_viewport: DAffine2) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.upstream_footprints = upstream_footprints;
 		self.document_metadata.local_transforms = local_transforms;
+		self.document_metadata.rendered_document_to_viewport = document_to_viewport;
 	}
 
 	/// Update the cached first item's source id of the layers
 	pub fn update_first_element_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.first_element_source_ids = new;
 	}
 
 	/// Update the cached click targets of the layers
 	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.click_targets = new_click_targets;
 	}
 
 	/// Update the cached source-geometry outline targets of the layers
 	pub fn update_outlines(&mut self, new_outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.outlines = new_outlines;
 	}
 
@@ -178,11 +184,13 @@ impl NodeNetworkInterface {
 
 	/// Update the vector modify of the layers
 	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, Vector>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.vector_modify = new_vector_modify;
 	}
 
 	/// Update the layer vector data (for layers without Path nodes)
 	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 

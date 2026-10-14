@@ -274,6 +274,16 @@ impl NodeMut<'_> {
 		changed
 	}
 
+	pub(crate) fn set_input_description(&mut self, input_index: usize, input_description: String) -> bool {
+		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		let changed = input_metadata.persistent_metadata.input_description != input_description;
+		input_metadata.persistent_metadata.input_description = input_description;
+		if changed {
+			self.emit_input_metadata();
+		}
+		changed
+	}
+
 	/// The identifier of the widget override the Inspector uses for this input, or `None` for the
 	/// widget generated from its type.
 	pub(crate) fn set_widget_override(&mut self, input_index: usize, widget_override: Option<String>) -> bool {
@@ -308,6 +318,37 @@ impl NodeMut<'_> {
 		self.metadata.output_names = output_names;
 		if changed {
 			let change = NodeMetadataChange::OutputNames(self.metadata.output_names.clone());
+			self.deltas.metadata(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_output_description(&mut self, output_index: usize, output_description: String) -> bool {
+		if output_index >= self.metadata.output_names.len() {
+			return false;
+		}
+
+		let output_descriptions = &mut self.metadata.output_descriptions;
+		if output_descriptions.get(output_index).map_or("", String::as_str) == output_description {
+			return false;
+		}
+
+		if output_index >= output_descriptions.len() {
+			output_descriptions.resize(output_index + 1, String::new());
+		}
+		output_descriptions[output_index] = output_description;
+
+		let change = NodeMetadataChange::OutputDescriptions(output_descriptions.clone());
+		self.deltas.metadata(change);
+		true
+	}
+
+	/// The encapsulating node's descriptions for the network's exports, replaced together since they are stored as one array.
+	pub(crate) fn set_output_descriptions(&mut self, output_descriptions: Vec<String>) -> bool {
+		let changed = self.metadata.output_descriptions != output_descriptions;
+		self.metadata.output_descriptions = output_descriptions;
+		if changed {
+			let change = NodeMetadataChange::OutputDescriptions(self.metadata.output_descriptions.clone());
 			self.deltas.metadata(change);
 		}
 		changed

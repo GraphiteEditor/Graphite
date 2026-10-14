@@ -6,10 +6,9 @@
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { parseMarkdown } from "/src/utility-functions/markdown";
-	import type { EditorWrapper, LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { LabeledShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const tooltip = getContext<TooltipStore>("tooltip");
-	const editor = getContext<EditorWrapper>("editor");
 
 	// The tooltip a component shows for part of itself, given with the bounds of that part, rather than the hovered element's at the pointer
 	export let given: { label: string; description: string; code: string; bounds: { left: number; top: number; bottom: number } } | undefined = undefined;
@@ -17,8 +16,8 @@
 	let self: FloatingMenu | undefined;
 
 	$: element = given ? undefined : $tooltip.element;
-	$: label = parseMarkdown(filterTodo((given?.label || element?.getAttribute("data-tooltip-label"))?.trim()));
-	$: description = parseMarkdown(filterTodo((given?.description || element?.getAttribute("data-tooltip-description"))?.trim()));
+	$: label = parseMarkdown((given?.label || element?.getAttribute("data-tooltip-label"))?.trim());
+	$: description = parseMarkdown((given?.description || element?.getAttribute("data-tooltip-description"))?.trim());
 	$: code = parseMarkdown((given?.code || element?.getAttribute("data-tooltip-code"))?.trim());
 	$: shortcutJSON = element?.getAttribute("data-tooltip-shortcut")?.trim();
 	// A given tooltip stands below its bounds from their left, or above them where there's no room below, rather than clearing the pointer below it
@@ -35,12 +34,6 @@
 			return undefined;
 		}
 	})(shortcutJSON);
-
-	// TODO: Once all TODOs are replaced with real text, remove this function
-	function filterTodo(text: string | undefined): string | undefined {
-		if (text?.trim().toUpperCase() === "TODO" && !editor.inDevelopmentMode()) return "";
-		return text;
-	}
 </script>
 
 {#if label || description}
@@ -100,6 +93,13 @@
 
 			.tooltip-description {
 				color: var(--color-b-lightgray);
+
+				hr {
+					margin: 8px 0;
+					border: none;
+					height: 1px;
+					background: var(--color-5-dullgray);
+				}
 			}
 		}
 	}

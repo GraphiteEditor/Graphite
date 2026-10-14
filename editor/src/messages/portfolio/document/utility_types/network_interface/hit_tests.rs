@@ -82,25 +82,18 @@ impl NodeNetworkInterface {
 		let bounds = self.all_nodes_bounding_box(network_path).unwrap_or([DVec2::ZERO, DVec2::ZERO]);
 		let all_nodes_bounding_box = rectangle_path(bounds[0], bounds[1]).to_svg();
 
-		let mut modify_import_export = Vec::new();
-		self.with_modify_import_export(network_path, |modify_import_export_click_targets| {
-			for click_target in modify_import_export_click_targets
-				.remove_imports_exports
-				.click_targets()
-				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
-			{
-				if let ClickTargetType::Path(path) = click_target.target_type() {
-					modify_import_export.push(path.to_svg());
-				}
-			}
-		});
+		let import_export_names = self
+			.import_export_name_bounds(network_path)
+			.into_iter()
+			.map(|(_, [name_min, name_max])| rectangle_path(name_min, name_max).to_svg())
+			.collect();
 		FrontendClickTargets {
 			node_click_targets,
 			layer_click_targets,
 			connector_click_targets,
 			icon_click_targets,
 			all_nodes_bounding_box,
-			modify_import_export,
+			import_export_names,
 		}
 	}
 
@@ -195,6 +188,24 @@ impl NodeNetworkInterface {
 				.flatten()
 			})
 			.next()
+	}
+
+	/// The dimmed connector for adding an import (or else export) under `point`, given in node graph space, as the index it adds with its center.
+	pub fn empty_import_export_connector_at(&self, point: DVec2, is_import: bool, network_path: &[NodeId]) -> Option<(usize, DVec2)> {
+		// The same reach as an import or export port's click target
+		const CONNECTOR_RADIUS: f64 = 8.;
+
+		self.empty_import_export_connectors(is_import, network_path)
+			.into_iter()
+			.find(|(_, center)| center.distance(point) <= CONNECTOR_RADIUS)
+	}
+
+	/// The import or export with its name under `point`, given in node graph space.
+	pub fn import_export_name_from_point(&self, point: DVec2, network_path: &[NodeId]) -> Option<ImportOrExport> {
+		self.import_export_name_bounds(network_path)
+			.into_iter()
+			.find(|(_, [name_min, name_max])| name_min.cmple(point).all() && point.cmple(*name_max).all())
+			.map(|(import_or_export, _)| import_or_export)
 	}
 
 	pub fn input_connector_from_click(&self, click: DVec2, network_path: &[NodeId]) -> Option<InputConnector> {

@@ -555,6 +555,29 @@ impl NodeNetworkInterface {
 			.is_some_and(|field| field.internal)
 	}
 
+	/// The description stored for a node's output, or else for a proto node, the doc comment on its field in the struct a multi-output node returns.
+	pub fn output_description(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> String {
+		let stored_description = self
+			.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.output_descriptions.get(output_index))
+			.filter(|description| !description.is_empty());
+		if let Some(stored_description) = stored_description {
+			return stored_description.clone();
+		}
+
+		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
+			return String::new();
+		};
+		let Ok(node_metadata) = graphene_std::registry::NODE_METADATA.lock() else { return String::new() };
+
+		node_metadata
+			.get(proto_node_identifier)
+			.and_then(|metadata| metadata.output_fields.as_ref())
+			.and_then(|output_fields| output_fields.fields.get(output_fields.field_index_for_output(output_index)?))
+			.map(|field| field.description.to_string())
+			.unwrap_or_default()
+	}
+
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_input_override");

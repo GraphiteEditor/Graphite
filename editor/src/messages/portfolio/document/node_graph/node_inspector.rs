@@ -3208,7 +3208,7 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 		.as_ref()
 		.and_then(|identifier| resolve_document_node_type(identifier));
 	let icon = Some(context.network_interface.node_icon(&node_id, context.selection_network_path).to_string());
-	let description = definition.map(|definition| definition.description.to_string()).filter(|string| string != "TODO").unwrap_or_default();
+	let description = definition.map(|definition| definition.description.to_string()).unwrap_or_default();
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);

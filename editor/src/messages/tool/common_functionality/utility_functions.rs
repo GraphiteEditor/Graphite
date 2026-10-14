@@ -1,6 +1,5 @@
-use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
+use super::snap_session::{SnapSession, SnapView, anchor_positions};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
-use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
@@ -214,28 +213,68 @@ pub fn is_visible_point(
 	}
 }
 
+/// The most anchors of the dragged layers that snap along with the box around them, which are those nearest where the pointer took hold.
+const MAX_SNAPPING_ANCHORS: usize = 8;
+
+/// The most visible layers, counting those inside dragged groups, for which a drag snaps their anchors as well as the box around them.
+const MAX_LAYERS_WITH_SNAPPING_ANCHORS: usize = 8;
+
+/// Adds the anchors of the dragged layers nearest the grip to where a gesture's features start, in document space, skipping any already there.
+pub fn push_nearest_anchors(starts: &mut Vec<DVec2>, document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier], grip: DVec2) {
+	// Anchors far from the grip seldom decide where a drag lands, so only the nearest snap. O(n log n) in the anchors.
+	let mut anchors = dragged_anchors(document, layers);
+	anchors.sort_by(|a, b| a.distance_squared(grip).total_cmp(&b.distance_squared(grip)));
+
+	let mut pushed = 0;
+	for anchor in anchors {
+		if pushed >= MAX_SNAPPING_ANCHORS {
+			break;
+		}
+		if !starts.iter().any(|start| start.abs_diff_eq(anchor, 1e-6)) {
+			starts.push(anchor);
+			pushed += 1;
+		}
+	}
+}
+
+/// The anchors the dragged layers draw, in document space, when few enough layers are dragged for them to be worth snapping.
+fn dragged_anchors(document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier]) -> Vec<DVec2> {
+	let metadata = document.metadata();
+	let with_everything_inside = layers.iter().flat_map(|&layer| std::iter::once(layer).chain(layer.descendants(metadata)));
+	let layers: Vec<_> = with_everything_inside
+		.filter(|&layer| !layer.has_children(metadata) && document.network_interface.is_layer_visible(layer))
+		.take(MAX_LAYERS_WITH_SNAPPING_ANCHORS + 1)
+		.collect();
+	if layers.len() > MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+		return Vec::new();
+	}
+
+	let mut anchors = Vec::new();
+	for layer in layers {
+		let to_document = metadata.transform_to_document_as_rendered(layer);
+		let drawn = metadata.layer_outline(layer).flat_map(anchor_positions).map(|position| to_document.transform_point2(position));
+		anchors.extend(drawn.filter(|position| position.is_finite()));
+	}
+	anchors
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn resize_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
-	snap_manager: &mut SnapManager,
-	snap_candidates: &mut Vec<SnapCandidatePoint>,
-	input: &InputPreprocessorMessageHandler,
-	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
 ) {
+	let document = view.document;
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let center = center.then_some(bounds.center_of_transformation);
-		let snap = Some(SizeSnapData {
-			manager: snap_manager,
-			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
-		});
-		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
+		let snap = Some(SizeSnapData { session: snap_session, view });
+		let (position, size) = movement.new_size(view.input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 		let pivot_transform = DAffine2::from_translation(pivot);
@@ -257,30 +296,36 @@ pub fn resize_bounds(
 
 #[allow(clippy::too_many_arguments)]
 pub fn rotate_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
 	drag_start: DVec2,
-	mouse_position: DVec2,
 	snap_angle: bool,
 	tool: ToolType,
 ) {
-	let start_offset = drag_start - bounds.center_of_transformation;
-	let end_offset = mouse_position - bounds.center_of_transformation;
-	let Some(angle) = start_offset.try_angle_to(end_offset) else {
+	let document = view.document;
+	let pointer_angle = || {
+		let start_offset = drag_start - bounds.center_of_transformation;
+		let end_offset = view.input.mouse.position - bounds.center_of_transformation;
+		start_offset.try_angle_to(end_offset)
+	};
+
+	// A stepped angle comes from the pointer alone, with nothing snapped
+	let angle = if snap_angle {
+		snap_session.forget();
+		let snap_resolution = document.snapping_state.angle_step_radians();
+		pointer_angle().map(|angle| (angle / snap_resolution).round() * snap_resolution)
+	} else {
+		bounds.snap_turn(view, snap_session).or_else(pointer_angle)
+	};
+	let Some(angle) = angle else {
 		warn!("Unable to rotate bounds due to zero offset");
 		return;
 	};
 
-	let snapped_angle = if snap_angle {
-		let snap_resolution = ROTATE_INCREMENT.to_radians();
-		(angle / snap_resolution).round() * snap_resolution
-	} else {
-		angle
-	};
-
-	let delta = DAffine2::from_angle(snapped_angle);
+	let delta = DAffine2::from_angle(angle);
 
 	dragging_layers.retain(|layer| {
 		if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -305,14 +350,17 @@ pub fn rotate_bounds(
 }
 
 pub fn skew_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	free_movement: bool,
 	layers: &mut Vec<LayerNodeIdentifier>,
-	mouse_position: DVec2,
 	tool: ToolType,
 ) {
+	let document = view.document;
+	let mouse_position = bounds.snap_skew(view, snap_session, free_movement);
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let mut pivot = DVec2::ZERO;
 
@@ -367,6 +415,17 @@ pub fn transforming_transform_cage(
 
 		if let Some(bounds) = &mut bounding_box_manager {
 			bounds.original_bound_transform = bounds.transform;
+
+			// The resized layers' anchors nearest the grab snap along with the box, taken from where they are before the resize
+			if let Some(edges) = &mut bounds.selected_edges {
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let grab = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let mut anchors = Vec::new();
+				push_nearest_anchors(&mut anchors, document, layers_dragging, grab);
+
+				let document_to_cage = bounds.transform.inverse() * document_to_viewport;
+				edges.anchors = anchors.into_iter().map(|anchor| document_to_cage.transform_point2(anchor)).collect();
+			}
 
 			layers_dragging.retain(|layer| {
 				if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -628,6 +687,33 @@ pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn hidden_layers_neither_offer_anchors_nor_count_toward_the_cutoff_for_snapping_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// One more rectangle than the cutoff allows, the last of which is then hidden
+		let mut layers = Vec::new();
+		let mut left = 100.;
+		for _ in 0..=MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+			editor.draw_rect(left, 100., left + 60., 160.).await;
+			layers.push(editor.get_selected_layer().await.expect("the rectangle should be selected"));
+			left += 80.;
+		}
+		let hide = NodeGraphMessage::SetVisibility {
+			node_id: layers[MAX_LAYERS_WITH_SNAPPING_ANCHORS].to_node(),
+			network_path: Vec::new(),
+			visible: false,
+		};
+		editor.handle_message(hide).await;
+
+		let mut starts = Vec::new();
+		push_nearest_anchors(&mut starts, editor.active_document(), &layers, DVec2::new(100., 100.));
+		assert!(!starts.is_empty(), "the visible rectangles' anchors should snap");
+	}
+
 	#[test]
 	fn is_almost_colinear_test() {
 		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::X, DVec2::X));
