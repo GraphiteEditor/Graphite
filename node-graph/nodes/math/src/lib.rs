@@ -1717,12 +1717,22 @@ fn gradient_endpoints(
 	#[default(100., 0.)]
 	end: Item<DVec2>,
 ) -> Item<Gradient> {
-	let (start, mut end) = (*start.element(), *end.element());
+	let mut start = *start.element();
+	let mut end = *end.element();
+	if !start.is_finite() {
+		start = DVec2::ZERO;
+	}
+	if !end.is_finite() {
+		end = DVec2::new(100., 0.);
+	}
 	if (end - start).length_squared() < 1e-18 {
 		end += DVec2::X * 1e-4;
 	}
 	let mut gradient = gradient;
-	let existing = gradient.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+	let mut existing = gradient.attribute_cloned_or_default::<DAffine2>(core_types::ATTR_TRANSFORM);
+	if !existing.is_finite() || existing.matrix2.determinant().abs() < 1e-9 {
+		existing = DAffine2::IDENTITY;
+	}
 	let transform = vector_types::gradient::build_transform_with_y_preservation(existing, start, end);
 	gradient.set_attribute(core_types::ATTR_TRANSFORM, transform);
 	gradient
@@ -2426,6 +2436,21 @@ mod test {
 		let transform: DAffine2 = result.attribute_cloned_or_default(core_types::ATTR_TRANSFORM);
 
 		assert_eq!(transform.transform_point2(DVec2::ZERO), DVec2::new(50., 50.));
+		assert!(transform.matrix2.determinant().abs() > 0.);
+	}
+
+	#[test]
+	pub fn gradient_endpoints_singular_existing_transform() {
+		let mut gradient = Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE]));
+		// Collinear x and y axes make the existing linear part singular
+		gradient.set_attribute(core_types::ATTR_TRANSFORM, DAffine2::from_cols(DVec2::X, DVec2::X, DVec2::ZERO));
+		let start = Item::new_from_element(DVec2::new(0., 0.));
+		let end = Item::new_from_element(DVec2::new(100., 0.));
+		let result = gradient_endpoints((), gradient, start, end);
+		let transform: DAffine2 = result.attribute_cloned_or_default(core_types::ATTR_TRANSFORM);
+
+		assert_eq!(transform.transform_point2(DVec2::ZERO), DVec2::new(0., 0.));
+		assert_eq!(transform.transform_point2(DVec2::X), DVec2::new(100., 0.));
 		assert!(transform.matrix2.determinant().abs() > 0.);
 	}
 }
