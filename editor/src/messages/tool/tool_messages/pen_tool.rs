@@ -1332,9 +1332,21 @@ impl PenToolData {
 		let selected_nodes = document.network_interface.selected_nodes();
 		self.handle_end = None;
 
+		// The selected paths can be extended, along with the paths inside a selected group
+		let metadata = document.metadata();
+		let inside_selected_groups = selected_nodes
+			.selected_layers_except_artboards(&document.network_interface)
+			.flat_map(|layer| layer.descendants(metadata));
+		let extendable = selected_nodes.selected_layers(metadata).chain(inside_selected_groups);
+
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-		let extension_choice = should_extend(document, start, tolerance, selected_nodes.selected_layers(document.metadata()));
+		let extension_choice = should_extend(document, start, tolerance, extendable);
 		if let Some((layer, point, position)) = extension_choice {
+			// A path inside a selected group becomes the selection, so the drawing goes on in it rather than in the group
+			if !selected_nodes.selected_layers(metadata).any(|selected| selected == layer) {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+			}
+
 			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
 			return layer;
@@ -3204,5 +3216,33 @@ mod test_pen_tool {
 			colinear_pairs.iter().any(|handles| *handles == pair || *handles == [pair[1], pair[0]]),
 			"C's handles aren't colinear: {colinear_pairs:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn a_path_inside_a_selected_group_is_extended_and_closed_in_place() {
+		use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+		let (path, _) = drawn_path(&editor).expect("Expected a drawn path");
+		let group = path.parent(editor.active_document().metadata());
+
+		// With the group selected, pressing the path's last anchor extends it, and pressing its first closes it
+		click_pen(&mut editor, C).await;
+		click_pen(&mut editor, A).await;
+		assert_path_shape(&editor, 3, 3);
+		let (closed, _) = drawn_path(&editor).expect("Expected a drawn path");
+		assert_eq!(closed, path, "the path should be extended rather than merged into a new layer");
+		assert_eq!(closed.parent(editor.active_document().metadata()), group, "the path should stay in its group");
 	}
 }
