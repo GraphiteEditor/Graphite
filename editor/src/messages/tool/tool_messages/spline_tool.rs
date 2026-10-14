@@ -565,7 +565,15 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				// Switching tools keeps the spline drawn so far, like the Pen tool, but leaves its ends unjoined as the tool won't be active to finish them
+				if tool_data.points.len() <= 1 {
+					responses.add(DocumentMessage::AbortTransaction);
+				} else {
+					delete_preview(tool_data, responses);
+					responses.add(DocumentMessage::EndTransaction);
+				}
+
+				tool_data.cleanup();
 				SplineToolFsmState::Ready
 			}
 			(SplineToolFsmState::Ready, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
@@ -1132,8 +1140,9 @@ mod test_spline_tool {
 		editor.draw_spline(&ARCH).await;
 		let first = spline_layers(&editor)[0];
 
+		// Aborted before placing a point of its own, the extension is dropped
 		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, ARCH[2], ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(500., 200.), ModifierKeys::empty()).await;
+		editor.move_mouse(500., 200., ModifierKeys::empty(), MouseKeys::empty()).await;
 		editor.handle_message(SplineToolMessage::Abort).await;
 		assert_spline_points(&editor, first, &ARCH);
 
@@ -1143,5 +1152,42 @@ mod test_spline_tool {
 
 		let second = spline_layers(&editor).into_iter().find(|&layer| layer != first).expect("A second spline should have been drawn");
 		assert_spline_points(&editor, second, &[center, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn switching_tools_mid_spline_keeps_the_spline() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Spline).await;
+		for point in ARCH {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+		editor.move_mouse(500., 200., ModifierKeys::empty(), MouseKeys::empty()).await;
+
+		// The Select tool's own abort, which runs as it becomes active, would otherwise cancel the spline's open edit
+		editor.select_tool(ToolType::Select).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &ARCH);
+
+		// The finished spline is one step of history
+		editor.press(Key::KeyZ, ModifierKeys::CONTROL).await;
+		assert!(spline_layers(&editor).is_empty(), "Undo should remove the whole spline");
+	}
+
+	#[tokio::test]
+	async fn an_extension_is_kept_when_switching_tools() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_spline(&ARCH).await;
+		let first = spline_layers(&editor)[0];
+
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, ARCH[2], ModifierKeys::empty()).await;
+		let extension = DVec2::new(500., 200.);
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, extension, ModifierKeys::empty()).await;
+		editor.select_tool(ToolType::Rectangle).await;
+
+		assert_spline_points(&editor, first, &[ARCH[0], ARCH[1], ARCH[2], extension]);
 	}
 }
