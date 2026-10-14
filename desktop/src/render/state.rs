@@ -21,7 +21,7 @@ pub(crate) struct RenderState {
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
-	overlays_scene: Option<VelloSceneBuilder>,
+	overlays_scene: Option<VelloSceneBuilder<'static>>,
 	#[derivative(Debug = "ignore")]
 	overlays_canvas: VelloCanvas,
 	surface_outdated: bool,
@@ -220,7 +220,7 @@ impl RenderState {
 		self.viewport_offset = offset;
 	}
 
-	pub(crate) fn set_overlays_scene(&mut self, scene: VelloSceneBuilder) {
+	pub(crate) fn set_overlays_scene(&mut self, scene: VelloSceneBuilder<'static>) {
 		self.surface_outdated = true;
 		self.overlays_scene = Some(scene);
 	}

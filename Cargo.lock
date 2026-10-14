@@ -4920,6 +4920,7 @@ dependencies = [
  "usvg",
  "vector-types",
  "vello_gpu",
+ "wgpu",
 ]
 
 [[package]]
@@ -7039,6 +7040,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-application-io",
+ "graphic-types",
  "log",
  "node-macro",
  "raster-types",

@@ -274,6 +274,166 @@ fn degenerate_strokes_render() {
 	let Some(_) = render(size, draw) else { return };
 }
 
+/// Renders an opaque white square from (`min`, `min`) to (`max`, `max`) through `effects` with `fill`.
+fn render_square_with_effects(effects: Vec<graphic_types::EffectOperation>, fill: f32, min: f64, max: f64, size: UVec2) -> Option<Vec<[u8; 4]>> {
+	let square = Rect::new(min, min, max, max);
+	let effects = graphic_types::Effects::from_operations(effects);
+
+	render(size, |scene| {
+		scene.draw_effects(&effects, fill, Some(square), &mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square));
+	})
+}
+
+/// The standard normal cumulative distribution, from the Abramowitz and Stegun approximation of the error function, accurate to 1e-7.
+fn normal_cdf(x: f64) -> f64 {
+	let z = x.abs() / std::f64::consts::SQRT_2;
+	let t = 1. / (1. + 0.327_591_1 * z);
+	let polynomial = t * (0.254_829_592 + t * (-0.284_496_736 + t * (1.421_413_741 + t * (-1.453_152_027 + t * 1.061_405_429))));
+	let erf = 1. - polynomial * (-z * z).exp();
+
+	if x >= 0. { 0.5 * (1. + erf) } else { 0.5 * (1. - erf) }
+}
+
+#[test]
+fn gaussian_blur_follows_the_normal_distribution() {
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(512, 256);
+	// Small kernels run directly, and larger ones on halved textures
+	for sigma in [2., 6., 20.] {
+		let blur = EffectOperation::Blur {
+			radius: sigma,
+			box_blur: false,
+			gamma: false,
+		};
+		// A square much larger than the blur, so across its left edge at x = 100, on a row far from its other edges, the coverage is the one-dimensional profile
+		let Some(pixels) = render_square_with_effects(vec![blur], 1., 100., 400., size) else { return };
+
+		let mut worst = 0_f64;
+		for x in 40..160 {
+			let expected = normal_cdf((x as f64 + 0.5 - 100.) / sigma);
+			let actual = pixel(&pixels, size, x, 200)[3] as f64 / 255.;
+			worst = worst.max((expected - actual).abs());
+		}
+		assert!(worst < 0.03, "σ {sigma} strays from the normal distribution by {worst}");
+	}
+}
+
+#[test]
+fn shadows_and_glows_fall_where_they_should() {
+	use core_types::Color as GraphicColor;
+	use glam::DVec2;
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+	let black = GraphicColor::BLACK;
+
+	// A hard drop shadow offset down and right shows past the square's bottom right corner, beneath it
+	let shadow = EffectOperation::DropShadow {
+		color: black,
+		offset: DVec2::new(10., 10.),
+		blur: 0.,
+		spread: 0.,
+	};
+	let Some(pixels) = render_square_with_effects(vec![shadow.clone()], 1., 30., 80., size) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 50, 50), [255, 255, 255, 255], "the content covers its shadow");
+	assert_eq!(pixel(&pixels, size, 85, 85), [0, 0, 0, 255], "the shadow shows past the content");
+	assert_eq!(pixel(&pixels, size, 25, 25)[3], 0, "no shadow before the offset");
+
+	// With no fill, the content vanishes and its shadow stays knocked out where the content would be
+	let Some(pixels) = render_square_with_effects(vec![shadow], 0., 30., 80., size) else { return };
+	assert_eq!(pixel(&pixels, size, 50, 50)[3], 0, "the shadow is knocked out by the faded content");
+	assert_eq!(pixel(&pixels, size, 85, 85), [0, 0, 0, 255], "the shadow stays at full strength");
+
+	// An inner shadow darkens the content's top left edges from inside and stays within it
+	let inner_shadow = EffectOperation::InnerShadow {
+		color: black,
+		offset: DVec2::new(6., 6.),
+		blur: 0.,
+		spread: 0.,
+	};
+	let Some(pixels) = render_square_with_effects(vec![inner_shadow], 1., 30., 80., size) else {
+		return;
+	};
+	assert_eq!(pixel(&pixels, size, 32, 50), [0, 0, 0, 255], "inside the left edge");
+	assert_eq!(pixel(&pixels, size, 50, 50), [255, 255, 255, 255], "deep inside");
+	assert_eq!(pixel(&pixels, size, 78, 50), [255, 255, 255, 255], "inside the right edge, away from the offset");
+	assert_eq!(pixel(&pixels, size, 25, 50)[3], 0, "outside");
+
+	// A glow grown by its spread surrounds the content evenly
+	let glow = EffectOperation::OuterGlow {
+		color: GraphicColor::from_rgbaf32_unchecked(1., 0., 0., 1.),
+		blur: 0.,
+		spread: 5.,
+	};
+	let Some(pixels) = render_square_with_effects(vec![glow], 1., 30., 80., size) else { return };
+	for (x, y) in [(27, 55), (82, 55), (55, 27), (55, 82)] {
+		assert_eq!(pixel(&pixels, size, x, y), [255, 0, 0, 255], "glow at ({x}, {y})");
+	}
+	for (x, y) in [(23, 55), (87, 55)] {
+		assert_eq!(pixel(&pixels, size, x, y)[3], 0, "past the glow at ({x}, {y})");
+	}
+}
+
+#[test]
+fn later_shadows_stack_over_earlier_ones_beneath_the_content() {
+	use core_types::Color as GraphicColor;
+	use glam::DVec2;
+	use graphic_types::EffectOperation;
+
+	let size = UVec2::new(128, 128);
+	let shadow = |color, offset: f64| EffectOperation::DropShadow {
+		color,
+		offset: DVec2::splat(offset),
+		blur: 0.,
+		spread: 0.,
+	};
+
+	// Both shadows are cast from the content rather than from each other, and the later one is on top where they overlap
+	let effects = vec![shadow(GraphicColor::BLACK, 10.), shadow(GraphicColor::from_rgbaf32_unchecked(0., 0., 1., 1.), 5.)];
+	let Some(pixels) = render_square_with_effects(effects, 1., 30., 80., size) else { return };
+	assert_eq!(pixel(&pixels, size, 82, 82), [0, 0, 255, 255], "the later shadow is on top");
+	assert_eq!(pixel(&pixels, size, 88, 88), [0, 0, 0, 255], "the earlier shadow reaches further");
+	assert_eq!(pixel(&pixels, size, 93, 93)[3], 0, "no shadow of a shadow");
+}
+
+#[test]
+fn nested_effects_groups_render_inside_out() {
+	use core_types::Color as GraphicColor;
+	use glam::DVec2;
+	use graphic_types::{EffectOperation, Effects};
+
+	let size = UVec2::new(128, 128);
+	let square = Rect::new(30., 30., 80., 80.);
+
+	// A hard shadow around a group whose content is itself a blurred square
+	let shadow = Effects::from_operations([EffectOperation::DropShadow {
+		color: GraphicColor::BLACK,
+		offset: DVec2::new(20., 0.),
+		blur: 0.,
+		spread: 0.,
+	}]);
+	let blur = Effects::from_operations([EffectOperation::Blur {
+		radius: 3.,
+		box_blur: false,
+		gamma: false,
+	}]);
+	let draw = |scene: &mut VelloSceneBuilder| {
+		scene.draw_effects(&shadow, 1., Some(square.inflate(12., 12.)), &mut |scene| {
+			scene.draw_effects(&blur, 1., Some(square), &mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square));
+		});
+	};
+
+	let Some(pixels) = render(size, draw) else { return };
+	let edge = pixel(&pixels, size, 30, 55);
+	assert!((100..=155).contains(&edge[3]), "the blur softens the edge to half coverage, not {edge:?}");
+	// Ten pixels past the content's blurred edge, where the shadow is cast from ten pixels inside it
+	let shadow = pixel(&pixels, size, 90, 55);
+	assert!(shadow[3] >= 250 && shadow[0] <= 5, "the shadow is cast by the blurred group, not {shadow:?}");
+}
+
 #[test]
 fn minified_images_average_their_pixels() {
 	use raster_types::{Image, Raster};

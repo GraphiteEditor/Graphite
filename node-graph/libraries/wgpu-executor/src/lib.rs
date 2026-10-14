@@ -3,6 +3,7 @@ mod context;
 mod pipeline;
 mod texture_cache;
 pub mod texture_conversion;
+mod vello_effects;
 mod vello_render;
 
 use crate::texture_cache::TextureCache;
@@ -169,7 +170,7 @@ impl WgpuExecutor {
 	}
 
 	pub fn with_context(context: WgpuContext) -> Option<Self> {
-		let vello_renderer = VelloRenderer::new(&context.device);
+		let vello_renderer = VelloRenderer::new(&context.device, &context.adapter);
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
 
