@@ -1,6 +1,7 @@
 use core_types::Poll;
 use core_types::list::List;
 use core_types::runtime::Instant;
+use glam::DAffine2;
 use graphic_types::Graphic;
 use ollev::model::Model;
 use std::ops::ControlFlow;
@@ -24,24 +25,33 @@ struct Trace {
 	tracing: Option<ollev::Tracing>,
 	/// Why the trace failed, kept so the same inputs are not traced again.
 	failed: Option<ollev::TraceError>,
+	/// Places the traced image's pixels in the document.
+	pixels_to_document: DAffine2,
 	shown: List<Graphic>,
 	/// The revision of the scene in `shown`.
 	revision: Option<u64>,
 }
 
 impl TraceSlot {
-	/// Advances the trace of `inputs` by `slice`, replacing any trace of other inputs with one from `start`.
+	/// Advances the trace of `inputs` by `slice`, replacing any trace of other inputs with one from `start`, which also gives where the traced pixels lie.
 	/// Returns the latest showable scene, partial until the trace is done.
-	pub fn poll(&self, inputs: u64, slice: Duration, start: impl FnOnce() -> Result<ollev::Tracing, ollev::TraceError>, convert: impl Fn(&Model) -> List<Graphic>) -> Poll<List<Graphic>> {
+	pub fn poll(
+		&self,
+		inputs: u64,
+		slice: Duration,
+		start: impl FnOnce() -> Result<(ollev::Tracing, DAffine2), ollev::TraceError>,
+		convert: impl Fn(&Model, DAffine2) -> List<Graphic>,
+	) -> Poll<List<Graphic>> {
 		// Taken out of the slot so a panicking slice leaves it empty
 		let mut held = self.lock();
 		let mut trace = match held.take().filter(|trace| trace.inputs == inputs) {
 			Some(trace) => trace,
 			None => match start() {
-				Ok(tracing) => Trace {
+				Ok((tracing, pixels_to_document)) => Trace {
 					inputs,
 					tracing: Some(tracing),
 					failed: None,
+					pixels_to_document,
 					shown: List::new(),
 					revision: None,
 				},
@@ -54,7 +64,7 @@ impl TraceSlot {
 			let step = tracing.step(|_| if Instant::now() >= deadline { ControlFlow::Break(()) } else { ControlFlow::Continue(()) });
 			match step {
 				Ok(ollev::Step::Done(model)) => {
-					trace.shown = convert(&model);
+					trace.shown = convert(&model, trace.pixels_to_document);
 					trace.tracing = None;
 				}
 				Err(error) => {
@@ -66,7 +76,7 @@ impl TraceSlot {
 						&& Some(progress.revision()) != trace.revision
 						&& let Some(model) = progress.model()
 					{
-						trace.shown = convert(&model);
+						trace.shown = convert(&model, trace.pixels_to_document);
 						trace.revision = Some(progress.revision());
 					}
 				}

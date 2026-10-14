@@ -9,6 +9,7 @@ use core_types::runtime::Runtime;
 use core_types::{ATTR_TRANSFORM, CacheHash, Ctx, Poll, RuntimeHandle, SourceId};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
+use raster_kernels::evaluate_raster_effects;
 use raster_types::{CPU, Raster};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
@@ -37,7 +38,7 @@ const BROWSER_MAX_MEGABYTES: f64 = 1000.;
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 ///
 /// The trace runs in slices, one per evaluation, showing the shapes traced so far until it is done.
-#[node_macro::node(category("Raster"), memoize)]
+#[node_macro::node(category("Raster"), icon("NodeVectorize"), memoize)]
 fn vectorize(
 	_: impl Ctx,
 	/// The image to trace.
@@ -107,10 +108,7 @@ fn vectorize(
 
 /// Runs one slice of the trace held in `slot`, starting a new trace if `slot` holds none for these inputs.
 fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: ollev::Stages, max_pixels: Option<usize>, slot: &TraceSlot, slice: Duration) -> Poll<List<Graphic>> {
-	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let raster = image.element();
-	let (width, height) = (raster.width as usize, raster.height as usize);
-	if width == 0 || height == 0 {
+	if image.element().width == 0 || image.element().height == 0 {
 		slot.clear();
 		return Poll::Final(List::new());
 	}
@@ -120,7 +118,14 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 	(detail.to_bits(), tolerance.to_bits(), max_pixels).hash(&mut hasher);
 	[stages.translucency, stages.strokes, stages.primitives, stages.effects, stages.instancing, stages.path_gradients].hash(&mut hasher);
 
+	// The image's effects are carried out once for the whole trace, rather than on each slice
 	let start = || {
+		let image = evaluate_raster_effects(image.clone());
+		let raster = image.element();
+		let (width, height) = (raster.width as usize, raster.height as usize);
+		let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
+
 		let source = ollev::Image {
 			pixels: ollev::Pixels::RgbaF32 {
 				data: bytemuck::cast_slice(&raster.data),
@@ -138,11 +143,10 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 			stages,
 			..Default::default()
 		};
-		ollev::Tracing::new(&source, &options)
+		ollev::Tracing::new(&source, &options).map(|tracing| (tracing, pixels_to_document))
 	};
 
-	let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
-	slot.poll(hasher.finish(), slice, start, |model| convert::model_to_graphic(model, pixels_to_document))
+	slot.poll(hasher.finish(), slice, start, convert::model_to_graphic)
 }
 
 #[cfg(test)]

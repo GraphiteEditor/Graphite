@@ -18,6 +18,7 @@ use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
+use rendering::deferred_image::EffectMapPlacement;
 use rendering::{CanvasImage, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -536,6 +537,7 @@ tagged_value! {
 	TonalRange(raster_nodes::adjustments::TonalRange),
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
+	GlowTechnique(graphic_types::GlowTechnique),
 	GridType(vector::misc::GridType),
 	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
@@ -919,6 +921,9 @@ pub enum RenderOutputType {
 		svg: String,
 		/// The images the SVG draws to canvases, by the canvas ID their placeholders name.
 		image_data: Vec<(u64, CanvasImage)>,
+		/// Maps of effects' coverages the GPU rendered for the SVG's filters, which go in place of their placeholders once read back.
+		#[serde(skip)]
+		effect_maps: Vec<(EffectMapPlacement, graphene_application_io::Texture)>,
 	},
 	#[cfg(target_family = "wasm")]
 	CanvasFrame { canvas_id: u64, resolution: DVec2 },
@@ -934,9 +939,13 @@ impl CacheHash for RenderOutputType {
 				width.cache_hash(state);
 				height.cache_hash(state);
 			}
-			Self::Svg { svg, image_data } => {
+			Self::Svg { svg, image_data, effect_maps } => {
 				svg.cache_hash(state);
 				image_data.cache_hash(state);
+				for (placement, texture) in effect_maps {
+					placement.id.cache_hash(state);
+					texture.hash(state);
+				}
 			}
 			#[cfg(target_family = "wasm")]
 			Self::CanvasFrame { canvas_id, resolution } => {

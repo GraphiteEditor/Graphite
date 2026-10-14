@@ -1,4 +1,4 @@
-use crate::adjust::Adjust;
+use crate::adjust::{Adjust, adjust_item};
 use core_types::Ctx;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
@@ -48,14 +48,12 @@ fn color_overlay<T: Adjust>(
 	#[default(100.)]
 	opacity: Item<f64>,
 ) -> Item<T> {
-	let mut image = image;
 	let adjustment = Adjustment::ColorOverlay {
 		color: color.into_element(),
 		blend_mode: blend_mode.into_element(),
 		opacity: opacity.into_element(),
 	};
-	image.element_mut().adjust(&adjustment);
-	image
+	adjust_item(image, &adjustment)
 }
 
 #[cfg(test)]

@@ -216,7 +216,7 @@ impl Thumbnails {
 	}
 
 	async fn render_svg(&mut self, layer: NodeId, content: &ThumbnailContent, responses: &mut VecDeque<FrontendMessage>) {
-		let bounds = content.bounds();
+		let bounds = content.bounds(false);
 		let footprint = Footprint {
 			transform: DAffine2::from_translation(bounds[0]),
 			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
@@ -336,11 +336,11 @@ impl ThumbnailContent {
 		}
 	}
 
-	/// The area the content covers once rendered.
-	fn content_bounds(&self) -> RenderBoundingBox {
+	/// The area the content covers once rendered, counting the effects drawn through maps and images only if they're `maps_resolved`, which an SVG without a GPU leaves out.
+	fn content_bounds(&self, maps_resolved: bool) -> RenderBoundingBox {
 		match self {
-			// Text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content
-			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_bounding_box(graphics, DAffine2::IDENTITY),
+			// Text-aware bounds, which the `BoundingBox` trait can't give `Graphic::TextList` content, with the effects' reach
+			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_painted_bounds(graphics, maps_resolved),
 			// The clipping rectangles rather than the content, since the renderer clips content to them
 			Self::Artboards(artboards) => artboard_clip_bounds(artboards),
 			Self::Text(text) => graphene_std::renderer::text_list_bounding_box(text, DAffine2::IDENTITY),
@@ -348,8 +348,8 @@ impl ThumbnailContent {
 	}
 
 	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
-	fn bounds(&self) -> [DVec2; 2] {
-		let bounds = match self.content_bounds() {
+	fn bounds(&self, maps_resolved: bool) -> [DVec2; 2] {
+		let bounds = match self.content_bounds(maps_resolved) {
 			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
 			_ => [DVec2::ZERO, DVec2::ONE],
 		};
@@ -366,7 +366,7 @@ pub fn layers_svg(layers: &[NodeId], network: &NodeNetwork, executor: &DynamicEx
 
 	let bounds = contents
 		.iter()
-		.filter_map(|content| match content.content_bounds() {
+		.filter_map(|content| match content.content_bounds(false) {
 			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => Some(bounds),
 			_ => None,
 		})
