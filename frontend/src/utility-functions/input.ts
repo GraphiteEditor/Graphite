@@ -68,8 +68,11 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
-	// Before any waiting, while the browser can still be kept from moving the focus itself
-	if (e.key === "Tab" && tabBetweenTextFields(e)) return;
+	// Before any waiting, while the browser can still be kept from moving the focus through the page's elements
+	if (e.key === "Tab") {
+		if (tabBetweenTextFields(e)) return;
+		if (!(e.ctrlKey || e.metaKey || e.altKey)) e.preventDefault();
+	}
 
 	const key = await getLocalizedScanCode(e);
 
@@ -82,9 +85,6 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 		editor.onKeyDown(key, modifiers, e.repeat);
 		return;
 	}
-
-	// Left to the browser, Tab would move the focus through the page's elements
-	if (key === "Tab") e.preventDefault();
 
 	// Escape closing a menu or canceling an edit in the dialog, which marks the dialog once every listener has run, leaves it open
 	if (get(dialogStore).visible && key === "Escape") {
