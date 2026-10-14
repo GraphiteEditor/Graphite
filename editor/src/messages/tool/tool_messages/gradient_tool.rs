@@ -413,7 +413,7 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 	let walk_from = network_interface.upstream_output_connector(&target_input, &[]).and_then(|out| out.node_id()).unwrap_or(layer.to_node());
 
 	let transform_reference = DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER);
-	let gradient_form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
+	let gradient_curvature_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_curvature::IDENTIFIER);
 
 	let mut transforms_downstream_to_upstream: Vec<DAffine2> = Vec::new();
 	let mut gradient_form: Option<GradientForm> = None;
@@ -430,11 +430,14 @@ fn read_gradient_chain_state(layer: LayerNodeIdentifier, network_interface: &Nod
 
 		if reference == transform_reference {
 			transforms_downstream_to_upstream.push(read_transform_node_value(&document_node.inputs));
-		} else if reference == gradient_form_reference
-			&& gradient_form.is_none()
-			&& let Some(TaggedValue::GradientForm(value)) = document_node.inputs.get(1).and_then(|input| input.as_value())
-		{
-			gradient_form = Some(*value);
+		} else if reference == gradient_curvature_reference && gradient_form.is_none() {
+			// Curvatures other than the radial form's are drawn with the linear form's controls
+			let curvature = |index: usize| match document_node.inputs.get(index).and_then(|input| input.as_value()) {
+				Some(&TaggedValue::Number(value)) => value,
+				_ => 0.,
+			};
+			let is_radial = [curvature(1), curvature(2)] == graphene_std::renderer::dial_gradient::RADIAL_DIALS;
+			gradient_form = Some(if is_radial { GradientForm::Radial } else { GradientForm::Linear });
 		}
 	}
 
@@ -3366,7 +3369,7 @@ mod test_gradient {
 			.await;
 		let feeder_position = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position");
 
-		// Set the gradient form through the tool, which splices a 'Gradient Form' node onto the Fill's fill input wire.
+		// Set the gradient form through the tool, which splices a 'Gradient Curvature' node onto the Fill's fill input wire.
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.select_tool(ToolType::Gradient).await;
 		editor
@@ -3375,7 +3378,7 @@ mod test_gradient {
 			})
 			.await;
 
-		let form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_form::IDENTIFIER);
+		let form_reference = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_curvature::IDENTIFIER);
 		let form_node_id = {
 			let network_interface = &editor.active_document().network_interface;
 			network_interface
@@ -3384,10 +3387,10 @@ mod test_gradient {
 				.keys()
 				.copied()
 				.find(|node_id| network_interface.reference(node_id, &[]).as_ref() == Some(&form_reference))
-				.expect("Gradient Form node should have been inserted")
+				.expect("Gradient Curvature node should have been inserted")
 		};
 
-		let form_position = editor.active_document_mut().network_interface.position(&form_node_id, &[]).expect("Gradient Form position");
+		let form_position = editor.active_document_mut().network_interface.position(&form_node_id, &[]).expect("Gradient Curvature position");
 		let feeder_position_after = editor.active_document_mut().network_interface.position(&gradient_value_id, &[]).expect("Gradient Value position after");
 
 		assert_eq!(form_position, feeder_position, "the inserted node should occupy the feeder's former slot, not the graph origin");
