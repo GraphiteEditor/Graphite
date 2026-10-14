@@ -10,6 +10,7 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::ops::Range;
 use std::sync::{Mutex, PoisonError};
+use wgpu::util::DeviceExt;
 
 /// The step functions that the generated shaders call.
 const STEP_FUNCTIONS: &str = include_str!("vello_adjustments.wgsl");
@@ -119,8 +120,8 @@ fn adjust(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 		return vec4<f32>(0.);
 	}
 
-	// Whether the color is in linear light, rather than gamma-encoded like the source and the result
-	var linear = false;
+	// Whether the color is in linear light rather than gamma-encoded, starting in the source's encoding
+	var linear = encodings.straight_linear_source != 0u;
 
 	// The step count comes first, then each step's header followed by its parameters
 	let step_count = u32(step_texel(0u).x);
@@ -134,10 +135,7 @@ CASES
 		header += step_length(header);
 	}
 
-	if linear {
-		color = to_gamma(color);
-	}
-	return vec4<f32>(color.rgb * color.a, color.a);
+	return result_pixel(color, linear);
 }
 ";
 
@@ -150,65 +148,73 @@ fn adjust(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 		return vec4<f32>(0.);
 	}
 
+	// Whether the color is in linear light rather than gamma-encoded, starting in the source's encoding
+	var linear = encodings.straight_linear_source != 0u;
+
 	// The step count comes first, then the step's header followed by its parameters
 STEP
-	return vec4<f32>(color.rgb * color.a, color.a);
+	return result_pixel(color, linear);
 }
 ";
 
-/// The interpreter's entry point, which converts the color into the encoding each step's function reads where it's in the other one.
+/// The interpreter's entry point, with a case for each kind of step it carries out.
 fn interpreter_entry_point() -> String {
-	let indent = "\t\t\t\t";
 	let mut cases = String::new();
 
 	for kind in StepKind::ALL.into_iter().filter(|kind| !STANDALONE_KINDS.contains(kind)) {
 		cases += &format!("\t\t\tcase {}u: {{\n", kind.code());
-		match step_function(kind) {
-			(_, Some([reads, returns])) => {
-				let (condition, conversion) = match reads {
-					Encoding::Linear => ("!linear", "from_gamma"),
-					Encoding::Gamma => ("linear", "to_gamma"),
-				};
-				cases += &format!("{indent}if {condition} {{\n{indent}\tcolor = {conversion}(color);\n{indent}}}\n");
-				cases += &step_call(kind, "at", indent);
-				cases += &format!("{indent}linear = {};\n", returns == Encoding::Linear);
-			}
-			(_, None) => cases += &step_call(kind, "at", indent),
-		}
+		cases += &step_call(kind, "at", "\t\t\t\t");
 		cases += "\t\t\t}\n";
 	}
 
 	INTERPRETER.replace("CASES\n", &cases)
 }
 
-/// The entry point of the shader carrying out a step of the standalone `kind`, decoding the color to linear light and back only where its function needs.
+/// The entry point of the shader carrying out a step of the standalone `kind`.
 fn standalone_entry_point(kind: StepKind) -> String {
-	let (_, encodings) = step_function(kind);
-	let mut step = String::new();
-
-	if let Some([Encoding::Linear, _]) = encodings {
-		step += "\tcolor = from_gamma(color);\n";
-	}
-	step += &step_call(kind, "2u", "\t");
-	if let Some([_, Encoding::Linear]) = encodings {
-		step += "\tcolor = to_gamma(color);\n";
-	}
-
-	STANDALONE.replace("STEP\n", &step)
+	STANDALONE.replace("STEP\n", &step_call(kind, "2u", "\t"))
 }
 
-/// The lines calling the function of a step of `kind` with its parameters `at`, then ending the pass if that left the pixel fully transparent,
-/// which holds no color for the steps after to adjust and so stays empty whatever they are.
+/// The lines calling the function of a step of `kind` with its parameters `at`: first converting the color into the encoding the function reads
+/// if it's in the other one, then ending the pass if that left the pixel fully transparent, which holds no color for the steps after to adjust.
 fn step_call(kind: StepKind, at: &str, indent: &str) -> String {
-	let (function, _) = step_function(kind);
-	let mut lines = format!("{indent}color = {function}(color, {at});\n");
+	let (function, encodings) = step_function(kind);
+	let mut lines = String::new();
+
+	if let Some([reads, _]) = encodings {
+		let (condition, conversion) = match reads {
+			Encoding::Linear => ("!linear", "from_gamma"),
+			Encoding::Gamma => ("linear", "to_gamma"),
+		};
+		lines += &format!("{indent}if {condition} {{\n{indent}\tcolor = {conversion}(color);\n{indent}}}\n");
+	}
+	lines += &format!("{indent}color = {function}(color, {at});\n");
 
 	// Only these kinds can lower alpha
 	if matches!(kind, StepKind::Levels | StepKind::Curves) {
 		lines += &format!("{indent}if color.a <= 0. {{\n{indent}\treturn vec4<f32>(0.);\n{indent}}}\n");
 	}
 
+	if let Some([_, returns]) = encodings {
+		lines += &format!("{indent}linear = {};\n", returns == Encoding::Linear);
+	}
+
 	lines
+}
+
+/// How a pass of adjustments reads its source and writes its result: as straight linear color, or else as premultiplied gamma-encoded color.
+/// Straight linear color in 32-bit floats holds the CPU's values exactly, which premultiplying would round away at partial alpha.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct PassEncodings {
+	pub(crate) straight_linear_source: bool,
+	pub(crate) straight_linear_result: bool,
+}
+
+impl PassEncodings {
+	/// The index of these encodings among every combination of them.
+	fn index(self) -> usize {
+		usize::from(self.straight_linear_source) | (usize::from(self.straight_linear_result) << 1)
+	}
 }
 
 /// The bindings of the adjustment pass and its pipelines, each built the first time a pass draws with its shader into its format.
@@ -219,12 +225,14 @@ pub(crate) struct AdjustmentShaders {
 	pub(crate) no_tables: wgpu::Texture,
 	/// The format the passes of a run split across several hand their results on in: [`CHAINED_FORMAT`] where the GPU renders into it, or else [`WORKING_FORMAT`], or else 8 bits.
 	pub(crate) chained_format: wgpu::TextureFormat,
+	/// The uniform buffer for each combination of [`PassEncodings`], by its index.
+	encodings: [wgpu::Buffer; 4],
 	pipelines: Mutex<HashMap<(AdjustmentShader, wgpu::TextureFormat), wgpu::RenderPipeline>>,
 }
 
 impl AdjustmentShaders {
 	pub(crate) fn new(device: &wgpu::Device, adapter: &wgpu::Adapter) -> Self {
-		// The premultiplied pixels to adjust, then the pass's steps and the run's tables, which hold 32-bit floats that can be loaded but not filtered
+		// The pixels to adjust, then the pass's steps and the run's tables, which hold 32-bit floats that can be loaded but not filtered, then the encodings
 		let texture_entry = |binding| wgpu::BindGroupLayoutEntry {
 			binding,
 			visibility: wgpu::ShaderStages::FRAGMENT,
@@ -235,9 +243,19 @@ impl AdjustmentShaders {
 			},
 			count: None,
 		};
+		let encodings_entry = wgpu::BindGroupLayoutEntry {
+			binding: 3,
+			visibility: wgpu::ShaderStages::FRAGMENT,
+			ty: wgpu::BindingType::Buffer {
+				ty: wgpu::BufferBindingType::Uniform,
+				has_dynamic_offset: false,
+				min_binding_size: None,
+			},
+			count: None,
+		};
 		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
 			label: Some("vello_adjustments_bind_group_layout"),
-			entries: &[texture_entry(0), texture_entry(1), texture_entry(2)],
+			entries: &[texture_entry(0), texture_entry(1), texture_entry(2), encodings_entry],
 		});
 		let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 			label: Some("vello_adjustments_pipeline_layout"),
@@ -252,12 +270,37 @@ impl AdjustmentShaders {
 		let renders = |format: wgpu::TextureFormat| adapter.get_texture_format_features(format).allowed_usages.contains(chained_usages);
 		let chained_format = [CHAINED_FORMAT, WORKING_FORMAT].into_iter().find(|&format| renders(format)).unwrap_or(wgpu::TextureFormat::Rgba8Unorm);
 
+		let encodings = std::array::from_fn(|index| {
+			let flags = [(index & 1) as u32, (index >> 1) as u32, 0, 0];
+			device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+				label: Some("vello_adjustments_encodings"),
+				contents: bytemuck::bytes_of(&flags),
+				usage: wgpu::BufferUsages::UNIFORM,
+			})
+		});
+
 		Self {
 			bind_group_layout,
 			pipeline_layout,
 			no_tables,
 			chained_format,
+			encodings,
 			pipelines: Mutex::default(),
+		}
+	}
+
+	/// The uniform buffer telling a pass these `encodings`.
+	pub(crate) fn encodings_buffer(&self, encodings: PassEncodings) -> &wgpu::Buffer {
+		&self.encodings[encodings.index()]
+	}
+
+	/// The encodings for the pass at `index` of `count` handing on what it adjusts, reading a straight linear source first if `straight_linear_source`.
+	/// The passes between hand on straight linear color where the chained format holds it in 32-bit floats, and the last writes premultiplied gamma-encoded color.
+	pub(crate) fn pass_encodings(&self, index: usize, count: usize, straight_linear_source: bool) -> PassEncodings {
+		let chained_straight_linear = self.chained_format == CHAINED_FORMAT;
+		PassEncodings {
+			straight_linear_source: if index == 0 { straight_linear_source } else { chained_straight_linear },
+			straight_linear_result: index + 1 < count && chained_straight_linear,
 		}
 	}
 
@@ -387,14 +430,18 @@ struct CachedTables {
 	last_used: u64,
 }
 
+/// Identifies a run of adjustments by its settings.
+pub(crate) fn adjustment_run_hash(run: &[&Adjustment]) -> u64 {
+	let mut hasher = std::hash::DefaultHasher::new();
+	run.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
+	std::hash::Hasher::finish(&hasher)
+}
+
 impl AdjustmentUploads {
 	/// What each pass carrying out `run` reads in turn, encoding and uploading only what no recent render has. A run that changes no color
 	/// or that holds more than the GPU can read takes no passes. Only the 64-bit hashes of the runs and of the tables' content tell them apart.
 	pub(crate) fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, run: &[&Adjustment], render_count: u64) -> Vec<PreparedPass> {
-		let mut hasher = std::hash::DefaultHasher::new();
-		run.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
-		let hash = std::hash::Hasher::finish(&hasher);
-
+		let hash = adjustment_run_hash(run);
 		let index = self.runs.iter().position(|cached| cached.hash == hash).unwrap_or_else(|| {
 			let steps = AdjustmentSteps::encode(run);
 			let passes = upload_passes(device, queue, &steps);
@@ -596,15 +643,25 @@ mod tests {
 		};
 		let count = |source: &str, conversion: &str| source.matches(conversion).count();
 
-		// Gradient Map reads the gamma-encoded source as it is and returns linear light, encoded once at the end, while Color Lookup needs neither
-		let gradient_map = entry_point(AdjustmentShader::Standalone(StepKind::GradientMap));
-		assert_eq!((count(&gradient_map, "from_gamma("), count(&gradient_map, "to_gamma(")), (0, 1));
-		let color_lookup = entry_point(AdjustmentShader::Standalone(StepKind::ColorLookup));
-		assert_eq!((count(&color_lookup, "from_gamma("), count(&color_lookup, "to_gamma(")), (0, 0));
+		// Gradient Map and Color Lookup read gamma-encoded color, so their shaders encode a linear source first, and the result's encoding is left to `result_pixel`
+		for kind in STANDALONE_KINDS {
+			let standalone = entry_point(AdjustmentShader::Standalone(kind));
+			assert_eq!(
+				(count(&standalone, "if linear {\n\t\tcolor = to_gamma(color);"), count(&standalone, "from_gamma(")),
+				(1, 0),
+				"{standalone}"
+			);
+			assert!(standalone.contains("return result_pixel(color, linear);"), "{standalone}");
+		}
 
 		// The case of each interpreted kind but Make Opaque, which keeps whichever encoding it's given, converts only a color in the other encoding
 		let interpreter = entry_point(AdjustmentShader::Interpreter);
 		let conditional_conversions = count(&interpreter, "\t\t\t\tif !linear {") + count(&interpreter, "\t\t\t\tif linear {");
 		assert_eq!(conditional_conversions, StepKind::ALL.len() - STANDALONE_KINDS.len() - 1, "{interpreter}");
+
+		// Both start in the source's encoding
+		for shader in every_shader() {
+			assert!(entry_point(shader).contains("var linear = encodings.straight_linear_source != 0u;"), "{shader:?}");
+		}
 	}
 }

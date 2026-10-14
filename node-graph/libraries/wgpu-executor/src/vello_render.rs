@@ -1,8 +1,9 @@
+use crate::vello_adjustments::adjustment_run_hash;
 use crate::vello_effects::{EffectPasses, EffectTextures};
 use glam::{DAffine2, UVec2};
-use graphic_types::Effects;
 use graphic_types::effects::EffectCapture;
-use raster_types::WeakCPU;
+use graphic_types::raster_types::{CPU, Image, Raster, WeakCPU};
+use graphic_types::{Adjustment, Effects};
 use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -276,7 +277,20 @@ impl RenderContext<'_> {
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			if let Some(view) = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size) {
+			let view = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size);
+
+			// Adjustments draw a copy of the texture they're carried out on
+			let view = match image {
+				SceneImage::Raster { raster, adjustments } if !adjustments.is_empty() => view.and_then(|_| {
+					let effects = (&self.renderer.effect_passes, &mut self.canvas.effect_textures);
+					self.canvas
+						.images
+						.prepare_adjusted(device, &queue, effects, raster, adjustments, max_texture_size, self.renderer.precise_format)
+				}),
+				_ => view,
+			};
+
+			if let Some(view) = view {
 				texture_bindings.insert(TextureId(id as u64), view);
 			}
 		}
@@ -384,6 +398,18 @@ struct ImageTexture {
 	last_used: u64,
 	/// The CPU raster pixels copied into the texture, which is freed once they're gone since they can't be drawn again.
 	raster: Option<WeakCPU>,
+	/// Copies with runs of adjustments carried out on them, one for each run the image is drawn with.
+	adjusted: Vec<AdjustedTexture>,
+	/// The raster's straight linear colors in 32-bit floats that adjustments are carried out from, kept while any adjusted copy is.
+	adjustment_source: Option<wgpu::Texture>,
+}
+
+/// A copy of an image's texture with a run of adjustments carried out on it, made over in place for another run.
+struct AdjustedTexture {
+	texture: wgpu::Texture,
+	/// The hash of the run carried out on it, or `None` until one is.
+	run_hash: Option<u64>,
+	last_used: u64,
 }
 
 /// The textures of the images recent renders drew, each freed once it goes unused for long enough.
@@ -407,7 +433,7 @@ impl ImageTextures {
 	) -> Option<wgpu::TextureView> {
 		let key = match image {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
-			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
+			SceneImage::Raster { raster, .. } => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture((**texture).clone()),
 			// Effects results are premultiplied already
 			SceneImage::Rendered(texture) => return Some(texture.create_view(&wgpu::TextureViewDescriptor::default())),
@@ -423,7 +449,7 @@ impl ImageTextures {
 
 					upload_pixels(device, queue, data.data.data(), data.width, data.height, data.alpha_type, max_texture_size)?
 				}
-				SceneImage::Raster(raster) => {
+				SceneImage::Raster { raster, .. } => {
 					let (pixels, width, height) = raster.to_flat_u8();
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
@@ -437,10 +463,19 @@ impl ImageTextures {
 				),
 			};
 			let raster = match image {
-				SceneImage::Raster(raster) => Some(raster.downgrade()),
+				SceneImage::Raster { raster, .. } => Some(raster.downgrade()),
 				SceneImage::Pixels(_) | SceneImage::Texture(_) | SceneImage::Rendered(_) => None,
 			};
-			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0, raster });
+			self.textures.insert(
+				key.clone(),
+				ImageTexture {
+					texture,
+					last_used: 0,
+					raster,
+					adjusted: Vec::new(),
+					adjustment_source: None,
+				},
+			);
 		}
 
 		let image_texture = self.textures.get_mut(&key)?;
@@ -455,15 +490,94 @@ impl ImageTextures {
 		Some(view)
 	}
 
+	/// A view of the copy of the texture of the `raster` already prepared, with the `run` of adjustments carried out on it, in the `precise_format`.
+	#[expect(clippy::too_many_arguments)]
+	fn prepare_adjusted(
+		&mut self,
+		device: &wgpu::Device,
+		queue: &wgpu::Queue,
+		effects: (&EffectPasses, &mut EffectTextures),
+		raster: &Raster<CPU>,
+		run: &[Adjustment],
+		max_texture_size: u32,
+		precise_format: wgpu::TextureFormat,
+	) -> Option<wgpu::TextureView> {
+		let (effect_passes, effect_textures) = effects;
+		let run: Vec<&Adjustment> = run.iter().collect();
+		let run_hash = adjustment_run_hash(&run);
+		let render_count = self.render_count;
+		let image_texture = self.textures.get_mut(&ImageKey::Raster(raster.buffer_id()))?;
+
+		// A run seen before has its copy
+		if let Some(copy) = image_texture.adjusted.iter_mut().find(|copy| copy.run_hash == Some(run_hash)) {
+			copy.last_used = render_count;
+			return Some(copy.texture.create_view(&wgpu::TextureViewDescriptor::default()));
+		}
+
+		// A run that changes no color draws the texture itself
+		let prepared = effect_textures.prepare_adjustments(device, queue, &run);
+		if prepared.is_empty() {
+			return Some(image_texture.texture.create_view(&wgpu::TextureViewDescriptor::default()));
+		}
+
+		// A new run takes over the copy longest unused, as when dragging a slider makes a new run every render
+		let reusable = (image_texture.adjusted.iter().enumerate())
+			.filter(|(_, copy)| copy.last_used < render_count)
+			.min_by_key(|(_, copy)| copy.last_used)
+			.map(|(index, _)| index);
+		let index = match reusable {
+			Some(index) => index,
+			None => {
+				let texture = device.create_texture(&wgpu::TextureDescriptor {
+					label: Some("vello_gpu_adjusted_image"),
+					size: image_texture.texture.size(),
+					mip_level_count: image_texture.texture.mip_level_count(),
+					sample_count: 1,
+					dimension: wgpu::TextureDimension::D2,
+					format: precise_format,
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+					view_formats: &[],
+				});
+				image_texture.adjusted.push(AdjustedTexture {
+					texture,
+					run_hash: None,
+					last_used: render_count,
+				});
+				image_texture.adjusted.len() - 1
+			}
+		};
+
+		// Adjusting the raster's own colors, rather than its 8-bit premultiplied texture, keeps faint colors from banding and steps landing as on the CPU
+		if image_texture.adjustment_source.is_none() {
+			image_texture.adjustment_source = upload_adjustment_source(device, queue, raster.data(), max_texture_size);
+		}
+		let (source, straight_linear) = match &image_texture.adjustment_source {
+			Some(source) => (source, true),
+			None => (&image_texture.texture, false),
+		};
+
+		let copy = &mut image_texture.adjusted[index];
+		effect_passes.adjust_image(device, queue, effect_textures, source, straight_linear, &prepared, &copy.texture);
+		copy.run_hash = Some(run_hash);
+		copy.last_used = render_count;
+
+		Some(copy.texture.create_view(&wgpu::TextureViewDescriptor::default()))
+	}
+
 	fn free_unused(&mut self) {
 		let render_count = self.render_count;
-		self.textures.retain(|key, image_texture| {
-			let unused_renders = render_count - image_texture.last_used;
-			match key {
-				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
-				ImageKey::Blob(_) => unused_renders == 0,
-				ImageKey::Raster(_) => unused_renders == 0 || (unused_renders < UNUSED_IMAGE_RENDER_LIMIT && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
-				ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
+		let in_use = |last_used: u64| render_count - last_used < UNUSED_IMAGE_RENDER_LIMIT;
+
+		self.textures.retain(|key, image_texture| match key {
+			// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
+			ImageKey::Blob(_) => image_texture.last_used == render_count,
+			ImageKey::Raster(_) => image_texture.last_used == render_count || (in_use(image_texture.last_used) && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
+			ImageKey::Texture(_) => in_use(image_texture.last_used),
+		});
+		self.textures.values_mut().for_each(|image_texture| {
+			image_texture.adjusted.retain(|copy| in_use(copy.last_used));
+			if image_texture.adjusted.is_empty() {
+				image_texture.adjustment_source = None;
 			}
 		});
 	}
@@ -492,7 +606,10 @@ fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, pixels: &[u8], widt
 	// Box-average whole blocks of pixels down until both sides fit, which is exact to average since the pixels are premultiplied
 	let factor = image_downscale_factor(width, height, max_texture_size);
 	let (texture_width, texture_height) = image_texture_size(width, height, max_texture_size);
-	let pixels = if factor == 1 { premultiplied } else { box_downscale(&premultiplied, width, height, factor) };
+	let pixels = match factor {
+		1 => premultiplied,
+		_ => box_downscale(&premultiplied, width, height, factor).into_iter().map(|average| average.round() as u8).collect(),
+	};
 
 	// Each mipmap level halves the one before it, so a minified image averages its pixels rather than skipping over them
 	let level_count = texture_width.max(texture_height).ilog2() + 1;
@@ -571,31 +688,99 @@ fn halve_for_mipmap(pixels: &[u8], width: u32, height: u32) -> (Vec<u8>, u32, u3
 	(output, half_width, half_height)
 }
 
-/// Averages each `factor` by `factor` block of RGBA8 pixels, letting blocks at the right and bottom edges average only the pixels they have.
-fn box_downscale(pixels: &[u8], width: u32, height: u32, factor: u32) -> Vec<u8> {
+/// Averages each `factor` by `factor` block of RGBA pixels, letting blocks at the right and bottom edges average only the pixels they have.
+fn box_downscale<Channel: Copy + Into<f32>>(pixels: &[Channel], width: u32, height: u32, factor: u32) -> Vec<f32> {
 	let (output_width, output_height) = (width.div_ceil(factor), height.div_ceil(factor));
 	let mut output = Vec::with_capacity((output_width * output_height * 4) as usize);
 
 	for output_y in 0..output_height {
 		for output_x in 0..output_width {
-			let mut sums = [0_u32; 4];
+			let mut sums = [0_f32; 4];
 			let mut count = 0;
 
 			for y in (output_y * factor)..((output_y + 1) * factor).min(height) {
 				for x in (output_x * factor)..((output_x + 1) * factor).min(width) {
 					let index = ((y * width + x) * 4) as usize;
-					for (sum, channel) in sums.iter_mut().zip(&pixels[index..index + 4]) {
-						*sum += *channel as u32;
+					for (sum, &channel) in sums.iter_mut().zip(&pixels[index..index + 4]) {
+						*sum += channel.into();
 					}
 					count += 1;
 				}
 			}
 
-			output.extend(sums.map(|sum| ((sum + count / 2) / count) as u8));
+			output.extend(sums.map(|sum| sum / count as f32));
 		}
 	}
 
 	output
+}
+
+/// Uploads a raster's straight linear colors as one level of 32-bit floats, the size [`upload_pixels`] makes them, so adjustments read the CPU's exact values.
+/// A raster too large for one texture is averaged down to fit on premultiplied gamma-encoded channels, as [`upload_pixels`] averages them.
+fn upload_adjustment_source(device: &wgpu::Device, queue: &wgpu::Queue, image: &Image<core_types::Color>, max_texture_size: u32) -> Option<wgpu::Texture> {
+	let (width, height) = (image.width, image.height);
+	if width == 0 || height == 0 {
+		return None;
+	}
+
+	let factor = image_downscale_factor(width, height, max_texture_size);
+	let (texture_width, texture_height) = image_texture_size(width, height, max_texture_size);
+	let downscaled: Vec<f32>;
+	let texels: &[f32] = if factor == 1 {
+		bytemuck::cast_slice(&image.data)
+	} else {
+		let premultiplied: Vec<f32> = (image.data.iter())
+			.flat_map(|color| {
+				let [r, g, b, a] = color.to_gamma_srgb_channels();
+				[r * a, g * a, b * a, a]
+			})
+			.collect();
+		let averaged = box_downscale(&premultiplied, width, height, factor);
+		downscaled = (averaged.as_chunks::<4>().0.iter())
+			.flat_map(|&[r, g, b, a]| {
+				if a <= 0. {
+					return [0.; 4];
+				}
+				let color = core_types::Color::from_gamma_srgb_channels(r / a, g / a, b / a, a);
+				[color.r(), color.g(), color.b(), a]
+			})
+			.collect();
+		&downscaled
+	};
+	let format = wgpu::TextureFormat::Rgba32Float;
+
+	let size = wgpu::Extent3d {
+		width: texture_width,
+		height: texture_height,
+		depth_or_array_layers: 1,
+	};
+	let texture = device.create_texture(&wgpu::TextureDescriptor {
+		label: Some("vello_gpu_adjustment_source"),
+		size,
+		mip_level_count: 1,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format,
+		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+		view_formats: &[],
+	});
+	queue.write_texture(
+		wgpu::TexelCopyTextureInfo {
+			texture: &texture,
+			mip_level: 0,
+			origin: wgpu::Origin3d::ZERO,
+			aspect: wgpu::TextureAspect::All,
+		},
+		bytemuck::cast_slice(texels),
+		wgpu::TexelCopyBufferLayout {
+			offset: 0,
+			bytes_per_row: Some(16 * texture_width),
+			rows_per_image: Some(texture_height),
+		},
+		size,
+	);
+
+	Some(texture)
 }
 
 fn clear_texture(encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {

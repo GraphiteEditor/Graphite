@@ -2,12 +2,21 @@
 // of `raster-kernels` encode as `AdjustmentSteps`. Each mirrors its kernel's `map_cpu` on a straight color in the encoding `vello_adjustments.rs` gives it.
 // The constants naming the kernels' codes for their settings come before this, generated from the kernels.
 
-// Premultiplied pixels with gamma-encoded color
+// Premultiplied pixels with gamma-encoded color, or straight linear color where the encodings say so
 @group(0) @binding(0) var source: texture_2d<f32>;
 // The step count, then for each step a texel holding how many texels it spans (as two 16-bit halves) and its kind followed by its parameters, filling the rows in order
 @group(0) @binding(1) var steps: texture_2d<f32>;
 // A texel locating each table that steps read (as two 16-bit halves), followed by the tables in order
 @group(0) @binding(2) var tables: texture_2d<f32>;
+
+// Whether the source holds straight linear color and whether the result is written that way, rather than as premultiplied gamma-encoded color.
+// WebGL2 needs uniform structs to span a multiple of 16 bytes.
+struct PassEncodings {
+	straight_linear_source: u32,
+	straight_linear_result: u32,
+	padding: vec2<u32>,
+}
+@group(0) @binding(3) var<uniform> encodings: PassEncodings;
 
 // The machine epsilons of single and double precision, which the CPU's kernels hold divisors above
 const F32_EPSILON: f32 = 1.1920929e-7;
@@ -20,13 +29,26 @@ fn vertex(@builtin(vertex_index) index: u32) -> @builtin(position) vec4<f32> {
 	return vec4<f32>(corner * 2. - 1., 0., 1.);
 }
 
-// The straight gamma-encoded color of the source pixel under `position`, with a fully transparent pixel's color left at 0, matching `straight_linear_color`
+// The straight color of the source pixel under `position`, in linear light if the source holds that, or else gamma-encoded,
+// with a fully transparent pixel's color left at 0, matching `straight_linear_color`
 fn source_color(position: vec4<f32>) -> vec4<f32> {
 	let pixel = textureLoad(source, vec2<i32>(position.xy), 0);
 	if pixel.a <= 0. {
 		return vec4<f32>(0.);
 	}
+	if encodings.straight_linear_source != 0u {
+		return pixel;
+	}
 	return vec4<f32>(pixel.rgb / pixel.a, min(pixel.a, 1.));
+}
+
+// The pixel a pass writes for the straight `color`, in linear light if `linear` or else gamma-encoded, in the result's encoding
+fn result_pixel(color: vec4<f32>, linear: bool) -> vec4<f32> {
+	if encodings.straight_linear_result != 0u {
+		return select(from_gamma(color), color, linear);
+	}
+	let gamma = select(color, to_gamma(color), linear);
+	return vec4<f32>(gamma.rgb * gamma.a, gamma.a);
 }
 
 // A count stored as its low (x) and high (y) 16-bit halves

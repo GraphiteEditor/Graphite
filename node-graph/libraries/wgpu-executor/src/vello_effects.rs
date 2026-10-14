@@ -1,6 +1,6 @@
 //! The GPU passes that carry out an item's effects on its content, between rendering the content offscreen and drawing the result back.
 
-use crate::vello_adjustments::{AdjustmentShaders, AdjustmentUploads, PreparedPass};
+use crate::vello_adjustments::{AdjustmentShaders, AdjustmentUploads, PassEncodings, PreparedPass};
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transfer_curve::TransferCurve;
@@ -354,13 +354,14 @@ impl EffectPasses {
 						} else {
 							WORKING_FORMAT
 						};
+						let encodings = self.adjustment_shaders.pass_encodings(index, prepared_passes.len(), false);
 
 						if full_is_read {
-							let adjusted = recorder.adjust(full.as_ref().unwrap_or(content), prepared, format);
+							let adjusted = recorder.adjust(full.as_ref().unwrap_or(content), prepared, format, encodings);
 							recorder.replace_or_fill(&mut full, adjusted);
 						}
 						if let Some(filled) = &mut filled {
-							let adjusted = recorder.adjust(filled, prepared, format);
+							let adjusted = recorder.adjust(filled, prepared, format, encodings);
 							recorder.replace(filled, adjusted);
 						}
 					}
@@ -391,6 +392,71 @@ impl EffectPasses {
 
 		queue.submit([recorder.encoder.finish()]);
 		result
+	}
+
+	/// Carries out a run of adjustments, in the passes `prepared` for it, on the top level of `image`, a texture of straight linear color if
+	/// `straight_linear_image` or else of premultiplied pixels, into the top level of `target`, then averages each of `target`'s smaller levels
+	/// from the one above it like the levels of an uploaded image.
+	#[expect(clippy::too_many_arguments)]
+	pub(crate) fn adjust_image(
+		&self,
+		device: &wgpu::Device,
+		queue: &wgpu::Queue,
+		textures: &mut EffectTextures,
+		image: &wgpu::Texture,
+		straight_linear_image: bool,
+		prepared: &[PreparedPass],
+		target: &wgpu::Texture,
+	) {
+		let size = UVec2::new(image.width(), image.height());
+		let mut recorder = PassRecorder {
+			passes: self,
+			device,
+			queue,
+			encoder: device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+				label: Some("vello_effects_adjust_image"),
+			}),
+			textures,
+			size,
+		};
+		let level = |texture: &wgpu::Texture, level: u32| {
+			texture.create_view(&wgpu::TextureViewDescriptor {
+				base_mip_level: level,
+				mip_level_count: Some(1),
+				..Default::default()
+			})
+		};
+
+		// Each pass but the last hands its result on in the chained format, so only the last one's result rounds to the target's format
+		let mut chained: Option<wgpu::Texture> = None;
+		for (index, pass) in prepared.iter().enumerate() {
+			let source = chained.as_ref().unwrap_or(image);
+			let encodings = self.adjustment_shaders.pass_encodings(index, prepared.len(), straight_linear_image);
+			if index + 1 < prepared.len() {
+				let adjusted = recorder.adjust(source, pass, self.adjustment_shaders.chained_format, encodings);
+				recorder.replace_or_fill(&mut chained, adjusted);
+			} else {
+				let source = source.create_view(&wgpu::TextureViewDescriptor::default());
+				recorder.adjust_into(&level(target, 0), target.format(), &source, pass, encodings);
+			}
+		}
+		chained.into_iter().for_each(|texture| recorder.textures.release(texture));
+
+		for index in 1..target.mip_level_count() {
+			let level_size = UVec2::new(target.width() >> index, target.height() >> index).max(UVec2::ONE);
+			recorder.run_into(
+				"halve",
+				target.format(),
+				&level(target, index),
+				level_size,
+				&level(target, index - 1),
+				None,
+				None,
+				Parameters::default(),
+			);
+		}
+
+		queue.submit([recorder.encoder.finish()]);
 	}
 }
 
@@ -442,13 +508,33 @@ impl PassRecorder<'_> {
 		parameters: Parameters,
 	) -> wgpu::Texture {
 		let target = self.textures.acquire(self.device, size, format);
+
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let (source, secondary, content) = (view(source), secondary.map(view), content.map(view));
+		self.run_into(entry_point, format, &view(&target), size, &source, secondary.as_ref(), content.as_ref(), parameters);
+
+		target
+	}
+
+	/// Runs the shader's `entry_point` into `target`, a view of `format` and `size`, reading the `source` view and optionally the `secondary` and `content` views.
+	#[expect(clippy::too_many_arguments)]
+	fn run_into(
+		&mut self,
+		entry_point: &'static str,
+		format: wgpu::TextureFormat,
+		target: &wgpu::TextureView,
+		size: UVec2,
+		source: &wgpu::TextureView,
+		secondary: Option<&wgpu::TextureView>,
+		content: Option<&wgpu::TextureView>,
+		parameters: Parameters,
+	) {
 		let parameters = Parameters {
 			target_to_uv: [1. / size.x as f32, 1. / size.y as f32],
 			..parameters
 		};
 
-		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let (source_view, secondary_view, content_view) = (view(source), view(secondary.unwrap_or(source)), view(content.unwrap_or(source)));
+		let (secondary, content) = (secondary.unwrap_or(source), content.unwrap_or(source));
 		let parameters_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
 			label: Some("vello_effects_parameters"),
 			contents: bytemuck::bytes_of(&parameters),
@@ -460,15 +546,15 @@ impl PassRecorder<'_> {
 			entries: &[
 				wgpu::BindGroupEntry {
 					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&source_view),
+					resource: wgpu::BindingResource::TextureView(source),
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&secondary_view),
+					resource: wgpu::BindingResource::TextureView(secondary),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
-					resource: wgpu::BindingResource::TextureView(&content_view),
+					resource: wgpu::BindingResource::TextureView(content),
 				},
 				wgpu::BindGroupEntry {
 					binding: 3,
@@ -482,18 +568,15 @@ impl PassRecorder<'_> {
 		});
 
 		let pipeline = self.passes.pipeline(self.device, entry_point, format);
-		self.draw_into(entry_point, &target, &pipeline, &bind_group);
-
-		target
+		self.draw_into(entry_point, &pipeline, &bind_group, target);
 	}
 
-	/// Draws one triangle covering `target` with `pipeline`, reading `bind_group`.
-	fn draw_into(&mut self, label: &'static str, target: &wgpu::Texture, pipeline: &wgpu::RenderPipeline, bind_group: &wgpu::BindGroup) {
-		let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+	/// Clears `target` and draws one triangle covering it with the `pipeline` reading the `bind_group`.
+	fn draw_into(&mut self, label: &'static str, pipeline: &wgpu::RenderPipeline, bind_group: &wgpu::BindGroup, target: &wgpu::TextureView) {
 		let mut pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 			label: Some(label),
 			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: &target_view,
+				view: target,
 				resolve_target: None,
 				ops: wgpu::Operations {
 					load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
@@ -760,19 +843,35 @@ impl PassRecorder<'_> {
 		self.run("composite_beneath", WORKING_FORMAT, self.size, image, Some(beneath), None, Parameters::default())
 	}
 
-	/// The image (of any format a shader can load from) with a pass of adjustments carried out on it into a texture of `format`, reading what was `prepared` for the pass.
-	fn adjust(&mut self, image: &wgpu::Texture, prepared: &PreparedPass, format: wgpu::TextureFormat) -> wgpu::Texture {
+	/// The image (of any format a shader can load from) with a pass of adjustments carried out on it into a texture of `format`, reading what was `prepared` for the pass,
+	/// in the `encodings` of its source and result.
+	fn adjust(&mut self, image: &wgpu::Texture, prepared: &PreparedPass, format: wgpu::TextureFormat, encodings: PassEncodings) -> wgpu::Texture {
 		let target = self.textures.acquire(self.device, self.size, format);
-		let shaders = &self.passes.adjustment_shaders;
 
-		// The pixels, the steps, and the tables, bound in that order
-		let views = [image, &prepared.steps, prepared.tables.as_ref().unwrap_or(&shaders.no_tables)].map(|texture| texture.create_view(&wgpu::TextureViewDescriptor::default()));
-		let entries: Vec<wgpu::BindGroupEntry> = (views.iter().enumerate())
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		self.adjust_into(&view(&target), format, &view(image), prepared, encodings);
+
+		target
+	}
+
+	/// Carries out a pass of adjustments on the `image` view, reading what was `prepared` for the pass, into `target`, a view of `format`, in the `encodings` of its source and result.
+	fn adjust_into(&mut self, target: &wgpu::TextureView, format: wgpu::TextureFormat, image: &wgpu::TextureView, prepared: &PreparedPass, encodings: PassEncodings) {
+		let passes = self.passes;
+		let shaders = &passes.adjustment_shaders;
+
+		// The pixels, the steps, the tables, and the encodings, bound in that order
+		let view = |texture: &wgpu::Texture| texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let (steps, tables) = (view(&prepared.steps), view(prepared.tables.as_ref().unwrap_or(&shaders.no_tables)));
+		let mut entries: Vec<wgpu::BindGroupEntry> = ([image, &steps, &tables].into_iter().enumerate())
 			.map(|(binding, view)| wgpu::BindGroupEntry {
 				binding: binding as u32,
 				resource: wgpu::BindingResource::TextureView(view),
 			})
 			.collect();
+		entries.push(wgpu::BindGroupEntry {
+			binding: 3,
+			resource: shaders.encodings_buffer(encodings).as_entire_binding(),
+		});
 		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
 			label: Some("vello_adjustments_bind_group"),
 			layout: &shaders.bind_group_layout,
@@ -780,9 +879,7 @@ impl PassRecorder<'_> {
 		});
 
 		let pipeline = shaders.pipeline(self.device, prepared.shader, format);
-		self.draw_into("adjust", &target, &pipeline, &bind_group);
-
-		target
+		self.draw_into("adjust", &pipeline, &bind_group, target);
 	}
 
 	/// Blurs `texture` by `kernel` along both axes, in linear light if `linear`.
