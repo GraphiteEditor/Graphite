@@ -934,10 +934,13 @@ fn snap_and_apply(operation: &mut TransformOperation, snapping: Option<&Snapping
 	operation.apply_transform_operation(selected, state, view.document);
 }
 
-/// Snaps the operation again once a key has changed its amount, and applies it, if the transform is snapping.
+/// Snaps the operation again once a key has changed its amount, if the transform is snapping, and applies the snapped amount. A typed amount, which the key already applied, is left as it is.
 fn snap_again(operation: &mut TransformOperation, snapping: Option<&Snapping>, state: &TransformationState, view: SnapView, snap_session: &mut SnapSession, selected: &mut Selected) {
-	if snapping.is_some() {
-		snap_and_apply(operation, snapping, state, view, snap_session, selected);
+	let Some(snapping) = snapping else { return };
+	snapping.snap(operation, state, view, snap_session);
+
+	if !operation.is_typing() {
+		operation.apply_transform_operation(selected, state, view.document);
 	}
 }
 
@@ -1712,6 +1715,13 @@ mod test_transform_layer {
 		}
 		assert_bounds(&editor, layer, [DVec2::new(237., 180.), DVec2::new(297., 230.)]);
 		assert!(!shows_a_snap(&editor));
+
+		// With the digits deleted, the pointer's own distance snaps again
+		for _ in 0..3 {
+			editor.handle_message(TransformLayerMessage::TypeBackspace).await;
+		}
+		assert_bounds(&editor, layer, [DVec2::new(240., 180.), DVec2::new(300., 230.)]);
+		assert!(shows_a_snap(&editor));
 		editor.handle_message(TransformLayerMessage::CancelTransformOperation).await;
 
 		// With Control held, it is only stepped to a whole number of pixels
@@ -1831,5 +1841,28 @@ mod test_transform_layer {
 			anchors[0].distance(first) < 1e-6 && anchors[1].distance(DVec2::new(400., 300.)) < 1e-6,
 			"unexpected anchors {anchors:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn a_quarter_turned_rectangle_grabbed_along_its_own_x_axis_moves_only_along_that_axis() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 140.)).await;
+
+		// Turned a quarter turn about its middle, its own X axis runs down the viewport
+		begin_at(&mut editor, TransformLayerMessage::BeginRotate, DVec2::new(250., 120.)).await;
+		for digit in [9, 0] {
+			editor.handle_message(TransformLayerMessage::TypeDigit { digit }).await;
+		}
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+		assert_bounds(&editor, layer, [DVec2::new(130., 70.), DVec2::new(170., 170.)]);
+
+		// Pressing X twice holds the grab to that axis, so only the pointer's downward travel moves it
+		let grip = DVec2::new(150., 120.);
+		begin_at(&mut editor, TransformLayerMessage::BeginGrab, grip).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		editor.handle_message(TransformLayerMessage::ConstrainX).await;
+		move_pointer(&mut editor, grip + DVec2::new(30., 50.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(130., 120.), DVec2::new(170., 220.)]);
 	}
 }
