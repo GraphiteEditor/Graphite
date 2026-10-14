@@ -3652,9 +3652,13 @@ fn update_dynamic_hints(
 				dragging_hint_data.0.push(HintGroup(hold_group));
 			}
 
-			dragging_hint_data.0.push(snapping_hints());
+			// Dragged points snap, while segments slide or mold where the pointer takes them
+			let dragging_points = tool_data.slide.as_ref().is_some_and(|slide| !slide.features.is_empty());
+			if dragging_points {
+				dragging_hint_data.0.push(snapping_hints());
+			}
 
-			if tool_data.molding_segment && tool_data.segment.is_some() {
+			if tool_data.molding_segment && !dragging_points {
 				let mut has_colinear_anchors = false;
 
 				if let Some(segment) = &tool_data.segment {
@@ -3705,6 +3709,9 @@ fn update_dynamic_hints(
 
 #[cfg(test)]
 mod test_path_tool {
+	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+	use crate::messages::layout::utility_types::layout_widget::LayoutTarget;
+	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::test_utils::test_prelude::*;
 	use graphene_std::vector::misc::ManipulatorPointId;
 
@@ -3760,6 +3767,18 @@ mod test_path_tool {
 		press_at(editor, from).await;
 		move_to(editor, to, ModifierKeys::empty()).await;
 		editor.left_mouseup(to.x, to.y, ModifierKeys::empty()).await;
+	}
+
+	/// Whether the latest hints sent to the status bar among these frontend messages list the snapping keys.
+	fn latest_hints_list_snapping_keys(frontend_messages: &[FrontendMessage]) -> bool {
+		let latest_hints = frontend_messages.iter().rev().find_map(|message| match message {
+			FrontendMessage::UpdateLayout {
+				layout_target: LayoutTarget::StatusBarHints,
+				diff,
+			} => Some(diff),
+			_ => None,
+		});
+		latest_hints.is_some_and(|diff| format!("{diff:?}").contains("Quiet Snapping"))
 	}
 
 	#[tokio::test]
@@ -3892,6 +3911,45 @@ mod test_path_tool {
 
 		drag(&mut editor, D, left_at + DVec2::new(3., -4.)).await;
 		assert_anchors(&editor, layer, &[left_at, B, C, left_at]);
+	}
+
+	#[tokio::test]
+	async fn a_handle_lying_on_its_segment_lists_the_snapping_keys_while_dragged_with_only_segments_editable() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Dragging out of the second anchor along the path gives the segment an end handle lying on the segment
+		let (start, anchor, dragged_out) = (DVec2::new(100., 300.), DVec2::new(300., 300.), DVec2::new(340., 300.));
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+		editor.move_mouse(anchor.x, anchor.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(anchor.x, anchor.y, ModifierKeys::empty()).await;
+		editor.move_mouse(dragged_out.x, dragged_out.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(dragged_out.x, dragged_out.y, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		let handle = anchor * 2. - dragged_out;
+
+		// With its anchor selected to show the handle, only segments are made editable, so hovering the handle also finds the segment beneath it
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, anchor, ModifierKeys::empty()).await;
+		editor.handle_message(PathToolMessage::ToggleSegmentEditing).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.handle_message(PathToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		// The handle goes on snapping past the drag threshold, so the hints go on listing the keys that steer it
+		editor.left_mousedown(handle.x, handle.y, ModifierKeys::empty()).await;
+		let mut frontend_messages = Vec::new();
+		for x in [handle.x + 2., handle.x + 10.] {
+			let editor_mouse_state = EditorPointerState {
+				editor_position: DVec2::new(x, handle.y),
+				mouse_keys: MouseKeys::LEFT,
+				..Default::default()
+			};
+			let modifier_keys = ModifierKeys::empty();
+			frontend_messages.extend(editor.handle_message(InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys }).await);
+		}
+		assert!(
+			latest_hints_list_snapping_keys(&frontend_messages),
+			"the hints should list the snapping keys while the handle is dragged"
+		);
 	}
 
 	#[tokio::test]
