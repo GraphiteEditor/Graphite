@@ -33,9 +33,9 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.circle_radius_handle.is_dragging() {
-			self.circle_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.circle_radius_handle.update_inner_radius(view, snap_session, responses, drag_start);
 		}
 	}
 

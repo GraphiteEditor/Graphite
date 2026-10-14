@@ -9,19 +9,19 @@ use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintGroup, HintInfo};
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use graphene_std::vector::PointId;
 use scene_mirror::layer_id;
 
 pub use scene_mirror::anchor_positions;
 use snapping::{
-	AnchorId, Awake, Bounds, Candidate, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, LayerKind, Outcome, Request, Scene, Settings, Side, Snap, SpacedBox, Tunables,
-	ViewMapping, find_constructions, find_constructions_from, find_equal_sizes, find_spacing,
+	AnchorId, Awake, Bounds, Candidate, CandidateKey, Context, CrossingCache, Exclusions, Frame, Highlight, Incumbent, LayerId, LayerKind, Outcome, Request, Scene, Settings, Side, Snap, SpacedBox,
+	Tunables, ViewMapping, find_constructions, find_constructions_from, find_equal_sizes, find_spacing,
 };
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-pub use snapping::{FeatureMap, Locus};
+pub use snapping::{FeatureMap, Kind, Locus};
 
 /// How long the pointer must rest on a target to wake it while a gesture is under way, in milliseconds.
 const WAKE_DWELL_IN_GESTURE: u64 = 250;
@@ -102,6 +102,16 @@ pub struct BoxFeatures {
 	/// For each of the two axes, the feature carrying the box's low side and the one carrying its high side. A side that stays put is `None`.
 	/// With both sides carried, the box moves whole along that axis, so a stretch about its center names neither.
 	pub sides: [[Option<usize>; 2]; 2],
+}
+
+/// A value a gizmo's value may snap to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ValueCandidate {
+	pub value: f64,
+	/// The relationship it gives, which names it in the label.
+	pub kind: Kind,
+	/// Tells it apart from others of its kind, so an engaged snap is recognized after the pointer moves.
+	pub identity: u64,
 }
 
 /// What the latest attempt to snap came to, kept for drawing.
@@ -197,8 +207,8 @@ impl SnapSession {
 		let SnapView { document, document_id, input } = view;
 
 		// Held quiet, nothing is offered, so the scene can wait to be brought up to date
-		let quiet = !document.snapping_state.snapping_enabled || input.keyboard.key(Key::KeyQ);
-		if quiet {
+		let silenced = !document.snapping_state.snapping_enabled || input.keyboard.key(Key::KeyQ);
+		if silenced {
 			self.follow_document(document_id);
 		} else {
 			self.bring_up_to_date(document, document_id);
@@ -229,14 +239,9 @@ impl SnapSession {
 		// A box is taken where the pointer asks for it, once any track it must stay on has had its say
 		let asked = options.required.map_or(free, |track| track.nearest(free));
 		let kind = self.gesture.as_ref().map_or(LayerKind::Artwork, |gesture| gesture.kind);
-		let spaced = options.box_features.filter(|_| !quiet).and_then(|box_features| spaced_box(kind, &box_features, features, asked));
+		let spaced = options.box_features.filter(|_| !silenced).and_then(|box_features| spaced_box(kind, &box_features, features, asked));
 		let awake = self.awake_around(spaced.as_ref());
-
-		// Nothing snaps until the pointer has moved past the drag threshold from where the gesture began
-		let within_threshold = self.gesture.as_mut().is_some_and(|gesture| {
-			gesture.dragged |= input.mouse.position.distance(gesture.pressed) > DRAG_THRESHOLD;
-			!gesture.dragged
-		});
+		let (quiet, cycle) = self.steering(view);
 
 		let (frame, tunables, nothing_moving) = (Frame::default(), Tunables::default(), Exclusions::default());
 
@@ -289,17 +294,12 @@ impl SnapSession {
 
 		let probed: Option<Vec<u32>> = options.snapping.map(|count| (0..count.min(features.len()) as u32).collect());
 
-		// A tap of the cycling key counts once, however long the key is held down
-		let cycle_key_held = input.keyboard.key(Key::KeyW);
-		let cycle = usize::from(cycle_key_held && !self.cycle_key_was_held);
-		self.cycle_key_was_held = cycle_key_held;
-
 		let request = Request {
 			grid: grid.as_ref(),
 			required: options.required,
 			incumbent: self.incumbent,
 			cycle,
-			quiet: quiet || within_threshold,
+			quiet,
 			constructions: self.constructions.as_ref().map_or(&[], |(_, constructions)| constructions.as_slice()),
 			lead_constructions: &self.constructions_from_previous,
 			crossings: Some(&self.crossings),
@@ -308,8 +308,8 @@ impl SnapSession {
 		};
 		let outcome = snapping::snap_features(&context, &request, features, lead, free, options.previous);
 
-		// Until then, what a press landed somewhere stays there
-		let held = self.gesture.as_ref().and_then(|gesture| gesture.held).filter(|_| within_threshold);
+		// Until the pointer has moved past the drag threshold, what a press landed somewhere stays there
+		let held = self.gesture.as_ref().filter(|gesture| !gesture.dragged).and_then(|gesture| gesture.held);
 		let held_parameters = held.and_then(|held| features.get(lead)?.parameters_for(held)).filter(|parameters| parameters.is_finite());
 		self.holding_press = held_parameters.is_some();
 
@@ -339,6 +339,67 @@ impl SnapSession {
 		}
 
 		parameters
+	}
+
+	/// Snaps one value that a gizmo's handle sets, such as an angle or a radius, and returns the value it lands on.
+	///
+	/// The snap is shown where `position_of` puts the handle, in document space, for the value landed on. Reach is judged by `on_screen_per_unit`, how many viewport pixels the handle moves per unit of the value.
+	pub fn snap_value(&mut self, view: SnapView, position_of: impl Fn(f64) -> DVec2, free: f64, on_screen_per_unit: f64, candidates: &[ValueCandidate]) -> f64 {
+		// A value has no features in document space, which an empty list stands for
+		if !self.features.is_empty() {
+			self.features.clear();
+			self.incumbent = None;
+			self.crossings.clear();
+		}
+
+		let (quiet, cycle) = self.steering(view);
+		let Some(view_mapping) = ViewMapping::from_affine(DAffine2::from_scale(DVec2::splat(on_screen_per_unit))) else {
+			self.forget();
+			return free;
+		};
+
+		// The value is solved as a position along a line, with each candidate a spot on it and nothing else in the scene
+		let particular: Vec<Candidate> = candidates
+			.iter()
+			.map(|candidate| {
+				let key = CandidateKey {
+					kind: candidate.kind,
+					feature: 0,
+					identity: [candidate.identity, 0, 0],
+				};
+				Candidate::spot(key, DVec2::new(candidate.value, 0.))
+			})
+			.collect();
+
+		let (scene, frame, tunables, settings, exclusions) = (Scene::new(), Frame::default(), Tunables::default(), Settings::default(), Exclusions::default());
+		let context = Context {
+			scene: &scene,
+			view: &view_mapping,
+			frame: &frame,
+			tunables: &tunables,
+			settings: &settings,
+			exclusions: &exclusions,
+			awake: &[],
+		};
+		let request = Request {
+			required: Locus::line(DVec2::ZERO, DVec2::X),
+			incumbent: self.incumbent,
+			cycle,
+			quiet,
+			particular: &particular,
+			..Default::default()
+		};
+		let outcome = snapping::snap_point(&context, &request, DVec2::new(free, 0.), None);
+
+		self.incumbent = outcome.incumbent();
+		let snapped = outcome.parameters.x;
+		self.shown = Some(Shown {
+			features: vec![position_of(snapped)],
+			lead: 0,
+			outcome,
+		});
+
+		snapped
 	}
 
 	/// Starts a gesture, which goes on snapping to the scene as it is now and to none of what it moves.
@@ -534,6 +595,25 @@ impl SnapSession {
 		&self.awake
 	}
 
+	/// Whether this attempt is quiet, as with the master switch off, Q held, or the pointer not yet past the drag threshold, and how many candidates W steps on by.
+	fn steering(&mut self, view: SnapView) -> (bool, usize) {
+		let SnapView { document, input, .. } = view;
+
+		// Nothing snaps until the pointer has moved past the drag threshold from where the gesture began
+		let within_threshold = self.gesture.as_mut().is_some_and(|gesture| {
+			gesture.dragged |= input.mouse.position.distance(gesture.pressed) > DRAG_THRESHOLD;
+			!gesture.dragged
+		});
+
+		// A tap of the cycling key counts once, however long the key is held down
+		let cycle_key_held = input.keyboard.key(Key::KeyW);
+		let cycle = usize::from(cycle_key_held && !self.cycle_key_was_held);
+		self.cycle_key_was_held = cycle_key_held;
+
+		let quiet = !document.snapping_state.snapping_enabled || input.keyboard.key(Key::KeyQ) || within_threshold;
+		(quiet, cycle)
+	}
+
 	/// The woken targets, joined while a box is moved by the nearest of the boxes sharing its parent, by any such box the snap is relying on, and by its artboard.
 	fn awake_around(&mut self, spaced: Option<&SpacedBox>) -> Vec<Awake> {
 		let mut awake = self.awake.clone();
@@ -581,9 +661,9 @@ impl SnapSession {
 
 		// A midpoint, or a place where paths cross, is a point of its own rather than the curves it was found on
 		let engaged: Vec<&Candidate> = shown.outcome.engaged_candidates().collect();
-		let on_a_path = |candidate: &&Candidate| matches!(candidate.key.kind, snapping::Kind::OnCurve | snapping::Kind::OnBoxEdge | snapping::Kind::OnArtboardEdge);
+		let on_a_path = |candidate: &&Candidate| matches!(candidate.key.kind, Kind::OnCurve | Kind::OnBoxEdge | Kind::OnArtboardEdge);
 		let point_of_its_own = match engaged.as_slice() {
-			[midpoint] => midpoint.key.kind == snapping::Kind::Midpoint,
+			[midpoint] => midpoint.key.kind == Kind::Midpoint,
 			[first, second] => first.key.feature == second.key.feature && on_a_path(first) && on_a_path(second),
 			_ => false,
 		};
@@ -1719,5 +1799,77 @@ mod tests {
 				assert!((lines - lines.round()).abs() < 1e-6, "{point:?} is off a line by {lines}");
 			}
 		}
+	}
+
+	/// Angles in degrees a gizmo might offer.
+	const ANGLES: [ValueCandidate; 2] = [
+		ValueCandidate {
+			value: 90.,
+			kind: Kind::RightAngle,
+			identity: 90,
+		},
+		ValueCandidate {
+			value: 135.,
+			kind: Kind::AngleStep,
+			identity: 135,
+		},
+	];
+
+	/// Where the handle of the gizmo snapping its angle sits for an angle, in document space.
+	fn handle_at(angle: f64) -> DVec2 {
+		DVec2::new(10., 20.) + DVec2::from_angle(angle.to_radians()) * 50.
+	}
+
+	fn snap_angle(session: &mut SnapSession, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, free: f64, on_screen_per_degree: f64) -> f64 {
+		session.snap_value(SnapView::new(document, DOCUMENT, input), handle_at, free, on_screen_per_degree, &ANGLES)
+	}
+
+	#[test]
+	fn a_value_lands_on_a_candidate_within_reach_on_screen_and_stays_where_it_is_asked_for_beyond_it() {
+		let (document, input) = (DocumentMessageHandler::default(), InputPreprocessorMessageHandler::default());
+		let mut session = SnapSession::default();
+
+		// Three degrees short of a right angle is six pixels at two pixels a degree, which is within reach, and the snap is shown where the handle lands
+		assert_eq!(snap_angle(&mut session, &document, &input, 87., 2.), 90.);
+		assert_eq!(engaged_kinds(&session), vec![Kind::RightAngle]);
+		assert_eq!(session.shown_position(), Some(handle_at(90.)));
+
+		// At four pixels a degree the same three degrees are twelve pixels, which is beyond reach
+		session.forget();
+		assert_eq!(snap_angle(&mut session, &document, &input, 87., 4.), 87.);
+		assert!(!session.caught());
+	}
+
+	#[test]
+	fn holding_q_or_turning_snapping_off_leaves_a_value_where_it_is_asked_for() {
+		let mut document = DocumentMessageHandler::default();
+		let mut input = InputPreprocessorMessageHandler::default();
+		let mut session = SnapSession::default();
+
+		input.keyboard.set(Key::KeyQ as usize);
+		assert_eq!(snap_angle(&mut session, &document, &input, 88., 2.), 88.);
+		assert!(!session.caught());
+
+		input.keyboard.unset(Key::KeyQ as usize);
+		document.snapping_state.snapping_enabled = false;
+		assert_eq!(snap_angle(&mut session, &document, &input, 88., 2.), 88.);
+		assert!(!session.caught());
+
+		document.snapping_state.snapping_enabled = true;
+		assert_eq!(snap_angle(&mut session, &document, &input, 88., 2.), 90.);
+	}
+
+	#[test]
+	fn an_engaged_value_holds_beyond_the_reach_until_the_release_distance() {
+		let (document, input) = (DocumentMessageHandler::default(), InputPreprocessorMessageHandler::default());
+		let mut session = SnapSession::default();
+
+		// At two pixels a degree, five degrees away is ten pixels, past the reach of eight but short of the release at twelve
+		assert_eq!(snap_angle(&mut session, &document, &input, 89.5, 2.), 90.);
+		assert_eq!(snap_angle(&mut session, &document, &input, 85., 2.), 90.);
+
+		// Seven degrees away is fourteen pixels, where it lets go, and coming back to ten pixels does not catch it again
+		assert_eq!(snap_angle(&mut session, &document, &input, 83., 2.), 83.);
+		assert_eq!(snap_angle(&mut session, &document, &input, 85., 2.), 85.);
 	}
 }

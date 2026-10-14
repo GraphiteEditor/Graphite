@@ -185,6 +185,8 @@ fn name(kind: Kind) -> &'static str {
 		Kind::AngleStep => "Angle",
 		Kind::Spacing => "Evenly Spaced",
 		Kind::EqualSize => "Equal Size",
+		Kind::EqualRadius => "Equal Radius",
+		Kind::WholeValue => "Whole Number",
 	}
 }
 
@@ -200,6 +202,8 @@ mod tests {
 		assert_eq!(label(&[Kind::Extension, Kind::Extension]), "Extension");
 		assert_eq!(label(&[Kind::OnCurve, Kind::Alignment]), "On Path and Aligned");
 		assert_eq!(label(&[Kind::TangentLine, Kind::Extension]), "Tangent and Extension");
+		assert_eq!(label(&[Kind::EqualRadius]), "Equal Radius");
+		assert_eq!(label(&[Kind::WholeValue]), "Whole Number");
 	}
 
 	#[test]

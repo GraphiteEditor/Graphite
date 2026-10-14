@@ -30,6 +30,8 @@ pub enum Kind {
 	AngleStep,
 	Spacing,
 	EqualSize,
+	EqualRadius,
+	WholeValue,
 }
 
 /// Identifies a candidate from one moment to the next, so an engaged snap can be recognized again after the pointer moves.

@@ -10,6 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -135,7 +136,7 @@ pub trait ShapeGizmoHandler {
 	/// Called during a drag interaction to update the shape's parameters in real time.
 	///
 	/// For example, a handle might calculate the distance from the drag start to determine a new radius or update the number of points.
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>);
 
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///
@@ -392,6 +393,19 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 	}
 
 	Some((start_point, end_point))
+}
+
+/// How far the pointer must move on screen to turn its angle about a layer's center, in the layer's own space, by a radian.
+/// On a layer scaled evenly, that is its distance from the center.
+pub fn pointer_travel_per_radian(layer_to_viewport: DAffine2, pointer: DVec2) -> f64 {
+	let from_center = pointer - layer_to_viewport.translation;
+	let determinant = layer_to_viewport.matrix2.determinant();
+	if determinant == 0. {
+		return f64::NAN;
+	}
+
+	let in_layer = layer_to_viewport.matrix2.inverse() * from_center;
+	in_layer.length_squared() * determinant.abs() / from_center.length()
 }
 
 /// Calculate the viewport position of a star vertex given its index
