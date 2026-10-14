@@ -4,7 +4,7 @@ mod presenter;
 mod scene_mirror;
 mod settings;
 
-use crate::consts::DRAG_THRESHOLD;
+use crate::consts::{BIG_NUDGE_AMOUNT, DRAG_THRESHOLD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
@@ -282,7 +282,9 @@ impl SnapSession {
 			if document.snapping_state.bounding_box.distribute_evenly {
 				find_spacing(&context, spaced, &mut particular);
 			}
-			find_equal_sizes(&context, spaced, &mut particular);
+			if document.snapping_state.bounding_box.equal_sizes {
+				find_equal_sizes(&context, spaced, &mut particular);
+			}
 		}
 
 		let probed: Option<Vec<u32>> = options.snapping.map(|count| (0..count.min(features.len()) as u32).collect());
@@ -641,6 +643,51 @@ impl SnapSession {
 		});
 		self.forget_sources_of_sleeping_positions();
 	}
+}
+
+/// How far a nudge moves something in document space. With grid snapping on, the position furthest along the nudge lands on the next grid line ahead.
+/// A diagonal nudge moves as a nudge along each of its two directions would, one after the other.
+pub fn nudge_translation(document: &DocumentMessageHandler, nudge: DVec2, positions: impl IntoIterator<Item = DVec2>) -> DVec2 {
+	let positions: Vec<DVec2> = positions.into_iter().collect();
+	if nudge.x != 0. && nudge.y != 0. {
+		let first_move = nudge_along(document, DVec2::new(nudge.x, 0.), &positions);
+		let moved_positions: Vec<DVec2> = positions.iter().map(|position| position + first_move).collect();
+		return first_move + nudge_along(document, DVec2::new(0., nudge.y), &moved_positions);
+	}
+	nudge_along(document, nudge, &positions)
+}
+
+/// Whether a nudge lands on the next grid line, rather than moving by its own amount.
+pub fn nudges_land_on_grid(document: &DocumentMessageHandler) -> bool {
+	document.snapping_state.snapping_enabled && settings::grid(document).is_some()
+}
+
+/// How far a nudge in one direction moves something in document space, as [`nudge_translation`] describes.
+fn nudge_along(document: &DocumentMessageHandler, nudge: DVec2, positions: &[DVec2]) -> DVec2 {
+	let translation = DVec2::from_angle(-document.document_ptz.tilt()).rotate(nudge);
+
+	if !nudges_land_on_grid(document) {
+		return translation;
+	}
+
+	// A big nudge lands on the next major line, or ten lines on when the major lines are the only ones drawn
+	let big_nudge = nudge.abs().max_element() > NUDGE_AMOUNT;
+	let has_minor_lines = document.snapping_state.grid.drawn_levels(&document.document_ptz).is_some_and(|levels| levels.minor.is_some());
+	let (grid, lines_ahead) = match (big_nudge, has_minor_lines) {
+		(true, true) => (settings::major_grid(document), 1),
+		(true, false) => (settings::grid(document), (BIG_NUDGE_AMOUNT / NUDGE_AMOUNT).round() as usize),
+		(false, _) => (settings::grid(document), 1),
+	};
+	let (Some(grid), Some(direction)) = (grid, translation.try_normalize()) else { return translation };
+	let leading = positions
+		.iter()
+		.copied()
+		.filter(|position| position.is_finite())
+		.max_by(|a, b| a.dot(direction).total_cmp(&b.dot(direction)));
+	let Some(leading) = leading else { return translation };
+
+	let distance = (0..lines_ahead).try_fold(0., |distance, _| Some(distance + grid.distance_to_next_line(leading + direction * distance, direction)?));
+	distance.map_or(translation, |distance| direction * distance)
 }
 
 /// The hints for the keys that steer snapping, shown wherever a tool snaps.
@@ -1579,19 +1626,18 @@ mod tests {
 		assert!(risen(slid).abs() < 1e-6, "the box rose by {}", risen(slid));
 	}
 
-	#[tokio::test]
-	async fn a_box_stretched_to_nearly_the_width_of_the_one_beside_it_lands_on_that_width() {
-		let mut editor = EditorTestUtils::create();
-		editor.new_document().await;
+	/// Stretches the right side of a box forty wide by seventeen pixels, beside a box sixty wide, and returns how far it slid, a pixel along, and the session.
+	async fn stretch_a_box_beside_one_sixty_wide(editor: &mut EditorTestUtils, equal_sizes: bool) -> (DVec2, DVec2, SnapSession) {
 		editor.draw_rect(100., 200., 160., 260.).await;
 		editor.draw_rect(300., 200., 340., 240.).await;
-		let mut session = moving_the_selected_layer(&mut editor).await;
+		editor.active_document_mut().snapping_state.bounding_box.equal_sizes = equal_sizes;
+		let mut session = moving_the_selected_layer(editor).await;
 
 		// The right side slides along with its two corners, while the left side stays where it is
-		let [top_left, top_right, bottom_right, bottom_left] = box_corners(&editor, DVec2::new(300., 200.), DVec2::new(340., 240.));
+		let [top_left, top_right, bottom_right, bottom_left] = box_corners(editor, DVec2::new(300., 200.), DVec2::new(340., 240.));
 		let stays = |offset: DVec2| FeatureMap { matrix: glam::DMat2::ZERO, offset };
 		let features = [FeatureMap::sliding_from(top_right), FeatureMap::sliding_from(bottom_right), stays(top_left), stays(bottom_left)];
-		let unit = in_document(&editor, DVec2::X) - in_document(&editor, DVec2::ZERO);
+		let unit = in_document(editor, DVec2::X) - in_document(editor, DVec2::ZERO);
 		let options = PointOptions {
 			required: Locus::line(DVec2::ZERO, unit),
 			box_features: Some(BoxFeatures {
@@ -1601,10 +1647,46 @@ mod tests {
 			..Default::default()
 		};
 
+		let slid = slide(&mut session, editor, &features, unit * 17. + unit.perp() * 5., options);
+		(slid, unit, session)
+	}
+
+	#[tokio::test]
+	async fn a_box_stretched_to_nearly_the_width_of_the_one_beside_it_lands_on_that_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
 		// Sixty wide, as the other box is, takes sliding the side twenty, wherever the pointer is up or down
-		let slid = slide(&mut session, &editor, &features, unit * 17. + unit.perp() * 5., options);
+		let (slid, unit, session) = stretch_a_box_beside_one_sixty_wide(&mut editor, true).await;
 		assert!(slid.abs_diff_eq(unit * 20., 1e-6), "the side slid by {slid}");
 		assert!(engaged_kinds(&session).contains(&Kind::EqualSize));
+	}
+
+	#[tokio::test]
+	async fn a_box_stretched_with_equal_sizes_turned_off_stays_at_the_width_the_pointer_asks_for() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let (slid, unit, session) = stretch_a_box_beside_one_sixty_wide(&mut editor, false).await;
+		assert!(slid.abs_diff_eq(unit * 17., 1e-6), "the side slid by {slid}");
+		assert!(!engaged_kinds(&session).contains(&Kind::EqualSize));
+	}
+
+	#[tokio::test]
+	async fn a_point_slides_along_the_edge_of_a_box_only_while_along_box_edges_is_on() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_ellipse(300., 200., 500., 320.).await;
+		let mut session = SnapSession::default();
+
+		// Three pixels below the top of the ellipse's box, far from its corners, its middle, and the ellipse itself
+		let below_the_top = DVec2::new(320., 203.);
+		assert_eq!(snap(&mut session, &editor, below_the_top), in_document(&editor, below_the_top));
+
+		editor.active_document_mut().snapping_state.bounding_box.edges = true;
+		session.forget();
+		assert!(snap(&mut session, &editor, below_the_top).abs_diff_eq(in_document(&editor, DVec2::new(320., 200.)), 1e-6));
+		assert_eq!(engaged_kinds(&session), vec![Kind::OnBoxEdge]);
 	}
 
 	#[tokio::test]

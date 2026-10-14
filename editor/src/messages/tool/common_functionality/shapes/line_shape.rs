@@ -1,5 +1,5 @@
 use super::shape_utility::ShapeToolModifierKey;
-use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
+use crate::consts::BOUNDS_SELECT_THRESHOLD;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -132,7 +132,7 @@ pub fn generate_line(tool_data: &mut ShapeToolData, snap_session: &mut SnapSessi
 	let direction = if lock_angle {
 		Some(DVec2::from_angle(tool_data.line_data.angle))
 	} else if snap_angle {
-		let step = LINE_ROTATE_SNAP_ANGLE.to_radians();
+		let step = view.document.snapping_state.angle_step_radians();
 		Some(DVec2::from_angle(((pointer - start).to_angle() / step).round() * step))
 	} else {
 		None
