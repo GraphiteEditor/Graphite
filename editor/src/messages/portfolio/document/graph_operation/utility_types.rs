@@ -759,20 +759,26 @@ impl<'a> ModifyInputsContext<'a> {
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// Write the Gradient Form to the last 'Gradient Form' node in the chain, inserting one only when the value differs
+	/// Write the Gradient Form's curvatures to the last 'Gradient Curvature' node in the chain, inserting one only when the form differs
 	/// from the default (`Linear`).
 	pub fn gradient_form_set(&mut self, gradient_form: GradientForm) {
+		use graphene_std::math_nodes::gradient_curvature::{EndCurvatureInput, IDENTIFIER, StartCurvatureInput};
+		use graphene_std::renderer::dial_gradient::{LINEAR_DIALS, RADIAL_DIALS};
+
 		let Some(output_layer) = self.get_output_layer() else { return };
 
 		let target_input = gradient_chain_target_input(output_layer, self.network_interface);
-		let identifier = graphene_std::math_nodes::gradient_form::IDENTIFIER;
 		let create_if_nonexistent = gradient_form != GradientForm::default();
-		let Some(node_id) = self.existing_proto_node_id_at(&target_input, identifier, create_if_nonexistent) else {
+		let Some(node_id) = self.existing_proto_node_id_at(&target_input, IDENTIFIER, create_if_nonexistent) else {
 			return;
 		};
 
-		let input_connector = InputConnector::node(node_id, graphene_std::math_nodes::gradient_form::GradientFormInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::GradientForm(gradient_form), false), false);
+		let [start, end] = match gradient_form {
+			GradientForm::Linear => LINEAR_DIALS,
+			GradientForm::Radial => RADIAL_DIALS,
+		};
+		self.set_input_with_refresh(InputConnector::node(node_id, StartCurvatureInput), NodeInput::value(TaggedValue::Number(start), false), false);
+		self.set_input_with_refresh(InputConnector::node(node_id, EndCurvatureInput), NodeInput::value(TaggedValue::Number(end), false), false);
 	}
 
 	/// Set the spread on the chain's gradient value, which is where the ramp carries it.

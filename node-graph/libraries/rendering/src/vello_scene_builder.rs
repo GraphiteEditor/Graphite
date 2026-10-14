@@ -6,8 +6,8 @@ use graphic_types::{Adjustment, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use vello_gpu::peniko::{self, BlendMode, BrushRef, Fill};
-use vello_gpu::{Image, ImageSource, PaintType, TextureId, TextureRegion};
+use vello_gpu::peniko::{self, BlendMode, Brush, Fill};
+use vello_gpu::{Image, ImageSource, PaintType, PencilGradient, TextureId, TextureRegion};
 
 /// Tolerance for turning shapes other than paths into paths, matching Vello's own.
 const SHAPE_TOLERANCE: f64 = 0.1;
@@ -58,6 +58,45 @@ pub trait EffectsRenderer: Send {
 		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) -> wgpu::Texture;
+}
+
+/// What a fill or stroke paints with.
+#[derive(Clone, Debug)]
+pub enum SceneBrush {
+	/// A solid color, gradient, or image.
+	Peniko(Brush),
+	/// A gradient whose contours are a pencil of circles, which only Vello GPU's fork can draw.
+	PencilGradient(PencilGradient),
+}
+
+impl From<Brush> for SceneBrush {
+	fn from(brush: Brush) -> Self {
+		Self::Peniko(brush)
+	}
+}
+
+impl From<&Brush> for SceneBrush {
+	fn from(brush: &Brush) -> Self {
+		Self::Peniko(brush.clone())
+	}
+}
+
+impl From<peniko::Color> for SceneBrush {
+	fn from(color: peniko::Color) -> Self {
+		Self::Peniko(Brush::Solid(color))
+	}
+}
+
+impl From<&peniko::Gradient> for SceneBrush {
+	fn from(gradient: &peniko::Gradient) -> Self {
+		Self::Peniko(Brush::Gradient(gradient.clone()))
+	}
+}
+
+impl From<PencilGradient> for SceneBrush {
+	fn from(gradient: PencilGradient) -> Self {
+		Self::PencilGradient(gradient)
+	}
 }
 
 /// The pixels behind an image the scene draws.
@@ -193,35 +232,32 @@ impl<'a> VelloSceneBuilder<'a> {
 	}
 
 	/// Fills a shape given in the space of `transform`, with the brush placed by `transform * brush_transform`.
-	pub fn fill<'b>(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
+	pub fn fill(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>, shape: &impl Shape) {
 		self.fill_path(fill_rule, transform, brush, brush_transform, &shape.to_path(SHAPE_TOLERANCE));
 	}
 
 	/// Like [`Self::fill`] for a path, which it draws without copying.
-	pub fn fill_path<'b>(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, path: &BezPath) {
-		let Some((paint, paint_to_brush)) = self.paint(brush.into()) else { return };
+	pub fn fill_path(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>, path: &BezPath) {
+		let Some(paint_to_brush) = self.set_paint(brush.into()) else { return };
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_fill_rule(fill_rule);
-		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 		self.scene.fill_path(&finite_path(path));
 	}
 
 	/// Strokes a shape given in the space of `transform`, with the brush placed by `transform * brush_transform`.
-	pub fn stroke<'b>(&mut self, stroke: &Stroke, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
-		let Some((paint, paint_to_brush)) = self.paint(brush.into()) else { return };
+	pub fn stroke(&mut self, stroke: &Stroke, transform: Affine, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>, shape: &impl Shape) {
+		let Some(paint_to_brush) = self.set_paint(brush.into()) else { return };
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_stroke(stroke.clone());
-		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 		self.scene.stroke_path(&finite_path(&shape.to_path(SHAPE_TOLERANCE)));
 	}
 
 	/// Fills the whole scene, which is how content without bounds (like a color or gradient layer) paints, with the brush placed by `brush_transform` in the space of the drawn content.
-	pub fn fill_viewport<'b>(&mut self, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>) {
-		let Some((paint, paint_to_brush)) = self.paint(brush.into()) else { return };
+	pub fn fill_viewport(&mut self, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>) {
+		let Some(paint_to_brush) = self.set_paint(brush.into()) else { return };
 		self.scene.set_transform(Affine::IDENTITY);
-		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(self.view * brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 		self.scene.fill_rect(&Rect::new(0., 0., self.width() as f64, self.height() as f64));
 	}
@@ -398,22 +434,31 @@ impl<'a> VelloSceneBuilder<'a> {
 		self.scene.fill_rect(&Rect::new(0., 0., width as f64, height as f64));
 	}
 
-	/// The Vello GPU paint for a brush, plus the transform from the paint's space into the brush's (which differ for an image drawn from a downscaled texture).
-	fn paint(&mut self, brush: BrushRef<'_>) -> Option<(PaintType, Affine)> {
-		match brush {
-			BrushRef::Solid(color) => Some((PaintType::Solid(color), Affine::IDENTITY)),
-			BrushRef::Gradient(gradient) => Some((PaintType::Gradient(gradient.clone()), Affine::IDENTITY)),
-			BrushRef::Image(image) => {
-				let (source, texture_to_image, _) = self.image_source(SceneImage::Pixels(image.image.clone()))?;
-				Some((
-					PaintType::Image(Image {
-						image: source,
-						sampler: image.sampler,
-					}),
-					texture_to_image,
-				))
+	/// Paints with `brush`, returning the transform from the paint's space into the brush's (which differ for an image drawn from a downscaled texture).
+	fn set_paint(&mut self, brush: SceneBrush) -> Option<Affine> {
+		let brush = match brush {
+			SceneBrush::Peniko(brush) => brush,
+			SceneBrush::PencilGradient(gradient) => {
+				self.scene.set_pencil_gradient_paint(gradient);
+				return Some(Affine::IDENTITY);
 			}
-		}
+		};
+
+		let (paint, paint_to_brush) = match brush {
+			Brush::Solid(color) => (PaintType::Solid(color), Affine::IDENTITY),
+			Brush::Gradient(gradient) => (PaintType::Gradient(gradient), Affine::IDENTITY),
+			Brush::Image(image) => {
+				let (source, texture_to_image, _) = self.image_source(SceneImage::Pixels(image.image))?;
+				let paint = PaintType::Image(Image {
+					image: source,
+					sampler: image.sampler,
+				});
+				(paint, texture_to_image)
+			}
+		};
+		self.scene.set_paint(paint);
+
+		Some(paint_to_brush)
 	}
 
 	/// The external texture standing for an image, with the transform from its texture's pixels onto the image's own pixels and its texture's size.
