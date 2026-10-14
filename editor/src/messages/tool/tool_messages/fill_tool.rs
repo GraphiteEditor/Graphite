@@ -240,15 +240,15 @@ fn routes_to_color_chain(layer: LayerNodeIdentifier, network_interface: &NodeNet
 	get_upstream_color_value_node_id(layer, network_interface).is_some() || replaceable_paint_chain(layer, network_interface).is_some()
 }
 
-/// The layer the fill acts on: the one under the cursor, or else a selected layer painted through a color chain,
-/// since blank layers and whole-expanse colors render no clickable geometry.
+/// The layer the fill acts on: the one under the cursor, or else a selected, unlocked layer with no geometry of its own
+/// (blank, or painted whole by a color chain), since such a layer renders nothing a click could land on.
 fn fill_target_layer(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<LayerNodeIdentifier> {
 	document.click(input, viewport).or_else(|| {
 		document
 			.network_interface
 			.selected_nodes()
-			.selected_visible_layers(&document.network_interface)
-			.find(|&layer| routes_to_color_chain(layer, &document.network_interface))
+			.selected_visible_and_unlocked_layers(&document.network_interface)
+			.find(|&layer| paints_whole_expanse(layer, &document.network_interface))
 	})
 }
 
@@ -626,6 +626,87 @@ mod test_fill {
 			fills.iter().any(|fill| SRGBA8::from(*fill.element()) == SRGBA8::from(Color::GREEN)),
 			"the shared rectangle's Fill should take the color"
 		);
+	}
+
+	#[tokio::test]
+	async fn a_locked_blank_layer_is_not_filled() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] }).await;
+		editor
+			.handle_message(NodeGraphMessage::SetLocked {
+				node_id: id,
+				network_path: Vec::new(),
+				locked: true,
+			})
+			.await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(2., 2.), ModifierKeys::empty()).await;
+
+		let layer = LayerNodeIdentifier::new_unchecked(id);
+		assert!(
+			get_upstream_color_value_node_id(layer, &editor.active_document().network_interface).is_none(),
+			"a locked layer shouldn't be filled"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_click_beside_a_selected_shape_painted_by_a_color_value_leaves_it() {
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_node_id_with_direct_fill_input;
+		use graph_craft::document::value::TaggedValue;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rectangle = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// Paint the rectangle's Fill through a 'Color Value' node, so its color comes from a chain while it keeps its geometry
+		let fill_id = get_fill_node_id_with_direct_fill_input(rectangle, &editor.active_document().network_interface).expect("the rectangle should have a Fill node");
+		let color_value_id = editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::color_value::IDENTIFIER)).await;
+		editor.active_document_mut().network_interface.create_wire(
+			&OutputConnector::primary_output(color_value_id),
+			&InputConnector::node(fill_id, graphene_std::vector::fill::PaintInput),
+			&[],
+		);
+		let color_before = editor
+			.active_document()
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&color_value_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::color_value::ColorInput))
+			.and_then(|input| input.as_value())
+			.cloned();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle.to_node()] }).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(300., 300.), ModifierKeys::empty()).await;
+
+		let color_after = editor
+			.active_document()
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&color_value_id)
+			.and_then(|node| node.input(graphene_std::math_nodes::color_value::ColorInput))
+			.and_then(|input| input.as_value())
+			.cloned();
+		assert_eq!(color_after, color_before, "a click that misses the rectangle shouldn't recolor it");
+		assert!(!matches!(color_after, Some(TaggedValue::Color(color)) if color == Color::GREEN));
 	}
 
 	#[tokio::test]

@@ -932,7 +932,7 @@ impl Fsm for GradientToolFsmState {
 				let selected = tool_data.selected_gradient.as_ref();
 				let mouse = input.mouse.position;
 
-				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 					let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
@@ -1272,7 +1272,7 @@ impl Fsm for GradientToolFsmState {
 				ready_default
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 					let Some((mut gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
@@ -1329,7 +1329,7 @@ impl Fsm for GradientToolFsmState {
 
 				let mut drag_hint: Option<GradientDragHintState> = None;
 				let mut transaction_started = false;
-				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
@@ -1472,7 +1472,7 @@ impl Fsm for GradientToolFsmState {
 						document
 							.network_interface
 							.selected_nodes()
-							.selected_visible_layers(&document.network_interface)
+							.selected_visible_and_unlocked_layers(&document.network_interface)
 							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || replaceable_paint_chain(layer, &document.network_interface).is_some())
 					});
 
@@ -1805,7 +1805,7 @@ fn snap_press(snap_session: &mut SnapSession, view: SnapView) -> (DVec2, Option<
 	let document_to_viewport = document.metadata().document_to_viewport;
 	let mouse = input.mouse.position;
 
-	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 			continue;
 		};
@@ -1836,7 +1836,7 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 	let stop_tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 	let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
 
-	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 			continue;
 		};
@@ -2592,6 +2592,37 @@ mod test_gradient {
 		// Verify the end point has been updated to the new position
 		let updated_end = transform.transform_point2(updated_gradient.end());
 		assert!(updated_end.abs_diff_eq(DVec2::new(100., 50.), 1e-10), "Expected end point at (100, 50), got {updated_end:?}");
+	}
+
+	#[tokio::test]
+	async fn a_locked_layers_gradient_handles_cannot_be_dragged() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+		let (initial_gradient, initial_transform) = get_gradient_from_fill(&mut editor).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SetLocked {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+				locked: true,
+			})
+			.await;
+
+		// Dragging where the end handle is shown on an unlocked layer
+		editor.drag_tool(ToolType::Gradient, 90., 50., 50., 90., ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
+		assert!(
+			transform
+				.transform_point2(gradient.end())
+				.abs_diff_eq(initial_transform.transform_point2(initial_gradient.end()), 1e-10),
+			"the locked layer's gradient end should stay put"
+		);
 	}
 
 	#[tokio::test]
