@@ -17,7 +17,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
-use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
+use crate::messages::tool::common_functionality::pivot::{Pivot, PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
@@ -545,6 +545,8 @@ struct SelectToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	cursor: MouseCursorIcon,
 	pivot_gizmo: PivotGizmo,
+	/// The pivot as it was when a drag of it began, restored if the drag is aborted.
+	pivot_before_drag: Option<Pivot>,
 	pivot_gizmo_start: Option<DVec2>,
 	pivot_gizmo_shift: Option<DVec2>,
 	compass_rose: CompassRose,
@@ -1358,6 +1360,7 @@ impl Fsm for SelectToolFsmState {
 
 				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
+					tool_data.pivot_before_drag = Some(tool_data.pivot_gizmo.pivot.clone());
 
 					// The pivot snaps to the selected layers too, since they stay put while it moves
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
@@ -1462,6 +1465,18 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+
+				// The pivot lives in the tool rather than the document, so aborting the transaction doesn't put it back.
+				// Its last reported reference point is kept so the control bar sees the change and refreshes.
+				if let Some(pivot) = tool_data.pivot_before_drag.take() {
+					let reported = tool_data.pivot_gizmo.pivot.old_pivot_position;
+					tool_data.pivot_gizmo.pivot = pivot;
+					tool_data.pivot_gizmo.pivot.old_pivot_position = reported;
+
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+					responses.add(OverlaysMessage::Draw);
+				}
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1817,6 +1832,7 @@ impl Fsm for SelectToolFsmState {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 
+				tool_data.pivot_before_drag = None;
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 
