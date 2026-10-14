@@ -1,5 +1,5 @@
 use super::network_interface::NodeNetworkInterface;
-use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
+use crate::consts::SCALE_INCREMENT;
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -223,12 +223,12 @@ pub struct Rotation {
 }
 
 impl Rotation {
-	pub fn to_f64(self, increment_mode: bool) -> f64 {
+	/// The angle to turn by in radians, held to multiples of `increment_resolution` (also in radians) in increment mode.
+	pub fn to_f64(self, increment_mode: bool, increment_resolution: f64) -> f64 {
 		let angle = self.snapped.unwrap_or(self.dragged_angle);
 		if let Some(value) = self.typed_angle {
 			value.to_radians()
 		} else if increment_mode {
-			let increment_resolution = ROTATE_INCREMENT.to_radians();
 			(angle / increment_resolution).round() * increment_resolution
 		} else {
 			angle
@@ -358,7 +358,7 @@ impl TransformOperation {
 		if self != &TransformOperation::None {
 			let mut transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state, document)),
-				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals)),
+				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals, document.snapping_state.angle_step_radians())),
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
 				TransformOperation::None => unreachable!(),
 			};

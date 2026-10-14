@@ -278,7 +278,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 					}
 					TransformOperation::Rotating(rotation) => {
-						let angle = rotation.to_f64(self.state.is_rounded_to_intervals);
+						let angle = rotation.to_f64(self.state.is_rounded_to_intervals, document.snapping_state.angle_step_radians());
 						let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
 						let offset_angle = if self.grs_pen_handle {
 							self.handle - self.last_point

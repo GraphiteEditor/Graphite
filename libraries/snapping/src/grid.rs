@@ -6,6 +6,9 @@ const SAME_FAMILY_SINE: f64 = 1e-6;
 /// How nearly parallel to a family a line must run, as the sine of the angle between them, before it is taken never to cross that family.
 const NEVER_CROSSING_SINE: f64 = 1e-12;
 
+/// How near a line a position may be, as a fraction of the spacing, and still count as on it.
+const ON_A_LINE: f64 = 1e-6;
+
 /// One set of parallel, evenly spaced grid lines.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct LineFamily {
@@ -134,6 +137,31 @@ impl Grid {
 
 		crossings
 	}
+
+	/// How far along `direction` from `point` the nearest line of any family lies, counting only lines strictly ahead.
+	pub fn distance_to_next_line(&self, point: DVec2, direction: DVec2) -> Option<f64> {
+		let direction = direction.try_normalize()?;
+
+		let distance_across = |family: &LineFamily| {
+			let progress_across = direction.dot(family.across());
+			if progress_across.abs() < NEVER_CROSSING_SINE {
+				return None;
+			}
+
+			// A position on a line, or within a sliver of it, goes on to the line after
+			let steps = self.steps_across(family, point);
+			let next_line = if progress_across > 0. {
+				(steps + ON_A_LINE).floor() + 1.
+			} else {
+				(steps - ON_A_LINE).ceil() - 1.
+			};
+			let distance = (next_line - steps) * family.spacing / progress_across;
+
+			distance.is_finite().then_some(distance)
+		};
+
+		self.families.iter().filter_map(distance_across).min_by(f64::total_cmp)
+	}
 }
 
 #[cfg(test)]
@@ -246,5 +274,43 @@ mod tests {
 		assert!(contains(&crossings, DVec2::new(20., 3.)));
 
 		assert!(grid.crossings_along(DVec2::ZERO, DVec2::ZERO, DVec2::ONE).is_empty());
+	}
+
+	#[test]
+	fn the_next_line_ahead_is_the_nearest_one_strictly_past_a_position_in_either_direction() {
+		let grid = Grid::rectangular(DVec2::new(0., 5.), DVec2::new(10., 10.)).unwrap();
+		let distance = |point: DVec2, direction: DVec2| grid.distance_to_next_line(point, direction).unwrap();
+
+		assert!((distance(DVec2::new(103., 0.), DVec2::X) - 7.).abs() < 1e-9);
+		assert!((distance(DVec2::new(103., 0.), DVec2::NEG_X) - 3.).abs() < 1e-9);
+		assert!((distance(DVec2::new(0., 12.), DVec2::Y * 4.) - 3.).abs() < 1e-9);
+		assert!((distance(DVec2::new(0., 12.), DVec2::NEG_Y) - 7.).abs() < 1e-9);
+
+		// A position on a line, or a hair short of it, goes on to the following line
+		assert!((distance(DVec2::new(110., 0.), DVec2::X) - 10.).abs() < 1e-9);
+		assert!((distance(DVec2::new(110. - 1e-12, 0.), DVec2::X) - 10.).abs() < 1e-9);
+		assert!((distance(DVec2::new(110., 0.), DVec2::NEG_X) - 10.).abs() < 1e-9);
+
+		// A diagonal reaches whichever family's line comes first
+		assert!((distance(DVec2::new(103., 1.), DVec2::ONE) - 4. * 2_f64.sqrt()).abs() < 1e-9);
+
+		assert!(grid.distance_to_next_line(DVec2::ZERO, DVec2::ZERO).is_none());
+	}
+
+	#[test]
+	fn an_isometric_grid_gives_the_next_line_ahead_from_whichever_families_are_crossed() {
+		let grid = Grid::new(DVec2::ZERO, [PI / 2., PI / 6., 5. * PI / 6.].map(|angle| (DVec2::from_angle(angle), 10.))).unwrap();
+		let slanted_lines_apart = 10. / (PI / 6.).cos();
+
+		// Going up runs along the upright lines and crosses only the slanted ones
+		let from_the_origin = grid.distance_to_next_line(DVec2::ZERO, DVec2::Y).unwrap();
+		assert!((from_the_origin - slanted_lines_apart).abs() < 1e-9);
+
+		let from_that_crossing = grid.distance_to_next_line(DVec2::new(0., slanted_lines_apart), DVec2::Y).unwrap();
+		assert!((from_that_crossing - slanted_lines_apart).abs() < 1e-9);
+
+		// Going across, the upright lines come before the slanted ones
+		let across = grid.distance_to_next_line(DVec2::new(4., 3.), DVec2::NEG_X).unwrap();
+		assert!((across - 4.).abs() < 1e-9);
 	}
 }

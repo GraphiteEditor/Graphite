@@ -2,8 +2,7 @@ use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
-	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
-	SELECTION_THRESHOLD,
+	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
 };
 use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardVectorEntry};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -21,7 +20,7 @@ use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoT
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
 };
-use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
+use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, nudge_translation, snapping_hints};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
@@ -1221,7 +1220,7 @@ impl PathToolData {
 		// Round the angle to the closest increment
 		let mut handle_angle = current_angle;
 		if snap_angle && !lock_angle {
-			let snap_resolution = HANDLE_ROTATE_SNAP_ANGLE.to_radians();
+			let snap_resolution = document.snapping_state.angle_step_radians();
 			handle_angle = (handle_angle / snap_resolution).round() * snap_resolution;
 		}
 
@@ -3149,10 +3148,14 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
+				// The move is given turned with the canvas tilt, like the nudge itself
+				let translation = nudge_translation(document, DVec2::new(delta_x, delta_y), selected_positions_in_document(shape_editor, document));
+				let delta = DVec2::from_angle(document.document_ptz.tilt()).rotate(translation);
+
 				shape_editor.move_selected_points_and_segments(
 					tool_data.opposing_handle_lengths.take(),
 					document,
-					(delta_x, delta_y).into(),
+					delta,
 					true,
 					false,
 					false,
@@ -3409,6 +3412,26 @@ fn unselected_neighbor_joined_straight(anchor: PointId, state: &SelectedLayerSta
 	}
 
 	vector.point_domain.position_from_id(neighbor)
+}
+
+/// The document positions of the selected points, along with both ends of each selected segment.
+fn selected_positions_in_document(shape_editor: &ShapeState, document: &DocumentMessageHandler) -> impl Iterator<Item = DVec2> {
+	shape_editor.selected_shape_state.iter().flat_map(|(&layer, state)| {
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
+			return Vec::new();
+		};
+		let to_document = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
+
+		let selected_points = state.selected_points().filter(|point| !shape_editor.is_point_ignored(point));
+		let segment_ends = vector
+			.segment_iter()
+			.filter(|&(segment, ..)| state.is_segment_selected(segment))
+			.flat_map(|(_, _, start, end)| [start, end]);
+		let positions = selected_points.filter_map(|point| point.get_position(&vector));
+		let positions = positions.chain(segment_ends.filter_map(|point| vector.point_domain.position_from_id(point)));
+
+		positions.map(|position| to_document.transform_point2(position)).collect()
+	})
 }
 
 fn check_handle_over_adjacent_anchor(handle_id: ManipulatorPointId, vector: &Vector) -> Option<PointId> {
@@ -3709,9 +3732,11 @@ fn update_dynamic_hints(
 
 #[cfg(test)]
 mod test_path_tool {
+	use crate::consts::NUDGE_AMOUNT;
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::layout::utility_types::layout_widget::LayoutTarget;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
 	use graphene_std::vector::misc::ManipulatorPointId;
 
@@ -3969,5 +3994,25 @@ mod test_path_tool {
 
 		drag(&mut editor, B, A + DVec2::new(4., 3.)).await;
 		assert_anchors(&editor, layer, &[A, A, C]);
+	}
+
+	#[tokio::test]
+	async fn nudged_points_move_until_the_one_furthest_along_lands_on_the_next_grid_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (first, second, unselected) = (DVec2::new(101., 102.), DVec2::new(157., 224.), DVec2::new(383., 166.));
+		let layer = draw_path(&mut editor, &[first, second, unselected]).await;
+
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, first, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, second, ModifierKeys::SHIFT).await;
+
+		let state = &mut editor.active_document_mut().snapping_state;
+		state.grid_snapping = true;
+		state.grid.grid_type = GridType::Rectangular { spacing: DVec2::splat(10.) };
+
+		// The second point is furthest right, and the next line past it is at 160
+		editor.handle_message(PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }).await;
+		let moved = DVec2::new(3., 0.);
+		assert_anchors(&editor, layer, &[first + moved, second + moved, unselected]);
 	}
 }

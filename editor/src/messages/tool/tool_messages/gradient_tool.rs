@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, GRADIENT_MIDPOINT_DIAMOND_RADIUS, GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN, GRADIENT_STOP_MIN_VIEWPORT_GAP, LINE_ROTATE_SNAP_ANGLE,
-	MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
+	COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, GRADIENT_MIDPOINT_DIAMOND_RADIUS, GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN, GRADIENT_STOP_MIN_VIEWPORT_GAP, MANIPULATOR_GROUP_MARKER_SIZE,
+	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
 };
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasis, OverlayContext};
@@ -655,7 +655,7 @@ impl SelectedGradient {
 				if lock_angle {
 					angle = *gradient_angle;
 				} else if snap_rotate {
-					let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
+					let snap_resolution = view.document.snapping_state.angle_step_radians();
 					angle = (angle / snap_resolution).round() * snap_resolution;
 				}
 
