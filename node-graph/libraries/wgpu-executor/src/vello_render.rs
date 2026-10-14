@@ -4,13 +4,24 @@ use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
 use vello_gpu::peniko;
-use vello_gpu::{ClearSettings, RenderSize, RenderTargetConfig, Renderer, Resources, TargetInit, TextureBindings, TextureId};
+use vello_gpu::{
+	ClearSettings, IntermediateTextureError, LayersConfig, MemorySettings, RenderError, RenderSettings, RenderSize, RenderTargetConfig, Renderer, Resources, SizeU16, TargetInit, TextureBindings,
+	TextureId,
+};
+use wgpu_sync::Queue;
 
 /// The format of the textures Vello GPU renders into, of the image textures it samples, and of the textures handed back.
 const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// How many renders a GPU texture's premultiplied copy survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
+
+/// How many times a render with too much content for Vello GPU is halved, reaching areas 1/4096 the size of the original.
+const MAX_SPLIT_DEPTH: u32 = 12;
+
+/// The widest or tallest area a single render can draw an isolated layer across, since that is the limit of the intermediate textures Vello GPU draws layers into.
+/// These grow to fit the largest layer and stay that size, so a larger limit keeps more memory after one large render. Renders larger than this are split.
+pub const MAX_LAYER_RENDER_SIZE: u32 = 4096;
 
 /// Vello GPU's renderer and GPU resources, shared by every [`VelloCanvas`] so their memory and pipelines exist once.
 pub(crate) struct VelloRenderer {
@@ -29,19 +40,6 @@ pub struct VelloCanvas {
 	images: ImageTextures,
 }
 
-impl VelloCanvas {
-	/// An empty scene of `size` to draw into, with its content placed by `view`.
-	pub(crate) fn scene(&mut self, device: &wgpu::Device, size: UVec2, view: Affine) -> anyhow::Result<VelloSceneBuilder> {
-		let (Ok(width), Ok(height)) = (u16::try_from(size.x), u16::try_from(size.y)) else {
-			anyhow::bail!("Render size {size} exceeds Vello GPU's limit");
-		};
-
-		let mut scene = self.spare_scene.take().unwrap_or_else(|| vello_gpu::Scene::new(width, height));
-		scene.reset_and_resize(width, height);
-		Ok(VelloSceneBuilder::from_vello(scene, view, device.limits().max_texture_dimension_2d))
-	}
-}
-
 impl VelloRenderer {
 	pub(crate) fn new(device: &wgpu::Device) -> Self {
 		let render_target_config = RenderTargetConfig {
@@ -50,25 +48,184 @@ impl VelloRenderer {
 			height: 1,
 		};
 
+		let settings = RenderSettings::default().with_memory_settings(MemorySettings {
+			layers_config: LayersConfig {
+				max_texture_size: SizeU16::new(MAX_LAYER_RENDER_SIZE as u16),
+				..Default::default()
+			},
+			..Default::default()
+		});
+
 		Self {
-			gpu: Mutex::new(Renderer::new(device, &render_target_config)),
+			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
 			alpha_conversion: AlphaConversion::new(device),
 		}
 	}
 
-	/// Renders `scene` on `canvas` into `target` (an `Rgba8Unorm` texture of the scene's size with straight alpha).
-	pub(crate) fn render(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: VelloSceneBuilder, target: &wgpu::Texture) {
-		let (width, height) = (scene.width(), scene.height());
-		let max_texture_size = scene.max_texture_size();
-		let (scene, images) = scene.finish();
+	/// Renders the scene `draw` draws on `canvas`, with its content placed by `view`, into `target` (an `Rgba8Unorm` texture of `size` with straight alpha).
+	/// A render with more content than Vello GPU can hold calls `draw` again for each part it splits into.
+	#[expect(clippy::too_many_arguments)]
+	pub(crate) fn render(
+		&self,
+		canvas: &mut VelloCanvas,
+		device: &wgpu::Device,
+		queue: &Queue,
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+		view: Affine,
+		size: UVec2,
+		target: &wgpu::Texture,
+	) -> anyhow::Result<()> {
+		if u16::try_from(size.x).is_err() || u16::try_from(size.y).is_err() {
+			anyhow::bail!("Render size {size} exceeds Vello GPU's limit");
+		}
 
 		canvas.images.render_count += 1;
+		if let Err(error) = self.render_once(canvas, device, queue, draw, view, size, target) {
+			self.render_halves(canvas, device, queue, draw, view, size, target, error, 1);
+		}
+		canvas.images.free_unused();
+
+		Ok(())
+	}
+
+	/// Renders a `scene` drawn beforehand on `canvas` into `target` (an `Rgba8Unorm` texture of the scene's size with straight alpha).
+	/// Unlike [`Self::render`], it can't split the scene, so one with more content than Vello GPU can hold renders transparent.
+	pub(crate) fn render_scene(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &Queue, scene: VelloSceneBuilder, target: &wgpu::Texture) {
+		canvas.images.render_count += 1;
+		let max_texture_size = scene.max_texture_size();
+		if let Err(error) = self.submit(canvas, device, queue, scene.finish(), max_texture_size, target) {
+			log::error!("Vello GPU failed to render: {error}");
+			clear(device, queue, target);
+		}
+		canvas.images.free_unused();
+	}
+
+	/// Renders each half of the area of `target`, a texture of `size`, after rendering it whole failed with `error`, splitting again each half that still holds too much.
+	#[expect(clippy::too_many_arguments)]
+	fn render_halves(
+		&self,
+		canvas: &mut VelloCanvas,
+		device: &wgpu::Device,
+		queue: &Queue,
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+		view: Affine,
+		size: UVec2,
+		target: &wgpu::Texture,
+		error: RenderError,
+		split_depth: u32,
+	) {
+		// Each half covers less of the scene, so it has less content and smaller layers to hold
+		let too_much_to_hold = matches!(
+			error,
+			RenderError::ResourceTextureOverflow { .. } | RenderError::IntermediateTexture(IntermediateTextureError::TooLarge { .. })
+		);
+		if !too_much_to_hold || split_depth > MAX_SPLIT_DEPTH || size.max_element() <= 1 {
+			// A failed render leaves its area transparent rather than taking down the editor
+			log::error!("Vello GPU failed to render: {error}");
+			clear(device, queue, target);
+			return;
+		}
+
+		let halves = if size.x >= size.y {
+			let left = size.x / 2;
+			[(UVec2::ZERO, UVec2::new(left, size.y)), (UVec2::new(left, 0), UVec2::new(size.x - left, size.y))]
+		} else {
+			let top = size.y / 2;
+			[(UVec2::ZERO, UVec2::new(size.x, top)), (UVec2::new(0, top), UVec2::new(size.x, size.y - top))]
+		};
+		let halves = halves.map(|(offset, half_size)| {
+			let half_target = create_texture(
+				device,
+				"vello_gpu_split_target",
+				half_size,
+				wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+			);
+			let half_view = Affine::translate((-(offset.x as f64), -(offset.y as f64))) * view;
+			let rendered = self.render_once(canvas, device, queue, draw, half_view, half_size, &half_target);
+			(offset, half_size, half_view, half_target, rendered)
+		});
+
+		// Content that each half still holds all of, like paints stacked across the whole area, can't be split apart
+		let stalled = |rendered: &Result<(), RenderError>| match (rendered, &error) {
+			(
+				Err(RenderError::ResourceTextureOverflow { resource, required_height, .. }),
+				RenderError::ResourceTextureOverflow {
+					resource: whole_resource,
+					required_height: whole_required_height,
+					..
+				},
+			) => resource == whole_resource && required_height >= whole_required_height,
+			_ => false,
+		};
+		if halves.iter().all(|(.., rendered)| stalled(rendered)) {
+			log::error!("Vello GPU failed to render: {error}");
+			clear(device, queue, target);
+			return;
+		}
+
+		for (offset, half_size, half_view, half_target, rendered) in halves {
+			if let Err(half_error) = rendered {
+				self.render_halves(canvas, device, queue, draw, half_view, half_size, &half_target, half_error, split_depth + 1);
+			}
+
+			let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_split_copy") });
+			encoder.copy_texture_to_texture(
+				half_target.as_image_copy(),
+				wgpu::TexelCopyTextureInfo {
+					origin: wgpu::Origin3d { x: offset.x, y: offset.y, z: 0 },
+					..target.as_image_copy()
+				},
+				half_target.size(),
+			);
+			queue.submit([encoder.finish()]);
+		}
+	}
+
+	/// Renders the scene `draw` draws, with its content placed by `view`, into `target`, a texture of `size`, in a single Vello GPU render.
+	#[expect(clippy::too_many_arguments)]
+	fn render_once(
+		&self,
+		canvas: &mut VelloCanvas,
+		device: &wgpu::Device,
+		queue: &Queue,
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+		view: Affine,
+		size: UVec2,
+		target: &wgpu::Texture,
+	) -> Result<(), RenderError> {
+		let (width, height) = (size.x as u16, size.y as u16);
+		let max_texture_size = device.limits().max_texture_dimension_2d;
+
+		let mut scene = canvas.spare_scene.take().unwrap_or_else(|| vello_gpu::Scene::new(width, height));
+		scene.reset_and_resize(width, height);
+		let mut builder = VelloSceneBuilder::from_vello(scene, view, max_texture_size);
+		draw(&mut builder);
+
+		self.submit(canvas, device, queue, builder.finish(), max_texture_size, target)
+	}
+
+	/// Renders a drawn scene, with the images it draws, into `target`, a texture of the scene's size, in a single Vello GPU render.
+	fn submit(
+		&self,
+		canvas: &mut VelloCanvas,
+		device: &wgpu::Device,
+		queue: &Queue,
+		(scene, images): (vello_gpu::Scene, Vec<SceneImage>),
+		max_texture_size: u32,
+		target: &wgpu::Texture,
+	) -> Result<(), RenderError> {
+		let (width, height) = (scene.width(), scene.height());
+
+		// Locked from here to the submission, so drawing a scene doesn't hold up other uses of the queue
+		let queue = queue.lock();
+
+		// Each render submits its own encoder, since Vello GPU stages its uploads for the next submission
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_render") });
 
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			if let Some(view) = canvas.images.prepare(device, queue, &mut encoder, &self.alpha_conversion, image, max_texture_size) {
+			if let Some(view) = canvas.images.prepare(device, &queue, &mut encoder, &self.alpha_conversion, image, max_texture_size) {
 				texture_bindings.insert(TextureId(id as u64), view);
 			}
 		}
@@ -98,7 +255,7 @@ impl VelloRenderer {
 			&scene,
 			resources,
 			device,
-			queue,
+			&queue,
 			&mut encoder,
 			&RenderSize { width, height },
 			&premultiplied_view,
@@ -107,21 +264,25 @@ impl VelloRenderer {
 			target_init,
 		);
 
-		// A failed render leaves its area transparent rather than taking down the editor
-		let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-		match rendered {
-			Ok(()) => self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view),
-			Err(error) => {
-				log::error!("Vello GPU failed to render: {error}");
-				clear_texture(&mut encoder, &target_view);
-			}
+		if rendered.is_ok() {
+			let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
+			self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view);
 		}
 
+		// Submitted even after a failure, since it also prepares the textures of the scene's images
 		queue.submit([encoder.finish()]);
-		drop(gpu);
-		canvas.images.free_unused();
+		drop((gpu, queue));
 		canvas.spare_scene = Some(scene);
+
+		rendered
 	}
+}
+
+/// Leaves `target` transparent.
+fn clear(device: &wgpu::Device, queue: &Queue, target: &wgpu::Texture) {
+	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_clear") });
+	clear_texture(&mut encoder, &target.create_view(&wgpu::TextureViewDescriptor::default()));
+	queue.submit([encoder.finish()]);
 }
 
 /// Identifies the pixels behind an image texture: a blob of CPU pixels, or a GPU texture.
@@ -465,3 +626,6 @@ impl AlphaConversion {
 		pass.draw(0..3, 0..1);
 	}
 }
+
+#[cfg(test)]
+mod tests;

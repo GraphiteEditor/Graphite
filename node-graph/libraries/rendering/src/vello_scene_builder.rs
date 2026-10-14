@@ -1,5 +1,6 @@
 use graphic_types::raster_types::Texture;
-use kurbo::{Affine, BezPath, Rect, Shape, Stroke};
+use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use vello_gpu::peniko::{self, BlendMode, BrushRef, Fill};
 use vello_gpu::{Image, ImageSource, PaintType, TextureId, TextureRegion};
@@ -109,7 +110,7 @@ impl VelloSceneBuilder {
 		self.scene.set_fill_rule(fill_rule);
 		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-		self.scene.fill_path(path);
+		self.scene.fill_path(&finite_path(path));
 	}
 
 	/// Strokes a shape given in the space of `transform`, with the brush placed by `transform * brush_transform`.
@@ -119,7 +120,7 @@ impl VelloSceneBuilder {
 		self.scene.set_stroke(stroke.clone());
 		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-		self.scene.stroke_path(&shape.to_path(SHAPE_TOLERANCE));
+		self.scene.stroke_path(&finite_path(&shape.to_path(SHAPE_TOLERANCE)));
 	}
 
 	/// Fills the whole scene, which is how content without bounds (like a color or gradient layer) paints, with the brush placed by `brush_transform` in the space of the drawn content.
@@ -135,7 +136,8 @@ impl VelloSceneBuilder {
 	pub fn push_layer(&mut self, fill_rule: Fill, blend_mode: impl Into<BlendMode>, alpha: f32, transform: Affine, clip: &impl Shape) {
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_fill_rule(fill_rule);
-		self.scene.push_layer(Some(&clip.to_path(SHAPE_TOLERANCE)), Some(blend_mode.into()), Some(alpha), None, None);
+		self.scene
+			.push_layer(Some(&finite_path(&clip.to_path(SHAPE_TOLERANCE))), Some(blend_mode.into()), Some(alpha), None, None);
 		self.pushed.push(Pushed::Layer);
 	}
 
@@ -149,7 +151,7 @@ impl VelloSceneBuilder {
 	pub fn push_clip_layer(&mut self, fill_rule: Fill, transform: Affine, clip: &impl Shape) {
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_fill_rule(fill_rule);
-		self.scene.push_clip_path(&clip.to_path(SHAPE_TOLERANCE));
+		self.scene.push_clip_path(&finite_path(&clip.to_path(SHAPE_TOLERANCE)));
 		self.pushed.push(Pushed::Clip);
 	}
 
@@ -228,6 +230,68 @@ impl VelloSceneBuilder {
 
 		Some((source, texture_to_image, (texture_width, texture_height)))
 	}
+}
+
+/// Stands in for an infinite coordinate: far past any viewport, yet small enough for the transforms and clipping it goes through to stay finite.
+const UNBOUNDED_COORDINATE: f64 = 1e200;
+
+/// The path with each infinite coordinate replaced by [`UNBOUNDED_COORDINATE`] of the same sign.
+/// Points infinite along both axes, or NaN, have no sensible position and are skipped.
+fn finite_path(path: &BezPath) -> Cow<'_, BezPath> {
+	let element_is_finite = |element: &PathEl| match *element {
+		PathEl::MoveTo(p) | PathEl::LineTo(p) => p.is_finite(),
+		PathEl::QuadTo(p1, p2) => p1.is_finite() && p2.is_finite(),
+		PathEl::CurveTo(p1, p2, p3) => p1.is_finite() && p2.is_finite() && p3.is_finite(),
+		PathEl::ClosePath => true,
+	};
+	if path.elements().iter().all(element_is_finite) {
+		return Cow::Borrowed(path);
+	}
+
+	let bounded = |value: f64| if value.is_infinite() { value.signum() * UNBOUNDED_COORDINATE } else { value };
+	let finite_point = |p: Point| (!p.x.is_nan() && !p.y.is_nan() && !(p.x.is_infinite() && p.y.is_infinite())).then(|| Point::new(bounded(p.x), bounded(p.y)));
+
+	let mut result = BezPath::new();
+	// Whether the subpath has yet to reach a point it can start from
+	let mut awaiting_start = true;
+
+	for element in path.elements() {
+		let end = match *element {
+			PathEl::MoveTo(p) => {
+				awaiting_start = true;
+				p
+			}
+			PathEl::ClosePath => {
+				if !awaiting_start {
+					result.close_path();
+				}
+				continue;
+			}
+			PathEl::LineTo(p) | PathEl::QuadTo(_, p) | PathEl::CurveTo(_, _, p) => p,
+		};
+		let Some(end) = finite_point(end) else { continue };
+
+		if awaiting_start {
+			result.move_to(end);
+			awaiting_start = false;
+			continue;
+		}
+
+		// A curve with an unplaceable control point becomes a line to its end
+		match *element {
+			PathEl::QuadTo(p1, _) => match finite_point(p1) {
+				Some(p1) => result.quad_to(p1, end),
+				None => result.line_to(end),
+			},
+			PathEl::CurveTo(p1, p2, _) => match (finite_point(p1), finite_point(p2)) {
+				(Some(p1), Some(p2)) => result.curve_to(p1, p2, end),
+				_ => result.line_to(end),
+			},
+			_ => result.line_to(end),
+		}
+	}
+
+	Cow::Owned(result)
 }
 
 /// The size of the texture an image is drawn from, downscaled by a whole factor until both sides fit within `max_texture_size`.
