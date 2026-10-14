@@ -899,6 +899,53 @@ impl NodeNetwork {
 		are_inputs_used
 	}
 
+	/// Hidden nodes are replaced with passthrough
+	pub fn apply_node_visibility(&mut self) {
+		// Tuple of (node_id, output_index, dependant_id_to_remove)
+		let mut depedants_to_remove = Vec::new();
+		for (&id, node) in self.nodes.iter_mut() {
+			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				nested.apply_node_visibility();
+			}
+
+			if node.visible {
+				continue;
+			}
+
+			let passthrough_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER);
+			if node.implementation == passthrough_node {
+				continue;
+			}
+
+			if node.inputs.is_empty() {
+				warn!("Unable to hide node {id} {node:#?} since it did not have a primary input");
+				continue;
+			}
+
+			node.implementation = passthrough_node;
+
+			// Connect layer node to the group below
+			let removed_inputs = node.inputs.split_off(1);
+
+			// Remove the dependants on the ignored inputs
+			for removed_input in removed_inputs {
+				if let NodeInput::Node { node_id, output_index } = removed_input
+					// Ensure that the other node inputs do not also reference the dependancy
+					&& !node.inputs.iter().any(|input| matches!(input, NodeInput::Node { node_id: other, .. } if *other == node_id))
+				{
+					depedants_to_remove.push((node_id, output_index, id));
+				}
+			}
+
+			node.call_argument = concrete!(());
+		}
+
+		for (node_id, output_index, dependant_id_to_remove) in depedants_to_remove {
+			let Some(node) = self.nodes.get_mut(&node_id) else { continue };
+			node.original_location.dependants[output_index].retain(|&dependant| dependant != dependant_id_to_remove);
+		}
+	}
+
 	/// Remove all nodes that contain [`DocumentNodeImplementation::Network`] by moving the nested nodes into the parent network.
 	pub fn flatten(&mut self, node_id: NodeId) {
 		self.flatten_with_fns(node_id, merge_ids, NodeId::new)
@@ -910,30 +957,6 @@ impl NodeNetwork {
 			warn!("The node which was supposed to be flattened does not exist in the network, id {node_id} network {self:#?}");
 			return;
 		};
-
-		// If the node is hidden, replace it with a passthrough node
-		let passthrough_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER);
-		if !node.visible && node.implementation != passthrough_node {
-			node.implementation = passthrough_node;
-
-			// Connect layer node to the group below
-			let removed_inputs = node.inputs.split_off(1);
-
-			// Remove the dependants on the ignored inputs
-			for removed_input in removed_inputs {
-				if let NodeInput::Node { node_id, output_index } = removed_input
-					&& let Some(former_dependency) = self.nodes.get_mut(&node_id)
-					// Ensure that the other node inputs do not also reference the dependancy
-					&& !node.inputs.iter().any(|input| matches!(input, NodeInput::Node { node_id: other, .. } if *other == node_id))
-				{
-					former_dependency.original_location.dependants[output_index].retain(|&dependant| dependant != id);
-				}
-			}
-
-			node.call_argument = concrete!(());
-			self.nodes.insert(id, node);
-			return;
-		}
 
 		let path = node.original_location.path.clone().unwrap_or_default();
 
@@ -1770,6 +1793,76 @@ mod test {
 		assert_eq!(&network.exports, &vec![NodeInput::node(NodeId(1), 2), NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(1), 2)]);
 
 		network.validate_dependants();
+	}
+
+	// TODO: validate if this can ever happen and decide on a better approach
+	#[test]
+	fn apply_node_visibility_no_input_node_no_panic() {
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(2), 0)],
+			nodes: [(
+				NodeId(1),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("generator_no_inputs")),
+					visible: false,
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		network.generate_node_paths(&[]);
+		network.populate_dependants();
+		network.apply_node_visibility();
+		network.remove_all_passthrough_nodes();
+		network.validate_dependants();
+	}
+
+	#[test]
+	fn apply_node_visibility() {
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(3), 0)],
+			nodes: [
+				(
+					NodeId(1),
+					DocumentNode {
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("generator_no_inputs")),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(2),
+					DocumentNode {
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("generator_no_inputs")),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(3),
+					DocumentNode {
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("add")),
+						inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::node(NodeId(2), 0)],
+						visible: false,
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		network.generate_node_paths(&[]);
+		network.populate_dependants();
+		network.apply_node_visibility();
+		network.validate_dependants();
+		assert_eq!(network.nodes.len(), 3);
+		let hidden_node = network.nodes.get(&NodeId(3)).unwrap();
+		assert_eq!(hidden_node.implementation, DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER));
+		assert_eq!(hidden_node.inputs.len(), 1);
+		network.remove_all_passthrough_nodes();
+		network.validate_dependants();
+		assert_eq!(network.nodes.len(), 2);
 	}
 
 	// TODO: Write more tests
