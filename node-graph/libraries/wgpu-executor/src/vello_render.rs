@@ -1,10 +1,10 @@
-use crate::vello_effects::{EffectPasses, EffectTextures};
+use crate::vello_effects::{AdjustmentPassTextures, EffectPasses, EffectTextures, adjustment_run_hash};
 use glam::{DMat2, UVec2};
-use graphic_types::Effects;
-use raster_types::WeakCPU;
+use graphic_types::raster_types::{CPU, Raster, WeakCPU};
+use graphic_types::{Adjustment, Effects};
 use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
 use vello_gpu::peniko;
 use vello_gpu::{
@@ -244,7 +244,18 @@ impl RenderContext<'_> {
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			if let Some(view) = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size) {
+			let view = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size);
+
+			// Adjustments draw a copy of the texture they're carried out on
+			let view = match image {
+				SceneImage::Raster { raster, adjustments } if !adjustments.is_empty() => view.and_then(|_| {
+					let effects = (&self.renderer.effect_passes, &mut self.canvas.effect_textures);
+					self.canvas.images.prepare_adjusted(device, &queue, effects, raster, adjustments)
+				}),
+				_ => view,
+			};
+
+			if let Some(view) = view {
 				texture_bindings.insert(TextureId(id as u64), view);
 			}
 		}
@@ -342,6 +353,17 @@ struct ImageTexture {
 	last_used: u64,
 	/// The CPU raster pixels copied into the texture, which is freed once they're gone since they can't be drawn again.
 	raster: Option<WeakCPU>,
+	/// Copies with runs of adjustments carried out on them, one for each run the image is drawn with.
+	adjusted: Vec<AdjustedTexture>,
+}
+
+/// A copy of an image's texture with a run of adjustments carried out on it, made over in place for another run or refined tables.
+struct AdjustedTexture {
+	texture: wgpu::Texture,
+	run_hash: u64,
+	/// The tables it was made with, which a run's refined tables replace.
+	passes: Arc<Vec<AdjustmentPassTextures>>,
+	last_used: u64,
 }
 
 /// The textures of the images recent renders drew, each freed once it goes unused for long enough.
@@ -365,7 +387,7 @@ impl ImageTextures {
 	) -> Option<wgpu::TextureView> {
 		let key = match image {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
-			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
+			SceneImage::Raster { raster, .. } => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture((**texture).clone()),
 			// Effects results are premultiplied already
 			SceneImage::Rendered(texture) => return Some(texture.create_view(&wgpu::TextureViewDescriptor::default())),
@@ -381,7 +403,7 @@ impl ImageTextures {
 
 					upload_pixels(device, queue, data.data.data(), data.width, data.height, data.alpha_type, max_texture_size)?
 				}
-				SceneImage::Raster(raster) => {
+				SceneImage::Raster { raster, .. } => {
 					let (pixels, width, height) = raster.to_flat_u8();
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
@@ -394,10 +416,18 @@ impl ImageTextures {
 				),
 			};
 			let raster = match image {
-				SceneImage::Raster(raster) => Some(raster.downgrade()),
+				SceneImage::Raster { raster, .. } => Some(raster.downgrade()),
 				SceneImage::Pixels(_) | SceneImage::Texture(_) | SceneImage::Rendered(_) => None,
 			};
-			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0, raster });
+			self.textures.insert(
+				key.clone(),
+				ImageTexture {
+					texture,
+					last_used: 0,
+					raster,
+					adjusted: Vec::new(),
+				},
+			);
 		}
 
 		let image_texture = self.textures.get_mut(&key)?;
@@ -412,17 +442,72 @@ impl ImageTextures {
 		Some(view)
 	}
 
+	/// A view of the copy of the texture of the `raster` already prepared, with the `run` of adjustments carried out on it, made with the run's latest tables.
+	fn prepare_adjusted(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, effects: (&EffectPasses, &mut EffectTextures), raster: &Raster<CPU>, run: &[Adjustment]) -> Option<wgpu::TextureView> {
+		let (effect_passes, effect_textures) = effects;
+		let run: Vec<&Adjustment> = run.iter().collect();
+		let run_hash = adjustment_run_hash(&run);
+		let passes = effect_textures.adjustment_passes(device, queue, &run);
+		let render_count = self.render_count;
+		let image_texture = self.textures.get_mut(&ImageKey::Raster(raster.buffer_id()))?;
+
+		// A run seen before has its copy, and a new run takes over the copy longest unused, as when dragging a slider makes a new run every render
+		let reusable = || {
+			image_texture
+				.adjusted
+				.iter()
+				.enumerate()
+				.filter(|(_, copy)| copy.last_used < render_count)
+				.min_by_key(|(_, copy)| copy.last_used)
+		};
+		let index = match image_texture.adjusted.iter().position(|copy| copy.run_hash == run_hash) {
+			Some(index) => index,
+			None => match reusable().map(|(index, _)| index) {
+				Some(index) => index,
+				None => {
+					let texture = device.create_texture(&wgpu::TextureDescriptor {
+						label: Some("vello_gpu_adjusted_image"),
+						size: image_texture.texture.size(),
+						mip_level_count: image_texture.texture.mip_level_count(),
+						sample_count: 1,
+						dimension: wgpu::TextureDimension::D2,
+						format: TEXTURE_FORMAT,
+						usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+						view_formats: &[],
+					});
+					image_texture.adjusted.push(AdjustedTexture {
+						texture,
+						run_hash,
+						passes: Arc::new(Vec::new()),
+						last_used: render_count,
+					});
+					image_texture.adjusted.len() - 1
+				}
+			},
+		};
+
+		let copy = &mut image_texture.adjusted[index];
+		if copy.run_hash != run_hash || !Arc::ptr_eq(&copy.passes, &passes) {
+			effect_passes.adjust_image(device, queue, effect_textures, &image_texture.texture, &passes, &copy.texture);
+			copy.run_hash = run_hash;
+			copy.passes = passes;
+		}
+		copy.last_used = render_count;
+
+		Some(copy.texture.create_view(&wgpu::TextureViewDescriptor::default()))
+	}
+
 	fn free_unused(&mut self) {
 		let render_count = self.render_count;
-		self.textures.retain(|key, image_texture| {
-			let unused_renders = render_count - image_texture.last_used;
-			match key {
-				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
-				ImageKey::Blob(_) => unused_renders == 0,
-				ImageKey::Raster(_) => unused_renders == 0 || (unused_renders < UNUSED_IMAGE_RENDER_LIMIT && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
-				ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
-			}
+		let in_use = |last_used: u64| render_count - last_used < UNUSED_IMAGE_RENDER_LIMIT;
+
+		self.textures.retain(|key, image_texture| match key {
+			// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
+			ImageKey::Blob(_) => image_texture.last_used == render_count,
+			ImageKey::Raster(_) => image_texture.last_used == render_count || (in_use(image_texture.last_used) && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
+			ImageKey::Texture(_) => in_use(image_texture.last_used),
 		});
+		self.textures.values_mut().for_each(|image_texture| image_texture.adjusted.retain(|copy| in_use(copy.last_used)));
 	}
 }
 
