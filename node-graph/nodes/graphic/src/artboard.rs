@@ -2,6 +2,7 @@ use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
 use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphic_types::Generator;
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -20,6 +21,7 @@ fn create_artboard<T: IntoGraphicList>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> Item<DAffine2>, // TODO: Remove this
 	)]
 	content: impl Node<Context<'static>, Output = T>,

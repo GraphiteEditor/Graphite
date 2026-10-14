@@ -2,7 +2,7 @@ use crate::vello_effects::{AdjustmentPassTextures, EffectPasses, EffectTextures,
 use glam::{DMat2, UVec2};
 use graphic_types::raster_types::{CPU, Raster, WeakCPU};
 use graphic_types::{Adjustment, Effects};
-use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
+use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
@@ -18,6 +18,9 @@ const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// How many renders a GPU texture's premultiplied copy survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
+
+/// The most tiles of generators kept between renders, past which the least recently drawn are freed.
+const MAX_CACHED_GENERATOR_TILES: usize = 256;
 
 /// How many times a render with too much content for Vello GPU is halved, reaching areas 1/4096 the size of the original.
 const MAX_SPLIT_DEPTH: u32 = 12;
@@ -339,12 +342,13 @@ fn clear(device: &wgpu::Device, queue: &Queue, target: &wgpu::Texture) {
 	queue.submit([encoder.finish()]);
 }
 
-/// Identifies the pixels behind an image texture: a blob of CPU pixels, or a GPU texture.
+/// Identifies the pixels behind an image texture: a blob of CPU pixels, a GPU texture, or a tile of a generator's pattern.
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum ImageKey {
 	Blob(u64),
 	Raster(u64),
 	Texture(wgpu::Texture),
+	GeneratorTile(GeneratorTile),
 }
 
 /// A premultiplied copy of an image's pixels that Vello GPU samples as an external texture.
@@ -389,6 +393,7 @@ impl ImageTextures {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster { raster, .. } => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture((**texture).clone()),
+			SceneImage::GeneratorTile { tile, .. } => ImageKey::GeneratorTile(*tile),
 			// Effects results are premultiplied already
 			SceneImage::Rendered(texture) => return Some(texture.create_view(&wgpu::TextureViewDescriptor::default())),
 		};
@@ -407,6 +412,10 @@ impl ImageTextures {
 					let (pixels, width, height) = raster.to_flat_u8();
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
+				SceneImage::GeneratorTile { pattern, tile } => {
+					let (pixels, width, height) = tile.render(pattern).ok()?.to_flat_u8();
+					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+				}
 				SceneImage::Rendered(_) => return None,
 				SceneImage::Texture(texture) => create_texture(
 					device,
@@ -417,7 +426,7 @@ impl ImageTextures {
 			};
 			let raster = match image {
 				SceneImage::Raster { raster, .. } => Some(raster.downgrade()),
-				SceneImage::Pixels(_) | SceneImage::Texture(_) | SceneImage::Rendered(_) => None,
+				SceneImage::Pixels(_) | SceneImage::Texture(_) | SceneImage::Rendered(_) | SceneImage::GeneratorTile { .. } => None,
 			};
 			self.textures.insert(
 				key.clone(),
@@ -505,9 +514,21 @@ impl ImageTextures {
 			// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 			ImageKey::Blob(_) => image_texture.last_used == render_count,
 			ImageKey::Raster(_) => image_texture.last_used == render_count || (in_use(image_texture.last_used) && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
-			ImageKey::Texture(_) => in_use(image_texture.last_used),
+			ImageKey::Texture(_) | ImageKey::GeneratorTile(_) => in_use(image_texture.last_used),
 		});
 		self.textures.values_mut().for_each(|image_texture| image_texture.adjusted.retain(|copy| in_use(copy.last_used)));
+
+		// Panning and zooming across a generator leaves tiles behind faster than they go unused for long, so the least recent beyond a limit are freed too
+		let mut tile_ages: Vec<u64> = (self.textures.iter())
+			.filter(|(key, _)| matches!(key, ImageKey::GeneratorTile(_)))
+			.map(|(_, image_texture)| image_texture.last_used)
+			.collect();
+		if tile_ages.len() > MAX_CACHED_GENERATOR_TILES {
+			let excess = tile_ages.len() - MAX_CACHED_GENERATOR_TILES;
+			let (_, &mut oldest_kept, _) = tile_ages.select_nth_unstable(excess);
+			self.textures
+				.retain(|key, image_texture| !matches!(key, ImageKey::GeneratorTile(_)) || image_texture.last_used >= oldest_kept);
+		}
 	}
 }
 
