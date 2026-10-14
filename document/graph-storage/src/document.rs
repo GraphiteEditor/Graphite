@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 use crate::{
-	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput, PeerId,
-	PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, Rev, SourceValue, TimeStamp, Tombstone, UserId, Value, reverse_attribute_delta,
+	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput,
+	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, UserId, Value, reverse_attribute_delta,
 };
 use std::borrow::Cow;
 
@@ -15,6 +15,10 @@ pub struct Document {
 	/// Live broadcast stream, applied to the `working_registry` on receive, GC'd at retirement.
 	/// Persisted for crash recovery so in-flight unretired work survives editor restarts.
 	pub(crate) hot_log: Vec<HotOp>,
+	/// The stamps of the hot log's ops, so a re-announced op is recognised without a scan.
+	pub(crate) hot_timestamps: HashSet<TimeStamp>,
+	/// Which hot ops are retired into history, so a late copy is dropped.
+	pub(crate) retired: RetiredMarks,
 	/// The registry as of the last retirement, with no un-retired hot ops applied. Retirement computes
 	/// each delta's `reverse` against this (so LWW reverses capture the true pre-op value, not the
 	/// hot-polluted working state) and advances it. It equals the working registry whenever the hot log is
@@ -36,6 +40,8 @@ pub struct Document {
 	/// peer is calling; collision avoidance comes from hashing `(self.peer, counter)`, so two peers
 	/// reading the same counter still produce distinct IDs.
 	pub(crate) next_node_counter: u64,
+	/// Counts this peer's own hot ops, so each carries its position in a gap-free run. See [`HotOp::sequence`].
+	pub(crate) last_hot_sequence: HotSequence,
 }
 
 impl Document {
@@ -45,6 +51,8 @@ impl Document {
 			retired_snapshot: Registry::default(),
 			history: History::new(),
 			hot_log: Vec::new(),
+			hot_timestamps: HashSet::new(),
+			retired: RetiredMarks::default(),
 			head: None,
 			redo_stack: Vec::new(),
 			clock: LamportClock::new(peer),
@@ -52,6 +60,7 @@ impl Document {
 			user,
 			last_broadcast_rev: None,
 			next_node_counter: 0,
+			last_hot_sequence: HotSequence::NONE,
 		}
 	}
 
@@ -80,18 +89,67 @@ impl Document {
 		self.apply_op_with(target, delta.kind, delta.timestamp, ApplyMode::Force)
 	}
 
-	/// Stage a local op onto the working registry and the hot log.
+	/// Stage a local op onto the working registry and the hot log, skipping the retired check so local work is never dropped.
 	pub(crate) fn stage_hot_op(&mut self, hot_op: HotOp, mode: ApplyMode) -> Result<(), CrdtError> {
 		self.apply_op_with(RegistryTarget::Working, hot_op.op.clone(), hot_op.timestamp, mode)?;
+		self.hot_timestamps.insert(hot_op.timestamp);
 		self.hot_log.push(hot_op);
 		Ok(())
 	}
 
-	/// Replay a persisted or received hot op. One already reflected in the registry changes nothing.
+	/// Replay a persisted or received hot op. One already retired or held changes nothing.
 	pub fn replay_hot_op(&mut self, hot_op: HotOp) -> Result<(), CrdtError> {
+		// Seeing an op is enough to know what it implies, whether or not it applies: its stamp, and for one of our own a
+		// spent sequence, should the persisted counter lag.
+		self.clock.observe(hot_op.timestamp);
+		if hot_op.timestamp.peer == self.peer {
+			self.last_hot_sequence = self.last_hot_sequence.max(hot_op.sequence);
+		}
+		if self.retired.covers(hot_op.id()) {
+			return Ok(());
+		}
+		if self.hot_timestamps.contains(&hot_op.timestamp) {
+			return Ok(());
+		}
+
 		self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp)?;
+		self.hot_timestamps.insert(hot_op.timestamp);
 		self.hot_log.push(hot_op);
 		Ok(())
+	}
+
+	/// Take on a peer's marks as well as this peer's. Returns whether a hot op was dropped.
+	pub(crate) fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> bool {
+		self.retired.absorb(remote);
+		self.drop_retired_hot_ops()
+	}
+
+	/// Bring the stamp index back in line after the hot log was filtered as a whole.
+	pub(crate) fn resync_hot_timestamps(&mut self) {
+		self.hot_timestamps = self.hot_log.iter().map(|hot_op| hot_op.timestamp).collect();
+	}
+
+	/// Re-derive working as the snapshot plus every hot op, for a change that cannot apply in place. O(registry), so rare.
+	pub(crate) fn rebuild_working(&mut self) {
+		self.working_registry = self.retired_snapshot.clone();
+		for hot_op in std::mem::take(&mut self.hot_log) {
+			// No op fails on a referent, and one failing otherwise must not be lost.
+			let _ = self.apply_op_idempotent(hot_op.op.clone(), hot_op.timestamp);
+			self.hot_log.push(hot_op);
+		}
+	}
+
+	/// Drop retired hot ops and re-derive working without them: their effect returns with their deltas.
+	fn drop_retired_hot_ops(&mut self) -> bool {
+		let before = self.hot_log.len();
+		let retired = &self.retired;
+		self.hot_log.retain(|hot_op| !retired.covers(hot_op.id()));
+		let dropped = self.hot_log.len() != before;
+		if dropped {
+			self.resync_hot_timestamps();
+			self.rebuild_working();
+		}
+		dropped
 	}
 
 	/// Apply a retired commit and record it in history.
