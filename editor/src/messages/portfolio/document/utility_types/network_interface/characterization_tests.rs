@@ -2,7 +2,7 @@ use super::{
 	ChainInsertionPoint, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector,
 	Previewing, RootNode, TransactionStatus,
 };
-use crate::messages::portfolio::document::node_graph::utility_types::Direction;
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::value::TaggedValue;
@@ -1615,5 +1615,212 @@ async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
 	assert!(
 		network_interface.possible_output_types(&placeholder_output, &[]).is_empty(),
 		"a new export's empty placeholder shouldn't be listed as a type it can produce"
+	);
+}
+
+/// Presses at `from` and releases at `to`, both in the graph space of the network at `path`, as the node graph receives a mouse drag.
+async fn drag_in_graph(editor: &mut EditorTestUtils, path: &[NodeId], from: DVec2, to: DVec2) {
+	let node_graph_to_viewport = editor
+		.active_document()
+		.network_interface
+		.network_metadata(path)
+		.expect("the network should have metadata")
+		.persistent_metadata
+		.navigation_metadata
+		.node_graph_to_viewport;
+	let (from, to) = (node_graph_to_viewport.transform_point2(from), node_graph_to_viewport.transform_point2(to));
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_from_an_empty_input_connects_to_the_output_it_is_dropped_on() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.upstream_output_connector(&fill_content, &[]).is_none(), "Fill's content should start out unwired");
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let output_position = network_interface
+		.output_position(&OutputConnector::node(rectangle, 0), &[])
+		.expect("Rectangle's output should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, output_position).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"the wire dragged back from Fill's content should connect it to Rectangle's output"
+	);
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_onto_empty_space_wires_the_node_picked_from_the_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	let input_position = editor
+		.active_document()
+		.network_interface
+		.input_position(&fill_content, &[])
+		.expect("Fill's content should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, input_position - DVec2::new(240., 0.)).await;
+
+	let context_menu = editor.active_document().node_graph_handler.context_menu.clone();
+	assert!(
+		matches!(context_menu.map(|menu| menu.context_menu_data), Some(ContextMenuData::CreateNode { compatible_type: None })),
+		"dropping the wire on empty space should open the node menu without filtering it"
+	);
+
+	let rectangle = NodeId::new();
+	editor
+		.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(rectangle),
+			node_type: rectangle_definition(),
+			xy: Some((0, 0)),
+			add_transaction: true,
+		})
+		.await;
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"the node picked from the menu should be wired into Fill's content"
+	);
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_from_the_dimmed_export_connector_adds_an_export() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let export_count = network_interface.number_of_exports(&path);
+	let (new_export_index, empty_export_position) = *network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	let result_output = network_interface
+		.upstream_output_connector(&InputConnector::Export(0), &path)
+		.expect("Merge's export should be fed by a node inside it");
+	let result_position = network_interface
+		.output_position(&result_output, &path)
+		.expect("the node feeding Merge's export should have an output position");
+
+	drag_in_graph(&mut editor, &path, empty_export_position, result_position).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_exports(&path), export_count + 1, "the export should be added");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::Export(new_export_index), &path),
+		Some(result_output),
+		"the added export should be wired from the output the wire was dropped on"
+	);
+
+	assert_invariants(&editor, "after dragging a wire backward from the dimmed export connector");
+}
+
+#[tokio::test]
+async fn clicking_an_empty_input_without_dragging_leaves_it_and_opens_no_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	let input_position = editor
+		.active_document()
+		.network_interface
+		.input_position(&fill_content, &[])
+		.expect("Fill's content should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+
+	assert!(editor.active_document().node_graph_handler.context_menu.is_none(), "a click shouldn't open the node menu");
+	assert!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]).is_none(),
+		"a click shouldn't wire anything into Fill's content"
+	);
+}
+
+#[tokio::test]
+async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let (_, empty_export_position) = *editor
+		.active_document()
+		.network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	drag_in_graph(&mut editor, &path, empty_export_position, empty_export_position - DVec2::new(240., 0.)).await;
+	assert!(
+		editor.active_document().node_graph_handler.context_menu.is_some(),
+		"dropping the wire on empty space should open the node menu"
+	);
+
+	editor.handle_message(DocumentMessage::ExitNestedNetwork { steps_back: 1 }).await;
+
+	let node_graph_handler = &editor.active_document().node_graph_handler;
+	assert!(node_graph_handler.context_menu.is_none(), "the node menu should close with the subgraph it was opened in");
+	assert!(node_graph_handler.wire_in_progress_from_connector.is_none(), "the wire should end with the subgraph it was dragged in");
+}
+
+#[tokio::test]
+async fn clicking_a_connected_input_leaves_it_connected_when_a_later_wire_is_dragged_away() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let other_rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 10).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	editor
+		.handle_message(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::node(rectangle, 0),
+			input_connector: fill_content,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let other_output_position = network_interface
+		.output_position(&OutputConnector::node(other_rectangle, 0), &[])
+		.expect("the other Rectangle's output should have a position");
+
+	// Click Fill's wired content without dragging, then drag a new wire out of the other Rectangle into empty space
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+	drag_in_graph(&mut editor, &[], other_output_position, other_output_position + DVec2::new(240., 240.)).await;
+
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"Fill's content should still be wired from the first Rectangle"
 	);
 }
