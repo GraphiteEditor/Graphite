@@ -2788,6 +2788,7 @@ dependencies = [
  "math-nodes",
  "node-macro",
  "path-bool-nodes",
+ "raster-kernels",
  "raster-nodes",
  "rendering",
  "repeat-nodes",
@@ -6066,6 +6067,7 @@ dependencies = [
  "usvg",
  "vector-types",
  "vello_gpu",
+ "wgpu",
 ]
 
 [[package]]
@@ -8715,8 +8717,10 @@ dependencies = [
  "futures",
  "glam",
  "graphene-application-io",
+ "graphic-types",
  "log",
  "node-macro",
+ "raster-kernels",
  "raster-types",
  "rendering",
  "thiserror 2.0.18",

@@ -318,6 +318,9 @@ pub enum DocumentMessage {
 	UpdateAppearanceAttributes {
 		appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
 	},
+	UpdateEffectsReach {
+		effects_reach: HashMap<NodeId, f64>,
+	},
 	Undo,
 	UngroupSelectedLayers,
 	UngroupLayer {

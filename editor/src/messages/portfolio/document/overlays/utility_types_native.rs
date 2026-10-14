@@ -270,7 +270,7 @@ impl OverlayContext {
 		}
 	}
 
-	pub fn take_scene(self) -> VelloSceneBuilder {
+	pub fn take_scene(self) -> VelloSceneBuilder<'static> {
 		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
 		let empty_scene = overlay_scene(&internal.viewport);
 		std::mem::replace(&mut internal.scene, empty_scene)
@@ -486,13 +486,13 @@ pub enum DrawHandles {
 }
 
 pub(super) struct OverlayContextInternal {
-	scene: VelloSceneBuilder,
+	scene: VelloSceneBuilder<'static>,
 	viewport: ViewportMessageHandler,
 	visibility_settings: OverlaysVisibilitySettings,
 }
 
 /// An empty scene covering the viewport's physical pixels, matching the resolution the viewport renders at.
-fn overlay_scene(viewport: &ViewportMessageHandler) -> VelloSceneBuilder {
+fn overlay_scene(viewport: &ViewportMessageHandler) -> VelloSceneBuilder<'static> {
 	// The smallest texture size limit WebGL2 guarantees, which only matters for the overlays' tiny pattern images
 	const MAX_TEXTURE_SIZE: u32 = 2048;
 

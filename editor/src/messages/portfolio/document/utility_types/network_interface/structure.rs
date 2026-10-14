@@ -200,4 +200,9 @@ impl NodeNetworkInterface {
 	pub fn update_appearance_attributes(&mut self, new_layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>) {
 		self.document_metadata.layer_appearance_attributes = new_layer_appearance_attributes;
 	}
+
+	/// Update how far each layer's effects paint past its content.
+	pub fn update_effects_reach(&mut self, new_layer_effects_reach: HashMap<LayerNodeIdentifier, f64>) {
+		self.document_metadata.layer_effects_reach = new_layer_effects_reach;
+	}
 }

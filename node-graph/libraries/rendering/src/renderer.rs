@@ -16,9 +16,9 @@ use core_types::math::quad::Quad;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
-	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME,
+	ATTR_EFFECTS, ATTR_FONT, ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY,
+	ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -31,7 +31,7 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
+use graphic_types::{Appearance, Artboard, Cover, Coverage, Effects, FillAndStroke, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -94,6 +94,32 @@ impl<'a, T> ItemRef<'a, T> {
 		let opacity_fill = if for_mask { 1. } else { self.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.) };
 
 		(self.attribute_cloned_or::<f64>(ATTR_OPACITY, 1.) * opacity_fill) as f32
+	}
+
+	/// How the item's opacity attributes and effects apply as it renders.
+	fn compositing(self, render_params: &RenderParams) -> ItemCompositing<'a> {
+		let opacity = self.attribute_cloned_or::<f64>(ATTR_OPACITY, 1.) as f32;
+		let fill = if render_params.for_mask {
+			1.
+		} else {
+			self.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.) as f32
+		};
+
+		// Outline mode shows only geometry
+		let effects = self
+			.attribute::<Effects>(ATTR_EFFECTS)
+			.filter(|effects| !effects.is_empty() && render_params.render_mode != RenderMode::Outline);
+
+		match effects {
+			Some(effects) => ItemCompositing {
+				opacity,
+				effects: Some((effects, fill)),
+			},
+			None => ItemCompositing {
+				opacity: opacity * fill,
+				effects: None,
+			},
+		}
 	}
 
 	pub(crate) fn clone_item_attributes(self) -> core_types::list::ItemAttributeValues {
@@ -161,6 +187,260 @@ impl<'a> ItemRef<'a, Vector> {
 	}
 }
 
+/// How an item composites: the alpha of the layer it draws through, and the effects its content renders through inside that layer.
+struct ItemCompositing<'a> {
+	opacity: f32,
+	/// With the fill opacity, which the effects group applies to the content alone so the shadows and glows cast from it stay at full strength.
+	effects: Option<(&'a Effects, f32)>,
+}
+
+impl ItemCompositing<'_> {
+	/// How far the effects reach past the content, in document pixels.
+	fn reach(&self) -> f64 {
+		self.effects.map_or(0., |(effects, _)| effects.reach())
+	}
+
+	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space.
+	/// Rendering a split scene calls `draw` again for each part.
+	fn draw_with_effects(&self, scene: &mut VelloSceneBuilder, bounds: impl FnOnce() -> RenderBoundingBox, mut draw: impl FnMut(&mut VelloSceneBuilder)) {
+		let Some((effects, fill)) = self.effects else { return draw(scene) };
+
+		let bounds = match bounds() {
+			RenderBoundingBox::Rectangle([min, max]) => Some(kurbo::Rect::new(min.x, min.y, max.x, max.y)),
+			RenderBoundingBox::Infinite => None,
+			RenderBoundingBox::None => return draw(scene),
+		};
+		scene.draw_effects(effects, fill, bounds, &mut draw);
+	}
+
+	/// The opacity for content drawn without the effects group, as SVG draws content its filter can't apply to.
+	fn opacity_without_effects(&self) -> f32 {
+		self.opacity * self.effects.map_or(1., |(_, fill)| fill)
+	}
+
+	/// Writes the SVG filter carrying out the effects, if there are any to apply, given the content's bounds in the current user space.
+	/// Returns the reference for the `filter` attribute of a group wrapping the content, which also takes the item's opacity and blend mode.
+	fn svg_filter(&self, render: &mut SvgRender, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<String> {
+		let (effects, fill) = self.effects?;
+
+		// Effects change nothing visible about content without edges, like a color or gradient layer filling everything
+		let RenderBoundingBox::Rectangle(bounds) = bounds() else { return None };
+
+		let id = write_svg_effects_filter(&mut render.svg_defs, effects, fill, bounds, render.transform)?;
+		Some(format!("url(#{id})"))
+	}
+}
+
+/// How far the effects of the items nested anywhere inside `graphic` reach past its bounds, in document pixels.
+fn nested_effects_reach(graphic: &Graphic) -> f64 {
+	fn item_reach<T>(item: &Item<T>) -> f64 {
+		item.attribute::<Effects>(ATTR_EFFECTS).map_or(0., Effects::reach)
+	}
+	fn list_reach<T>(list: &List<T>, nested: impl Fn(&T) -> f64) -> f64 {
+		(0..list.len())
+			.map(|index| list.attribute::<Effects>(ATTR_EFFECTS, index).map_or(0., Effects::reach) + list.element(index).map_or(0., &nested))
+			.fold(0., f64::max)
+	}
+
+	match graphic {
+		Graphic::None(_) | Graphic::NoneList(_) | Graphic::StrokeList(_) => 0.,
+		Graphic::Graphic(item) => item_reach(item) + nested_effects_reach(item.element()),
+		Graphic::Vector(item) => item_reach(item),
+		Graphic::RasterCPU(item) => item_reach(item),
+		Graphic::RasterGPU(item) => item_reach(item),
+		Graphic::Color(item) => item_reach(item),
+		Graphic::Gradient(item) => item_reach(item),
+		Graphic::Text(item) => item_reach(item),
+		Graphic::GraphicList(list) => list_reach(list, nested_effects_reach),
+		Graphic::VectorList(list) => list_reach(list, |_| 0.),
+		Graphic::RasterCPUList(list) => list_reach(list, |_| 0.),
+		Graphic::RasterGPUList(list) => list_reach(list, |_| 0.),
+		Graphic::ColorList(list) => list_reach(list, |_| 0.),
+		Graphic::GradientList(list) => list_reach(list, |_| 0.),
+		Graphic::TextList(list) => list_reach(list, |_| 0.),
+	}
+}
+
+/// Wraps an item's SVG `content` in a group applying its effects `filter`, with the item's opacity and blend mode, if there is a filter.
+fn render_svg_through_filter(render: &mut SvgRender, filter: Option<String>, opacity: f32, blend_mode: BlendMode, content: impl FnOnce(&mut SvgRender)) {
+	let Some(filter) = filter else { return content(render) };
+
+	render.parent_tag(
+		"g",
+		|attributes| {
+			attributes.push("filter", filter);
+			if opacity < 1. {
+				attributes.push("opacity", opacity.to_string());
+			}
+			if blend_mode != BlendMode::default() {
+				attributes.push("style", blend_mode.render());
+			}
+		},
+		content,
+	);
+}
+
+/// Builds the primitives of an SVG filter, naming each result so later primitives can take it as an input.
+#[derive(Default)]
+struct SvgFilterPrimitives {
+	markup: String,
+	count: usize,
+}
+
+impl SvgFilterPrimitives {
+	/// Appends a primitive tag with `attributes` (and `children`, if any), returning the name of its result.
+	fn push(&mut self, tag: &str, attributes: &str, children: &str) -> String {
+		self.count += 1;
+		let result = format!("effect-{}", self.count);
+
+		match children.is_empty() {
+			true => write!(self.markup, r#"<{tag} {attributes} result="{result}" />"#),
+			false => write!(self.markup, r#"<{tag} {attributes} result="{result}">{children}</{tag}>"#),
+		}
+		.unwrap();
+
+		result
+	}
+
+	/// The sum of two premultiplied images, for composites whose terms SVG's other operators can't express.
+	fn add(&mut self, first: &str, second: &str) -> String {
+		self.push("feComposite", &format!(r#"in="{first}" in2="{second}" operator="arithmetic" k2="1" k3="1""#), "")
+	}
+
+	/// The image with the shadows and glows `beneath` it, knocked out by the full-strength content so a faded fill doesn't reveal them.
+	fn composite_beneath(&mut self, image: &str, beneath: &str, full_content: &str) -> String {
+		let knocked_out = self.push("feComposite", &format!(r#"in="{beneath}" in2="{full_content}" operator="out""#), "");
+		self.add(image, &knocked_out)
+	}
+}
+
+/// Writes an SVG filter into `svg_defs` that carries out `effects` like the GPU passes do, returning its ID, or `None` if the user space is degenerate.
+/// `bounds` is the content's extent in the filtered group's user space, which `user_to_document` maps into the document space the effects' lengths are measured in.
+fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], user_to_document: DAffine2) -> Option<String> {
+	use graphic_types::EffectOperation;
+
+	let determinant = user_to_document.matrix2.determinant();
+	if !determinant.is_normal() {
+		return None;
+	}
+	let document_to_user = user_to_document.matrix2.inverse();
+	let length_scale = determinant.abs().sqrt().recip();
+
+	let mut primitives = SvgFilterPrimitives::default();
+
+	// The content at full strength, which casts every silhouette, and the content faded by the fill, which shows in the result
+	let mut full = "SourceGraphic".to_string();
+	let mut filled = (fill < 1.).then(|| primitives.push("feComponentTransfer", r#"in="SourceGraphic""#, &format!(r#"<feFuncA type="linear" slope="{fill}" />"#)));
+	// The shadows and glows stacked beneath the content
+	let mut beneath: Option<String> = None;
+
+	for effect in effects.operations() {
+		let (color, offset, blur, spread, inner) = match effect {
+			EffectOperation::Blur { radius, box_blur, gamma } => {
+				let radius = radius * length_scale;
+				if radius < 0.01 {
+					continue;
+				}
+
+				// What lies beneath blurs together with the content
+				if let Some(beneath) = beneath.take() {
+					filled = filled.map(|filled| primitives.composite_beneath(&filled, &beneath, &full));
+					full = primitives.composite_beneath(&full, &beneath, &full);
+				}
+
+				// SVG has no box blur, so a box becomes the Gaussian of the same variance
+				let sigma = if box_blur { (radius * (radius + 1.) / 3.).sqrt() } else { radius };
+				let space = if gamma { "sRGB" } else { "linearRGB" };
+				let attributes = |input: &str| format!(r#"in="{input}" stdDeviation="{sigma}" color-interpolation-filters="{space}""#);
+
+				filled = filled.map(|filled| primitives.push("feGaussianBlur", &attributes(&filled), ""));
+				full = primitives.push("feGaussianBlur", &attributes(&full), "");
+				continue;
+			}
+			EffectOperation::DropShadow { color, offset, blur, spread } => (color, offset, blur, spread, false),
+			EffectOperation::OuterGlow { color, blur, spread } => (color, DVec2::ZERO, blur, spread, false),
+			EffectOperation::InnerShadow { color, offset, blur, spread } => (color, offset, blur, spread, true),
+		};
+
+		// The silhouette, or the area outside it for an inner shadow, cast by the offset, grown by the spread, and softened by the blur
+		let offset = document_to_user * offset;
+		let mut coverage = match offset == DVec2::ZERO {
+			true => full.clone(),
+			false => primitives.push("feOffset", &format!(r#"in="{full}" dx="{}" dy="{}""#, offset.x, offset.y), ""),
+		};
+		if inner {
+			let opaque = primitives.push("feFlood", r#"flood-opacity="1""#, "");
+			coverage = primitives.push("feComposite", &format!(r#"in="{opaque}" in2="{coverage}" operator="out""#), "");
+		}
+		if spread * length_scale >= 0.01 {
+			coverage = primitives.push("feMorphology", &format!(r#"in="{coverage}" operator="dilate" radius="{}""#, spread * length_scale), "");
+		}
+		if blur * length_scale >= 0.01 {
+			coverage = primitives.push("feGaussianBlur", &format!(r#"in="{coverage}" stdDeviation="{}""#, blur * length_scale), "");
+		}
+
+		let flood = primitives.push(
+			"feFlood",
+			&format!(r##"flood-color="#{}" flood-opacity="{}""##, SRGBA8::from(color.with_alpha(1.)).to_rgb_hex(), color.a()),
+			"",
+		);
+		let tinted = primitives.push("feComposite", &format!(r#"in="{flood}" in2="{coverage}" operator="in""#), "");
+
+		if inner {
+			// Placed over the image within the full-strength content, so it stays visible over a faded fill
+			let within = primitives.push("feComposite", &format!(r#"in="{tinted}" in2="{full}" operator="in""#), "");
+			let mut over = |image: &str| {
+				let uncovered = primitives.push("feComposite", &format!(r#"in="{image}" in2="{tinted}" operator="out""#), "");
+				primitives.add(&within, &uncovered)
+			};
+			filled = filled.map(|filled| over(&filled));
+			full = over(&full);
+		} else {
+			beneath = Some(match beneath {
+				Some(beneath) => primitives.push("feComposite", &format!(r#"in="{tinted}" in2="{beneath}" operator="over""#), ""),
+				None => tinted,
+			});
+		}
+	}
+
+	// The filter's result is its last primitive's, so finish with the image shown
+	let shown = filled.unwrap_or_else(|| full.clone());
+	match beneath {
+		Some(beneath) => {
+			primitives.composite_beneath(&shown, &beneath, &full);
+		}
+		None => {
+			primitives.push("feOffset", &format!(r#"in="{shown}""#), "");
+		}
+	}
+
+	// The filter covers how far the effects reach past the content
+	let reach = effects.reach() * length_scale;
+	let (min, max) = (bounds[0] - reach, bounds[1] + reach);
+	let id = format!("effects-{}", generate_uuid());
+	write!(
+		svg_defs,
+		r#"<filter id="{id}" filterUnits="userSpaceOnUse" x="{}" y="{}" width="{}" height="{}" color-interpolation-filters="sRGB">{}</filter>"#,
+		min.x,
+		min.y,
+		max.x - min.x,
+		max.y - min.y,
+		primitives.markup
+	)
+	.unwrap();
+
+	Some(id)
+}
+
+/// Grows a layer's bounds in the scene's space by a length in document pixels.
+fn inflate_bounds(bounds: [DVec2; 2], amount: f64) -> kurbo::Rect {
+	kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y).inflate(amount, amount)
+}
+
+fn rect_bounds(rect: kurbo::Rect) -> RenderBoundingBox {
+	RenderBoundingBox::Rectangle([DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+}
+
 /// The color one paint item contributes, faded by its opacity attributes.
 pub(crate) fn faded_paint_color(item: ItemRef<'_, Color>, for_mask: bool) -> Option<Color> {
 	let color = item.element()?;
@@ -214,7 +494,7 @@ impl MaskType {
 pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
-	/// Maps the user space of the content being rendered into the document's space.
+	/// Maps the user space of the content being rendered into the document's space, where the lengths of effects are measured.
 	pub transform: DAffine2,
 	/// The images drawn to canvases rather than embedded, by the canvas ID their placeholders name.
 	pub image_data: HashMap<u64, CanvasImage>,
@@ -697,6 +977,8 @@ pub struct RenderMetadata {
 	/// Per-layer `ATTR_APPEARANCE` item attribute, exposed so message handlers can read it.
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub appearance_attributes: HashMap<NodeId, Arc<Appearance>>,
+	/// Per-layer distance its effects paint past its content, in document pixels, for layers with effects.
+	pub effects_reach: HashMap<NodeId, f64>,
 	pub backgrounds: Vec<Background>,
 }
 
@@ -722,6 +1004,7 @@ impl RenderMetadata {
 			clip_targets,
 			vector_data,
 			appearance_attributes,
+			effects_reach,
 			backgrounds,
 		} = self;
 		upstream_footprints.extend(other.upstream_footprints.iter());
@@ -734,6 +1017,7 @@ impl RenderMetadata {
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 		appearance_attributes.extend(other.appearance_attributes.iter().map(|(id, data)| (*id, data.clone())));
+		effects_reach.extend(other.effects_reach.iter());
 
 		// TODO: Find a better non O(n^2) way to merge backgrounds
 		for background in &other.backgrounds {
@@ -789,14 +1073,13 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 	let Some(element) = item.element() else { return };
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	// This item's declared appearance (if any) cascades to descendants lacking their own
 	let child_render_params = item
 		.attribute::<Appearance>(ATTR_APPEARANCE)
 		.and_then(Appearance::declared)
 		.map(|appearance| render_params.for_child_item(appearance));
 	let render_params = child_render_params.as_ref().unwrap_or(render_params);
+	let compositing = item.compositing(render_params);
 
 	let matrix = format_transform_matrix(transform);
 	let mut masked_by = None;
@@ -827,29 +1110,47 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 	}
 
 	let render_item = |render: &mut SvgRender| {
-		render.parent_tag(
-			"g",
-			|attributes| {
-				if !matrix.is_empty() {
-					attributes.push(ATTR_TRANSFORM, matrix.clone());
-				}
+		// The filter also covers how far the effects nested inside reach past the content, measured in this user space
+		let document_scale = render.transform.matrix2.determinant().abs().sqrt();
+		let filter = compositing.svg_filter(render, || match element.bounding_box(transform, true) {
+			RenderBoundingBox::Rectangle([min, max]) => {
+				let nested_reach = nested_effects_reach(element) / document_scale;
+				RenderBoundingBox::Rectangle([min - nested_reach, max + nested_reach])
+			}
+			bounds => bounds,
+		});
+		let filtered = filter.is_some();
 
-				let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
+		render_svg_through_filter(render, filter, compositing.opacity, blend_mode, |render| {
+			render.parent_tag(
+				"g",
+				|attributes| {
+					if !matrix.is_empty() {
+						attributes.push(ATTR_TRANSFORM, matrix.clone());
+					}
 
-				if blend_mode != BlendMode::default() {
-					attributes.push("style", blend_mode.render());
-				}
-			},
-			|render| {
-				let parent_transform = render.transform;
-				render.transform = parent_transform * transform;
-				element.render_svg(render, render_params);
-				render.transform = parent_transform;
-			},
-		);
+					// A filter's wrapping group takes the opacity and blend mode instead
+					if filtered {
+						return;
+					}
+
+					let opacity = compositing.opacity_without_effects();
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
+
+					if blend_mode != BlendMode::default() {
+						attributes.push("style", blend_mode.render());
+					}
+				},
+				|render| {
+					let parent_transform = render.transform;
+					render.transform = parent_transform * transform;
+					element.render_svg(render, render_params);
+					render.transform = parent_transform;
+				},
+			);
+		});
 	};
 
 	// The mask rides an untransformed wrapper so it resolves in this list's space rather than the item's own
@@ -874,54 +1175,63 @@ fn render_graphic_item_to_vello<'a>(
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let transform = transform * item_transform;
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
 	// This item's declared appearance (if any) cascades to descendants lacking their own
 	let child_render_params = item
 		.attribute::<Appearance>(ATTR_APPEARANCE)
 		.and_then(Appearance::declared)
 		.map(|appearance| render_params.for_child_item(appearance));
 	let render_params = child_render_params.as_ref().unwrap_or(render_params);
-
-	let mut layer = false;
+	let compositing = item.compositing(render_params);
 
 	let blend_mode = match render_params.render_mode {
 		RenderMode::Outline => peniko::Mix::Normal,
 		_ => blend_mode_attr.to_peniko(),
 	};
-	let mut bounds = RenderBoundingBox::None;
+	let needs_layer = compositing.opacity < 1. || (render_params.render_mode != RenderMode::Outline && blend_mode_attr != BlendMode::default());
 
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
-	if opacity < 1. || (render_params.render_mode != RenderMode::Outline && blend_mode_attr != BlendMode::default()) {
-		bounds = element.bounding_box(transform, true);
+	// The bounds are only worth finding for the layers or effects group that need them
+	let bounds = if needs_layer || mask_element_and_transform.is_some() || compositing.effects.is_some() {
+		element.bounding_box(transform, true)
+	} else {
+		RenderBoundingBox::None
+	};
+	let layer_rect = match bounds {
+		RenderBoundingBox::Rectangle(bounds) => Some(inflate_bounds(bounds, compositing.reach())),
+		_ => None,
+	};
 
-		if let RenderBoundingBox::Rectangle(bounds) = bounds {
-			scene.push_layer(
-				peniko::Fill::NonZero,
-				peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
-				opacity,
-				kurbo::Affine::IDENTITY,
-				&kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y),
-			);
-			layer = true;
-		}
-	}
+	let layer = if needs_layer && let Some(rect) = layer_rect {
+		scene.push_layer(
+			peniko::Fill::NonZero,
+			peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
+			compositing.opacity,
+			kurbo::Affine::IDENTITY,
+			&rect,
+		);
+		true
+	} else {
+		false
+	};
+
+	// The effects group also covers how far the effects nested inside reach past the content
+	let effects_bounds = || match bounds {
+		RenderBoundingBox::Rectangle(bounds) => rect_bounds(inflate_bounds(bounds, nested_effects_reach(element))),
+		bounds => bounds,
+	};
+	let draw_content = |scene: &mut VelloSceneBuilder| {
+		compositing.draw_with_effects(scene, effects_bounds, |scene| element.render_to_vello(scene, transform, render_params));
+	};
 
 	if next_clips && mask_element_and_transform.is_none() {
 		*mask_element_and_transform = Some((element, transform));
 
-		element.render_to_vello(scene, transform, render_params);
+		draw_content(scene);
 	} else if let Some((mask_element, transform_mask)) = *mask_element_and_transform {
 		if !next_clips {
 			*mask_element_and_transform = None;
 		}
-		if !layer {
-			bounds = element.bounding_box(transform, true);
-		}
 
-		if let RenderBoundingBox::Rectangle(bounds) = bounds {
-			let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-
+		if let Some(rect) = layer_rect {
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 			mask_element.render_to_vello(scene, transform_mask, &render_params.for_clipper());
 			scene.push_layer(
@@ -933,14 +1243,14 @@ fn render_graphic_item_to_vello<'a>(
 			);
 		}
 
-		element.render_to_vello(scene, transform, render_params);
+		draw_content(scene);
 
-		if matches!(bounds, RenderBoundingBox::Rectangle(_)) {
+		if layer_rect.is_some() {
 			scene.pop_layer();
 			scene.pop_layer();
 		}
 	} else {
-		element.render_to_vello(scene, transform, render_params);
+		draw_content(scene);
 	}
 
 	if layer {
@@ -957,6 +1267,13 @@ fn collect_graphic_item_metadata(item: ItemRef<'_, Graphic>, metadata: &mut Rend
 
 	let mut footprint = footprint;
 	footprint.transform *= item_transform;
+
+	if let Some(layer) = item.layer() {
+		let reach = item.attribute::<Effects>(ATTR_EFFECTS).map_or(0., Effects::reach) + nested_effects_reach(element);
+		if reach > 0. {
+			metadata.effects_reach.insert(layer, reach);
+		}
+	}
 
 	// An anonymous wrapper item (no layer tag) still recurses to reach nested content with "editor:layer_path" attributes
 	element.collect_metadata(metadata, footprint, item.layer(), child_appearance);
@@ -1448,12 +1765,12 @@ impl Render for List<Graphic> {
 }
 
 /// Emits one vector shape as SVG, with no wrapping group of its own.
-fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &mut SvgRender, render_params: &RenderParams) {
+/// When `filtered`, the group applying the item's effects takes its opacity and blend mode instead.
+fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered: bool, render: &mut SvgRender, render_params: &RenderParams) {
 	let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let blend_mode_attr: BlendMode = if filtered { BlendMode::default() } else { item.attribute_cloned_or_default(ATTR_BLEND_MODE) };
+	let opacity = if filtered { 1. } else { item.compositing(render_params).opacity_without_effects() };
 
 	// The item's own declared appearance wins over one cascading down from an ancestor
 	let own_appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared);
@@ -1627,7 +1944,6 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		attributes.push_val(stroke_shape_attribute);
 		attributes.push_val(stroke_attribute);
 
-		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 		if opacity < 1. {
 			attributes.push("opacity", opacity.to_string());
 		}
@@ -1660,7 +1976,10 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	let mut masked_by = None;
 
 	if next_clips && clip_mask_state.is_none() {
-		let masker = Graphic::VectorList(List::new_from_item(Item::from_parts(vector.clone(), item.clone_item_attributes())));
+		// The shadows and glows the masker casts don't widen the area its clipped content shows in
+		let mut masker = Item::from_parts(vector.clone(), item.clone_item_attributes());
+		masker.remove_attribute::<Effects>(ATTR_EFFECTS);
+		let masker = Graphic::VectorList(List::new_from_item(masker));
 		let mask_type = if masker.can_reduce_to_clip_path() { MaskType::Clip } else { MaskType::Mask };
 		let uuid = generate_uuid();
 
@@ -1678,22 +1997,39 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 		masked_by = Some((mask_type.to_attribute(), format!("url(#mask-{uuid})")));
 	}
 
+	let compositing = item.compositing(render_params);
+	let render_shape = |render: &mut SvgRender| {
+		let filter = compositing.svg_filter(render, || {
+			let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared);
+			let stroke = appearance.or(render_params.inherited_appearance.as_ref()).and_then(|appearance| appearance.fill_and_stroke().stroke);
+			let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
+
+			vector
+				.stroke_inclusive_bounding_box_with_transform(paths, item_transform, stroke.as_ref())
+				.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle)
+		});
+		let filtered = filter.is_some();
+		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+
+		render_svg_through_filter(render, filter, compositing.opacity, blend_mode, |render| {
+			render_vector_shape_svg(item, vector, filtered, render, render_params)
+		});
+	};
+
 	// Item geometry is baked into the path data instead of a group transform, so mask coordinates line up
 	match masked_by {
-		Some((attribute, selector)) => render.parent_tag(
-			"g",
-			|attributes| attributes.push(attribute, selector),
-			|render| render_vector_shape_svg(item, vector, render, render_params),
-		),
-		None => render_vector_shape_svg(item, vector, render, render_params),
+		Some((attribute, selector)) => render.parent_tag("g", |attributes| attributes.push(attribute, selector), render_shape),
+		None => render_shape(render),
 	}
 }
 
-/// Whether `bounds` placed by `transform` overlaps the scene once widened by `inflation`, which is measured in the space `inflation_transform` maps from.
-fn overlaps_scene(scene: &VelloSceneBuilder, bounds: [DVec2; 2], transform: DAffine2, inflation: f64, inflation_transform: DAffine2) -> bool {
+/// Whether `bounds` placed by `transform` overlaps the scene once widened by `inflation`, measured in the space `inflation_transform` maps from, and by its effects' `reach`, measured in the scene's space.
+fn overlaps_scene(scene: &VelloSceneBuilder, bounds: [DVec2; 2], transform: DAffine2, inflation: f64, inflation_transform: DAffine2, reach: f64) -> bool {
 	let view = DAffine2::from_cols_array(&scene.view().as_coeffs());
 	let (largest_scale, _) = singular_values(view * inflation_transform);
-	let inflation = inflation * largest_scale;
+	let (largest_view_scale, _) = singular_values(view);
+	let inflation = inflation * largest_scale + reach * largest_view_scale;
 	let [min, max] = (view * transform * Quad::from_box(bounds)).bounding_box();
 
 	min.x - inflation < scene.width() as f64 && max.x + inflation > 0. && min.y - inflation < scene.height() as f64 && max.y + inflation > 0.
@@ -1715,8 +2051,7 @@ fn render_vector_item_to_vello(
 	let element_paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let compositing = item.compositing(render_params);
 	let multiplied_transform = parent_transform * item_transform;
 
 	// The item's own declared appearance wins over one cascading down from an ancestor
@@ -1768,7 +2103,7 @@ fn render_vector_item_to_vello(
 
 	// Vello only culls after expanding strokes and flattening paths, so an item outside the scene is skipped before any of that work
 	let stroke_inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true)).max(get_outline_styles(render_params).0.width);
-	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform) {
+	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform, compositing.reach()) {
 		if next_clips && clip_masker.is_none() {
 			*clip_masker = Some(List::new_from_item(Item::from_parts(element.clone(), item.clone_item_attributes())));
 		} else if clip_masker.is_some() && !next_clips {
@@ -1780,11 +2115,11 @@ fn render_vector_item_to_vello(
 	let Some(placed) = item.placed_contours(applied_stroke_transform) else { return };
 	let path = placed.path();
 
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+	let opacity = compositing.opacity;
 	let needs_blend_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
 
-	// Shared by the blend and clipping layers below, so it is only worth deriving when one of them is pushed
-	let layer_geometry = (needs_blend_layer || clip_masker.is_some()).then(|| {
+	// Shared by the layers and effects group below, so it is only worth deriving when one of them is pushed
+	let layer_geometry = (needs_blend_layer || clip_masker.is_some() || compositing.effects.is_some()).then(|| {
 		// `max_aabb_inflation` is in `applied_stroke_transform`-space; `layer_bounds` is path-local and `push_layer` re-applies `multiplied_transform`.
 		// Divide by the smaller axial scale to cover the stroke in both axes after Vello's transform. Skip on a degenerate transform.
 		let (_, smallest_scale) = singular_values(applied_stroke_transform);
@@ -1798,17 +2133,35 @@ fn render_vector_item_to_vello(
 		)
 	});
 
+	// The layers also cover what the effects paint past the content, which reaches a length in the scene's space
+	let effects_inflation = match singular_values(multiplied_transform) {
+		(_, smallest_scale) if smallest_scale > 0. => compositing.reach() / smallest_scale,
+		_ => 0.,
+	};
+	let layer_rect_with_effects = |layer_rect: kurbo::Rect| layer_rect.inflate(effects_inflation, effects_inflation);
+
 	if needs_blend_layer && let Some((layer_affine, layer_rect)) = layer_geometry {
 		layer = true;
-		scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver), opacity, layer_affine, &layer_rect);
+		scene.push_layer(
+			peniko::Fill::NonZero,
+			peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
+			opacity,
+			layer_affine,
+			&layer_rect_with_effects(layer_rect),
+		);
 	}
 
 	// Pushed inside the blend layer so the mask cuts this item's own paint rather than the composited result
 	let mut clip_layers = false;
 	if next_clips && clip_masker.is_none() {
-		*clip_masker = Some(List::new_from_item(Item::from_parts(element.clone(), item.clone_item_attributes())));
+		// The shadows and glows the masker casts don't widen the area its clipped content shows in
+		let mut masker = Item::from_parts(element.clone(), item.clone_item_attributes());
+		masker.remove_attribute::<Effects>(ATTR_EFFECTS);
+		*clip_masker = Some(List::new_from_item(masker));
 	} else if let Some(masker) = clip_masker.as_ref() {
 		if let Some((layer_affine, layer_rect)) = layer_geometry {
+			let layer_rect = layer_rect_with_effects(layer_rect);
+
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., layer_affine, &layer_rect);
 			masker.render_to_vello(scene, parent_transform, &render_params.for_clipper());
 			scene.push_layer(
@@ -1979,76 +2332,79 @@ fn render_vector_item_to_vello(
 			scene.fill_path(peniko::Fill::NonZero, element_affine, outline_color_peniko, None, &outline);
 		}
 		_ => {
-			if use_layer {
-				let cloned_element = element.clone();
+			let effects_bounds = || layer_geometry.map_or(RenderBoundingBox::None, |(layer_affine, layer_rect)| rect_bounds(layer_affine.transform_rect_bbox(layer_rect)));
+			compositing.draw_with_effects(scene, effects_bounds, |scene| {
+				if use_layer {
+					let cloned_element = element.clone();
 
-				// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
-				// The outer opacity/blend layer (above) handles the user-set opacity.
-				let mut mask_item = Item::new_from_element(cloned_element)
-					.with_attribute(ATTR_PATHS, element_paths.clone())
-					.with_attribute(ATTR_GEOMETRY_CACHE, item.geometry_cache())
-					.with_attribute(ATTR_TRANSFORM, item_transform);
-				let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
-				mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
-				let vector_list = List::new_from_item(mask_item);
+					// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
+					// The outer opacity/blend layer (above) handles the user-set opacity.
+					let mut mask_item = Item::new_from_element(cloned_element)
+						.with_attribute(ATTR_PATHS, element_paths.clone())
+						.with_attribute(ATTR_GEOMETRY_CACHE, item.geometry_cache())
+						.with_attribute(ATTR_TRANSFORM, item_transform);
+					let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
+					mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
+					let vector_list = List::new_from_item(mask_item);
 
-				let bounds = contours_bounding_box(&contours, multiplied_transform).unwrap_or(layer_bounds);
-				// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
-				let inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true));
-				let (largest_scale, _) = singular_values(applied_stroke_transform);
-				let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
-				let bounds = quad.bounding_box();
-				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+					let bounds = contours_bounding_box(&contours, multiplied_transform).unwrap_or(layer_bounds);
+					// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
+					let inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true));
+					let (largest_scale, _) = singular_values(applied_stroke_transform);
+					let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
+					let bounds = quad.bounding_box();
+					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-				let compose = if stroke.is_some_and(|x| x.align == StrokeAlign::Outside) {
-					peniko::Compose::SrcOut
+					let compose = if stroke.is_some_and(|x| x.align == StrokeAlign::Outside) {
+						peniko::Compose::SrcOut
+					} else {
+						peniko::Compose::SrcIn
+					};
+
+					if wants_stroke_below {
+						scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+						vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
+						scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+
+						do_stroke(scene, 2.);
+
+						scene.pop_layer();
+						scene.pop_layer();
+
+						do_fill(scene);
+					} else {
+						// Fill first (unclipped), then stroke (clipped) above
+						do_fill(scene);
+
+						scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+						vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
+						scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+
+						do_stroke(scene, 2.);
+
+						scene.pop_layer();
+						scene.pop_layer();
+					}
 				} else {
-					peniko::Compose::SrcIn
-				};
+					// Non-aligned strokes or open paths: default order behavior
+					enum Op {
+						Fill,
+						Stroke,
+					}
 
-				if wants_stroke_below {
-					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-					vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
-					scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+					let order = match wants_stroke_below {
+						true => [Op::Stroke, Op::Fill],
+						false => [Op::Fill, Op::Stroke], // Default
+					};
 
-					do_stroke(scene, 2.);
-
-					scene.pop_layer();
-					scene.pop_layer();
-
-					do_fill(scene);
-				} else {
-					// Fill first (unclipped), then stroke (clipped) above
-					do_fill(scene);
-
-					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-					vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
-					scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
-
-					do_stroke(scene, 2.);
-
-					scene.pop_layer();
-					scene.pop_layer();
-				}
-			} else {
-				// Non-aligned strokes or open paths: default order behavior
-				enum Op {
-					Fill,
-					Stroke,
-				}
-
-				let order = match wants_stroke_below {
-					true => [Op::Stroke, Op::Fill],
-					false => [Op::Fill, Op::Stroke], // Default
-				};
-
-				for operation in &order {
-					match operation {
-						Op::Fill => do_fill(scene),
-						Op::Stroke => do_stroke(scene, 1.),
+					for operation in &order {
+						match operation {
+							Op::Fill => do_fill(scene),
+							Op::Stroke => do_stroke(scene, 1.),
+						}
 					}
 				}
-			}
+			});
 		}
 	}
 
@@ -2360,13 +2716,27 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let compositing = item.compositing(render_params);
 
 	if image.data.is_empty() {
 		return;
 	}
 
+	let filter = compositing.svg_filter(render, || RenderBoundingBox::Rectangle((transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box()));
+
+	// A filter's wrapping group takes the opacity and blend mode instead
+	let (opacity, blend_mode) = match filter {
+		Some(_) => (1., BlendMode::default()),
+		None => (compositing.opacity_without_effects(), blend_mode_attr),
+	};
+
+	render_svg_through_filter(render, filter, compositing.opacity, blend_mode_attr, |render| {
+		render_raster_cpu_image_svg(image, transform, opacity, blend_mode, render, render_params)
+	});
+}
+
+/// Emits a CPU raster's image as SVG, either as a placeholder for a canvas or as an embedded PNG.
+fn render_raster_cpu_image_svg(image: &Raster<CPU>, transform: DAffine2, opacity: f32, blend_mode: BlendMode, render: &mut SvgRender, render_params: &RenderParams) {
 	if render_params.to_canvas() {
 		// An image drawn smaller than its pixels is sent at a resolution halved enough times to still cover each screen pixel
 		let document_to_screen = DAffine2::from_scale(DVec2::splat(render_params.canvas_image_scale));
@@ -2395,13 +2765,12 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 				attributes.push("width", size.x.to_string());
 				attributes.push("height", size.y.to_string());
 
-				let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 				if opacity < 1. {
 					attributes.push("opacity", opacity.to_string());
 				}
 
-				if blend_mode_attr != BlendMode::default() {
-					attributes.push("style", blend_mode_attr.render());
+				if blend_mode != BlendMode::default() {
+					attributes.push("style", blend_mode.render());
 				}
 			},
 			|render| {
@@ -2425,12 +2794,11 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 				attributes.push(ATTR_TRANSFORM, matrix);
 			}
 
-			let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 			if opacity < 1. {
 				attributes.push("opacity", opacity.to_string());
 			}
-			if blend_mode_attr != BlendMode::default() {
-				attributes.push("style", blend_mode_attr.render());
+			if blend_mode != BlendMode::default() {
+				attributes.push("style", blend_mode.render());
 			}
 		});
 	}
@@ -2444,11 +2812,10 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	}
 
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let compositing = item.compositing(render_params);
 	let blend_mode = blend_mode_attr.to_peniko();
 
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+	let opacity = compositing.opacity;
 	let mut layer = false;
 
 	let whole_bounds = || match item {
@@ -2459,7 +2826,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 		&& let RenderBoundingBox::Rectangle(bounds) = whole_bounds()
 	{
 		let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-		let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+		let rect = inflate_bounds(bounds, compositing.reach());
 		scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 		layer = true;
 	}
@@ -2480,7 +2847,10 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 
-	scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
+	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
+	compositing.draw_with_effects(scene, item_bounds, |scene| {
+		scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
+	});
 
 	if layer {
 		scene.pop_layer();
@@ -2572,8 +2942,7 @@ impl Render for List<Raster<GPU>> {
 fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(raster) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let compositing = item.compositing(render_params);
 	let clip_attr: bool = item.attribute_cloned_or_default(ATTR_CLIPPING_MASK);
 	let blend_mode = match render_params.render_mode {
 		RenderMode::Outline => peniko::Mix::Normal,
@@ -2586,13 +2955,13 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 		ItemRef::ListItem(list, _) => list.bounding_box(transform, true),
 		ItemRef::Item(item) => item.bounding_box(transform, true),
 	};
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+	let opacity = compositing.opacity;
 	let any_nondefault = blend_mode_attr != BlendMode::default() || opacity < 1. || clip_attr;
 	if (render_params.render_mode != RenderMode::Outline && any_nondefault)
 		&& let RenderBoundingBox::Rectangle(bounds) = whole_bounds()
 	{
 		let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-		let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+		let rect = inflate_bounds(bounds, compositing.reach());
 		scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 		layer = true;
 	}
@@ -2615,7 +2984,11 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
-	scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
+
+	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
+	compositing.draw_with_effects(scene, item_bounds, |scene| {
+		scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
+	});
 
 	if layer {
 		scene.pop_layer()
@@ -2680,10 +3053,9 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBuilder, render_params: &RenderParams) {
 	let Some(color) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let compositing = item.compositing(render_params);
 	let blend_mode = blend_mode_attr.to_peniko();
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+	let opacity = compositing.opacity;
 
 	let vello_color = SRGBA8::from(*color).to_peniko_color();
 
@@ -2693,7 +3065,7 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBu
 		layer = true;
 	}
 
-	scene.fill_viewport(vello_color, None);
+	compositing.draw_with_effects(scene, || RenderBoundingBox::Infinite, |scene| scene.fill_viewport(vello_color, None));
 
 	if layer {
 		scene.pop_layer();
@@ -2873,12 +3245,11 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 		let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-		let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-		let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+		let compositing = item.compositing(render_params);
 		let gradient_transform = parent_transform * transform;
 
 		let blend_mode = blend_mode_attr.to_peniko();
-		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+		let opacity = compositing.opacity;
 
 		let settings = gradient_settings_from_item(item);
 		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
@@ -2904,7 +3275,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 			layer = true;
 		}
 
-		scene.fill_viewport(&fill, Some(brush_transform));
+		compositing.draw_with_effects(scene, || RenderBoundingBox::Infinite, |scene| scene.fill_viewport(&fill, Some(brush_transform)));
 
 		if layer {
 			scene.pop_layer();
@@ -3164,8 +3535,7 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	}
 
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
+	let compositing = item.compositing(render_params);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let font: Resource = {
 		let f: Resource = item.attribute_cloned_or_default(ATTR_FONT);
@@ -3178,7 +3548,6 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	let max_height = item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.);
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 	let typesetting = text_nodes::TypesettingConfig {
 		font_size,
@@ -3191,10 +3560,16 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	};
 
 	let mut glyph_paths: Vec<String> = Vec::new();
+	let mut layout_bounds = RenderBoundingBox::None;
 
 	text_nodes::TextContext::with_thread_local(|ctx| {
 		let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 		let tilt_tan = letter_tilt.to_radians().tan();
+
+		// Padded by the font size, since glyphs can overhang their layout box
+		let alignment_width = max_width.unwrap_or(layout.full_width() as f64);
+		let padded = Quad::from_box([DVec2::splat(-font_size), DVec2::new(alignment_width, layout.height() as f64) + font_size]);
+		layout_bounds = RenderBoundingBox::Rectangle((transform * padded).bounding_box());
 
 		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
 			draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
@@ -3207,37 +3582,47 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		return;
 	}
 
-	// Wrap all glyph <path> elements in a <g> with the item's transform/opacity/blend-mode.
-	render.parent_tag(
-		"g",
-		|attributes| {
-			let matrix = format_transform_matrix(transform);
-			if !matrix.is_empty() {
-				attributes.push("transform", matrix);
-			}
-			if opacity < 1. {
-				attributes.push("opacity", opacity.to_string());
-			}
-			if blend_mode_attr != BlendMode::default() {
-				attributes.push("style", blend_mode_attr.render());
-			}
-		},
-		|render| {
-			for path_d in glyph_paths {
-				render.leaf_tag("path", |attributes| {
-					attributes.push("d", path_d);
-					if let RenderMode::Outline = render_params.render_mode {
-						attributes.push("fill", "none");
-						attributes.push("stroke", "black");
-						attributes.push("stroke-width", "1");
-					} else {
-						attributes.push("fill", "black");
-						attributes.push("fill-rule", "nonzero");
-					}
-				});
-			}
-		},
-	);
+	let filter = compositing.svg_filter(render, || layout_bounds);
+	let filtered = filter.is_some();
+
+	// Wrap all glyph <path> elements in a <g> with the item's transform/opacity/blend-mode, which a filter's wrapping group takes instead
+	render_svg_through_filter(render, filter, compositing.opacity, blend_mode_attr, |render| {
+		render.parent_tag(
+			"g",
+			|attributes| {
+				let matrix = format_transform_matrix(transform);
+				if !matrix.is_empty() {
+					attributes.push("transform", matrix);
+				}
+				if filtered {
+					return;
+				}
+
+				let opacity = compositing.opacity_without_effects();
+				if opacity < 1. {
+					attributes.push("opacity", opacity.to_string());
+				}
+				if blend_mode_attr != BlendMode::default() {
+					attributes.push("style", blend_mode_attr.render());
+				}
+			},
+			|render| {
+				for path_d in glyph_paths {
+					render.leaf_tag("path", |attributes| {
+						attributes.push("d", path_d);
+						if let RenderMode::Outline = render_params.render_mode {
+							attributes.push("fill", "none");
+							attributes.push("stroke", "black");
+							attributes.push("stroke-width", "1");
+						} else {
+							attributes.push("fill", "black");
+							attributes.push("fill-rule", "nonzero");
+						}
+					});
+				}
+			},
+		);
+	});
 }
 
 /// Draws one item of text content into the Vello scene, laying out its glyphs under the item's styling.
@@ -3260,9 +3645,8 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 	let letter_tilt: f64 = item.attribute_cloned_or(ATTR_LETTER_TILT, 0.);
 	let align: text_nodes::TextAlign = item.attribute_cloned_or_default(ATTR_TEXT_ALIGN);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
-	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
+	let compositing = item.compositing(render_params);
+	let opacity = compositing.opacity;
 
 	let typesetting = text_nodes::TypesettingConfig {
 		font_size,
@@ -3279,28 +3663,38 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 	text_nodes::TextContext::with_thread_local(|ctx| {
 		let Some(layout) = ctx.layout_text(text, &font, typesetting) else { return };
 
-		let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
-		if needs_layer {
+		let transformed_bounds = || {
 			let alignment_width = max_width.map(|w| w as f32).unwrap_or_else(|| layout.full_width());
-			let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
 			let padding = font_size;
 			let bounds = kurbo::Rect::new(-padding, -padding, alignment_width as f64 + padding, layout.height() as f64 + padding);
-			let transformed_bounds = affine.transform_rect_bbox(bounds);
-			scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds);
+			affine.transform_rect_bbox(bounds)
+		};
+
+		let needs_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
+		if needs_layer {
+			let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
+			let reach = compositing.reach();
+			scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds().inflate(reach, reach));
 		}
 
 		let tilt_tan = letter_tilt.to_radians().tan();
 
-		text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-			draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
-				if let RenderMode::Outline = render_params.render_mode {
-					let (outline_stroke, outline_color) = get_outline_styles(render_params);
-					scene.stroke(&outline_stroke, affine, outline_color, None, bez_path);
-				} else {
-					scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
-				}
-			});
-		});
+		compositing.draw_with_effects(
+			scene,
+			|| rect_bounds(transformed_bounds()),
+			|scene| {
+				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
+					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
+						if let RenderMode::Outline = render_params.render_mode {
+							let (outline_stroke, outline_color) = get_outline_styles(render_params);
+							scene.stroke(&outline_stroke, affine, outline_color, None, bez_path);
+						} else {
+							scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
+						}
+					});
+				});
+			},
+		);
 
 		if needs_layer {
 			scene.pop_layer();
@@ -3538,5 +3932,50 @@ mod tests {
 		// Zoomed in, or without a scale as in thumbnails, the full resolution is sent
 		assert_eq!(halvings(4.), [0]);
 		assert_eq!(halvings(0.), [0]);
+	}
+
+	#[test]
+	fn svg_effects_filters_measure_lengths_in_the_document() {
+		use graphic_types::EffectOperation;
+
+		let shadow = EffectOperation::DropShadow {
+			color: Color::BLACK,
+			offset: DVec2::new(4., 0.),
+			blur: 2.,
+			spread: 0.,
+		};
+		let mut defs = String::new();
+
+		// A user space drawn at twice the document's scale halves every length measured in it, so the shadow reaches 5 units past the content
+		write_svg_effects_filter(
+			&mut defs,
+			&Effects::from_operations([shadow]),
+			1.,
+			[DVec2::ZERO, DVec2::splat(10.)],
+			DAffine2::from_scale(DVec2::splat(2.)),
+		)
+		.unwrap();
+
+		assert!(defs.contains(r#"dx="2" dy="0""#), "{defs}");
+		assert!(defs.contains(r#"stdDeviation="1""#), "{defs}");
+		assert!(defs.contains(r#"x="-5" y="-5" width="20" height="20""#), "{defs}");
+	}
+
+	#[test]
+	fn svg_effects_filters_end_with_the_image_shown() {
+		use graphic_types::EffectOperation;
+
+		let blur = EffectOperation::Blur {
+			radius: 3.,
+			box_blur: false,
+			gamma: false,
+		};
+		let mut defs = String::new();
+		write_svg_effects_filter(&mut defs, &Effects::from_operations([blur]), 0.5, [DVec2::ZERO, DVec2::ONE], DAffine2::IDENTITY).unwrap();
+
+		// The fill fades a copy of the content, which is blurred in linear light and passed through as the filter's last result
+		assert!(defs.contains(r#"<feFuncA type="linear" slope="0.5" />"#), "{defs}");
+		assert!(defs.contains(r#"in="effect-1" stdDeviation="3" color-interpolation-filters="linearRGB""#), "{defs}");
+		assert!(defs.ends_with(r#"<feOffset in="effect-2" result="effect-4" /></filter>"#), "{defs}");
 	}
 }
