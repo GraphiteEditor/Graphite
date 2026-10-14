@@ -9,7 +9,8 @@ pub struct OverlaysMessageContext<'a> {
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct OverlaysMessageHandler {
-	pub overlay_providers: HashSet<OverlayProvider>,
+	/// In the order they were added, which is the order they draw in.
+	pub overlay_providers: Vec<OverlayProvider>,
 	#[cfg(target_family = "wasm")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	#[cfg(target_family = "wasm")]
@@ -100,10 +101,12 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let _ = (responses, visibility_settings, viewport);
 			}
 			OverlaysMessage::AddProvider { provider: message } => {
-				self.overlay_providers.insert(message);
+				// A provider added again moves to the end, so it draws on top from then on
+				self.overlay_providers.retain(|provider| !std::ptr::fn_addr_eq(*provider, message));
+				self.overlay_providers.push(message);
 			}
 			OverlaysMessage::RemoveProvider { provider: message } => {
-				self.overlay_providers.remove(&message);
+				self.overlay_providers.retain(|provider| !std::ptr::fn_addr_eq(*provider, message));
 			}
 		}
 	}

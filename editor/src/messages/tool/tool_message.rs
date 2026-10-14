@@ -1,4 +1,5 @@
 use super::utility_types::ToolType;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use graphene_std::raster::color::Color;
@@ -75,6 +76,9 @@ pub enum ToolMessage {
 		tool_type: ToolType,
 	},
 	DeactivateTools,
+	DrawSnappingOverlays {
+		context: OverlayContext,
+	},
 	InitTools,
 	RefreshToolOptions,
 	RefreshToolShelf,
@@ -86,6 +90,7 @@ pub enum ToolMessage {
 	SelectRandomWorkingColor {
 		primary: bool,
 	},
+	SnappingTick,
 	ToggleSelectVsPath,
 	SwapColors,
 	UpdateCursor,

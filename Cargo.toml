@@ -114,6 +114,7 @@ graphite-editor = { path = "editor" }
 control-protocol = { path = "libraries/control-protocol" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
 ipsum = { path = "libraries/ipsum" }
+snapping = { path = "libraries/snapping" }
 
 # Workspace dependencies
 rustc-hash = "2.0"

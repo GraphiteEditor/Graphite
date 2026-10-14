@@ -11,7 +11,10 @@ pub struct Settings {
 	pub artboards: bool,
 	pub tangents: bool,
 	pub perpendiculars: bool,
-	pub alignment: bool,
+	/// Lines along each axis through awake points, and through the point a segment is drawn from.
+	pub point_alignment: bool,
+	/// Lines along each axis through the corners and centers of awake boxes.
+	pub box_alignment: bool,
 	pub extensions: bool,
 	/// Parallels, right angles, lines through two points, and the points between them.
 	pub constructions: bool,
@@ -31,7 +34,8 @@ impl Default for Settings {
 			artboards: true,
 			tangents: true,
 			perpendiculars: true,
-			alignment: true,
+			point_alignment: true,
+			box_alignment: true,
 			extensions: true,
 			constructions: true,
 			equal_lengths: true,
