@@ -799,8 +799,27 @@ impl Fsm for SelectToolFsmState {
 					// Artboards are included since they're needed for quick measurement, but will be filtered out for selection later on
 					let click = document.click_list_with_artboards(input, viewport).last();
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
-					if let Some(layer) = not_selected_click {
-						if overlay_context.visibility_settings.hover_outline() && !document.network_interface.is_artboard(&layer.to_node(), &[]) {
+					if let Some(clicked) = not_selected_click {
+						let clicked_artboard = document.network_interface.is_artboard(&clicked.to_node(), &[]);
+						let outlining = overlay_context.visibility_settings.hover_outline() && !clicked_artboard;
+
+						// Measure with Alt held down
+						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
+						let measuring = overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize);
+
+						// The layer the hover outline shows, which quick measurement also measures to, found only when either is drawn
+						let layer = (outlining || measuring).then(|| {
+							if clicked_artboard {
+								return clicked;
+							}
+							match tool_data.nested_selection_behavior {
+								NestedSelectionBehavior::Deepest => document.find_deepest(&[clicked]),
+								NestedSelectionBehavior::Shallowest => layer_selected_shallowest(clicked, document),
+							}
+							.unwrap_or(clicked)
+						});
+
+						if outlining && let Some(layer) = layer {
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
@@ -810,16 +829,11 @@ impl Fsm for SelectToolFsmState {
 									draw_layer_outline(&mut overlay_context, document, layer, color);
 								}
 							};
-							let layer = match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Deepest => document.find_deepest(&[layer]),
-								NestedSelectionBehavior::Shallowest => layer_selected_shallowest(layer, document),
-							}
-							.unwrap_or(layer);
 							hover_overlay_draw(layer, None);
 							if matches!(tool_data.nested_selection_behavior, NestedSelectionBehavior::Shallowest) {
 								let mut selected = document.network_interface.selected_nodes();
 								selected.add_selected_nodes(vec![layer.to_node()]);
-								if let Some(new_selected) = click.unwrap().ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
+								if let Some(new_selected) = clicked.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 									ancestor
 										.parent(document.metadata())
 										.is_some_and(|parent| selected.selected_layers_contains(parent, document.metadata()))
@@ -829,9 +843,7 @@ impl Fsm for SelectToolFsmState {
 							}
 						}
 
-						// Measure with Alt held down
-						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-						if overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
+						if measuring && let Some(layer) = layer {
 							// Compute document-space bounding box (AABB) of all selected visible & unlocked layers
 							let selected_bounds_doc_space = document
 								.network_interface
@@ -844,16 +856,14 @@ impl Fsm for SelectToolFsmState {
 								// Combine all individual bounding boxes into one overall bounding box that contains all selected layers
 								.reduce(Rect::combine_bounds);
 
-							// Compute document-space bounding box (AABB) of the currently hovered layer
-							let hovered_bounds_doc_space = document.metadata().bounding_box_document(layer);
+							// Compute document-space bounding box (AABB) of the hovered layer, or of the clicked layer within it if it's part of the selection
+							let hovered_selected = document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata());
+							let hovered_bounds_doc_space = document.metadata().bounding_box_document(if hovered_selected { clicked } else { layer });
 
 							// If both selected and hovered bounds exist, overlay measurement lines
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_doc_space, hovered_bounds_doc_space.map(Rect::from_box)) {
-								// Both `selected_bounds` and `hovered_bounds` are in document space.
-								// To correctly render overlay lines in the UI (which is in viewport space), we need to transform both rectangles from document to viewport space.
-								// Therefore, we pass `document_to_viewport` as both the `transform` and `document_to_viewport` parameters.
 								let document_to_viewport = document.metadata().document_to_viewport;
-								measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
+								measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, &mut overlay_context);
 							}
 						}
 					}
