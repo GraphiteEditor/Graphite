@@ -2,7 +2,6 @@
 use crate::EDITOR_HAS_CRASHED;
 use crate::EDITOR_WRAPPER;
 use crate::editor_wrapper::EditorWrapper;
-use crate::native_communication::RasterizedImage;
 #[cfg(feature = "editor")]
 use editor::messages::input_mapper::utility_types::keyboard::Key;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
@@ -86,12 +85,15 @@ pub(crate) fn wake_runtime() {
 }
 
 thread_local! {
-	// The placeholder IDs of the last rendered artwork's images, each with its canvas on `window.imageCanvases`
-	static SHOWN_IMAGE_IDS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+	/// The canvases put on `window.imageCanvases` for images, the only ones dropped from it here, since other canvases share it.
+	static IMAGE_CANVAS_IDS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
-/// Blits each rasterized image to a canvas registered on `window.imageCanvases`
-pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<Item = &'a RasterizedImage>) {
+/// A canvas image's ID, width, height, and RGBA8 pixels.
+pub(crate) type CanvasImagePixels<'a> = (u64, u32, u32, &'a [u8]);
+
+/// Blits each new image to a canvas registered on `window.imageCanvases`, and drops the image canvases no render uses anymore.
+pub(crate) fn render_image_data_to_canvases<'a>(images: impl IntoIterator<Item = CanvasImagePixels<'a>>, canvas_ids_in_use: &[u64]) {
 	let window = match window() {
 		Some(window) => window,
 		None => {
@@ -116,19 +118,18 @@ pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<It
 	};
 	let canvases_obj = Object::from(canvases_obj);
 
-	// The canvases of images the previous render showed and this one doesn't are freed
-	let image_data = image_data.into_iter().collect::<Vec<_>>();
-	let shown = image_data.iter().map(|image| image.id).collect::<HashSet<_>>();
-	let previously_shown = SHOWN_IMAGE_IDS.replace(shown.clone());
-	for stale in previously_shown.difference(&shown) {
-		if Reflect::delete_property(&canvases_obj, &JsValue::from_str(&format!("image-{stale}"))).is_err() {
-			error!("Failed to free the canvas of image {stale}");
-		}
-	}
+	IMAGE_CANVAS_IDS.with_borrow_mut(|registered| {
+		let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
+		registered.retain(|id| {
+			let used = in_use.contains(id);
+			if !used {
+				let _ = Reflect::delete_property(&canvases_obj, &JsValue::from_str(&format!("image-{id}")));
+			}
+			used
+		});
+	});
 
-	for image in image_data {
-		let (placeholder_id, width, height) = (image.id, image.width, image.height);
-		let pixels = image.pixels.as_slice();
+	for (placeholder_id, width, height, pixels) in images {
 		// Matches the renderer's `data-canvas-placeholder` value
 		let canvas_name = format!("image-{placeholder_id}");
 		let js_key = JsValue::from_str(&canvas_name);
@@ -168,16 +169,10 @@ pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<It
 
 		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
 			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
+			continue;
 		}
+		IMAGE_CANVAS_IDS.with_borrow_mut(|registered| registered.insert(placeholder_id));
 	}
-}
-
-pub(crate) fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
-	use std::collections::hash_map::DefaultHasher;
-	use std::hash::Hasher;
-	let mut hasher = DefaultHasher::new();
-	t.hash(&mut hasher);
-	hasher.finish()
 }
 
 /// Translate a keyboard key from its JS name to its Rust `Key` enum

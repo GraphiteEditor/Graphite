@@ -101,7 +101,7 @@ fn render(
 
 			RenderOutputType::Svg {
 				svg: output.svg,
-				image_data: output.image_data.into_iter().map(|(id, raster)| (id, raster.into_data())).collect(),
+				image_data: output.image_data.into_iter().collect(),
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
@@ -149,12 +149,19 @@ fn create_context(
 		..logical_viewport
 	};
 
+	// Rounded up so no image is sent at less than the resolution the screen shows it at
+	let canvas_image_scale = match render_output_type {
+		RenderOutputTypeRequest::Svg => footprint.scale_magnitudes().max_element().log2().ceil().exp2(),
+		RenderOutputTypeRequest::Vello => 0.,
+	};
+
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
 		for_export: render_config.for_export,
 		render_output_type,
 		scale: render_config.scale,
 		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),
+		canvas_image_scale,
 		..Default::default()
 	};
 

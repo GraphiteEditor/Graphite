@@ -104,6 +104,8 @@ pub struct NodeGraphExecutor {
 	/// Documents whose gradient migration pass already ran this session, so entries that failed to measure
 	/// (kept pending for a retry on the next open) don't re-run the pass on every render request.
 	gradient_migration_attempted: HashSet<DocumentId>,
+	/// The canvas images the frontend holds, so a render sends only those it lacks.
+	canvas_images_sent: HashSet<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -148,8 +150,14 @@ impl NodeGraphExecutor {
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
 			pending: None,
+			canvas_images_sent: HashSet::new(),
 		};
 		(node_executor, node_runtime)
+	}
+
+	/// Forgets which canvas images the frontend holds, for a frontend that started over without them.
+	pub fn forget_canvas_images(&mut self) {
+		self.canvas_images_sent.clear();
 	}
 
 	/// Allows the test runner to see if any more executions have been queued.
@@ -861,18 +869,28 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Convert each linear-light `Image<Color>` into gamma sRGB bytes (the DOM boundary form) before dispatching.
+				// The frontend keeps the canvases it was sent until a render stops using them, so only the images it lacks are sent
+				let canvas_ids_in_use: Vec<u64> = image_data.iter().map(|(id, _)| *id).collect();
+				let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
+				self.canvas_images_sent.retain(|id| in_use.contains(id));
+
+				// Convert each linear-light image, at its display resolution, into gamma sRGB bytes (the DOM boundary form)
 				let rgba8_bytes = |&color: &_| <[u8; 4]>::from(SRGBA8::from(color));
 				let image_data = image_data
 					.into_iter()
-					.map(|(id, image)| RasterizedImage {
-						id,
-						width: image.width,
-						height: image.height,
-						pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+					.filter(|(id, _)| self.canvas_images_sent.insert(*id))
+					.map(|(id, canvas_image)| {
+						let image = canvas_image.raster.halved(canvas_image.halvings);
+						RasterizedImage {
+							id,
+							width: image.width,
+							height: image.height,
+							pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+						}
 					})
 					.collect();
-				responses.add(FrontendMessage::UpdateImageData { image_data });
+
+				responses.add(FrontendMessage::UpdateImageData { image_data, canvas_ids_in_use });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			#[cfg(target_family = "wasm")]

@@ -198,6 +198,42 @@ impl Image<Color> {
 		decode(data).map(|image| (image.width(), image.height()))
 	}
 
+	/// The image shrunk by half along each axis `times` times, averaging each block of pixels with their colors weighted by their alpha.
+	/// Blocks at the right and bottom edges average only the pixels they have. O(width × height).
+	pub fn halved(&self, times: u32) -> Self {
+		if times == 0 {
+			return self.clone();
+		}
+
+		let factor = 1_u32 << times.min(31);
+		let (width, height) = (self.width.div_ceil(factor), self.height.div_ceil(factor));
+
+		let mut data = Vec::with_capacity((width * height) as usize);
+		for block_y in 0..height {
+			for block_x in 0..width {
+				let (mut red, mut green, mut blue, mut alpha, mut count) = (0., 0., 0., 0., 0.);
+
+				for y in (block_y * factor)..((block_y + 1) * factor).min(self.height) {
+					for x in (block_x * factor)..((block_x + 1) * factor).min(self.width) {
+						let pixel = self.data[(y * self.width + x) as usize];
+						red += pixel.r() * pixel.a();
+						green += pixel.g() * pixel.a();
+						blue += pixel.b() * pixel.a();
+						alpha += pixel.a();
+						count += 1.;
+					}
+				}
+
+				data.push(match alpha > 0. {
+					true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha / count),
+					false => Color::TRANSPARENT,
+				});
+			}
+		}
+
+		Image { width, height, data }
+	}
+
 	pub fn to_png(&self) -> Vec<u8> {
 		use ::image::ImageEncoder;
 		let (data, width, height) = self.to_flat_u8();
@@ -358,6 +394,26 @@ mod test {
 		}
 
 		assert!(Image::from_encoded(b"not an image").is_none());
+	}
+
+	#[test]
+	fn halving_averages_blocks_weighted_by_alpha() {
+		use super::*;
+
+		// An opaque red and a transparent green beside it average to red at half alpha, with no green showing through
+		let red = Color::from_rgbaf32_unchecked(1., 0., 0., 1.);
+		let clear_green = Color::from_rgbaf32_unchecked(0., 1., 0., 0.);
+		let image = Image {
+			width: 3,
+			height: 1,
+			data: vec![red, clear_green, red],
+		};
+
+		let halved = image.halved(1);
+		assert_eq!((halved.width, halved.height), (2, 1), "the odd column becomes a block of its own");
+		assert_eq!(halved.data[0], Color::from_rgbaf32_unchecked(1., 0., 0., 0.5));
+		assert_eq!(halved.data[1], red);
+		assert_eq!(image.halved(0), image);
 	}
 
 	#[test]
