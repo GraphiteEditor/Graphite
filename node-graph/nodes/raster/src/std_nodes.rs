@@ -83,7 +83,6 @@ fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Ras
 		width: new_width,
 		height: new_height,
 		data: vec,
-		base64_string: None,
 	};
 	image.map_pixels(|px: Color| px.to_unassociated_alpha());
 	// we need to adjust the offset if we truncate the offset calculation
@@ -253,7 +252,7 @@ fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> It
 /// Displays an image from a file.
 ///
 /// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
-#[node_macro::node(category("Raster"), icon("NodeImage"))]
+#[node_macro::node(category("Raster"), icon("NodeImage"), memoize)]
 fn image(
 	_: impl Ctx,
 	_primary: (),
@@ -469,13 +468,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 		}
 	}
 
-	Item::new_from_element(Raster::new_cpu(Image {
-		width,
-		height,
-		data,
-		..Default::default()
-	}))
-	.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size))
+	Item::new_from_element(Raster::new_cpu(Image { width, height, data })).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size))
 }
 
 #[inline(always)]

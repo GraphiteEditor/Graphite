@@ -740,18 +740,7 @@ impl TableItemLayout for Raster<CPU> {
 			return vec![LayoutGroup::row(widgets)];
 		}
 
-		let base64_string = raster.base64_string.clone().unwrap_or_else(|| {
-			use base64::Engine;
-
-			let output = raster.to_png();
-			let preamble = "data:image/png;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-			base64_string
-		});
-
-		let widgets = vec![ImageLabel::new(base64_string).widget_instance()];
+		let widgets = vec![ImageLabel::new(self.png_data_url().to_string()).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }

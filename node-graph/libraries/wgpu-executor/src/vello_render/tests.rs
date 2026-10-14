@@ -438,3 +438,30 @@ fn nested_effects_groups_render_inside_out() {
 	let shadow = pixel(&pixels, size, 90, 55);
 	assert!(shadow[3] >= 250 && shadow[0] <= 5, "the shadow is cast by the blurred group, not {shadow:?}");
 }
+
+#[test]
+fn rasters_upload_once_across_scenes_until_modified() {
+	use graphic_types::raster_types::{Image, Raster};
+
+	let Some(executor) = executor() else { return };
+	let size = UVec2::new(64, 64);
+	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
+
+	// Each render records its scene anew, as the editor does whenever the graph runs
+	let scene_drawing = |raster: &Raster<graphic_types::raster_types::CPU>| {
+		let mut scene = Scene::new();
+		scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::scale(8.));
+		scene
+	};
+
+	let mut canvas = crate::VelloCanvas::default();
+	for _ in 0..3 {
+		executor.render_vello_scene_on_canvas(&mut canvas, &scene_drawing(&raster), DAffine2::IDENTITY, size).unwrap();
+	}
+	assert_eq!(canvas.images.textures.len(), 1, "a clone of the same pixels reuses their texture");
+
+	let mut modified = raster.clone();
+	modified.data_mut().data[0] = core_types::Color::BLACK;
+	executor.render_vello_scene_on_canvas(&mut canvas, &scene_drawing(&modified), DAffine2::IDENTITY, size).unwrap();
+	assert_eq!(canvas.images.textures.len(), 2, "modified pixels get a texture of their own");
+}
