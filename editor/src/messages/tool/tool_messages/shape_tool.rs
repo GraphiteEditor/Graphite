@@ -1715,6 +1715,21 @@ mod test_shape_tool {
 		}
 	}
 
+	#[tokio::test]
+	async fn an_odd_polygon_or_star_dragged_upward_is_drawn_flipped_to_point_down() {
+		for (shape, point_count) in [(ShapeType::Polygon, 5), (ShapeType::Star, 10)] {
+			for (from, to, flipped) in [(DVec2::new(300., 300.), DVec2::new(380., 380.), false), (DVec2::new(300., 380.), DVec2::new(380., 300.), true)] {
+				let mut editor = EditorTestUtils::create();
+				editor.new_document().await;
+				let layer = draw_checking_shape_points(&mut editor, shape, from, to, ModifierKeys::empty(), point_count).await;
+
+				// The tip of an upright shape is in the middle of the top of its box, and a flipped one's is in the middle of the bottom
+				let tip = DVec2::new(340., if flipped { 380. } else { 300. });
+				assert_has_anchor_at(&drawn_anchors(&editor, layer), tip);
+			}
+		}
+	}
+
 	/// Where the second vertex of a pentagon dragged out from `start` lands for a pointer at `pointer`, in the viewport.
 	fn second_vertex(start: DVec2, pointer: DVec2) -> DVec2 {
 		let vertex = regular_polygon_points(5)[1];
