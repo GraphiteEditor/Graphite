@@ -4,6 +4,7 @@ use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use glam::{DMat2, DVec2, UVec2};
 use graphic_types::{EffectOperation, Effects};
+use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 
@@ -13,20 +14,8 @@ pub(crate) const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba
 /// The format of the silhouettes shadows and glows are cast from, which hold only coverage.
 const COVERAGE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
 
-/// The most taps one kernel pass weighs, matching the length of the shader's array.
-const MAX_TAPS: usize = 25;
-
-/// The largest Gaussian standard deviation, in pixels, that runs on the texture itself rather than a halved copy, keeping its kernel within [`MAX_TAPS`].
-const MAX_DIRECT_GAUSSIAN_SIGMA: f64 = 8.;
-
-/// The largest box half width, in pixels, that runs on the texture itself rather than a halved copy, keeping its kernel within [`MAX_TAPS`].
-const MAX_DIRECT_BOX_RADIUS: f64 = 24.;
-
-/// The most times a texture is halved for a blur, by which point it is one pixel across.
-const MAX_LEVELS: u32 = 16;
-
-/// Blurs and spreads shorter than this, in pixels, leave no visible trace.
-const NEGLIGIBLE_LENGTH: f64 = 0.01;
+/// The most taps one kernel pass weighs, matching the length of the shader's array, which holds a kernel of [`MAX_KERNEL_REACH`] texels to each side in pairs.
+const MAX_TAPS: usize = 1 + 2 * MAX_KERNEL_REACH.div_ceil(2);
 
 /// How many renders a pooled texture survives unused before it is freed.
 const UNUSED_TEXTURE_RENDER_LIMIT: u64 = 3;
@@ -50,66 +39,24 @@ impl Default for Parameters {
 	}
 }
 
-/// A blur's kernel, sized in pixels.
-#[derive(Clone, Copy, Debug)]
-enum Kernel {
-	Gaussian { sigma: f64 },
-	Box { radius: f64 },
-}
+/// The kernel's taps for a texture halved `levels` times, each the distance and weight of a symmetric pair of taps that sample between two texels.
+fn kernel_taps(kernel: BlurKernel, levels: u32) -> Vec<[f32; 4]> {
+	let weights = kernel.weights(levels);
 
-impl Kernel {
-	/// How many times the texture is halved before the kernel runs, so it fits the taps of one pass.
-	fn levels(self) -> u32 {
-		let (length, direct_limit) = match self {
-			Self::Gaussian { sigma } => (sigma, MAX_DIRECT_GAUSSIAN_SIGMA),
-			Self::Box { radius } => (radius, MAX_DIRECT_BOX_RADIUS),
+	// Each tap between a pair of texels samples them in the ratio of their weights, through bilinear filtering
+	let mut taps = vec![[0., weights[0] as f32, 0., 0.]];
+	for (pair_index, pair) in weights[1..].chunks(2).enumerate() {
+		let near_distance = (1 + 2 * pair_index) as f64;
+		let (distance, weight) = match *pair {
+			[near, far] => ((near_distance * near + (near_distance + 1.) * far) / (near + far), near + far),
+			[near] => (near_distance, near),
+			_ => continue,
 		};
-
-		(length / direct_limit).log2().ceil().clamp(0., MAX_LEVELS as f64) as u32
+		taps.push([distance as f32, weight as f32, 0., 0.]);
+		taps.push([-distance as f32, weight as f32, 0., 0.]);
 	}
 
-	/// The kernel's taps for a texture halved `levels` times, each the distance and weight of a symmetric pair of taps that sample between two texels.
-	fn taps(self, levels: u32) -> Vec<[f32; 4]> {
-		let level_scale = (1 << levels) as f64;
-
-		// The weights of the texels from the center outward
-		let weights: Vec<f64> = match self {
-			Self::Gaussian { sigma } => {
-				// Halving the texture and doubling it back blur it too, so the kernel makes up only the rest of the variance
-				let pyramid_variance = (4_f64.powi(levels as i32) - 1.) / 3.;
-				let sigma = (sigma * sigma - pyramid_variance).max(0.).sqrt() / level_scale;
-				if sigma < NEGLIGIBLE_LENGTH {
-					return vec![[0., 1., 0., 0.]];
-				}
-
-				let reach = ((3. * sigma).ceil() as usize).min(MAX_TAPS - 1);
-				(0..=reach).map(|i| (-((i * i) as f64) / (2. * sigma * sigma)).exp()).collect()
-			}
-			// The texels at the ends weigh only the fraction of them the box covers, so the blur grows smoothly with its radius
-			Self::Box { radius } => {
-				let radius = radius / level_scale;
-				let reach = (radius.ceil() as usize).min(MAX_TAPS - 1);
-				(0..=reach).map(|i| (radius + 1. - i as f64).clamp(0., 1.)).collect()
-			}
-		};
-		let total = weights[0] + 2. * weights[1..].iter().sum::<f64>();
-
-		// Each tap between a pair of texels samples them in the ratio of their weights, through bilinear filtering
-		let mut taps = vec![[0., (weights[0] / total) as f32, 0., 0.]];
-		for (pair_index, pair) in weights[1..].chunks(2).enumerate() {
-			let near_distance = (1 + 2 * pair_index) as f64;
-			let (distance, weight) = match *pair {
-				[near, far] => ((near_distance * near + (near_distance + 1.) * far) / (near + far), near + far),
-				[near] => (near_distance, near),
-				_ => continue,
-			};
-			let weight = (weight / total) as f32;
-			taps.push([distance as f32, weight, 0., 0.]);
-			taps.push([-distance as f32, weight, 0., 0.]);
-		}
-
-		taps
-	}
+	taps
 }
 
 /// The pipelines of the effect passes, each built the first time it is used.
@@ -279,7 +226,7 @@ impl EffectPasses {
 						recorder.textures.release(beneath);
 					}
 
-					let kernel = if box_blur { Kernel::Box { radius } } else { Kernel::Gaussian { sigma: radius } };
+					let kernel = if box_blur { BlurKernel::Box { radius } } else { BlurKernel::Gaussian { sigma: radius } };
 					full = recorder.blur(full, kernel, !gamma);
 					filled = filled.map(|filled| recorder.blur(filled, kernel, !gamma));
 				}
@@ -448,7 +395,7 @@ impl PassRecorder<'_> {
 			coverage = self.dilate(coverage, spread);
 		}
 		if blur >= NEGLIGIBLE_LENGTH {
-			coverage = self.blur(coverage, Kernel::Gaussian { sigma: blur }, false);
+			coverage = self.blur(coverage, BlurKernel::Gaussian { sigma: blur }, false);
 		}
 
 		coverage
@@ -517,7 +464,7 @@ impl PassRecorder<'_> {
 
 	/// Blurs `texture` by `kernel` along both axes, in linear light if `linear`.
 	/// Kernels too wide for one pass run on a texture halved enough times for them to fit, then doubled back to full size. O(width × height) per pass.
-	fn blur(&mut self, texture: wgpu::Texture, kernel: Kernel, linear: bool) -> wgpu::Texture {
+	fn blur(&mut self, texture: wgpu::Texture, kernel: BlurKernel, linear: bool) -> wgpu::Texture {
 		let format = texture.format();
 		let mut texture = texture;
 
@@ -535,7 +482,7 @@ impl PassRecorder<'_> {
 			self.replace(&mut texture, halved);
 		}
 
-		let taps = kernel.taps(levels);
+		let taps = kernel_taps(kernel, levels);
 		let mut tap_array = [[0.; 4]; MAX_TAPS];
 		tap_array[..taps.len()].copy_from_slice(&taps);
 		for axis in [DVec2::X, DVec2::Y] {
@@ -622,11 +569,10 @@ mod tests {
 	fn kernels_keep_brightness_and_fit_one_pass() {
 		let kernels = [0.3, 1., 2.5, 7.9, 8., 12., 100., 4000.]
 			.into_iter()
-			.flat_map(|length| [Kernel::Gaussian { sigma: length }, Kernel::Box { radius: length }]);
+			.flat_map(|length| [BlurKernel::Gaussian { sigma: length }, BlurKernel::Box { radius: length }]);
 
 		for kernel in kernels {
-			let levels = kernel.levels();
-			let taps = kernel.taps(levels);
+			let taps = kernel_taps(kernel, kernel.levels());
 
 			assert!(taps.len() <= MAX_TAPS, "{kernel:?} needs {} taps", taps.len());
 			assert!((total_weight(&taps) - 1.).abs() < 1e-5, "{kernel:?} weighs {}", total_weight(&taps));
@@ -634,22 +580,9 @@ mod tests {
 	}
 
 	#[test]
-	fn small_kernels_run_without_halving() {
-		assert_eq!(Kernel::Gaussian { sigma: MAX_DIRECT_GAUSSIAN_SIGMA }.levels(), 0);
-		assert_eq!(
-			Kernel::Gaussian {
-				sigma: MAX_DIRECT_GAUSSIAN_SIGMA * 1.01
-			}
-			.levels(),
-			1
-		);
-		assert_eq!(Kernel::Box { radius: 1. }.levels(), 0);
-	}
-
-	#[test]
 	fn merged_taps_sample_between_the_texels_they_weigh() {
 		// A box of half width two weighs five texels evenly, so its outer pair merges into taps one and a half texels out
-		let taps = Kernel::Box { radius: 2. }.taps(0);
+		let taps = kernel_taps(BlurKernel::Box { radius: 2. }, 0);
 
 		assert_eq!(taps.len(), 3);
 		assert!((taps[0][1] - 0.2).abs() < 1e-6);

@@ -435,6 +435,93 @@ fn nested_effects_groups_render_inside_out() {
 }
 
 #[test]
+fn cpu_evaluated_effects_match_the_gpu_passes() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::{ATTR_EFFECTS, Item};
+	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
+	use glam::DVec2;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{EffectOperation, Effects};
+	use raster_kernels::evaluate_raster_effects;
+
+	let size = UVec2::new(160, 160);
+	let (min, max) = (50, 100);
+	let shadow_color = GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 0.75);
+	let blur = |radius, box_blur, gamma| EffectOperation::Blur { radius, box_blur, gamma };
+
+	let cases = [
+		vec![blur(3., false, false)],
+		vec![blur(20., false, true)],
+		vec![blur(5.5, true, false)],
+		vec![EffectOperation::DropShadow {
+			color: shadow_color,
+			offset: DVec2::new(6.5, -3.),
+			blur: 4.,
+			spread: 2.,
+		}],
+		vec![EffectOperation::InnerShadow {
+			color: shadow_color,
+			offset: DVec2::new(4., 4.),
+			blur: 3.,
+			spread: 0.,
+		}],
+		vec![
+			EffectOperation::OuterGlow {
+				color: shadow_color,
+				blur: 6.,
+				spread: 3.,
+			},
+			blur(2., false, false),
+		],
+	];
+
+	for effects in cases {
+		for fill in [1., 0.5] {
+			let Some(gpu) = render_square_with_effects(effects.clone(), fill, min as f64, max as f64, size) else {
+				return;
+			};
+
+			// The same square as a raster covering the render one pixel to one pixel
+			let mut image = Image::new(size.x, size.y, GraphicColor::TRANSPARENT);
+			for y in min..max {
+				for x in min..max {
+					image.data[(y * size.x + x) as usize] = GraphicColor::WHITE;
+				}
+			}
+			let item = Item::new_from_element(Raster::new_cpu(image))
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(size.as_dvec2()))
+				.with_attribute(ATTR_EFFECTS, Effects::from_operations(effects.clone()))
+				.with_attribute(ATTR_OPACITY_FILL, fill as f64);
+			let evaluated = evaluate_raster_effects(item);
+
+			// Reads the evaluated image at the center of each render pixel through its grown placement
+			let placement: DAffine2 = evaluated.attribute_cloned_or_default(ATTR_TRANSFORM);
+			let raster = evaluated.element();
+			let document_to_pixels = DAffine2::from_scale(DVec2::new(raster.width as f64, raster.height as f64)) * placement.inverse();
+
+			let mut worst = 0;
+			for y in 0..size.y {
+				for x in 0..size.x {
+					let point = document_to_pixels.transform_point2(DVec2::new(x as f64 + 0.5, y as f64 + 0.5)).floor();
+					let cpu = raster.data[(point.y as u32 * raster.width + point.x as u32) as usize];
+					let [red, green, blue, alpha] = cpu.to_gamma_srgb_channels();
+					let cpu = [red * alpha, green * alpha, blue * alpha, alpha].map(|channel| channel * 255.);
+
+					// Compared premultiplied, so a nearly transparent pixel's color can't dominate
+					let gpu = pixel(&gpu, size, x, y);
+					let gpu_alpha = gpu[3] as f32 / 255.;
+					for channel in 0..4 {
+						let gpu_channel = if channel == 3 { gpu[3] as f32 } else { gpu[channel] as f32 * gpu_alpha };
+						worst = worst.max((cpu[channel] - gpu_channel).abs().round() as u32);
+					}
+				}
+			}
+			assert!(worst <= 2, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");
+		}
+	}
+}
+
+#[test]
 fn minified_images_average_their_pixels() {
 	use raster_types::{Image, Raster};
 
