@@ -73,27 +73,3 @@ unsafe impl StaticType for PlatformApplicationIo {
 }
 
 pub type PlatformEditorApi = graphene_application_io::EditorApi<PlatformApplicationIo>;
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct EditorPreferences {
-	/// Maximum render region size in pixels along one dimension of the square area.
-	pub max_render_region_size: u32,
-}
-
-impl graphene_application_io::GetEditorPreferences for EditorPreferences {
-	fn max_render_region_area(&self) -> u32 {
-		let size = self.max_render_region_size.min(u32::MAX.isqrt());
-		size.pow(2)
-	}
-}
-
-impl Default for EditorPreferences {
-	fn default() -> Self {
-		Self { max_render_region_size: 1280 }
-	}
-}
-
-unsafe impl StaticType for EditorPreferences {
-	type Static = EditorPreferences;
-}

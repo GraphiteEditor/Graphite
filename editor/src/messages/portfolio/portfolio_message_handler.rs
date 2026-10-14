@@ -350,7 +350,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
-			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::GarbageCollectResources => {
 				// The resources of documents that are not loaded yet are unknown, so GC waits for every load and for a successful store listing.
 				if !self.persistent_state.loaded() || self.pending_opens > 0 || !self.loading_documents.is_empty() || self.store_unavailable {
