@@ -1,5 +1,5 @@
-use graphic_types::Effects;
 use graphic_types::raster_types::{CPU, Raster, Texture};
+use graphic_types::{Adjustment, Effects};
 use kurbo::{Affine, BezPath, Rect, Shape, Stroke};
 use vello_gpu::PencilGradient;
 use vello_gpu::peniko::{self, BlendMode, Brush, Fill};
@@ -111,7 +111,12 @@ pub enum SceneImage {
 	/// Straight-alpha pixels in CPU memory, identified by their blob's ID so the renderer uploads them once.
 	Pixels(peniko::ImageBrush),
 	/// A CPU raster's straight-alpha linear pixels, identified by their buffer's ID so the renderer uploads them once.
-	Raster { raster: Raster<CPU>, sampler: peniko::ImageSampler },
+	/// The adjustments, if any, are carried out on its pixels before they are sampled.
+	Raster {
+		raster: Raster<CPU>,
+		adjustments: Vec<Adjustment>,
+		sampler: peniko::ImageSampler,
+	},
 	/// Straight-alpha pixels in a GPU texture.
 	Texture { texture: Texture, sampler: peniko::ImageSampler },
 }
@@ -230,10 +235,10 @@ impl Scene {
 		});
 	}
 
-	/// Draws a CPU raster's rectangle of pixels, from the origin to its width and height, placed by `transform`.
-	pub fn draw_raster(&mut self, raster: Raster<CPU>, sampler: peniko::ImageSampler, transform: Affine) {
+	/// Draws a CPU raster's rectangle of pixels with `adjustments` carried out on them, from the origin to its width and height, placed by `transform`.
+	pub fn draw_raster(&mut self, raster: Raster<CPU>, adjustments: Vec<Adjustment>, sampler: peniko::ImageSampler, transform: Affine) {
 		self.commands.push(SceneCommand::DrawImage {
-			image: SceneImage::Raster { raster, sampler },
+			image: SceneImage::Raster { raster, adjustments, sampler },
 			transform,
 		});
 	}

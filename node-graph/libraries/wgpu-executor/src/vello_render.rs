@@ -1,9 +1,11 @@
-use crate::vello_effects::{EffectPasses, EffectTextures};
+use crate::vello_effects::{AdjustmentPassTextures, EffectPasses, EffectTextures, adjustment_run_hash};
 use glam::{DMat2, UVec2};
+use graphic_types::Adjustment;
+use graphic_types::raster_types::{CPU, Raster};
 use rendering::scene::{EffectsGroup, Scene, SceneBrush, SceneCommand, SceneImage};
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use vello_gpu::kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape};
 use vello_gpu::peniko::{self, Brush};
 use vello_gpu::{
@@ -372,9 +374,19 @@ impl RenderContext<'_> {
 	/// The texture to draw `image` with, bound for the render being recorded.
 	fn resolve_image(&mut self, texture_bindings: &mut TextureBindings, image: &SceneImage) -> Option<ResolvedImage> {
 		let image_texture = self.canvas.images.prepare(self.device, self.queue, &self.renderer.alpha_conversion, image)?;
-		texture_bindings.insert(image_texture.texture_id, image_texture.view.clone());
 
-		Some(image_texture.paint_source())
+		// Adjustments draw a copy of the texture they're carried out on
+		let (texture_id, view, resolved) = match image {
+			SceneImage::Raster { raster, adjustments, .. } if !adjustments.is_empty() => {
+				let run: Vec<&Adjustment> = adjustments.iter().collect();
+				let effects = (&self.renderer.effect_passes, &mut self.canvas.effect_textures);
+				self.canvas.images.prepare_adjusted(self.device, self.queue, effects, raster, &run)?
+			}
+			_ => (image_texture.texture_id, image_texture.view.clone(), image_texture.paint_source(image_texture.texture_id)),
+		};
+		texture_bindings.insert(texture_id, view);
+
+		Some(resolved)
 	}
 
 	/// Renders an effects group's `content` offscreen, carries out its effects there, and draws the result in place of the content.
@@ -566,6 +578,7 @@ enum ImageKey {
 /// A premultiplied copy of an image's pixels that Vello GPU samples as an external texture.
 struct ImageTexture {
 	texture_id: TextureId,
+	texture: wgpu::Texture,
 	view: wgpu::TextureView,
 	/// The copy's size, smaller than the image's own when the image exceeds the device's texture size limit.
 	size: (u16, u16),
@@ -573,18 +586,32 @@ struct ImageTexture {
 	/// Maps the copy's pixels onto the image's own pixels.
 	texture_to_image: Affine,
 	last_used: u64,
+	/// Copies with runs of adjustments carried out on them, one for each run the image is drawn with.
+	adjusted: Vec<AdjustedTexture>,
 }
 
 impl ImageTexture {
-	fn paint_source(&self) -> ResolvedImage {
+	/// Draws this texture, or the copy of it with `texture_id`, which has the same size and placement.
+	fn paint_source(&self, texture_id: TextureId) -> ResolvedImage {
 		let (width, height) = self.size;
 
 		ResolvedImage {
-			source: ImageSource::external_texture(self.texture_id, RectU16::new(0, 0, width, height), true).with_mip_level_count(self.mip_level_count),
+			source: ImageSource::external_texture(texture_id, RectU16::new(0, 0, width, height), true).with_mip_level_count(self.mip_level_count),
 			texture_to_image: self.texture_to_image,
 			texture_size: self.size,
 		}
 	}
+}
+
+/// A copy of an image's texture with a run of adjustments carried out on it, made over in place for another run or refined tables.
+struct AdjustedTexture {
+	texture_id: TextureId,
+	texture: wgpu::Texture,
+	view: wgpu::TextureView,
+	run_hash: u64,
+	/// The tables it was made with, which a run's refined tables replace.
+	passes: Arc<Vec<AdjustmentPassTextures>>,
+	last_used: u64,
 }
 
 /// The textures of the images recent renders drew, freed once unused for [`UNUSED_IMAGE_RENDER_LIMIT`] renders.
@@ -636,10 +663,12 @@ impl ImageTextures {
 				ImageTexture {
 					texture_id: TextureId(self.next_texture_id),
 					view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
-					size,
 					mip_level_count: texture.mip_level_count() as u8,
+					texture,
+					size,
 					texture_to_image,
 					last_used: self.render_count,
+					adjusted: Vec::new(),
 				},
 			);
 			self.next_texture_id += 1;
@@ -650,9 +679,77 @@ impl ImageTextures {
 		Some(image_texture)
 	}
 
+	/// The copy of the texture of the `raster` already prepared, with the `run` of adjustments carried out on it, made with the run's latest tables.
+	fn prepare_adjusted(
+		&mut self,
+		device: &wgpu::Device,
+		queue: &wgpu::Queue,
+		effects: (&EffectPasses, &mut EffectTextures),
+		raster: &Raster<CPU>,
+		run: &[&Adjustment],
+	) -> Option<(TextureId, wgpu::TextureView, ResolvedImage)> {
+		let (effect_passes, effect_textures) = effects;
+		let run_hash = adjustment_run_hash(run);
+		let passes = effect_textures.adjustment_passes(device, queue, run);
+		let render_count = self.render_count;
+		let image_texture = self.textures.get_mut(&ImageKey::Raster(raster.buffer_id()))?;
+
+		// A run seen before has its copy, and a new run takes over the copy longest unused, as when dragging a slider makes a new run every render
+		let reusable = || {
+			image_texture
+				.adjusted
+				.iter()
+				.enumerate()
+				.filter(|(_, copy)| copy.last_used < render_count)
+				.min_by_key(|(_, copy)| copy.last_used)
+		};
+		let index = match image_texture.adjusted.iter().position(|copy| copy.run_hash == run_hash) {
+			Some(index) => index,
+			None => match reusable().map(|(index, _)| index) {
+				Some(index) => index,
+				None => {
+					let texture = device.create_texture(&wgpu::TextureDescriptor {
+						label: Some("vello_gpu_adjusted_image"),
+						size: image_texture.texture.size(),
+						mip_level_count: image_texture.texture.mip_level_count(),
+						sample_count: 1,
+						dimension: wgpu::TextureDimension::D2,
+						format: TEXTURE_FORMAT,
+						usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+						view_formats: &[],
+					});
+					image_texture.adjusted.push(AdjustedTexture {
+						texture_id: TextureId(self.next_texture_id),
+						view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
+						texture,
+						run_hash,
+						passes: Arc::new(Vec::new()),
+						last_used: render_count,
+					});
+					self.next_texture_id += 1;
+					image_texture.adjusted.len() - 1
+				}
+			},
+		};
+
+		let copy = &mut image_texture.adjusted[index];
+		if copy.run_hash != run_hash || !Arc::ptr_eq(&copy.passes, &passes) {
+			effect_passes.adjust_image(device, queue, effect_textures, &image_texture.texture, &passes, &copy.texture);
+			copy.run_hash = run_hash;
+			copy.passes = passes;
+		}
+		copy.last_used = render_count;
+
+		let (texture_id, view) = (copy.texture_id, copy.view.clone());
+		Some((texture_id, view, image_texture.paint_source(texture_id)))
+	}
+
 	fn free_unused(&mut self) {
 		let render_count = self.render_count;
-		self.textures.retain(|_, image_texture| render_count - image_texture.last_used < UNUSED_IMAGE_RENDER_LIMIT);
+		let in_use = |last_used: u64| render_count - last_used < UNUSED_IMAGE_RENDER_LIMIT;
+
+		self.textures.retain(|_, image_texture| in_use(image_texture.last_used));
+		self.textures.values_mut().for_each(|image_texture| image_texture.adjusted.retain(|copy| in_use(copy.last_used)));
 	}
 }
 
