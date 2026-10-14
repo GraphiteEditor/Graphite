@@ -17,7 +17,7 @@
   env = deps.rustGPU.env;
 
   buildPhase = ''
-    cargo build -r -p raster-nodes-shaders
+    cargo build -r -p raster-nodes-shaders --features compile
   '';
 
   installPhase = ''

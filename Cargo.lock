@@ -2394,7 +2394,6 @@ dependencies = [
  "base64",
  "dirs",
  "graph-craft",
- "graphene-std",
  "graphite-editor",
  "graphite-wasm-wrapper",
  "image",
@@ -3876,7 +3875,6 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "strum",
  "syn 2.0.106",
 ]
 
@@ -4828,24 +4826,19 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "image",
- "kurbo",
  "ndarray",
  "no-std-types",
  "node-macro",
- "num-traits",
  "num_enum",
  "rand",
  "rand_chacha",
- "raster-nodes-shaders",
  "raster-types",
  "serde",
- "spirv-std",
  "thiserror 2.0.18",
  "tokio",
  "tsify",
  "vector-types",
  "wasm-bindgen",
- "wgpu-executor",
 ]
 
 [[package]]
@@ -4860,9 +4853,6 @@ dependencies = [
 [[package]]
 name = "raster-nodes-shaders-entrypoint"
 version = "0.0.0"
-dependencies = [
- "raster-nodes",
-]
 
 [[package]]
 name = "raster-types"
@@ -5948,27 +5938,6 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
-
-[[package]]
-name = "strum"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
-dependencies = [
- "strum_macros",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.106",
-]
 
 [[package]]
 name = "subtle"

@@ -13,6 +13,3 @@ publish.workspace = true
 
 [lints]
 workspace = true
-
-[dependencies]
-raster-nodes = { path = "../..", default-features = false }

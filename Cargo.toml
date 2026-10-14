@@ -245,7 +245,6 @@ tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.7", features = ["html_reports"] }
 gungraun = { version = "0.18" }
 ndarray = "0.16"
-strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
 cef = "156"
 cef-dll-sys = "156"

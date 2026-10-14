@@ -14,9 +14,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# Installs the rust-gpu toolchain and compiles the entrypoint crate to WGSL
+compile = ["dep:cargo-gpu-install", "dep:env_logger", "dep:log"]
+
 [dependencies]
 
 [build-dependencies]
-cargo-gpu-install = { workspace = true }
-env_logger = { workspace = true }
-log = { workspace = true }
+cargo-gpu-install = { workspace = true, optional = true }
+env_logger = { workspace = true, optional = true }
+log = { workspace = true, optional = true }

@@ -97,7 +97,6 @@ deps.crane.lib.buildPackage (
     makeCacheWritable = true;
 
     env = {
-      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
       GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
       GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
       CEF_PATH = "${self.packages.${system}.graphite-cef}/lib";
