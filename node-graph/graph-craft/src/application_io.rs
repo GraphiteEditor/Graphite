@@ -28,9 +28,9 @@ impl PlatformApplicationIo {
 	}
 
 	#[cfg(feature = "wgpu")]
-	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
+	pub fn new_with_executor(executor: WgpuExecutor) -> Self {
 		Self {
-			gpu_executor: WgpuExecutor::with_context(context),
+			gpu_executor: Some(executor),
 			resources: None,
 		}
 	}
