@@ -540,7 +540,7 @@
 						class="connector"
 						data-connector="output"
 						data-tooltip-label="Add Primary Import"
-						data-tooltip-description="Drag a wire from here and connect it to an input."
+						data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
 						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
@@ -609,7 +609,7 @@
 						class="connector"
 						data-connector="input"
 						data-tooltip-label="Add Primary Export"
-						data-tooltip-description="Drop a wire here from an output to connect it."
+						data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
@@ -626,7 +626,7 @@
 					class="connector"
 					data-connector="output"
 					data-tooltip-label="Add Import"
-					data-tooltip-description="Drag a wire from here and connect it to an input."
+					data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
 					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
 					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length) + 1}
 				>
@@ -638,7 +638,7 @@
 					class="connector"
 					data-connector="input"
 					data-tooltip-label="Add Export"
-					data-tooltip-description="Drop a wire here from an output to connect it."
+					data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
 					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length) + 1}
 				>
