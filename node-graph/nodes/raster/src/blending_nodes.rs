@@ -1,10 +1,10 @@
 use crate::adjust::Adjust;
 use core_types::list::Item;
-use graphic_types::Adjustment;
+use graphic_types::{Adjustment, Graphic, Vector};
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::Color;
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
@@ -38,6 +38,10 @@ fn color_overlay<T: Adjust>(
 		Raster<CPU>,
 		Color,
 		Gradient,
+		Graphic,
+		Vector,
+		Raster<GPU>,
+		String,
 	)]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
@@ -48,14 +52,12 @@ fn color_overlay<T: Adjust>(
 	#[default(100.)]
 	opacity: Item<f64>,
 ) -> Item<T> {
-	let mut image = image;
 	let adjustment = Adjustment::ColorOverlay {
 		color: color.into_element(),
 		blend_mode: blend_mode.into_element(),
 		opacity: opacity.into_element(),
 	};
-	image.element_mut().adjust(&adjustment);
-	image
+	T::adjust(image, &adjustment)
 }
 
 #[cfg(test)]

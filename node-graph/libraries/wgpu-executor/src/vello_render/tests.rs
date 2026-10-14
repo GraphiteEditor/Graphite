@@ -524,6 +524,7 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use core_types::list::{ATTR_EFFECTS, Item};
 	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 	use glam::DVec2;
+	use graphic_types::adjustment::{Adjustment, LevelsRecord, LevelsSettings};
 	use graphic_types::raster_types::{Image, Raster};
 	use graphic_types::vector_types::vector::style::StrokeAlign;
 	use graphic_types::{BevelDirection, BevelStyle, EffectOperation, Effects, GlowSource};
@@ -543,6 +544,13 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		altitude: 30.,
 		highlight_color: GraphicColor::from_rgbaf32_unchecked(1., 0.9, 0.2, 0.75),
 		shadow_color,
+	};
+	let identity = LevelsRecord {
+		shadows: 0.,
+		midtones: 1.,
+		highlights: 100.,
+		output_minimums: 0.,
+		output_maximums: 100.,
 	};
 
 	let cases = [
@@ -612,6 +620,14 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![bevel(BevelStyle::OuterBevel, BevelDirection::Down, 6., 2.)],
 		vec![bevel(BevelStyle::Emboss, BevelDirection::Up, 10., 0.)],
 		vec![bevel(BevelStyle::PillowEmboss, BevelDirection::Up, 12., 1.)],
+		// Bends alpha, so the fill must fade the content before it on both
+		vec![EffectOperation::Adjustment(Adjustment::Levels(Box::new(LevelsSettings {
+			composite: identity,
+			red: identity,
+			green: identity,
+			blue: identity,
+			alpha: LevelsRecord { midtones: 2.2, ..identity },
+		})))],
 	];
 
 	for effects in cases {
@@ -657,6 +673,122 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 			}
 			assert!(worst <= 2, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");
 		}
+	}
+}
+
+#[test]
+fn gpu_adjustment_passes_match_the_cpu_kernels() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::Item;
+	use graphic_types::adjustment::*;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{EffectOperation, Effects};
+
+	// Opaque colors spread across the RGB cube, one per pixel, on whole 8-bit levels as the content's 8-bit render holds them
+	let size = UVec2::new(64, 64);
+	let channel = |value: u32| ((value % 64) * 4) as f32 / 255.;
+	let colors: Vec<GraphicColor> = (0..size.x * size.y)
+		.map(|index| GraphicColor::from_gamma_srgb_channels(channel(index % 64), channel(index / 64), channel(index * 7 + index / 64 * 13), 1.))
+		.collect();
+	let raster = Raster::new_cpu(Image {
+		width: size.x,
+		height: size.y,
+		data: colors.clone(),
+	});
+
+	let levels_record = |shadows, midtones, highlights| LevelsRecord {
+		shadows,
+		midtones,
+		highlights,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let identity = levels_record(0., 1., 100.);
+	let sliders = |hue, saturation, lightness| HueSaturationSliders { hue, saturation, lightness };
+	let range = |sliders, falloff_start, range_start, range_end, falloff_end| HueRangeSettings {
+		sliders,
+		falloff_start,
+		range_start,
+		range_end,
+		falloff_end,
+	};
+	let zero = sliders(0., 0., 0.);
+
+	// Each run with the most levels it may stray: curves and luma tables by under a level, the cube by its interpolation
+	let runs: Vec<(Vec<Adjustment>, u8)> = vec![
+		(
+			vec![
+				Adjustment::Levels(Box::new(LevelsSettings {
+					composite: levels_record(10., 1.4, 90.),
+					red: identity,
+					green: levels_record(5., 0.8, 100.),
+					blue: identity,
+					alpha: identity,
+				})),
+				Adjustment::Exposure {
+					exposure: 0.5,
+					offset: 0.,
+					gamma_correction: 1.2,
+				},
+				Adjustment::Invert,
+			],
+			2,
+		),
+		(
+			vec![
+				Adjustment::HueSaturation(Box::new(HueSaturationSettings {
+					master: sliders(25., 30., 5.),
+					colorize: false,
+					colorize_sliders: zero,
+					reds: range(sliders(-15., 40., 0.), 315., 345., 15., 45.),
+					yellows: range(zero, 15., 45., 75., 105.),
+					greens: range(zero, 75., 105., 135., 165.),
+					cyans: range(zero, 135., 165., 195., 225.),
+					blues: range(zero, 195., 225., 255., 285.),
+					magentas: range(zero, 255., 285., 315., 345.),
+				})),
+				Adjustment::Desaturate { method: DesaturateMethod::LumaRec601 },
+			],
+			5,
+		),
+		(
+			vec![Adjustment::GradientMap {
+				gradient: Item::new_from_element(graphic_types::vector_types::Gradient::from(vec![
+					GraphicColor::from_rgbaf32_unchecked(0.1, 0., 0.4, 1.),
+					GraphicColor::from_rgbaf32_unchecked(1., 0.8, 0.2, 1.),
+				])),
+				reverse: false,
+			}],
+			2,
+		),
+		(vec![Adjustment::Vibrance { vibrance: 60., saturation: 20. }], 2),
+	];
+
+	for (run, tolerance) in runs {
+		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
+		let draw = |scene: &mut VelloSceneBuilder| {
+			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
+			scene.draw_effects(&effects, 1., Some(bounds), &mut |scene| {
+				scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::IDENTITY)
+			});
+		};
+
+		// The first render bakes any cube as a draft, which rendering the same run again refines
+		let Some(_) = render(size, draw) else { return };
+		let Some(gpu) = render(size, draw) else { return };
+
+		let mut expected = colors.clone();
+		run.iter().for_each(|adjustment| raster_kernels::adjustments::adjust_colors(adjustment, &mut expected));
+
+		let mut worst = 0;
+		for (index, color) in expected.iter().enumerate() {
+			let cpu = color.to_gamma_srgb_channels().map(|channel| (channel * 255.).round() as i32);
+			for channel in 0..3 {
+				worst = worst.max((cpu[channel] - gpu[index][channel] as i32).unsigned_abs());
+			}
+		}
+		let names = run.iter().map(|adjustment| adjustment.kind().to_string()).collect::<Vec<_>>().join(" + ");
+		assert!(worst <= tolerance as u32, "{names} differs from the CPU kernels by up to {worst} levels");
 	}
 }
 

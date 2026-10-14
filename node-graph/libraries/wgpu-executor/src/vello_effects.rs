@@ -2,12 +2,15 @@
 
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
+use core_types::graphene_hash::CacheHash;
 use glam::{DMat2, DVec2, UVec2};
 use graphic_types::effects::{bevel_light, bevel_smoothing, outline_extents};
-use graphic_types::{BevelDirection, EffectOperation, Effects, GlowSource};
+use graphic_types::{Adjustment, BevelDirection, EffectOperation, Effects, GlowSource};
+use raster_kernels::adjustment_tables::{AdjustmentPass, CUBE_SIZE, CURVE_TABLE_SIZE, DRAFT_CUBE_SIZE};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
 use std::collections::HashMap;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
+use wgpu::util::DeviceExt;
 
 /// The format of the images the passes produce, with the precision to keep soft gradients smooth.
 pub(crate) const WORKING_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
@@ -20,6 +23,9 @@ const MAX_TAPS: usize = 1 + 2 * MAX_KERNEL_REACH.div_ceil(2);
 
 /// How many renders a pooled texture survives unused before it is freed.
 const UNUSED_TEXTURE_RENDER_LIMIT: u64 = 3;
+
+/// How many runs of adjustments keep their uploaded tables past the render that last used them, each holding up to a few megabytes.
+const MAX_CACHED_ADJUSTMENT_RUNS: usize = 8;
 
 /// The shader's parameters, laid out to match its `Parameters` struct.
 #[repr(C)]
@@ -209,8 +215,9 @@ impl EffectPasses {
 		// The shadows and glows stacked beneath the content
 		let mut beneath: Option<wgpu::Texture> = None;
 
-		for effect in effects.operations() {
-			match effect {
+		let operations: Vec<EffectOperation> = effects.operations().collect();
+		for (index, operation) in operations.iter().enumerate() {
+			match *operation {
 				EffectOperation::Blur { radius, box_blur, gamma } => {
 					let radius = radius * length_scale;
 					if radius < NEGLIGIBLE_LENGTH {
@@ -329,6 +336,28 @@ impl EffectPasses {
 					}
 					recorder.textures.release(height);
 				}
+				EffectOperation::Adjustment(_) => {
+					// A run of adjustments is carried out from its first row, so tables can merge it into fewer passes
+					if index > 0 && matches!(operations[index - 1], EffectOperation::Adjustment(_)) {
+						continue;
+					}
+					let run: Vec<&Adjustment> = operations[index..]
+						.iter()
+						.map_while(|operation| match operation {
+							EffectOperation::Adjustment(adjustment) => Some(adjustment),
+							_ => None,
+						})
+						.collect();
+
+					for pass in recorder.textures.adjustment_passes(device, queue, &run).iter() {
+						let adjusted = recorder.adjust(&full, pass);
+						recorder.replace(&mut full, adjusted);
+						if let Some(filled) = &mut filled {
+							let adjusted = recorder.adjust(filled, pass);
+							recorder.replace(filled, adjusted);
+						}
+					}
+				}
 			}
 		}
 
@@ -382,8 +411,6 @@ impl PassRecorder<'_> {
 		content: Option<&wgpu::Texture>,
 		parameters: Parameters,
 	) -> wgpu::Texture {
-		use wgpu::util::DeviceExt;
-
 		let target = self.textures.acquire(self.device, size, format);
 		let parameters = Parameters {
 			target_to_uv: [1. / size.x as f32, 1. / size.y as f32],
@@ -557,6 +584,17 @@ impl PassRecorder<'_> {
 		self.run("composite_beneath", WORKING_FORMAT, self.size, image, Some(beneath), Some(full_content), Parameters::default())
 	}
 
+	/// The image with one pass of adjustments carried out on it.
+	fn adjust(&mut self, image: &wgpu::Texture, pass: &AdjustmentPassTextures) -> wgpu::Texture {
+		let (entry_point, secondary, content, values) = match pass {
+			AdjustmentPassTextures::Curves(curves) => ("adjust_curves", Some(curves), None, [0.; 4]),
+			AdjustmentPassTextures::Cube { size, cube, alpha } => ("adjust_cube", Some(cube), Some(alpha), [*size as f32, 0., 0., 0.]),
+			AdjustmentPassTextures::Luma { weights, colors } => ("adjust_by_luma", Some(colors), None, [weights[0], weights[1], weights[2], 0.]),
+			AdjustmentPassTextures::Vibrance { vibrance, saturation_scale } => ("adjust_vibrance", None, None, [*vibrance, *saturation_scale, 0., 0.]),
+		};
+		self.run(entry_point, WORKING_FORMAT, self.size, image, secondary, content, Parameters { values, ..Default::default() })
+	}
+
 	/// Grows the shapes in `texture` by `distance` pixels along each axis, in a square like SVG's `feMorphology`.
 	fn dilate(&mut self, texture: wgpu::Texture, distance: f64) -> wgpu::Texture {
 		// Steps that double, then the remainder, so each pass grows the shapes by up to as much as all the passes before it
@@ -642,10 +680,117 @@ impl PassRecorder<'_> {
 pub(crate) struct EffectTextures {
 	/// Each unused texture with the render it was last used in.
 	free: Vec<(wgpu::Texture, u64)>,
+	/// The passes of recent runs of adjustments.
+	adjustment_runs: Vec<CachedAdjustmentRun>,
 	render_count: u64,
 }
 
+/// The uploaded passes of one run of adjustments.
+struct CachedAdjustmentRun {
+	hash: u64,
+	passes: Arc<Vec<AdjustmentPassTextures>>,
+	/// Whether its cubes are drafts, baked again at full size once a later render reuses the run unchanged.
+	draft: bool,
+	last_used: u64,
+}
+
+/// One pass of adjustments, with the tables it looks colors up in uploaded as textures.
+pub(crate) enum AdjustmentPassTextures {
+	Curves(wgpu::Texture),
+	Cube { size: usize, cube: wgpu::Texture, alpha: wgpu::Texture },
+	Luma { weights: [f32; 3], colors: wgpu::Texture },
+	Vibrance { vibrance: f32, saturation_scale: f32 },
+}
+
+impl AdjustmentPassTextures {
+	fn upload(device: &wgpu::Device, queue: &wgpu::Queue, pass: AdjustmentPass) -> Self {
+		let table = |width: usize, height: usize, entries: &mut dyn Iterator<Item = [f32; 4]>| {
+			let data: Vec<half::f16> = entries.flat_map(|entry| entry.map(half::f16::from_f32)).collect();
+			let descriptor = wgpu::TextureDescriptor {
+				label: Some("vello_effects_adjustment_table"),
+				size: wgpu::Extent3d {
+					width: width as u32,
+					height: height as u32,
+					depth_or_array_layers: 1,
+				},
+				mip_level_count: 1,
+				sample_count: 1,
+				dimension: wgpu::TextureDimension::D2,
+				format: wgpu::TextureFormat::Rgba16Float,
+				usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+				view_formats: &[],
+			};
+			device.create_texture_with_data(queue, &descriptor, wgpu::util::TextureDataOrder::LayerMajor, bytemuck::cast_slice(&data))
+		};
+
+		match pass {
+			AdjustmentPass::Curves(curves) => Self::Curves(table(CURVE_TABLE_SIZE, 1, &mut curves.into_iter())),
+			// The cube's slices of constant blue, each a square of red across and green down, tile a texture near square in shape
+			AdjustmentPass::Cube { size, colors, alpha } => {
+				let columns = size.isqrt() + usize::from(size.isqrt().pow(2) < size);
+				let rows = size.div_ceil(columns);
+				let (width, height) = (columns * size, rows * size);
+
+				let mut tiled = vec![[0.; 4]; width * height];
+				for (index, [red, green, blue]) in colors.into_iter().enumerate() {
+					let (r, g, b) = (index % size, index / size % size, index / (size * size));
+					let (x, y) = (b % columns * size + r, b / columns * size + g);
+					tiled[y * width + x] = [red, green, blue, 1.];
+				}
+
+				Self::Cube {
+					size,
+					cube: table(width, height, &mut tiled.into_iter()),
+					alpha: table(CURVE_TABLE_SIZE, 1, &mut alpha.into_iter().map(|alpha| [alpha; 4])),
+				}
+			}
+			AdjustmentPass::Luma { weights, colors } => Self::Luma {
+				weights,
+				colors: table(CURVE_TABLE_SIZE, 1, &mut colors.into_iter().map(|[red, green, blue]| [red, green, blue, 1.])),
+			},
+			AdjustmentPass::Vibrance { vibrance, saturation_scale } => Self::Vibrance { vibrance, saturation_scale },
+		}
+	}
+}
+
 impl EffectTextures {
+	/// The passes that carry out a run of adjustments, baking and uploading their tables only when the run hasn't been seen recently.
+	/// A new run is likely changing every frame, as when a slider drags, so its cubes start as quick drafts that a later render refines.
+	pub(crate) fn adjustment_passes(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, run: &[&Adjustment]) -> Arc<Vec<AdjustmentPassTextures>> {
+		let mut hasher = std::hash::DefaultHasher::new();
+		run.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
+		let hash = std::hash::Hasher::finish(&hasher);
+
+		let bake = |cube_size: usize| {
+			let run: Vec<Adjustment> = run.iter().map(|&adjustment| adjustment.clone()).collect();
+			let passes = AdjustmentPass::plan(&run, cube_size);
+			let has_cube = AdjustmentPass::any_cube(&passes);
+			let textures = passes.into_iter().map(|pass| AdjustmentPassTextures::upload(device, queue, pass)).collect::<Vec<_>>();
+			(Arc::new(textures), has_cube)
+		};
+
+		if let Some(cached) = self.adjustment_runs.iter_mut().find(|cached| cached.hash == hash) {
+			let reused_in_later_render = cached.last_used < self.render_count;
+			cached.last_used = self.render_count;
+
+			if cached.draft && reused_in_later_render {
+				(cached.passes, _) = bake(CUBE_SIZE);
+				cached.draft = false;
+			}
+			return cached.passes.clone();
+		}
+
+		let (passes, draft) = bake(DRAFT_CUBE_SIZE);
+		self.adjustment_runs.push(CachedAdjustmentRun {
+			hash,
+			passes: passes.clone(),
+			draft,
+			last_used: self.render_count,
+		});
+
+		passes
+	}
+
 	pub(crate) fn acquire(&mut self, device: &wgpu::Device, size: UVec2, format: wgpu::TextureFormat) -> wgpu::Texture {
 		let size = size.max(UVec2::ONE);
 		let matches = |texture: &wgpu::Texture| texture.width() == size.x && texture.height() == size.y && texture.format() == format;
@@ -678,6 +823,12 @@ impl EffectTextures {
 	pub(crate) fn finish_render(&mut self) {
 		let render_count = self.render_count;
 		self.free.retain(|(_, last_used)| render_count - last_used < UNUSED_TEXTURE_RENDER_LIMIT);
+
+		// Dragging a slider makes a new run every frame, so the runs this render didn't use make way rather than piling up, least recent first
+		self.adjustment_runs.sort_by_key(|cached| std::cmp::Reverse(cached.last_used));
+		let used_this_render = self.adjustment_runs.iter().take_while(|cached| cached.last_used == render_count).count();
+		self.adjustment_runs.truncate(used_this_render.max(MAX_CACHED_ADJUSTMENT_RUNS));
+
 		self.render_count += 1;
 	}
 }

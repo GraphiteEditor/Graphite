@@ -441,6 +441,82 @@ impl SvgFilterPrimitives {
 		let knocked_out = self.push("feComposite", &format!(r#"in="{beneath}" in2="{full_content}" operator="out""#), "");
 		self.add(image, &knocked_out)
 	}
+
+	/// The image with `adjustment` applied where SVG's color primitives can express it, or left as it is where they can't.
+	fn adjust(&mut self, image: &str, adjustment: &graphic_types::Adjustment) -> String {
+		use graphic_types::Adjustment;
+		use graphic_types::adjustment::DesaturateMethod;
+
+		// Enough entries that interpolating between them strays less than a level from the curve
+		const TABLE_SIZE: usize = 256;
+
+		let table = |values: &[f32]| values.iter().map(|value| format!("{:.4}", value.clamp(0., 1.))).collect::<Vec<_>>().join(" ");
+		let functions = |kind: &str, [red, green, blue]: [&[f32]; 3]| {
+			[("R", red), ("G", green), ("B", blue)]
+				.map(|(channel, values)| format!(r#"<feFunc{channel} type="{kind}" tableValues="{}" />"#, table(values)))
+				.concat()
+		};
+		let in_gamma = |input: &str| format!(r#"in="{input}" color-interpolation-filters="sRGB""#);
+		// A matrix whose three color rows each hold `weights` (red, green, blue, constant), leaving alpha as it is
+		let matrix = |rows: [[f32; 4]; 3]| {
+			let row = |[red, green, blue, constant]: [f32; 4]| format!("{red} {green} {blue} 0 {constant}");
+			format!(r#"type="matrix" values="{} {} {} 0 0 0 1 0""#, row(rows[0]), row(rows[1]), row(rows[2]))
+		};
+
+		if let Some([red, green, blue, mut alpha]) = raster_kernels::adjustments::channel_curves(adjustment, TABLE_SIZE) {
+			// Fully transparent pixels keep no color to adjust, so they stay empty as on the GPU
+			alpha[0] = 0.;
+			let curves = functions("table", [&red, &green, &blue]) + &format!(r#"<feFuncA type="table" tableValues="{}" />"#, table(&alpha));
+			return self.push("feComponentTransfer", &in_gamma(image), &curves);
+		}
+
+		match adjustment {
+			Adjustment::Threshold { min_luminance, max_luminance } => {
+				// The same fixed-point Rec. 601 luma the kernel compares, then white where it falls within the range
+				let weight = [4915., 9667., 1802., 0.].map(|weight| weight / 16384.);
+				let luma = self.push("feColorMatrix", &format!("{} {}", in_gamma(image), matrix([weight; 3])), "");
+				let (min, max) = ((min_luminance / 100.) as f32, (max_luminance / 100.) as f32);
+				let steps: Vec<f32> = (0..TABLE_SIZE)
+					.map(|index| index as f32 / TABLE_SIZE as f32)
+					.map(|luma| if luma >= min && luma <= max { 1. } else { 0. })
+					.collect();
+				self.push("feComponentTransfer", &in_gamma(&luma), &functions("discrete", [&steps, &steps, &steps]))
+			}
+			Adjustment::GradientMap { gradient, reverse } => {
+				// The classic luma picks each color's position along the gradient, whose colors the tables hold
+				let luma = self.push("feColorMatrix", &format!("{} {}", in_gamma(image), matrix([[0.3, 0.59, 0.11, 0.]; 3])), "");
+				let evaluator = gradient.element().evaluator(GradientSettings::from_item_attributes(gradient));
+				let colors: Vec<[f32; 4]> = (0..TABLE_SIZE)
+					.map(|index| index as f64 / (TABLE_SIZE - 1) as f64)
+					.map(|position| evaluator.evaluate(if *reverse { 1. - position } else { position }).to_gamma_srgb_channels())
+					.collect();
+				let channel = |index: usize| colors.iter().map(|color| color[index]).collect::<Vec<_>>();
+				self.push("feComponentTransfer", &in_gamma(&luma), &functions("table", [&channel(0), &channel(1), &channel(2)]))
+			}
+			Adjustment::ChannelMixer(settings) => {
+				// Weights are 10-bit fixed point truncated toward zero, as the kernel takes them
+				let row = |row: graphic_types::adjustment::ChannelMixerRow| [row.red, row.green, row.blue, row.constant].map(|percent| (percent as f32 * 1024. / 100.).trunc() / 1024.);
+				let rows = match settings.monochrome {
+					true => [row(settings.monochrome_mix); 3],
+					false => [row(settings.red), row(settings.green), row(settings.blue)],
+				};
+				self.push("feColorMatrix", &format!("{} {}", in_gamma(image), matrix(rows)), "")
+			}
+			Adjustment::Desaturate { method } => {
+				let (weights, space) = match method {
+					DesaturateMethod::LuminanceRec709 => ([0.2126, 0.7152, 0.0722, 0.], "linearRGB"),
+					DesaturateMethod::ChannelsAverage => ([1. / 3., 1. / 3., 1. / 3., 0.], "linearRGB"),
+					DesaturateMethod::LumaRec709 => ([0.2126, 0.7152, 0.0722, 0.], "sRGB"),
+					DesaturateMethod::LumaRec601 => ([0.299, 0.587, 0.114, 0.], "sRGB"),
+					// The rest take the extremes of the channels or a perceptual lightness, which a matrix can't express
+					_ => return image.to_string(),
+				};
+				self.push("feColorMatrix", &format!(r#"in="{image}" color-interpolation-filters="{space}" {}"#, matrix([weights; 3])), "")
+			}
+			// TODO: Express the other cross-channel adjustments, which no SVG primitive covers exactly
+			_ => image.to_string(),
+		}
+	}
 }
 
 /// Writes an SVG filter into `svg_defs` that carries out `effects` like the GPU passes do, returning its ID, or `None` if the user space is degenerate.
@@ -561,6 +637,10 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 					beneath = Some(primitives.shade_beneath(beneath, &coverage, color));
 					primitives.shade_within(&mut full, &mut filled, &coverage, color);
 				}
+			}
+			EffectOperation::Adjustment(ref adjustment) => {
+				filled = filled.map(|filled| primitives.adjust(&filled, adjustment));
+				full = primitives.adjust(&full, adjustment);
 			}
 		}
 	}
@@ -4201,5 +4281,47 @@ mod tests {
 		write_svg_effects_filter(&mut bevel_defs, &Effects::from_operations([bevel]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 2.).unwrap();
 		assert!(bevel_defs.contains(r#"operator="erode" radius="2""#) && bevel_defs.contains(r#"stdDeviation="1""#), "{bevel_defs}");
 		assert_eq!(bevel_defs.matches(r#"surfaceScale="4""#).count(), 2, "{bevel_defs}");
+	}
+
+	#[test]
+	fn svg_effects_filters_express_adjustments_where_svg_can() {
+		use graphic_types::adjustment::DesaturateMethod;
+		use graphic_types::{Adjustment, EffectOperation};
+
+		let filter = |adjustment| {
+			let mut defs = String::new();
+			write_svg_effects_filter(
+				&mut defs,
+				&Effects::from_operations([EffectOperation::Adjustment(adjustment)]),
+				1.,
+				[DVec2::ZERO, DVec2::ONE],
+				DAffine2::IDENTITY,
+				1.,
+			)
+			.unwrap();
+			defs
+		};
+
+		// A per-channel adjustment becomes curves on the gamma-encoded channels, and Invert's run from white to black
+		let invert = filter(Adjustment::Invert);
+		assert!(invert.contains(r#"<feComponentTransfer in="SourceGraphic" color-interpolation-filters="sRGB""#), "{invert}");
+		assert!(invert.contains(r#"<feFuncR type="table" tableValues="1.0000 0.9961"#), "{invert}");
+
+		// Making the content opaque leaves the empty space around it empty
+		let make_opaque = filter(Adjustment::MakeOpaque);
+		assert!(make_opaque.contains(r#"<feFuncA type="table" tableValues="0.0000 1.0000"#), "{make_opaque}");
+
+		// A luma in linear light is a matrix there
+		let desaturate = filter(Adjustment::Desaturate {
+			method: DesaturateMethod::LuminanceRec709,
+		});
+		assert!(
+			desaturate.contains(r#"color-interpolation-filters="linearRGB" type="matrix" values="0.2126 0.7152 0.0722 0 0"#),
+			"{desaturate}"
+		);
+
+		// One no primitive expresses passes the content through unchanged
+		let vibrance = filter(Adjustment::Vibrance { vibrance: 50., saturation: 0. });
+		assert!(!vibrance.contains("feComponentTransfer") && !vibrance.contains("feColorMatrix"), "{vibrance}");
 	}
 }

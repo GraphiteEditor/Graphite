@@ -12,27 +12,26 @@ use graphic_types::adjustment::{
 };
 pub use graphic_types::adjustment::{DesaturateMethod, RelativeAbsolute};
 pub use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
+use graphic_types::{Graphic, Vector};
 use no_std_types::color::Color;
 use no_std_types::context::Ctx;
-use raster_types::{CPU, Image, Raster};
+use raster_types::{CPU, GPU, Image, Raster};
 use vector_types::Gradient;
 
 /// Applies the adjustment to the item's element.
 fn adjust<T: Adjust>(item: Item<T>, adjustment: Adjustment) -> Item<T> {
-	let mut item = item;
-	item.element_mut().adjust(&adjustment);
-	item
+	T::adjust(item, &adjustment)
 }
 
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeDesaturate"))]
-fn desaturate<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>, method: Item<DesaturateMethod>) -> Item<T> {
+fn desaturate<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>, method: Item<DesaturateMethod>) -> Item<T> {
 	adjust(input, Adjustment::Desaturate { method: method.into_element() })
 }
 
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGammaCorrection"))]
 fn gamma_correction<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[default(2.2)]
 	#[range]
 	#[hard(0.0001..)]
@@ -86,7 +85,7 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 }
 
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeMakeOpaque"))]
-fn make_opaque<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>) -> Item<T> {
+fn make_opaque<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>) -> Item<T> {
 	adjust(input, Adjustment::MakeOpaque)
 }
 
@@ -101,7 +100,7 @@ fn make_opaque<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gra
 #[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), icon("NodeBrightnessContrast"), inspector("brightness_contrast_inspector"))]
 fn brightness_contrast<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(-150..150)]
@@ -150,7 +149,7 @@ pub enum AdjustmentChannel {
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), inspector("levels_inspector"))]
 fn levels<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(0..100)]
@@ -321,7 +320,7 @@ fn levels<T: Adjust>(
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), inspector("transfer_curves_inspector"))]
 fn curves<T: Adjust + Send>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	curve: Item<TransferCurve>,
 	#[name("(Red) Curve")] red_curve: Item<TransferCurve>,
 	#[name("(Green) Curve")] green_curve: Item<TransferCurve>,
@@ -368,7 +367,7 @@ fn points_to_transfer_curve(
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"), icon("NodeBlackAndWhite"), inspector("black_and_white_inspector"))]
 fn black_and_white<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	use_tint: Item<bool>,
 	#[default("#e1d3b3")] tint: Item<Color>,
 	#[unit("%")]
@@ -439,7 +438,7 @@ pub enum HueSaturationRange {
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), icon("NodeHueSaturation"), inspector("hue_saturation_inspector"))]
 fn hue_saturation<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
@@ -773,7 +772,7 @@ fn hue_saturation<T: Adjust>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeInvert"))]
-fn invert<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>) -> Item<T> {
+fn invert<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>) -> Item<T> {
 	adjust(input, Adjustment::Invert)
 }
 
@@ -782,7 +781,7 @@ fn invert<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), inspector("threshold_inspector"))]
 fn threshold<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(0..100)]
@@ -819,7 +818,7 @@ fn threshold<T: Adjust>(
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGradientMap"))]
 fn gradient_map<T: Adjust + Send>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
 	reverse: Item<bool>,
 ) -> Item<T> {
@@ -838,7 +837,7 @@ fn gradient_map<T: Adjust + Send>(
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), inspector("vibrance_inspector"))]
 fn vibrance<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(-100..100)]
@@ -887,7 +886,7 @@ pub enum RedGreenBlueAlpha {
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), inspector("channel_mixer_inspector"))]
 fn channel_mixer<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 
 	monochrome: Item<bool>,
 
@@ -1038,7 +1037,7 @@ pub enum SelectiveColorChoice {
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), inspector("selective_color_inspector"))]
 fn selective_color<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 
 	mode: Item<RelativeAbsolute>,
 
@@ -1260,7 +1259,7 @@ fn selective_color<T: Adjust>(
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePosterize"))]
 fn posterize<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[default(4)]
 	#[hard(2..)]
 	levels: Item<i64>,
@@ -1277,7 +1276,7 @@ fn posterize<T: Adjust>(
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), inspector("exposure_inspector"))]
 fn exposure<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[range]
 	#[soft(-20..20)]
 	exposure: Item<f64>,
@@ -1319,7 +1318,7 @@ pub enum TonalRange {
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), inspector("color_balance_inspector"))]
 fn color_balance<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 
 	#[name("(Shadows) Cyan-Red")]
 	#[unit("%")]
@@ -1395,7 +1394,7 @@ fn color_balance<T: Adjust>(
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePhotoFilter"))]
 fn photo_filter<T: Adjust>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[default("#ec8a00")] color: Item<Color>,
 	#[unit("%")]
 	#[range]
@@ -1424,7 +1423,7 @@ fn photo_filter<T: Adjust>(
 fn color_lookup<T: Adjust + Send>(
 	_: impl Ctx,
 	/// The image whose colors are remapped by the LUT (lookup table).
-	#[implementations(Raster<CPU>, Color, Gradient)]
+	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)]
 	image: Item<T>,
 	/// A LUT (lookup table) file in the `.cube`, `.3dl`, `.look`, `.csp`, or `.icc` (*abstract* or *device link* ICC profile) format.
 	#[name("LUT File")]
