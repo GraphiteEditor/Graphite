@@ -1,36 +1,24 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::adjust::Adjust;
-#[cfg(feature = "std")]
 use crate::color_lookup_table::LutCache;
 use core::fmt::Debug;
-#[cfg(feature = "std")]
 use core_types::list::{Item, List};
-#[cfg(feature = "std")]
 use core_types::transfer_curve::{TransferCurve, TransferCurveEvaluator};
-#[cfg(feature = "std")]
 use glam::DVec2;
 use glam::Vec3;
-#[cfg(feature = "std")]
 use graphene_resource::Resource;
 use no_std_types::color::{Color, linear_to_srgb, set_luminosity, srgb_to_linear};
 use no_std_types::context::Ctx;
-#[cfg(not(feature = "std"))]
-use no_std_types::list::ShaderItem as Item;
 use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
-#[cfg(not(feature = "std"))]
-use num_traits::float::Float;
-#[cfg(feature = "std")]
 use raster_types::{CPU, Image, Raster};
-#[cfg(feature = "std")]
 use vector_types::Gradient;
 
 /// Conversion from a color to grayscale.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, dyn_any::DynAny, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 #[repr(u32)]
 pub enum DesaturateMethod {
@@ -72,14 +60,8 @@ pub enum DesaturateMethod {
 	LightnessHsl,
 }
 
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeDesaturate"), shader_node(PerPixelAdjust))]
-fn desaturate<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
-	method: Item<DesaturateMethod>,
-) -> Item<T> {
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeDesaturate"))]
+fn desaturate<T: Adjust<Color>>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>, method: Item<DesaturateMethod>) -> Item<T> {
 	let mut input = input;
 	let method = method.into_element();
 
@@ -116,12 +98,10 @@ fn desaturate<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeGammaCorrection"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeGammaCorrection"))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
 	#[default(2.2)]
 	#[range]
 	#[hard(0.0001..)]
@@ -139,7 +119,6 @@ fn gamma_correction<T: Adjust<Color>>(
 }
 
 /// The red, green, blue, and alpha channels of an image, split into separate node outputs.
-#[cfg(feature = "std")]
 #[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destructure)]
 pub struct ImageChannels {
 	/// The red channel of the image, as a grayscale image.
@@ -153,7 +132,6 @@ pub struct ImageChannels {
 }
 
 /// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Channels"), icon("NodeImageToChannels"), name("Image to Channels"))]
 fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 	let (image, attributes) = image.into_parts();
@@ -176,13 +154,8 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 	ImageChannels { red, green, blue, alpha }
 }
 
-#[node_macro::node(category("Raster: Channels"), icon("NodeMakeOpaque"), shader_node(PerPixelAdjust))]
-fn make_opaque<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
-) -> Item<T> {
+#[node_macro::node(category("Raster: Channels"), icon("NodeMakeOpaque"))]
+fn make_opaque<T: Adjust<Color>>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>) -> Item<T> {
 	let mut input = input;
 	input.element_mut().adjust(|color| color.with_alpha(1.));
 	input
@@ -290,18 +263,10 @@ impl BrightnessCurve {
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
 //
 // TODO: A Lab-only mode once Graphite supports the CIE Lab color space.
-#[node_macro::node(
-	name("Brightness/Contrast"),
-	category("Raster: Adjustment"),
-	icon("NodeBrightnessContrast"),
-	inspector("brightness_contrast_inspector"),
-	shader_node(PerPixelAdjust)
-)]
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), icon("NodeBrightnessContrast"), inspector("brightness_contrast_inspector"))]
 fn brightness_contrast<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(-150..150)]
@@ -354,9 +319,8 @@ fn brightness_contrast<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 /// The channel whose settings are shown, with RGB adjusting all three color channels together.
 pub enum AdjustmentChannel {
@@ -458,12 +422,10 @@ impl LevelsChain {
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), inspector("levels_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), inspector("levels_inspector"))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(0..100)]
@@ -671,8 +633,6 @@ fn levels<T: Adjust<Color>>(
 // Each curve is any number of (x, y) points on 0..1 joined by a natural cubic spline held flat beyond the outermost
 // points, and the per-channel curves apply before the composite one, like Levels. The value between those two stages
 // stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
-// Needs the heap for its curves, so it stays off the shader build for now.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), inspector("transfer_curves_inspector"))]
 fn curves<T: Adjust<Color> + Send>(
 	_: impl Ctx,
@@ -706,7 +666,6 @@ fn curves<T: Adjust<Color> + Send>(
 }
 
 /// Builds a transfer curve from a `Vec2[]` of control points, each mapping the input value at its x to the output value at its y. A smooth spline runs through them, holding the outermost points' values beyond them.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePointsToTransferCurve"), name("Points to Transfer Curve"))]
 fn points_to_transfer_curve(
 	_: impl Ctx,
@@ -724,18 +683,10 @@ fn points_to_transfer_curve(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-#[node_macro::node(
-	name("Black & White"),
-	category("Raster: Adjustment"),
-	icon("NodeBlackAndWhite"),
-	inspector("black_and_white_inspector"),
-	shader_node(PerPixelAdjust)
-)]
+#[node_macro::node(name("Black & White"), category("Raster: Adjustment"), icon("NodeBlackAndWhite"), inspector("black_and_white_inspector"))]
 fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	use_tint: Item<bool>,
 	#[default("#e1d3b3")] tint: Item<Color>,
 	#[unit("%")]
@@ -824,9 +775,8 @@ fn black_and_white<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 pub enum HueSaturationRange {
 	#[default]
@@ -1013,18 +963,10 @@ fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
 //
 // TODO: Residuals in 8-bit PSD interop: the byte-hue colorize table, the colorize lightness slider (up to 2.5 levels), and the range edges (a few tenths of a degree)
-#[node_macro::node(
-	name("Hue/Saturation"),
-	category("Raster: Adjustment"),
-	icon("NodeHueSaturation"),
-	inspector("hue_saturation_inspector"),
-	shader_node(PerPixelAdjust)
-)]
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), icon("NodeHueSaturation"), inspector("hue_saturation_inspector"))]
 fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
 	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
@@ -1400,13 +1342,8 @@ fn hue_saturation<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeInvert"), shader_node(PerPixelAdjust))]
-fn invert<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
-) -> Item<T> {
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeInvert"))]
+fn invert<T: Adjust<Color>>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>) -> Item<T> {
 	let mut input = input;
 	input.element_mut().adjust(|color| color.map_gamma_rgb(|channel| 1. - channel));
 	input
@@ -1414,12 +1351,10 @@ fn invert<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), inspector("threshold_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), inspector("threshold_inspector"))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(0..100)]
@@ -1459,7 +1394,6 @@ fn threshold<T: Adjust<Color>>(
 // TODO: - Linear lerps the interval's stop colors by the fraction of p. Smooth is a cubic Hermite over the stop index with tangent
 // TODO:   `(c[i + 1] - c[i - 1]) / 2`, the end stops repeated past the ends, so two stops give `0.5 p + 1.5 p^2 - p^3`.
 // TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGradientMap"))]
 fn gradient_map<T: Adjust<Color> + Send>(
 	_: impl Ctx,
@@ -1488,12 +1422,10 @@ fn gradient_map<T: Adjust<Color> + Send>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), inspector("vibrance_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), inspector("vibrance_inspector"))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(-100..100)]
@@ -1573,9 +1505,8 @@ fn skin_tone_window(hue: f32) -> f32 {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -1585,9 +1516,8 @@ pub enum RedGreenBlue {
 }
 
 // Kept only to deserialize the channel input of old Extract Channel nodes for document migration
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -1598,9 +1528,8 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -1617,9 +1546,8 @@ pub enum NoiseType {
 
 /// Style of layered levels of the noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType)]
 pub enum FractalType {
 	#[default]
 	None,
@@ -1635,9 +1563,8 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType)]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -1648,9 +1575,8 @@ pub enum CellularDistanceFunction {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType)]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -1669,9 +1595,8 @@ pub enum CellularReturnType {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType)]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -1688,12 +1613,10 @@ pub enum DomainWarpType {
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
 //
 // TODO: CMYK source channels once Graphite supports the CMYK color space.
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), inspector("channel_mixer_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), inspector("channel_mixer_inspector"))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 
 	monochrome: Item<bool>,
 
@@ -1848,9 +1771,8 @@ fn channel_mixer<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -1860,9 +1782,8 @@ pub enum RelativeAbsolute {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -1884,12 +1805,10 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), inspector("selective_color_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), inspector("selective_color_inspector"))]
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 
 	mode: Item<RelativeAbsolute>,
 
@@ -2195,12 +2114,10 @@ fn selective_color<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=nvrt%27%20%3D%20Invert-,%27post%27%20%3D%20Posterize,-%27thrs%27%20%3D%20Threshold
-#[node_macro::node(category("Raster: Adjustment"), icon("NodePosterize"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodePosterize"))]
 fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
 	#[default(4)]
 	#[hard(2..)]
 	levels: Item<i64>,
@@ -2225,12 +2142,10 @@ fn posterize<T: Adjust<Color>>(
 //
 // The exposure, offset, and gamma operations follow:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), inspector("exposure_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), inspector("exposure_inspector"))]
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	input: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] input: Item<T>,
 	#[range]
 	#[soft(-20..20)]
 	exposure: Item<f64>,
@@ -2267,9 +2182,8 @@ fn exposure<T: Adjust<Color>>(
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 pub enum TonalRange {
 	Shadows,
@@ -2361,12 +2275,10 @@ fn color_balance_curve(s: i32, m: i32, h: i32, s_max: i32, m_max: i32, m_min: i3
 //
 // Every channel is a Levels curve whose black point, white point, and two-decimal gamma are derived from
 // the nine sliders, see `color_balance_curve`.
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), inspector("color_balance_inspector"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), inspector("color_balance_inspector"))]
 fn color_balance<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 
 	#[name("(Shadows) Cyan-Red")]
 	#[unit("%")]
@@ -2461,12 +2373,10 @@ fn color_balance<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=of%20the%20file.-,Photo%20Filter,-Key%20is%20%27phfl
-#[node_macro::node(category("Raster: Adjustment"), icon("NodePhotoFilter"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodePhotoFilter"))]
 fn photo_filter<T: Adjust<Color>>(
 	_: impl Ctx,
-	#[implementations(Raster<CPU>, Color, Gradient)]
-	#[gpu_image]
-	image: Item<T>,
+	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	#[default("#ec8a00")] color: Item<Color>,
 	#[unit("%")]
 	#[range]
@@ -2530,7 +2440,6 @@ fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 //
 // TODO: Support dither, which needs the pixel position that a per-color adjustment never sees.
 // TODO: Verify the tetrahedral interpolation, which is unconfirmed against other implementations.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorLookup"))]
 fn color_lookup<T: Adjust<Color> + Send>(
 	_: impl Ctx,
@@ -2557,7 +2466,6 @@ fn color_lookup<T: Adjust<Color> + Send>(
 	image
 }
 
-#[cfg(feature = "std")]
 mod _graphene_hash_impls {
 	use super::{
 		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
@@ -2580,7 +2488,7 @@ mod _graphene_hash_impls {
 	);
 }
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod tests {
 	use super::*;
 

@@ -8,7 +8,6 @@ mod crate_ident;
 mod derive_choice_type;
 mod destructure;
 mod parsing;
-mod shader_nodes;
 mod validation;
 
 /// Used to create a node definition.

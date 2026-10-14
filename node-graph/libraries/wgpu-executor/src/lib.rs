@@ -1,13 +1,11 @@
 mod buffer;
 mod context;
 mod pipeline;
-pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
 mod vello_effects;
 mod vello_render;
 
-use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
 use crate::vello_render::VelloRenderer;
 pub use crate::vello_render::{MAX_LAYER_RENDER_SIZE, VelloCanvas};
@@ -55,7 +53,6 @@ pub struct WgpuExecutorInner {
 	vello_renderer: VelloRenderer,
 	/// The canvas the node graph renders documents on.
 	document_canvas: Mutex<VelloCanvas>,
-	shader_runtime: ShaderRuntime,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -169,15 +166,12 @@ impl WgpuExecutor {
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
 
-		let shader_runtime = ShaderRuntime::default();
-
 		Some(Self {
 			inner: Arc::new(WgpuExecutorInner {
 				context,
 				texture_cache: texture_cache.into(),
 				vello_renderer,
 				document_canvas: Mutex::default(),
-				shader_runtime,
 			}),
 		})
 	}

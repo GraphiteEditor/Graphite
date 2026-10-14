@@ -1,15 +1,12 @@
 use crate::adjust::Adjust;
-#[cfg(feature = "std")]
+use crate::parallel_rows::fill_rows;
+use core::cmp::Ordering;
 use core_types::list::Item;
-use glam::DAffine2;
+use glam::{DAffine2, DVec2};
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
-#[cfg(not(feature = "std"))]
-use no_std_types::list::ShaderItem as Item;
-#[cfg(feature = "std")]
-use raster_types::{CPU, Raster};
-#[cfg(feature = "std")]
+use raster_types::{CPU, Image, Raster};
 use vector_types::{Gradient, GradientStop};
 
 pub trait Blend<P: Pixel> {
@@ -22,89 +19,79 @@ impl Blend<Color> for Color {
 	}
 }
 
-#[cfg(feature = "std")]
-mod blend_std {
-	use super::*;
-	use crate::parallel_rows::fill_rows;
-	use core::cmp::Ordering;
-	use glam::DVec2;
-	use raster_types::Image;
-	use raster_types::Raster;
+impl Blend<Color> for Raster<CPU> {
+	/// Each pixel blends with what lies beneath its center in `under`, so the two images needn't share a size or placement. O(width × height).
+	fn blend(&self, transform: DAffine2, under: &Self, under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
+		// Maps this image's pixel coordinates onto the under image's, through the unit square each transform places
+		let pixels_to_unit = |image: &Image<Color>| DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let under_placement = (under_transform.matrix2.determinant() != 0.).then(|| pixels_to_unit(under).inverse() * under_transform.inverse() * transform * pixels_to_unit(self));
 
-	impl Blend<Color> for Raster<CPU> {
-		/// Each pixel blends with what lies beneath its center in `under`, so the two images needn't share a size or placement. O(width × height).
-		fn blend(&self, transform: DAffine2, under: &Self, under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
-			// Maps this image's pixel coordinates onto the under image's, through the unit square each transform places
-			let pixels_to_unit = |image: &Image<Color>| DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
-			let under_placement = (under_transform.matrix2.determinant() != 0.).then(|| pixels_to_unit(under).inverse() * under_transform.inverse() * transform * pixels_to_unit(self));
-
-			let mut data = vec![Color::TRANSPARENT; self.data.len()];
-			fill_rows(&mut data, self.width as usize, |y, row| {
-				for (x, pixel) in row.iter_mut().enumerate() {
-					let over = self.data[y * self.width as usize + x];
-					let center = DVec2::new(x as f64 + 0.5, y as f64 + 0.5);
-					let beneath = under_placement.map_or(Color::TRANSPARENT, |placement| sample_bilinear(under, placement.transform_point2(center)));
-					*pixel = blend_fn(over, beneath);
-				}
-			});
-
-			Raster::new_cpu(Image {
-				data,
-				width: self.width,
-				height: self.height,
-			})
-		}
-	}
-
-	/// The image's color at a point in its pixel coordinates, interpolating the four nearest pixel centers by their alpha, with transparency outside it.
-	fn sample_bilinear(image: &Image<Color>, point: DVec2) -> Color {
-		let corner = (point - 0.5).floor();
-		let fraction = (point - 0.5 - corner).as_vec2();
-
-		let premultiplied_at = |offset_x: i64, offset_y: i64| {
-			let (x, y) = (corner.x as i64 + offset_x, corner.y as i64 + offset_y);
-			if x < 0 || y < 0 || x >= image.width as i64 || y >= image.height as i64 {
-				return [0.; 4];
+		let mut data = vec![Color::TRANSPARENT; self.data.len()];
+		fill_rows(&mut data, self.width as usize, |y, row| {
+			for (x, pixel) in row.iter_mut().enumerate() {
+				let over = self.data[y * self.width as usize + x];
+				let center = DVec2::new(x as f64 + 0.5, y as f64 + 0.5);
+				let beneath = under_placement.map_or(Color::TRANSPARENT, |placement| sample_bilinear(under, placement.transform_point2(center)));
+				*pixel = blend_fn(over, beneath);
 			}
-			let color = image.data[(y * image.width as i64 + x) as usize];
-			[color.r() * color.a(), color.g() * color.a(), color.b() * color.a(), color.a()]
-		};
-		let lerp = |a: [f32; 4], b: [f32; 4], t: f32| std::array::from_fn::<f32, 4, _>(|channel| a[channel] + (b[channel] - a[channel]) * t);
+		});
 
-		let top = lerp(premultiplied_at(0, 0), premultiplied_at(1, 0), fraction.x);
-		let bottom = lerp(premultiplied_at(0, 1), premultiplied_at(1, 1), fraction.x);
-		let [red, green, blue, alpha] = lerp(top, bottom, fraction.y);
-
-		match alpha > 0. {
-			true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha),
-			false => Color::TRANSPARENT,
-		}
+		Raster::new_cpu(Image {
+			data,
+			width: self.width,
+			height: self.height,
+		})
 	}
+}
 
-	impl Blend<Color> for Gradient {
-		// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
-		// TODO: it evaluates both sources with default whole-ramp attributes rather than their own (which this element-level impl cannot read);
-		// TODO: and the output keeps over's attributes despite being sampled with defaults
-		fn blend(&self, _transform: DAffine2, under: &Self, _under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
-			let mut combined_stops = self.positions(false).into_iter().chain(under.positions(false)).collect::<Vec<_>>();
-			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-			let over_evaluator = self.evaluator(Default::default());
-			let under_evaluator = under.evaluator(Default::default());
-			let stops = combined_stops.into_iter().map(|position| {
-				let color = blend_fn(over_evaluator.evaluate(position), under_evaluator.evaluate(position));
-				GradientStop { position, midpoint: 0.5, color }
-			});
+/// The image's color at a point in its pixel coordinates, interpolating the four nearest pixel centers by their alpha, with transparency outside it.
+fn sample_bilinear(image: &Image<Color>, point: DVec2) -> Color {
+	let corner = (point - 0.5).floor();
+	let fraction = (point - 0.5 - corner).as_vec2();
 
-			// Positions stay explicit because eliding them needs the cyclic flag this impl can't read, and a wrong guess would relocate the stops
-			Gradient::new(stops)
+	let premultiplied_at = |offset_x: i64, offset_y: i64| {
+		let (x, y) = (corner.x as i64 + offset_x, corner.y as i64 + offset_y);
+		if x < 0 || y < 0 || x >= image.width as i64 || y >= image.height as i64 {
+			return [0.; 4];
 		}
+		let color = image.data[(y * image.width as i64 + x) as usize];
+		[color.r() * color.a(), color.g() * color.a(), color.b() * color.a(), color.a()]
+	};
+	let lerp = |a: [f32; 4], b: [f32; 4], t: f32| std::array::from_fn::<f32, 4, _>(|channel| a[channel] + (b[channel] - a[channel]) * t);
+
+	let top = lerp(premultiplied_at(0, 0), premultiplied_at(1, 0), fraction.x);
+	let bottom = lerp(premultiplied_at(0, 1), premultiplied_at(1, 1), fraction.x);
+	let [red, green, blue, alpha] = lerp(top, bottom, fraction.y);
+
+	match alpha > 0. {
+		true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha),
+		false => Color::TRANSPARENT,
+	}
+}
+
+impl Blend<Color> for Gradient {
+	// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
+	// TODO: it evaluates both sources with default whole-ramp attributes rather than their own (which this element-level impl cannot read);
+	// TODO: and the output keeps over's attributes despite being sampled with defaults
+	fn blend(&self, _transform: DAffine2, under: &Self, _under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
+		let mut combined_stops = self.positions(false).into_iter().chain(under.positions(false)).collect::<Vec<_>>();
+		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
+		combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+		let over_evaluator = self.evaluator(Default::default());
+		let under_evaluator = under.evaluator(Default::default());
+		let stops = combined_stops.into_iter().map(|position| {
+			let color = blend_fn(over_evaluator.evaluate(position), under_evaluator.evaluate(position));
+			GradientStop { position, midpoint: 0.5, color }
+		});
+
+		// Positions stay explicit because eliding them needs the cyclic flag this impl can't read, and a wrong guess would relocate the stops
+		Gradient::new(stops)
 	}
 }
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
-#[node_macro::node(category("Raster"), icon("NodeMix"), cfg(feature = "std"), memoize)]
+#[node_macro::node(category("Raster"), icon("NodeMix"), memoize)]
 fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
@@ -112,7 +99,6 @@ fn mix<T: Blend<Color> + Send>(
 		Color,
 		Gradient,
 	)]
-	#[gpu_image]
 	over: Item<T>,
 	#[expose]
 	#[implementations(
@@ -120,7 +106,6 @@ fn mix<T: Blend<Color> + Send>(
 		Color,
 		Gradient,
 	)]
-	#[gpu_image]
 	under: Item<T>,
 	blend_mode: Item<BlendMode>,
 	#[unit("%")]
@@ -141,7 +126,7 @@ fn mix<T: Blend<Color> + Send>(
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorOverlay"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorOverlay"))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -149,7 +134,6 @@ fn color_overlay<T: Adjust<Color>>(
 		Color,
 		Gradient,
 	)]
-	#[gpu_image]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
 	blend_mode: Item<BlendMode>,
@@ -173,7 +157,7 @@ fn color_overlay<T: Adjust<Color>>(
 	image
 }
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;

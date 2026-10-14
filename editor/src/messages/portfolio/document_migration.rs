@@ -1167,9 +1167,47 @@ fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
 	monitor_reads_first_import && transform_reads_monitor_and_other_imports && exports_transform
 }
 
+/// The CPU node a removed GPU twin was generated from, as named in its era, like `raster_nodes::adjustments::InvertNode` for `raster_nodes::adjustments::invert_shader_node::InvertShaderNodeNode`.
+fn cpu_node_of_gpu_twin(identifier: &str) -> Option<String> {
+	let identifier = identifier.split('<').next()?;
+	let (module_path, struct_name) = identifier.rsplit_once("::")?;
+	let (parent_module_path, twin_module) = module_path.rsplit_once("::")?;
+	let cpu_struct_name = struct_name.strip_suffix("ShaderNodeNode")?;
+
+	twin_module.ends_with("_shader_node").then(|| format!("{parent_module_path}::{cpu_struct_name}Node"))
+}
+
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 	document.network_interface.normalize_stored_types();
+
+	// The removed GPU twins become their CPU nodes minus the trailing executor input, so the renames below carry them forward like their era's CPU nodes
+	let gpu_twins = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return None };
+			let kept_input_count = node.inputs.len().saturating_sub(1);
+			Some((*node_id, path, cpu_node_of_gpu_twin(identifier.as_str())?, node.inputs[..kept_input_count].to_vec()))
+		})
+		.collect::<Vec<_>>();
+	for (node_id, network_path, cpu_identifier, inputs) in gpu_twins {
+		let input_metadata = document
+			.network_interface
+			.node_metadata(&node_id, &network_path)
+			.map(|metadata| metadata.persistent_metadata.input_metadata.iter().take(inputs.len()).cloned().collect())
+			.unwrap_or_default();
+
+		let mut node_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::with_owned_string(cpu_identifier)),
+			inputs,
+			input_metadata,
+			..Default::default()
+		};
+		document.network_interface.replace_implementation(&node_id, &network_path, &mut node_template);
+		document.network_interface.replace_inputs(&node_id, &network_path, &mut node_template);
+	}
 
 	let network = document.network_interface.document_network().clone();
 
@@ -3676,11 +3714,14 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
-	// The Upload Texture node's old wrapper-network form maps onto its proto node form, which draws the executor from scope
-	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
-		&& name == "Upload Texture"
-	{
-		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
+	// The removed Upload Texture node, in its proto node or older wrapper network form, degrades to a passthrough of its content
+	let is_upload_texture = match document.network_interface.reference(node_id, network_path) {
+		Some(DefinitionIdentifier::Network(name)) => name == "Upload Texture",
+		Some(DefinitionIdentifier::ProtoNode(identifier)) => identifier.as_str().ends_with("::UploadTextureNode"),
+		None => false,
+	};
+	if is_upload_texture {
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(content) = old_inputs.first() {
@@ -3824,7 +3865,19 @@ mod tests {
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
-		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+	}
+
+	#[test]
+	fn gpu_twins_name_the_cpu_nodes_they_came_from() {
+		assert_eq!(
+			cpu_node_of_gpu_twin("raster_nodes::adjustments::desaturate_shader_node::DesaturateShaderNodeNode").as_deref(),
+			Some(graphene_std::raster_nodes::adjustments::desaturate::IDENTIFIER.as_str())
+		);
+		assert_eq!(
+			cpu_node_of_gpu_twin("graphene_raster_nodes::blending_nodes::color_overlay_shader_node::ColorOverlayShaderNodeNode").as_deref(),
+			Some("graphene_raster_nodes::blending_nodes::ColorOverlayNode")
+		);
+		assert_eq!(cpu_node_of_gpu_twin(graphene_std::raster_nodes::adjustments::invert::IDENTIFIER.as_str()), None);
 	}
 
 	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
