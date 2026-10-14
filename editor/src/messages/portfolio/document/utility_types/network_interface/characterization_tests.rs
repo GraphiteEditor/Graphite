@@ -1763,3 +1763,31 @@ async fn clicking_an_empty_input_without_dragging_leaves_it_and_opens_no_menu() 
 		"a click shouldn't wire anything into Fill's content"
 	);
 }
+
+#[tokio::test]
+async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let (_, empty_export_position) = *editor
+		.active_document()
+		.network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	drag_in_graph(&mut editor, &path, empty_export_position, empty_export_position - DVec2::new(240., 0.)).await;
+	assert!(
+		editor.active_document().node_graph_handler.context_menu.is_some(),
+		"dropping the wire on empty space should open the node menu"
+	);
+
+	editor.handle_message(DocumentMessage::ExitNestedNetwork { steps_back: 1 }).await;
+
+	let node_graph_handler = &editor.active_document().node_graph_handler;
+	assert!(node_graph_handler.context_menu.is_none(), "the node menu should close with the subgraph it was opened in");
+	assert!(node_graph_handler.wire_in_progress_from_connector.is_none(), "the wire should end with the subgraph it was dragged in");
+}

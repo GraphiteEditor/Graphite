@@ -616,6 +616,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 			DocumentMessage::EnterNestedNetwork { node_id } => {
+				self.node_graph_handler.leave_network(&mut self.network_interface, &self.breadcrumb_network_path, responses);
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
@@ -663,6 +664,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::ExitNestedNetwork { steps_back } => {
+				self.node_graph_handler.leave_network(&mut self.network_interface, &self.breadcrumb_network_path, responses);
 				for _ in 0..steps_back {
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);

@@ -110,7 +110,7 @@ impl NodeNetworkInterface {
 
 			// A missing description is empty, so only a non-empty one past the end needs the gap filled
 			let output_descriptions = &mut persistent_metadata.output_descriptions;
-			descriptions_changed = !output_description.is_empty() || has_description(output_descriptions);
+			descriptions_changed = !output_description.is_empty() || (index <= output_descriptions.len() && has_description(output_descriptions));
 			if index <= output_descriptions.len() {
 				output_descriptions.insert(index, output_description);
 			} else if !output_description.is_empty() {
@@ -143,7 +143,7 @@ impl NodeNetworkInterface {
 			if index < persistent_metadata.output_names.len() {
 				persistent_metadata.output_names.remove(index);
 			}
-			descriptions_changed = has_description(&persistent_metadata.output_descriptions);
+			descriptions_changed = index < persistent_metadata.output_descriptions.len() && has_description(&persistent_metadata.output_descriptions);
 			if index < persistent_metadata.output_descriptions.len() {
 				persistent_metadata.output_descriptions.remove(index);
 			}

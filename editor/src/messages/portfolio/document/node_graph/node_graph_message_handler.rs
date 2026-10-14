@@ -2518,6 +2518,17 @@ impl NodeGraphMessageHandler {
 		self.update_node_graph_hints(responses);
 	}
 
+	/// Ends the wire in progress and closes the context menu, both of which belong to the network being left.
+	pub fn leave_network(&mut self, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+		if self.wire_in_progress_from_connector.is_some() {
+			self.end_wire_in_progress(network_interface, network_path, responses);
+			responses.add(DocumentMessage::AbortTransaction);
+		}
+		if self.context_menu.take().is_some() {
+			responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
+		}
+	}
+
 	/// Whether the wire in progress is dragged backward from an input or export end, leaving its output end loose.
 	fn wire_in_progress_is_backward(&self) -> bool {
 		self.wire_in_progress_from_input.is_some() || self.wire_in_progress_from_new_export.is_some()
