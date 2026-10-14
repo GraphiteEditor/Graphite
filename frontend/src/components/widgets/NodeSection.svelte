@@ -528,9 +528,10 @@
 					margin-left: 8px;
 				}
 
-				// A label alone in its row lines up with the parameter names that follow their expose buttons
-				> .text-label:only-child {
+				// A label with no expose button before it lines up with the parameter names that follow one
+				> .text-label:first-child {
 					margin-left: calc(20px + 8px + 8px);
+					--wire-indent: 20px;
 				}
 
 				> .separator.horizontal.unrelated {

@@ -1,5 +1,5 @@
 use glam::UVec2;
-use rendering::scene::{Scene, SceneCommand, SceneImage};
+use rendering::scene::{Scene, SceneBrush, SceneCommand, SceneImage};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -247,10 +247,9 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 				brush_transform,
 				path,
 			} => {
-				let Some((paint, paint_to_brush)) = resolve_paint(brush, resolve_image) else { continue };
+				let Some(paint_to_brush) = set_paint(target, brush, resolve_image) else { continue };
 				target.set_transform(transform * *path_transform);
 				target.set_fill_rule(*fill_rule);
-				target.set_paint(paint);
 				target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 				target.fill_path(&finite_path(path));
 			}
@@ -261,17 +260,15 @@ fn replay(target: &mut vello_gpu::Scene, scene: &Scene, transform: Affine, viewp
 				brush_transform,
 				path,
 			} => {
-				let Some((paint, paint_to_brush)) = resolve_paint(brush, resolve_image) else { continue };
+				let Some(paint_to_brush) = set_paint(target, brush, resolve_image) else { continue };
 				target.set_transform(transform * *path_transform);
 				target.set_stroke(stroke.clone());
-				target.set_paint(paint);
 				target.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 				target.stroke_path(&finite_path(path));
 			}
 			SceneCommand::FillViewport { brush, brush_transform } => {
-				let Some((paint, paint_to_brush)) = resolve_paint(brush, resolve_image) else { continue };
+				let Some(paint_to_brush) = set_paint(target, brush, resolve_image) else { continue };
 				target.set_transform(Affine::IDENTITY);
-				target.set_paint(paint);
 				target.set_paint_transform(transform * brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
 				target.fill_rect(&viewport);
 			}
@@ -402,20 +399,29 @@ fn finite_path(path: &BezPath) -> Cow<'_, BezPath> {
 	Cow::Owned(result)
 }
 
-/// The Vello GPU paint for a recorded brush, plus the transform from the paint's space into the brush's (which differ for an image whose texture was downscaled).
-fn resolve_paint(brush: &Brush, resolve_image: &mut dyn FnMut(&SceneImage) -> Option<ResolvedImage>) -> Option<(PaintType, Affine)> {
+/// Paints with a recorded brush, returning the transform from the paint's space into the brush's (which differ for an image whose texture was downscaled).
+fn set_paint(target: &mut vello_gpu::Scene, brush: &SceneBrush, resolve_image: &mut dyn FnMut(&SceneImage) -> Option<ResolvedImage>) -> Option<Affine> {
+	let brush = match brush {
+		SceneBrush::Peniko(brush) => brush,
+		SceneBrush::PencilGradient(gradient) => {
+			target.set_pencil_gradient_paint(gradient.clone());
+			return Some(Affine::IDENTITY);
+		}
+	};
+
 	match brush {
-		Brush::Solid(color) => Some((PaintType::Solid(*color), Affine::IDENTITY)),
-		Brush::Gradient(gradient) => Some((PaintType::Gradient(gradient.clone()), Affine::IDENTITY)),
+		Brush::Solid(color) => target.set_paint(PaintType::Solid(*color)),
+		Brush::Gradient(gradient) => target.set_paint(PaintType::Gradient(gradient.clone())),
 		Brush::Image(image_brush) => {
 			let resolved = resolve_image(&SceneImage::Pixels(image_brush.clone()))?;
-			let paint = PaintType::Image(Image {
+			target.set_paint(PaintType::Image(Image {
 				image: resolved.source,
 				sampler: image_brush.sampler,
-			});
-			Some((paint, resolved.texture_to_image))
+			}));
+			return Some(resolved.texture_to_image);
 		}
 	}
+	Some(Affine::IDENTITY)
 }
 
 /// Identifies the pixels behind an image texture: a blob of CPU pixels, or a GPU texture.

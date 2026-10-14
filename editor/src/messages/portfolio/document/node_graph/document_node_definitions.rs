@@ -879,6 +879,7 @@ fn static_node_inspector() -> NodeInspector {
 	map.insert("exposure_inspector".to_string(), Box::new(node_inspector::exposure_inspector));
 	map.insert("format_number_inspector".to_string(), Box::new(node_inspector::format_number_inspector));
 	map.insert("string_capitalization_inspector".to_string(), Box::new(node_inspector::string_capitalization_inspector));
+	map.insert("gradient_curvature_inspector".to_string(), Box::new(node_inspector::gradient_curvature_inspector));
 	map.insert("rectangle_inspector".to_string(), Box::new(node_inspector::rectangle_inspector));
 	map.insert("grid_inspector".to_string(), Box::new(node_inspector::grid_inspector));
 	map.insert("spiral_inspector".to_string(), Box::new(node_inspector::spiral_inspector));

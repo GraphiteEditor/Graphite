@@ -1,6 +1,7 @@
 use graphic_types::raster_types::Texture;
 use kurbo::{Affine, BezPath, Shape, Stroke};
-use vello_gpu::peniko::{self, BlendMode, Brush, BrushRef, Fill};
+use vello_gpu::PencilGradient;
+use vello_gpu::peniko::{self, BlendMode, Brush, Fill};
 
 /// Tolerance for turning shapes other than paths into paths, matching Vello's own.
 const SHAPE_TOLERANCE: f64 = 0.1;
@@ -18,7 +19,7 @@ pub enum SceneCommand {
 	Fill {
 		fill_rule: Fill,
 		transform: Affine,
-		brush: Brush,
+		brush: SceneBrush,
 		brush_transform: Option<Affine>,
 		path: BezPath,
 	},
@@ -26,12 +27,12 @@ pub enum SceneCommand {
 	Stroke {
 		stroke: Stroke,
 		transform: Affine,
-		brush: Brush,
+		brush: SceneBrush,
 		brush_transform: Option<Affine>,
 		path: BezPath,
 	},
 	/// Fills the whole render area, for content without bounds, with the brush placed by `brush_transform` in the scene's space.
-	FillViewport { brush: Brush, brush_transform: Option<Affine> },
+	FillViewport { brush: SceneBrush, brush_transform: Option<Affine> },
 	/// Begins an isolated layer that composites its content with a blend mode and opacity, clipped to a path or covering the whole render area.
 	PushLayer { blend_mode: BlendMode, alpha: f32, clip: Option<ClipPath> },
 	/// Begins clipping the content that follows to a path, drawing it directly onto what lies beneath rather than into an isolated layer.
@@ -40,6 +41,45 @@ pub enum SceneCommand {
 	Pop,
 	/// Draws an image's rectangle of pixels, from the origin to its width and height, placed by `transform`.
 	DrawImage { image: SceneImage, transform: Affine },
+}
+
+/// What a fill or stroke paints with.
+#[derive(Clone, Debug)]
+pub enum SceneBrush {
+	/// A solid color, gradient, or image.
+	Peniko(Brush),
+	/// A gradient whose contours are a pencil of circles, which only Vello GPU's fork can draw.
+	PencilGradient(PencilGradient),
+}
+
+impl From<Brush> for SceneBrush {
+	fn from(brush: Brush) -> Self {
+		Self::Peniko(brush)
+	}
+}
+
+impl From<&Brush> for SceneBrush {
+	fn from(brush: &Brush) -> Self {
+		Self::Peniko(brush.clone())
+	}
+}
+
+impl From<peniko::Color> for SceneBrush {
+	fn from(color: peniko::Color) -> Self {
+		Self::Peniko(Brush::Solid(color))
+	}
+}
+
+impl From<&peniko::Gradient> for SceneBrush {
+	fn from(gradient: &peniko::Gradient) -> Self {
+		Self::Peniko(Brush::Gradient(gradient.clone()))
+	}
+}
+
+impl From<PencilGradient> for SceneBrush {
+	fn from(gradient: PencilGradient) -> Self {
+		Self::PencilGradient(gradient)
+	}
 }
 
 /// A clipping path given in the space of `transform`.
@@ -82,32 +122,29 @@ impl Scene {
 		self.commands.is_empty()
 	}
 
-	pub fn fill<'b>(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
+	pub fn fill(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>, shape: &impl Shape) {
 		self.commands.push(SceneCommand::Fill {
 			fill_rule,
 			transform,
-			brush: brush.into().to_owned(),
+			brush: brush.into(),
 			brush_transform,
 			path: shape.to_path(SHAPE_TOLERANCE),
 		});
 	}
 
-	pub fn stroke<'b>(&mut self, stroke: &Stroke, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
+	pub fn stroke(&mut self, stroke: &Stroke, transform: Affine, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>, shape: &impl Shape) {
 		self.commands.push(SceneCommand::Stroke {
 			stroke: stroke.clone(),
 			transform,
-			brush: brush.into().to_owned(),
+			brush: brush.into(),
 			brush_transform,
 			path: shape.to_path(SHAPE_TOLERANCE),
 		});
 	}
 
 	/// Fills the whole render area, which is how content without bounds (like a color or gradient layer) paints.
-	pub fn fill_viewport<'b>(&mut self, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>) {
-		self.commands.push(SceneCommand::FillViewport {
-			brush: brush.into().to_owned(),
-			brush_transform,
-		});
+	pub fn fill_viewport(&mut self, brush: impl Into<SceneBrush>, brush_transform: Option<Affine>) {
+		self.commands.push(SceneCommand::FillViewport { brush: brush.into(), brush_transform });
 	}
 
 	/// Begins an isolated layer clipped to `clip`, given in the space of `transform`. Must be balanced by [`Self::pop_layer`].

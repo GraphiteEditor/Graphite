@@ -1,5 +1,6 @@
+use crate::dial_gradient::{LINEAR_DIALS, PencilParameters, RADIAL_DIALS, SvgApproximation};
 use crate::render_ext::{PaintTarget, RenderExt};
-use crate::scene::Scene;
+use crate::scene::{Scene, SceneBrush};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use core_types::CacheHash;
 use core_types::FallibleVec2Operations;
@@ -18,8 +19,8 @@ use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
 	ATTR_BACKGROUND, ATTR_BLEND_MODE, ATTR_CLIP, ATTR_CLIPPING_MASK, ATTR_DIMENSIONS, ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EDITOR_TEXT_FRAME, ATTR_FONT,
-	ATTR_FONT_SIZE, ATTR_GRADIENT_FORM, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN,
-	ATTR_TRANSFORM,
+	ATTR_FONT_SIZE, ATTR_GRADIENT_END_CURVATURE, ATTR_GRADIENT_FORM, ATTR_GRADIENT_START_CURVATURE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT,
+	ATTR_MAX_WIDTH, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TEXT_ALIGN, ATTR_TRANSFORM,
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
@@ -506,22 +507,58 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
-/// Maps a gradient's `transform` into the frame handed to the renderer: radial keeps the full matrix (so a
+/// How a gradient's contours are laid out, decided by its form and curvature dials.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum GradientShape {
+	/// Both ends are lines.
+	Linear,
+	/// The start is a point at the center of the end circle.
+	Radial,
+	/// Any other pair of dialed end contours, with the pencil of circles they span filling in between.
+	Pencil(PencilParameters),
+}
+
+impl GradientShape {
+	pub(crate) fn of(item: ItemRef<'_, Gradient>) -> Self {
+		let preset = match item.attribute_cloned_or_default(ATTR_GRADIENT_FORM) {
+			GradientForm::Linear => LINEAR_DIALS,
+			GradientForm::Radial => RADIAL_DIALS,
+		};
+		// A dial turns full circle, since -1 and 1 are both the end's own point, so it wraps into the range ending at 1
+		let dial = |key: &str, preset: f64| {
+			let dial: f64 = item.attribute_cloned_or(key, preset);
+			if dial.is_finite() { 1. - (1. - dial).rem_euclid(2.) } else { preset }
+		};
+		let dials = [dial(ATTR_GRADIENT_START_CURVATURE, preset[0]), dial(ATTR_GRADIENT_END_CURVATURE, preset[1])];
+
+		match dials {
+			LINEAR_DIALS => Self::Linear,
+			RADIAL_DIALS => Self::Radial,
+			[start, end] => Self::Pencil(PencilParameters::new(start, end)),
+		}
+	}
+
+	/// Whether its position can fall before the start, which only a radial gradient's can't since its distance from the center never goes below zero.
+	pub(crate) fn reaches_before_start(&self) -> bool {
+		!matches!(self, Self::Radial)
+	}
+}
+
+/// Maps a gradient's `transform` into the frame handed to the renderer: most shapes keep the full matrix (so a
 /// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
 /// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
 /// represent since it stores only two endpoints.
-pub(crate) fn gradient_placement(transform: DAffine2, gradient_form: GradientForm) -> DAffine2 {
-	match gradient_form {
-		GradientForm::Radial => transform,
-		GradientForm::Linear => {
-			let axis = transform.matrix2.x_axis;
-			let band_normal = transform.matrix2.y_axis.perp();
-			let line = axis.try_project_onto(band_normal).unwrap_or(axis);
-			DAffine2 {
-				matrix2: DMat2::from_cols(line, line.perp()),
-				translation: transform.translation,
-			}
-		}
+pub(crate) fn gradient_placement(transform: DAffine2, shape: GradientShape) -> DAffine2 {
+	if shape != GradientShape::Linear {
+		return transform;
+	}
+
+	let axis = transform.matrix2.x_axis;
+	let band_normal = transform.matrix2.y_axis.perp();
+	let line = axis.try_project_onto(band_normal).unwrap_or(axis);
+	DAffine2 {
+		matrix2: DMat2::from_cols(line, line.perp()),
+		translation: transform.translation,
 	}
 }
 
@@ -531,9 +568,9 @@ type GradientSamples = Vec<(f64, Color, Option<f64>)>;
 /// The gradient's renderable samples, bracketed for the `Clear` spread (which neither SVG nor Vello supports natively) by transparent guard stops.
 ///
 /// The guards share the unit range's end offsets, ordered so the pad extension paints transparency outward while the later
-/// of each pair of coincident stops cuts the paint off exactly at the range's boundaries. A radial gradient needs no guard
-/// at its start, since its sampling distance never goes below the center.
-pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSettings, gradient_form: GradientForm) -> GradientSamples {
+/// of each pair of coincident stops cuts the paint off exactly at the range's boundaries. The guard at the start is left out
+/// for a gradient whose position can't reach before it.
+pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSettings, reaches_before_start: bool) -> GradientSamples {
 	let samples = gradient.interpolated_samples(settings);
 	if settings.spread != GradientSpread::Clear {
 		return samples;
@@ -548,7 +585,7 @@ pub(crate) fn spread_adjusted_samples(gradient: &Gradient, settings: GradientSet
 	let mut adjusted = Vec::with_capacity(samples.len() + 4);
 
 	// Lead with the transparent guard, then anchor the visible range's start color
-	if gradient_form == GradientForm::Linear {
+	if reaches_before_start {
 		adjusted.push((0., Color::TRANSPARENT, None));
 	}
 	if needs_start_anchor {
@@ -582,20 +619,75 @@ fn peniko_color_stops(samples: &[(f64, Color, Option<f64>)]) -> peniko::ColorSto
 }
 
 /// The gradient in its own space before the brush transform places it: the line from the origin along +X to 1 for linear, or the unit circle about the origin for radial.
-fn unit_gradient_kind(gradient_form: GradientForm) -> peniko::GradientKind {
-	match gradient_form {
-		GradientForm::Linear => peniko::LinearGradientPosition {
+/// A pencil gradient's contours come from its own geometry, so it takes the linear kind, which goes unused.
+fn unit_gradient_kind(shape: GradientShape) -> peniko::GradientKind {
+	match shape {
+		GradientShape::Linear | GradientShape::Pencil(_) => peniko::LinearGradientPosition {
 			start: kurbo::Point::ORIGIN,
 			end: kurbo::Point::new(1., 0.),
 		}
 		.into(),
-		GradientForm::Radial => peniko::RadialGradientPosition {
+		GradientShape::Radial => peniko::RadialGradientPosition {
 			start_center: kurbo::Point::ORIGIN,
 			start_radius: 0.,
 			end_center: kurbo::Point::ORIGIN,
 			end_radius: 1.,
 		}
 		.into(),
+	}
+}
+
+/// The SVG element defining a gradient of this shape in the unit gradient's own space, with `attributes` (like its spread
+/// and transform) added. SVG has no dialed contours, so a pencil gradient is drawn as the closest gradient SVG has.
+pub(crate) fn svg_gradient_definition(shape: GradientShape, id: u64, attributes: &str, stops: &str) -> String {
+	let approximation = match shape {
+		GradientShape::Linear => SvgApproximation::Linear,
+		GradientShape::Radial => SvgApproximation::Radial {
+			start_center: 0.,
+			start_radius: 0.,
+			end_center: 0.,
+			end_radius: 1.,
+		},
+		GradientShape::Pencil(parameters) => parameters.svg_approximation(),
+	};
+
+	match approximation {
+		SvgApproximation::Linear => format!(r#"<linearGradient id="{id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{attributes}>{stops}</linearGradient>"#),
+		SvgApproximation::Radial {
+			start_center,
+			start_radius,
+			end_center,
+			end_radius,
+		} => {
+			// SVG's default focal circle is the point at the center, so it's written only where it differs
+			let focal = if start_center == end_center && start_radius == 0. {
+				String::new()
+			} else {
+				format!(r#" fx="{start_center}" fy="0" fr="{start_radius}""#)
+			};
+			format!(r#"<radialGradient id="{id}" gradientUnits="userSpaceOnUse" cx="{end_center}" cy="0" r="{end_radius}"{focal}{attributes}>{stops}</radialGradient>"#)
+		}
+	}
+}
+
+/// The scene brush painting a gradient of this shape with these samples, in the unit gradient's own space.
+fn gradient_scene_brush(shape: GradientShape, samples: &[(f64, Color, Option<f64>)], spread: GradientSpread) -> SceneBrush {
+	let ramp = peniko::Gradient {
+		kind: unit_gradient_kind(shape),
+		extend: peniko_extend(spread),
+		stops: peniko_color_stops(samples),
+		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
+		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
+		..Default::default()
+	};
+
+	match shape {
+		GradientShape::Pencil(parameters) => vello_gpu::PencilGradient {
+			ramp,
+			geometry: parameters.to_vello(),
+		}
+		.into(),
+		GradientShape::Linear | GradientShape::Radial => peniko::Brush::Gradient(ramp).into(),
 	}
 }
 
@@ -610,14 +702,14 @@ fn peniko_extend(gradient_spread: GradientSpread) -> peniko::Extend {
 
 /// The Vello brush for one gradient item, paired with its placement transform.
 /// `for_mask` keeps the fill opacity at full, as [`ItemRef::paint_opacity`] explains.
-fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied_transform: &DAffine2, for_mask: bool) -> Option<(peniko::Brush, DAffine2)> {
+fn create_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied_transform: &DAffine2, for_mask: bool) -> Option<(SceneBrush, DAffine2)> {
 	let stops = gradient_item.element()?;
 
-	let gradient_form: GradientForm = gradient_item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let shape = GradientShape::of(gradient_item);
 	let gradient_transform: DAffine2 = gradient_item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let settings = gradient_settings_from_item(gradient_item);
 
-	let mut samples = spread_adjusted_samples(stops, settings, gradient_form);
+	let mut samples = spread_adjusted_samples(stops, settings, shape.reaches_before_start());
 
 	let paint_opacity = gradient_item.paint_opacity(for_mask);
 	if paint_opacity < 1. {
@@ -631,19 +723,9 @@ fn create_peniko_gradient_brush(gradient_item: ItemRef<'_, Gradient>, multiplied
 		}
 	}
 
-	let peniko_stops = peniko_color_stops(&samples);
-
 	// The unit gradient is placed by the desheared frame so a non-uniform transform produces the intended ellipse
-	let gradient_to_device = gradient_placement(multiplied_transform * gradient_transform, gradient_form);
-
-	let brush = peniko::Brush::Gradient(peniko::Gradient {
-		kind: unit_gradient_kind(gradient_form),
-		extend: peniko_extend(settings.spread),
-		stops: peniko_stops,
-		// Straight alpha, keeping parity with the SVG renderer's stop interpolation
-		interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
-		..Default::default()
-	});
+	let gradient_to_device = gradient_placement(multiplied_transform * gradient_transform, shape);
+	let brush = gradient_scene_brush(shape, &samples, settings.spread);
 
 	Some((brush, gradient_to_device))
 }
@@ -1776,7 +1858,7 @@ fn render_vector_item_to_vello(
 			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 		};
 		let gradient_fill = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
-			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
+			let Some((brush, gradient_to_device)) = create_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
 				return;
 			};
 
@@ -1786,7 +1868,7 @@ fn render_vector_item_to_vello(
 				Default::default()
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
-			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
+			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), brush, Some(brush_transform), path);
 		};
 
 		match paint {
@@ -1869,7 +1951,7 @@ fn render_vector_item_to_vello(
 			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
 		};
 		let gradient_stroke = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
-			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
+			let Some((brush, gradient_to_device)) = create_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
 				return;
 			};
 			let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -1879,7 +1961,7 @@ fn render_vector_item_to_vello(
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
-			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), brush, Some(brush_transform), &path);
 		};
 
 		match paint {
@@ -2703,7 +2785,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 	let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let shape = GradientShape::of(item);
 	let settings = gradient_settings_from_item(item);
 	let tag = if thumbnail_rect.is_some() { "rect" } else { "polyline" };
 	render.leaf_tag(tag, |attributes| {
@@ -2720,7 +2802,7 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 			attributes.push("points", format!("{MAX},{MAX} -{MAX},{MAX} -{MAX},-{MAX} {MAX},-{MAX}"));
 		}
 
-		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
+		let samples = spread_adjusted_samples(gradient, settings, shape.reaches_before_start());
 
 		let mut stop_string = String::new();
 		for (position, color, original_midpoint) in samples {
@@ -2751,20 +2833,8 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 		};
 
 		// The unit gradient line is the +X unit vector in local space, before the item's transform is applied
-		match gradient_form {
-			GradientForm::Linear => {
-				let _ = write!(
-					&mut attributes.0.svg_defs,
-					r#"<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</linearGradient>"#
-				);
-			}
-			GradientForm::Radial => {
-				let _ = write!(
-					&mut attributes.0.svg_defs,
-					r#"<radialGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread_attribute}{gradient_transform_attribute}>{stop_string}</radialGradient>"#
-				);
-			}
-		}
+		let definition_attributes = format!("{gradient_spread_attribute}{gradient_transform_attribute}");
+		attributes.0.svg_defs.push_str(&svg_gradient_definition(shape, gradient_id, &definition_attributes, &stop_string));
 
 		attributes.push("fill", format!("url('#{gradient_id}')"));
 
@@ -2787,7 +2857,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 
 	{
 		let Some(gradient) = item.element() else { return };
-		let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+		let shape = GradientShape::of(item);
 		let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 		let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
@@ -2798,22 +2868,9 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 		let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 
 		let settings = gradient_settings_from_item(item);
-		let samples = spread_adjusted_samples(gradient, settings, gradient_form);
-
-		let stops = peniko_color_stops(&samples);
-
-		let extend = peniko_extend(settings.spread);
-
-		let kind = unit_gradient_kind(gradient_form);
-
-		let fill = peniko::Brush::Gradient(peniko::Gradient {
-			kind,
-			stops,
-			extend,
-			interpolation_alpha_space: peniko::InterpolationAlphaSpace::Unpremultiplied,
-			..Default::default()
-		});
-		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
+		let samples = spread_adjusted_samples(gradient, settings, shape.reaches_before_start());
+		let fill = gradient_scene_brush(shape, &samples, settings.spread);
+		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, shape).to_cols_array());
 
 		let mut layer = false;
 		if opacity < 1. || blend_mode_attr != BlendMode::default() {
@@ -2821,7 +2878,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 			layer = true;
 		}
 
-		scene.fill_viewport(&fill, Some(brush_transform));
+		scene.fill_viewport(fill, Some(brush_transform));
 
 		if layer {
 			scene.pop_layer();
@@ -2838,7 +2895,7 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 	let mut outline_targets = Vec::new();
 	let mut click_targets = Vec::new();
 	for item in items {
-		let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+		let gradient_form = gradient_control_form(item);
 		let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 		// The first item's transform is the reference all targets bake against
@@ -2864,9 +2921,17 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 	}
 }
 
+/// The form whose control geometry a gradient item shows, which is linear for every shape but the radial one.
+fn gradient_control_form(item: ItemRef<'_, Gradient>) -> GradientForm {
+	match GradientShape::of(item) {
+		GradientShape::Radial => GradientForm::Radial,
+		GradientShape::Linear | GradientShape::Pencil(_) => GradientForm::Linear,
+	}
+}
+
 /// Collects one gradient item's control geometry as a click target when its interior is draggable.
 fn add_gradient_item_click_targets(item: ItemRef<'_, Gradient>, click_targets: &mut Vec<ClickTarget>) {
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let gradient_form = gradient_control_form(item);
 	if !gradient_control_interior_is_clickable(gradient_form) {
 		return;
 	}
@@ -2879,7 +2944,7 @@ fn add_gradient_item_click_targets(item: ItemRef<'_, Gradient>, click_targets: &
 
 /// Collects one gradient item's control geometry as an outline target.
 fn add_gradient_item_outline_targets(item: ItemRef<'_, Gradient>, outlines: &mut Vec<ClickTarget>) {
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let gradient_form = gradient_control_form(item);
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 	let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
@@ -3400,18 +3465,18 @@ mod tests {
 		};
 
 		// Other spreads pass the samples through unchanged
-		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Repeat), GradientForm::Linear);
+		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Repeat), true);
 		assert_eq!(samples, gradient.interpolated_samples(settings(GradientSpread::Pad)));
 
 		// The guards share the range ends' exact offsets, ordered so the pad extension resolves to the transparent outer stops
-		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Clear), GradientForm::Linear);
+		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Clear), true);
 		assert_eq!(
 			samples,
 			vec![(0., Color::TRANSPARENT, None), (0., Color::BLACK, None), (1., Color::WHITE, None), (1., Color::TRANSPARENT, None)]
 		);
 
 		// A radial has no guard below the center
-		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Clear), GradientForm::Radial);
+		let samples = spread_adjusted_samples(&gradient, settings(GradientSpread::Clear), GradientShape::Radial.reaches_before_start());
 		assert_eq!(samples, vec![(0., Color::BLACK, None), (1., Color::WHITE, None), (1., Color::TRANSPARENT, None)]);
 	}
 
@@ -3424,9 +3489,36 @@ mod tests {
 				space: GradientSpace::RgbGamma,
 				..Default::default()
 			},
-			GradientForm::Linear,
+			true,
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();
 		assert_eq!(colors, vec![Color::TRANSPARENT, Color::BLACK, Color::BLACK, Color::TRANSPARENT]);
+	}
+
+	#[test]
+	fn gradient_shape_follows_the_form_until_dialed() {
+		let shape = |form: Option<GradientForm>, dials: Option<(f64, f64)>| {
+			let mut item = Item::new_from_element(Gradient::from(Vec::new()));
+			if let Some(form) = form {
+				item.set_attribute(ATTR_GRADIENT_FORM, form);
+			}
+			if let Some((start, end)) = dials {
+				item.set_attribute(ATTR_GRADIENT_START_CURVATURE, start);
+				item.set_attribute(ATTR_GRADIENT_END_CURVATURE, end);
+			}
+			GradientShape::of(ItemRef::Item(&item))
+		};
+
+		assert_eq!(shape(None, None), GradientShape::Linear);
+		assert_eq!(shape(Some(GradientForm::Radial), None), GradientShape::Radial);
+
+		// The dials override the form, and either one's presets take the native path
+		assert_eq!(shape(Some(GradientForm::Radial), Some((0., 0.))), GradientShape::Linear);
+		assert_eq!(shape(None, Some((1., 0.5))), GradientShape::Radial);
+		assert!(matches!(shape(None, Some((0.5, 0.25))), GradientShape::Pencil(_)));
+
+		// A dial wraps around, with -1 and 3 both being the end's own point like 1
+		assert_eq!(shape(None, Some((-1., 0.5))), GradientShape::Radial);
+		assert_eq!(shape(None, Some((3., 0.5))), GradientShape::Radial);
 	}
 }
