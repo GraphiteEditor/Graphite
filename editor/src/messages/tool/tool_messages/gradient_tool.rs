@@ -624,9 +624,12 @@ impl SelectedGradient {
 		gradient_angle: &mut f64,
 	) {
 		if mouse.distance(drag_start) < DRAG_THRESHOLD {
-			self.gradient = self.initial_gradient.clone();
-			self.appearance.transform = self.initial_gradient_transform;
-			self.render_gradient(responses);
+			// A new gradient's initial line is only a placeholder, so nothing is written until the drag passes the threshold
+			if self.dragging != GradientDragTarget::New {
+				self.gradient = self.initial_gradient.clone();
+				self.appearance.transform = self.initial_gradient_transform;
+				self.render_gradient(responses);
+			}
 			return;
 		}
 
@@ -2715,6 +2718,22 @@ mod test_gradient {
 
 		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");
+	}
+
+	#[tokio::test]
+	async fn a_click_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.drag_tool(ToolType::Gradient, 30., 40., 30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that barely moves shouldn't replace the fill with a gradient"
+		);
 	}
 
 	#[tokio::test]
