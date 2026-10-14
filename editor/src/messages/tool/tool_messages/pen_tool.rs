@@ -3004,4 +3004,77 @@ mod test_pen_tool {
 		let incoming = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(incoming);
 		assert!(incoming.distance(corner + anchor - handle) < 1e-6, "the incoming handle is at {incoming}");
 	}
+
+	#[tokio::test]
+	async fn extending_from_anchor_with_multiple_segments_does_not_create_colinear_handle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// 1. Draw a path through A, B, and C with curved handles dragged out at B
+		click_pen(&mut editor, A).await;
+		let handle = B + DVec2::new(50., 0.);
+		editor.drag_path(&[B, handle], ModifierKeys::empty()).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 3, 2);
+
+		// 2. Extend from anchor B to D by clicking on B and then D (without dragging)
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, D).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 4, 3);
+
+		// 3. Verify the new branch leaving B does not create a mirrored/colinear handle
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+
+		let b_id = vector
+			.point_domain
+			.ids()
+			.iter()
+			.copied()
+			.find(|&id| {
+				let pos = vector.point_domain.position_from_id(id).unwrap();
+				layer_to_viewport.transform_point2(pos).distance(B) < 1e-6
+			})
+			.expect("Anchor B should exist");
+
+		let d_id = vector
+			.point_domain
+			.ids()
+			.iter()
+			.copied()
+			.find(|&id| {
+				let pos = vector.point_domain.position_from_id(id).unwrap();
+				layer_to_viewport.transform_point2(pos).distance(D) < 1e-6
+			})
+			.expect("Anchor D should exist");
+
+		let bd_segment = vector
+			.segment_domain
+			.ids()
+			.iter()
+			.copied()
+			.find(|&segment| {
+				let start = vector.segment_start_from_id(segment);
+				let end = vector.segment_end_from_id(segment);
+				(start == Some(b_id) && end == Some(d_id)) || (start == Some(d_id) && end == Some(b_id))
+			})
+			.expect("Segment between B and D should exist");
+
+		let handle_at_b = if vector.segment_start_from_id(bd_segment) == Some(b_id) {
+			ManipulatorPointId::PrimaryHandle(bd_segment).get_position(&vector)
+		} else {
+			ManipulatorPointId::EndHandle(bd_segment).get_position(&vector)
+		};
+
+		let mirrored_handle = 2. * B - handle;
+		if let Some(handle_pos) = handle_at_b {
+			let handle_pos = layer_to_viewport.transform_point2(handle_pos);
+			assert!(
+				handle_pos.distance(mirrored_handle) > 1e-4,
+				"Handle at B for the new segment must not be mirrored into a colinear handle"
+			);
+		}
+	}
 }
