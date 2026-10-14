@@ -1185,9 +1185,10 @@ impl Fsm for GradientToolFsmState {
 					return ready_default;
 				}
 
-				// If we're in the middle of a drag, abort it first and revert to the initial gradient
+				// If we're in the middle of a drag, abort it first and revert to the gradient as it began
 				if matches!(state, GradientToolFsmState::Drawing { .. }) {
 					selected_gradient.gradient = selected_gradient.initial_gradient.clone();
+					selected_gradient.appearance.transform = selected_gradient.initial_gradient_transform;
 					selected_gradient.render_gradient(responses);
 					responses.add(DocumentMessage::AbortTransaction);
 				}
@@ -2780,6 +2781,34 @@ mod test_gradient {
 			get_gradients_from_fill(&mut editor).await.is_empty(),
 			"a click that snaps and barely moves shouldn't replace the fill with a gradient"
 		);
+	}
+
+	#[tokio::test]
+	async fn delete_mid_drag_of_an_end_restores_its_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// A middle stop, so deleting an end leaves a gradient
+		editor.move_mouse(60., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(60., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(60., 0., ModifierKeys::empty()).await;
+
+		// Drag the end down, then press Delete before releasing
+		editor.move_mouse(100., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(100., 0., ModifierKeys::empty()).await;
+		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		editor.left_mouseup(100., 50., ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
+		assert_eq!(gradient.stops.len(), 2, "the end stop should be deleted");
+		let (start, end) = (transform.transform_point2(gradient.start()), transform.transform_point2(gradient.end()));
+		assert!(start.abs_diff_eq(DVec2::new(0., 0.), 1e-6), "the start should stay put, got {start:?}");
+		assert!(end.abs_diff_eq(DVec2::new(60., 0.), 1e-6), "the line should end at the middle stop on the undragged line, got {end:?}");
 	}
 
 	#[tokio::test]
