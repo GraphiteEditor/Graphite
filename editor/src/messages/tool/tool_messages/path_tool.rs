@@ -699,6 +699,13 @@ impl PathToolData {
 		self.saved_points_before_anchor_select_toggle.clear();
 	}
 
+	/// Forgets any segment mold, once the drag that began it is over.
+	fn end_molding(&mut self) {
+		self.molding_info = None;
+		self.molding_segment = false;
+		self.temporary_adjacent_handles_while_molding = None;
+	}
+
 	fn reset_drill_through_cycle(&mut self) {
 		self.last_drill_through_click_position = None;
 		self.drill_through_cycle_index = 0;
@@ -2137,16 +2144,17 @@ impl Fsm for PathToolFsmState {
 					tool_data.handle_drag_toggle = true;
 				}
 
-				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
-					tool_data.molding_segment = true;
-				}
-
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					// Past the threshold, the press on the segment molds it rather than clicking to insert a point
+					if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+						tool_data.molding_segment = true;
+					}
+
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
@@ -2408,9 +2416,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.saved_selection_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
-				tool_data.molding_info = None;
-				tool_data.molding_segment = false;
-				tool_data.temporary_adjacent_handles_while_molding = None;
+				tool_data.end_molding();
 				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
 				PathToolFsmState::Ready
@@ -2511,13 +2517,15 @@ impl Fsm for PathToolFsmState {
 				);
 
 				let nearest_segment = tool_data.segment.clone();
+				let molded = tool_data.molding_segment;
+				tool_data.end_molding();
 
 				if let Some(segment) = &mut tool_data.segment {
 					let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
 					let point_mode = tool_options.path_editing_mode.point_editing_mode;
 					// If segment mode and the insertion modifier is pressed or it is in point editing mode
 
-					if !drag_occurred && !tool_data.molding_segment && ((point_mode && !segment_mode) || (segment_mode && tool_data.segment_editing_modifier)) {
+					if !drag_occurred && !molded && ((point_mode && !segment_mode) || (segment_mode && tool_data.segment_editing_modifier)) {
 						if tool_data.delete_segment_pressed {
 							if let Some(vector) = document.network_interface.compute_modified_vector(segment.layer()) {
 								shape_editor.dissolve_segment(responses, segment.layer(), &vector, segment.segment(), segment.points());
@@ -2535,9 +2543,6 @@ impl Fsm for PathToolFsmState {
 					}
 
 					tool_data.segment = None;
-					tool_data.molding_info = None;
-					tool_data.molding_segment = false;
-					tool_data.temporary_adjacent_handles_while_molding = None;
 
 					if segment_dissolved || point_inserted {
 						responses.add(DocumentMessage::EndTransaction);
@@ -3178,6 +3183,7 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::Abort) => {
+				tool_data.end_molding();
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
@@ -4227,5 +4233,40 @@ mod test_path_tool {
 
 		let after = handle_in_document(&editor, handle);
 		assert!(after.distance(before + DVec2::new(5., 0.)) < 1e-6, "the handle moved from {before} to {after}");
+	}
+
+	/// Hovers a segment with the Path tool, which readies it for insertion or molding when the overlays are drawn, then presses on it.
+	async fn press_on_segment(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.select_tool(ToolType::Path).await;
+		editor.move_mouse(position.x, position.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.handle_message(PathToolMessage::Overlays { context: OverlayContext::default() }).await;
+		editor.left_mousedown(position.x, position.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn one_click_on_a_segment_right_after_an_anchor_drag_inserts_an_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+		drag(&mut editor, C, D).await;
+
+		let between = (A + B) / 2.;
+		press_on_segment(&mut editor, between).await;
+		editor.left_mouseup(between.x, between.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, layer, &[A, B, D, between]);
+	}
+
+	#[tokio::test]
+	async fn a_mold_released_where_it_began_inserts_no_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		let between = (A + B) / 2.;
+		press_on_segment(&mut editor, between).await;
+		move_to(&mut editor, between + DVec2::new(30., -60.), ModifierKeys::empty()).await;
+		move_to(&mut editor, between, ModifierKeys::empty()).await;
+		editor.left_mouseup(between.x, between.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, layer, &[A, B, C]);
 	}
 }
