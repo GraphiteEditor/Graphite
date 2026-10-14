@@ -12,13 +12,13 @@ members = [
 	"document/graph-storage",
 	"document/container",
 	"editor",
-	"editor/control-protocol",
 	"frontend/wrapper",
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"libraries/ipsum",
 	"libraries/snapping",
 	"libraries/wgpu-sync",
+	"libraries/control-protocol",
 	"node-graph/libraries/graphene-hash",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
@@ -111,7 +111,7 @@ wgpu-executor = { path = "node-graph/libraries/wgpu-executor" }
 wgpu-sync = { path = "libraries/wgpu-sync" }
 graphite-proc-macros = { path = "proc-macros" }
 graphite-editor = { path = "editor" }
-graphite-editor-control-protocol = { path = "editor/control-protocol" }
+control-protocol = { path = "libraries/control-protocol" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
 ipsum = { path = "libraries/ipsum" }
 

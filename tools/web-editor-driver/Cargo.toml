@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 # Local dependencies
-graphite-editor-control-protocol = { workspace = true }
+control-protocol = { workspace = true }
 
 # Workspace dependencies
 serde = { workspace = true }
