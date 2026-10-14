@@ -68,7 +68,6 @@
 			data-tooltip-description={widgetData.description}
 			data-inspector-reorder-handle={reorderable ? "" : undefined}
 			on:click|stopPropagation={toggleExpandedWithModifiers}
-			tabindex="0"
 		>
 			<div
 				class="expand-arrow"
