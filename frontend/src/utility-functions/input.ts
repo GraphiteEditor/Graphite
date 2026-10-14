@@ -39,8 +39,9 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	// But on web, we want to not redirect paste
 	if (import.meta.env.MODE !== "native" && key === "KeyV" && accelKey) return false;
 
-	// Don't redirect user input from text entry into HTML elements
-	if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
+	// Don't redirect user input from text entry into HTML elements, except the keys that end the Text tool's editing in the backend
+	const endsTextToolEditing = e.target === textToolInteractiveInputElement && (key === "Escape" || (accelKey && ["Enter", "NumpadEnter"].includes(key)));
+	if (targetIsTextField(e.target || undefined) && !endsTextToolEditing) return false;
 
 	// Don't redirect if a MenuList is open
 	if (window.document.querySelector("[data-floating-menu-content]")) return false;
