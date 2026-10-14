@@ -274,6 +274,38 @@ impl ItemCompositing<'_> {
 		self.opacity * self.effects.map_or(1., |(_, fill)| fill)
 	}
 
+	/// A vector's `fill` and `stroke` paints with the leading adjustments carried out on their colors, if they're solid colors this is exact for,
+	/// sparing the content an effects group or an SVG filter that might not express them. `strokes` is whether the stroke is drawn at all.
+	fn fold_into_solid_paints(&self, fill: Option<&Graphic>, stroke: Option<&Graphic>, strokes: bool, for_mask: bool) -> Option<FoldedPaints> {
+		// Antialiased edges are translucent, so an adjustment changing alpha would act differently on them than on the paint
+		let adjustments: Vec<Adjustment> = self.leading_adjustments().into_iter().take_while(raster_kernels::adjustments::preserves_alpha).collect();
+		let (effects, _) = self.effects.filter(|_| !adjustments.is_empty())?;
+
+		// The color a solid paint draws, which is `None` for no paint, or no color at all for a paint that isn't solid
+		let solid_color = |paint: Option<&Graphic>| match paint {
+			None | Some(Graphic::None(_) | Graphic::NoneList(_)) => Some(None),
+			Some(Graphic::Color(item)) => Some(faded_paint_color(ItemRef::Item(item), for_mask)),
+			Some(Graphic::ColorList(list)) => Some(composite_paint_colors(list, for_mask)),
+			Some(_) => None,
+		};
+		let fill_color = solid_color(fill)?;
+		let stroke_color = if strokes { solid_color(stroke)? } else { None };
+
+		// Where translucent paints overlap, the adjustment would act on their blend rather than on each
+		if let (Some(fill_color), Some(stroke_color)) = (fill_color, stroke_color)
+			&& (fill_color.a() < 1. || stroke_color.a() < 1.)
+		{
+			return None;
+		}
+
+		let adjusted = |color: Option<Color>| Some(Graphic::Color(Item::new_from_element(adjusted_color(color?, &adjustments))));
+		Some(FoldedPaints {
+			fill: adjusted(fill_color),
+			stroke: adjusted(stroke_color),
+			remaining_effects: effects.after(adjustments.len()),
+		})
+	}
+
 	/// Writes the SVG filter carrying out the effects, if there are any to apply, given the content's bounds in the current user space.
 	/// Returns the reference for the `filter` attribute of a group wrapping the content, which also takes the item's opacity and blend mode.
 	fn svg_filter(&self, render: &mut SvgRender, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<String> {
@@ -285,6 +317,13 @@ impl ItemCompositing<'_> {
 		let id = write_svg_effects_filter(&mut render.svg_defs, effects, fill, bounds, render.transform, self.pixel_scale)?;
 		Some(format!("url(#{id})"))
 	}
+}
+
+/// A vector's solid paints with adjustments carried out on their colors, and the effects left after those adjustments.
+struct FoldedPaints {
+	fill: Option<Graphic>,
+	stroke: Option<Graphic>,
+	remaining_effects: Effects,
 }
 
 /// How far the effects of the items nested anywhere inside `graphic` reach past its bounds, in document pixels.
@@ -2071,7 +2110,7 @@ impl Render for List<Graphic> {
 
 /// Emits one vector shape as SVG, with no wrapping group of its own.
 /// When `filtered`, the group applying the item's effects takes its opacity and blend mode instead.
-fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered: bool, render: &mut SvgRender, render_params: &RenderParams) {
+fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered: bool, folded: Option<&FoldedPaints>, render: &mut SvgRender, render_params: &RenderParams) {
 	let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode_attr: BlendMode = if filtered { BlendMode::default() } else { item.attribute_cloned_or_default(ATTR_BLEND_MODE) };
@@ -2086,6 +2125,10 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, filtered:
 		stroke_paint,
 		stroke_below: wants_stroke_below,
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
+	let (fill_paint, stroke_paint) = match folded {
+		Some(folded) => (folded.fill.as_ref(), folded.stroke.as_ref()),
+		None => (fill_paint, stroke_paint),
+	};
 
 	// Only consider strokes with nonzero weight, since default strokes with zero weight would prevent assigning the correct stroke transform
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
@@ -2303,11 +2346,27 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	}
 
 	let compositing = item.compositing(render_params);
+	let appearance = || {
+		item.attribute::<Appearance>(ATTR_APPEARANCE)
+			.and_then(Appearance::declared)
+			.or(render_params.inherited_appearance.as_ref())
+	};
+
+	// Solid paints take leading adjustments into their colors, which SVG filters can't always express
+	let folded = compositing.effects.and_then(|_| {
+		let fill_and_stroke = appearance()?.fill_and_stroke();
+		let strokes = fill_and_stroke.stroke.as_ref().is_some_and(|stroke| stroke.weight() > 0.);
+		compositing.fold_into_solid_paints(fill_and_stroke.fill_paint, fill_and_stroke.stroke_paint, strokes, render_params.for_mask)
+	});
+	let compositing = match &folded {
+		Some(folded) => compositing.with_remaining_effects(&folded.remaining_effects),
+		None => compositing,
+	};
+
 	let render_shape = |render: &mut SvgRender| {
 		let filter = compositing.svg_filter(render, || {
 			let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let appearance = item.attribute::<Appearance>(ATTR_APPEARANCE).and_then(Appearance::declared);
-			let stroke = appearance.or(render_params.inherited_appearance.as_ref()).and_then(|appearance| appearance.fill_and_stroke().stroke);
+			let stroke = appearance().and_then(|appearance| appearance.fill_and_stroke().stroke);
 			let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 
 			vector
@@ -2318,7 +2377,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 
 		render_svg_through_filter(render, filter, compositing.opacity, blend_mode, |render| {
-			render_vector_shape_svg(item, vector, filtered, render, render_params)
+			render_vector_shape_svg(item, vector, filtered, folded.as_ref(), render, render_params)
 		});
 	};
 
@@ -2370,6 +2429,14 @@ fn render_vector_item_to_vello(
 	} = appearance.map(Appearance::fill_and_stroke).unwrap_or_default();
 
 	let has_real_stroke = stroke_params.as_ref().filter(|stroke| stroke.weight() > 0.);
+
+	// Solid paints take leading adjustments into their colors rather than through an effects group
+	let folded = compositing.fold_into_solid_paints(fill_paint, stroke_paint, has_real_stroke.is_some(), render_params.for_mask);
+	let (fill_paint, stroke_paint, compositing) = match &folded {
+		Some(folded) => (folded.fill.as_ref(), folded.stroke.as_ref(), compositing.with_remaining_effects(&folded.remaining_effects)),
+		None => (fill_paint, stroke_paint, compositing),
+	};
+
 	// A cascaded coverage records its stroke space in the ancestor's coordinates, so this item authors its own
 	let set_stroke_transform = has_real_stroke
 		.map(|stroke| if own_appearance.is_some() { stroke.transform } else { item_transform })
@@ -4457,6 +4524,44 @@ mod tests {
 		let (raster, adjustments) = drawn.expect("the image is drawn");
 		assert!(adjustments.is_empty(), "the texture takes no adjustments of its own");
 		assert_eq!(raster.data[0], raster_kernels::adjustments::adjust_color(&Adjustment::Invert, hidden.with_alpha(1.)));
+	}
+
+	#[test]
+	fn solid_vector_paints_take_their_adjustments_into_their_colors() {
+		use crate::vello_scene_builder::{EffectsRenderer, VelloSceneBuilder};
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+		use kurbo::Shape;
+
+		let orange = Color::from_gamma_srgb_channels(1., 0.5, 0., 1.);
+		let mut item = Vector::item_from_bezpath(&kurbo::Rect::new(0., 0., 10., 10.).to_path(0.1));
+		item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), Graphic::ColorList(List::new_from_element(orange))));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: -100. })));
+		let vector = List::new_from_item(item);
+		let is_gray = |[red, green, blue]: [u8; 3]| red.abs_diff(green) <= 1 && green.abs_diff(blue) <= 1;
+
+		// SVG fills the shape gray rather than leaving Vibrance, which no filter primitive expresses, undone
+		let mut render = SvgRender::new();
+		vector.render_svg(&mut render, &RenderParams::default());
+		let svg = render.svg.to_svg_string();
+		assert!(!render.svg_defs.contains("<filter"), "{}", render.svg_defs);
+		let hex = svg.split(r##"fill="#"##).nth(1).map(|rest| &rest[..6]).expect("a solid fill");
+		let channel = |index: usize| u8::from_str_radix(&hex[index * 2..index * 2 + 2], 16).unwrap();
+		assert!(is_gray([channel(0), channel(1), channel(2)]), "expected a gray fill, got #{hex}");
+
+		// Vello fills it without rendering it through an effects group
+		struct NoEffectsGroups;
+		impl EffectsRenderer for NoEffectsGroups {
+			fn renders_effects(&self) -> bool {
+				true
+			}
+
+			fn render_effects(&mut self, _: glam::UVec2, _: kurbo::Affine, _: &Effects, _: f32, _: DMat2, _: &mut dyn FnMut(&mut VelloSceneBuilder)) -> wgpu::Texture {
+				panic!("the vector is drawn through an effects group");
+			}
+		}
+		let mut effects_renderer = NoEffectsGroups;
+		let mut scene = VelloSceneBuilder::new(16, 16, kurbo::Affine::IDENTITY, 4096).with_effects_renderer(&mut effects_renderer);
+		vector.render_to_vello(&mut scene, DAffine2::IDENTITY, &RenderParams::default());
 	}
 
 	#[test]
