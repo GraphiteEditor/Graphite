@@ -4269,4 +4269,53 @@ mod test_path_tool {
 		editor.left_mouseup(between.x, between.y, ModifierKeys::empty()).await;
 		assert_anchors(&editor, layer, &[A, B, C]);
 	}
+
+	/// Draws a path through three anchors, the middle one with a handle on each side, and selects only one of those handles.
+	/// Returns the path's layer, the selected handle, and the anchors' positions.
+	async fn select_only_a_handle(editor: &mut EditorTestUtils) -> (LayerNodeIdentifier, ManipulatorPointId, [DVec2; 3]) {
+		// Dragging out of the middle anchor gives it a handle on each side
+		let (start, middle, dragged_out, end) = (DVec2::new(100., 300.), DVec2::new(300., 200.), DVec2::new(380., 210.), DVec2::new(500., 320.));
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+		editor.move_mouse(middle.x, middle.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(middle.x, middle.y, ModifierKeys::empty()).await;
+		editor.move_mouse(dragged_out.x, dragged_out.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(dragged_out.x, dragged_out.y, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, end, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn path should be selected");
+
+		// Selecting the anchor shows its handles, then clicking one selects only that handle
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, middle, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, dragged_out, ModifierKeys::empty()).await;
+		let [handle] = selected_points(editor)[..] else { panic!("only the handle should be selected") };
+		assert!(handle.as_handle().is_some(), "{handle:?} should be a handle");
+
+		(layer, handle, [start, middle, end])
+	}
+
+	#[tokio::test]
+	async fn deleting_without_dissolving_while_only_a_handle_is_selected_retracts_the_handle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (layer, handle, anchors) = select_only_a_handle(&mut editor).await;
+
+		editor.handle_message(PathToolMessage::DeleteAndBreakPath).await;
+		assert_anchors(&editor, layer, &anchors);
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		assert_eq!(vector.position_of(handle), vector.anchor_position_of(handle), "the handle should be retracted onto its anchor");
+	}
+
+	#[tokio::test]
+	async fn cutting_while_only_a_handle_is_selected_leaves_the_path_whole() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (layer, _, anchors) = select_only_a_handle(&mut editor).await;
+
+		// Cutting at the handle's anchor would add a second anchor there
+		editor.handle_message(PathToolMessage::BreakPath).await;
+		assert_anchors(&editor, layer, &anchors);
+	}
 }
