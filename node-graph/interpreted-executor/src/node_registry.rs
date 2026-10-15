@@ -5,7 +5,6 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_animation::AnimationCurve;
-use graphene_std::GlowSource;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
@@ -29,6 +28,7 @@ use graphene_std::vector::misc::{
 use graphene_std::vector::style::{DashPattern, GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type};
+use graphene_std::{BevelDirection, BevelStyle, GlowSource};
 use node_registry_macros::async_node;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -336,6 +336,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				AdjustmentChannel,
 				HueSaturationRange,
 				GlowSource,
+				BevelStyle,
+				BevelDirection,
 				Stroke,
 				ScaleType,
 				ReferencePoint,

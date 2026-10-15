@@ -12,7 +12,7 @@ use core_types::color::SRGBA8;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_EFFECTS, Item, List};
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2, DVec3};
 use std::fmt::Debug;
 use vector_types::vector::style::StrokeAlign;
 
@@ -34,6 +34,8 @@ pub enum EffectKind {
 	Satin,
 	/// Draws a band of color along the content's silhouette.
 	Outline,
+	/// Lights the content as if raised from the surface or pressed into it, with highlights and shadows along its edges.
+	BevelAndEmboss,
 	/// Paints over the content within its silhouette, mixing with its colors by a blend mode. A solid color paint is the color overlay adjustment.
 	PaintOverlay,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
@@ -68,6 +70,7 @@ impl std::fmt::Display for EffectKind {
 			Self::InnerGlow => "Inner Glow",
 			Self::Satin => "Satin",
 			Self::Outline => "Outline",
+			Self::BevelAndEmboss => "Bevel & Emboss",
 			Self::PaintOverlay => "Paint Overlay",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
@@ -103,6 +106,48 @@ pub enum GlowSource {
 	Edge,
 	/// Glows outward from the center.
 	Center,
+}
+
+/// Which slopes a bevel shapes from the content's edges.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum BevelStyle {
+	/// Slopes up from the edges into the content.
+	#[default]
+	InnerBevel,
+	/// Slopes down from the edges away from the content.
+	OuterBevel,
+	/// Slopes across the edges, half inside the content and half outside.
+	Emboss,
+	/// Slopes away from the edges both ways, as if pressed into the surface along them.
+	PillowEmboss,
+}
+
+/// Whether a bevel rises from the surface or sinks into it.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum BevelDirection {
+	/// Raised from the surface.
+	#[default]
+	Up,
+	/// Pressed into the surface.
+	Down,
+}
+
+/// The deviation of the blur that rounds a bevel's slopes of `size`, in the same units.
+pub fn bevel_smoothing(size: f64) -> f64 {
+	size.max(0.) / 4.
+}
+
+/// The unit vector toward a bevel's light from its `angle` and `altitude` in degrees, with `lengths_to_target` mapping document directions into the y-down space it's lit in.
+pub fn bevel_light(angle: f64, altitude: f64, lengths_to_target: DMat2) -> DVec3 {
+	let (angle, altitude) = (angle.to_radians(), altitude.clamp(0., 90.).to_radians());
+	let across = (lengths_to_target * DVec2::new(angle.cos(), -angle.sin())).try_normalize().unwrap_or(DVec2::X);
+	(across * altitude.cos()).extend(altitude.sin())
 }
 
 /// An overlay's paint with its unit square fitted to `content_bounds`, the content's extent in the space it's drawn in, if it's a gradient or image without its own placement.
@@ -275,6 +320,22 @@ pub enum EffectOperation {
 		weight: f64,
 		align: StrokeAlign,
 	},
+	BevelAndEmboss {
+		style: BevelStyle,
+		/// How steep the slopes are, as a percentage.
+		depth: f64,
+		direction: BevelDirection,
+		/// How wide the slopes are.
+		size: f64,
+		/// How much the highlights and shadows are blurred.
+		soften: f64,
+		/// The direction the light comes from, in degrees counterclockwise from the right.
+		angle: f64,
+		/// How high the light is above the surface, in degrees from flat to straight overhead.
+		altitude: f64,
+		highlight_color: Color,
+		shadow_color: Color,
+	},
 	/// Paints over the content with a paint other than a solid color, since a solid one decodes into the color overlay adjustment instead.
 	PaintOverlay {
 		/// Placed in the space the content's item is, or fitted to the content's bounds if it's a gradient or image without its own placement.
@@ -301,6 +362,7 @@ impl EffectOperation {
 			Self::InnerGlow { .. } => EffectKind::InnerGlow,
 			Self::Satin { .. } => EffectKind::Satin,
 			Self::Outline { .. } => EffectKind::Outline,
+			Self::BevelAndEmboss { .. } => EffectKind::BevelAndEmboss,
 			Self::PaintOverlay { .. } => EffectKind::PaintOverlay,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
@@ -317,6 +379,7 @@ impl EffectOperation {
 			Self::InnerGlow { blur, choke, .. } => choke.max(0.) + 3. * blur.max(0.),
 			Self::Satin { offset, blur, .. } => offset.length() + 3. * blur.max(0.),
 			Self::Outline { weight, .. } => weight.max(0.),
+			Self::BevelAndEmboss { size, soften, .. } => size.max(0.) + 3. * (soften.max(0.) + bevel_smoothing(*size)),
 			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
@@ -362,6 +425,17 @@ impl EffectOperation {
 				color: Color::TRANSPARENT,
 				weight: 0.,
 				align: StrokeAlign::default(),
+			},
+			EffectKind::BevelAndEmboss => Self::BevelAndEmboss {
+				style: BevelStyle::default(),
+				depth: 0.,
+				direction: BevelDirection::default(),
+				size: 0.,
+				soften: 0.,
+				angle: 0.,
+				altitude: 0.,
+				highlight_color: Color::TRANSPARENT,
+				shadow_color: Color::TRANSPARENT,
 			},
 			EffectKind::PaintOverlay => Self::PaintOverlay {
 				paint: Graphic::default(),
@@ -442,6 +516,27 @@ impl EffectOperation {
 				visitor.parameter("weight", weight, 3.);
 				visitor.parameter("align", align, StrokeAlign::Outside);
 			}
+			Self::BevelAndEmboss {
+				style,
+				depth,
+				direction,
+				size,
+				soften,
+				angle,
+				altitude,
+				highlight_color,
+				shadow_color,
+			} => {
+				visitor.parameter("style", style, BevelStyle::default());
+				visitor.parameter("depth", depth, 100.);
+				visitor.parameter("direction", direction, BevelDirection::default());
+				visitor.parameter("size", size, 5.);
+				visitor.parameter("soften", soften, 0.);
+				visitor.parameter("angle", angle, 120.);
+				visitor.parameter("altitude", altitude, 30.);
+				visitor.parameter("highlight_color", highlight_color, Color::from(SRGBA8::new(0xff, 0xff, 0xff, 0xbf)));
+				visitor.parameter("shadow_color", shadow_color, Color::from(SRGBA8::new(0, 0, 0, 0xbf)));
+			}
 			Self::PaintOverlay { paint, blend_mode, opacity } => {
 				visitor.parameter("paint", paint, Graphic::from(Color::BLACK));
 				visitor.parameter("blend_mode", blend_mode, BlendMode::default());
@@ -493,6 +588,17 @@ mod tests {
 				color: Color::RED,
 				weight: 7.,
 				align: StrokeAlign::Center,
+			},
+			EffectOperation::BevelAndEmboss {
+				style: BevelStyle::PillowEmboss,
+				depth: 250.,
+				direction: BevelDirection::Down,
+				size: 12.,
+				soften: 2.,
+				angle: -45.,
+				altitude: 60.,
+				highlight_color: Color::YELLOW,
+				shadow_color: Color::BLUE,
 			},
 			EffectOperation::PaintOverlay {
 				paint: Graphic::from(Gradient::new([0., 1.].map(|position| GradientStop {

@@ -205,15 +205,23 @@ impl<T: Sample> Plane<T> {
 
 impl Plane<f32> {
 	/// The coverage of the band reaching `width` pixels from the silhouette's edge, outward or (if `inward`) inward, measured in straight lines so it rounds corners.
-	/// Jump flooding finds each pixel's nearest pixel across the edge, in a pass for each halving of a step that starts past the width. O(width × height × log(band width)).
 	pub fn edge_band(&self, width: f64, inward: bool) -> Self {
+		// The edge lies about half a pixel short of the nearest pixel across it, and the band fades out over one pixel
+		let distances = self.distances_across_edge(width, inward);
+		let width = width as f32;
+		distances.map(|distance| (width + 1. - distance).clamp(0., 1.))
+	}
+
+	/// Each pixel's distance to the nearest pixel across the silhouette's edge: outside it if `inward`, or inside it otherwise, with those pixels at zero.
+	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, so farther pixels may find none and lie at infinity. O(width × height × log(reach)).
+	pub fn distances_across_edge(&self, reach: f64, inward: bool) -> Self {
 		// The side of the edge that distances are measured from, whose pixels are their own nearest
 		let is_seed = |coverage: f32| (coverage >= 0.5) != inward;
 		let mut nearest: Vec<Option<[i32; 2]>> = self.data.iter().map(|&coverage| is_seed(coverage).then_some([0, 0])).collect();
 
 		let (columns, rows) = (self.width as i32, self.height as i32);
 		let length_squared = |[x, y]: [i32; 2]| x * x + y * y;
-		let mut step = (width.max(0.).ceil() as u32 + 1).next_power_of_two();
+		let mut step = (reach.max(0.).ceil() as u32 + 1).next_power_of_two();
 		while step >= 1 {
 			let previous = nearest.clone();
 			let step_length = step as i32;
@@ -240,11 +248,9 @@ impl Plane<f32> {
 			step /= 2;
 		}
 
-		// The edge lies about half a pixel short of the nearest pixel across it, and the band fades out over one pixel
-		let width = width as f32;
 		let data = nearest
 			.into_iter()
-			.map(|offset| offset.map_or(0., |offset| (width + 1. - (length_squared(offset) as f32).sqrt()).clamp(0., 1.)))
+			.map(|offset| offset.map_or(f32::INFINITY, |offset| (length_squared(offset) as f32).sqrt()))
 			.collect();
 		Self {
 			width: self.width,
