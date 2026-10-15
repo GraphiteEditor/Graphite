@@ -531,12 +531,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
+				responses.add_front(PortfolioMessage::NewDocumentWithId {
+					name,
+					document_id: DocumentId(generate_uuid()),
+				});
+			}
+			PortfolioMessage::NewDocumentWithId { name, document_id } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = self.resolve_document_name(name, None);
 
 				responses.add(DocumentMessage::PTZUpdate);
 
-				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
 					responses.add(EventMessage::ToolAbort);
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
