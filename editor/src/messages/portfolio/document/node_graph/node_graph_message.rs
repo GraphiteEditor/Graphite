@@ -227,6 +227,10 @@ pub enum NodeGraphMessage {
 		x: i32,
 		y: i32,
 	},
+	/// Moves the selected nodes one grid cell with the arrow keys, as an undo step of its own.
+	NudgeSelectedNodes {
+		direction: Direction,
+	},
 	ShiftSelectedNodes {
 		direction: Direction,
 		rubber_band: bool,

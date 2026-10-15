@@ -2038,6 +2038,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetInput { input_connector, input } => {
 				network_interface.set_input(&input_connector, input, selection_network_path);
 			}
+			NodeGraphMessage::NudgeSelectedNodes { direction } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band: false });
+				responses.add(DocumentMessage::EndTransaction);
+			}
 			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
 				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
 
@@ -2701,7 +2706,7 @@ impl NodeGraphMessageHandler {
 				ToggleSelectedAsLayersOrNodes,
 				ToggleSelectedLocked,
 				ToggleSelectedVisibility,
-				ShiftSelectedNodes,
+				NudgeSelectedNodes,
 			));
 		}
 
