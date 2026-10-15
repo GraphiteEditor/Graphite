@@ -135,6 +135,64 @@ fn edge_band(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	return vec4<f32>(clamp(parameters.values.x + 1. - length(nearest.xy), 0., 1.));
 }
 
+// A bevel's height from 0 to 1, shaped by the style in `values.y` over a slope `values.x` texels wide, from the nearest texels inside (source) and outside (secondary)
+@fragment
+fn bevel_height(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let to_inside = textureLoad(source, pixel, 0);
+	let to_outside = textureLoad(secondary, pixel, 0);
+	let size = parameters.values.x;
+
+	// Texels inside the silhouette are those at no distance from it, and the edge lies about half a texel short of the nearest texel across it
+	let far = 4. * size + 4.;
+	var signed_distance: f32;
+	if to_inside.z > 0.5 && dot(to_inside.xy, to_inside.xy) == 0. {
+		signed_distance = select(far, length(to_outside.xy) - 0.5, to_outside.z > 0.5);
+	} else {
+		signed_distance = select(-far, 0.5 - length(to_inside.xy), to_inside.z > 0.5);
+	}
+
+	var progress: f32;
+	switch u32(parameters.values.y) {
+		case 0u: {
+			progress = signed_distance / size;
+		}
+		case 1u: {
+			progress = (signed_distance + size) / size;
+		}
+		case 2u: {
+			progress = (signed_distance + size / 2.) / size;
+		}
+		default: {
+			progress = abs(signed_distance) / (size / 2.);
+		}
+	}
+	let height = clamp(progress, 0., 1.);
+	return vec4<f32>(height * height * (3. - 2. * height));
+}
+
+fn height_at(pixel: vec2<i32>) -> f32 {
+	return textureLoad(source, clamp(pixel, vec2<i32>(0), vec2<i32>(textureDimensions(source)) - 1), 0).r;
+}
+
+// How far the light toward `values.yzw` brightens the bevel's surface past a flat surface's brightness, or with `amount` 1, how far it falls short.
+// `values.x` scales the height's gradient into the surface's steepness, and is negative for a bevel pressed into the surface.
+@fragment
+fn bevel_shading(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let gradient = vec2<f32>(
+		height_at(pixel + vec2<i32>(1, 0)) - height_at(pixel - vec2<i32>(1, 0)),
+		height_at(pixel + vec2<i32>(0, 1)) - height_at(pixel - vec2<i32>(0, 1)),
+	) / 2.;
+	let light = parameters.values.yzw;
+	let shade = dot(normalize(vec3<f32>(-parameters.values.x * gradient, 1.)), light);
+
+	if parameters.amount > 0.5 {
+		return vec4<f32>(clamp((light.z - shade) / max(light.z, 1e-4), 0., 1.));
+	}
+	return vec4<f32>(clamp((shade - light.z) / max(1. - light.z, 1e-4), 0., 1.));
+}
+
 // A silhouette's coverage in its color
 @fragment
 fn tint(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {

@@ -578,6 +578,8 @@ tagged_value! {
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GlowSource(graphic_types::GlowSource),
+	BevelStyle(graphic_types::BevelStyle),
+	BevelDirection(graphic_types::BevelDirection),
 	GridType(vector::misc::GridType),
 	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),

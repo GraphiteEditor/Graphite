@@ -5,8 +5,9 @@ use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
 use core_types::color::{linear_to_srgb, srgb_to_linear};
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
-use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::effects::{EffectOperation, Effects, GlowSource, outline_extents};
+use glam::{DAffine2, DMat2, DVec2, DVec3};
+use graphic_types::effects::{BevelDirection, BevelStyle, EffectOperation, Effects, GlowSource, bevel_light, bevel_smoothing, outline_extents};
+use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
@@ -135,6 +136,36 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 					full = composite_within(&full, &coverage, &full, color);
 				}
 			}
+			EffectOperation::BevelAndEmboss {
+				style,
+				depth,
+				direction,
+				size,
+				soften,
+				angle,
+				altitude,
+				highlight_color,
+				shadow_color,
+			} => {
+				let pixels_per_length = (pixels_per_length.x * pixels_per_length.y).sqrt();
+				let (size, soften) = (size * pixels_per_length, soften * pixels_per_length);
+				if size < NEGLIGIBLE_LENGTH {
+					continue;
+				}
+
+				// The surface's height, rounded by a blur, lit from the light's direction into its highlights and shadows
+				let height = soften_by(bevel_height(&full.map(|[_, _, _, alpha]| alpha), size, style), bevel_smoothing(size));
+				let slope = depth / 100. * size * if direction == BevelDirection::Down { -1. } else { 1. };
+				let light = bevel_light(angle, altitude, document_to_pixels);
+
+				// Their parts outside the content lie beneath it, and those inside are placed over it
+				for (shadow, color) in [(false, highlight_color), (true, shadow_color)] {
+					let coverage = soften_by(bevel_shading(&height, slope, light, shadow), soften);
+					beneath = Some(accumulate(beneath, &coverage, color));
+					filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+					full = composite_within(&full, &coverage, &full, color);
+				}
+			}
 		}
 	}
 
@@ -237,4 +268,60 @@ fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>, full_co
 fn satin_coverage(forward: f32, backward: f32, invert: bool) -> f32 {
 	let difference = (forward - backward).abs();
 	if invert { 1. - difference } else { difference }
+}
+
+/// The plane blurred by a Gaussian of deviation `sigma` pixels, or left as it is for one too small to see.
+fn soften_by(plane: Plane<f32>, sigma: f64) -> Plane<f32> {
+	match sigma >= NEGLIGIBLE_LENGTH {
+		true => plane.blurred(BlurKernel::Gaussian { sigma }, BlurKernel::Gaussian { sigma }),
+		false => plane,
+	}
+}
+
+/// A bevel's height from 0 to 1, from each pixel's signed distance to the silhouette's edge (positive inside), shaped by the `style` over `size` pixels.
+fn bevel_height(silhouette: &Plane<f32>, size: f64, style: BevelStyle) -> Plane<f32> {
+	let to_inside = silhouette.distances_across_edge(size, false);
+	let to_outside = silhouette.distances_across_edge(size, true);
+
+	// The pixels inside the silhouette are those at no distance from it, and the edge lies about half a pixel short of the nearest pixel across it
+	to_inside.zip(&to_outside, |to_inside, to_outside| {
+		let signed_distance = if to_inside == 0. { to_outside - 0.5 } else { 0.5 - to_inside };
+		bevel_profile(signed_distance, size as f32, style)
+	})
+}
+
+/// The height from 0 to 1 at a signed distance from the edge (positive inside), rising smoothly across the `style`'s slope `size` pixels wide.
+fn bevel_profile(signed_distance: f32, size: f32, style: BevelStyle) -> f32 {
+	let progress = match style {
+		BevelStyle::InnerBevel => signed_distance / size,
+		BevelStyle::OuterBevel => (signed_distance + size) / size,
+		BevelStyle::Emboss => (signed_distance + size / 2.) / size,
+		BevelStyle::PillowEmboss => signed_distance.abs() / (size / 2.),
+	};
+	let progress = progress.clamp(0., 1.);
+	progress * progress * (3. - 2. * progress)
+}
+
+/// How far the `light` brightens the bevel's surface past a flat surface's brightness, or if `shadow`, how far it falls short, from 0 to 1.
+/// `slope` scales the height's gradient into the surface's steepness, and is negative for a bevel pressed into the surface. O(width × height).
+fn bevel_shading(height: &Plane<f32>, slope: f64, light: DVec3, shadow: bool) -> Plane<f32> {
+	let (width, rows) = (height.width as isize, height.height as isize);
+	let at = |x: isize, y: isize| height.data[(y.clamp(0, rows - 1) * width + x.clamp(0, width - 1)) as usize];
+	let (slope, light) = (slope as f32, light.as_vec3());
+
+	let mut shading = Plane::new(height.width, height.height);
+	fill_rows(&mut shading.data, height.width, |y, row| {
+		for (x, value) in row.iter_mut().enumerate() {
+			let (x, y) = (x as isize, y as isize);
+			let gradient = glam::Vec2::new(at(x + 1, y) - at(x - 1, y), at(x, y + 1) - at(x, y - 1)) / 2.;
+			let shade = (-slope * gradient).extend(1.).normalize().dot(light);
+
+			*value = match shadow {
+				true => (light.z - shade) / light.z.max(1e-4),
+				false => (shade - light.z) / (1. - light.z).max(1e-4),
+			}
+			.clamp(0., 1.);
+		}
+	});
+	shading
 }
