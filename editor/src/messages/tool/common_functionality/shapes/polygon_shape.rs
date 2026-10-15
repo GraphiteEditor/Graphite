@@ -1,4 +1,4 @@
-use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
+use super::shape_utility::{ShapeToolModifierKey, drawn_flipped};
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -128,11 +128,17 @@ impl Polygon {
 		let document = view.document;
 		let [center, lock_ratio, _] = modifier;
 
-		let vertices = extract_polygon_parameters(Some(layer), document).map(|(sides, _)| regular_polygon_points(sides)).unwrap_or_default();
+		let sides = extract_polygon_parameters(Some(layer), document).map(|(sides, _)| sides);
+		let flipped = sides.is_some_and(|sides| drawn_flipped(sides, shape_tool_data.data.viewport_drag_start(document), view.input.mouse.position));
+		let vertices: Vec<DVec2> = sides
+			.map(regular_polygon_points)
+			.unwrap_or_default()
+			.into_iter()
+			.map(|vertex| if flipped { -vertex } else { vertex })
+			.collect();
+
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(snap_session, view, center, lock_ratio, &vertices) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
-			update_radius_sign(end, start, layer, document, responses);
-
 			let dimensions = (start - end).abs();
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
@@ -146,6 +152,7 @@ impl Polygon {
 			};
 
 			let radius = radius / viewport_zoom(document);
+			let radius = if flipped { -radius } else { radius };
 
 			let Some(node_id) = graph_modification_utils::get_polygon_id(layer, &document.network_interface) else {
 				return;
