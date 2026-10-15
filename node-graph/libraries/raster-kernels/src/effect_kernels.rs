@@ -203,6 +203,57 @@ impl<T: Sample> Plane<T> {
 	}
 }
 
+impl Plane<f32> {
+	/// The coverage of the band reaching `width` pixels from the silhouette's edge, outward or (if `inward`) inward, measured in straight lines so it rounds corners.
+	/// Jump flooding finds each pixel's nearest pixel across the edge, in a pass for each halving of a step that starts past the width. O(width × height × log(band width)).
+	pub fn edge_band(&self, width: f64, inward: bool) -> Self {
+		// The side of the edge that distances are measured from, whose pixels are their own nearest
+		let is_seed = |coverage: f32| (coverage >= 0.5) != inward;
+		let mut nearest: Vec<Option<[i32; 2]>> = self.data.iter().map(|&coverage| is_seed(coverage).then_some([0, 0])).collect();
+
+		let (columns, rows) = (self.width as i32, self.height as i32);
+		let length_squared = |[x, y]: [i32; 2]| x * x + y * y;
+		let mut step = (width.max(0.).ceil() as u32 + 1).next_power_of_two();
+		while step >= 1 {
+			let previous = nearest.clone();
+			let step_length = step as i32;
+
+			// Each pixel keeps the nearest of the seeds that it and its eight neighbors a step away have found so far
+			fill_rows(&mut nearest, self.width, |y, row| {
+				for (x, best) in row.iter_mut().enumerate() {
+					for neighbor_y in -1..=1 {
+						for neighbor_x in -1..=1 {
+							let (x, y) = (x as i32 + neighbor_x * step_length, y as i32 + neighbor_y * step_length);
+							if x < 0 || y < 0 || x >= columns || y >= rows {
+								continue;
+							}
+							let Some([offset_x, offset_y]) = previous[(y * columns + x) as usize] else { continue };
+
+							let candidate = [offset_x + neighbor_x * step_length, offset_y + neighbor_y * step_length];
+							if best.is_none_or(|best| length_squared(candidate) < length_squared(best)) {
+								*best = Some(candidate);
+							}
+						}
+					}
+				}
+			});
+			step /= 2;
+		}
+
+		// The edge lies about half a pixel short of the nearest pixel across it, and the band fades out over one pixel
+		let width = width as f32;
+		let data = nearest
+			.into_iter()
+			.map(|offset| offset.map_or(0., |offset| (width + 1. - (length_squared(offset) as f32).sqrt()).clamp(0., 1.)))
+			.collect();
+		Self {
+			width: self.width,
+			height: self.height,
+			data,
+		}
+	}
+}
+
 /// The row's value at a position measured in pixels from the first pixel's center, interpolating linearly and holding the end pixels beyond the ends.
 fn sample_row<T: Sample>(row: &[T], position: f64) -> T {
 	let last = row.len() as f64 - 1.;
@@ -329,6 +380,29 @@ mod tests {
 		let covered = dilated.data.iter().filter(|&&value| value >= 0.999).count();
 
 		assert_eq!(covered, 7 * 7, "a point grows into a 7 by 7 square");
+	}
+
+	#[test]
+	fn edge_bands_round_the_corners_they_grow_around() {
+		// A single pixel grows into a disk the band's width across, rather than a square
+		let mut point = Plane::<f32>::new(21, 21);
+		point.data[10 * 21 + 10] = 1.;
+		let outward = point.edge_band(5., false);
+		let at = |plane: &Plane<f32>, x: usize, y: usize| plane.data[y * 21 + x];
+
+		assert_eq!(at(&outward, 15, 10), 1., "the full width along an axis");
+		assert_eq!(at(&outward, 17, 10), 0., "past the width");
+		assert_eq!(at(&outward, 15, 14), 0., "past the width diagonally, where a square would still reach");
+
+		// Inward, only the pixels near the edge are covered
+		let mut square = Plane::<f32>::new(21, 21);
+		for y in 2..19 {
+			square.data[y * 21 + 2..y * 21 + 19].fill(1.);
+		}
+		let inward = square.edge_band(3., true);
+
+		assert_eq!(at(&inward, 2, 10), 1., "at the edge");
+		assert_eq!(at(&inward, 10, 10), 0., "deep inside");
 	}
 
 	#[test]

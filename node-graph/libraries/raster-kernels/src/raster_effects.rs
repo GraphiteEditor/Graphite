@@ -13,7 +13,7 @@ use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
-use graphic_types::effects::{EffectOperation, Effects, fitted_paint};
+use graphic_types::effects::{EffectOperation, Effects, GlowSource, fitted_paint, outline_extents};
 use graphic_types::generator::GeneratorPattern;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
@@ -154,6 +154,38 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, operations: &[EffectOpera
 				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
 				full = composite_within(&full, &coverage, &full, color);
 			}
+			EffectOperation::InnerGlow { color, blur, choke, source } => {
+				let mut coverage = cast(&full, DVec2::ZERO, blur * pixels_per_length, choke * pixels_per_length, true);
+				if source == GlowSource::Center {
+					coverage = coverage.map(|coverage| 1. - coverage);
+				}
+				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+				full = composite_within(&full, &coverage, &full, color);
+			}
+			EffectOperation::Satin { color, offset, blur, invert } => {
+				let offset = document_to_pixels * offset;
+				let forward = cast(&full, offset, blur * pixels_per_length, DVec2::ZERO, false);
+				let backward = cast(&full, -offset, blur * pixels_per_length, DVec2::ZERO, false);
+				let coverage = forward.zip(&backward, |forward, backward| satin_coverage(forward, backward, invert));
+
+				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+				full = composite_within(&full, &coverage, &full, color);
+			}
+			EffectOperation::Outline { color, weight, align } => {
+				// Straight-line distances can't stretch along one axis, so an image scaled unevenly takes the mean of its two scales
+				let pixels_per_length = (pixels_per_length.x * pixels_per_length.y).sqrt();
+				let (outside, inside) = outline_extents(weight * pixels_per_length, align);
+				let silhouette = full.map(|[_, _, _, alpha]| alpha);
+
+				if outside >= NEGLIGIBLE_LENGTH {
+					beneath = Some(accumulate(beneath, &silhouette.edge_band(outside, false), color));
+				}
+				if inside >= NEGLIGIBLE_LENGTH {
+					let coverage = silhouette.edge_band(inside, true);
+					filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+					full = composite_within(&full, &coverage, &full, color);
+				}
+			}
 			EffectOperation::PaintOverlay { ref paint, blend_mode, opacity } => {
 				let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
 				let content_bounds = [corners.into_iter().reduce(DVec2::min).unwrap(), corners.into_iter().reduce(DVec2::max).unwrap()];
@@ -291,6 +323,12 @@ fn composite_within(image: &Plane<[f32; 4]>, coverage: &Plane<f32>, full_content
 fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>, full_content: &Plane<[f32; 4]>) -> Plane<[f32; 4]> {
 	let knocked_out = beneath.zip(full_content, |beneath, content| beneath.map(|channel| channel * (1. - content[3])));
 	image.zip(&knocked_out, |image, beneath| std::array::from_fn(|channel| image[channel] + beneath[channel]))
+}
+
+/// Satin's shading where the two casts of the silhouette cover `forward` and `backward`: how much one covers without the other, or how much they agree if `invert`.
+fn satin_coverage(forward: f32, backward: f32, invert: bool) -> f32 {
+	let difference = (forward - backward).abs();
+	if invert { 1. - difference } else { difference }
 }
 
 /// Mixes the paint's color at each premultiplied gamma-encoded pixel over it by the blend mode, keeping the pixel's alpha.

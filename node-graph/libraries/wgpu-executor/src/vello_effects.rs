@@ -4,7 +4,8 @@ use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::graphene_hash::CacheHash;
 use glam::{DMat2, DVec2, UVec2};
-use graphic_types::{Adjustment, EffectOperation, Effects};
+use graphic_types::effects::outline_extents;
+use graphic_types::{Adjustment, EffectOperation, Effects, GlowSource};
 use raster_kernels::adjustment_tables::{AdjustmentPass, CUBE_SIZE, CURVE_TABLE_SIZE, DRAFT_CUBE_SIZE};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
 use std::collections::HashMap;
@@ -253,13 +254,41 @@ impl EffectPasses {
 				}
 				EffectOperation::InnerShadow { color, offset, blur, spread } => {
 					let coverage = recorder.cast(&full, lengths_to_pixels * offset, blur * length_scale, spread * length_scale, true);
-					if let Some(filled) = &mut filled {
-						let composited = recorder.composite_within(filled, &coverage, &full, color);
-						recorder.replace(filled, composited);
+					recorder.shade_within(&mut full, &mut filled, coverage, color);
+				}
+				EffectOperation::InnerGlow { color, blur, choke, source } => {
+					let mut coverage = recorder.cast(&full, DVec2::ZERO, blur * length_scale, choke * length_scale, true);
+					if source == GlowSource::Center {
+						let inverted = recorder.run("invert_coverage", COVERAGE_FORMAT, recorder.size, &coverage, None, None, Parameters::default());
+						recorder.replace(&mut coverage, inverted);
 					}
-					let composited = recorder.composite_within(&full, &coverage, &full, color);
-					recorder.replace(&mut full, composited);
-					recorder.textures.release(coverage);
+					recorder.shade_within(&mut full, &mut filled, coverage, color);
+				}
+				EffectOperation::Satin { color, offset, blur, invert } => {
+					let offset = lengths_to_pixels * offset;
+					let forward = recorder.cast(&full, offset, blur * length_scale, 0., false);
+					let backward = recorder.cast(&full, -offset, blur * length_scale, 0., false);
+					let parameters = Parameters {
+						amount: if invert { 1. } else { 0. },
+						..Default::default()
+					};
+					let coverage = recorder.run("satin", COVERAGE_FORMAT, recorder.size, &forward, Some(&backward), None, parameters);
+					recorder.textures.release(forward);
+					recorder.textures.release(backward);
+
+					recorder.shade_within(&mut full, &mut filled, coverage, color);
+				}
+				EffectOperation::Outline { color, weight, align } => {
+					let (outside, inside) = outline_extents(weight * length_scale, align);
+					if outside >= NEGLIGIBLE_LENGTH {
+						let coverage = recorder.edge_band(&full, outside, false);
+						beneath = Some(recorder.accumulate(beneath, &coverage, color));
+						recorder.textures.release(coverage);
+					}
+					if inside >= NEGLIGIBLE_LENGTH {
+						let coverage = recorder.edge_band(&full, inside, true);
+						recorder.shade_within(&mut full, &mut filled, coverage, color);
+					}
 				}
 				EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
 					let Some(paint) = paints.next() else { continue };
@@ -577,6 +606,46 @@ impl PassRecorder<'_> {
 			..Default::default()
 		};
 		self.run("composite_within", WORKING_FORMAT, self.size, image, Some(coverage), Some(full_content), parameters)
+	}
+
+	/// Places a silhouette's coverage, tinted `color`, over both the full-strength content and the faded fill, within the content, then frees the coverage.
+	fn shade_within(&mut self, full: &mut wgpu::Texture, filled: &mut Option<wgpu::Texture>, coverage: wgpu::Texture, color: Color) {
+		if let Some(filled) = filled {
+			let composited = self.composite_within(filled, &coverage, full, color);
+			self.replace(filled, composited);
+		}
+		let composited = self.composite_within(full, &coverage, full, color);
+		self.replace(full, composited);
+		self.textures.release(coverage);
+	}
+
+	/// The coverage of the band reaching `width` pixels from the content's silhouette edge, outward or (if `inward`) inward, measured in straight lines so it rounds corners.
+	/// Jump flooding finds each texel's nearest texel across the edge, in a pass for each halving of a step that starts past the width.
+	fn edge_band(&mut self, content: &wgpu::Texture, width: f64, inward: bool) -> wgpu::Texture {
+		let parameters = Parameters {
+			amount: if inward { 1. } else { 0. },
+			..Default::default()
+		};
+		let mut nearest = self.run("jump_flood_seed", WORKING_FORMAT, self.size, content, None, None, parameters);
+
+		let mut step = (width.max(0.).ceil() as u32 + 1).next_power_of_two();
+		while step >= 1 {
+			let parameters = Parameters {
+				values: [step as f32, 0., 0., 0.],
+				..Default::default()
+			};
+			let flooded = self.run("jump_flood_step", WORKING_FORMAT, self.size, &nearest, None, None, parameters);
+			self.replace(&mut nearest, flooded);
+			step /= 2;
+		}
+
+		let parameters = Parameters {
+			values: [width as f32, 0., 0., 0.],
+			..Default::default()
+		};
+		let band = self.run("edge_band", COVERAGE_FORMAT, self.size, &nearest, None, None, parameters);
+		self.textures.release(nearest);
+		band
 	}
 
 	/// The image with the shadows and glows `beneath` placed under it, knocked out by the full-strength content.
