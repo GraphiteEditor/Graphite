@@ -938,7 +938,7 @@
 		const asksForCompletions = (e.ctrlKey && e.key === " ") || (operatingSystem() === "Mac" && e.altKey && e.key === "Escape");
 		if (asksForCompletions) {
 			e.preventDefault();
-			// The editor's shortcuts hear Escape even from a text field
+			// A parent floating menu mustn't also close
 			e.stopPropagation();
 			suggest();
 		} else if (e.key === "Tab") {

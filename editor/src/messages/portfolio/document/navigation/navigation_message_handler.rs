@@ -529,6 +529,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 }
 
 impl NavigationMessageHandler {
+	/// Whether a pan, tilt, or zoom drag is in progress.
+	pub fn is_navigating(&self) -> bool {
+		self.navigation_operation != NavigationOperation::None
+	}
+
 	pub fn snapped_tilt(&self, tilt: f64) -> f64 {
 		let increment_radians: f64 = VIEWPORT_ROTATE_SNAP_INTERVAL.to_radians();
 		if matches!(self.navigation_operation, NavigationOperation::Tilt { snap: true, .. }) {

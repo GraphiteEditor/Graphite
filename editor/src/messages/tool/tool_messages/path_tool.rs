@@ -829,27 +829,27 @@ impl PathToolData {
 					shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 				}
 
-				if handle_drag_from_anchor && let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
-					// Check that selected point is an anchor
-					if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
-						let handles = vector.all_connected(point_id).collect::<Vec<_>>();
-						self.alt_clicked_on_anchor = true;
-						for handle in &handles {
-							let modification_type = handle.set_relative_position(DVec2::ZERO);
-							responses.add(GraphOperationMessage::Vector { layer, modification_type });
-							for &handles in &vector.colinear_manipulators {
-								if handles.contains(handle) {
-									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-									responses.add(GraphOperationMessage::Vector { layer, modification_type });
-								}
+				// Alt held at drag start on an anchor makes it sharp, unless it's a lone anchor with no handles to retract
+				if handle_drag_from_anchor
+					&& let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
+					&& let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer))
+					&& let Some(first_handle) = vector.all_connected(point_id).next()
+				{
+					self.alt_clicked_on_anchor = true;
+					for handle in vector.all_connected(point_id) {
+						let modification_type = handle.set_relative_position(DVec2::ZERO);
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						for &handles in &vector.colinear_manipulators {
+							if handles.contains(&handle) {
+								let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
 							}
 						}
-
-						let manipulator_point_id = handles[0].to_manipulator_point();
-						shape_editor.deselect_all_points();
-						shape_editor.select_point_by_layer_and_id(manipulator_point_id, layer);
-						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
+
+					shape_editor.deselect_all_points();
+					shape_editor.select_point_by_layer_and_id(first_handle.to_manipulator_point(), layer);
+					responses.add(PathToolMessage::SelectedPointUpdated);
 				}
 
 				if let Some((Some(point), Some(vector), layer)) = shape_editor
@@ -3802,6 +3802,10 @@ mod test_path_tool {
 		}
 	}
 
+	fn selected_points(editor: &EditorTestUtils) -> Vec<ManipulatorPointId> {
+		editor.editor.dispatcher.message_handlers.tool_message_handler.shape_editor.selected_points().copied().collect()
+	}
+
 	/// Presses the Path tool at a viewport position, which picks up whatever point is there.
 	async fn press_at(editor: &mut EditorTestUtils, position: DVec2) {
 		editor.select_tool(ToolType::Path).await;
@@ -4039,5 +4043,24 @@ mod test_path_tool {
 		editor.handle_message(PathToolMessage::NudgeSelectedPoints { delta_x: NUDGE_AMOUNT, delta_y: 0. }).await;
 		let moved = DVec2::new(3., 0.);
 		assert_anchors(&editor, layer, &[first + moved, second + moved, unselected]);
+	}
+
+	#[tokio::test]
+	async fn alt_clicking_an_anchor_without_segments_selects_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		// Deleting the middle anchor without joining its neighbors leaves both ends without segments
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, B, ModifierKeys::empty()).await;
+		editor.handle_message(PathToolMessage::DeleteAndBreakPath).await;
+		assert_anchors(&editor, layer, &[A, C]);
+
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, A, ModifierKeys::ALT).await;
+		let selected = selected_points(&editor);
+		assert!(
+			matches!(selected[..], [ManipulatorPointId::Anchor(_)]),
+			"only the Alt-clicked anchor should be selected, not {selected:?}"
+		);
 	}
 }

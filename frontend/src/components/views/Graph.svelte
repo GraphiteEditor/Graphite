@@ -58,13 +58,12 @@
 		editingName = undefined;
 		if (!target || editingNameText === target.initialText) return;
 
-		if (target.kind === "Layer") editor.setLayerName(target.nodeId, editingNameText);
+		if (target.kind === "Layer") editor.setLayerNameInGraph(target.nodeId, editingNameText);
 		else if (target.kind === "Import") editor.setImportName(target.index, editingNameText);
 		else editor.setExportName(target.index, editingNameText);
 	}
 
-	// The name fields stop propagation of the keys they handle so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
-	// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
+	// The name fields stop propagation of the keys they handle so no window listener also acts on them
 	function onNameInputKeyDown(e: KeyboardEvent) {
 		if (e.key === "Enter") commitEditingName();
 		else if (e.key === "Escape") editingName = undefined;

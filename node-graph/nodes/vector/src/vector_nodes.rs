@@ -29,8 +29,8 @@ use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::misc::{
-	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
-	bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, Tangent,
+	bezpath_from_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{PointDomain, PointId, SegmentDomain, SegmentId, VectorExt};
@@ -597,81 +597,119 @@ async fn round_corners<V: MapVectorItems + 'n + Send>(
 
 		let mut result = Vector::default();
 
-		// Grab the initial point ID as a stable starting point
-		let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
+		for bezpath in source.stroke_bezpath_iter() {
+			// The radius is measured after the transform, so scaling the layer doesn't scale its rounding
+			let mut document_bezpath = bezpath.clone();
+			document_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-		for mut bezpath in source.stroke_bezpath_iter() {
-			bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
-			let (manipulator_groups, is_closed) = bezpath_to_manipulator_groups(&bezpath);
-
-			// End if not enough points for corner rounding
-			if manipulator_groups.len() < 3 {
+			// A subpath without corners to round passes through as it was
+			let Some(mut rounded_subpath) = round_subpath_corners(&document_bezpath, radius, roundness, edge_length_limit, min_angle_threshold.to_radians()) else {
 				result.append_bezpath(bezpath);
 				continue;
-			}
+			};
 
-			let mut new_manipulator_groups = Vec::new();
-
-			for i in 0..manipulator_groups.len() {
-				// Skip first and last points for open paths
-				if !is_closed && (i == 0 || i == manipulator_groups.len() - 1) {
-					new_manipulator_groups.push(manipulator_groups[i]);
-					continue;
-				}
-
-				// Not the prettiest, but it makes the rest of the logic more readable
-				let prev_index = if i == 0 { if is_closed { manipulator_groups.len() - 1 } else { 0 } } else { i - 1 };
-				let curr_index = i;
-				let next_index = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
-
-				let prev = manipulator_groups[prev_index].anchor;
-				let curr = manipulator_groups[curr_index].anchor;
-				let next = manipulator_groups[next_index].anchor;
-
-				let dir1 = (curr - prev).normalize_or(DVec2::X);
-				let dir2 = (next - curr).normalize_or(DVec2::X);
-
-				let theta = PI - dir1.angle_to(dir2).abs();
-
-				// Skip near-straight corners
-				if theta > PI - min_angle_threshold.to_radians() {
-					new_manipulator_groups.push(manipulator_groups[curr_index]);
-					continue;
-				}
-
-				// Calculate L, with limits to avoid extreme values
-				let distance_along_edge = radius / (theta / 2.).sin();
-				let distance_along_edge = distance_along_edge.min(edge_length_limit * (curr - prev).length().min((next - curr).length())).max(0.01);
-
-				// Find points on each edge at distance L from corner
-				let p1 = curr - dir1 * distance_along_edge;
-				let p2 = curr + dir2 * distance_along_edge;
-
-				// Add first point (coming into the rounded corner)
-				new_manipulator_groups.push(ManipulatorGroup {
-					anchor: p1,
-					in_handle: None,
-					out_handle: Some(curr - dir1 * distance_along_edge * roundness),
-					id: initial_point_id.next_id(),
-				});
-
-				// Add second point (coming out of the rounded corner)
-				new_manipulator_groups.push(ManipulatorGroup {
-					anchor: p2,
-					in_handle: Some(curr + dir2 * distance_along_edge * roundness),
-					out_handle: None,
-					id: initial_point_id.next_id(),
-				});
-			}
-
-			// One subpath for each shape
-			let mut rounded_subpath = bezpath_from_manipulator_groups(&new_manipulator_groups, is_closed);
 			rounded_subpath.apply_affine(Affine::new(source_transform_inverse.to_cols_array()));
 			result.append_bezpath(rounded_subpath);
 		}
 
 		Item::from_parts(result, attributes)
 	})
+}
+
+/// Rounds off the anchors where a subpath's direction turns, cutting back along both segments' curves, and leaves smooth joins as they are.
+/// Returns `None` when there's no corner to round.
+fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_length_limit: f64, min_angle_threshold: f64) -> Option<BezPath> {
+	let closed = matches!(subpath.elements().last(), Some(PathEl::ClosePath));
+	let segments: Vec<PathSeg> = subpath.segments().collect();
+	let count = segments.len();
+
+	// Anchor `i` joins segment `i - 1` to segment `i`, and a closed subpath's first anchor also ends its last segment
+	let anchor_count = if closed { count } else { count + 1 };
+	if anchor_count < 3 {
+		return None;
+	}
+	let previous_segment = |anchor: usize| (anchor + count - 1) % count;
+
+	let lengths: Vec<f64> = segments.iter().map(|segment| segment.arclen(DEFAULT_ACCURACY)).collect();
+
+	// How far back along both of its segments each anchor's corner is cut, or `None` where there's no corner to round
+	let cut_distances: Vec<Option<f64>> = (0..anchor_count)
+		.map(|anchor| {
+			if !closed && (anchor == 0 || anchor == count) {
+				return None;
+			}
+
+			let arriving = segments[previous_segment(anchor)].tangent_at_end().try_normalize()?;
+			let leaving = segments[anchor % count].tangent_at_start().try_normalize()?;
+			let theta = PI - arriving.angle_to(leaving).abs();
+
+			// Skip near-straight corners
+			if theta > PI - min_angle_threshold {
+				return None;
+			}
+
+			// Calculate the distance, with limits to avoid extreme values
+			let distance = radius / (theta / 2.).sin();
+			let shorter_length = lengths[previous_segment(anchor)].min(lengths[anchor % count]);
+			Some(distance.min(edge_length_limit * shorter_length).max(0.01))
+		})
+		.collect();
+	if cut_distances.iter().all(Option::is_none) {
+		return None;
+	}
+
+	// Trim each segment back from the corners at its ends, keeping the part between them with its curvature
+	let trimmed: Vec<PathSeg> = segments
+		.iter()
+		.zip(&lengths)
+		.enumerate()
+		.map(|(index, (&segment, &length))| {
+			let start_cut = cut_distances[index].unwrap_or_default();
+			let end_cut = cut_distances[(index + 1) % anchor_count].unwrap_or_default();
+			if start_cut == 0. && end_cut == 0. {
+				return segment;
+			}
+
+			let start_t = if start_cut > 0. { segment.inv_arclen(start_cut.min(length), DEFAULT_ACCURACY) } else { 0. };
+			let end_t = if end_cut > 0. { segment.inv_arclen((length - end_cut).max(0.), DEFAULT_ACCURACY) } else { 1. };
+			segment.subsegment(start_t..end_t.max(start_t))
+		})
+		.collect();
+
+	// Joins the end of the trimmed segment arriving at a corner to the start of the one leaving it
+	let corner_curve = |rounded: &mut BezPath, arriving: PathSeg, leaving: PathSeg, cut_distance: f64| {
+		let (start, end) = (point_to_dvec2(arriving.end()), point_to_dvec2(leaving.start()));
+		let fallback = (end - start).normalize_or_zero();
+		let handle_length = cut_distance * (1. - roundness);
+
+		let start_handle = start + arriving.tangent_at_end().try_normalize().unwrap_or(fallback) * handle_length;
+		let end_handle = end - leaving.tangent_at_start().try_normalize().unwrap_or(fallback) * handle_length;
+		rounded.curve_to(dvec2_to_point(start_handle), dvec2_to_point(end_handle), dvec2_to_point(end));
+	};
+
+	// A closed subpath with a corner at its first anchor starts where that corner's rounding begins
+	let mut rounded = BezPath::new();
+	let corner_at_start = cut_distances[0];
+	rounded.move_to(if corner_at_start.is_some() { trimmed[count - 1].end() } else { trimmed[0].start() });
+	if let Some(cut_distance) = corner_at_start {
+		corner_curve(&mut rounded, trimmed[count - 1], trimmed[0], cut_distance);
+	}
+
+	for index in 0..count {
+		rounded.push(trimmed[index].as_path_el());
+
+		if index + 1 < count
+			&& let Some(cut_distance) = cut_distances[index + 1]
+		{
+			corner_curve(&mut rounded, trimmed[index], trimmed[index + 1], cut_distance);
+		}
+	}
+
+	if closed {
+		rounded.close_path();
+	}
+
+	Some(rounded)
 }
 
 #[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), icon("NodeMergeByDistance"), path(core_types::vector))]
@@ -3573,7 +3611,7 @@ fn element_centroid(element: &Vector, transform: DAffine2, centroid_type: Centro
 mod test {
 	use super::*;
 	use core_types::Node;
-	use kurbo::{CubicBez, Point, Rect};
+	use kurbo::{CubicBez, ParamCurveNearest, Point, Rect};
 	use std::future::Future;
 	use std::pin::Pin;
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
@@ -4202,5 +4240,85 @@ mod test {
 		assert_eq!(visited.len(), 1, "the lone vector should be visited exactly once");
 		assert_eq!(visited[0].1, transform, "its own transform attribute should come along for placement");
 		assert!(visited[0].0.is_some(), "its geometry should be measurable for the automatic gradient bounds");
+	}
+
+	async fn round_corners_of(bezpath: BezPath, transform: DAffine2) -> Vec<BezPath> {
+		let rounded = super::round_corners((), create_vector_item(bezpath, transform), item(10.), item(0.5), item(100.), item(5.)).await;
+		rounded.element().stroke_bezpath_iter().collect()
+	}
+
+	fn distance_to_path(point: DVec2, bezpath: &BezPath) -> f64 {
+		bezpath
+			.segments()
+			.map(|segment| segment.nearest(dvec2_to_point(point), 1e-6).distance_sq.sqrt())
+			.fold(f64::INFINITY, f64::min)
+	}
+
+	#[tokio::test]
+	async fn round_corners_leaves_a_circle_unchanged() {
+		let circle = ellipse_bezpath(DVec2::ZERO, DVec2::splat(200.));
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(1.5), 0.4, DVec2::new(30., -20.));
+
+		let rounded = round_corners_of(circle.clone(), transform).await;
+		assert_eq!(rounded.len(), 1);
+		assert_eq!(rounded[0].segments().count(), circle.segments().count(), "a circle has no corners to round");
+		for (rounded, original) in rounded[0].segments().zip(circle.segments()) {
+			assert!(pathseg_abs_diff_eq(rounded, original, 1e-6), "the circle's curves should be kept: {rounded:?} != {original:?}");
+		}
+	}
+
+	#[tokio::test]
+	async fn round_corners_rounds_a_rectangles_corners() {
+		let rounded = round_corners_of(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY), DAffine2::IDENTITY).await;
+		let segments: Vec<PathSeg> = rounded[0].segments().collect();
+		assert_eq!(segments.len(), 8, "each of the four corners becomes a curve between two edges");
+
+		// A right angle is cut back by the radius divided by sin(45°) along both edges
+		let cut_distance = 10. / std::f64::consts::FRAC_PI_4.sin();
+		for segment in &segments {
+			match segment {
+				PathSeg::Line(line) => assert!((line.length() - (100. - 2. * cut_distance)).abs() < 1e-9, "the edges are shortened at both ends"),
+				PathSeg::Cubic(cubic) => assert!((point_to_dvec2(cubic.p0).distance(point_to_dvec2(cubic.p3)) - cut_distance * 2_f64.sqrt()).abs() < 1e-9),
+				PathSeg::Quad(_) => panic!("rounded corners are cubic"),
+			}
+		}
+	}
+
+	#[tokio::test]
+	async fn round_corners_keeps_curves_beside_a_corner() {
+		// A half-disc, whose two corners join its arc to its flat side, and whose arc is smooth where its two curves meet
+		let handle = 50. * 0.552_284_749_8;
+		let mut half_disc = BezPath::new();
+		half_disc.move_to((-50., 0.));
+		half_disc.curve_to((-50., -handle), (-handle, -50.), (0., -50.));
+		half_disc.curve_to((handle, -50.), (50., -handle), (50., 0.));
+		half_disc.line_to((-50., 0.));
+		half_disc.close_path();
+
+		let rounded = round_corners_of(half_disc.clone(), DAffine2::IDENTITY).await;
+		assert_eq!(rounded[0].segments().count(), 5, "only the two corners are rounded");
+
+		// The arc away from the corners, up to and past the smooth join at its top
+		let arc: Vec<PathSeg> = half_disc.segments().take(2).collect();
+		for (segment, t) in [(arc[0], 0.5), (arc[0], 0.8), (arc[0], 1.), (arc[1], 0.2), (arc[1], 0.5)] {
+			let on_arc = point_to_dvec2(segment.eval(t));
+			assert!(distance_to_path(on_arc, &rounded[0]) < 1e-6, "the arc at {on_arc} should be kept");
+		}
+		assert!(distance_to_path(DVec2::new(-50., 0.), &rounded[0]) > 1., "the corner should be rounded off");
+	}
+
+	#[tokio::test]
+	async fn round_corners_leaves_short_subpaths_in_place() {
+		let mut line = BezPath::new();
+		line.move_to((0., 0.));
+		line.line_to((40., 10.));
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.3, DVec2::new(100., 50.));
+
+		let rounded = round_corners_of(line.clone(), transform).await;
+		assert_eq!(rounded.len(), 1);
+		assert!(
+			pathseg_abs_diff_eq(rounded[0].segments().next().unwrap(), line.segments().next().unwrap(), 1e-9),
+			"a subpath too short to have corners should stay where it was"
+		);
 	}
 }
