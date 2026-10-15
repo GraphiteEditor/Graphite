@@ -2588,15 +2588,18 @@ impl Fsm for PathToolFsmState {
 									.or_default()
 									.deselect_segment(nearest_segment.segment());
 
-								// If in segment editing mode only, and upon deselecting a segment, we deselect both of its anchors
+								// If in segment editing mode only, and upon deselecting a segment, we deselect its anchors, except one another selected segment ends at
 								if segment_mode && !point_mode {
-									nearest_segment.points().iter().for_each(|point_id| {
-										shape_editor
-											.selected_shape_state
-											.entry(nearest_segment.layer())
-											.or_default()
-											.deselect_point(ManipulatorPointId::Anchor(*point_id));
-									});
+									let vector = document.network_interface.compute_modified_vector(nearest_segment.layer());
+									let state = shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default();
+									for point_id in nearest_segment.points() {
+										let shared = vector
+											.as_ref()
+											.is_some_and(|vector| vector.all_connected(point_id).any(|handle| state.is_segment_selected(handle.segment)));
+										if !shared {
+											state.deselect_point(ManipulatorPointId::Anchor(point_id));
+										}
+									}
 								}
 							} else {
 								shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default().select_segment(nearest_segment.segment());
@@ -2613,20 +2616,13 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 
-					// If only in segment select mode, we also select all of the endpoints of selected segments
+					// If only in segment select mode, we also select both endpoints of the clicked segment, unless the click deselected it
 					let point_mode = tool_options.path_editing_mode.point_editing_mode;
-					if !point_mode {
+					let state = shape_editor.selected_shape_state.entry(nearest_segment.layer()).or_default();
+					if !point_mode && state.is_segment_selected(nearest_segment.segment()) {
 						let [start, end] = nearest_segment.points();
-						shape_editor
-							.selected_shape_state
-							.entry(nearest_segment.layer())
-							.or_default()
-							.select_point(ManipulatorPointId::Anchor(start));
-						shape_editor
-							.selected_shape_state
-							.entry(nearest_segment.layer())
-							.or_default()
-							.select_point(ManipulatorPointId::Anchor(end));
+						state.select_point(ManipulatorPointId::Anchor(start));
+						state.select_point(ManipulatorPointId::Anchor(end));
 					}
 				}
 				// Deselect all points if the user clicks the filled region of the shape
@@ -4454,5 +4450,52 @@ mod test_path_tool {
 		drag(&mut editor, beside, beside + DVec2::new(0., 40.)).await;
 
 		assert_anchors(&editor, layer, &[A, B, C]);
+	}
+
+	#[tokio::test]
+	async fn shift_clicking_a_selected_segment_in_segment_editing_mode_deselects_its_anchors() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_path(&mut editor, &[A, B, C]).await;
+		editor.select_tool(ToolType::Path).await;
+		editor.handle_message(PathToolMessage::ToggleSegmentEditing).await;
+
+		// Clicks once drawing the overlays has found the segment under the pointer
+		async fn click(editor: &mut EditorTestUtils, position: DVec2, modifier_keys: ModifierKeys) {
+			editor.move_mouse(position.x, position.y, modifier_keys, MouseKeys::empty()).await;
+			editor.handle_message(PathToolMessage::Overlays { context: OverlayContext::default() }).await;
+			editor.left_mousedown(position.x, position.y, modifier_keys).await;
+			editor.left_mouseup(position.x, position.y, modifier_keys).await;
+		}
+
+		let selected_anchor_positions = |editor: &EditorTestUtils| {
+			let document = editor.active_document();
+			let shape_editor = &editor.editor.dispatcher.message_handlers.tool_message_handler.shape_editor;
+			let mut positions = Vec::new();
+			for (&layer, state) in &shape_editor.selected_shape_state {
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+				let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+				positions.extend(
+					state
+						.selected_points()
+						.filter_map(|point| vector.position_of(point))
+						.map(|position| to_viewport.transform_point2(position)),
+				);
+			}
+			positions.sort_by(|a, b| a.x.total_cmp(&b.x));
+			positions
+		};
+
+		// Both segments are selected, then the first is Shift-clicked again, leaving the anchor it shares with the second
+		let (first, second) = ((A + B) / 2., (B + C) / 2.);
+		click(&mut editor, first, ModifierKeys::empty()).await;
+		click(&mut editor, second, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_positions(&editor), vec![A, B, C]);
+		click(&mut editor, first, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_positions(&editor), vec![B, C]);
+
+		// Shift-clicking the second deselects its anchors too
+		click(&mut editor, second, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_positions(&editor), Vec::<DVec2>::new());
 	}
 }
