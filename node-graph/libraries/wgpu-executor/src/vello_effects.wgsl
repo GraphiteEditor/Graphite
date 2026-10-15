@@ -210,6 +210,20 @@ fn gradient_glow_tint(@builtin(position) position: vec4<f32>) -> @location(0) ve
 	return vec4<f32>(color.rgb * alpha, alpha);
 }
 
+
+// The coverage of where a silhouette doesn't reach, which turns an inner glow from the edges into one from the center
+@fragment
+fn invert_coverage(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	return vec4<f32>(1. - textureLoad(source, vec2<i32>(position.xy), 0).r);
+}
+
+// Satin's shading from two casts of the silhouette: how much one covers without the other, or how much they agree with `amount` 1
+@fragment
+fn satin(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let difference = abs(textureLoad(source, pixel, 0).r - textureLoad(secondary, pixel, 0).r);
+	return vec4<f32>(select(difference, 1. - difference, parameters.amount > 0.5));
+}
 // A silhouette's coverage in its color
 @fragment
 fn tint(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
@@ -243,12 +257,16 @@ fn accumulate(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> 
 	return tinted + beneath * (1. - tinted.a);
 }
 
-// Places a tinted silhouette over the image, within the content at full strength so it stays visible over a faded fill
+// Places a tinted silhouette over the image, within the content at full strength so it stays visible over a faded fill.
+// With `values.y` 1, `secondary` is already tinted.
 @fragment
 fn composite_within(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	let pixel = vec2<i32>(position.xy);
 	let image = textureLoad(source, pixel, 0);
-	let tinted = parameters.color * textureLoad(secondary, pixel, 0).r;
+	var tinted = parameters.color * textureLoad(secondary, pixel, 0).r;
+	if parameters.values.y > 0.5 {
+		tinted = textureLoad(secondary, pixel, 0);
+	}
 	let full_content = textureLoad(content, pixel, 0);
 
 	return tinted * full_content.a + image * (1. - tinted.a);

@@ -5,8 +5,8 @@ use bytemuck::{Pod, Zeroable};
 use core_types::Color;
 use core_types::transfer_curve::TransferCurve;
 use glam::{DMat2, DVec2, UVec2};
-use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GlowFill, grow_and_tent, shadow_offset};
-use graphic_types::{Adjustment, EffectOperation, Effects, GlowTechnique};
+use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GlowFill, grow_and_tent, outline_extents, shadow_offset};
+use graphic_types::{Adjustment, EffectOperation, Effects, GlowSource, GlowTechnique};
 use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -322,14 +322,89 @@ impl EffectPasses {
 					let outside = recorder.silhouette(full_content, lengths_to_pixels * shadow_offset(angle, distance), true);
 					let strength = recorder.cast(outside, size, choke, GlowTechnique::Softer, 100., contour, length_scale);
 					capture_plane(&mut recorder, 0, &strength, false);
+					recorder.shade_within(content, &mut full, &mut filled, strength, Some(color));
+				}
+				EffectOperation::InnerGlow {
+					ref color,
+					technique,
+					source,
+					choke,
+					size,
+					range,
+					ref contour,
+				} => {
+					let Some(paint) = GlowFill::of(color) else { continue };
 
-					if let Some(filled) = &mut filled {
-						let composited = recorder.composite_within(filled, &strength, full_content, color);
-						recorder.replace(filled, composited);
+					// A glow from the center is strongest where the glow from the edges is weakest
+					let outside = recorder.silhouette(full.as_ref().unwrap_or(content), DVec2::ZERO, true);
+					let mut strength = recorder.cast(outside, size, choke, technique, range, contour, length_scale);
+					if source == GlowSource::Center {
+						let inverted = recorder.run("invert_coverage", COVERAGE_FORMAT, recorder.size, &strength, None, None, Parameters::default());
+						recorder.replace(&mut strength, inverted);
 					}
-					let composited = recorder.composite_within(full_content, &strength, full_content, color);
-					recorder.replace_or_fill(&mut full, composited);
-					recorder.textures.release(strength);
+
+					// A gradient paints each pixel its own color, which a map captures whole, and doesn't fade since the content bounds it
+					match paint {
+						GlowFill::Solid(color) => {
+							capture_plane(&mut recorder, 0, &strength, false);
+							recorder.shade_within(content, &mut full, &mut filled, strength, Some(color));
+						}
+						GlowFill::Gradient { .. } => {
+							let tinted = recorder.gradient_glow_tint(&paint, &strength, &strength, false);
+							recorder.textures.release(strength);
+							let Some(tinted) = tinted else { continue };
+							capture_plane(&mut recorder, 0, &tinted, true);
+							recorder.shade_within(content, &mut full, &mut filled, tinted, None);
+						}
+					}
+				}
+				EffectOperation::Satin {
+					color,
+					angle,
+					distance,
+					size,
+					invert,
+					ref contour,
+				} => {
+					// The difference between the silhouette cast both ways along the offset, softened by the size
+					let offset = lengths_to_pixels * shadow_offset(angle, distance);
+					let full_content = full.as_ref().unwrap_or(content);
+					let cast_toward = |recorder: &mut PassRecorder, offset: DVec2| {
+						let silhouette = recorder.silhouette(full_content, offset, false);
+						recorder.cast(silhouette, size, 0., GlowTechnique::Softer, 100., &TransferCurve::default(), length_scale)
+					};
+					let (forward, backward) = (cast_toward(&mut recorder, offset), cast_toward(&mut recorder, -offset));
+					let parameters = Parameters {
+						amount: if invert { 1. } else { 0. },
+						..Default::default()
+					};
+					let difference = recorder.run("satin", COVERAGE_FORMAT, recorder.size, &forward, Some(&backward), None, parameters);
+					recorder.textures.release(forward);
+					recorder.textures.release(backward);
+
+					let strength = recorder.shape(difference, 100., contour);
+					capture_plane(&mut recorder, 0, &strength, false);
+					recorder.shade_within(content, &mut full, &mut filled, strength, Some(color));
+				}
+				EffectOperation::Outline { color, weight, align } => {
+					// The band outside lies beneath the content like a shadow, and the band inside over it like an inner shadow
+					let (outside, inside) = outline_extents(weight * length_scale, align);
+					if outside >= NEGLIGIBLE_LENGTH {
+						let full_content = full.as_ref().unwrap_or(content);
+						let silhouette = recorder.silhouette(full_content, DVec2::ZERO, false);
+						let band = recorder.grown(silhouette, outside);
+						let band = recorder.knock_out(band, full_content, fill);
+						capture_plane(&mut recorder, 0, &band, false);
+
+						beneath = Some(recorder.accumulate(beneath, &band, color));
+						recorder.textures.release(band);
+					}
+					if inside >= NEGLIGIBLE_LENGTH {
+						let outside_content = recorder.silhouette(full.as_ref().unwrap_or(content), DVec2::ZERO, true);
+						let band = recorder.grown(outside_content, inside);
+						capture_plane(&mut recorder, 1, &band, false);
+						recorder.shade_within(content, &mut full, &mut filled, band, Some(color));
+					}
 				}
 				EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
 					let Some(paint) = paints.next() else { continue };
@@ -391,6 +466,14 @@ impl EffectPasses {
 				queue.submit([recorder.encoder.finish()]);
 				return captured;
 			}
+		}
+
+		// A coverage the passes never reached, like that of a band too thin to draw at this resolution, covers nothing
+		if capture.is_some() {
+			let empty = recorder.scale(full.as_ref().unwrap_or(content), 0.);
+			[full, filled, beneath].into_iter().flatten().for_each(|texture| recorder.textures.release(texture));
+			queue.submit([recorder.encoder.finish()]);
+			return empty;
 		}
 
 		let result = match (filled, beneath) {
@@ -572,11 +655,15 @@ fn draw_covering(encoder: &mut wgpu::CommandEncoder, label: &str, pipeline: &wgp
 	pass.draw(0..3, 0..1);
 }
 
-/// Whether an operation leaves the content as it is: a blur too slight to see, or a glow with nothing to paint.
+/// Whether an operation leaves the content as it is: a blur or outline too slight to see, or a glow with nothing to paint.
 fn changes_nothing(operation: &EffectOperation, length_scale: f64) -> bool {
 	match operation {
 		EffectOperation::Blur { radius, .. } => radius * length_scale < NEGLIGIBLE_LENGTH,
-		EffectOperation::OuterGlow { color, .. } => GlowFill::of(color).is_none(),
+		EffectOperation::OuterGlow { color, .. } | EffectOperation::InnerGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
+		EffectOperation::Outline { color, weight, align } => {
+			let (outside, inside) = outline_extents(weight * length_scale, *align);
+			color.a() <= 0. || (outside < NEGLIGIBLE_LENGTH && inside < NEGLIGIBLE_LENGTH)
+		}
 		_ => false,
 	}
 }
@@ -681,13 +768,7 @@ impl PassRecorder<'_> {
 	#[expect(clippy::too_many_arguments)]
 	fn cast(&mut self, silhouette: wgpu::Texture, size: f64, spread: f64, technique: GlowTechnique, range: f64, contour: &TransferCurve, length_scale: f64) -> wgpu::Texture {
 		let strength = self.cast_strength(silhouette, size, spread, technique, length_scale);
-		match self.shaped(&strength, range, contour) {
-			Some(shaped) => {
-				self.textures.release(strength);
-				shaped
-			}
-			None => strength,
-		}
+		self.shape(strength, range, contour)
 	}
 
 	/// The strength from 0 to 1 of a shadow or glow cast from a `silhouette`'s coverage before its range and contour shape it, as [`Self::cast`] describes.
@@ -699,14 +780,7 @@ impl PassRecorder<'_> {
 			GlowTechnique::Softer => {
 				let mut coverage = silhouette;
 				if grow_pixels >= NEGLIGIBLE_LENGTH {
-					let to_silhouette = self.distances(&coverage, grow_pixels + 1., Seeds::Covered);
-					let parameters = Parameters {
-						values: [grow_pixels as f32, 0., 0., 0.],
-						..Default::default()
-					};
-					let grown = self.run("grow", COVERAGE_FORMAT, self.size, &to_silhouette, None, None, parameters);
-					self.textures.release(to_silhouette);
-					self.replace(&mut coverage, grown);
+					coverage = self.grown(coverage, grow_pixels);
 				}
 
 				let radius = tent * length_scale;
@@ -733,6 +807,31 @@ impl PassRecorder<'_> {
 				}
 				falloff
 			}
+		}
+	}
+
+	/// The `silhouette` grown outward by `distance` pixels, matching the CPU's `grown`.
+	fn grown(&mut self, silhouette: wgpu::Texture, distance: f64) -> wgpu::Texture {
+		let to_silhouette = self.distances(&silhouette, distance + 1., Seeds::Covered);
+		self.textures.release(silhouette);
+
+		let parameters = Parameters {
+			values: [distance as f32, 0., 0., 0.],
+			..Default::default()
+		};
+		let grown = self.run("grow", COVERAGE_FORMAT, self.size, &to_silhouette, None, None, parameters);
+		self.textures.release(to_silhouette);
+		grown
+	}
+
+	/// The `strength` shaped as [`Self::shaped`] describes, in place of the unshaped texture.
+	fn shape(&mut self, strength: wgpu::Texture, range: f64, contour: &TransferCurve) -> wgpu::Texture {
+		match self.shaped(&strength, range, contour) {
+			Some(shaped) => {
+				self.textures.release(strength);
+				shaped
+			}
+			None => strength,
 		}
 	}
 
@@ -865,10 +964,11 @@ impl PassRecorder<'_> {
 		accumulated
 	}
 
-	/// The image with a silhouette's coverage, tinted `color`, placed over it within the full-strength content.
-	fn composite_within(&mut self, image: &wgpu::Texture, coverage: &wgpu::Texture, full_content: &wgpu::Texture, color: Color) -> wgpu::Texture {
+	/// The image with a silhouette's coverage, tinted `color` (or with no color, already tinted), placed over it within the full-strength content.
+	fn composite_within(&mut self, image: &wgpu::Texture, coverage: &wgpu::Texture, full_content: &wgpu::Texture, color: Option<Color>) -> wgpu::Texture {
 		let parameters = Parameters {
-			color: premultiplied_gamma_channels(color),
+			color: color.map_or([0.; 4], premultiplied_gamma_channels),
+			values: [0., if color.is_none() { 1. } else { 0. }, 0., 0.],
 			..Default::default()
 		};
 		self.run("composite_within", WORKING_FORMAT, self.size, image, Some(coverage), Some(full_content), parameters)
@@ -891,6 +991,19 @@ impl PassRecorder<'_> {
 	/// The image with the shadows and glows `beneath` placed under it.
 	fn composite_beneath(&mut self, image: &wgpu::Texture, beneath: &wgpu::Texture) -> wgpu::Texture {
 		self.run("composite_beneath", WORKING_FORMAT, self.size, image, Some(beneath), None, Parameters::default())
+	}
+
+	/// Places a silhouette's coverage, tinted `color` (or with no color, already tinted), over both the full-strength content (`content` itself
+	/// until a pass replaces it) and the faded fill, within the content, then frees the coverage.
+	fn shade_within(&mut self, content: &wgpu::Texture, full: &mut Option<wgpu::Texture>, filled: &mut Option<wgpu::Texture>, coverage: wgpu::Texture, color: Option<Color>) {
+		let full_content = full.as_ref().unwrap_or(content);
+		if let Some(filled) = filled {
+			let composited = self.composite_within(filled, &coverage, full_content, color);
+			self.replace(filled, composited);
+		}
+		let composited = self.composite_within(full_content, &coverage, full_content, color);
+		self.replace_or_fill(full, composited);
+		self.textures.release(coverage);
 	}
 
 	/// The image (of any format a shader can load from) with a pass of adjustments carried out on it into a texture of `format`, reading what was `prepared` for the pass,

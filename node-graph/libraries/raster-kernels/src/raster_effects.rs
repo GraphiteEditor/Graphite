@@ -15,7 +15,9 @@ use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
-use graphic_types::effects::{EffectOperation, Effects, GlowFill, GlowTechnique, effect_space, fitted_paint, grow_and_tent, precise_falloff, shadow_offset, shape_strength, spans_along_axes};
+use graphic_types::effects::{
+	EffectOperation, Effects, GlowFill, GlowSource, GlowTechnique, effect_space, fitted_paint, grow_and_tent, outline_extents, precise_falloff, shadow_offset, shape_strength, spans_along_axes,
+};
 use graphic_types::generator::GeneratorPattern;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
@@ -69,10 +71,10 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 	let size = DVec2::new(width as f64, height as f64);
 
 	// Each effect's lengths become pixels along each of the image's axes, and its offsets map from its effect space through the inverse of the image's pixel placement
-	let document_to_pixels = (transform.matrix2 * DMat2::from_diagonal(size.recip())).inverse();
+	let document_to_image_pixels = (transform.matrix2 * DMat2::from_diagonal(size.recip())).inverse();
 	let operations: Vec<(EffectOperation, DMat2, bool)> = (effects.runs().into_iter().enumerate())
 		.flat_map(|(run_index, (stamped_transform, rows))| {
-			let effect_to_pixels = document_to_pixels * effect_space(transform, stamped_transform).matrix2;
+			let effect_to_pixels = document_to_image_pixels * effect_space(transform, stamped_transform).matrix2;
 			(effects.operations_in(rows).enumerate()).map(move |(index, operation)| (operation, effect_to_pixels, run_index > 0 && index == 0))
 		})
 		.collect();
@@ -199,6 +201,73 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let strength = cast(outside, size, choke, GlowTechnique::Softer, 100., contour, pixels_per_length);
 				filled = filled.map(|filled| composite_within(&filled, &strength, &full, color));
 				full = composite_within(&full, &strength, &full, color);
+			}
+			EffectOperation::InnerGlow {
+				ref color,
+				technique,
+				source,
+				choke,
+				size,
+				range,
+				ref contour,
+			} => {
+				let Some(paint) = GlowFill::of(color) else { continue };
+
+				// A glow from the center is strongest where the glow from the edges is weakest
+				let outside = full.map(|[_, _, _, alpha]| 1. - alpha);
+				let mut strength = cast(outside, size, choke, technique, range, contour, pixels_per_length);
+				if source == GlowSource::Center {
+					strength = strength.map(|strength| 1. - strength);
+				}
+
+				// An inner glow doesn't fade, since the content bounds it
+				let tinted = glow_tint(&paint, &strength, &strength, false);
+				filled = filled.map(|filled| composite_tinted_within(&filled, &tinted, &full));
+				full = composite_tinted_within(&full, &tinted, &full);
+			}
+			EffectOperation::Satin {
+				color,
+				angle,
+				distance,
+				size,
+				invert,
+				ref contour,
+			} => {
+				// The difference between the silhouette cast both ways along the offset, softened by the size
+				let offset = effect_to_pixels * shadow_offset(angle, distance);
+				let silhouette = full.map(|[_, _, _, alpha]| alpha);
+				let cast_toward = |offset: DVec2| {
+					cast(
+						silhouette.clone().shifted(offset.x, offset.y),
+						size,
+						0.,
+						GlowTechnique::Softer,
+						100.,
+						&TransferCurve::default(),
+						pixels_per_length,
+					)
+				};
+				let difference = cast_toward(offset).zip(&cast_toward(-offset), |forward, backward| (forward - backward).abs());
+
+				let strength = shaped(if invert { difference.map(|difference| 1. - difference) } else { difference }, 100., contour);
+				filled = filled.map(|filled| composite_within(&filled, &strength, &full, color));
+				full = composite_within(&full, &strength, &full, color);
+			}
+			EffectOperation::Outline { color, weight, align } => {
+				// Straight-line distances can't stretch along one axis, so an image scaled unevenly takes the mean of its two scales
+				let mean_scale = (pixels_per_length.x * pixels_per_length.y).sqrt();
+				let (outside, inside) = outline_extents(weight * mean_scale, align);
+				let silhouette = full.map(|[_, _, _, alpha]| alpha);
+
+				// The band outside lies beneath the content like a shadow, and the band inside over it like an inner shadow
+				if outside >= NEGLIGIBLE_LENGTH {
+					beneath = Some(accumulate(beneath, &silhouette.grown(outside), color, true, &full, run_fill));
+				}
+				if inside >= NEGLIGIBLE_LENGTH {
+					let band = silhouette.map(|alpha| 1. - alpha).grown(inside);
+					filled = filled.map(|filled| composite_within(&filled, &band, &full, color));
+					full = composite_within(&full, &band, &full, color);
+				}
 			}
 			EffectOperation::PaintOverlay { ref paint, blend_mode, opacity } => {
 				let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
@@ -410,12 +479,14 @@ fn stack_beneath(beneath: Option<Plane<[f32; 4]>>, tinted: Plane<[f32; 4]>, knoc
 /// The image with a silhouette's coverage, tinted `color`, placed over it within the full-strength content.
 fn composite_within(image: &Plane<[f32; 4]>, coverage: &Plane<f32>, full_content: &Plane<[f32; 4]>, color: Color) -> Plane<[f32; 4]> {
 	let color = premultiplied_gamma_channels(color);
-	let coverages = coverage.zip(full_content, |coverage, content| [coverage, content[3], 0., 0.]);
+	composite_tinted_within(image, &coverage.map(|coverage| color.map(|channel| channel * coverage)), full_content)
+}
 
-	image.zip(&coverages, |image, [coverage, content_alpha, _, _]| {
-		let tinted = color.map(|channel| channel * coverage);
-		std::array::from_fn(|channel| tinted[channel] * content_alpha + image[channel] * (1. - tinted[3]))
-	})
+/// The image with a premultiplied `tinted` image placed over it within the full-strength content.
+fn composite_tinted_within(image: &Plane<[f32; 4]>, tinted: &Plane<[f32; 4]>, full_content: &Plane<[f32; 4]>) -> Plane<[f32; 4]> {
+	let uncovered = image.zip(tinted, |image, tinted| image.map(|channel| channel * (1. - tinted[3])));
+	let within = tinted.zip(full_content, |tinted, content| tinted.map(|channel| channel * content[3]));
+	uncovered.zip(&within, |uncovered, within| std::array::from_fn(|channel| uncovered[channel] + within[channel]))
 }
 
 /// Places what lies `beneath` under the full-strength content and the faded fill, so a pixel filter after it (a blur or an adjustment) processes them together.

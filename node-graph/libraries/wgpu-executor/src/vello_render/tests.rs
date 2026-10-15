@@ -528,6 +528,63 @@ fn shadows_and_glows_fall_where_they_should() {
 }
 
 #[test]
+fn inner_glows_satins_and_outlines_fall_where_they_should() {
+	use core_types::Color as GraphicColor;
+	use graphic_types::vector_types::vector::style::StrokeAlign;
+	use graphic_types::{EffectOperation, GlowSource, GlowTechnique};
+
+	let size = UVec2::new(128, 128);
+	let black = GraphicColor::BLACK;
+	let render_square = |effect| render_square_with_effects(vec![effect], 1., 30., 80., size);
+	let (white, clear) = ([255, 255, 255, 255], 0);
+
+	// A fully choked inner glow from the edges covers a band inside them, and one from the center covers the rest
+	let inner_glow = |source| EffectOperation::InnerGlow {
+		color: black.into(),
+		technique: GlowTechnique::Softer,
+		source,
+		choke: 100.,
+		size: 3.,
+		range: 100.,
+		contour: Default::default(),
+	};
+	let Some(pixels) = render_square(inner_glow(GlowSource::Edge)) else { return };
+	assert_eq!(pixel(&pixels, size, 31, 55), [0, 0, 0, 255], "the edge glows");
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the center doesn't");
+	assert_eq!(pixel(&pixels, size, 25, 55)[3], clear, "nothing outside");
+	let Some(pixels) = render_square(inner_glow(GlowSource::Center)) else { return };
+	assert_eq!(pixel(&pixels, size, 31, 55), white, "the edge doesn't glow");
+	assert_eq!(pixel(&pixels, size, 55, 55), [0, 0, 0, 255], "the center does");
+
+	// Satin shades where the two casts of the silhouette disagree, which for a horizontal offset is a band along each side
+	let satin = EffectOperation::Satin {
+		color: black,
+		angle: 180.,
+		distance: 10.,
+		size: 0.,
+		invert: false,
+		contour: Default::default(),
+	};
+	let Some(pixels) = render_square(satin) else { return };
+	assert_eq!(pixel(&pixels, size, 35, 55), [0, 0, 0, 255], "the left band");
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the middle, where both casts cover");
+	assert_eq!(pixel(&pixels, size, 75, 55), [0, 0, 0, 255], "the right band");
+
+	// An outline outside the edge rounds the corners it grows around, and one inside stays within the content
+	let outline = |align| EffectOperation::Outline { color: black, weight: 5., align };
+	let Some(pixels) = render_square(outline(StrokeAlign::Outside)) else { return };
+	assert_eq!(pixel(&pixels, size, 26, 55), [0, 0, 0, 255], "within the weight of the edge");
+	assert_eq!(pixel(&pixels, size, 23, 55)[3], clear, "past the weight");
+	assert_eq!(pixel(&pixels, size, 27, 27), [0, 0, 0, 255], "near the corner");
+	assert_eq!(pixel(&pixels, size, 25, 25)[3], clear, "beyond the rounded corner, where a square would reach");
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the content shows");
+	let Some(pixels) = render_square(outline(StrokeAlign::Inside)) else { return };
+	assert_eq!(pixel(&pixels, size, 32, 55), [0, 0, 0, 255], "inside the edge");
+	assert_eq!(pixel(&pixels, size, 40, 55), white, "past the weight inside");
+	assert_eq!(pixel(&pixels, size, 28, 55)[3], clear, "nothing outside");
+}
+
+#[test]
 fn paint_overlays_stretch_unplaced_paints_across_the_content() {
 	use core_types::Color as GraphicColor;
 	use core_types::blending::BlendMode;
@@ -616,6 +673,27 @@ fn nested_effects_groups_render_inside_out() {
 }
 
 #[test]
+fn captured_coverages_the_effects_never_reach_cover_nothing() {
+	use graphic_types::effects::EffectCapture;
+	use graphic_types::{EffectKind, EffectOperation, Effects};
+
+	let size = UVec2::new(64, 64);
+	let square = Rect::new(20., 20., 40., 40.);
+
+	// The default outline lies outside the edge, so it has no band inside for its second plane to capture
+	let outline = Effects::from_operations([EffectOperation::default_for(EffectKind::Outline)]);
+	let draw = |scene: &mut VelloSceneBuilder| {
+		scene.capture_next_effects(EffectCapture { index: 0, plane: 1 });
+		scene.draw_effects(&outline, 1., Some(square), DAffine2::IDENTITY, &mut |_, _| {}, &mut |scene| {
+			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+		});
+	};
+
+	let Some(pixels) = render(size, draw) else { return };
+	assert!(pixels.iter().all(|pixel| pixel[3] == 0), "the capture holds the finished image instead of nothing");
+}
+
+#[test]
 fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use core_types::Color as GraphicColor;
 	use core_types::blending::BlendMode;
@@ -627,7 +705,8 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use graphic_types::adjustment::{Adjustment, LevelsRecord, LevelsSettings};
 	use graphic_types::raster_types::{Image, Raster};
 	use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientStop};
-	use graphic_types::{Effect, EffectOperation, GlowTechnique, Graphic, stamp_effect};
+	use graphic_types::vector_types::vector::style::StrokeAlign;
+	use graphic_types::{Effect, EffectOperation, GlowSource, GlowTechnique, Graphic, stamp_effect};
 	use raster_kernels::evaluate_raster_effects;
 
 	let size = UVec2::new(160, 160);
@@ -657,6 +736,10 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		stop(0.4, GraphicColor::from_rgbaf32_unchecked(0.9, 0.2, 0.1, 0.8)),
 		stop(1., GraphicColor::from_rgbaf32_unchecked(0.2, 0., 0.6, 0.)),
 	]));
+	let inner_gradient = Graphic::from(Gradient::new([
+		stop(0., GraphicColor::from_rgbaf32_unchecked(0.9, 0.9, 0.2, 0.9)),
+		stop(1., GraphicColor::from_rgbaf32_unchecked(0.1, 0.5, 0.9, 0.3)),
+	]));
 	let opaque = Graphic::from(Gradient::new([
 		stop(0., GraphicColor::from_rgbaf32_unchecked(0.1, 0.8, 0.3, 1.)),
 		stop(1., GraphicColor::from_rgbaf32_unchecked(0.2, 0.1, 0.9, 1.)),
@@ -683,7 +766,65 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		vec![glow(GlowTechnique::Precise, 80., 10., 100., TransferCurve::default())],
 		vec![glow(GlowTechnique::Softer, 0., 6., 50., bow.clone())],
 		vec![gradient_glow(fading, GlowTechnique::Precise, 0., 14., 75., TransferCurve::default())],
-		vec![gradient_glow(opaque, GlowTechnique::Softer, 25., 12., 50., bow)],
+		vec![gradient_glow(opaque, GlowTechnique::Softer, 25., 12., 50., bow.clone())],
+		vec![EffectOperation::InnerGlow {
+			color: shadow_color.into(),
+			technique: GlowTechnique::Softer,
+			source: GlowSource::Edge,
+			choke: 25.,
+			size: 7.,
+			range: 50.,
+			contour: TransferCurve::default(),
+		}],
+		vec![EffectOperation::InnerGlow {
+			color: shadow_color.into(),
+			technique: GlowTechnique::Precise,
+			source: GlowSource::Center,
+			choke: 0.,
+			size: 10.,
+			range: 75.,
+			contour: TransferCurve::default(),
+		}],
+		vec![EffectOperation::Satin {
+			color: shadow_color,
+			angle: 25.,
+			distance: 7.,
+			size: 6.,
+			invert: true,
+			contour: TransferCurve::default(),
+		}],
+		vec![EffectOperation::Satin {
+			color: shadow_color,
+			angle: -110.,
+			distance: 9.,
+			size: 3.,
+			invert: false,
+			contour: bow,
+		}],
+		vec![EffectOperation::Outline {
+			color: shadow_color,
+			weight: 6.,
+			align: StrokeAlign::Outside,
+		}],
+		vec![EffectOperation::Outline {
+			color: shadow_color,
+			weight: 5.,
+			align: StrokeAlign::Inside,
+		}],
+		vec![EffectOperation::Outline {
+			color: shadow_color,
+			weight: 9.,
+			align: StrokeAlign::Center,
+		}],
+		vec![EffectOperation::InnerGlow {
+			color: inner_gradient,
+			technique: GlowTechnique::Precise,
+			source: GlowSource::Center,
+			choke: 20.,
+			size: 9.,
+			range: 50.,
+			contour: TransferCurve::default(),
+		}],
 		// Bends alpha, so the fill must fade the content before it on both
 		vec![EffectOperation::Adjustment(Adjustment::Levels(Box::new(LevelsSettings {
 			composite: identity,
