@@ -3,6 +3,7 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { targetIsTextField } from "/src/utility-functions/input";
 	import type { GradientInterpolation, GradientSample, SliderInputUpdate, SliderMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
@@ -361,6 +362,7 @@
 	function deleteShortcut(e: KeyboardEvent) {
 		if (disabled) return;
 		if (e.key !== "Delete" && e.key !== "Backspace") return;
+		if (targetIsTextField(e.target || undefined)) return;
 		if (activeMarkerIndex === undefined) return;
 
 		stopDrag();
