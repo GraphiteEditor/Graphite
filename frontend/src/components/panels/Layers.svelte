@@ -11,6 +11,7 @@
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { pasteFile } from "/src/utility-functions/files";
+	import { targetIsTextField } from "/src/utility-functions/input";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -814,8 +815,8 @@
 	function handleLayerPanelKeyDown(e: KeyboardEvent) {
 		// TODO: Handle this F2 shortcut detection in the backend, not frontend, so it uses the standard key binding system
 
-		// Only handle F2 if not currently editing a layer name
-		if (e.key === "F2" && !layers.some((layer) => layer.editingName)) {
+		// Only handle F2 if not currently editing a layer name or typing in another text field
+		if (e.key === "F2" && !layers.some((layer) => layer.editingName) && !targetIsTextField(e.target || undefined)) {
 			// Find the first selected layer
 			const selectedLayer = layers.find((layer) => layer.entry.selected);
 			if (selectedLayer) {
