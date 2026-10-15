@@ -297,6 +297,7 @@ where
 {
 	let (fill, stroke, reverse, randomize) = (fill.into_element(), stroke.into_element(), reverse.into_element(), randomize.into_element());
 	let (seed, repeat_every) = (seed.into_element(), repeat_every.into_element());
+	let gradient = graphic_types::evaluate_gradient_effects(gradient);
 
 	let mut content = content;
 	let length = content.vector_count();

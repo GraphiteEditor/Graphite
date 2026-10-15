@@ -1,6 +1,5 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::adjust::Adjust;
 use core_types::list::{Item, List};
 use core_types::transfer_curve::TransferCurve;
 use glam::DVec2;
@@ -10,24 +9,26 @@ use graphic_types::adjustment::{
 	LevelsRecord, LevelsSettings, SelectiveColorInks, SelectiveColorSettings,
 };
 pub use graphic_types::adjustment::{DesaturateMethod, RelativeAbsolute};
-use graphic_types::{Graphic, Vector};
+use graphic_types::{Effect, EffectOperation, Graphic, Vector, evaluate_color_effects, evaluate_gradient_effects, stamp_effect};
 use no_std_types::color::Color;
 use no_std_types::context::Ctx;
 use raster_types::{CPU, GPU, Image, Raster};
 use vector_types::Gradient;
 
-/// Applies the adjustment to the item's element.
-fn adjust<T: Adjust>(item: Item<T>, adjustment: Adjustment) -> Item<T> {
-	T::adjust(item, &adjustment)
+/// Stamps the adjustment onto the item's effects, to be carried out wherever its content is rendered or read.
+pub(crate) fn adjust<T>(item: Item<T>, adjustment: Adjustment) -> Item<T> {
+	let mut item = item;
+	stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(adjustment)));
+	item
 }
 
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeDesaturate"))]
-fn desaturate<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>, method: Item<DesaturateMethod>) -> Item<T> {
+fn desaturate<T>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>, method: Item<DesaturateMethod>) -> Item<T> {
 	adjust(input, Adjustment::Desaturate { method: method.into_element() })
 }
 
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGammaCorrection"))]
-fn gamma_correction<T: Adjust>(
+fn gamma_correction<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[default(2.2)]
@@ -83,7 +84,7 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 }
 
 #[node_macro::node(category("Raster: Channels"), icon("NodeMakeOpaque"))]
-fn make_opaque<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>) -> Item<T> {
+fn make_opaque<T>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>) -> Item<T> {
 	adjust(input, Adjustment::MakeOpaque)
 }
 
@@ -96,7 +97,7 @@ fn make_opaque<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gra
 //
 // TODO: A Lab-only mode once Graphite supports the CIE Lab color space.
 #[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), icon("NodeBrightnessContrast"), inspector("brightness_contrast_inspector"))]
-fn brightness_contrast<T: Adjust>(
+fn brightness_contrast<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[unit("%")]
@@ -145,7 +146,7 @@ pub enum AdjustmentChannel {
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), inspector("levels_inspector"))]
-fn levels<T: Adjust>(
+fn levels<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[unit("%")]
@@ -316,7 +317,7 @@ fn levels<T: Adjust>(
 // points, and the per-channel curves apply before the composite one, like Levels. The value between those two stages
 // stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), inspector("transfer_curves_inspector"))]
-fn curves<T: Adjust + Send>(
+fn curves<T: Send>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	curve: Item<TransferCurve>,
@@ -356,7 +357,7 @@ fn points_to_transfer_curve(
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"), icon("NodeBlackAndWhite"), inspector("black_and_white_inspector"))]
-fn black_and_white<T: Adjust>(
+fn black_and_white<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	use_tint: Item<bool>,
@@ -394,7 +395,7 @@ fn black_and_white<T: Adjust>(
 ) -> Item<T> {
 	let settings = BlackAndWhiteSettings {
 		use_tint: use_tint.into_element(),
-		tint: tint.into_element(),
+		tint: evaluate_color_effects(tint).into_element(),
 		reds: reds.into_element(),
 		yellows: yellows.into_element(),
 		greens: greens.into_element(),
@@ -427,7 +428,7 @@ pub enum HueSaturationRange {
 //
 // TODO: Residuals in 8-bit PSD interop: the byte-hue colorize table, the colorize lightness slider (up to 2.5 levels), and the range edges (a few tenths of a degree)
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), icon("NodeHueSaturation"), inspector("hue_saturation_inspector"))]
-fn hue_saturation<T: Adjust>(
+fn hue_saturation<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[unit("°")]
@@ -763,14 +764,14 @@ fn hue_saturation<T: Adjust>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeInvert"))]
-fn invert<T: Adjust>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>) -> Item<T> {
+fn invert<T>(_: impl Ctx, #[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>) -> Item<T> {
 	adjust(input, Adjustment::Invert)
 }
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), inspector("threshold_inspector"))]
-fn threshold<T: Adjust>(
+fn threshold<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[unit("%")]
@@ -807,7 +808,7 @@ fn threshold<T: Adjust>(
 // TODO:   `(c[i + 1] - c[i - 1]) / 2`, the end stops repeated past the ends, so two stops give `0.5 p + 1.5 p^2 - p^3`.
 // TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGradientMap"))]
-fn gradient_map<T: Adjust + Send>(
+fn gradient_map<T: Send>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
@@ -816,7 +817,7 @@ fn gradient_map<T: Adjust + Send>(
 	adjust(
 		image,
 		Adjustment::GradientMap {
-			gradient,
+			gradient: evaluate_gradient_effects(gradient),
 			reverse: reverse.into_element(),
 		},
 	)
@@ -826,7 +827,7 @@ fn gradient_map<T: Adjust + Send>(
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), inspector("vibrance_inspector"))]
-fn vibrance<T: Adjust>(
+fn vibrance<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[unit("%")]
@@ -957,7 +958,7 @@ pub enum DomainWarpType {
 //
 // TODO: CMYK source channels once Graphite supports the CMYK color space.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), inspector("channel_mixer_inspector"))]
-fn channel_mixer<T: Adjust>(
+fn channel_mixer<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 
@@ -1108,7 +1109,7 @@ pub enum SelectiveColorChoice {
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), inspector("selective_color_inspector"))]
-fn selective_color<T: Adjust>(
+fn selective_color<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 
@@ -1330,7 +1331,7 @@ fn selective_color<T: Adjust>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=nvrt%27%20%3D%20Invert-,%27post%27%20%3D%20Posterize,-%27thrs%27%20%3D%20Threshold
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePosterize"))]
-fn posterize<T: Adjust>(
+fn posterize<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[default(4)]
@@ -1347,7 +1348,7 @@ fn posterize<T: Adjust>(
 // The exposure, offset, and gamma operations follow:
 // https://geraldbakker.nl/psnumbers/exposure.html
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), inspector("exposure_inspector"))]
-fn exposure<T: Adjust>(
+fn exposure<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] input: Item<T>,
 	#[range]
@@ -1389,7 +1390,7 @@ pub enum TonalRange {
 // Every channel is a Levels curve whose black point, white point, and two-decimal gamma are derived from
 // the nine sliders, see `color_balance_curve` in the adjustment kernels.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), inspector("color_balance_inspector"))]
-fn color_balance<T: Adjust>(
+fn color_balance<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 
@@ -1465,7 +1466,7 @@ fn color_balance<T: Adjust>(
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=of%20the%20file.-,Photo%20Filter,-Key%20is%20%27phfl
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePhotoFilter"))]
-fn photo_filter<T: Adjust>(
+fn photo_filter<T>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)] image: Item<T>,
 	#[default("#ec8a00")] color: Item<Color>,
@@ -1479,7 +1480,7 @@ fn photo_filter<T: Adjust>(
 	adjust(
 		image,
 		Adjustment::PhotoFilter {
-			color: color.into_element(),
+			color: evaluate_color_effects(color).into_element(),
 			density: density.into_element(),
 			preserve_luminosity: preserve_luminosity.into_element(),
 		},
@@ -1493,7 +1494,7 @@ fn photo_filter<T: Adjust>(
 // TODO: Support dither, which needs the pixel position that a per-color adjustment never sees.
 // TODO: Verify the tetrahedral interpolation, which is unconfirmed against other implementations.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorLookup"))]
-fn color_lookup<T: Adjust + Send>(
+fn color_lookup<T: Send>(
 	_: impl Ctx,
 	/// The image whose colors are remapped by the LUT (lookup table).
 	#[implementations(Raster<CPU>, Color, Gradient, Graphic, Vector, Raster<GPU>, String)]
@@ -1546,7 +1547,7 @@ mod tests {
 	fn run_brightness_contrast(value: f32, brightness: f64, contrast: f64, use_classic: bool) -> f32 {
 		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
 		let result = brightness_contrast((), Item::new_from_element(pixel), brightness.into(), contrast.into(), use_classic.into(), 127_f64.into());
-		result.into_element().to_gamma_srgb_channels()[0] * 255.
+		evaluate_color_effects(result).into_element().to_gamma_srgb_channels()[0] * 255.
 	}
 
 	#[test]
@@ -1644,7 +1645,7 @@ mod tests {
 			100_f64.into(),
 			AdjustmentChannel::Rgb.into(),
 		);
-		let [r, g, _, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, _, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255.]
 	}
 
@@ -1689,7 +1690,7 @@ mod tests {
 			20_f64.into(),
 			80_f64.into(),
 		);
-		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, b, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255., b * 255.]
 	}
 
@@ -1799,7 +1800,7 @@ mod tests {
 			345_f64.into(),
 			HueSaturationRange::Master.into(),
 		);
-		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, b, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255., b * 255.]
 	}
 
@@ -1888,7 +1889,7 @@ mod tests {
 	fn invert_flips_straight_channels_and_keeps_alpha() {
 		let color = Color::from_gamma_srgb_channels(1., 0.25, 0., 0.5);
 
-		let inverted = invert((), Item::new_from_element(color)).into_element();
+		let inverted = evaluate_color_effects(invert((), Item::new_from_element(color))).into_element();
 
 		let [r, g, b, a] = inverted.to_gamma_srgb_channels();
 		assert!((r - 0.).abs() < 1e-5 && (g - 0.75).abs() < 1e-5 && (b - 1.).abs() < 1e-5, "inverted channels were {r} {g} {b}");
@@ -1899,7 +1900,7 @@ mod tests {
 	fn threshold_is_white(input: [f32; 3], level: f64) -> bool {
 		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
 		let result = threshold((), Item::new_from_element(pixel), (level / 255. * 100.).into(), 100_f64.into());
-		result.into_element().r() == 1.
+		evaluate_color_effects(result).into_element().r() == 1.
 	}
 
 	#[test]
@@ -1928,7 +1929,7 @@ mod tests {
 	fn run_vibrance(input: [f32; 3], vibrance_amount: f64, saturation: f64) -> [f32; 3] {
 		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
 		let result = vibrance((), Item::new_from_element(pixel), vibrance_amount.into(), saturation.into());
-		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, b, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255., b * 255.]
 	}
 
@@ -1984,7 +1985,7 @@ mod tests {
 			g(6, 0), g(6, 1), g(6, 2), g(6, 3), g(7, 0), g(7, 1), g(7, 2), g(7, 3), g(8, 0), g(8, 1), g(8, 2), g(8, 3),
 			SelectiveColorChoice::Reds.into(),
 		);
-		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, b, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255., b * 255.]
 	}
 
@@ -2011,7 +2012,10 @@ mod tests {
 	/// Runs Posterize on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.
 	fn run_posterize(value: f32, levels: i64) -> f32 {
 		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
-		posterize((), Item::new_from_element(pixel), levels.into()).into_element().to_gamma_srgb_channels()[0] * 255.
+		evaluate_color_effects(posterize((), Item::new_from_element(pixel), levels.into()))
+			.into_element()
+			.to_gamma_srgb_channels()[0]
+			* 255.
 	}
 
 	#[test]
@@ -2035,7 +2039,7 @@ mod tests {
 	fn run_exposure(value: f32, exposure: f64, offset: f64, gamma_correction: f64) -> f32 {
 		let pixel = Color::from_gamma_srgb_channels(value / 255., value / 255., value / 255., 1.);
 		let result = super::exposure((), Item::new_from_element(pixel), exposure.into(), offset.into(), gamma_correction.into());
-		result.into_element().to_gamma_srgb_channels()[0] * 255.
+		evaluate_color_effects(result).into_element().to_gamma_srgb_channels()[0] * 255.
 	}
 
 	#[test]
@@ -2087,7 +2091,7 @@ mod tests {
 			preserve_luminosity.into(),
 			TonalRange::Midtones.into(),
 		);
-		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, b, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255., b * 255.]
 	}
 
@@ -2132,7 +2136,7 @@ mod tests {
 		let pixel = Color::from_gamma_srgb_channels(input[0] / 255., input[1] / 255., input[2] / 255., 1.);
 		let filter = Color::from_gamma_srgb_channels(filter[0] / 255., filter[1] / 255., filter[2] / 255., 1.);
 		let result = photo_filter((), Item::new_from_element(pixel), filter.into(), density.into(), preserve_luminosity.into());
-		let [r, g, b, _] = result.into_element().to_gamma_srgb_channels();
+		let [r, g, b, _] = evaluate_color_effects(result).into_element().to_gamma_srgb_channels();
 		[r * 255., g * 255., b * 255.]
 	}
 
@@ -2157,5 +2161,78 @@ mod tests {
 		// Above white, where the luma to take on falls outside the 0..1 domain the construction needs
 		// A white filter alters nothing, so the pixel keeps its channels once the above-white red is clipped
 		assert_close(run_photo_filter([300., 200., 100.], [255., 255., 255.], 100., true), [255., 200., 100.]);
+	}
+
+	#[test]
+	fn adjustments_stamp_rows_rather_than_changing_the_value() {
+		use core_types::list::ATTR_EFFECTS;
+		use graphic_types::{EffectKind, Effects};
+
+		let color = Color::from_rgbaf32_unchecked(0.2, 0.4, 0.6, 1.);
+		let result = posterize((), invert((), Item::new_from_element(color)), 3_i64.into());
+		assert_eq!(*result.element(), color, "the color itself is left alone");
+
+		let kinds: Vec<EffectKind> = result
+			.attribute::<Effects>(ATTR_EFFECTS)
+			.map(|effects| effects.effects().map(|effect| effect.kind()).collect())
+			.unwrap_or_default();
+		assert_eq!(kinds, [EffectKind::Invert, EffectKind::Posterize]);
+		assert_eq!(
+			result
+				.attribute::<Effects>(ATTR_EFFECTS)
+				.and_then(|effects| effects.effects().nth(1))
+				.and_then(|row| row.0.attribute::<i64>("levels")),
+			Some(&3)
+		);
+	}
+
+	#[test]
+	fn posterizing_a_gradient_bands_its_ramp() {
+		use graphic_types::evaluate_gradient_effects;
+		use vector_types::GradientSettings;
+
+		// Adjusting only the two end stops would leave a smooth ramp from black to white
+		let result = evaluate_gradient_effects(posterize((), Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])), 2_i64.into()));
+		let settings = GradientSettings::from_item_attributes(&result);
+
+		for t in [0.05, 0.2] {
+			assert_eq!(result.element().evaluate(t, settings), Color::BLACK, "dark band at {t}");
+		}
+		for t in [0.8, 0.95] {
+			assert_eq!(result.element().evaluate(t, settings), Color::WHITE, "light band at {t}");
+		}
+	}
+
+	#[test]
+	fn adjusting_a_raster_follows_its_earlier_effects() {
+		use core_types::ATTR_TRANSFORM;
+		use glam::DAffine2;
+		use graphic_types::{Effect, EffectOperation, evaluate_raster_effects, stamp_effect};
+
+		// A white square in the middle of a transparent image, placed one pixel per document unit, then blurred
+		let mut image = Image::new(20, 20, Color::TRANSPARENT);
+		for y in 5..15 {
+			for x in 5..15 {
+				image.data[y * 20 + x] = Color::WHITE;
+			}
+		}
+		let mut item = Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(20.)));
+		stamp_effect(
+			&mut item,
+			Effect::new(&EffectOperation::Blur {
+				radius: 1.,
+				box_blur: false,
+				gamma: false,
+			}),
+		);
+		let result = evaluate_raster_effects(super::make_opaque((), item));
+
+		// Just outside the square, the blur's faint white becomes opaque white, where making it opaque first would have blurred in black
+		let transform: DAffine2 = result.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let raster = result.element();
+		let pixel = (DAffine2::from_scale(DVec2::new(raster.width as f64, raster.height as f64)) * transform.inverse()).transform_point2(DVec2::new(4.5, 10.5));
+		let color = raster.data[pixel.y as usize * raster.width as usize + pixel.x as usize];
+		assert_eq!(color.a(), 1.);
+		assert!(color.r() > 0.99 && color.g() > 0.99 && color.b() > 0.99, "expected white, got {color:?}");
 	}
 }

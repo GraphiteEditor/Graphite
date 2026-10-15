@@ -121,6 +121,15 @@ impl Effects {
 		self.0.iter_element_values()
 	}
 
+	/// The effects after the first `count`.
+	pub fn after(&self, count: usize) -> Self {
+		let mut remaining = Self::default();
+		for effect in self.effects().skip(count) {
+			remaining.0.push(Item::new_from_element(effect.clone()));
+		}
+		remaining
+	}
+
 	/// The effects decoded into the operations renderers carry out, in order.
 	pub fn operations(&self) -> impl Iterator<Item = EffectOperation> + '_ {
 		self.effects().map(Effect::operation)

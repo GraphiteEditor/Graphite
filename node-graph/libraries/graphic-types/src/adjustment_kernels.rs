@@ -182,6 +182,17 @@ impl Adjustment {
 		let channels: Vec<[f32; 4]> = samples.iter().map(Color::to_gamma_srgb_channels).collect();
 		Some(std::array::from_fn(|channel| channels.iter().map(|values| values[channel]).collect()))
 	}
+
+	/// Whether every color keeps its alpha to within half an 8-bit level.
+	/// Only a per-channel adjustment's alpha curve can change it, since the kernels of the others all keep alpha.
+	pub fn preserves_alpha(&self) -> bool {
+		const LEVELS: usize = 256;
+
+		self.channel_curves(LEVELS).is_none_or(|[.., alpha]| {
+			let identity = |index: usize| index as f32 / (LEVELS - 1) as f32;
+			alpha.iter().enumerate().all(|(index, value)| (value - identity(index)).abs() <= 0.5 / 255.)
+		})
+	}
 }
 
 /// Replaces each color with the kernel's result for it.

@@ -1,4 +1,4 @@
-use crate::adjust::Adjust;
+use crate::adjustments::adjust;
 use core::cmp::Ordering;
 use core_types::list::Item;
 use glam::{DAffine2, DVec2};
@@ -15,11 +15,13 @@ pub trait Blend<P: Pixel>: Sized {
 	fn blend(&self, transform: DAffine2, under: &Self, under_transform: DAffine2, blend_fn: impl Fn(P, P) -> P + Sync) -> Self;
 
 	/// The item with any effects it carries carried out into its content, so blending sees what it looks like.
-	fn with_effects_applied(item: Item<Self>) -> Item<Self> {
-		item
-	}
+	fn with_effects_applied(item: Item<Self>) -> Item<Self>;
 }
 impl Blend<Color> for Color {
+	fn with_effects_applied(item: Item<Self>) -> Item<Self> {
+		graphic_types::evaluate_color_effects(item)
+	}
+
 	fn blend(&self, _transform: DAffine2, under: &Self, _under_transform: DAffine2, blend_fn: impl Fn(Color, Color) -> Color + Sync) -> Self {
 		blend_fn(*self, *under)
 	}
@@ -80,6 +82,10 @@ fn sample_bilinear(image: &Image<Color>, point: DVec2) -> Color {
 }
 
 impl Blend<Color> for Gradient {
+	fn with_effects_applied(item: Item<Self>) -> Item<Self> {
+		graphic_types::evaluate_gradient_effects(item)
+	}
+
 	// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
 	// TODO: it evaluates both sources with default whole-ramp attributes rather than their own (which this element-level impl cannot read);
 	// TODO: and the output keeps over's attributes despite being sampled with defaults
@@ -138,7 +144,7 @@ fn mix<T: Blend<Color> + Send>(
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorOverlay"))]
-fn color_overlay<T: Adjust>(
+fn color_overlay<T>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
@@ -159,11 +165,11 @@ fn color_overlay<T: Adjust>(
 	opacity: Item<f64>,
 ) -> Item<T> {
 	let adjustment = Adjustment::ColorOverlay {
-		color: color.into_element(),
+		color: graphic_types::evaluate_color_effects(color).into_element(),
 		blend_mode: blend_mode.into_element(),
 		opacity: opacity.into_element(),
 	};
-	T::adjust(image, &adjustment)
+	adjust(image, adjustment)
 }
 
 #[cfg(test)]
@@ -192,7 +198,7 @@ mod test {
 			BlendMode::Multiply.into(),
 			opacity.into(),
 		);
-		let result = result.into_element();
+		let result = graphic_types::evaluate_raster_effects(result).into_element();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));

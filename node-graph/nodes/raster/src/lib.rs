@@ -1,4 +1,3 @@
-pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
 pub use graphic_types::color_lookup_table;

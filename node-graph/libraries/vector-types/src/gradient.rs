@@ -1432,6 +1432,61 @@ impl Gradient {
 		mapped
 	}
 
+	/// The ramp of `map` applied along this gradient's ramp, as stops that interpolate linearly in gamma sRGB to within [`SAMPLE_THRESHOLD`]
+	/// of it, since a map that isn't linear in the gradient's own space bends the ramp between the stops. Read the result with
+	/// [`GradientSpace::RgbGamma`] and [`GradientInterpolation::Linear`] in place of the space and interpolation in `settings`.
+	pub fn map_ramp(&self, settings: GradientSettings, map: impl Fn(Color) -> Color) -> Self {
+		/// Deeper than this, an interval is under 1/4096 of the ramp, too short to see a step in the mapped colors smear.
+		const MAX_DEPTH: u32 = 12;
+
+		fn subdivide(ramp: &impl Fn(f64) -> Color, left: f64, right: f64, color_left: Color, color_right: Color, result: &mut Vec<GradientStop>, depth: u32) {
+			// Probe the quarter points as well as the center, since a map with a steep toe peaks its deviation off-center
+			let deviates = [0.25, 0.5, 0.75].into_iter().any(|fraction| {
+				let probe = ramp(left + (right - left) * fraction);
+				max_gamma_channel_deviation(probe, color_left.lerp_gamma_srgb(&color_right, fraction as f32)) > SAMPLE_THRESHOLD
+			});
+			if !deviates || depth >= MAX_DEPTH {
+				return;
+			}
+
+			let mid = (left + right) / 2.;
+			let color_mid = ramp(mid);
+			subdivide(ramp, left, mid, color_left, color_mid, result, depth + 1);
+			result.push(GradientStop {
+				position: mid,
+				midpoint: 0.5,
+				color: color_mid,
+			});
+			subdivide(ramp, mid, right, color_mid, color_right, result, depth + 1);
+		}
+
+		let stops = self.normalized_stops(settings.cyclic);
+		let evaluator = self.evaluator(settings);
+		let ramp = |position: f64| map(evaluator.evaluate(position));
+
+		// Each stop anchors its own color, keeping the jump between coincident stops, and a cyclic ramp's seam anchors at both ends
+		let mut anchors: Vec<(f64, Color)> = stops.iter().map(|stop| (stop.position, map(stop.color))).collect();
+		if settings.cyclic && anchors.first().is_some_and(|&(position, _)| position > 0.) {
+			anchors.insert(0, (0., ramp(0.)));
+		}
+		if settings.cyclic && anchors.last().is_some_and(|&(position, _)| position < 1.) {
+			anchors.push((1., ramp(0.)));
+		}
+
+		let mut result = Vec::new();
+		for (index, &(position, color)) in anchors.iter().enumerate() {
+			result.push(GradientStop { position, midpoint: 0.5, color });
+
+			if let Some(&(next_position, next_color)) = anchors.get(index + 1)
+				&& next_position > position
+			{
+				subdivide(&ramp, position, next_position, color, next_color, &mut result, 0);
+			}
+		}
+
+		Gradient::new(result)
+	}
+
 	/// The gradient's [`Gradient::interpolated_samples`], falling back to one black sample when it has no stops, since a
 	/// stopless SVG gradient paints nothing where [`Gradient::evaluate`] gives black.
 	pub fn interpolated_samples_or_black(&self, settings: GradientSettings) -> Vec<(f64, Color, Option<f64>)> {
@@ -2250,6 +2305,32 @@ mod tests {
 		let (first, last) = (samples.first().expect("a baked ramp has samples"), samples.last().expect("a baked ramp has samples"));
 		assert_eq!((first.0, first.1), (0., Color::BLACK));
 		assert_eq!((last.0, last.1), (1., Color::WHITE));
+	}
+
+	#[test]
+	fn mapped_ramp_follows_the_map_and_keeps_hard_stops() {
+		let gamma = GradientSettings {
+			space: GradientSpace::RgbGamma,
+			..Default::default()
+		};
+
+		// Thresholding at middle gray needs samples beside the jump, where the two stops alone would blend from black to white
+		let threshold = |color: Color| if color.to_gamma_srgb_channels()[0] < 0.5 { Color::BLACK } else { Color::WHITE };
+		let mapped = Gradient::from(vec![Color::BLACK, Color::WHITE]).map_ramp(gamma, threshold);
+		for t in [0.1, 0.4, 0.48] {
+			assert_eq!(mapped.evaluate(t, gamma), Color::BLACK, "below the threshold at {t}");
+		}
+		for t in [0.52, 0.6, 0.9] {
+			assert_eq!(mapped.evaluate(t, gamma), Color::WHITE, "above the threshold at {t}");
+		}
+
+		// Coincident stops keep their jump, and a map that changes nothing adds no stops
+		let mut hard = Gradient::from(vec![Color::RED, Color::RED, Color::BLUE, Color::BLUE]);
+		hard.set_positions(&[0., 0.5, 0.5, 1.]);
+		let unchanged = hard.map_ramp(gamma, |color| color);
+		assert_eq!(unchanged.len(), 4);
+		assert_eq!(unchanged.evaluate(0.49, gamma), Color::RED);
+		assert_eq!(unchanged.evaluate(0.51, gamma), Color::BLUE);
 	}
 
 	#[test]

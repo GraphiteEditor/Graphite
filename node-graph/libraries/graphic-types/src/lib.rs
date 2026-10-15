@@ -7,6 +7,7 @@ pub mod color_lookup_table;
 pub mod effects;
 pub mod graphic;
 pub mod raster_effects;
+pub mod value_effects;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
 pub use core_types;
@@ -20,6 +21,7 @@ pub use artboard::Artboard;
 pub use effects::{Effect, EffectKind, EffectOperation, Effects, stamp_effect};
 pub use graphic::{Graphic, IntoGraphicList, TryFromGraphic, Vector};
 pub use raster_effects::evaluate_raster_effects;
+pub use value_effects::{evaluate_color_effects, evaluate_gradient_effects};
 
 pub mod migrations {
 	use crate::Vector;

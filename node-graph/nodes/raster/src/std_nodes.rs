@@ -269,7 +269,7 @@ fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> It
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let image = Image::new(width, height, color.into_element());
+	let image = Image::new(width, height, graphic_types::evaluate_color_effects(color).into_element());
 
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }

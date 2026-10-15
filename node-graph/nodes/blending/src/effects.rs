@@ -2,7 +2,7 @@ use core_types::list::Item;
 use core_types::{Color, Ctx};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, Graphic, Vector, stamp_effect};
+use graphic_types::{Effect, EffectOperation, Graphic, Vector, evaluate_color_effects, stamp_effect};
 use vector_types::Gradient;
 
 /// Blurs the input graphics, whether vector shapes, images, or text.
@@ -65,7 +65,7 @@ fn drop_shadow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::DropShadow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			offset: *offset.element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
@@ -104,7 +104,7 @@ fn inner_shadow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::InnerShadow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			offset: *offset.element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
@@ -139,7 +139,7 @@ fn outer_glow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::OuterGlow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
 		}),
