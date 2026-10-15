@@ -2676,6 +2676,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				responses.add(OverlaysMessage::Draw);
 				tool_data.opposite_handle_position = None;
+				tool_data.opposing_handle_lengths = None;
 
 				PathToolFsmState::Ready
 			}
@@ -3192,17 +3193,8 @@ impl Fsm for PathToolFsmState {
 				let translation = nudge_translation(document, DVec2::new(delta_x, delta_y), selected_positions_in_document(shape_editor, document));
 				let delta = DVec2::from_angle(document.document_ptz.tilt()).rotate(translation);
 
-				shape_editor.move_selected_points_and_segments(
-					tool_data.opposing_handle_lengths.take(),
-					document,
-					delta,
-					true,
-					false,
-					false,
-					tool_data.opposite_handle_position,
-					false,
-					responses,
-				);
+				// Like a drag without Alt, a nudged handle turns its colinear partner without making it the same length
+				shape_editor.move_selected_points_and_segments(None, document, delta, false, false, false, tool_data.opposite_handle_position, false, responses);
 
 				PathToolFsmState::Ready
 			}
@@ -4317,5 +4309,74 @@ mod test_path_tool {
 		// Cutting at the handle's anchor would add a second anchor there
 		editor.handle_message(PathToolMessage::BreakPath).await;
 		assert_anchors(&editor, layer, &anchors);
+	}
+
+	const SMOOTH_ANCHOR: DVec2 = DVec2::new(300., 200.);
+	const RIGHT_HANDLE: DVec2 = DVec2::new(400., 200.);
+
+	/// Draws a path whose middle anchor has level handles reaching 100 px each way, and selects only its right handle.
+	async fn select_right_handle_of_smooth_anchor(editor: &mut EditorTestUtils) -> (LayerNodeIdentifier, ManipulatorPointId) {
+		let (start, end) = (DVec2::new(100., 300.), DVec2::new(500., 320.));
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+		editor.move_mouse(SMOOTH_ANCHOR.x, SMOOTH_ANCHOR.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(SMOOTH_ANCHOR.x, SMOOTH_ANCHOR.y, ModifierKeys::empty()).await;
+		editor.move_mouse(RIGHT_HANDLE.x, RIGHT_HANDLE.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(RIGHT_HANDLE.x, RIGHT_HANDLE.y, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, end, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn path should be selected");
+
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, SMOOTH_ANCHOR, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, RIGHT_HANDLE, ModifierKeys::empty()).await;
+		let [handle] = selected_points(editor)[..] else { panic!("only the handle should be selected") };
+
+		(layer, handle)
+	}
+
+	/// The selected handle and its colinear partner, relative to their anchor in viewport space.
+	fn handle_and_partner(editor: &EditorTestUtils, layer: LayerNodeIdentifier, handle: ManipulatorPointId) -> [DVec2; 2] {
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		let handle_id = handle.as_handle().expect("the selected point should be a handle");
+		let other = vector.other_colinear_handle(handle_id).expect("the handles should still be colinear");
+		[handle, other.to_manipulator_point()].map(|point| to_viewport.transform_point2(vector.position_of(point).expect("the handle should exist")) - SMOOTH_ANCHOR)
+	}
+
+	#[tokio::test]
+	async fn nudging_a_handle_keeps_the_length_of_its_colinear_partner() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (layer, handle) = select_right_handle_of_smooth_anchor(&mut editor).await;
+
+		// The right handle is dragged in to 40 px, which leaves its partner at 100 px, then nudged
+		drag(&mut editor, RIGHT_HANDLE, SMOOTH_ANCHOR + DVec2::new(40., 0.)).await;
+		editor.handle_message(PathToolMessage::NudgeSelectedPoints { delta_x: 0., delta_y: -10. }).await;
+
+		let [nudged, partner] = handle_and_partner(&editor, layer, handle);
+		assert!((partner.length() - 100.).abs() < 1e-6, "the partner handle is {} px long rather than 100 px", partner.length());
+		assert!(nudged.angle_to(-partner).abs() < 1e-6, "the handles should stay in line");
+	}
+
+	#[tokio::test]
+	async fn nudging_after_an_alt_drag_keeps_the_partner_at_its_new_length() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (layer, handle) = select_right_handle_of_smooth_anchor(&mut editor).await;
+
+		// Alt, held from partway through the drag until after the release, makes the partner match the dragged handle's 40 px
+		let shortened = SMOOTH_ANCHOR + DVec2::new(40., 0.);
+		press_at(&mut editor, RIGHT_HANDLE).await;
+		move_to(&mut editor, RIGHT_HANDLE + DVec2::new(-5., 0.), ModifierKeys::empty()).await;
+		move_to(&mut editor, shortened, ModifierKeys::ALT).await;
+		editor.left_mouseup(shortened.x, shortened.y, ModifierKeys::ALT).await;
+		editor.key_up(Key::Alt, ModifierKeys::empty()).await;
+		let [_, partner] = handle_and_partner(&editor, layer, handle);
+		assert!((partner.length() - 40.).abs() < 1e-6, "the Alt drag left the partner {} px long rather than 40 px", partner.length());
+
+		editor.handle_message(PathToolMessage::NudgeSelectedPoints { delta_x: 0., delta_y: -10. }).await;
+		let [_, partner] = handle_and_partner(&editor, layer, handle);
+		assert!((partner.length() - 40.).abs() < 1e-6, "the nudge left the partner {} px long rather than 40 px", partner.length());
 	}
 }
