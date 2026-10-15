@@ -324,8 +324,8 @@ pub struct ReplaceablePaintChain {
 
 /// The whole-expanse paint on a 'Merge' layer that a paint tool may take over, or `None`
 /// when the layer isn't one or its chain holds anything the tools didn't put there.
-/// The walk stops at the first node the rest of the graph also draws from, since repainting through it would change
-/// what those other consumers see, and it passes through 'Transform' nodes so a swap keeps the layer's placement.
+/// Nodes from the first one the rest of the graph also draws from are detached rather than deleted, so those other
+/// consumers see no change, and the walk passes through 'Transform' nodes so a swap keeps the layer's placement.
 pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<ReplaceablePaintChain> {
 	if !network_interface.is_merge(&layer.to_node(), &[]) {
 		return None;
@@ -344,17 +344,17 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 	let mut input = InputConnector::layer_secondary_input(layer.to_node());
 	// Trails the walk over the 'Transform' nodes that survive, then holds still once the paint to clear away begins
 	let mut attachment_input = input;
+	// Everything upstream of a shared node is shared too, so it's kept, though it must still be paint for the layer to count as blank
+	let mut shared = false;
 
 	while let Some(upstream) = network_interface.upstream_output_connector(&input, &[]) {
 		let node_id = upstream.node_id()?;
 
 		// Arriving here means this layer consumes the node, so a further consumer makes it shared
-		let shared = network_interface
-			.with_outward_wires(&[], |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id)).is_some_and(|inputs| inputs.len() > 1))
-			.unwrap_or(true);
-		if shared {
-			break;
-		}
+		shared = shared
+			|| network_interface
+				.with_outward_wires(&[], |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id)).is_some_and(|inputs| inputs.len() > 1))
+				.unwrap_or(true);
 
 		let Some(DefinitionIdentifier::ProtoNode(identifier)) = network_interface.reference(&node_id, &[]) else {
 			return None;
@@ -362,7 +362,7 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 
 		if identifier == graphene_std::transform_nodes::transform::IDENTIFIER {
 			input = InputConnector::primary_input(node_id);
-			if nodes.is_empty() {
+			if nodes.is_empty() && !shared {
 				attachment_input = input;
 			}
 			continue;
@@ -373,7 +373,9 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 			return None;
 		}
 
-		nodes.push(node_id);
+		if !shared {
+			nodes.push(node_id);
+		}
 
 		if generator {
 			break;
