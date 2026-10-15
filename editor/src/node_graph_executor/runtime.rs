@@ -219,7 +219,7 @@ impl NodeRuntime {
 					}
 
 					let mut result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.execute_network(render_config))) {
-						Ok(Ok(Poll::Pending)) => continue,
+						Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
 						Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
 						Ok(Ok(Poll::Fallback(boxed))) => {
 							let (value, error) = *boxed;
@@ -251,7 +251,7 @@ impl NodeRuntime {
 
 					let output = match &mut result {
 						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
-						ExecutionResult::Error(_) | ExecutionResult::Panic(_) => None,
+						ExecutionResult::Pending | ExecutionResult::Error(_) | ExecutionResult::Panic(_) => None,
 					};
 					let texture = if let Some(TaggedValue::RenderOutput(RenderOutput { data, .. })) = output
 						&& let RenderOutputType::Texture(texture) = data

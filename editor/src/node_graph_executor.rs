@@ -44,6 +44,7 @@ pub struct ExecutionResponse {
 
 #[derive(Debug)]
 pub enum ExecutionResult {
+	Pending,
 	Value(TaggedValue),
 	Fallback(TaggedValue, EvaluationError),
 	Error(EvaluationError),
@@ -404,7 +405,8 @@ impl NodeGraphExecutor {
 
 					responses.add(OverlaysMessage::Draw);
 
-					if execution_context.export_config.is_none() {
+					// A pending graph keeps the last frame, and the errors shown with it
+					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => errors
 								.iter()
@@ -413,13 +415,14 @@ impl NodeGraphExecutor {
 									message: error.to_string(),
 								})
 								.collect(),
-							ExecutionResult::Value(_) | ExecutionResult::Panic(_) => Vec::new(),
+							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Panic(_) => Vec::new(),
 						};
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
 					}
 
 					let node_graph_output = match result {
-						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(value),
+						ExecutionResult::Pending => Ok(None),
+						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(Some(value)),
 						ExecutionResult::Error(errors) => Err(errors.iter().map(|(error, _)| error.to_string()).collect::<Vec<_>>().join("\n")),
 						ExecutionResult::Panic(payload) => {
 							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
@@ -440,11 +443,16 @@ impl NodeGraphExecutor {
 					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.update_vector_modify(vector_modify);
 
-					if let Some(export_config) = execution_context.export_config {
+					match (node_graph_output, execution_context.export_config) {
 						// Special handling for exporting the artwork
-						self.process_export(node_graph_output, export_config, document, responses)?;
-					} else {
-						self.process_node_graph_output(node_graph_output, responses)?;
+						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses)?,
+						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, responses)?,
+						(None, Some(_)) => responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to export document".to_string(),
+							description: "Part of the document is still loading. Export again once it has finished.".to_string(),
+						}),
+						// The last frame stays until the async source completes and the graph renders again
+						(None, None) => {}
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
 						execution_id,
