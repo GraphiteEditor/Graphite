@@ -8,8 +8,10 @@ use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_EFFECTS, Item, List};
+use dyn_any::DynAny;
 use glam::DVec2;
 use std::fmt::Debug;
+use vector_types::vector::style::StrokeAlign;
 
 /// The image operation an [`Effect`] carries out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, CacheHash)]
@@ -23,6 +25,12 @@ pub enum EffectKind {
 	InnerShadow,
 	/// Surrounds the content with a soft glow of its silhouette.
 	OuterGlow,
+	/// Glows inward from the content's edges, or outward from its center.
+	InnerGlow,
+	/// Shades the content's interior with soft bands from its silhouette cast two ways.
+	Satin,
+	/// Draws a band of color along the content's silhouette.
+	Outline,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -53,6 +61,9 @@ impl std::fmt::Display for EffectKind {
 			Self::DropShadow => "Drop Shadow",
 			Self::InnerShadow => "Inner Shadow",
 			Self::OuterGlow => "Outer Glow",
+			Self::InnerGlow => "Inner Glow",
+			Self::Satin => "Satin",
+			Self::Outline => "Outline",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -75,6 +86,19 @@ impl std::fmt::Display for EffectKind {
 			Self::ColorOverlay => "Color Overlay",
 		})
 	}
+}
+
+/// Where an inner glow starts from.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum GlowSource {
+	/// Glows inward from the edges.
+	#[default]
+	Edge,
+	/// Glows outward from the center.
+	Center,
 }
 
 /// One image operation of an [`Effects`] list: an [`EffectKind`] plus its parameters, carried as attributes on the inner item.
@@ -150,6 +174,15 @@ impl Effects {
 	}
 }
 
+/// How far an outline of `weight` reaches outside the silhouette's edge and inside it, by where it's aligned.
+pub fn outline_extents(weight: f64, align: StrokeAlign) -> (f64, f64) {
+	match align {
+		StrokeAlign::Outside => (weight, 0.),
+		StrokeAlign::Inside => (0., weight),
+		StrokeAlign::Center => (weight / 2., weight / 2.),
+	}
+}
+
 /// Appends an effect to the item's list, after those already applied to it.
 pub fn stamp_effect<T>(item: &mut Item<T>, effect: Effect) {
 	item.attribute_mut_or_insert_default::<Effects>(ATTR_EFFECTS).0.push(Item::new_from_element(effect));
@@ -183,6 +216,25 @@ pub enum EffectOperation {
 		blur: f64,
 		spread: f64,
 	},
+	InnerGlow {
+		color: Color,
+		blur: f64,
+		/// How far the glow grows into the content before it softens.
+		choke: f64,
+		source: GlowSource,
+	},
+	Satin {
+		color: Color,
+		/// How far each of the two casts of the silhouette is moved, in opposite directions.
+		offset: DVec2,
+		blur: f64,
+		invert: bool,
+	},
+	Outline {
+		color: Color,
+		weight: f64,
+		align: StrokeAlign,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -198,6 +250,9 @@ impl EffectOperation {
 			Self::DropShadow { .. } => EffectKind::DropShadow,
 			Self::InnerShadow { .. } => EffectKind::InnerShadow,
 			Self::OuterGlow { .. } => EffectKind::OuterGlow,
+			Self::InnerGlow { .. } => EffectKind::InnerGlow,
+			Self::Satin { .. } => EffectKind::Satin,
+			Self::Outline { .. } => EffectKind::Outline,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -210,6 +265,9 @@ impl EffectOperation {
 			Self::DropShadow { offset, blur, spread, .. } => offset.length() + spread.max(0.) + 3. * blur.max(0.),
 			Self::InnerShadow { offset, blur, .. } => offset.length() + 3. * blur.max(0.),
 			Self::OuterGlow { blur, spread, .. } => spread.max(0.) + 3. * blur.max(0.),
+			Self::InnerGlow { blur, choke, .. } => choke.max(0.) + 3. * blur.max(0.),
+			Self::Satin { offset, blur, .. } => offset.length() + 3. * blur.max(0.),
+			Self::Outline { weight, .. } => weight.max(0.),
 			Self::Adjustment(_) => 0.,
 		}
 	}
@@ -238,6 +296,23 @@ impl EffectOperation {
 				color: Color::TRANSPARENT,
 				blur: 0.,
 				spread: 0.,
+			},
+			EffectKind::InnerGlow => Self::InnerGlow {
+				color: Color::TRANSPARENT,
+				blur: 0.,
+				choke: 0.,
+				source: GlowSource::default(),
+			},
+			EffectKind::Satin => Self::Satin {
+				color: Color::TRANSPARENT,
+				offset: DVec2::ZERO,
+				blur: 0.,
+				invert: false,
+			},
+			EffectKind::Outline => Self::Outline {
+				color: Color::TRANSPARENT,
+				weight: 0.,
+				align: StrokeAlign::default(),
 			},
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
@@ -301,6 +376,23 @@ impl EffectOperation {
 				visitor.parameter("blur", blur, 8.);
 				visitor.parameter("spread", spread, 0.);
 			}
+			Self::InnerGlow { color, blur, choke, source } => {
+				visitor.parameter("color", color, Color::from(SRGBA8::new(0xff, 0xff, 0xbe, 0xbf)));
+				visitor.parameter("blur", blur, 8.);
+				visitor.parameter("choke", choke, 0.);
+				visitor.parameter("source", source, GlowSource::default());
+			}
+			Self::Satin { color, offset, blur, invert } => {
+				visitor.parameter("color", color, Color::from(SRGBA8::new(0, 0, 0, 0x80)));
+				visitor.parameter("offset", offset, DVec2::new(10., 4.));
+				visitor.parameter("blur", blur, 14.);
+				visitor.parameter("invert", invert, true);
+			}
+			Self::Outline { color, weight, align } => {
+				visitor.parameter("color", color, Color::BLACK);
+				visitor.parameter("weight", weight, 3.);
+				visitor.parameter("align", align, StrokeAlign::Outside);
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -329,6 +421,23 @@ mod tests {
 				color: Color::BLUE,
 				blur: 8.,
 				spread: 2.,
+			},
+			EffectOperation::InnerGlow {
+				color: Color::GREEN,
+				blur: 3.,
+				choke: 1.,
+				source: GlowSource::Center,
+			},
+			EffectOperation::Satin {
+				color: Color::BLACK,
+				offset: DVec2::new(5., -6.),
+				blur: 2.,
+				invert: false,
+			},
+			EffectOperation::Outline {
+				color: Color::RED,
+				weight: 7.,
+				align: StrokeAlign::Center,
 			},
 		];
 
