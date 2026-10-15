@@ -189,6 +189,7 @@ impl EffectPasses {
 
 	/// Carries out `effects` on `content`, a texture of premultiplied pixels, returning the result in a pooled texture of [`WORKING_FORMAT`] the same size.
 	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
+	/// `paints` holds the paint overlays' paints that aren't solid colors, in order, each rendered over the same pixels as the content.
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn apply(
 		&self,
@@ -199,6 +200,7 @@ impl EffectPasses {
 		effects: &Effects,
 		fill: f32,
 		lengths_to_pixels: DMat2,
+		paints: &[wgpu::Texture],
 	) -> wgpu::Texture {
 		let mut recorder = PassRecorder {
 			passes: self,
@@ -216,6 +218,7 @@ impl EffectPasses {
 		let mut beneath: Option<wgpu::Texture> = None;
 
 		let operations: Vec<EffectOperation> = effects.operations().collect();
+		let mut paints = paints.iter();
 		for (index, operation) in operations.iter().enumerate() {
 			match *operation {
 				EffectOperation::Blur { radius, box_blur, gamma } => {
@@ -335,6 +338,21 @@ impl EffectPasses {
 						recorder.shade_within(&mut full, &mut filled, coverage, color);
 					}
 					recorder.textures.release(height);
+				}
+				EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
+					let Some(paint) = paints.next() else { continue };
+					let parameters = Parameters {
+						amount: (opacity / 100.) as f32,
+						values: [blend_mode as u32 as f32, 0., 0., 0.],
+						..Default::default()
+					};
+
+					let overlaid = recorder.run("paint_overlay", WORKING_FORMAT, recorder.size, &full, Some(paint), None, parameters);
+					recorder.replace(&mut full, overlaid);
+					if let Some(filled) = &mut filled {
+						let overlaid = recorder.run("paint_overlay", WORKING_FORMAT, recorder.size, filled, Some(paint), None, parameters);
+						recorder.replace(filled, overlaid);
+					}
 				}
 				EffectOperation::Adjustment(_) => {
 					// A run of adjustments is carried out from its first row, so tables can merge it into fewer passes

@@ -1,7 +1,7 @@
 use crate::vello_effects::{AdjustmentPassTextures, EffectPasses, EffectTextures, adjustment_run_hash};
 use glam::{DMat2, UVec2};
 use graphic_types::raster_types::{CPU, Raster, WeakCPU};
-use graphic_types::{Adjustment, Effects};
+use graphic_types::{Adjustment, EffectOperation, Effects};
 use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -323,13 +323,33 @@ impl EffectsRenderer for RenderContext<'_> {
 		self.renderer.effect_passes.renders_working_formats
 	}
 
-	fn render_effects(&mut self, size: UVec2, view: Affine, effects: &Effects, fill: f32, lengths_to_pixels: DMat2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> wgpu::Texture {
+	fn render_effects(
+		&mut self,
+		size: UVec2,
+		view: Affine,
+		effects: &Effects,
+		fill: f32,
+		lengths_to_pixels: DMat2,
+		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+	) -> wgpu::Texture {
 		let content_texture = self.canvas.effect_textures.acquire(self.device, size, TEXTURE_FORMAT);
 		self.render_area(draw, view, size, &content_texture, TargetAlpha::Premultiplied);
 
+		// The paint overlays' paints, each rendered over the same pixels as the content
+		let paint_count = effects.operations().filter(|operation| matches!(operation, EffectOperation::PaintOverlay { .. })).count();
+		let paint_textures: Vec<wgpu::Texture> = (0..paint_count)
+			.map(|index| {
+				let paint_texture = self.canvas.effect_textures.acquire(self.device, size, TEXTURE_FORMAT);
+				self.render_area(&mut |scene| draw_paint(index, scene), view, size, &paint_texture, TargetAlpha::Premultiplied);
+				paint_texture
+			})
+			.collect();
+
 		let effect_textures = &mut self.canvas.effect_textures;
-		let result = (self.renderer.effect_passes).apply(self.device, &self.queue.lock(), effect_textures, &content_texture, effects, fill, lengths_to_pixels);
+		let result = (self.renderer.effect_passes).apply(self.device, &self.queue.lock(), effect_textures, &content_texture, effects, fill, lengths_to_pixels, &paint_textures);
 		effect_textures.release(content_texture);
+		paint_textures.into_iter().for_each(|paint_texture| effect_textures.release(paint_texture));
 
 		result
 	}
