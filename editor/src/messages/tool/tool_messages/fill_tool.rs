@@ -572,6 +572,63 @@ mod test_fill {
 	}
 
 	#[tokio::test]
+	async fn a_layer_drawing_shared_geometry_keeps_it() {
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rectangle = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// A new layer above the rectangle, whose content is wired from the end of the rectangle's chain so both draw it
+		let sharing_id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: sharing_id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let sharing = LayerNodeIdentifier::new_unchecked(sharing_id);
+		let shared_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&InputConnector::layer_secondary_input(rectangle.to_node()), &[])
+			.and_then(|output| output.node_id())
+			.expect("the rectangle should have a chain");
+		editor
+			.active_document_mut()
+			.network_interface
+			.create_wire(&OutputConnector::primary_output(shared_id), &InputConnector::layer_secondary_input(sharing_id), &[]);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![sharing_id] }).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		assert!(
+			get_upstream_color_value_node_id(sharing, network_interface).is_none(),
+			"a layer drawing shared geometry isn't blank, so it mustn't get a whole-expanse color"
+		);
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::layer_secondary_input(sharing_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(shared_id),
+			"the layer should still draw the shared rectangle"
+		);
+
+		let fills = get_fills(&mut editor).await;
+		assert!(
+			fills.iter().any(|fill| SRGBA8::from(*fill.element()) == SRGBA8::from(Color::GREEN)),
+			"the shared rectangle's Fill should take the color"
+		);
+	}
+
+	#[tokio::test]
 	async fn nudged_blank_layer_keeps_its_transform() {
 		use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
