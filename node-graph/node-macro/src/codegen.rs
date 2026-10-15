@@ -142,9 +142,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let tier = output_tier(output_type);
 	let output = output_payload(output_type);
-	if tier == NodeOutputTier::Poll && (mapped_variant || list_content_variant) {
-		return Err(Error::new_spanned(fn_name, "An element-wise node cannot return `Poll`"));
-	}
 	let slots_field = parsed.is_async.then(|| quote! { pub(super) slots: #core_types::runtime::Slots<#output> });
 	let struct_fields: Vec<_> = data_field_defs.chain(regular_field_defs).chain(slots_field).collect();
 
@@ -1182,6 +1179,11 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 	if parsed.is_async {
 		return false;
 	}
+
+	if output_tier(&parsed.output_type) == NodeOutputTier::Poll {
+		return false;
+	}
+
 	// A `()` generator frames over its ranked params exactly like a lazy primary, but generating fresh content per slot instead of transforming an upstream item
 	if is_generator_frame(parsed) {
 		return true;
@@ -1224,7 +1226,9 @@ fn is_unit_type(ty: &syn::Type) -> bool {
 
 /// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).
 fn generates_list_content_variant(parsed: &ParsedNodeFn) -> bool {
-	primary_item_element(parsed).is_some() && matches!(parsed.primary_input_field().map(|(_, field)| &field.ty), Some(ParsedFieldType::Node(_)))
+	!(output_tier(&parsed.output_type) == NodeOutputTier::Poll)
+		&& primary_item_element(parsed).is_some()
+		&& matches!(parsed.primary_input_field().map(|(_, field)| &field.ty), Some(ParsedFieldType::Node(_)))
 }
 
 fn generate_register_node_impl(

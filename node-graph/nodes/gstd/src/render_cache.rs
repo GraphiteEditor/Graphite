@@ -3,11 +3,10 @@
 use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, Interrupt, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, OwnedContextImpl, Poll};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
-use graphene_application_io::Texture;
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -26,10 +25,9 @@ pub struct TileCoord {
 
 #[derive(Debug, Clone)]
 pub struct CachedRegion {
-	pub texture: Texture,
-	pub texture_size: UVec2,
+	pub output: Poll<RenderOutput>,
+	pub size: UVec2,
 	pub tiles: Vec<TileCoord>,
-	pub metadata: rendering::RenderMetadata,
 	last_access: u64,
 	memory_size: usize,
 }
@@ -331,19 +329,19 @@ fn render_output_cache(
 	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 	#[data] tile_cache: TileCache,
-) -> Result<Item<RenderOutput>, Interrupt> {
+) -> Poll<Item<RenderOutput>> {
 	let footprint = ctx.footprint();
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint);
-		return data.eval(context.into_context());
+		return data.eval(&context.into_context());
 	};
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
 	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
-		return data.eval(context.into_context());
+		return data.eval(&context.into_context());
 	}
 
 	let zoom = footprint.scale_magnitudes().x;
@@ -375,34 +373,45 @@ fn render_output_cache(
 
 	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_area);
 
+	// If no regions, fall back to direct render
+	if cache_query.cached_regions.is_empty() && cache_query.missing_regions.iter().all(|region| region.tiles.is_empty()) {
+		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		return data.eval(&context.into_context());
+	}
+
 	let mut new_regions = Vec::new();
-	for missing_region in &cache_query.missing_regions {
-		if missing_region.tiles.is_empty() {
-			continue;
+	for missing_region in cache_query.missing_regions.iter().filter(|region| !region.tiles.is_empty()) {
+		let region = render_missing_region(missing_region, |ctx| data.eval(&ctx), ctx.clone(), render_params, &footprint.transform, &device_origin_offset);
+		match &region.output {
+			Poll::Pending => return Poll::Pending,
+			Poll::Error(error) => return Poll::Error(error.clone()),
+			Poll::Final(_) | Poll::Partial(_) | Poll::Fallback(_) => new_regions.push(region),
 		}
-		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &device_origin_offset)?;
-		new_regions.push(region);
 	}
 
 	tile_cache.store_regions(new_regions.clone());
 
 	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions).collect();
-
-	// If no regions, fall back to direct render
-	if all_regions.is_empty() {
-		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
-		return data.eval(context.into_context());
-	}
+	let partial = all_regions.iter().any(|region| matches!(region.output, Poll::Partial(_)));
+	let error = all_regions.iter().find_map(|region| match &region.output {
+		Poll::Fallback(boxed) => Some(boxed.1.clone()),
+		Poll::Final(_) | Poll::Partial(_) | Poll::Pending | Poll::Error(_) => None,
+	});
 
 	let executor = executor.into_element().expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution);
 
 	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
 
-	Ok(Item::new_from_element(RenderOutput {
+	let output = Item::new_from_element(RenderOutput {
 		data: RenderOutputType::Texture(output_texture),
 		metadata: combined_metadata,
-	}))
+	});
+	match (partial, error) {
+		(true, _) => Poll::Partial(output),
+		(false, Some(error)) => Poll::Fallback(Box::new((output, error))),
+		(false, None) => Poll::Final(output),
+	}
 }
 
 fn render_missing_region<F>(
@@ -412,9 +421,9 @@ fn render_missing_region<F>(
 	render_params: &RenderParams,
 	viewport_transform: &DAffine2,
 	viewport_origin_offset: &DVec2,
-) -> Result<CachedRegion, Interrupt>
+) -> CachedRegion
 where
-	F: Fn(Context<'static>) -> Result<Item<RenderOutput>, Interrupt>,
+	F: Fn(Context<'static>) -> Poll<Item<RenderOutput>>,
 {
 	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
@@ -432,25 +441,19 @@ where
 
 	let region_params = render_params.clone();
 	let region_ctx = OwnedContextImpl::from(ctx).with_footprint(region_footprint).with_vararg(Box::new(region_params)).into_context();
-	let mut result = render_fn(region_ctx)?.into_element();
+	let output = render_fn(region_ctx).map(|output| {
+		let mut output = output.into_element();
+		output.metadata.apply_transform(region_transform.inverse());
+		output
+	});
 
-	let RenderOutputType::Texture(texture) = result.data else {
-		unreachable!("render_missing_region: expected texture output from Vello render");
-	};
-
-	let pixel_to_document = region_transform.inverse();
-	result.metadata.apply_transform(pixel_to_document);
-
-	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
-
-	Ok(CachedRegion {
-		texture,
-		texture_size: region_pixel_size,
+	CachedRegion {
+		output,
+		size: region_pixel_size,
 		tiles: region.tiles.clone(),
-		metadata: result.metadata,
 		last_access: 0,
-		memory_size,
-	})
+		memory_size: (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL,
+	}
 }
 
 fn composite_cached_regions(
@@ -468,29 +471,38 @@ fn composite_cached_regions(
 	let mut combined_metadata = rendering::RenderMetadata::default();
 
 	for region in regions {
+		let output = match &region.output {
+			Poll::Final(output) | Poll::Partial(output) => output,
+			Poll::Fallback(boxed) => &boxed.0,
+			Poll::Pending | Poll::Error(_) => unreachable!("Only rendered regions are composited"),
+		};
+		let RenderOutputType::Texture(texture) = &output.data else {
+			unreachable!("composite_cached_regions: expected texture output from Vello render");
+		};
+
 		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 
 		// Convert global tile position to physical pixel offset in the output texture
 		let offset_pixels = min_tile * TILE_SIZE as i32 + device_origin_offset.round().as_ivec2();
 
 		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
-			(0, offset_pixels.x as u32, region.texture_size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
+			(0, offset_pixels.x as u32, region.size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
 		} else {
 			let skip = (-offset_pixels.x) as u32;
-			(skip, 0, region.texture_size.x.saturating_sub(skip).min(output_resolution.x))
+			(skip, 0, region.size.x.saturating_sub(skip).min(output_resolution.x))
 		};
 
 		let (src_y, dst_y, height) = if offset_pixels.y >= 0 {
-			(0, offset_pixels.y as u32, region.texture_size.y.min(output_resolution.y.saturating_sub(offset_pixels.y as u32)))
+			(0, offset_pixels.y as u32, region.size.y.min(output_resolution.y.saturating_sub(offset_pixels.y as u32)))
 		} else {
 			let skip = (-offset_pixels.y) as u32;
-			(skip, 0, region.texture_size.y.saturating_sub(skip).min(output_resolution.y))
+			(skip, 0, region.size.y.saturating_sub(skip).min(output_resolution.y))
 		};
 
 		if width > 0 && height > 0 {
 			encoder.copy_texture_to_texture(
 				wgpu::TexelCopyTextureInfo {
-					texture: region.texture.as_ref(),
+					texture: texture.as_ref(),
 					mip_level: 0,
 					origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
 					aspect: wgpu::TextureAspect::All,
@@ -509,7 +521,7 @@ fn composite_cached_regions(
 			);
 		}
 
-		let mut region_metadata = region.metadata.clone();
+		let mut region_metadata = output.metadata.clone();
 		region_metadata.apply_transform(*viewport_transform);
 		combined_metadata.merge(&region_metadata);
 	}
