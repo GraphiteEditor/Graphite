@@ -7,7 +7,8 @@ use crate::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
-use graphic_types::{EffectOperation, Effects};
+use graphic_types::effects::outline_extents;
+use graphic_types::{EffectOperation, Effects, GlowSource};
 use raster_kernels::RasterKernel;
 use raster_kernels::blur::BlurSpace;
 use raster_kernels::effects::*;
@@ -157,6 +158,31 @@ impl<'a> EffectsPass<'a> {
 				let coverage = self.cast(lengths_to_pixels * offset, blur * length_scale, spread * length_scale, true)?;
 				self.shade_within(&coverage, color)?;
 			}
+			EffectOperation::InnerGlow { color, blur, choke, source } => {
+				let mut coverage = self.cast(DVec2::ZERO, blur * length_scale, choke * length_scale, true)?;
+				if source == GlowSource::Center {
+					coverage = self.run(&InvertCoverage {}, &[&coverage])?;
+				}
+				self.shade_within(&coverage, color)?;
+			}
+			EffectOperation::Satin { color, offset, blur, invert } => {
+				let offset = lengths_to_pixels * offset;
+				let forward = self.cast(offset, blur * length_scale, 0., false)?;
+				let backward = self.cast(-offset, blur * length_scale, 0., false)?;
+				let coverage = self.run(&SatinShading { invert }, &[&forward, &backward])?;
+				self.shade_within(&coverage, color)?;
+			}
+			EffectOperation::Outline { color, weight, align } => {
+				let (outside, inside) = outline_extents(weight * length_scale, align);
+				if outside >= NEGLIGIBLE_LENGTH {
+					let coverage = self.edge_band(outside, false)?;
+					self.accumulate(&coverage, color)?;
+				}
+				if inside >= NEGLIGIBLE_LENGTH {
+					let coverage = self.edge_band(inside, true)?;
+					self.shade_within(&coverage, color)?;
+				}
+			}
 		}
 
 		Ok(())
@@ -268,5 +294,25 @@ impl<'a> EffectsPass<'a> {
 	/// The image with the shadows and glows `beneath` placed under it, knocked out by the full-strength content.
 	fn composite_beneath(&self, image: &Raster<GPU>, beneath: &Raster<GPU>, full_content: &Raster<GPU>) -> Result<Raster<GPU>, NodeError> {
 		self.run(&CompositeBeneath {}, &[image, beneath, full_content])
+	}
+
+	/// The coverage of the band reaching `width` pixels from the content's silhouette edge, outward or (if `inward`) inward, measured in straight lines so it rounds corners.
+	fn edge_band(&self, width: f64, inward: bool) -> Result<Raster<GPU>, NodeError> {
+		let nearest = self.nearest_across_edge(width, inward)?;
+		self.run(&EdgeBand { width: width as f32 }, &[&nearest])
+	}
+
+	/// Each texel's offset to the nearest texel across the content's silhouette edge: outside it if `inward`, or inside it otherwise, in the layout [`JumpFloodStep`] keeps.
+	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, so farther texels may find none.
+	fn nearest_across_edge(&self, reach: f64, inward: bool) -> Result<Raster<GPU>, NodeError> {
+		let mut nearest = self.run(&JumpFloodSeed { inward }, &[&self.full])?;
+
+		let mut step = (reach.max(0.).ceil() as u32 + 1).next_power_of_two() as i32;
+		while step >= 1 {
+			nearest = self.run(&JumpFloodStep { step }, &[&nearest])?;
+			step /= 2;
+		}
+
+		Ok(nearest)
 	}
 }

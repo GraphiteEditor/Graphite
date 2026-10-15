@@ -5,8 +5,9 @@ use core_types::transform::Footprint;
 use core_types::{Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, Graphic, Vector, stamp_effect};
+use graphic_types::{Effect, EffectOperation, GlowSource, Graphic, Vector, stamp_effect};
 use vector_types::Gradient;
+use vector_types::vector::style::StrokeAlign;
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::raster_effects::evaluate_raster_effects;
 
@@ -176,6 +177,114 @@ fn outer_glow<T: ApplyEffect>(
 			color: *color.element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
+		},
+		pipeline,
+	)
+}
+
+/// Glows inward from the edges of the input graphics, or outward from their center.
+#[node_macro::node(category("Raster: Effect"), icon("NodeBlur"))]
+fn inner_glow<T: ApplyEffect>(
+	_: impl Ctx,
+	/// The content to glow within.
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
+	/// The glow's color, with its opacity.
+	#[default("#ffffbebf")]
+	color: Item<Color>,
+	/// How soft the glow's edges are.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	#[default(8.)]
+	blur: Item<f64>,
+	/// How far the glow grows into the content before it softens.
+	#[unit(" px")]
+	#[hard(0..)]
+	choke: Item<f64>,
+	/// Whether the glow starts from the edges or the center.
+	source: Item<GlowSource>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	apply_effect(
+		content,
+		EffectOperation::InnerGlow {
+			color: *color.element(),
+			blur: *blur.element(),
+			choke: *choke.element(),
+			source: *source.element(),
+		},
+		pipeline,
+	)
+}
+
+/// Shades the inside of the input graphics with soft, glossy bands that follow their shape.
+#[node_macro::node(category("Raster: Effect"), icon("NodeBlur"))]
+fn satin<T: ApplyEffect>(
+	_: impl Ctx,
+	/// The content to shade.
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
+	/// The shading's color, with its opacity.
+	#[default("#00000080")]
+	color: Item<Color>,
+	/// How far apart the bands are drawn, and in which direction.
+	#[unit(" px")]
+	#[default(10., 4.)]
+	offset: Item<DVec2>,
+	/// How soft the bands are.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	#[default(14.)]
+	blur: Item<f64>,
+	/// Shade where the bands overlap rather than where they don't.
+	#[default(true)]
+	invert: Item<bool>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	apply_effect(
+		content,
+		EffectOperation::Satin {
+			color: *color.element(),
+			offset: *offset.element(),
+			blur: *blur.element(),
+			invert: *invert.element(),
+		},
+		pipeline,
+	)
+}
+
+/// Draws a band of color along the edge of the input graphics, outside, inside, or centered on it.
+#[node_macro::node(category("Raster: Effect"), icon("NodeBlur"))]
+fn outline<T: ApplyEffect>(
+	_: impl Ctx,
+	/// The content to outline.
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
+	/// The outline's color, with its opacity.
+	#[default(Color::BLACK)]
+	color: Item<Color>,
+	/// How thick the outline is.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..100)]
+	#[default(3.)]
+	weight: Item<f64>,
+	/// Whether the outline is drawn outside the edge, inside it, or centered on it.
+	#[default(StrokeAlign::Outside)]
+	align: Item<StrokeAlign>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	apply_effect(
+		content,
+		EffectOperation::Outline {
+			color: *color.element(),
+			weight: *weight.element(),
+			align: *align.element(),
 		},
 		pipeline,
 	)

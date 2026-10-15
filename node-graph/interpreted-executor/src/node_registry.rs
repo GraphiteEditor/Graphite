@@ -5,6 +5,7 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_animation::AnimationCurve;
+use graphene_std::GlowSource;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
@@ -333,6 +334,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				TonalRange,
 				AdjustmentChannel,
 				HueSaturationRange,
+				GlowSource,
 				Stroke,
 				ScaleType,
 				ReferencePoint,

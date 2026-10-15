@@ -579,6 +579,7 @@ tagged_value! {
 	TonalRange(raster_nodes::adjustments::TonalRange),
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
+	GlowSource(graphic_types::GlowSource),
 	GridType(vector::misc::GridType),
 	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
@@ -708,6 +709,25 @@ impl TaggedValue {
 			None
 		}
 
+		fn to_stroke_align(input: &str) -> Option<vector::style::StrokeAlign> {
+			let mut choices = input.split("::");
+			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
+			if first == "StrokeAlign" {
+				return Some(match second {
+					"Center" => vector::style::StrokeAlign::Center,
+					"Inside" => vector::style::StrokeAlign::Inside,
+					"Outside" => vector::style::StrokeAlign::Outside,
+					_ => {
+						log::error!("Invalid StrokeAlign default type variant: {input}");
+						return None;
+					}
+				});
+			}
+
+			log::error!("Invalid StrokeAlign default type: {input}");
+			None
+		}
+
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
@@ -726,6 +746,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Graphic>() => to_color(string).map(TaggedValue::Color)?,
 					() if ty == TypeId::of::<Gradient>() => to_gradient(string).map(|gradient| TaggedValue::GradientRamp(gradient.into()))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+					() if ty == TypeId::of::<vector::style::StrokeAlign>() => to_stroke_align(string).map(TaggedValue::StrokeAlign)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
 					_ => return None,

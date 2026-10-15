@@ -123,3 +123,76 @@ impl RasterKernel for CompositeBeneath {
 		Wgsl::function(include_str!("wgsl/effect_composite_beneath.wgsl"))
 	}
 }
+
+gpu_params! {
+	/// The coverage of everything a coverage doesn't cover.
+	#[derive(Clone)]
+	pub struct InvertCoverage {}
+}
+
+impl RasterKernel for InvertCoverage {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_invert_coverage.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// The coverage of satin's shading, from the two casts of the silhouette.
+	#[derive(Clone)]
+	pub struct SatinShading {
+		pub invert: bool,
+	}
+}
+
+impl RasterKernel for SatinShading {
+	const INPUTS: usize = 2;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_satin.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// Starts a jump flood from the texels inside the content's silhouette, or outside it if `inward`.
+	#[derive(Clone)]
+	pub struct JumpFloodSeed {
+		pub inward: bool,
+	}
+}
+
+impl RasterKernel for JumpFloodSeed {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_jump_flood_seed.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// One step of a jump flood, spreading the nearest seeds found so far by `step` texels.
+	#[derive(Clone)]
+	pub struct JumpFloodStep {
+		pub step: i32,
+	}
+}
+
+impl RasterKernel for JumpFloodStep {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_jump_flood_step.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// The coverage of the band `width` texels wide along the silhouette's edge, from a finished jump flood.
+	#[derive(Clone)]
+	pub struct EdgeBand {
+		pub width: f32,
+	}
+}
+
+impl RasterKernel for EdgeBand {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_edge_band.wgsl"))
+	}
+}

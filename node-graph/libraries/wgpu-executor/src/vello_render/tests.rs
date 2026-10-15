@@ -378,6 +378,59 @@ fn shadows_and_glows_fall_where_they_should() {
 }
 
 #[test]
+fn inner_glows_satins_and_outlines_fall_where_they_should() {
+	use core_types::Color as GraphicColor;
+	use glam::DVec2;
+	use graphic_types::vector_types::vector::style::StrokeAlign;
+	use graphic_types::{EffectOperation, GlowSource};
+
+	let size = UVec2::new(128, 128);
+	let black = GraphicColor::BLACK;
+	let render_square = |effect| render_square_with_effects(vec![effect], 1., 30., 80., size);
+	let (white, clear) = ([255, 255, 255, 255], 0);
+
+	// A hard inner glow from the edges covers a band inside them, and one from the center covers the rest
+	let inner_glow = |source| EffectOperation::InnerGlow {
+		color: black,
+		blur: 0.,
+		choke: 3.,
+		source,
+	};
+	let Some(pixels) = render_square(inner_glow(GlowSource::Edge)) else { return };
+	assert_eq!(pixel(&pixels, size, 31, 55), [0, 0, 0, 255], "the edge glows");
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the center doesn't");
+	assert_eq!(pixel(&pixels, size, 25, 55)[3], clear, "nothing outside");
+	let Some(pixels) = render_square(inner_glow(GlowSource::Center)) else { return };
+	assert_eq!(pixel(&pixels, size, 31, 55), white, "the edge doesn't glow");
+	assert_eq!(pixel(&pixels, size, 55, 55), [0, 0, 0, 255], "the center does");
+
+	// Satin shades where the two casts of the silhouette disagree, which for a horizontal offset is a band along each side
+	let satin = EffectOperation::Satin {
+		color: black,
+		offset: DVec2::new(10., 0.),
+		blur: 0.,
+		invert: false,
+	};
+	let Some(pixels) = render_square(satin) else { return };
+	assert_eq!(pixel(&pixels, size, 35, 55), [0, 0, 0, 255], "the left band");
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the middle, where both casts cover");
+	assert_eq!(pixel(&pixels, size, 75, 55), [0, 0, 0, 255], "the right band");
+
+	// An outline outside the edge rounds the corners it grows around, and one inside stays within the content
+	let outline = |align| EffectOperation::Outline { color: black, weight: 5., align };
+	let Some(pixels) = render_square(outline(StrokeAlign::Outside)) else { return };
+	assert_eq!(pixel(&pixels, size, 26, 55), [0, 0, 0, 255], "within the weight of the edge");
+	assert_eq!(pixel(&pixels, size, 23, 55)[3], clear, "past the weight");
+	assert_eq!(pixel(&pixels, size, 27, 27), [0, 0, 0, 255], "near the corner");
+	assert!(pixel(&pixels, size, 26, 26)[3] < 128, "beyond the rounded corner, where a square would reach");
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the content shows");
+	let Some(pixels) = render_square(outline(StrokeAlign::Inside)) else { return };
+	assert_eq!(pixel(&pixels, size, 32, 55), [0, 0, 0, 255], "inside the edge");
+	assert_eq!(pixel(&pixels, size, 40, 55), white, "past the weight inside");
+	assert_eq!(pixel(&pixels, size, 28, 55)[3], clear, "nothing outside");
+}
+
+#[test]
 fn later_shadows_stack_over_earlier_ones_beneath_the_content() {
 	use core_types::Color as GraphicColor;
 	use glam::DVec2;
@@ -513,7 +566,8 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 	use glam::DVec2;
 	use graphic_types::raster_types::{CPU, GPU, Image, Raster, Storage};
-	use graphic_types::{EffectOperation, Effects};
+	use graphic_types::vector_types::vector::style::StrokeAlign;
+	use graphic_types::{EffectOperation, Effects, GlowSource};
 
 	let size = UVec2::new(160, 160);
 	let (min, max) = (50, 100);
@@ -544,6 +598,45 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 			},
 			blur(2., false, false),
 		],
+		vec![EffectOperation::InnerGlow {
+			color: shadow_color,
+			blur: 5.,
+			choke: 2.,
+			source: GlowSource::Edge,
+		}],
+		vec![EffectOperation::InnerGlow {
+			color: shadow_color,
+			blur: 8.,
+			choke: 0.,
+			source: GlowSource::Center,
+		}],
+		vec![EffectOperation::Satin {
+			color: shadow_color,
+			offset: DVec2::new(7., 3.),
+			blur: 6.,
+			invert: true,
+		}],
+		vec![EffectOperation::Satin {
+			color: shadow_color,
+			offset: DVec2::new(-4., 9.),
+			blur: 3.,
+			invert: false,
+		}],
+		vec![EffectOperation::Outline {
+			color: shadow_color,
+			weight: 6.,
+			align: StrokeAlign::Outside,
+		}],
+		vec![EffectOperation::Outline {
+			color: shadow_color,
+			weight: 5.,
+			align: StrokeAlign::Inside,
+		}],
+		vec![EffectOperation::Outline {
+			color: shadow_color,
+			weight: 9.,
+			align: StrokeAlign::Center,
+		}],
 	];
 
 	let Some(executor) = executor() else { return };

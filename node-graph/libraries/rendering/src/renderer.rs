@@ -307,6 +307,74 @@ impl SvgFilterPrimitives {
 		self.push("feComposite", &format!(r#"in="{first}" in2="{second}" operator="arithmetic" k2="1" k3="1""#), "")
 	}
 
+	/// The coverage of the content's silhouette (or of the area outside it, if `inverse`), cast by `offset`, grown by `spread` and softened by `blur`, all in user units.
+	fn cast(&mut self, full_content: &str, offset: DVec2, blur: f64, spread: f64, inverse: bool) -> String {
+		let mut coverage = match offset == DVec2::ZERO {
+			true => full_content.to_string(),
+			false => self.push("feOffset", &format!(r#"in="{full_content}" dx="{}" dy="{}""#, offset.x, offset.y), ""),
+		};
+		if inverse {
+			let opaque = self.push("feFlood", r#"flood-opacity="1""#, "");
+			coverage = self.push("feComposite", &format!(r#"in="{opaque}" in2="{coverage}" operator="out""#), "");
+		}
+		if spread >= 0.01 {
+			coverage = self.push("feMorphology", &format!(r#"in="{coverage}" operator="dilate" radius="{spread}""#), "");
+		}
+		if blur >= 0.01 {
+			coverage = self.push("feGaussianBlur", &format!(r#"in="{coverage}" stdDeviation="{blur}""#), "");
+		}
+		coverage
+	}
+
+	/// The coverage of the band reaching `width` user units from the silhouette's edge, outward or (if `inward`) inward.
+	/// SVG measures no straight-line distances, so a blur thresholded where it falls to that of a straight edge's at the width rounds the corners instead.
+	fn edge_band(&mut self, full_content: &str, width: f64, inward: bool) -> String {
+		// At this distance past a straight edge, a Gaussian of half the width falls to Φ(-2), dropping by φ(2) / σ per unit
+		const THRESHOLD: f64 = 0.022_750_13;
+		const FALLOFF: f64 = 0.053_990_97;
+
+		let silhouette = self.cast(full_content, DVec2::ZERO, width / 2., 0., inward);
+		let slope = width / 2. / FALLOFF;
+		let intercept = 0.5 - slope * THRESHOLD;
+		self.push(
+			"feComponentTransfer",
+			&format!(r#"in="{silhouette}""#),
+			&format!(r#"<feFuncA type="linear" slope="{slope}" intercept="{intercept}" />"#),
+		)
+	}
+
+	/// The coverage tinted `color`.
+	fn tint(&mut self, coverage: &str, color: Color) -> String {
+		let flood = self.push(
+			"feFlood",
+			&format!(r##"flood-color="#{}" flood-opacity="{}""##, SRGBA8::from(color.with_alpha(1.)).to_rgb_hex(), color.a()),
+			"",
+		);
+		self.push("feComposite", &format!(r#"in="{flood}" in2="{coverage}" operator="in""#), "")
+	}
+
+	/// Stacks the coverage, tinted `color`, over the shadows and glows already `beneath` the content.
+	fn shade_beneath(&mut self, beneath: Option<String>, coverage: &str, color: Color) -> String {
+		let tinted = self.tint(coverage, color);
+		match beneath {
+			Some(beneath) => self.push("feComposite", &format!(r#"in="{tinted}" in2="{beneath}" operator="over""#), ""),
+			None => tinted,
+		}
+	}
+
+	/// Places the coverage, tinted `color`, over both the full-strength content and the faded fill, within the content so it stays visible over a faded fill.
+	fn shade_within(&mut self, full_content: &mut String, filled: &mut Option<String>, coverage: &str, color: Color) {
+		let tinted = self.tint(coverage, color);
+		let within = self.push("feComposite", &format!(r#"in="{tinted}" in2="{full_content}" operator="in""#), "");
+
+		let mut over = |image: &str| {
+			let uncovered = self.push("feComposite", &format!(r#"in="{image}" in2="{tinted}" operator="out""#), "");
+			self.add(&within, &uncovered)
+		};
+		*filled = filled.as_deref().map(&mut over);
+		*full_content = over(full_content);
+	}
+
 	/// The image with the shadows and glows `beneath` it, knocked out by the full-strength content so a faded fill doesn't reveal them.
 	fn composite_beneath(&mut self, image: &str, beneath: &str, full_content: &str) -> String {
 		let knocked_out = self.push("feComposite", &format!(r#"in="{beneath}" in2="{full_content}" operator="out""#), "");
@@ -317,7 +385,8 @@ impl SvgFilterPrimitives {
 /// Writes an SVG filter into `svg_defs` that carries out `effects` like the GPU passes do, returning its ID, or `None` if the user space is degenerate.
 /// `bounds` is the content's extent in the filtered group's user space, which `user_to_document` maps into the document space the effects' lengths are measured in.
 fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], user_to_document: DAffine2) -> Option<String> {
-	use graphic_types::EffectOperation;
+	use graphic_types::effects::outline_extents;
+	use graphic_types::{EffectOperation, GlowSource};
 
 	let determinant = user_to_document.matrix2.determinant();
 	if !determinant.is_normal() {
@@ -335,7 +404,7 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 	let mut beneath: Option<String> = None;
 
 	for effect in effects.operations() {
-		let (color, offset, blur, spread, inner) = match effect {
+		match effect {
 			EffectOperation::Blur { radius, box_blur, gamma } => {
 				let radius = radius * length_scale;
 				if radius < 0.01 {
@@ -355,51 +424,53 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 
 				filled = filled.map(|filled| primitives.push("feGaussianBlur", &attributes(&filled), ""));
 				full = primitives.push("feGaussianBlur", &attributes(&full), "");
-				continue;
 			}
-			EffectOperation::DropShadow { color, offset, blur, spread } => (color, offset, blur, spread, false),
-			EffectOperation::OuterGlow { color, blur, spread } => (color, DVec2::ZERO, blur, spread, false),
-			EffectOperation::InnerShadow { color, offset, blur, spread } => (color, offset, blur, spread, true),
-		};
+			EffectOperation::DropShadow { color, offset, blur, spread } => {
+				let coverage = primitives.cast(&full, document_to_user * offset, blur * length_scale, spread * length_scale, false);
+				beneath = Some(primitives.shade_beneath(beneath, &coverage, color));
+			}
+			EffectOperation::OuterGlow { color, blur, spread } => {
+				let coverage = primitives.cast(&full, DVec2::ZERO, blur * length_scale, spread * length_scale, false);
+				beneath = Some(primitives.shade_beneath(beneath, &coverage, color));
+			}
+			EffectOperation::InnerShadow { color, offset, blur, spread } => {
+				let coverage = primitives.cast(&full, document_to_user * offset, blur * length_scale, spread * length_scale, true);
+				primitives.shade_within(&mut full, &mut filled, &coverage, color);
+			}
+			EffectOperation::InnerGlow { color, blur, choke, source } => {
+				let mut coverage = primitives.cast(&full, DVec2::ZERO, blur * length_scale, choke * length_scale, true);
+				if source == GlowSource::Center {
+					coverage = primitives.push("feComponentTransfer", &format!(r#"in="{coverage}""#), r#"<feFuncA type="linear" slope="-1" intercept="1" />"#);
+				}
+				primitives.shade_within(&mut full, &mut filled, &coverage, color);
+			}
+			EffectOperation::Satin { color, offset, blur, invert } => {
+				let offset = document_to_user * offset;
+				let forward = primitives.cast(&full, offset, blur * length_scale, 0., false);
+				let backward = primitives.cast(&full, -offset, blur * length_scale, 0., false);
 
-		// The silhouette, or the area outside it for an inner shadow, cast by the offset, grown by the spread, and softened by the blur
-		let offset = document_to_user * offset;
-		let mut coverage = match offset == DVec2::ZERO {
-			true => full.clone(),
-			false => primitives.push("feOffset", &format!(r#"in="{full}" dx="{}" dy="{}""#, offset.x, offset.y), ""),
-		};
-		if inner {
-			let opaque = primitives.push("feFlood", r#"flood-opacity="1""#, "");
-			coverage = primitives.push("feComposite", &format!(r#"in="{opaque}" in2="{coverage}" operator="out""#), "");
-		}
-		if spread * length_scale >= 0.01 {
-			coverage = primitives.push("feMorphology", &format!(r#"in="{coverage}" operator="dilate" radius="{}""#, spread * length_scale), "");
-		}
-		if blur * length_scale >= 0.01 {
-			coverage = primitives.push("feGaussianBlur", &format!(r#"in="{coverage}" stdDeviation="{}""#, blur * length_scale), "");
-		}
-
-		let flood = primitives.push(
-			"feFlood",
-			&format!(r##"flood-color="#{}" flood-opacity="{}""##, SRGBA8::from(color.with_alpha(1.)).to_rgb_hex(), color.a()),
-			"",
-		);
-		let tinted = primitives.push("feComposite", &format!(r#"in="{flood}" in2="{coverage}" operator="in""#), "");
-
-		if inner {
-			// Placed over the image within the full-strength content, so it stays visible over a faded fill
-			let within = primitives.push("feComposite", &format!(r#"in="{tinted}" in2="{full}" operator="in""#), "");
-			let mut over = |image: &str| {
-				let uncovered = primitives.push("feComposite", &format!(r#"in="{image}" in2="{tinted}" operator="out""#), "");
-				primitives.add(&within, &uncovered)
-			};
-			filled = filled.map(|filled| over(&filled));
-			full = over(&full);
-		} else {
-			beneath = Some(match beneath {
-				Some(beneath) => primitives.push("feComposite", &format!(r#"in="{tinted}" in2="{beneath}" operator="over""#), ""),
-				None => tinted,
-			});
+				// The difference either way, each clamped at zero, adds up to its absolute value
+				let difference = |primitives: &mut SvgFilterPrimitives, first: &str, second: &str| {
+					primitives.push("feComposite", &format!(r#"in="{first}" in2="{second}" operator="arithmetic" k2="1" k3="-1""#), "")
+				};
+				let (ahead, behind) = (difference(&mut primitives, &forward, &backward), difference(&mut primitives, &backward, &forward));
+				let mut coverage = primitives.add(&ahead, &behind);
+				if invert {
+					coverage = primitives.push("feComponentTransfer", &format!(r#"in="{coverage}""#), r#"<feFuncA type="linear" slope="-1" intercept="1" />"#);
+				}
+				primitives.shade_within(&mut full, &mut filled, &coverage, color);
+			}
+			EffectOperation::Outline { color, weight, align } => {
+				let (outside, inside) = outline_extents(weight * length_scale, align);
+				if outside >= 0.01 {
+					let coverage = primitives.edge_band(&full, outside, false);
+					beneath = Some(primitives.shade_beneath(beneath, &coverage, color));
+				}
+				if inside >= 0.01 {
+					let coverage = primitives.edge_band(&full, inside, true);
+					primitives.shade_within(&mut full, &mut filled, &coverage, color);
+				}
+			}
 		}
 	}
 
@@ -4071,5 +4142,49 @@ mod tests {
 		assert!(defs.contains(r#"<feFuncA type="linear" slope="0.5" />"#), "{defs}");
 		assert!(defs.contains(r#"in="effect-1" stdDeviation="3" color-interpolation-filters="linearRGB""#), "{defs}");
 		assert!(defs.ends_with(r#"<feOffset in="effect-2" result="effect-4" /></filter>"#), "{defs}");
+	}
+
+	#[test]
+	fn svg_effects_filters_carry_out_inner_glows_satins_and_outlines() {
+		use graphic_types::vector_types::vector::style::StrokeAlign;
+		use graphic_types::{EffectOperation, GlowSource};
+
+		let filter = |operation| {
+			let mut defs = String::new();
+			write_svg_effects_filter(&mut defs, &Effects::from_operations([operation]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY).unwrap();
+			defs
+		};
+		let invert = r#"<feFuncA type="linear" slope="-1" intercept="1" />"#;
+
+		// A glow from the center is the inverse of one from the edges, cast from the area outside the content
+		let inner_glow = filter(EffectOperation::InnerGlow {
+			color: Color::WHITE,
+			blur: 2.,
+			choke: 1.,
+			source: GlowSource::Center,
+		});
+		assert!(
+			inner_glow.contains(r#"operator="out""#) && inner_glow.contains(r#"operator="dilate" radius="1""#) && inner_glow.contains(invert),
+			"{inner_glow}"
+		);
+
+		// Satin takes the difference both ways between two opposite casts
+		let satin = filter(EffectOperation::Satin {
+			color: Color::BLACK,
+			offset: DVec2::new(3., 0.),
+			blur: 1.,
+			invert: false,
+		});
+		assert!(satin.contains(r#"dx="3" dy="0""#) && satin.contains(r#"dx="-3" dy="-0""#), "{satin}");
+		assert_eq!(satin.matches(r#"k2="1" k3="-1""#).count(), 2, "{satin}");
+
+		// A centered outline draws half its weight on each side, outside beneath the content and inside within it
+		let outline = filter(EffectOperation::Outline {
+			color: Color::BLACK,
+			weight: 4.,
+			align: StrokeAlign::Center,
+		});
+		assert_eq!(outline.matches(r#"stdDeviation="1""#).count(), 2, "{outline}");
+		assert_eq!(outline.matches(r#"k2="1" k3="1""#).count(), 2, "placed within the content, then above what lies beneath it: {outline}");
 	}
 }
