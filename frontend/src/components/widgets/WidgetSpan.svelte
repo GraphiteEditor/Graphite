@@ -283,6 +283,7 @@
 				$$events: {
 					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
+					startHistoryTransaction: () => widgetValueCommit(index, undefined),
 				},
 			}),
 		},
