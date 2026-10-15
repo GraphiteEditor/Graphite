@@ -1384,6 +1384,7 @@ impl PenToolData {
 			self.prior_segment_layer = Some(layer);
 			self.prior_segments = Some(segments.to_vec());
 
+			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
 			return layer;
 		}
@@ -3286,5 +3287,40 @@ mod test_pen_tool {
 		let (closed, _) = drawn_path(&editor).expect("Expected a drawn path");
 		assert_eq!(closed, path, "the path should be extended rather than merged into a new layer");
 		assert_eq!(closed.parent(editor.active_document().metadata()), group, "the path should stay in its group");
+	}
+
+	#[tokio::test]
+	async fn drawing_from_a_segment_with_two_paths_selected_continues_that_path() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Two straight paths, the second drawn last, then both selected
+		let mut layers = Vec::new();
+		for offset in [DVec2::ZERO, DVec2::new(0., 300.)] {
+			editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+			click_pen(&mut editor, A + offset).await;
+			click_pen(&mut editor, B + offset).await;
+			editor.press(Key::Enter, ModifierKeys::empty()).await;
+			layers.push(editor.get_selected_layer().await.expect("the drawn path should be selected"));
+		}
+		let nodes = layers.iter().map(|layer| layer.to_node()).collect();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+
+		// Pressing the first path's segment starts drawing from a point inserted there, and the next press extends it
+		let on_segment = (A + B) / 2.;
+		let next = on_segment + DVec2::new(0., 80.);
+		click_pen(&mut editor, on_segment).await;
+		click_pen(&mut editor, next).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layers[0]).expect("the first path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport(layers[0]);
+		let joined = vector.segment_iter().any(|(_, _, start, end)| {
+			let [start, end] = [start, end].map(|point| vector.position_from_id(point).map(|position| to_viewport.transform_point2(position)));
+			let near = |position: Option<DVec2>, target: DVec2| position.is_some_and(|position| position.distance(target) < 1e-6);
+			(near(start, on_segment) && near(end, next)) || (near(start, next) && near(end, on_segment))
+		});
+		assert!(joined, "the first path should have a segment from the inserted point to the next anchor");
 	}
 }
