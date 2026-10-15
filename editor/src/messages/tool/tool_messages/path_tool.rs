@@ -1101,17 +1101,12 @@ impl PathToolData {
 		if equidistant && self.opposing_handle_lengths.is_none() {
 			if !is_colinear {
 				// Try to get selected handle info
-				let Some((_, _, selected_handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) else {
+				let Some((layer, _, _, selected_handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) else {
 					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 					return false;
 				};
 
-				let Some((layer, _)) = shape_editor.selected_shape_state.iter().next() else {
-					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
-					return false;
-				};
-
-				let Some(vector) = document.network_interface.compute_modified_vector(*layer) else {
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
 					self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 					return false;
 				};
@@ -1137,10 +1132,14 @@ impl PathToolData {
 		false
 	}
 
-	/// Attempts to get a single selected handle. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
-	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2, ManipulatorPointId)> {
-		// Only count selections of a single layer
-		let (layer, selection) = shape_editor.selected_shape_state.iter().next()?;
+	/// Attempts to get a single selected handle, with its layer. Also retrieves the position of the anchor it is connected to. Used for the purpose of snapping the angle.
+	fn try_get_selected_handle_and_anchor(&self, shape_editor: &ShapeState, document: &DocumentMessageHandler) -> Option<(LayerNodeIdentifier, DVec2, DVec2, ManipulatorPointId)> {
+		// Only count selections within a single layer, whichever of the selected layers that is
+		let mut layers_with_selected_points = shape_editor.selected_shape_state.iter().filter(|(_, selection)| selection.selected_points_count() > 0);
+		let (layer, selection) = layers_with_selected_points.next()?;
+		if layers_with_selected_points.next().is_some() {
+			return None;
+		}
 
 		// Do not allow selections of multiple points to count
 		if selection.selected_points_count() != 1 {
@@ -1161,7 +1160,7 @@ impl PathToolData {
 		let handle_position_document = layer_to_document.transform_point2(handle_position_local);
 		let anchor_position_document = layer_to_document.transform_point2(anchor_position_local);
 
-		Some((handle_position_document, anchor_position_document, handle_id))
+		Some((*layer, handle_position_document, anchor_position_document, handle_id))
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -1172,6 +1171,7 @@ impl PathToolData {
 		responses: &mut VecDeque<Message>,
 		relative_vector: DVec2,
 		handle_vector: DVec2,
+		layer: LayerNodeIdentifier,
 		handle_id: ManipulatorPointId,
 		lock_angle: bool,
 		snap_angle: bool,
@@ -1179,12 +1179,7 @@ impl PathToolData {
 	) -> f64 {
 		let current_angle = DVec2::X.try_angle_to(handle_vector).unwrap_or(self.angle);
 
-		if let Some((vector, layer)) = shape_editor
-			.selected_shape_state
-			.iter()
-			.next()
-			.and_then(|(layer, _)| document.network_interface.compute_modified_vector(*layer).map(|vector| (vector, layer)))
-		{
+		if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
 			let adjacent_anchor = check_handle_over_adjacent_anchor(handle_id, &vector);
 			let mut required_angle = None;
 
@@ -1193,7 +1188,7 @@ impl PathToolData {
 				let anchor = vector.anchor_of(handle_id);
 				let (angle, anchor_position) = calculate_adjacent_anchor_tangent(handle_id, anchor, adjacent_anchor, &vector);
 
-				let layer_to_document = document.metadata().transform_to_document_if_feeds(*layer, &document.network_interface);
+				let layer_to_document = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
 
 				self.adjacent_anchor_offset = vector
 					.anchor_position_of(handle_id)
@@ -1473,7 +1468,7 @@ impl PathToolData {
 		let current_mouse = input.mouse.position;
 		let raw_delta = document_to_viewport.inverse().transform_vector2(current_mouse - previous_mouse);
 
-		let snapped_delta = if let Some((handle_position, anchor_position, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
+		let snapped_delta = if let Some((layer, handle_position, anchor_position, handle_id)) = self.try_get_selected_handle_and_anchor(shape_editor, document) {
 			let cursor_position = handle_position + raw_delta;
 
 			let handle_angle = self.calculate_handle_angle(
@@ -1482,6 +1477,7 @@ impl PathToolData {
 				responses,
 				handle_position - anchor_position,
 				cursor_position - anchor_position,
+				layer,
 				handle_id,
 				lock_angle,
 				snap_angle,
@@ -4393,5 +4389,54 @@ mod test_path_tool {
 		// The clicks add no undo steps of their own, so one undo takes back the drag
 		editor.handle_message(DocumentMessage::Undo).await;
 		assert_anchors(&editor, layer, &[A, B, C]);
+	}
+
+	#[tokio::test]
+	async fn shift_snaps_the_angle_of_a_handle_on_either_of_two_selected_paths() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Two paths, each dragged out into a smooth middle anchor with a level handle to the right
+		let mut paths = Vec::new();
+		for offset in [DVec2::ZERO, DVec2::new(0., 300.)] {
+			let (start, middle, handle, end) = (
+				DVec2::new(100., 200.) + offset,
+				DVec2::new(300., 100.) + offset,
+				DVec2::new(380., 100.) + offset,
+				DVec2::new(500., 220.) + offset,
+			);
+			editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+			editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+			editor.move_mouse(middle.x, middle.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+			editor.left_mousedown(middle.x, middle.y, ModifierKeys::empty()).await;
+			editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+			editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+			editor.click_tool(ToolType::Pen, MouseKeys::LEFT, end, ModifierKeys::empty()).await;
+			editor.press(Key::Enter, ModifierKeys::empty()).await;
+			let layer = editor.get_selected_layer().await.expect("the drawn path should be selected");
+			paths.push((layer, middle, handle));
+		}
+		let nodes = paths.iter().map(|(layer, _, _)| layer.to_node()).collect();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+
+		for (layer, middle, handle) in paths {
+			// Selecting the anchor shows its handles, then clicking one selects only that handle, which is dragged to 37° below level with Shift held
+			editor.click_tool(ToolType::Path, MouseKeys::LEFT, middle, ModifierKeys::empty()).await;
+			editor.click_tool(ToolType::Path, MouseKeys::LEFT, handle, ModifierKeys::empty()).await;
+			let [selected_handle] = selected_points(&editor)[..] else {
+				panic!("only the handle should be selected")
+			};
+			let target = middle + DVec2::from_angle(37_f64.to_radians()) * 100.;
+			press_at(&mut editor, handle).await;
+			move_to(&mut editor, target, ModifierKeys::SHIFT).await;
+			editor.left_mouseup(target.x, target.y, ModifierKeys::SHIFT).await;
+
+			let document = editor.active_document();
+			let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+			let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+			let dragged = to_viewport.transform_point2(vector.position_of(selected_handle).expect("the handle should exist"));
+			let degrees = (dragged - middle).to_angle().to_degrees();
+			assert!((degrees - 30.).abs() < 1e-6, "the handle is at {degrees}° rather than snapped to 30°");
+		}
 	}
 }
