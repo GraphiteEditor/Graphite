@@ -12,9 +12,15 @@ pub(crate) struct ColorOverlay {
 
 impl MapColor for ColorOverlay {
 	fn map_cpu(&self, pixel: Color) -> Color {
-		let overlay = apply_blend_mode(self.color, pixel, self.blend_mode);
-		let mix = |image: f32, overlay: f32| image + (overlay - image) * self.opacity;
-
-		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
+		overlay_paint(pixel, self.color, self.blend_mode, self.opacity)
 	}
+}
+
+/// The color with `paint` mixed over it by the blend mode, as much as the paint's alpha times `opacity` (from 0 to 1), keeping the color's own alpha.
+pub fn overlay_paint(color: Color, paint: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	let overlay = apply_blend_mode(paint, color, blend_mode);
+	let amount = opacity * paint.a();
+	let mix = |under: f32, over: f32| under + (over - under) * amount;
+
+	Color::from_rgbaf32_unchecked(mix(color.r(), overlay.r()), mix(color.g(), overlay.g()), mix(color.b(), overlay.b()), color.a())
 }

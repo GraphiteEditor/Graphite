@@ -158,6 +158,39 @@ impl<P: Pixel> Image<P> {
 }
 
 impl Image<Color> {
+	/// The color at a point in pixel coordinates, interpolating the four nearest pixel centers by their alpha.
+	/// Like the renderer draws images, it's transparent outside the image and takes the edge pixels' colors out to its edges.
+	pub fn sample_bilinear(&self, point: DVec2) -> Color {
+		// Also rejects NaN and far-off points before they become pixel indices
+		let size = DVec2::new(self.width as f64, self.height as f64);
+		if !(point.cmpge(DVec2::ZERO).all() && point.cmplt(size).all()) {
+			return Color::TRANSPARENT;
+		}
+
+		let point = point.clamp(DVec2::splat(0.5), size - 0.5);
+		let corner = (point - 0.5).floor();
+		let fraction = (point - 0.5 - corner).as_vec2();
+
+		let premultiplied_at = |offset_x: i64, offset_y: i64| {
+			let (x, y) = (corner.x as i64 + offset_x, corner.y as i64 + offset_y);
+			if x < 0 || y < 0 || x >= self.width as i64 || y >= self.height as i64 {
+				return [0.; 4];
+			}
+			let color = self.data[(y * self.width as i64 + x) as usize];
+			[color.r() * color.a(), color.g() * color.a(), color.b() * color.a(), color.a()]
+		};
+		let lerp = |a: [f32; 4], b: [f32; 4], t: f32| std::array::from_fn::<f32, 4, _>(|channel| a[channel] + (b[channel] - a[channel]) * t);
+
+		let top = lerp(premultiplied_at(0, 0), premultiplied_at(1, 0), fraction.x);
+		let bottom = lerp(premultiplied_at(0, 1), premultiplied_at(1, 1), fraction.x);
+		let [red, green, blue, alpha] = lerp(top, bottom, fraction.y);
+
+		match alpha > 0. {
+			true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha),
+			false => Color::TRANSPARENT,
+		}
+	}
+
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 		let data = image_data.chunks_exact(4).map(|v| SRGBA8::new(v[0], v[1], v[2], v[3]).into()).collect();

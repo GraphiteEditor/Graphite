@@ -276,11 +276,29 @@ fn degenerate_strokes_render() {
 
 /// Renders an opaque white square from (`min`, `min`) to (`max`, `max`) through `effects` with `fill`.
 fn render_square_with_effects(effects: Vec<graphic_types::EffectOperation>, fill: f32, min: f64, max: f64, size: UVec2) -> Option<Vec<[u8; 4]>> {
-	let square = Rect::new(min, min, max, max);
-	let effects = graphic_types::Effects::from_operations(effects);
+	use rendering::{Render, RenderParams};
 
+	let square = Rect::new(min, min, max, max);
+
+	// The paint overlays' paints, drawn as the renderer does for content placed in the scene's space
+	let paints: Vec<graphic_types::Graphic> = (effects.iter())
+		.filter_map(|operation| match operation {
+			graphic_types::EffectOperation::PaintOverlay { paint, .. } => Some(paint),
+			_ => None,
+		})
+		.map(|paint| graphic_types::fitted_paint(paint, [glam::DVec2::splat(min), glam::DVec2::splat(max)]).unwrap_or_else(|| paint.clone()))
+		.collect();
+	let mut draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
+		if let Some(paint) = paints.get(index) {
+			paint.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default().for_pattern());
+		}
+	};
+
+	let effects = graphic_types::Effects::from_operations(effects);
 	render(size, |scene| {
-		scene.draw_effects(&effects, fill, Some(square), &mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square));
+		scene.draw_effects(&effects, fill, Some(square), &mut draw_paint, &mut |scene| {
+			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+		});
 	})
 }
 
@@ -378,6 +396,46 @@ fn shadows_and_glows_fall_where_they_should() {
 }
 
 #[test]
+fn paint_overlays_stretch_unplaced_paints_across_the_content() {
+	use core_types::Color as GraphicColor;
+	use core_types::blending::BlendMode;
+	use core_types::list::Item;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::vector_types::gradient::{Gradient, GradientStop};
+	use graphic_types::{EffectOperation, Graphic};
+
+	let size = UVec2::new(128, 128);
+	let overlay = |paint: Graphic| EffectOperation::PaintOverlay {
+		paint,
+		blend_mode: BlendMode::Normal,
+		opacity: 100.,
+	};
+	let reddish = |[red, green, blue, alpha]: [u8; 4]| red > 200 && green < 64 && blue < 64 && alpha == 255;
+	let bluish = |[red, green, blue, alpha]: [u8; 4]| blue > 200 && red < 64 && green < 64 && alpha == 255;
+
+	// A gradient from red to blue runs from the square's left edge to its right edge
+	let stops = [(0., GraphicColor::RED), (1., GraphicColor::BLUE)].map(|(position, color)| GradientStop { position, midpoint: 0.5, color });
+	let Some(pixels) = render_square_with_effects(vec![overlay(Graphic::from(Gradient::new(stops)))], 1., 30., 80., size) else {
+		return;
+	};
+	assert!(reddish(pixel(&pixels, size, 31, 55)), "the start at the left edge: {:?}", pixel(&pixels, size, 31, 55));
+	assert!(bluish(pixel(&pixels, size, 78, 55)), "the end at the right edge: {:?}", pixel(&pixels, size, 78, 55));
+	assert_eq!(pixel(&pixels, size, 25, 55)[3], 0, "nothing outside the content");
+
+	// An image of a red pixel beside a blue one covers the square, each pixel half of it
+	let image = Image {
+		width: 2,
+		height: 1,
+		data: vec![GraphicColor::RED, GraphicColor::BLUE],
+	};
+	let Some(pixels) = render_square_with_effects(vec![overlay(Graphic::from(Item::new_from_element(Raster::new_cpu(image))))], 1., 30., 80., size) else {
+		return;
+	};
+	assert!(reddish(pixel(&pixels, size, 35, 40)), "the left half: {:?}", pixel(&pixels, size, 35, 40));
+	assert!(bluish(pixel(&pixels, size, 75, 70)), "the right half: {:?}", pixel(&pixels, size, 75, 70));
+}
+
+#[test]
 fn later_shadows_stack_over_earlier_ones_beneath_the_content() {
 	use core_types::Color as GraphicColor;
 	use glam::DVec2;
@@ -421,8 +479,10 @@ fn nested_effects_groups_render_inside_out() {
 		gamma: false,
 	}]);
 	let draw = |scene: &mut VelloSceneBuilder| {
-		scene.draw_effects(&shadow, 1., Some(square.inflate(12., 12.)), &mut |scene| {
-			scene.draw_effects(&blur, 1., Some(square), &mut |scene| scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square));
+		scene.draw_effects(&shadow, 1., Some(square.inflate(12., 12.)), &mut |_, _| {}, &mut |scene| {
+			scene.draw_effects(&blur, 1., Some(square), &mut |_, _| {}, &mut |scene| {
+				scene.fill(Fill::NonZero, Affine::IDENTITY, Color::WHITE, None, &square)
+			});
 		});
 	};
 
@@ -437,12 +497,15 @@ fn nested_effects_groups_render_inside_out() {
 #[test]
 fn cpu_evaluated_effects_match_the_gpu_passes() {
 	use core_types::Color as GraphicColor;
+	use core_types::blending::BlendMode;
+	use core_types::list::ATTR_GRADIENT_FORM;
 	use core_types::list::{ATTR_EFFECTS, Item};
 	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 	use glam::DVec2;
 	use graphic_types::adjustment::{Adjustment, LevelsRecord, LevelsSettings};
 	use graphic_types::raster_types::{Image, Raster};
-	use graphic_types::{EffectOperation, Effects};
+	use graphic_types::vector_types::gradient::{Gradient, GradientForm, GradientStop};
+	use graphic_types::{EffectOperation, Effects, Graphic};
 	use raster_kernels::evaluate_raster_effects;
 
 	let size = UVec2::new(160, 160);
@@ -491,7 +554,62 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 		})))],
 	];
 
-	for effects in cases {
+	// Paint overlays over a colored backdrop, their paints placed on their own since the raster and the square fit unplaced paints to different bounds
+	let backdrop = EffectOperation::Adjustment(Adjustment::ColorOverlay {
+		color: GraphicColor::from_rgbaf32_unchecked(0.3, 0.6, 0.2, 1.),
+		blend_mode: BlendMode::Normal,
+		opacity: 100.,
+	});
+	let gradient = |form: GradientForm, transform: DAffine2| {
+		let stops = [(0., [0.9, 0.1, 0.4, 1.]), (0.5, [0.2, 0.3, 0.9, 0.5]), (1., [1., 0.9, 0.7, 1.])].map(|(position, [red, green, blue, alpha])| GradientStop {
+			position,
+			midpoint: 0.5,
+			color: GraphicColor::from_rgbaf32_unchecked(red, green, blue, alpha),
+		});
+		let item = Item::new_from_element(Gradient::new(stops)).with_attribute(ATTR_TRANSFORM, transform);
+		Graphic::from(item.with_attribute(ATTR_GRADIENT_FORM, form))
+	};
+	let linear = gradient(GradientForm::Linear, DAffine2::from_translation(DVec2::new(45., 60.)) * DAffine2::from_scale(DVec2::splat(60.)));
+	let radial = gradient(GradientForm::Radial, DAffine2::from_translation(DVec2::splat(75.)) * DAffine2::from_scale(DVec2::splat(30.)));
+
+	// A checkerboard with a pixel for each of the square's, so sampling it needs no interpolation
+	let checker = Image {
+		width: 50,
+		height: 50,
+		data: (0..2500)
+			.map(|index| match (index % 50 / 5 + index / 50 / 5) % 2 {
+				0 => GraphicColor::RED,
+				_ => GraphicColor::from_rgbaf32_unchecked(0., 0., 1., 0.5),
+			})
+			.collect(),
+	};
+	let checker_placement = DAffine2::from_translation(DVec2::splat(50.)) * DAffine2::from_scale(DVec2::splat(50.));
+	let checker = Graphic::from(Item::new_from_element(Raster::new_cpu(checker)).with_attribute(ATTR_TRANSFORM, checker_placement));
+
+	let overlay = |paint: &Graphic, blend_mode, opacity| {
+		vec![
+			backdrop.clone(),
+			EffectOperation::PaintOverlay {
+				paint: paint.clone(),
+				blend_mode,
+				opacity,
+			},
+		]
+	};
+	// Hard Mix's threshold and the hue of the gradient's grays turn the slightest rounding into large differences, so they take the checkerboard's exact colors instead
+	let ill_conditioned = [BlendMode::HardMix, BlendMode::Hue];
+	let mut paint_cases: Vec<_> = (BlendMode::list().into_iter().flatten())
+		.filter(|blend_mode| !ill_conditioned.contains(blend_mode))
+		.map(|&blend_mode| overlay(&linear, blend_mode, 100.))
+		.collect();
+	paint_cases.extend(ill_conditioned.map(|blend_mode| overlay(&checker, blend_mode, 100.)));
+	paint_cases.extend([
+		overlay(&linear, BlendMode::Normal, 40.),
+		overlay(&radial, BlendMode::Multiply, 100.),
+		overlay(&checker, BlendMode::Screen, 100.),
+	]);
+
+	for effects in cases.into_iter().chain(paint_cases) {
 		for fill in [1., 0.5] {
 			let Some(gpu) = render_square_with_effects(effects.clone(), fill, min as f64, max as f64, size) else {
 				return;
@@ -532,7 +650,16 @@ fn cpu_evaluated_effects_match_the_gpu_passes() {
 					}
 				}
 			}
-			assert!(worst <= 2, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");
+			// Modes that divide, or land near black where the gamma encoding is steepest, amplify the rounding of the rendered paint's eight bits
+			use BlendMode::*;
+			let tolerance = match effects.last() {
+				Some(EffectOperation::PaintOverlay {
+					blend_mode: ColorBurn | LinearBurn | ColorDodge | HardLight | VividLight | LinearLight | PinLight,
+					..
+				}) => 8,
+				_ => 2,
+			};
+			assert!(worst <= tolerance, "{effects:?} at fill {fill} differs from the GPU by up to {worst} levels");
 		}
 	}
 }
@@ -636,7 +763,7 @@ fn gpu_adjustment_passes_match_the_cpu_kernels() {
 		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
 		let through_effects_group = |scene: &mut VelloSceneBuilder| {
 			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
-			scene.draw_effects(&effects, 1., Some(bounds), &mut |scene| {
+			scene.draw_effects(&effects, 1., Some(bounds), &mut |_, _| {}, &mut |scene| {
 				scene.draw_raster(raster.clone(), Vec::new(), peniko::ImageSampler::new(), Affine::IDENTITY)
 			});
 		};
