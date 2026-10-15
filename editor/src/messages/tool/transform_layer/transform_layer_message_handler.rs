@@ -400,6 +400,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.grs_pen_handle = true;
 				self.mouse_position = input.mouse.position;
 				self.start_mouse = input.mouse.position;
+				self.initial_transform = document_to_viewport;
 
 				let top_left = DVec2::new(last_point.x, handle.y);
 				let bottom_right = DVec2::new(handle.x, last_point.y);

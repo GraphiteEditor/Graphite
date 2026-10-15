@@ -3279,4 +3279,35 @@ mod test_pen_tool {
 		let incoming = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(incoming);
 		assert!(incoming.distance(corner + anchor - handle) < 1e-6, "the incoming handle is at {incoming}");
 	}
+
+	#[tokio::test]
+	async fn a_handle_grabbed_with_g_follows_the_pointer_when_zoomed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+		let zoom = editor.active_document().metadata().document_to_viewport.matrix2.x_axis.length();
+		assert!((zoom - 1.).abs() > 0.1, "the view should be zoomed, not at {zoom}");
+
+		// The second anchor's outgoing handle is dragged out, then grabbed and moved by as much as the pointer
+		let (start, anchor, handle) = (DVec2::new(100., 300.), DVec2::new(250., 220.), DVec2::new(330., 230.));
+		click_pen(&mut editor, start).await;
+		editor.move_mouse(anchor.x, anchor.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(anchor.x, anchor.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+
+		let (grip, travel) = (DVec2::new(500., 150.), DVec2::new(40., 70.));
+		editor.move_mouse(grip.x, grip.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.press(Key::KeyG, ModifierKeys::empty()).await;
+		editor.move_mouse(grip.x + travel.x, grip.y + travel.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		// The next segment starts with the moved handle
+		click_pen(&mut editor, DVec2::new(450., 400.)).await;
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let segment = vector.segment_domain.ids()[1];
+		let outgoing = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector).expect("The segment should have an outgoing handle");
+		let outgoing = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(outgoing);
+		assert!(outgoing.distance(handle + travel) < 1e-6, "the handle is at {outgoing} rather than {}", handle + travel);
+	}
 }
