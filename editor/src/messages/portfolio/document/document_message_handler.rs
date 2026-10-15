@@ -626,6 +626,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::Escape => {
+				// The same Esc cancels the pan, tilt, or zoom drag through its own binding
+				if self.navigation_handler.is_navigating() {
+					return;
+				}
+
 				// Abort dragging nodes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
