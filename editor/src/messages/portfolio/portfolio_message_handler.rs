@@ -989,7 +989,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let resolution = glam::UVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION);
 				let scale = viewport.scale();
 
-				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
+				// The render's pixels are physical, so its half width in logical pixels shrinks with the scale
+				let preview_offset_in_viewport = ipp.mouse.position - glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2. / scale);
 				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
 
 				let document_to_viewport = document.metadata().document_to_viewport;
