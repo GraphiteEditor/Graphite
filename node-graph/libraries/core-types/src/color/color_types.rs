@@ -744,9 +744,15 @@ impl Color {
 		c_b - c_s
 	}
 
-	/// Per-channel "Divide" blend.
+	/// Per-channel "Divide" blend, where a black backdrop stays black and any other turns white when divided by black.
 	pub fn blend_divide(c_b: f32, c_s: f32) -> f32 {
-		if c_b.abs() <= BLEND_EDGE_TOLERANCE { 1. } else { c_b / c_s }
+		if c_b <= BLEND_EDGE_TOLERANCE {
+			0.
+		} else if c_s <= BLEND_EDGE_TOLERANCE {
+			1.
+		} else {
+			c_b / c_s
+		}
 	}
 
 	/// Runs `blend` on this color's and `c_s`'s gamma-encoded channels, which the component blend modes are defined on, keeping `c_s`'s alpha.

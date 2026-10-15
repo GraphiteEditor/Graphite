@@ -4,7 +4,7 @@ use crate::vello_generators::GeneratorPasses;
 use glam::{DAffine2, UVec2};
 use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Image, Raster, WeakCPU};
-use graphic_types::{Adjustment, Effects};
+use graphic_types::{Adjustment, EffectOperation, Effects};
 use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -369,15 +369,37 @@ impl EffectsRenderer for RenderContext<'_> {
 		fill: f32,
 		effect_to_pixels: DAffine2,
 		capture: Option<EffectCapture>,
+		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
 		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
 	) -> wgpu::Texture {
 		let content_texture = self.canvas.effect_textures.acquire(self.device, size, self.renderer.precise_format);
 		self.render_area(draw, view, size, &content_texture, TargetAlpha::Premultiplied);
 
+		// The paint overlays' paints, each rendered over the same pixels as the content
+		let paint_count = effects.operations().filter(|operation| matches!(operation, EffectOperation::PaintOverlay { .. })).count();
+		let paint_textures: Vec<wgpu::Texture> = (0..paint_count)
+			.map(|index| {
+				let paint_texture = self.canvas.effect_textures.acquire(self.device, size, self.renderer.precise_format);
+				self.render_area(&mut |scene| draw_paint(index, scene), view, size, &paint_texture, TargetAlpha::Premultiplied);
+				paint_texture
+			})
+			.collect();
+
 		let effect_textures = &mut self.canvas.effect_textures;
 		let queue = self.queue.lock();
-		let result = (self.renderer.effect_passes).apply(self.device, &queue, effect_textures, &content_texture, effects, fill, effect_to_pixels.matrix2, capture);
+		let result = (self.renderer.effect_passes).apply(
+			self.device,
+			&queue,
+			effect_textures,
+			&content_texture,
+			effects,
+			fill,
+			effect_to_pixels.matrix2,
+			&paint_textures,
+			capture,
+		);
 		effect_textures.release(content_texture);
+		paint_textures.into_iter().for_each(|paint_texture| effect_textures.release(paint_texture));
 
 		result
 	}

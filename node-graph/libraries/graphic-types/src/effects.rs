@@ -7,6 +7,7 @@ use crate::adjustment::Adjustment;
 use crate::parameters::{ParameterVisitor, ReadParameters, WriteParameters};
 use core_types::ATTR_TRANSFORM;
 use core_types::Color;
+use core_types::blending::BlendMode;
 use core_types::color::SRGBA8;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{ATTR_EFFECTS, ATTR_OPACITY, ATTR_OPACITY_FILL, Item, List};
@@ -31,6 +32,8 @@ pub enum EffectKind {
 	InnerShadow,
 	/// Surrounds the content with a soft glow of its silhouette.
 	OuterGlow,
+	/// Paints over the content within its silhouette, mixing with its colors by a blend mode. A solid color paint is the color overlay adjustment.
+	PaintOverlay,
 	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
 	Desaturate,
 	GammaCorrection,
@@ -51,7 +54,6 @@ pub enum EffectKind {
 	ColorBalance,
 	PhotoFilter,
 	ColorLookup,
-	ColorOverlay,
 }
 
 impl std::fmt::Display for EffectKind {
@@ -61,6 +63,7 @@ impl std::fmt::Display for EffectKind {
 			Self::DropShadow => "Drop Shadow",
 			Self::InnerShadow => "Inner Shadow",
 			Self::OuterGlow => "Outer Glow",
+			Self::PaintOverlay => "Paint Overlay",
 			Self::Desaturate => "Desaturate",
 			Self::GammaCorrection => "Gamma Correction",
 			Self::MakeOpaque => "Make Opaque",
@@ -80,7 +83,6 @@ impl std::fmt::Display for EffectKind {
 			Self::ColorBalance => "Color Balance",
 			Self::PhotoFilter => "Photo Filter",
 			Self::ColorLookup => "Color Lookup",
-			Self::ColorOverlay => "Color Overlay",
 		})
 	}
 }
@@ -137,6 +139,29 @@ pub fn shape_strength(strength: f64, range: f64, contour: &impl Fn(f64) -> f64) 
 	contour((strength / range).clamp(0., 1.)).clamp(0., 1.)
 }
 
+/// An overlay's paint with its unit square fitted to `content_bounds`, the content's extent in the space it's drawn in, if it's a gradient or image without its own placement.
+pub fn fitted_paint(paint: &Graphic, content_bounds: [DVec2; 2]) -> Option<Graphic> {
+	let unplaced = match paint {
+		Graphic::Gradient(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		Graphic::RasterCPU(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		Graphic::RasterGPU(item) => item.attribute::<DAffine2>(ATTR_TRANSFORM).is_none(),
+		_ => false,
+	};
+	if !unplaced {
+		return None;
+	}
+
+	let fit = DAffine2::from_translation(content_bounds[0]) * DAffine2::from_scale(content_bounds[1] - content_bounds[0]);
+	let mut paint = paint.clone();
+	match &mut paint {
+		Graphic::Gradient(item) => item.set_attribute(ATTR_TRANSFORM, fit),
+		Graphic::RasterCPU(item) => item.set_attribute(ATTR_TRANSFORM, fit),
+		Graphic::RasterGPU(item) => item.set_attribute(ATTR_TRANSFORM, fit),
+		_ => {}
+	}
+	Some(paint)
+}
+
 /// One image operation of an [`Effects`] list: an [`EffectKind`] plus its parameters, carried as attributes on the inner item.
 /// Each parameter's attribute is named after the input of the node that stamps the kind. Attributes the kind doesn't take are ignored.
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
@@ -159,7 +184,21 @@ impl Effect {
 	pub fn operation(&self) -> EffectOperation {
 		let mut operation = EffectOperation::placeholder(self.kind());
 		operation.visit_parameters(&mut ReadParameters(&|key| self.0.attributes().get_any(key)));
-		operation.with_finite_lengths()
+		let operation = operation.with_finite_lengths();
+
+		// A solid paint mixes the same into every pixel, so the renderers carry it out with the other adjustments
+		match operation {
+			EffectOperation::PaintOverlay {
+				paint: Graphic::Color(color),
+				blend_mode,
+				opacity,
+			} => EffectOperation::Adjustment(Adjustment::ColorOverlay {
+				color: *color.element(),
+				blend_mode,
+				opacity,
+			}),
+			operation => operation,
+		}
 	}
 }
 
@@ -462,6 +501,14 @@ pub enum EffectOperation {
 		range: f64,
 		contour: TransferCurve,
 	},
+	/// Paints over the content with a paint other than a solid color, since a solid one decodes into the color overlay adjustment instead.
+	PaintOverlay {
+		/// Placed in the space the content's item is, or fitted to the content's bounds if it's a gradient or image without its own placement.
+		paint: Graphic,
+		blend_mode: BlendMode,
+		/// Percent.
+		opacity: f64,
+	},
 	Adjustment(Adjustment),
 }
 
@@ -477,6 +524,7 @@ impl EffectOperation {
 			Self::DropShadow { .. } => EffectKind::DropShadow,
 			Self::InnerShadow { .. } => EffectKind::InnerShadow,
 			Self::OuterGlow { .. } => EffectKind::OuterGlow,
+			Self::PaintOverlay { .. } => EffectKind::PaintOverlay,
 			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
@@ -487,6 +535,7 @@ impl EffectOperation {
 			Self::Blur { radius, .. } => *radius <= 0.,
 			Self::DropShadow { color, .. } | Self::InnerShadow { color, .. } => color.a() <= 0.,
 			Self::OuterGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
+			Self::PaintOverlay { opacity, .. } => *opacity <= 0.,
 			Self::Adjustment(_) => false,
 		}
 	}
@@ -497,7 +546,7 @@ impl EffectOperation {
 			Self::Blur { .. } => true,
 			// Cast from the content's shape or changing each pixel alone
 			Self::DropShadow { .. } | Self::InnerShadow { .. } | Self::OuterGlow { .. } => false,
-			Self::Adjustment(_) => false,
+			Self::PaintOverlay { .. } | Self::Adjustment(_) => false,
 		}
 	}
 
@@ -515,7 +564,7 @@ impl EffectOperation {
 			// Shadows and glows end within their size, past which a precise glow fades over one more unit.
 			Self::DropShadow { distance, size, .. } | Self::InnerShadow { distance, size, .. } => distance.abs() + size.max(0.) + 1.,
 			Self::OuterGlow { size, .. } => size.max(0.) + 1.,
-			Self::Adjustment(_) => 0.,
+			Self::PaintOverlay { .. } | Self::Adjustment(_) => 0.,
 		}
 	}
 
@@ -536,7 +585,7 @@ impl EffectOperation {
 				[angle, distance, spread, size].into_iter().for_each(finite);
 			}
 			Self::OuterGlow { spread, size, range, .. } => [spread, size, range].into_iter().for_each(finite),
-			Self::Adjustment(_) => {}
+			Self::PaintOverlay { .. } | Self::Adjustment(_) => {}
 		}
 		self
 	}
@@ -574,6 +623,11 @@ impl EffectOperation {
 				range: 0.,
 				contour: TransferCurve::default(),
 			},
+			EffectKind::PaintOverlay => Self::PaintOverlay {
+				paint: Graphic::default(),
+				blend_mode: BlendMode::default(),
+				opacity: 0.,
+			},
 			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
 			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
 			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
@@ -609,11 +663,6 @@ impl EffectOperation {
 				preserve_luminosity: false,
 			}),
 			EffectKind::ColorLookup => Self::Adjustment(Adjustment::ColorLookup { lut_file: Default::default() }),
-			EffectKind::ColorOverlay => Self::Adjustment(Adjustment::ColorOverlay {
-				color: Color::TRANSPARENT,
-				blend_mode: Default::default(),
-				opacity: 0.,
-			}),
 		}
 	}
 
@@ -676,6 +725,11 @@ impl EffectOperation {
 				visitor.parameter("range", range, 50.);
 				visitor.parameter("contour", contour, TransferCurve::default());
 			}
+			Self::PaintOverlay { paint, blend_mode, opacity } => {
+				visitor.parameter("paint", paint, Graphic::from(Color::BLACK));
+				visitor.parameter("blend_mode", blend_mode, BlendMode::default());
+				visitor.parameter("opacity", opacity, 100.);
+			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
@@ -684,6 +738,7 @@ impl EffectOperation {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use vector_types::{Gradient, GradientStop};
 
 	#[test]
 	fn rows_round_trip_their_operations_eliding_defaults() {
@@ -710,11 +765,42 @@ mod tests {
 				range: 75.,
 				contour: TransferCurve::default(),
 			},
+			EffectOperation::PaintOverlay {
+				paint: Graphic::from(Gradient::new([0., 1.].map(|position| GradientStop {
+					position,
+					midpoint: 0.5,
+					color: Color::from_rgbaf32_unchecked(position as f32, 0., 1., 1.),
+				}))),
+				blend_mode: BlendMode::Multiply,
+				opacity: 60.,
+			},
+			EffectOperation::Adjustment(Adjustment::ColorOverlay {
+				color: Color::GREEN,
+				blend_mode: BlendMode::Screen,
+				opacity: 100.,
+			}),
 		];
 
 		for operation in operations {
 			assert_eq!(Effect::new(&operation).operation(), operation);
 		}
+
+		// A solid paint decodes into the color overlay adjustment, which the Paint Overlay row also carries
+		let solid = EffectOperation::PaintOverlay {
+			paint: Graphic::from(Color::RED),
+			blend_mode: BlendMode::Normal,
+			opacity: 50.,
+		};
+		let solid_row = Effect::new(&solid);
+		assert_eq!(solid_row.kind(), EffectKind::PaintOverlay);
+		assert_eq!(
+			solid_row.operation(),
+			EffectOperation::Adjustment(Adjustment::ColorOverlay {
+				color: Color::RED,
+				blend_mode: BlendMode::Normal,
+				opacity: 50.,
+			})
+		);
 
 		let default_row = Effect::new(&EffectOperation::default_for(EffectKind::DropShadow));
 		assert_eq!(default_row.0.attributes().iter_any().count(), 0, "a default operation stamps no parameters");
@@ -837,7 +923,7 @@ mod tests {
 			ColorBalance,
 			PhotoFilter,
 			ColorLookup,
-			ColorOverlay,
+			PaintOverlay,
 		];
 		for kind in kinds {
 			let operation = EffectOperation::default_for(kind);

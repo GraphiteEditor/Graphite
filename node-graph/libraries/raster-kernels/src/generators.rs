@@ -16,23 +16,22 @@ pub fn render_pattern(pattern: &GeneratorPattern, area: [DVec2; 2], width: u32, 
 	let pixel_center = |x: usize, y: usize| area[0] + (DVec2::new(x as f64, y as f64) + 0.5) * pixel_size;
 
 	match pattern {
-		GeneratorPattern::Noise(settings) => {
-			let noise = NoiseSampler::new(settings);
-			fill_rows(&mut image.data, width as usize, |y, row| {
-				row.iter_mut().enumerate().for_each(|(x, pixel)| *pixel = Color::from_luminance(noise.sample(pixel_center(x, y))));
-			});
-		}
+		// Across a known area, a Mandelbrot pattern follows a reference orbit as the GPU does
 		GeneratorPattern::Mandelbrot(settings) => {
 			let setup = MandelbrotSetup::new(settings);
 			let (plane_area, plane_texel) = (area.map(|point| setup.plane_point(point)), (pixel_size / setup.scale).min_element());
 			let reference = setup.reference_orbit(plane_area, plane_texel);
 			let interior_test = setup.has_interior_test() && resolves_in_32_bits(plane_area, plane_texel);
-			// The brightness is gamma-encoded, so a Gradient Map takes it as the position along its gradient
 			fill_rows(&mut image.data, width as usize, |y, row| {
 				row.iter_mut().enumerate().for_each(|(x, pixel)| {
-					let value = setup.sample(setup.plane_point(pixel_center(x, y)), reference.as_ref(), interior_test).clamp(0., 1.);
-					*pixel = Color::from_gamma_srgb_channels(value, value, value, 1.);
+					*pixel = mandelbrot_gray(setup.sample(setup.plane_point(pixel_center(x, y)), reference.as_ref(), interior_test));
 				});
+			});
+		}
+		_ => {
+			let sample = pattern_sampler(pattern);
+			fill_rows(&mut image.data, width as usize, |y, row| {
+				row.iter_mut().enumerate().for_each(|(x, pixel)| *pixel = sample(pixel_center(x, y)));
 			});
 		}
 	}
@@ -46,6 +45,30 @@ pub fn thumbnail_area(pattern: &GeneratorPattern) -> Option<[DVec2; 2]> {
 		GeneratorPattern::Noise(_) => None,
 		GeneratorPattern::Mandelbrot(settings) => Some(MandelbrotSetup::new(settings).thumbnail_area()),
 	}
+}
+
+/// Samples the pattern's color at points in its own space, after the setup shared by every sample.
+/// A Mandelbrot pattern is iterated directly in 64 bits, since the points may lie anywhere.
+pub fn pattern_sampler(pattern: &GeneratorPattern) -> impl Fn(DVec2) -> Color + Sync + use<> {
+	enum Sampler {
+		Noise(NoiseSampler),
+		Mandelbrot(MandelbrotSetup),
+	}
+	let sampler = match pattern {
+		GeneratorPattern::Noise(settings) => Sampler::Noise(NoiseSampler::new(settings)),
+		GeneratorPattern::Mandelbrot(settings) => Sampler::Mandelbrot(MandelbrotSetup::new(settings)),
+	};
+
+	move |point| match &sampler {
+		Sampler::Noise(noise) => Color::from_luminance(noise.sample(point)),
+		Sampler::Mandelbrot(setup) => mandelbrot_gray(setup.sample(setup.plane_point(point), None, false)),
+	}
+}
+
+/// The Mandelbrot brightness as a gray, gamma-encoded so a Gradient Map takes it as the position along its gradient.
+fn mandelbrot_gray(brightness: f32) -> Color {
+	let value = brightness.clamp(0., 1.);
+	Color::from_gamma_srgb_channels(value, value, value, 1.)
 }
 
 /// Samples a noise pattern's luminance, from 0 to 1, at positions in its space.

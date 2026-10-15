@@ -2,15 +2,24 @@
 //! Each step mirrors the renderer's GPU passes, working on premultiplied gamma-encoded channels as they do.
 
 use crate::adjustments::adjust_colors;
+use crate::blending::overlay_paint;
 use crate::effect_kernels::{BlurKernel, NEGLIGIBLE_LENGTH, Plane};
+use crate::generators::pattern_sampler;
+use crate::value_effects::evaluate_gradient_effects;
+use core_types::FallibleVec2Operations;
+use core_types::blending::BlendMode;
 use core_types::color::{linear_to_srgb, srgb_to_linear};
-use core_types::list::{ATTR_EFFECTS, Item};
+use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_FORM, Item};
 use core_types::transfer_curve::TransferCurve;
-use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
+use graphic_types::Graphic;
 use graphic_types::adjustment::Adjustment;
-use graphic_types::effects::{EffectOperation, Effects, GlowFill, GlowTechnique, effect_space, grow_and_tent, precise_falloff, shadow_offset, shape_strength, spans_along_axes};
+use graphic_types::effects::{EffectOperation, Effects, GlowFill, GlowTechnique, effect_space, fitted_paint, grow_and_tent, precise_falloff, shadow_offset, shape_strength, spans_along_axes};
+use graphic_types::generator::GeneratorPattern;
+use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Image, Raster};
+use vector_types::gradient::{Gradient, GradientForm, GradientSettings};
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
 const MAX_PIXELS_WITH_MARGIN: f64 = (1 << 24) as f64;
@@ -190,6 +199,25 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let strength = cast(outside, size, choke, GlowTechnique::Softer, 100., contour, pixels_per_length);
 				filled = filled.map(|filled| composite_within(&filled, &strength, &full, color));
 				full = composite_within(&full, &strength, &full, color);
+			}
+			EffectOperation::PaintOverlay { ref paint, blend_mode, opacity } => {
+				let corners = [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| transform.transform_point2(corner));
+				let content_bounds = [corners.into_iter().reduce(DVec2::min).unwrap(), corners.into_iter().reduce(DVec2::max).unwrap()];
+				let fitted = fitted_paint(paint, content_bounds);
+				let Some(sample_paint) = paint_sampler(fitted.as_ref().unwrap_or(paint)) else { continue };
+
+				// The paint at each pixel's center, in the space the image is placed in
+				let pixels_to_placement = transform * DAffine2::from_scale(size.recip()) * DAffine2::from_translation(-DVec2::new(margin_x as f64, margin_y as f64));
+				let mut paint_colors = vec![Color::TRANSPARENT; full.data.len()];
+				fill_rows(&mut paint_colors, full.width, |y, row| {
+					for (x, color) in row.iter_mut().enumerate() {
+						*color = sample_paint(pixels_to_placement.transform_point2(DVec2::new(x as f64 + 0.5, y as f64 + 0.5)));
+					}
+				});
+
+				let opacity = (opacity / 100.) as f32;
+				filled = filled.map(|filled| overlay(&filled, &paint_colors, blend_mode, opacity));
+				full = overlay(&full, &paint_colors, blend_mode, opacity);
 			}
 			EffectOperation::Adjustment(ref adjustment) => {
 				merge_beneath(&mut full, &mut filled, &mut beneath);
@@ -403,6 +431,81 @@ fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>) -> Plan
 	image.zip(beneath, |image, beneath| std::array::from_fn(|channel| image[channel] + beneath[channel] * (1. - image[3])))
 }
 
+/// Mixes the paint's color at each premultiplied gamma-encoded pixel over it by the blend mode, keeping the pixel's alpha.
+fn overlay(plane: &Plane<[f32; 4]>, paint: &[Color], blend_mode: BlendMode, opacity: f32) -> Plane<[f32; 4]> {
+	let data = plane
+		.data
+		.iter()
+		.zip(paint)
+		.map(|(&pixel, &paint)| match pixel[3] > 0. {
+			true => premultiplied_gamma_channels(overlay_paint(straight_linear_color(pixel), paint, blend_mode, opacity)),
+			false => [0.; 4],
+		})
+		.collect();
+	Plane {
+		width: plane.width,
+		height: plane.height,
+		data,
+	}
+}
+
+/// Samples the paint's color at points in the space its placement maps into, faded by its opacity, for the paints the CPU can draw: colors, images, generators, and linear or radial gradients.
+fn paint_sampler(paint: &Graphic) -> Option<Box<dyn Fn(DVec2) -> Color + Sync + '_>> {
+	let inverse = |placement: DAffine2| (placement.matrix2.determinant() != 0.).then(|| placement.inverse());
+	let faded = |color: Color, opacity: f32| color.with_alpha(color.a() * opacity);
+
+	match paint {
+		Graphic::Color(item) => {
+			let color = faded(*item.element(), paint_opacity(item));
+			Some(Box::new(move |_| color))
+		}
+		Graphic::RasterCPU(item) => {
+			let opacity = paint_opacity(item.as_ref());
+			let image = item.element();
+			let to_pixels = DAffine2::from_scale(DVec2::new(image.width as f64, image.height as f64)) * inverse(item.attribute_cloned_or_default(ATTR_TRANSFORM))?;
+			Some(Box::new(move |point| faded(image.sample_bilinear(to_pixels.transform_point2(point)), opacity)))
+		}
+		Graphic::Generator(item) => {
+			let opacity = paint_opacity(item);
+			let to_pattern = inverse(item.attribute_cloned_or_default(ATTR_TRANSFORM))?;
+			let sample = pattern_sampler(&GeneratorPattern::of_item(item));
+			Some(Box::new(move |point| faded(sample(to_pattern.transform_point2(point)), opacity)))
+		}
+		Graphic::Gradient(item) => {
+			let opacity = paint_opacity(item);
+			let item = evaluate_gradient_effects(item.clone());
+			let position = gradient_position(&item)?;
+			let evaluator = item.element().evaluator(GradientSettings::from_item_attributes(&item));
+			Some(Box::new(move |point| faded(evaluator.evaluate(position(point)), opacity)))
+		}
+		_ => None,
+	}
+}
+
+/// The alpha multiplier an item's opacity attributes apply when it serves as a paint.
+fn paint_opacity<T>(item: &Item<T>) -> f32 {
+	(item.attribute_cloned_or::<f64>(ATTR_OPACITY, 1.) * item.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.)) as f32
+}
+
+/// How far along the gradient each point lies, or `None` where its placement collapses it.
+fn gradient_position(item: &Item<Gradient>) -> Option<Box<dyn Fn(DVec2) -> f64 + Sync>> {
+	let placement: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+	match item.attribute_cloned_or_default::<GradientForm>(ATTR_GRADIENT_FORM) {
+		// Measured along the line across the bands, which stay parallel to the placement's sheared y axis as the renderers draw them
+		GradientForm::Linear => {
+			let axis = placement.matrix2.x_axis;
+			let line = axis.try_project_onto(placement.matrix2.y_axis.perp()).unwrap_or(axis);
+			let origin = placement.translation;
+			(line.length_squared() > 0.).then(|| Box::new(move |point: DVec2| (point - origin).dot(line) / line.length_squared()) as Box<dyn Fn(DVec2) -> f64 + Sync>)
+		}
+		GradientForm::Radial => {
+			let to_unit = (placement.matrix2.determinant() != 0.).then(|| placement.inverse())?;
+			Some(Box::new(move |point| to_unit.transform_point2(point).length()))
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -445,6 +548,60 @@ mod tests {
 		let margin = (width - 8) / 2;
 		assert!(pixel(margin, margin + 4).r() < 0.01, "the content's edge is shaded");
 		assert!(pixel(margin + 4, margin + 4).r() > 0.99, "the content's middle is not");
+	}
+
+	#[test]
+	fn a_gradient_paint_overlays_with_its_own_adjustments_carried_out() {
+		use graphic_types::{Effect, stamp_effect};
+		use vector_types::gradient::GradientStop;
+
+		// A black to white gradient, inverted by its own effect, painted over a raster two pixels wide
+		let gradient = Gradient::new([0., 1.].map(|position| GradientStop {
+			position,
+			midpoint: 0.5,
+			color: Color::from_rgbaf32_unchecked(position as f32, position as f32, position as f32, 1.),
+		}));
+		let mut paint = Item::new_from_element(gradient);
+		stamp_effect(&mut paint, Effect::new(&EffectOperation::Adjustment(Adjustment::Invert)));
+
+		let raster = Raster::new_cpu(Image::new(2, 1, Color::WHITE));
+		let mut item = Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::new(2., 1.)));
+		let overlay = EffectOperation::PaintOverlay {
+			paint: Graphic::Gradient(paint),
+			blend_mode: BlendMode::Normal,
+			opacity: 100.,
+		};
+		stamp_effect(&mut item, Effect::new(&overlay));
+
+		let evaluated = evaluate_raster_effects(item);
+		let raster = evaluated.element();
+		let (left, right) = (raster.data[0], raster.data[raster.width as usize - 1]);
+		assert!(left.r() > right.r(), "the inverted gradient runs from {left:?} to {right:?}");
+	}
+
+	#[test]
+	fn a_paint_overlays_faded_by_its_own_opacity() {
+		use graphic_types::{Effect, stamp_effect};
+		use vector_types::gradient::GradientStop;
+
+		// A black gradient at half opacity, painted over white
+		let gradient = Gradient::new([0., 1.].map(|position| GradientStop {
+			position,
+			midpoint: 0.5,
+			color: Color::BLACK,
+		}));
+		let paint = Item::new_from_element(gradient).with_attribute(ATTR_OPACITY, 0.5_f64);
+
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(1, 1, Color::WHITE)));
+		let overlay = EffectOperation::PaintOverlay {
+			paint: Graphic::Gradient(paint),
+			blend_mode: BlendMode::Normal,
+			opacity: 100.,
+		};
+		stamp_effect(&mut item, Effect::new(&overlay));
+
+		let color = evaluate_raster_effects(item).element().data[0];
+		assert!(color.r() > 0.05 && color.r() < 0.95, "half the black paint leaves {color:?}");
 	}
 
 	#[test]
