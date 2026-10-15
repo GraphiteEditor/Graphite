@@ -28,7 +28,7 @@ fn memoize<I: CacheHash + Clone + Send, T: Clone + WasmNotSend>(input: I, conten
 	}
 
 	let state = content.eval(&input);
-	if matches!(state, Poll::Final(_) | Poll::Partial(_)) {
+	if !matches!(state, Poll::Pending | Poll::Error(_)) {
 		*cache.lock().unwrap() = Some((hash, state.clone()));
 	}
 	state
@@ -59,6 +59,7 @@ fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send
 mod tests {
 	use super::*;
 	use core_types::Node;
+	use std::sync::atomic::{AtomicU32, Ordering};
 
 	struct Fail;
 
@@ -73,5 +74,26 @@ mod tests {
 	fn an_error_records_the_index_of_the_memoized_input() {
 		let Poll::Error(error) = MemoizeNode::new(Fail).eval(&()) else { unreachable!() };
 		assert_eq!(error.trace(), [0]);
+	}
+
+	struct StandIn(Arc<AtomicU32>);
+
+	impl Node<()> for StandIn {
+		type Output = u32;
+		fn eval(&self, _: &()) -> Poll<u32> {
+			self.0.fetch_add(1, Ordering::Relaxed);
+			Poll::fallback(1, "stand-in")
+		}
+	}
+
+	#[test]
+	fn a_fallback_is_memoized_with_its_error() {
+		let evaluations = Arc::new(AtomicU32::new(0));
+		let memo = MemoizeNode::new(StandIn(evaluations.clone()));
+
+		let first = memo.eval(&());
+		assert!(matches!(first, Poll::Fallback(_)));
+		assert_eq!(memo.eval(&()), first);
+		assert_eq!(evaluations.load(Ordering::Relaxed), 1);
 	}
 }
