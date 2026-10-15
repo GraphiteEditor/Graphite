@@ -6,7 +6,7 @@ use core_types::color::{linear_to_srgb, srgb_to_linear};
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DMat2, DVec2};
-use graphic_types::effects::{EffectOperation, Effects};
+use graphic_types::effects::{EffectOperation, Effects, GlowSource, outline_extents};
 use raster_types::{CPU, Image, Raster};
 
 /// The most pixels an image may grow to with the margin its effects cast into, beyond which the margin is cut short.
@@ -102,6 +102,38 @@ fn evaluate(raster: &Raster<CPU>, transform: DAffine2, effects: &Effects, fill: 
 				let coverage = cast(&full, document_to_pixels * offset, blur * pixels_per_length, spread * pixels_per_length, true);
 				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
 				full = composite_within(&full, &coverage, &full, color);
+			}
+			EffectOperation::InnerGlow { color, blur, choke, source } => {
+				let mut coverage = cast(&full, DVec2::ZERO, blur * pixels_per_length, choke * pixels_per_length, true);
+				if source == GlowSource::Center {
+					coverage = coverage.map(|coverage| 1. - coverage);
+				}
+				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+				full = composite_within(&full, &coverage, &full, color);
+			}
+			EffectOperation::Satin { color, offset, blur, invert } => {
+				let offset = document_to_pixels * offset;
+				let forward = cast(&full, offset, blur * pixels_per_length, DVec2::ZERO, false);
+				let backward = cast(&full, -offset, blur * pixels_per_length, DVec2::ZERO, false);
+				let coverage = forward.zip(&backward, |forward, backward| satin_coverage(forward, backward, invert));
+
+				filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+				full = composite_within(&full, &coverage, &full, color);
+			}
+			EffectOperation::Outline { color, weight, align } => {
+				// Straight-line distances can't stretch along one axis, so an image scaled unevenly takes the mean of its two scales
+				let pixels_per_length = (pixels_per_length.x * pixels_per_length.y).sqrt();
+				let (outside, inside) = outline_extents(weight * pixels_per_length, align);
+				let silhouette = full.map(|[_, _, _, alpha]| alpha);
+
+				if outside >= NEGLIGIBLE_LENGTH {
+					beneath = Some(accumulate(beneath, &silhouette.edge_band(outside, false), color));
+				}
+				if inside >= NEGLIGIBLE_LENGTH {
+					let coverage = silhouette.edge_band(inside, true);
+					filled = filled.map(|filled| composite_within(&filled, &coverage, &full, color));
+					full = composite_within(&full, &coverage, &full, color);
+				}
 			}
 		}
 	}
@@ -199,4 +231,10 @@ fn composite_within(image: &Plane<[f32; 4]>, coverage: &Plane<f32>, full_content
 fn composite_beneath(image: &Plane<[f32; 4]>, beneath: &Plane<[f32; 4]>, full_content: &Plane<[f32; 4]>) -> Plane<[f32; 4]> {
 	let knocked_out = beneath.zip(full_content, |beneath, content| beneath.map(|channel| channel * (1. - content[3])));
 	image.zip(&knocked_out, |image, beneath| std::array::from_fn(|channel| image[channel] + beneath[channel]))
+}
+
+/// Satin's shading where the two casts of the silhouette cover `forward` and `backward`: how much one covers without the other, or how much they agree if `invert`.
+fn satin_coverage(forward: f32, backward: f32, invert: bool) -> f32 {
+	let difference = (forward - backward).abs();
+	if invert { 1. - difference } else { difference }
 }

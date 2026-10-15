@@ -12,6 +12,8 @@ struct Parameters {
 	tap_count: u32,
 	// The premultiplied color a silhouette is tinted
 	color: vec4<f32>,
+	// The extra constants a pass needs beyond the fields above
+	values: vec4<f32>,
 	// Each kernel tap's distance in steps (x) and weight (y)
 	taps: array<vec4<f32>, 25>,
 }
@@ -69,6 +71,68 @@ fn cast_silhouette(@builtin(position) position: vec4<f32>) -> @location(0) vec4<
 @fragment
 fn cast_inverse_silhouette(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	return vec4<f32>(1. - sample_source(position.xy * parameters.target_to_uv - parameters.offset).a);
+}
+
+// The coverage of where a silhouette doesn't reach, which turns an inner glow from the edges into one from the center
+@fragment
+fn invert_coverage(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	return vec4<f32>(1. - textureLoad(source, vec2<i32>(position.xy), 0).r);
+}
+
+// Satin's shading from two casts of the silhouette: how much one covers without the other, or how much they agree with `amount` 1
+@fragment
+fn satin(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let difference = abs(textureLoad(source, pixel, 0).r - textureLoad(secondary, pixel, 0).r);
+	return vec4<f32>(select(difference, 1. - difference, parameters.amount > 0.5));
+}
+
+// Jump flooding keeps each texel's offset to the nearest seed found so far (xy) and whether one is found (z).
+// The seeds are the texels inside the content's silhouette, or outside it with `amount` 1, and each is its own nearest.
+@fragment
+fn jump_flood_seed(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let inside = textureLoad(source, vec2<i32>(position.xy), 0).a >= 0.5;
+	let seed = inside != (parameters.amount > 0.5);
+	return vec4<f32>(0., 0., select(0., 1., seed), 0.);
+}
+
+// Takes the nearest of the seeds that the texel and its eight neighbors `values.x` texels away have found so far
+@fragment
+fn jump_flood_step(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let pixel = vec2<i32>(position.xy);
+	let size = vec2<i32>(textureDimensions(source));
+	let step = i32(parameters.values.x);
+
+	var best = textureLoad(source, pixel, 0);
+	for (var neighbor_y = -1; neighbor_y <= 1; neighbor_y++) {
+		for (var neighbor_x = -1; neighbor_x <= 1; neighbor_x++) {
+			let direction = vec2<i32>(neighbor_x, neighbor_y);
+			let neighbor = pixel + direction * step;
+			if any(neighbor < vec2<i32>(0)) || any(neighbor >= size) {
+				continue;
+			}
+			let found = textureLoad(source, neighbor, 0);
+			if found.z < 0.5 {
+				continue;
+			}
+
+			let candidate = found.xy + vec2<f32>(direction * step);
+			if best.z < 0.5 || dot(candidate, candidate) < dot(best.xy, best.xy) {
+				best = vec4<f32>(candidate, 1., 0.);
+			}
+		}
+	}
+	return best;
+}
+
+// Covers the texels within `values.x` texels of the edge, which lies about half a texel short of the nearest seed, fading out over one texel
+@fragment
+fn edge_band(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let nearest = textureLoad(source, vec2<i32>(position.xy), 0);
+	if nearest.z < 0.5 {
+		return vec4<f32>(0.);
+	}
+	return vec4<f32>(clamp(parameters.values.x + 1. - length(nearest.xy), 0., 1.));
 }
 
 // A silhouette's coverage in its color
