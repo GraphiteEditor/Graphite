@@ -887,8 +887,8 @@ impl PathToolData {
 			}
 			PathToolFsmState::Dragging(self.dragging_state)
 		}
-		// We didn't find a point nearby, so we will see if there is a segment to select or insert a point on
-		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+		// We didn't find a point nearby, so we will see if there is a segment to select or insert a point on, within the distance hovering highlights it
+		else if let Some(segment) = shape_editor.upper_closest_segment(&document.network_interface, input.mouse.position, SEGMENT_INSERTION_DISTANCE) {
 			responses.add(DocumentMessage::StartTransaction);
 
 			self.set_ghost_outline(shape_editor, document);
@@ -4438,5 +4438,21 @@ mod test_path_tool {
 			let degrees = (dragged - middle).to_angle().to_degrees();
 			assert!((degrees - 30.).abs() < 1e-6, "the handle is at {degrees}° rather than snapped to 30°");
 		}
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_beside_a_segment_beyond_its_hover_distance_leaves_the_selected_points() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, A, ModifierKeys::empty()).await;
+
+		// Pressing 7 px from the middle of the second segment, past where hovering highlights it
+		let normal = (C - B).perp().normalize();
+		let beside = (B + C) / 2. + normal * 7.;
+		editor.move_mouse(beside.x, beside.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		drag(&mut editor, beside, beside + DVec2::new(0., 40.)).await;
+
+		assert_anchors(&editor, layer, &[A, B, C]);
 	}
 }
