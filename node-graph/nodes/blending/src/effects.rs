@@ -1,3 +1,4 @@
+use core_types::blending::BlendMode;
 use core_types::list::Item;
 use core_types::{Color, Ctx};
 use glam::DVec2;
@@ -322,4 +323,69 @@ fn bevel_and_emboss<T>(
 		}),
 	);
 	content
+}
+
+/// Paints over the input graphics within their shape, mixing the paint with their colors by a blend mode.
+#[node_macro::node(category("Effect"), icon("NodeColorOverlay"))]
+fn paint_overlay<T>(
+	_: impl Ctx,
+	/// The content to paint over.
+	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
+	content: Item<T>,
+	/// The color, gradient, image, or other graphic to paint with. A gradient or image without its own placement stretches across the content.
+	#[default(Color::BLACK)]
+	paint: Item<Graphic>,
+	/// How the paint mixes with the content's colors.
+	blend_mode: Item<BlendMode>,
+	/// How strongly the paint shows.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	opacity: Item<f64>,
+) -> Item<T> {
+	// The paint is the element alone, since the wire envelope's attributes would nest it as a group
+	let paint = match paint.into_element() {
+		Graphic::None(_) | Graphic::NoneList(_) => return content,
+		Graphic::Color(color) => Graphic::from(evaluate_color_effects(color).into_element()),
+		paint => paint,
+	};
+
+	let mut content = content;
+	stamp_effect(
+		&mut content,
+		Effect::new(&EffectOperation::PaintOverlay {
+			paint,
+			blend_mode: blend_mode.into_element(),
+			opacity: opacity.into_element(),
+		}),
+	);
+	content
+}
+
+#[cfg(test)]
+mod test {
+	use core_types::Color;
+	use core_types::blending::BlendMode;
+	use core_types::list::Item;
+	use graphic_types::Graphic;
+	use graphic_types::raster_types::{Image, Raster};
+
+	#[test]
+	fn paint_overlay_multiplies_a_color_into_the_content() {
+		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
+		let image = Image::new(1, 1, image_color);
+
+		let result = super::paint_overlay(
+			(),
+			Item::new_from_element(Raster::new_cpu(image)),
+			Item::new_from_element(Graphic::from(Color::GREEN)),
+			BlendMode::Multiply.into(),
+			100_f64.into(),
+		);
+		let result = graphic_types::evaluate_raster_effects(result).into_element();
+
+		// Multiplying by green keeps only the green channel, and the content keeps its own alpha
+		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
+	}
 }

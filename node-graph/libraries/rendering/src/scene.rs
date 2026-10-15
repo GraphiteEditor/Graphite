@@ -106,6 +106,8 @@ pub struct EffectsGroup {
 	pub transform: Affine,
 	/// The extent of the content in the scene's space, or `None` for content that covers the whole render area.
 	pub bounds: Option<Rect>,
+	/// The paints of the effects' paint overlays that aren't solid colors, in order, each drawn in the space `transform` maps into the scene's.
+	pub paints: Vec<Scene>,
 }
 
 /// The pixels an image command draws.
@@ -215,13 +217,14 @@ impl Scene {
 	}
 
 	/// Begins content that renders through `effects`, whose lengths are in the scene's space, within `bounds` (or covering the whole render area for `None`).
-	/// Must be balanced by [`Self::pop_layer`].
-	pub fn push_effects(&mut self, effects: Effects, fill: f32, bounds: Option<Rect>) {
+	/// `paints` holds the paint overlays' paints that aren't solid colors. Must be balanced by [`Self::pop_layer`].
+	pub fn push_effects(&mut self, effects: Effects, fill: f32, bounds: Option<Rect>, paints: Vec<Scene>) {
 		self.commands.push(SceneCommand::PushEffects(EffectsGroup {
 			effects,
 			fill,
 			transform: Affine::IDENTITY,
 			bounds,
+			paints,
 		}));
 	}
 

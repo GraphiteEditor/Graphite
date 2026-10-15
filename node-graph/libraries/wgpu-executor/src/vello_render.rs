@@ -498,9 +498,30 @@ impl RenderContext<'_> {
 		let content_transform = Affine::scale(resolution) * Affine::translate(-origin) * transform;
 		self.render_area(content, content_transform, size, &content_texture, TargetAlpha::Premultiplied, 0);
 
+		// The paint overlays' paints, each rendered over the same pixels as the content
+		let paint_transform = content_transform * group.transform;
+		let paint_textures: Vec<wgpu::Texture> = (group.paints.iter())
+			.map(|paint| {
+				let paint_texture = self.canvas.effect_textures.acquire(self.device, size, TEXTURE_FORMAT);
+				self.render_area(paint.commands(), paint_transform, size, &paint_texture, TargetAlpha::Premultiplied, 0);
+				paint_texture
+			})
+			.collect();
+
 		let effect_textures = &mut self.canvas.effect_textures;
-		let result = (self.renderer.effect_passes).apply(self.device, self.queue, effect_textures, &content_texture, &group.effects, group.fill, lengths_to_device * resolution);
+		let lengths_to_pixels = lengths_to_device * resolution;
+		let result = (self.renderer.effect_passes).apply(
+			self.device,
+			self.queue,
+			effect_textures,
+			&content_texture,
+			&group.effects,
+			group.fill,
+			lengths_to_pixels,
+			&paint_textures,
+		);
 		effect_textures.release(content_texture);
+		paint_textures.into_iter().for_each(|paint_texture| effect_textures.release(paint_texture));
 
 		// Draw the result where the content was, under an ID none of the render's images can share
 		let texture_id = TextureId(FIRST_EFFECTS_TEXTURE_ID + recording.effect_results.len() as u64);

@@ -3,7 +3,7 @@
 use crate::adjustment::*;
 use crate::color_lookup_table::parse_cached;
 use core_types::Color;
-use core_types::blending::apply_blend_mode;
+use core_types::blending::{BlendMode, apply_blend_mode};
 use core_types::color::{linear_to_srgb, set_luminosity, srgb_to_linear};
 use core_types::transfer_curve::TransferCurveEvaluator;
 use glam::Vec3;
@@ -130,13 +130,7 @@ impl Adjustment {
 			}
 			Self::ColorOverlay { color, blend_mode, opacity } => {
 				let opacity = (opacity / 100.) as f32;
-
-				map_colors(colors, |pixel| {
-					let overlay = apply_blend_mode(*color, pixel, *blend_mode);
-					let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity;
-
-					Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
-				});
+				map_colors(colors, |pixel| overlay_paint(pixel, *color, *blend_mode, opacity));
 			}
 		}
 	}
@@ -198,6 +192,15 @@ impl Adjustment {
 /// Replaces each color with the kernel's result for it.
 fn map_colors(colors: &mut [Color], kernel: impl Fn(Color) -> Color + Sync) {
 	fill_rows(colors, COLORS_PER_ROW, |_, row| row.iter_mut().for_each(|color| *color = kernel(*color)));
+}
+
+/// The color with `paint` mixed over it by the blend mode, as much as the paint's alpha times `opacity` (from 0 to 1), keeping the color's own alpha.
+pub fn overlay_paint(color: Color, paint: Color, blend_mode: BlendMode, opacity: f32) -> Color {
+	let overlay = apply_blend_mode(paint, color, blend_mode);
+	let amount = opacity * paint.a();
+	let mix = |under: f32, over: f32| under + (over - under) * amount;
+
+	Color::from_rgbaf32_unchecked(mix(color.r(), overlay.r()), mix(color.g(), overlay.g()), mix(color.b(), overlay.b()), color.a())
 }
 
 fn desaturate(color: Color, method: DesaturateMethod) -> Color {

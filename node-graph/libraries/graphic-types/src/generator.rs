@@ -217,25 +217,28 @@ impl GeneratorPattern {
 		let pixel_size = (area[1] - area[0]) / DVec2::new(width as f64, height as f64);
 		let pixel_center = |x: usize, y: usize| area[0] + (DVec2::new(x as f64, y as f64) + 0.5) * pixel_size;
 
-		match self {
-			Self::Noise(settings) => {
-				let noise = NoiseSampler::new(settings);
-				fill_rows(&mut image.data, width as usize, |y, row| {
-					row.iter_mut().enumerate().for_each(|(x, pixel)| *pixel = Color::from_luminance(noise.sample(pixel_center(x, y))));
-				});
-			}
-			Self::Mandelbrot => {
-				fill_rows(&mut image.data, width as usize, |y, row| {
-					row.iter_mut().enumerate().for_each(|(x, pixel)| {
-						let c = pixel_center(x, y) * 3. - DVec2::new(2., 1.5);
-						let value = mandelbrot_escape_iterations(c) as f32 / MANDELBROT_ITERATIONS as f32;
-						*pixel = Color::from_rgbaf32_unchecked(value, value, value, 1.);
-					});
-				});
-			}
-		}
+		let sample = self.sampler();
+		fill_rows(&mut image.data, width as usize, |y, row| {
+			row.iter_mut().enumerate().for_each(|(x, pixel)| *pixel = sample(pixel_center(x, y)));
+		});
 
 		image
+	}
+
+	/// Samples the pattern's color at points in its own space, after the setup shared by every sample.
+	pub fn sampler(&self) -> impl Fn(DVec2) -> Color + Sync + use<> {
+		let noise = match self {
+			Self::Noise(settings) => Some(NoiseSampler::new(settings)),
+			Self::Mandelbrot => None,
+		};
+
+		move |point| match &noise {
+			Some(noise) => Color::from_luminance(noise.sample(point)),
+			None => {
+				let value = mandelbrot_escape_iterations(point * 3. - DVec2::new(2., 1.5)) as f32 / MANDELBROT_ITERATIONS as f32;
+				Color::from_rgbaf32_unchecked(value, value, value, 1.)
+			}
+		}
 	}
 }
 

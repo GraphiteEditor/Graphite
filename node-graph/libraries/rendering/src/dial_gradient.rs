@@ -13,10 +13,7 @@
 use glam::DVec2;
 use std::f64::consts::FRAC_PI_2;
 
-/// The dials of the linear form: both ends are lines.
-pub const LINEAR_DIALS: [f64; 2] = [0., 0.];
-/// The dials of the radial form: the start is a point at the center, and the end is the circle around it through the end point.
-pub const RADIAL_DIALS: [f64; 2] = [1., 0.5];
+pub use graphic_types::vector_types::gradient::{LINEAR_DIALS, RADIAL_DIALS};
 
 /// Stands in for a t of infinity, on the contours whose crossing with the gradient line is at infinity.
 const UNBOUNDED_T: f64 = 1e6;

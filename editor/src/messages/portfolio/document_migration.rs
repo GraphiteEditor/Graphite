@@ -495,8 +495,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::ChannelMixerNode",
 		],
 	},
+	// Color Overlay became Paint Overlay, whose paint input takes the old color input's value as a solid paint
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+		node: graphene_std::blending_nodes::effects::paint_overlay::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::ColorOverlayNode",
 			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
@@ -504,6 +505,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::adjustments::ColorOverlayNode",
 			"raster_nodes::generate_curves::ColorOverlayNode",
 			"graphene_raster_nodes::blending_nodes::ColorOverlayNode",
+			"raster_nodes::blending_nodes::ColorOverlayNode",
 		],
 	},
 	NodeReplacement {
@@ -1233,6 +1235,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				};
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
 				document.network_interface.set_call_argument(node_id, &network_path, default_template.call_argument);
+
+				if *new == graphene_std::blending_nodes::effects::paint_overlay::IDENTIFIER {
+					reset_default_display_name(document, node_id, &network_path, "Color Overlay");
+				}
 			}
 		}
 	}
@@ -2493,7 +2499,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			(graphene_std::artboard::create_artboard::BackgroundInput.into(), Color::WHITE),
 			(graphene_std::math_nodes::color_value::ColorInput.into(), Color::TRANSPARENT),
 			(graphene_std::raster_nodes::adjustments::black_and_white::TintInput.into(), Color::BLACK),
-			(graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput.into(), Color::BLACK),
 			(graphene_std::raster_nodes::std_nodes::empty_image::ColorInput.into(), Color::WHITE),
 		];
 		for (parameter, fallback) in conversions {
