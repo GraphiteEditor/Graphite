@@ -214,7 +214,7 @@ impl Session {
 				self.document.redo_stack.clear();
 			}
 
-			let reverse = self.document.compute_reverse_delta(target, &op)?;
+			let reverse = crate::prior::capture(self.document.registry_ref(target), &op);
 			let timestamp = authored_at.unwrap_or_else(|| self.document.clock.tick());
 			let parent = self.document.head;
 			let author = timestamp.peer;
@@ -383,33 +383,29 @@ impl Session {
 		self.document.history.annotate(rev, key, value, timestamp)
 	}
 
-	/// Whether there is a retired commit at `head` that can be undone in the silent zone (a commit
-	/// after `last_broadcast_rev`). `head == 0` is the empty history; published commits aren't
-	/// silently undoable (that needs a forward reverse-delta op, deferred until transport lands).
-	///
-	/// The earliest interaction (the document's loaded/created base) is *not* undoable: undoing it would
-	/// rewind into the pre-base state, which legacy never offers (opening a document gives an empty undo
-	/// history). We detect "head is on the earliest interaction" by walking `head`'s interaction back along
-	/// first-parents and checking whether it bottoms out at the root with no earlier interaction boundary to
-	/// land on. If so, there is nothing before this interaction to undo to, so undo is disabled.
+	/// Whether the interaction at `head` undoes silently: this user's own, no merge, nothing a peer holds. The document's
+	/// first interaction is not undoable, as opening a document starts with an empty undo history.
 	pub fn can_undo(&self) -> bool {
-		let Some(head) = self.document.head else { return false };
-		if self.document.last_broadcast_rev == Some(head) {
-			return false;
-		}
-		self.interaction_start_parent(head).is_some()
+		self.document.head.is_some_and(|head| self.interaction_start_parent(head, true).is_some())
 	}
 
-	/// Walk the interaction containing `rev` back along first-parents to its first delta, returning the
-	/// rev the cursor would rest on after undoing this interaction, or `None` if that is the root (the
-	/// earliest interaction, which is not undoable). Mirrors the boundary condition in [`undo`](Self::undo):
-	/// stop when the parent is an `interaction_end` boundary or the root.
-	fn interaction_start_parent(&self, rev: Rev) -> Option<Rev> {
-		let mut current = rev;
+	/// Where the cursor rests once the interaction ending at `end` is undone: the previous interaction's end, a merge, or
+	/// another user's delta. `None` for a merge, the first interaction, and for a `silent` undo of another's or a published one.
+	fn interaction_start_parent(&self, end: Rev, silent: bool) -> Option<Rev> {
+		let history = &self.document.history;
+		let mut current = history.get(end)?;
+		let user = self.user_of(current.author);
+		if matches!(current.kind, RegistryDelta::Merge { .. }) || (silent && user != Some(self.document.user)) {
+			return None;
+		}
+		let boundary = |delta: &Delta| delta.is_interaction_end() || matches!(delta.kind, RegistryDelta::Merge { .. }) || self.user_of(delta.author) != user;
 		loop {
-			let parent = self.document.history.get(current)?.parent?;
-			if self.document.history.get(parent).is_some_and(|d| d.is_interaction_end()) {
-				return Some(parent);
+			if silent && self.document.last_broadcast_rev == Some(current.id) {
+				return None;
+			}
+			let parent = history.get(current.parent?)?;
+			if boundary(parent) {
+				return Some(parent.id);
 			}
 			current = parent;
 		}
@@ -419,37 +415,22 @@ impl Session {
 		!self.document.redo_stack.is_empty()
 	}
 
-	/// Silent-zone undo of one *interaction*: revert deltas walking `head` back along first-parents until
-	/// it reaches the previous interaction boundary (a delta marked `interaction_end`) or the empty root. One
-	/// interaction spans several deltas (one `commit_from_runtime` batch), so undo reverts the whole run,
-	/// not a single delta — matching the legacy per-interaction undo granularity. The undone interaction's
-	/// `head` rev is pushed onto the redo stack. Reflog semantics: the DAG is never rewritten.
+	/// Silent-zone undo of one interaction: put back what its deltas overwrote, newest first, until `head` rests where it
+	/// began (see [`can_undo`](Self::can_undo)). Its `head` rev goes on the redo stack; the DAG is not rewritten.
 	pub fn undo(&mut self) -> Result<Rev, CrdtError> {
-		if !self.can_undo() {
-			return Err(CrdtError::NothingToUndo);
-		}
 		let checkpoint = self.document.head.ok_or(CrdtError::NothingToUndo)?;
+		let base = self.interaction_start_parent(checkpoint, true).ok_or(CrdtError::NothingToUndo)?;
 
-		// Revert this interaction's last delta, then keep going back until `head` rests on the previous
-		// interaction's boundary (its `interaction_end` delta) or the root.
-		loop {
-			let rev = self.document.head.ok_or(CrdtError::NothingToUndo)?;
+		while let Some(rev) = self.document.head.filter(|&rev| rev != base) {
 			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
-			let parent = delta.parent;
-
-			self.document.revert_delta(RegistryTarget::Working, delta)?;
-			self.document.head = parent;
-
-			match parent {
-				None => break,
-				Some(parent) if self.document.history.get(parent).is_some_and(|d| d.is_interaction_end()) => break,
-				Some(_) => {}
-			}
+			self.document.revert_delta(&delta);
+			self.document.head = delta.parent;
 		}
 
-		// Undo runs with an empty hot log, so keep the retired snapshot in lockstep with the rewound
-		// working registry (the next interaction's reverses are computed against it).
-		self.document.retired_snapshot = self.document.working_registry.clone();
+		// With ops hot, working is the rewound snapshot plus them.
+		if !self.document.hot_log.is_empty() {
+			self.document.rebuild_working();
+		}
 		self.document.redo_stack.push(checkpoint);
 		Ok(checkpoint)
 	}
@@ -469,15 +450,19 @@ impl Session {
 			forward.push(delta);
 		}
 
-		// Force-apply so each forward value wins the LWW tie against the reverse that undo force-applied
-		// at the same timestamp. Symmetric with `revert_delta`.
+		// The snapshot is the fold up to `head`, so applying the deltas as retirement did folds them in again.
+		let hot = !self.document.hot_log.is_empty();
 		for delta in forward.into_iter().rev() {
-			self.document.force_apply_op(delta.kind.clone(), delta.timestamp)?;
+			self.document.apply_op_with(RegistryTarget::Retired, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
+			if !hot {
+				self.document.apply_op_with(RegistryTarget::Working, delta.kind, delta.timestamp, ApplyMode::Idempotent)?;
+			}
+		}
+		if hot {
+			self.document.rebuild_working();
 		}
 		self.document.head = Some(checkpoint);
 
-		// Redo runs with an empty hot log; keep the retired snapshot in lockstep with the working registry.
-		self.document.retired_snapshot = self.document.working_registry.clone();
 		Ok(checkpoint)
 	}
 
