@@ -5,7 +5,7 @@ use core_types::transform::Footprint;
 use core_types::{Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Effect, EffectOperation, GlowSource, Graphic, Vector, stamp_effect};
+use graphic_types::{BevelDirection, BevelStyle, Effect, EffectOperation, GlowSource, Graphic, Vector, stamp_effect};
 use vector_types::Gradient;
 use vector_types::vector::style::StrokeAlign;
 use wgpu_executor::WgpuPipelineCache;
@@ -285,6 +285,74 @@ fn outline<T: ApplyEffect>(
 			color: *color.element(),
 			weight: *weight.element(),
 			align: *align.element(),
+		},
+		pipeline,
+	)
+}
+
+/// Raises the input graphics into a lit relief, with highlights on the slopes facing the light and shadows on those facing away.
+#[node_macro::node(name("Bevel & Emboss"), category("Raster: Effect"), icon("NodeBlur"))]
+fn bevel_and_emboss<T: ApplyEffect>(
+	_: impl Ctx,
+	/// The content to raise.
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
+	/// Where the slope lies: inside the edge, outside it, across it, or across it with the edge pressed in.
+	style: Item<BevelStyle>,
+	/// How steep the slope is.
+	#[unit("%")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..1000)]
+	#[default(100.)]
+	depth: Item<f64>,
+	/// Whether the slope rises out of the surface or sinks into it.
+	direction: Item<BevelDirection>,
+	/// How wide the slope is.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..250)]
+	#[default(5.)]
+	size: Item<f64>,
+	/// How much the shading is blurred.
+	#[unit(" px")]
+	#[range]
+	#[hard(0..)]
+	#[soft(..16)]
+	soften: Item<f64>,
+	/// The direction the light comes from.
+	#[unit("°")]
+	#[range]
+	#[soft(-180..180)]
+	#[default(120.)]
+	angle: Item<f64>,
+	/// How high above the surface the light is, from the horizon to straight overhead.
+	#[unit("°")]
+	#[range]
+	#[hard(0..90)]
+	#[default(30.)]
+	altitude: Item<f64>,
+	/// The highlight's color, with its opacity.
+	#[default("#ffffffbf")]
+	highlight_color: Item<Color>,
+	/// The shadow's color, with its opacity.
+	#[default("#000000bf")]
+	shadow_color: Item<Color>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	apply_effect(
+		content,
+		EffectOperation::BevelAndEmboss {
+			style: *style.element(),
+			depth: *depth.element(),
+			direction: *direction.element(),
+			size: *size.element(),
+			soften: *soften.element(),
+			angle: *angle.element(),
+			altitude: *altitude.element(),
+			highlight_color: *highlight_color.element(),
+			shadow_color: *shadow_color.element(),
 		},
 		pipeline,
 	)

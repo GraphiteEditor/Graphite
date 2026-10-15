@@ -7,8 +7,8 @@ use crate::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
-use graphic_types::effects::outline_extents;
-use graphic_types::{EffectOperation, Effects, GlowSource};
+use graphic_types::effects::{bevel_light, bevel_smoothing, outline_extents};
+use graphic_types::{BevelDirection, EffectOperation, Effects, GlowSource};
 use raster_kernels::RasterKernel;
 use raster_kernels::blur::BlurSpace;
 use raster_kernels::effects::*;
@@ -180,6 +180,54 @@ impl<'a> EffectsPass<'a> {
 				}
 				if inside >= NEGLIGIBLE_LENGTH {
 					let coverage = self.edge_band(inside, true)?;
+					self.shade_within(&coverage, color)?;
+				}
+			}
+			EffectOperation::BevelAndEmboss {
+				style,
+				depth,
+				direction,
+				size,
+				soften,
+				angle,
+				altitude,
+				highlight_color,
+				shadow_color,
+			} => {
+				let (size, soften) = (size * length_scale, soften * length_scale);
+				if size < NEGLIGIBLE_LENGTH {
+					return Ok(());
+				}
+
+				// The surface's height, rounded by a blur, lit from the light's direction into its highlights and shadows
+				let to_inside = self.nearest_across_edge(size, false)?;
+				let to_outside = self.nearest_across_edge(size, true)?;
+				let kernel = BevelHeight {
+					size: size as f32,
+					style: style as u32,
+				};
+				let mut height = self.run(&kernel, &[&to_inside, &to_outside])?;
+				if bevel_smoothing(size) >= NEGLIGIBLE_LENGTH {
+					height = blur_raster(&height, bevel_smoothing(size), false, BlurSpace::Premultiplied, self.pipeline)?;
+				}
+				let slope = (depth / 100. * size * if direction == BevelDirection::Down { -1. } else { 1. }) as f32;
+				let light = bevel_light(angle, altitude, lengths_to_pixels).as_vec3();
+
+				// Their parts outside the content lie beneath it, and those inside are placed over it
+				for (shadow, color) in [(false, highlight_color), (true, shadow_color)] {
+					let kernel = BevelShading {
+						slope,
+						light_x: light.x,
+						light_y: light.y,
+						light_z: light.z,
+						shadow,
+					};
+					let mut coverage = self.run(&kernel, &[&height])?;
+					if soften >= NEGLIGIBLE_LENGTH {
+						coverage = blur_raster(&coverage, soften, false, BlurSpace::Premultiplied, self.pipeline)?;
+					}
+
+					self.accumulate(&coverage, color)?;
 					self.shade_within(&coverage, color)?;
 				}
 			}

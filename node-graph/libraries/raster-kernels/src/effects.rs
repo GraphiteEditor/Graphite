@@ -196,3 +196,38 @@ impl RasterKernel for EdgeBand {
 		Wgsl::function(include_str!("wgsl/effect_edge_band.wgsl"))
 	}
 }
+
+gpu_params! {
+	/// A bevel's height from 0 to 1, from the two finished jump floods across the silhouette's edge. `style` is a [`graphic_types::BevelStyle`].
+	#[derive(Clone)]
+	pub struct BevelHeight {
+		pub size: f32,
+		pub style: u32,
+	}
+}
+
+impl RasterKernel for BevelHeight {
+	const INPUTS: usize = 2;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_bevel_height.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// The coverage of a bevel's highlight, or if `shadow` of its shadow, from its height lit from the direction of the unit vector `light`.
+	#[derive(Clone)]
+	pub struct BevelShading {
+		pub slope: f32,
+		pub light_x: f32,
+		pub light_y: f32,
+		pub light_z: f32,
+		pub shadow: bool,
+	}
+}
+
+impl RasterKernel for BevelShading {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_bevel_shading.wgsl"))
+	}
+}

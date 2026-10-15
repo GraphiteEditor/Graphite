@@ -378,11 +378,11 @@ fn shadows_and_glows_fall_where_they_should() {
 }
 
 #[test]
-fn inner_glows_satins_and_outlines_fall_where_they_should() {
+fn inner_glows_satins_outlines_and_bevels_fall_where_they_should() {
 	use core_types::Color as GraphicColor;
 	use glam::DVec2;
 	use graphic_types::vector_types::vector::style::StrokeAlign;
-	use graphic_types::{EffectOperation, GlowSource};
+	use graphic_types::{BevelDirection, BevelStyle, EffectOperation, GlowSource};
 
 	let size = UVec2::new(128, 128);
 	let black = GraphicColor::BLACK;
@@ -428,6 +428,37 @@ fn inner_glows_satins_and_outlines_fall_where_they_should() {
 	assert_eq!(pixel(&pixels, size, 32, 55), [0, 0, 0, 255], "inside the edge");
 	assert_eq!(pixel(&pixels, size, 40, 55), white, "past the weight inside");
 	assert_eq!(pixel(&pixels, size, 28, 55)[3], clear, "nothing outside");
+
+	// Lit from the upper left, a raised bevel's top slope catches the highlight and its bottom slope falls into shadow, which swap when it sinks
+	let bevel = |style, direction| EffectOperation::BevelAndEmboss {
+		style,
+		depth: 100.,
+		direction,
+		size: 5.,
+		soften: 0.,
+		angle: 120.,
+		altitude: 30.,
+		highlight_color: GraphicColor::RED,
+		shadow_color: GraphicColor::BLUE,
+	};
+	let reddish = |[red, green, blue, alpha]: [u8; 4]| red > 200 && green < 128 && blue < 128 && alpha > 128;
+	let bluish = |[red, green, blue, alpha]: [u8; 4]| blue > 200 && red < 128 && green < 128 && alpha > 128;
+	let Some(pixels) = render_square(bevel(BevelStyle::InnerBevel, BevelDirection::Up)) else { return };
+	assert!(reddish(pixel(&pixels, size, 55, 32)), "the top slope is highlighted: {:?}", pixel(&pixels, size, 55, 32));
+	assert!(bluish(pixel(&pixels, size, 55, 77)), "the bottom slope is shaded: {:?}", pixel(&pixels, size, 55, 77));
+	assert_eq!(pixel(&pixels, size, 55, 55), white, "the flat top inside the slopes is unlit");
+	assert_eq!(pixel(&pixels, size, 55, 20)[3], clear, "nothing outside");
+	let Some(pixels) = render_square(bevel(BevelStyle::InnerBevel, BevelDirection::Down)) else {
+		return;
+	};
+	assert!(bluish(pixel(&pixels, size, 55, 32)), "a sunken top slope is shaded: {:?}", pixel(&pixels, size, 55, 32));
+	assert!(reddish(pixel(&pixels, size, 55, 77)), "a sunken bottom slope is highlighted: {:?}", pixel(&pixels, size, 55, 77));
+
+	// An outer bevel's slopes lie outside the content, beneath it
+	let Some(pixels) = render_square(bevel(BevelStyle::OuterBevel, BevelDirection::Up)) else { return };
+	assert!(reddish(pixel(&pixels, size, 55, 27)), "the top slope outside is highlighted: {:?}", pixel(&pixels, size, 55, 27));
+	assert!(bluish(pixel(&pixels, size, 55, 82)), "the bottom slope outside is shaded: {:?}", pixel(&pixels, size, 55, 82));
+	assert_eq!(pixel(&pixels, size, 55, 40), white, "the content inside is unlit");
 }
 
 #[test]
@@ -567,12 +598,23 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 	use glam::DVec2;
 	use graphic_types::raster_types::{CPU, GPU, Image, Raster, Storage};
 	use graphic_types::vector_types::vector::style::StrokeAlign;
-	use graphic_types::{EffectOperation, Effects, GlowSource};
+	use graphic_types::{BevelDirection, BevelStyle, EffectOperation, Effects, GlowSource};
 
 	let size = UVec2::new(160, 160);
 	let (min, max) = (50, 100);
 	let shadow_color = GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 0.75);
 	let blur = |radius, box_blur, gamma| EffectOperation::Blur { radius, box_blur, gamma };
+	let bevel = |style, direction, size, soften| EffectOperation::BevelAndEmboss {
+		style,
+		depth: 150.,
+		direction,
+		size,
+		soften,
+		angle: 120.,
+		altitude: 30.,
+		highlight_color: GraphicColor::from_rgbaf32_unchecked(1., 0.9, 0.2, 0.75),
+		shadow_color,
+	};
 
 	let cases = [
 		vec![blur(3., false, false)],
@@ -637,6 +679,10 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 			weight: 9.,
 			align: StrokeAlign::Center,
 		}],
+		vec![bevel(BevelStyle::InnerBevel, BevelDirection::Up, 8., 0.)],
+		vec![bevel(BevelStyle::OuterBevel, BevelDirection::Down, 6., 2.)],
+		vec![bevel(BevelStyle::Emboss, BevelDirection::Up, 10., 0.)],
+		vec![bevel(BevelStyle::PillowEmboss, BevelDirection::Up, 12., 1.)],
 	];
 
 	let Some(executor) = executor() else { return };
