@@ -315,6 +315,7 @@ where
 {
 	let (fill, stroke, reverse, randomize) = (fill.into_element(), stroke.into_element(), reverse.into_element(), randomize.into_element());
 	let (seed, repeat_every) = (seed.into_element(), repeat_every.into_element());
+	let gradient = raster_kernels::evaluate_gradient_effects(gradient);
 
 	if (fill || stroke) && gradient.element().is_empty() {
 		return Err(AssignColorsError::EmptyGradient);

@@ -38,6 +38,20 @@ pub fn evaluate_raster_effects(item: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	item
 }
 
+/// The raster with `adjustments` carried out on its colors, even those of transparent pixels, as for the adjustments leading its effects.
+/// The result is kept with the raster's pixels, so adjusting them the same way again reuses it, ID and all.
+pub fn adjusted_raster(raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Raster<CPU> {
+	let mut hasher = std::hash::DefaultHasher::new();
+	adjustments.iter().for_each(|adjustment| core_types::graphene_hash::CacheHash::cache_hash(adjustment, &mut hasher));
+	let key = std::hash::Hasher::finish(&hasher);
+
+	raster.derived(key, |raster| {
+		let mut image = raster.data().clone();
+		adjustments.iter().for_each(|adjustment| adjust_colors(adjustment, &mut image.data));
+		Raster::new_cpu(image)
+	})
+}
+
 /// The image of the effects carried out on `raster`, which `transform` places in the document, with the transform placing that larger image.
 /// `None` when there's nothing to carry out, or the image is empty or its transform can't be inverted.
 fn evaluate(raster: &Raster<CPU>, transform: DAffine2, operations: &[EffectOperation], fill: f32) -> Option<(Image<Color>, DAffine2)> {

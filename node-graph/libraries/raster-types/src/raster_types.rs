@@ -76,7 +76,7 @@ mod cpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
 	use std::sync::atomic::{AtomicU64, Ordering};
-	use std::sync::{Arc, OnceLock, Weak};
+	use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
 
 	/// Pixels in CPU memory, shared between clones and identified by an ID that changes whenever they are modified.
 	/// So cloning is a reference count increment, and hashing for caches reads the ID rather than every pixel.
@@ -90,6 +90,8 @@ mod cpu {
 		image: Image<Color>,
 		/// The pixels encoded as a PNG data URL, made the first time an SVG embeds them.
 		png_data_url: OnceLock<Arc<str>>,
+		/// The pixels most recently derived from these, with the key they were derived for.
+		derived: Mutex<Option<(u64, Raster<CPU>)>>,
 	}
 
 	// A copy is made only to be modified, so it starts without an ID
@@ -99,6 +101,7 @@ mod cpu {
 				id: AtomicU64::new(0),
 				image: self.image.clone(),
 				png_data_url: OnceLock::new(),
+				derived: Mutex::new(None),
 			}
 		}
 	}
@@ -200,6 +203,21 @@ mod cpu {
 				})
 				.clone()
 		}
+
+		/// Pixels derived from these by `derive` for `key`.
+		/// The latest are kept with these pixels and shared by every clone, so deriving them again for the same key reuses them, ID and all.
+		pub fn derived(&self, key: u64, derive: impl FnOnce(&Self) -> Raster<CPU>) -> Raster<CPU> {
+			let mut derived = self.0.derived.lock().unwrap_or_else(PoisonError::into_inner);
+			if let Some((derived_key, raster)) = &*derived
+				&& *derived_key == key
+			{
+				return raster.clone();
+			}
+
+			let raster = derive(self);
+			*derived = Some((key, raster.clone()));
+			raster
+		}
 	}
 
 	impl Deref for CPU {
@@ -211,11 +229,12 @@ mod cpu {
 	}
 
 	impl DerefMut for CPU {
-		/// Copies the pixels if another clone shares them, and drops their ID and PNG encoding since they may change.
+		/// Copies the pixels if another clone shares them, and drops their ID, PNG encoding, and derived pixels since they may change.
 		fn deref_mut(&mut self) -> &mut Self::Target {
 			let buffer = Arc::make_mut(&mut self.0);
 			*buffer.id.get_mut() = 0;
 			buffer.png_data_url = OnceLock::new();
+			*buffer.derived.get_mut().unwrap_or_else(PoisonError::into_inner) = None;
 			&mut buffer.image
 		}
 	}
@@ -264,6 +283,22 @@ mod cpu {
 			raster.data_mut().data[0] = Color::WHITE;
 			assert_ne!(raster.buffer_id(), id, "caches keyed by the old ID must not see the new pixels");
 			assert_eq!(raster.data().data.as_ptr(), pixels, "pixels nothing else shares are modified without a copy");
+		}
+
+		#[test]
+		fn derived_pixels_are_reused_for_the_same_key_until_the_pixels_change() {
+			let mut raster = Raster::new_cpu(Image::new(2, 2, Color::BLACK));
+			let derive = |_: &Raster<CPU>| Raster::new_cpu(Image::new(1, 1, Color::WHITE));
+
+			let first = raster.derived(1, derive);
+			let again = raster.clone().derived(1, |_| panic!("the pixels derived for this key are kept"));
+			assert_eq!(again.buffer_id(), first.buffer_id(), "reused pixels keep their ID");
+
+			let second = raster.derived(2, derive);
+			assert_ne!(second.buffer_id(), first.buffer_id(), "another key derives anew");
+
+			raster.data_mut().data[0] = Color::WHITE;
+			assert_ne!(raster.derived(2, derive).buffer_id(), second.buffer_id(), "modified pixels derive anew");
 		}
 
 		#[test]

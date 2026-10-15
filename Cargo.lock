@@ -338,6 +338,7 @@ dependencies = [
  "glam",
  "graphic-types",
  "node-macro",
+ "raster-kernels",
  "serde",
  "vector-types",
 ]
@@ -2158,6 +2159,7 @@ dependencies = [
  "graphic-types",
  "node-macro",
  "rand",
+ "raster-kernels",
  "raster-types",
  "serde",
  "thiserror 2.0.18",
@@ -3515,6 +3517,7 @@ dependencies = [
  "math-parser",
  "node-macro",
  "rand",
+ "raster-kernels",
  "thiserror 2.0.18",
  "vector-types",
 ]
@@ -6520,6 +6523,7 @@ dependencies = [
  "node-macro",
  "qrcodegen",
  "rand",
+ "raster-kernels",
  "repeat-nodes",
  "rustc-hash 2.1.1",
  "serde",

@@ -1,5 +1,5 @@
 use crate::renderer::{
-	ItemRef, RenderParams, composite_paint_colors, faded_paint_color, format_transform_matrix, gradient_placement, gradient_settings_from_item, spread_adjusted_samples, transform_is_invertible,
+	ItemRef, RenderParams, composite_paint_colors, faded_paint_color, format_transform_matrix, gradient_placement, painted_gradient, spread_adjusted_samples, transform_is_invertible,
 };
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
@@ -87,12 +87,11 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 	let mut stop = String::new();
 
 	let item = item?;
-	let stops = item.element()?;
+	let (stops, settings) = painted_gradient(item)?;
 	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
 	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let settings = gradient_settings_from_item(item);
 
-	let mut samples = spread_adjusted_samples(stops, settings, gradient_form);
+	let mut samples = spread_adjusted_samples(&stops, settings, gradient_form);
 
 	let paint_opacity = item.paint_opacity(for_mask);
 	if paint_opacity < 1. {

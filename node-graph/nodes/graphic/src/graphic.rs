@@ -1,12 +1,15 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
+use core_types::{
+	ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EFFECTS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl,
+};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
-use graphic_types::{Artboard, Vector};
+use graphic_types::{Artboard, Effects, Vector};
 use rand::SeedableRng;
 use rand::seq::SliceRandom;
+use raster_kernels::value_effects;
 use raster_types::{CPU, GPU, Raster};
 use std::cmp::Ordering;
 use vector_types::gradient::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread};
@@ -1110,7 +1113,14 @@ fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Item<Gradient> {
 /// Unwraps a gradient into a `Color[]` of its stops, keeping any `position` and `midpoint` attributes that place them along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
 #[node_macro::node(category("Gradient"), icon("NodeGradientToColors"), name("Gradient to Colors"))]
 fn gradient_to_colors(_: impl Ctx, gradient: Item<Gradient>) -> List<Color> {
-	gradient.into_element().into_color_list()
+	// The adjustments the gradient carries change each stop's color
+	let adjustments = gradient.attribute::<Effects>(ATTR_EFFECTS).map(value_effects::adjustments).unwrap_or_default();
+
+	let mut colors = gradient.into_element().into_color_list();
+	for color in colors.iter_element_values_mut() {
+		*color = value_effects::adjusted_color(*color, &adjustments);
+	}
+	colors
 }
 
 #[cfg(test)]

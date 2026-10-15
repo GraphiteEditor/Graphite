@@ -3,6 +3,7 @@ use core_types::{Color, Ctx};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{BevelDirection, BevelStyle, Effect, EffectOperation, GlowSource, Graphic, Vector, stamp_effect};
+use raster_kernels::evaluate_color_effects;
 use vector_types::Gradient;
 use vector_types::vector::style::StrokeAlign;
 
@@ -66,7 +67,7 @@ fn drop_shadow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::DropShadow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			offset: *offset.element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
@@ -105,7 +106,7 @@ fn inner_shadow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::InnerShadow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			offset: *offset.element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
@@ -140,7 +141,7 @@ fn outer_glow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::OuterGlow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			blur: *blur.element(),
 			spread: *spread.element(),
 		}),
@@ -176,7 +177,7 @@ fn inner_glow<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::InnerGlow {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			blur: *blur.element(),
 			choke: *choke.element(),
 			source: *source.element(),
@@ -214,7 +215,7 @@ fn satin<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::Satin {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			offset: *offset.element(),
 			blur: *blur.element(),
 			invert: *invert.element(),
@@ -248,7 +249,7 @@ fn outline<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::Outline {
-			color: *color.element(),
+			color: evaluate_color_effects(color).into_element(),
 			weight: *weight.element(),
 			align: *align.element(),
 		}),
@@ -317,8 +318,8 @@ fn bevel_and_emboss<T>(
 			soften: *soften.element(),
 			angle: *angle.element(),
 			altitude: *altitude.element(),
-			highlight_color: *highlight_color.element(),
-			shadow_color: *shadow_color.element(),
+			highlight_color: evaluate_color_effects(highlight_color).into_element(),
+			shadow_color: evaluate_color_effects(shadow_color).into_element(),
 		}),
 	);
 	content

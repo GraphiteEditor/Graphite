@@ -71,6 +71,17 @@ pub fn channel_curves(adjustment: &Adjustment, size: usize) -> Option<[Vec<f32>;
 	Some(std::array::from_fn(|channel| channels.iter().map(|values| values[channel]).collect()))
 }
 
+/// Whether every color keeps its alpha to within half an 8-bit level.
+/// Only a per-channel adjustment's alpha curve can change it, since the kernels of the others all keep alpha.
+pub fn preserves_alpha(adjustment: &Adjustment) -> bool {
+	const LEVELS: usize = 256;
+
+	channel_curves(adjustment, LEVELS).is_none_or(|[.., alpha]| {
+		let identity = |index: usize| index as f32 / (LEVELS - 1) as f32;
+		alpha.iter().enumerate().all(|(index, value)| (value - identity(index)).abs() <= 0.5 / 255.)
+	})
+}
+
 /// Receives the kernel carrying out an [`Adjustment`], whose type depends on which adjustment it is.
 pub trait AdjustmentVisitor {
 	type Output;
