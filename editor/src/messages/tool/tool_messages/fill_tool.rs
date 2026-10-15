@@ -151,8 +151,10 @@ impl Fsm for FillToolFsmState {
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
-				// Pattern the layer the fill would land on, over its whole expanse when the color is its entire content
-				if let Some(layer) = fill_target_layer(document, input, viewport) {
+				// Pattern the layer the fill would land on, over its whole expanse when the color is its entire content, except a raster layer a click skips
+				if let Some(layer) = fill_target_layer(document, input, viewport)
+					&& !NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface)
+				{
 					let color_hex = SRGBA8::from(preview_color).to_css_hex();
 
 					if paints_whole_expanse(layer, &document.network_interface) {
