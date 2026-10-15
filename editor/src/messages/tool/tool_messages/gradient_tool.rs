@@ -619,14 +619,18 @@ impl SelectedGradient {
 		lock_angle: bool,
 		gradient_form: GradientForm,
 		drag_start: DVec2,
+		press_unsnapped: DVec2,
 		snap_session: &mut SnapSession,
 		view: SnapView,
 		gradient_angle: &mut f64,
 	) {
-		if mouse.distance(drag_start) < DRAG_THRESHOLD {
-			self.gradient = self.initial_gradient.clone();
-			self.appearance.transform = self.initial_gradient_transform;
-			self.render_gradient(responses);
+		if mouse.distance(press_unsnapped) <= DRAG_THRESHOLD {
+			// A new gradient's initial line is only a placeholder, so nothing is written until the drag passes the threshold
+			if self.dragging != GradientDragTarget::New {
+				self.gradient = self.initial_gradient.clone();
+				self.appearance.transform = self.initial_gradient_transform;
+				self.render_gradient(responses);
+			}
 			return;
 		}
 
@@ -1559,6 +1563,7 @@ impl Fsm for GradientToolFsmState {
 					// Convert drag_start from document space to effective viewport space
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let drag_start_viewport = document_to_viewport.transform_point2(tool_data.drag_start) + tool_data.auto_pan_shift;
+					let press_unsnapped_viewport = document_to_viewport.transform_point2(tool_data.drag_start_unsnapped) + tool_data.auto_pan_shift;
 					tool_data.auto_pan_shift = DVec2::ZERO;
 
 					selected_gradient.update_gradient(
@@ -1568,6 +1573,7 @@ impl Fsm for GradientToolFsmState {
 						input.keyboard.get(lock_angle as usize),
 						selected_gradient.appearance.gradient_form,
 						drag_start_viewport,
+						press_unsnapped_viewport,
 						snap_session,
 						SnapView::new(document, *document_id, input),
 						&mut tool_data.gradient_angle,
@@ -1604,7 +1610,13 @@ impl Fsm for GradientToolFsmState {
 				state
 			}
 			(GradientToolFsmState::Drawing { .. }, GradientToolMessage::PointerUp) => {
-				responses.add(DocumentMessage::EndTransaction);
+				// A new gradient released where it was pressed is a click, so anything its drag wrote along the way is taken back
+				if tool_data.selected_gradient.as_ref().is_some_and(|selected| selected.dragging == GradientDragTarget::New) {
+					let press = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_unsnapped);
+					input.mouse.finish_transaction(press, responses);
+				} else {
+					responses.add(DocumentMessage::EndTransaction);
+				}
 
 				// Clear the selection if we were dragging an endpoint of the gradient which isn't a stop
 				if tool_data.selected_gradient.as_ref().is_some_and(|selected| match selected.dragging {
@@ -2715,6 +2727,59 @@ mod test_gradient {
 
 		// Additional verification that 0.75 stop is gone
 		assert!(!final_positions.iter().any(|pos| (pos - 0.75).abs() < 0.05), "Stop at position 0.75 should have been deleted");
+	}
+
+	#[tokio::test]
+	async fn a_click_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.drag_tool(ToolType::Gradient, 30., 40., 30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that barely moves shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_new_gradient_drag_released_back_where_it_was_pressed_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.select_tool(ToolType::Gradient).await;
+		editor.move_mouse(30., 40., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(30., 40., ModifierKeys::empty()).await;
+		editor.move_mouse(60., 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.move_mouse(30.5, 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a drag that comes back to where it was pressed shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_click_beside_a_snap_target_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// The press lands a few pixels inside the left edge, which it snaps onto
+		editor.drag_tool(ToolType::Gradient, 3., 50., 3.5, 50., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that snaps and barely moves shouldn't replace the fill with a gradient"
+		);
 	}
 
 	#[tokio::test]
