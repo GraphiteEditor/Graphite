@@ -1161,4 +1161,28 @@ mod test_artboard {
 		drag(&mut editor, DVec2::new(150., 160.), DVec2::new(150., 220.), ModifierKeys::empty()).await;
 		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
 	}
+
+	#[tokio::test]
+	async fn an_artboard_locked_while_its_cage_is_shown_cant_be_nudged_or_resized_before_the_overlays_redraw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 160.)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard.to_node()] }).await;
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		// No overlay pass follows the lock, so the cage drawn before it is still there to grab
+		editor
+			.handle_message(NodeGraphMessage::SetLocked {
+				node_id: artboard.to_node(),
+				network_path: Vec::new(),
+				locked: true,
+			})
+			.await;
+
+		editor.press(Key::ArrowRight, ModifierKeys::SHIFT).await;
+		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
+
+		drag(&mut editor, DVec2::new(150., 160.), DVec2::new(150., 220.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
+	}
 }
