@@ -5,9 +5,9 @@ use core_types::Color;
 use core_types::graphene_hash::CacheHash;
 use glam::{DMat2, DVec2, UVec2};
 use graphic_types::adjustment_tables::{AdjustmentPass, CUBE_SIZE, CURVE_TABLE_SIZE, DRAFT_CUBE_SIZE};
-use graphic_types::effects::outline_extents;
+use graphic_types::effects::{bevel_light, bevel_smoothing, outline_extents};
 use graphic_types::raster_types::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
-use graphic_types::{Adjustment, EffectOperation, Effects, GlowSource};
+use graphic_types::{Adjustment, BevelDirection, EffectOperation, Effects, GlowSource};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use wgpu::util::DeviceExt;
@@ -276,6 +276,55 @@ impl EffectPasses {
 						let coverage = recorder.edge_band(&full, inside, true);
 						recorder.shade_within(&mut full, &mut filled, coverage, color);
 					}
+				}
+				EffectOperation::BevelAndEmboss {
+					style,
+					depth,
+					direction,
+					size,
+					soften,
+					angle,
+					altitude,
+					highlight_color,
+					shadow_color,
+				} => {
+					let (size, soften) = (size * length_scale, soften * length_scale);
+					if size < NEGLIGIBLE_LENGTH {
+						continue;
+					}
+
+					// The surface's height, rounded by a blur, lit from the light's direction into its highlights and shadows
+					let to_inside = recorder.nearest_across_edge(&full, size, false);
+					let to_outside = recorder.nearest_across_edge(&full, size, true);
+					let parameters = Parameters {
+						values: [size as f32, style as u32 as f32, 0., 0.],
+						..Default::default()
+					};
+					let mut height = recorder.run("bevel_height", COVERAGE_FORMAT, recorder.size, &to_inside, Some(&to_outside), None, parameters);
+					recorder.textures.release(to_inside);
+					recorder.textures.release(to_outside);
+					if bevel_smoothing(size) >= NEGLIGIBLE_LENGTH {
+						height = recorder.blur(height, BlurKernel::Gaussian { sigma: bevel_smoothing(size) }, false);
+					}
+					let slope = depth / 100. * size * if direction == BevelDirection::Down { -1. } else { 1. };
+					let light = bevel_light(angle, altitude, lengths_to_pixels).as_vec3();
+
+					// Their parts outside the content lie beneath it, and those inside are placed over it
+					for (shadow, color) in [(false, highlight_color), (true, shadow_color)] {
+						let parameters = Parameters {
+							amount: if shadow { 1. } else { 0. },
+							values: [slope as f32, light.x, light.y, light.z],
+							..Default::default()
+						};
+						let mut coverage = recorder.run("bevel_shading", COVERAGE_FORMAT, recorder.size, &height, None, None, parameters);
+						if soften >= NEGLIGIBLE_LENGTH {
+							coverage = recorder.blur(coverage, BlurKernel::Gaussian { sigma: soften }, false);
+						}
+
+						beneath = Some(recorder.accumulate(beneath, &coverage, color));
+						recorder.shade_within(&mut full, &mut filled, coverage, color);
+					}
+					recorder.textures.release(height);
 				}
 				EffectOperation::Adjustment(_) => {
 					// A run of adjustments is carried out from its first row, so tables can merge it into fewer passes
@@ -559,15 +608,28 @@ impl PassRecorder<'_> {
 	}
 
 	/// The coverage of the band reaching `width` pixels from the content's silhouette edge, outward or (if `inward`) inward, measured in straight lines so it rounds corners.
-	/// Jump flooding finds each texel's nearest texel across the edge, in a pass for each halving of a step that starts past the width.
 	fn edge_band(&mut self, content: &wgpu::Texture, width: f64, inward: bool) -> wgpu::Texture {
+		let nearest = self.nearest_across_edge(content, width, inward);
+
+		let parameters = Parameters {
+			values: [width as f32, 0., 0., 0.],
+			..Default::default()
+		};
+		let band = self.run("edge_band", COVERAGE_FORMAT, self.size, &nearest, None, None, parameters);
+		self.textures.release(nearest);
+		band
+	}
+
+	/// Each texel's offset to the nearest texel across the content's silhouette edge: outside it if `inward`, or inside it otherwise, in the layout `jump_flood_step` keeps.
+	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, so farther texels may find none.
+	fn nearest_across_edge(&mut self, content: &wgpu::Texture, reach: f64, inward: bool) -> wgpu::Texture {
 		let parameters = Parameters {
 			amount: if inward { 1. } else { 0. },
 			..Default::default()
 		};
 		let mut nearest = self.run("jump_flood_seed", WORKING_FORMAT, self.size, content, None, None, parameters);
 
-		let mut step = (width.max(0.).ceil() as u32 + 1).next_power_of_two();
+		let mut step = (reach.max(0.).ceil() as u32 + 1).next_power_of_two();
 		while step >= 1 {
 			let parameters = Parameters {
 				values: [step as f32, 0., 0., 0.],
@@ -578,13 +640,7 @@ impl PassRecorder<'_> {
 			step /= 2;
 		}
 
-		let parameters = Parameters {
-			values: [width as f32, 0., 0., 0.],
-			..Default::default()
-		};
-		let band = self.run("edge_band", COVERAGE_FORMAT, self.size, &nearest, None, None, parameters);
-		self.textures.release(nearest);
-		band
+		nearest
 	}
 
 	/// The image with the shadows and glows `beneath` placed under it, knocked out by the full-strength content.

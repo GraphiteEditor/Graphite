@@ -34,7 +34,7 @@ use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::vector_types::vector::{Path, edit_item_geometry, edit_list_row_geometry, no_paths};
-use graphic_types::{Adjustment, Appearance, Artboard, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector};
+use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
@@ -121,14 +121,19 @@ impl<'a, T> ItemRef<'a, T> {
 			.attribute::<Effects>(ATTR_EFFECTS)
 			.filter(|effects| !effects.is_empty() && render_params.render_mode != RenderMode::Outline);
 
+		let pixel_scale = render_params.viewport_zoom.unwrap_or(1.) * render_params.scale;
+		let pixel_scale = if pixel_scale.is_normal() && pixel_scale > 0. { pixel_scale } else { 1. };
+
 		match effects {
 			Some(effects) => ItemCompositing {
 				opacity,
 				effects: Some((effects, fill)),
+				pixel_scale,
 			},
 			None => ItemCompositing {
 				opacity: opacity * fill,
 				effects: None,
+				pixel_scale,
 			},
 		}
 	}
@@ -151,6 +156,8 @@ struct ItemCompositing<'a> {
 	opacity: f32,
 	/// With the fill opacity, which the effects group applies to the content alone so the shadows and glows cast from it stay at full strength.
 	effects: Option<(&'a Effects, f32)>,
+	/// How many output pixels span a document unit, which SVG lighting measures the bevels' slopes across.
+	pixel_scale: f64,
 }
 
 impl ItemCompositing<'_> {
@@ -195,10 +202,12 @@ impl ItemCompositing<'_> {
 			true => ItemCompositing {
 				opacity: self.opacity * fill,
 				effects: None,
+				pixel_scale: self.pixel_scale,
 			},
 			false => ItemCompositing {
 				opacity: self.opacity,
 				effects: Some((remaining, fill)),
+				pixel_scale: self.pixel_scale,
 			},
 		}
 	}
@@ -262,7 +271,7 @@ impl ItemCompositing<'_> {
 		// Effects change nothing visible about content without edges, like a color or gradient layer filling everything
 		let RenderBoundingBox::Rectangle(bounds) = bounds() else { return None };
 
-		let id = write_svg_effects_filter(&mut render.svg_defs, effects, fill, bounds, render.transform)?;
+		let id = write_svg_effects_filter(&mut render.svg_defs, effects, fill, bounds, render.transform, self.pixel_scale)?;
 		Some(format!("url(#{id})"))
 	}
 }
@@ -388,6 +397,60 @@ impl SvgFilterPrimitives {
 		)
 	}
 
+	/// A bevel's height in the alpha channel, shaped by the `style` over a slope `size` user units wide.
+	/// SVG measures no distances from edges, so the silhouette's edge is moved to the slope's middle and blurred across the slope's width instead.
+	fn bevel_height(&mut self, full_content: &str, size: f64, style: BevelStyle) -> String {
+		let ramp = |primitives: &mut Self, operator: Option<&str>, width: f64| {
+			let silhouette = match operator {
+				Some(operator) => primitives.push("feMorphology", &format!(r#"in="{full_content}" operator="{operator}" radius="{}""#, width / 2.), ""),
+				None => full_content.to_string(),
+			};
+			primitives.push("feGaussianBlur", &format!(r#"in="{silhouette}" stdDeviation="{}""#, width / 4.), "")
+		};
+
+		match style {
+			BevelStyle::InnerBevel => ramp(self, Some("erode"), size),
+			BevelStyle::OuterBevel => ramp(self, Some("dilate"), size),
+			BevelStyle::Emboss => ramp(self, None, size),
+			// Ramps up into the content and away from it, each half the slope wide, meeting low at the edge
+			BevelStyle::PillowEmboss => {
+				let rising_inward = ramp(self, Some("erode"), size / 2.);
+				let falling_outward = ramp(self, Some("dilate"), size / 2.);
+				self.push(
+					"feComposite",
+					&format!(r#"in="{rising_inward}" in2="{falling_outward}" operator="arithmetic" k2="1" k3="-1" k4="1""#),
+					"",
+				)
+			}
+		}
+	}
+
+	/// How far the `light` brightens the bevel's surface past a flat surface's brightness, or if `shadow`, how far it falls short, as coverage in the alpha channel.
+	/// `slope` scales the height's gradient per output pixel into the surface's steepness, and is negative for a bevel pressed into the surface.
+	fn bevel_shading(&mut self, height: &str, slope: f64, light: glam::DVec3, shadow: bool) -> String {
+		let azimuth = light.y.atan2(light.x).to_degrees();
+		let elevation = light.z.clamp(-1., 1.).asin().to_degrees();
+		// SVG lighting's Sobel kernel measures twice the gradient
+		let surface_scale = slope / 2.;
+		let lit = self.push(
+			"feDiffuseLighting",
+			&format!(r#"in="{height}" surfaceScale="{surface_scale}" diffuseConstant="1" lighting-color="white""#),
+			&format!(r#"<feDistantLight azimuth="{azimuth}" elevation="{elevation}" />"#),
+		);
+
+		// The lit brightness in red becomes coverage in alpha, past the flat brightness for a highlight or short of it for a shadow
+		let flat = light.z;
+		let (scale, offset) = match shadow {
+			true => (-1. / flat.max(1e-4), 1.),
+			false => (1. / (1. - flat).max(1e-4), -flat / (1. - flat).max(1e-4)),
+		};
+		self.push(
+			"feColorMatrix",
+			&format!(r#"in="{lit}" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 {scale} 0 0 0 {offset}""#),
+			"",
+		)
+	}
+
 	/// The coverage tinted `color`.
 	fn tint(&mut self, coverage: &str, color: Color) -> String {
 		let flood = self.push(
@@ -505,9 +568,10 @@ impl SvgFilterPrimitives {
 
 /// Writes an SVG filter into `svg_defs` that carries out `effects` like the GPU passes do, returning its ID, or `None` if the user space is degenerate.
 /// `bounds` is the content's extent in the filtered group's user space, which `user_to_document` maps into the document space the effects' lengths are measured in.
-fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], user_to_document: DAffine2) -> Option<String> {
-	use graphic_types::effects::outline_extents;
-	use graphic_types::{EffectOperation, GlowSource};
+/// `pixel_scale` is how many output pixels span a document unit.
+fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], user_to_document: DAffine2, pixel_scale: f64) -> Option<String> {
+	use graphic_types::effects::{bevel_light, outline_extents};
+	use graphic_types::{BevelDirection, EffectOperation, GlowSource};
 
 	let determinant = user_to_document.matrix2.determinant();
 	if !determinant.is_normal() {
@@ -589,6 +653,35 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 				}
 				if inside >= 0.01 {
 					let coverage = primitives.edge_band(&full, inside, true);
+					primitives.shade_within(&mut full, &mut filled, &coverage, color);
+				}
+			}
+			EffectOperation::BevelAndEmboss {
+				style,
+				depth,
+				direction,
+				size,
+				soften,
+				angle,
+				altitude,
+				highlight_color,
+				shadow_color,
+			} => {
+				let (size, soften) = (size * length_scale, soften * length_scale);
+				if size < 0.01 {
+					continue;
+				}
+
+				let height = primitives.bevel_height(&full, size, style);
+				let slope = depth / 100. * size / length_scale * pixel_scale * if direction == BevelDirection::Down { -1. } else { 1. };
+				let light = bevel_light(angle, altitude, document_to_user);
+				for (shadow, color) in [(false, highlight_color), (true, shadow_color)] {
+					let mut coverage = primitives.bevel_shading(&height, slope, light, shadow);
+					if soften >= 0.01 {
+						coverage = primitives.push("feGaussianBlur", &format!(r#"in="{coverage}" stdDeviation="{soften}""#), "");
+					}
+
+					beneath = Some(primitives.shade_beneath(beneath, &coverage, color));
 					primitives.shade_within(&mut full, &mut filled, &coverage, color);
 				}
 			}
@@ -4422,6 +4515,7 @@ mod tests {
 			1.,
 			[DVec2::ZERO, DVec2::splat(10.)],
 			DAffine2::from_scale(DVec2::splat(2.)),
+			1.,
 		)
 		.unwrap();
 
@@ -4440,7 +4534,7 @@ mod tests {
 			gamma: false,
 		};
 		let mut defs = String::new();
-		write_svg_effects_filter(&mut defs, &Effects::from_operations([blur]), 0.5, [DVec2::ZERO, DVec2::ONE], DAffine2::IDENTITY).unwrap();
+		write_svg_effects_filter(&mut defs, &Effects::from_operations([blur]), 0.5, [DVec2::ZERO, DVec2::ONE], DAffine2::IDENTITY, 1.).unwrap();
 
 		// The fill fades a copy of the content, which is blurred in linear light and passed through as the filter's last result
 		assert!(defs.contains(r#"<feFuncA type="linear" slope="0.5" />"#), "{defs}");
@@ -4449,13 +4543,13 @@ mod tests {
 	}
 
 	#[test]
-	fn svg_effects_filters_carry_out_inner_glows_satins_and_outlines() {
+	fn svg_effects_filters_carry_out_inner_glows_satins_outlines_and_bevels() {
 		use graphic_types::vector_types::vector::style::StrokeAlign;
-		use graphic_types::{EffectOperation, GlowSource};
+		use graphic_types::{BevelDirection, EffectOperation, GlowSource};
 
 		let filter = |operation| {
 			let mut defs = String::new();
-			write_svg_effects_filter(&mut defs, &Effects::from_operations([operation]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY).unwrap();
+			write_svg_effects_filter(&mut defs, &Effects::from_operations([operation]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 1.).unwrap();
 			defs
 		};
 		let invert = r#"<feFuncA type="linear" slope="-1" intercept="1" />"#;
@@ -4490,6 +4584,23 @@ mod tests {
 		});
 		assert_eq!(outline.matches(r#"stdDeviation="1""#).count(), 2, "{outline}");
 		assert_eq!(outline.matches(r#"k2="1" k3="1""#).count(), 2, "placed within the content, then above what lies beneath it: {outline}");
+
+		// An inner bevel's height ramps up inside the edge, lit once each for highlight and shadow, steepened by the pixel scale
+		let bevel = EffectOperation::BevelAndEmboss {
+			style: BevelStyle::InnerBevel,
+			depth: 100.,
+			direction: BevelDirection::Up,
+			size: 4.,
+			soften: 0.,
+			angle: 120.,
+			altitude: 30.,
+			highlight_color: Color::WHITE,
+			shadow_color: Color::BLACK,
+		};
+		let mut bevel_defs = String::new();
+		write_svg_effects_filter(&mut bevel_defs, &Effects::from_operations([bevel]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 2.).unwrap();
+		assert!(bevel_defs.contains(r#"operator="erode" radius="2""#) && bevel_defs.contains(r#"stdDeviation="1""#), "{bevel_defs}");
+		assert_eq!(bevel_defs.matches(r#"surfaceScale="4""#).count(), 2, "{bevel_defs}");
 	}
 
 	#[test]
@@ -4505,6 +4616,7 @@ mod tests {
 				1.,
 				[DVec2::ZERO, DVec2::ONE],
 				DAffine2::IDENTITY,
+				1.,
 			)
 			.unwrap();
 			defs
