@@ -800,7 +800,7 @@ impl SelectedGradient {
 					gradient: self.gradient.clone(),
 					gradient_form: self.appearance.gradient_form,
 					gradient_settings: self.appearance.settings,
-					transform: self.appearance.transform,
+					transform: Some(self.appearance.transform),
 				});
 			}
 		}
@@ -1946,7 +1946,7 @@ fn apply_gradient_update(
 					gradient,
 					gradient_form: appearance.gradient_form,
 					gradient_settings: appearance.settings,
-					transform: appearance.transform,
+					transform: Some(appearance.transform),
 				});
 			}
 		}
@@ -2012,7 +2012,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 				gradient: new_gradient.clone(),
 				gradient_form: appearance.gradient_form,
 				gradient_settings: settings,
-				transform: appearance.transform,
+				transform: Some(appearance.transform),
 			});
 			updated_any_layer = true;
 		}

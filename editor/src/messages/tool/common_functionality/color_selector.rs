@@ -60,8 +60,17 @@ impl ToolColorOptions {
 		if !self.is_active() {
 			return;
 		}
-		if let Some(FillChoice::Solid(color)) = &self.fill_choice {
-			responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) });
+		match &self.fill_choice {
+			Some(FillChoice::Solid(color)) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) }),
+			// Without a transform, the gradient covers the new layer's bounding box as it's drawn
+			Some(FillChoice::Gradient(ramp)) => responses.add(GraphOperationMessage::FillGradientSet {
+				layer,
+				gradient: graphene_std::vector::Gradient::from(ramp),
+				gradient_form: Default::default(),
+				gradient_settings: ramp.into(),
+				transform: None,
+			}),
+			Some(FillChoice::None) | None => {}
 		}
 	}
 

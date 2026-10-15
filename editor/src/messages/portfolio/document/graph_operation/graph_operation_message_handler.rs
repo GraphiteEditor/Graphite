@@ -1039,7 +1039,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				space: gradient_info.spaces.get(linear.id()).copied().unwrap_or(GradientSpace::RgbGamma),
 				..Default::default()
 			};
-			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, Some(transform));
 		}
 		usvg::Paint::RadialGradient(radial) => {
 			let gradient_transform = usvg_transform(radial.transform());
@@ -1067,7 +1067,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, g
 				space: gradient_info.spaces.get(radial.id()).copied().unwrap_or(GradientSpace::RgbGamma),
 				..Default::default()
 			};
-			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, transform);
+			modify_inputs.fill_gradient_set(gradient, gradient_form, settings, Some(transform));
 		}
 		usvg::Paint::Pattern(_) => warn!("SVG patterns are not currently supported"),
 	};

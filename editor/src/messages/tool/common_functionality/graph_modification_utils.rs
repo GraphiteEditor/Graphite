@@ -1017,7 +1017,7 @@ pub fn set_fill_for_selected_layers(fill_choice: FillChoice, document: &Document
 					gradient: Gradient::from(ramp),
 					gradient_form,
 					gradient_settings: ramp.into(),
-					transform,
+					transform: Some(transform),
 				});
 			}
 		}

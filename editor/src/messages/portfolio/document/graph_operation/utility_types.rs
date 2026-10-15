@@ -448,7 +448,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: Option<DAffine2>) {
 		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
 		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
@@ -476,14 +476,16 @@ impl<'a> ModifyInputsContext<'a> {
 		if transform_is_value {
 			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput),
-				NodeInput::value(TaggedValue::Bool(true), false),
+				NodeInput::value(TaggedValue::Bool(transform.is_some()), false),
 				true,
 			);
-			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
-				NodeInput::value(TaggedValue::DAffine2(transform), false),
-				true,
-			);
+			if let Some(transform) = transform {
+				self.set_input_with_refresh(
+					InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
+					NodeInput::value(TaggedValue::DAffine2(transform), false),
+					true,
+				);
+			}
 		}
 
 		self.set_input_with_refresh(
