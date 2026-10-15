@@ -96,7 +96,7 @@
 		return WHOLE_PATHS;
 	}
 
-	function emit(intent: SliderInputUpdate) {
+	function emit(intent: SliderInputUpdate, continuesStep?: boolean) {
 		// Making a marker active is only a selection, so it doesn't start an undo step
 		if (!("ActiveMarker" in intent) && !historyStepStarted) {
 			historyStepStarted = true;
@@ -105,8 +105,8 @@
 
 		dispatch("update", intent);
 
-		// A change outside a drag, like a double-click reset, is a whole undo step by itself
-		if (!listening) historyStepStarted = false;
+		// Outside a drag, a change ends its undo step unless more of its run follows
+		if (!listening && !continuesStep) historyStepStarted = false;
 	}
 
 	function setActive(index: number | undefined, isMidpoint: boolean) {
@@ -326,7 +326,9 @@
 
 	function resetRun(first: number, last: number) {
 		if (disabled || dragMoved) return;
-		for (let index = first; index <= last; index += 1) emit({ ResetMarker: { index } });
+
+		// The whole run resets as one undo step
+		for (let index = first; index <= last; index += 1) emit({ ResetMarker: { index } }, index < last);
 	}
 
 	function trackPointerDown(e: PointerEvent) {
