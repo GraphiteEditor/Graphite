@@ -1353,15 +1353,15 @@ async fn toggle_preview_transitions_with_a_connected_export() {
 	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
-	// Toggling the restore node while previewing promotes it to the export with nothing left to restore
+	// Toggling the restore node while previewing ends the preview by restoring it
 	network_interface.toggle_preview(node, &[]);
 	network_interface.toggle_preview(artboard, &[]);
 	assert_eq!(export_node(network_interface), Some(artboard));
-	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
-	// Toggling it once more ends the preview by disconnecting the export entirely
+	// Toggling the node already feeding the export changes nothing
 	network_interface.toggle_preview(artboard, &[]);
-	assert_eq!(export_node(network_interface), None);
+	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
 	assert_invariants(&editor, "after cycling through the preview states");
