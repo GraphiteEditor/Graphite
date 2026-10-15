@@ -8,9 +8,11 @@ use core_types::list::{Item, List};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use raster_types::{CPU, Raster};
+use std::ops::ControlFlow;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// What Graphite's renderer draws of vtrace's model; the rest is lowered into it by vtrace.
-pub const CAPABILITIES: vtrace::lower::Capabilities = vtrace::lower::Capabilities {
+pub const CAPABILITIES: vtrace::Capabilities = vtrace::Capabilities {
 	even_odd: false,
 	path_gradients: false,
 	blur: false,
@@ -19,6 +21,9 @@ pub const CAPABILITIES: vtrace::lower::Capabilities = vtrace::lower::Capabilitie
 	dashes: true,
 	transparent_stops: true,
 };
+
+/// Counts the traces started, so a running trace stops once a newer one has started (its inputs changed).
+static TRACES: AtomicU64 = AtomicU64::new(0);
 
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 #[node_macro::node(category("Raster"))]
@@ -53,23 +58,33 @@ async fn vectorize(
 		width,
 		height,
 	};
-	let options = vtrace::TraceOptions::default();
-	let Ok(rgb) = vtrace::input::rgb8(&source, options.matte) else {
-		return List::new();
-	};
 	let options = vtrace::TraceOptions {
 		tolerance: *tolerance.element(),
-		detail: Some(vtrace::auto_detail(&rgb, width, height) * *detail.element()),
-		..options
+		detail: vtrace::Detail::Scaled(*detail.element()),
+		host: CAPABILITIES,
+		..Default::default()
 	};
-	let model = match vtrace::trace(&source, &options) {
+	let this = TRACES.fetch_add(1, Ordering::Relaxed) + 1;
+	let mut stage = "";
+	let progress = |progress: &vtrace::Progress| {
+		if progress.stage != stage {
+			stage = progress.stage;
+			log::debug!("Vectorize: {stage}");
+		}
+		if TRACES.load(Ordering::Relaxed) == this {
+			ControlFlow::Continue(())
+		} else {
+			ControlFlow::Break(())
+		}
+	};
+	let model = match vtrace::trace_with(&source, &options, progress) {
 		Ok(model) => model,
+		Err(vtrace::TraceError::Cancelled) => return List::new(),
 		Err(error) => {
 			log::error!("Vectorize could not trace the image: {error}");
 			return List::new();
 		}
 	};
-	let (model, _) = vtrace::lower::lower(&model, &CAPABILITIES);
 
 	// The traced coordinates are in pixels, while the image's transform maps the unit square onto the document
 	let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
