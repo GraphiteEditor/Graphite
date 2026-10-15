@@ -80,6 +80,11 @@ pub enum PortfolioMessage {
 	NewDocumentWithName {
 		name: String,
 	},
+	/// Creates the document under a given id, so the sender can recognize it when it mounts.
+	NewDocumentWithId {
+		name: String,
+		document_id: DocumentId,
+	},
 	OpenLegacyDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,

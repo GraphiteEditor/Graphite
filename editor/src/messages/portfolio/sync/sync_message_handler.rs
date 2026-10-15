@@ -1,4 +1,5 @@
 use super::identity::{anonymous_name, user_color};
+use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendRemoteCursor;
@@ -28,7 +29,8 @@ pub struct SyncMessageContext<'a> {
 /// packets arrive, and turns remote changes into interface rebuilds.
 #[derive(Debug, Default, ExtractField)]
 pub struct SyncMessageHandler {
-	pending_join: Option<SessionToken>,
+	/// The session link waiting for the document created to join it.
+	pending_join: Option<(DocumentId, SessionToken)>,
 	polling: bool,
 	/// Each connected document's room inbox, tagged with the connection it belongs to. One wake future is in
 	/// flight per entry: it resolves to a `Wake`, which polls and arms the next one.
@@ -99,8 +101,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 						return;
 					}
 				};
-				self.pending_join = Some(token);
-				responses.add(PortfolioMessage::NewDocumentWithName { name: "Shared session".into() });
+				let document_id = DocumentId(generate_uuid());
+				self.pending_join = Some((document_id, token));
+				responses.add(PortfolioMessage::NewDocumentWithId {
+					name: "Shared session".into(),
+					document_id,
+				});
 			}
 			SyncMessage::StorageMounted { document_id } => {
 				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
@@ -108,7 +114,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				// Retirement runs on the frame tick, so every document polls, shared or not.
 				self.start_polling(responses);
-				if let Some(token) = self.pending_join.take() {
+				if let Some((_, token)) = self.pending_join.take_if(|(join_id, _)| *join_id == document_id) {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 					let incoming = room.incoming();
 					gdd.join(room, UserId(preferences.user_id));
@@ -533,7 +539,11 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 	let cursors_row = || {
 		let checkbox_id = CheckboxId::new();
 		LayoutGroup::row(vec![
-			TextLabel::new("Show cursors").table_align(true).sizing(WidgetSizing::fixed(90)).for_checkbox(checkbox_id).widget_instance(),
+			TextLabel::new("Show cursors")
+				.table_align(true)
+				.sizing(WidgetSizing::fixed(90))
+				.for_checkbox(checkbox_id)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(preferences.show_remote_cursors)
 				.tooltip_description("Draw the other peers' pointers over the document.")
