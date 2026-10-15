@@ -1029,14 +1029,20 @@ impl ShapeState {
 		// Check if the anchor is connected to linear segments and has no handles
 		let linear_segments = vector.connected_linear_segments(point_id) != 0;
 
-		// Grab the next and previous manipulator groups by simply looking at the next / previous index
+		// Grab the next and previous manipulator groups, leaving out any on top of this anchor since its segment has no direction to smooth along
 		let points = handles.iter().map(|handle| vector.other_point(handle.segment, point_id));
-		let anchor_positions = points.map(|point| point.and_then(|point| vector.position_of(ManipulatorPointId::Anchor(point)))).collect::<Vec<_>>();
+		let anchor_positions = points
+			.map(|point| point.and_then(|point| vector.position_of(ManipulatorPointId::Anchor(point))))
+			.map(|position| position.filter(|position| !position.abs_diff_eq(anchor_position, 1e-6)))
+			.collect::<Vec<_>>();
+		if !anchor_positions.is_empty() && anchor_positions.iter().all(Option::is_none) {
+			return;
+		}
 
 		let mut segment_angle = 0.;
 		let mut segment_count = 0.;
 
-		for segment in &handle_segments {
+		for (segment, _) in handle_segments.iter().zip(&anchor_positions).filter(|(_, other_anchor)| other_anchor.is_some()) {
 			let Some(angle) = calculate_segment_angle(point_id, *segment, vector, false) else {
 				continue;
 			};

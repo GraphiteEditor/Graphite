@@ -4498,4 +4498,58 @@ mod test_path_tool {
 		click(&mut editor, second, ModifierKeys::SHIFT).await;
 		assert_eq!(selected_anchor_positions(&editor), Vec::<DVec2>::new());
 	}
+
+	#[tokio::test]
+	async fn smoothing_an_anchor_on_top_of_its_neighbor_aims_its_handle_at_its_other_neighbor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// The second anchor is dragged out into a smooth one, so the segment from it curves
+		let (start, curved, curved_handle, dragged, end) = (DVec2::new(100., 300.), DVec2::new(300., 150.), DVec2::new(400., 150.), DVec2::new(450., 300.), DVec2::new(600., 200.));
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+		editor.move_mouse(curved.x, curved.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(curved.x, curved.y, ModifierKeys::empty()).await;
+		editor.move_mouse(curved_handle.x, curved_handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(curved_handle.x, curved_handle.y, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, dragged, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, end, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn path should be selected");
+
+		// The third anchor is dragged on top of the second, then double-clicked to make it smooth
+		drag(&mut editor, dragged, curved).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, curved, ModifierKeys::empty()).await;
+		editor.double_click(curved).await;
+
+		let [ManipulatorPointId::Anchor(anchor)] = selected_points(&editor)[..] else {
+			panic!("only the smoothed anchor should be selected")
+		};
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		let handle_positions = vector.all_connected(anchor).map(|handle| {
+			let other_anchor = vector.other_point(handle.segment, anchor).and_then(|point| vector.position_from_id(point));
+			let handle = vector.position_of(handle.to_manipulator_point());
+			(
+				other_anchor.map(|position| to_viewport.transform_point2(position)),
+				handle.map(|position| to_viewport.transform_point2(position)),
+			)
+		});
+
+		for (other_anchor, handle) in handle_positions {
+			let (Some(other_anchor), Some(handle)) = (other_anchor, handle) else {
+				panic!("both handles should exist")
+			};
+
+			// The handle toward the anchor underneath has no direction to take, so it stays put
+			if other_anchor.distance(curved) < 1e-6 {
+				assert!(handle.distance(curved) < 1e-6, "the handle toward the anchor underneath moved to {handle}");
+				continue;
+			}
+
+			let angle = (handle - curved).angle_to(end - curved);
+			assert!(angle.abs() < 1e-6, "the handle is {}° off the direction to the other neighbor", angle.to_degrees());
+		}
+	}
 }
