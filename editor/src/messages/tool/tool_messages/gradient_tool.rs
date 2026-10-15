@@ -738,7 +738,7 @@ impl SelectedGradient {
 				let new_color = self.gradient.color(stop).unwrap_or(Color::BLACK);
 
 				self.gradient.sort(gradient_cyclic);
-				if let Some(new_index) = self.gradient.iter().position(|s| s.position == new_position && s.color == new_color) {
+				if let Some(new_index) = (0..self.gradient.len()).position(|index| self.gradient.position(index, gradient_cyclic) == new_position && self.gradient.color(index) == Some(new_color)) {
 					self.dragging = GradientDragTarget::Stop(new_index);
 				}
 			}
@@ -1856,10 +1856,10 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		}
 
 		// Check stops
-		for stop in gradient.iter() {
-			let pos = start.lerp(end, stop.position);
-			if pos.distance_squared(mouse) < stop_tolerance {
-				return if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
+		for index in 0..gradient.len() {
+			let position = gradient.position(index, appearance.settings.cyclic);
+			if start.lerp(end, position).distance_squared(mouse) < stop_tolerance {
+				return if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 					GradientHoverTarget::Endpoint
 				} else {
 					GradientHoverTarget::Stop
@@ -2094,7 +2094,7 @@ enum GradientDragHintState {
 
 #[cfg(test)]
 mod test_gradient {
-	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
+	use super::{GradientHoverTarget, detect_hover_target, gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
 	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -2910,6 +2910,37 @@ mod test_gradient {
 
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(gradient.gradient_spread, GradientSpread::Reflect);
+	}
+
+	#[tokio::test]
+	async fn hover_finds_evenly_spaced_stops_on_a_cyclic_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+
+		// Two stops spaced evenly around a cycle sit at 0 and 0.5, positions the picker leaves implicit
+		let stops = Gradient::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+			GradientStop {
+				position: 0.5,
+				midpoint: 0.5,
+				color: Color::WHITE,
+			},
+		]);
+		let ramp = GradientRamp::<SRGBA8>::from(&GradientRamp {
+			gradient_cyclic: true,
+			..GradientRamp::from(&stops)
+		});
+		editor.handle_message(GradientToolMessage::UpdateRamp { ramp }).await;
+
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		assert!(!gradient.stops.has_position_attribute(), "the evenly spaced positions should be implicit");
+		assert_eq!(detect_hover_target(DVec2::new(50., 50.), editor.active_document()), GradientHoverTarget::Stop);
 	}
 
 	#[tokio::test]
