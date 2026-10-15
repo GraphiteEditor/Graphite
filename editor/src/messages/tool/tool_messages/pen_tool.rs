@@ -3323,4 +3323,25 @@ mod test_pen_tool {
 		});
 		assert!(joined, "the first path should have a segment from the inserted point to the next anchor");
 	}
+
+	#[tokio::test]
+	async fn space_held_mid_drag_moves_the_anchor_from_where_it_was_pressed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		click_pen(&mut editor, A).await;
+
+		// Pressing the second anchor and dragging out its handle, then holding Space and moving on
+		editor.move_mouse(B.x, B.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(B.x, B.y, ModifierKeys::empty()).await;
+		let handle = B + DVec2::new(60., 0.);
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.key_down(Key::Space, ModifierKeys::empty()).await;
+		let travel = DVec2::new(0., 50.);
+		editor.move_mouse(handle.x + travel.x, handle.y + travel.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.key_up(Key::Space, ModifierKeys::empty()).await;
+		editor.left_mouseup(handle.x + travel.x, handle.y + travel.y, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		assert_anchors(&editor, &[A, B + travel]);
+	}
 }
